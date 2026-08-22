@@ -18,7 +18,7 @@
 // Both helpers take a drizzle `Db` executor so callers can swap in a
 // per-test database; neither touches the process-scoped pool.
 
-import { and, desc, eq, getTableColumns, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, gte, inArray, lte, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { auditLog } from "../db/schema/audit.ts";
 import type { AuditActorType, AuditEntry, AuditResult } from "./types.ts";
@@ -40,12 +40,12 @@ export interface AuditQueryOptions {
   /** Page size. Defaults to 50, capped at 500. */
   limit?: number;
   /**
-   * Cursor — only return rows strictly older than this timestamp.
-   * The response's `next_cursor` echoes the `ts` of the last returned
-   * row, so `before = <last-cursor>` walks the full history page by
-   * page in chronological-desc order.
+   * OPAQUE cursor from a previous response's `next_cursor`. Pass it
+   * back verbatim; do not parse it, build it, or compare it. It encodes
+   * both halves of the sort key — see `AuditKeysetCursor` for why a
+   * timestamp alone silently drops rows.
    */
-  before?: Date;
+  before?: string;
 }
 
 export interface AuditQueryResult {
@@ -57,7 +57,12 @@ const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 
 /**
- * Keyset cursor for the export walk.
+ * Keyset cursor — the ONE cursor shape every read path over `audit_log`
+ * uses. There is deliberately no timestamp-only variant left to choose:
+ * the first repair added this branch next to the old one and only moved
+ * the export onto it, so the paged list kept losing 9 rows in 15 for
+ * another round. A broken branch that still exists is the default for
+ * the next reader.
  *
  * `ts` is the Postgres rendering of the column (`timestamptz::text`),
  * NOT a JS `Date`: `Date` holds milliseconds while the column holds
@@ -76,7 +81,39 @@ interface AuditKeysetCursor {
   id: string;
 }
 
-function buildWhere(filters: AuditQueryFilters, before?: Date | AuditKeysetCursor) {
+/** Renders `ts` with microsecond precision and no space/offset, so the
+ *  cursor survives a URL query value and casts straight back. */
+const CURSOR_TS_SQL = sql<string>`to_char(${auditLog.ts} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+
+/** All-zero uuid — sorts below every real id. */
+const MIN_UUID = "00000000-0000-0000-0000-000000000000";
+
+function formatAuditCursor(c: AuditKeysetCursor): string {
+  return `${c.ts}|${c.id}`;
+}
+
+/**
+ * Parse a `next_cursor` handed back by a caller.
+ *
+ * A cursor minted before the keyset change carries only a timestamp.
+ * It is NOT rejected and NOT routed to a second predicate — it is
+ * widened to `(ts, MIN_UUID)`, which through the one row-wise
+ * comparison means exactly `ts < cursor`: the old behaviour, for the
+ * only cursors that cannot do better, expressed in the new shape.
+ * That way there is still just one predicate to reason about.
+ */
+export function parseAuditCursor(raw: string): AuditKeysetCursor | undefined {
+  const trimmed = raw.trim();
+  if (trimmed === "") return undefined;
+  const sep = trimmed.lastIndexOf("|");
+  if (sep === -1) return { ts: trimmed, id: MIN_UUID };
+  const ts = trimmed.slice(0, sep);
+  const id = trimmed.slice(sep + 1);
+  if (ts === "" || id === "") return undefined;
+  return { ts, id };
+}
+
+function buildWhere(filters: AuditQueryFilters, before?: AuditKeysetCursor) {
   const tenantConds = [eq(auditLog.tenant_id, filters.tenant_id)];
   if (filters.actions && filters.actions.length > 0) {
     tenantConds.push(inArray(auditLog.action, filters.actions));
@@ -93,11 +130,10 @@ function buildWhere(filters: AuditQueryFilters, before?: Date | AuditKeysetCurso
   if (filters.trace_id) tenantConds.push(eq(auditLog.trace_id, filters.trace_id));
   if (filters.ts_from) tenantConds.push(gte(auditLog.ts, filters.ts_from));
   if (filters.ts_to) tenantConds.push(lte(auditLog.ts, filters.ts_to));
-  if (before instanceof Date) {
-    tenantConds.push(lt(auditLog.ts, before));
-  } else if (before) {
-    // Row-wise comparison, matching `ORDER BY ts DESC, id DESC` exactly:
-    // "strictly after the last row I emitted", with the tiebreaker.
+  if (before) {
+    // The only cursor predicate. Row-wise comparison, matching
+    // `ORDER BY ts DESC, id DESC` exactly: "strictly after the last row
+    // I emitted", with the tiebreaker that a bare timestamp lacks.
     tenantConds.push(
       sql`(${auditLog.ts}, ${auditLog.id}) < (${before.ts}::timestamptz, ${before.id}::uuid)`,
     );
@@ -138,16 +174,21 @@ export async function queryAuditLog(
   opts: AuditQueryOptions = {},
 ): Promise<AuditQueryResult> {
   const requested = Math.max(1, Math.min(opts.limit ?? DEFAULT_LIMIT, MAX_LIMIT));
+  const before = opts.before === undefined ? undefined : parseAuditCursor(opts.before);
   const rows = await db
-    .select()
+    .select({ ...getTableColumns(auditLog), ts_cursor: CURSOR_TS_SQL.as("ts_cursor") })
     .from(auditLog)
-    .where(buildWhere(filters, opts.before))
+    .where(buildWhere(filters, before))
     .orderBy(desc(auditLog.ts), desc(auditLog.id))
     .limit(requested);
   const items = rows.map(rowToEntry);
+  const last = rows[rows.length - 1];
+  // Only a FULL page can have more behind it. The cursor carries the
+  // rendered timestamp plus the id, never `ts.toISOString()` — a JS
+  // Date has already dropped the microseconds by the time it is here.
   const next_cursor =
-    rows.length === requested && rows[rows.length - 1]
-      ? (rows[rows.length - 1]?.ts.toISOString() ?? null)
+    rows.length === requested && last
+      ? formatAuditCursor({ ts: last.ts_cursor, id: last.id })
       : null;
   return { items, next_cursor };
 }
@@ -196,7 +237,7 @@ export async function* streamAuditLog(
         ...getTableColumns(auditLog),
         // The column as Postgres renders it, so the next cursor keeps
         // the microseconds the driver's Date would drop.
-        ts_text: sql<string>`${auditLog.ts}::text`,
+        ts_cursor: CURSOR_TS_SQL.as("ts_cursor"),
       })
       .from(auditLog)
       .where(buildWhere(filters, cursor))
@@ -207,7 +248,7 @@ export async function* streamAuditLog(
     if (rows.length < batchSize) return;
     const last = rows[rows.length - 1];
     if (!last) return;
-    cursor = { ts: last.ts_text, id: last.id };
+    cursor = { ts: last.ts_cursor, id: last.id };
   }
 }
 
