@@ -195,9 +195,16 @@ function rowToEntry(row: typeof auditLog.$inferSelect): AuditEntry {
 
 /**
  * Paginated tenant-scoped audit log list. `items` is ordered newest
- * first. When the page was full, `next_cursor` carries the `ts` of the
- * last returned row so the caller can request `before=<cursor>` to
- * fetch the next page.
+ * first. When the page was FULL, `next_cursor` carries the last returned
+ * row's rendered timestamp AND its id (`<ts>|<uuid>`); the caller passes it
+ * back verbatim as `before=<cursor>`. A short page returns `null`.
+ *
+ * This header used to say the cursor carries "the `ts` of the last returned
+ * row". That was the shape that dropped every remaining member of a
+ * timestamp tie — 6 rows of 15 reached by a full walk. The route header one
+ * file over was corrected when the code was; this one was not, and a stale
+ * description of a cursor is exactly what the next reader builds against.
+ * See `AuditKeysetCursor` for why the id is not optional.
  */
 export async function queryAuditLog(
   db: Db,
