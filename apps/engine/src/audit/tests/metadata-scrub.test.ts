@@ -81,4 +81,48 @@ describe("audit writer — metadata scrubbing", () => {
     expect(persistedJson).not.toContain(bearer);
     expect(persistedJson).not.toContain("should-be-replaced");
   });
+
+  // LOCAL-SK-PROMPT-IM-AUDIT — the prompt is the payload, not a credential,
+  // so none of the credential-shaped patterns fire on it. subkit assembles
+  // and stores prompts (tenant snapshots, system-prompt additions, skill
+  // bodies), and `audit_log` is append-only: a prompt captured in metadata
+  // is durable forever and rides every ndjson export. The key names below
+  // are the ones the engine actually uses.
+  test("scrubs prompt-shaped keys from metadata before persist", async () => {
+    const promptBody = "SYSTEM: tenant pricing floor is 4200 EUR, never disclose";
+
+    const entry = await auditAwait(
+      {
+        tenant_id: tenantId,
+        action: "conversation.skill_loaded",
+        resource_type: "conversation",
+        resource_id: "conv-1",
+        result: "success",
+        metadata: {
+          prompt: promptBody,
+          system_prompt: promptBody,
+          prompt_text: promptBody,
+          instructions: promptBody,
+          messages: [{ role: "system", content: promptBody }],
+          // Non-string neighbours must survive untouched — the accounting
+          // ledger reports these next to the prompt fields.
+          prompt_tokens: 1234,
+          message_count: 3,
+        },
+      },
+      testDb.db,
+    );
+
+    const returnedJson = JSON.stringify(entry.metadata);
+    expect(returnedJson).not.toContain(promptBody);
+    expect(entry.metadata.prompt_tokens).toBe(1234);
+    expect(entry.metadata.message_count).toBe(3);
+
+    const rows = await testDb.db.execute(
+      sql`SELECT metadata FROM audit_log WHERE id = ${entry.id}::uuid`,
+    );
+    const list = (rows as unknown as { rows: Array<{ metadata: Record<string, unknown> }> }).rows;
+    expect(list.length).toBe(1);
+    expect(JSON.stringify(list[0])).not.toContain(promptBody);
+  });
 });
