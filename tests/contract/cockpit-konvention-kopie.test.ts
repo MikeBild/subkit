@@ -59,11 +59,22 @@ describe("the root copy of the family convention", () => {
     // deliberate two-line change — the document and this line — and never
     // something a stray edit does quietly.
     //
-    // Verified on 21.08.2026 to be the same digest SubKit, WorkKit and WatchKit
-    // all carry.
+    // LOCAL-SK-KONVENTION-KOPIE-WEICHT-AB — this pin held nothing for a day.
+    // 87b94c38 dropped §15 (the Audit-Trail paragraph, 73 lines) from SubKit's
+    // copy and RE-PINNED the digest to the shortened file, so the check went
+    // green against a copy the five sibling repositories did not have. A pin
+    // that is updated to whatever the file happens to be is a record of the
+    // file, not a hold on it.
+    //
+    // So the value below is no longer "SubKit's current bytes". It is the
+    // digest of the reviewed v1.6 document as distributed, md5
+    // 80e41c48d3c80cc1e5a851e3ab42ffc0, which all six copies carry. Raising it
+    // is a deliberate two-line change — the document AND this line — and the
+    // new value must come from the distributed document, never from this
+    // repository's own file.
     const digest = createHash("sha256").update(konventionBytes).digest("hex");
     expect(digest, "COCKPIT-KONVENTION.md is no longer the reviewed v1.6 text").toBe(
-      "8f94e9cb4233382faf4b4962ea9d6ee6eee764993d8c09370cac1160768f3f31",
+      "d659b1f9fca1791b9beb96ee81d5706832ed677d386d33f2bb92088bca4cf125",
     );
   });
 
@@ -80,6 +91,10 @@ describe("the root copy of the family convention", () => {
     expect(konvention).toContain("**8.5a Zähler-Kacheln.**");
     expect(konvention).toContain("**8.5b Die Zahl selbst ist eine Design-Frage.**");
     expect(konvention).toContain("## 12. Berichts-Grammatik");
+    // §15 is the paragraph SubKit's copy lost. Named here so a repeat of that
+    // truncation says WHICH section went missing instead of only "different".
+    expect(konvention).toContain("## 15. Audit-Trail");
+    expect(konvention).toContain("Zeitpunkt · Vorgang · Art · Ergebnis · Verursacher");
   });
 
   test("§8 exists exactly once in it", () => {
