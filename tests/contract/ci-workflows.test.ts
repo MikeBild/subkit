@@ -445,6 +445,22 @@ describe("gate and workflows", () => {
     expect(runs(job(ci, "konvention"))).toContain("bun run konvention:check");
   });
 
+  // BEFUND-GATE-IST-NICHT-CI, second instance. `audit:invariants` DID run in a
+  // workflow — `audit-invariants.yml`, on `pull_request` and `schedule`. So
+  // the test above was green while the check covered the review path and not
+  // the push path: a direct push to main ran no invariant at all, and the
+  // `build` aggregate branch protection requires could not see the workflow
+  // that did. "Runs somewhere" is not the property worth holding; "runs on the
+  // path a commit actually takes, and blocks" is.
+  test("audit:invariants runs in ci.yml on the push path and blocks the aggregate", () => {
+    expect(verifyStages()).toContain("audit:invariants");
+    expect(runs(job(ci, "invariants"))).toContain("bun run audit:invariants");
+    // ci.yml's own triggers are pinned by the first test in this block; what
+    // matters here is that the invariants job is inside THAT workflow and is a
+    // prerequisite of the required check.
+    expect(job(ci, "build").needs ?? []).toContain("invariants");
+  });
+
   // ---------------------------------------------------------------------
   // The browser requirement, DERIVED — see the block above BROWSER_PACKAGES.
   // ---------------------------------------------------------------------

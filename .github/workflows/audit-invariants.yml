@@ -1,10 +1,20 @@
 name: audit-invariants
 
-# Single CI gate for the engine's architectural invariants (file size,
-# tenant filtering, route layering, coverage floors, subsystem count).
+# NIGHTLY drift run for the engine's architectural invariants (file size,
+# tenant filtering, route layering, coverage floors, subsystem count,
+# audit_log single writer, test servers binding loopback).
+#
+# The BLOCKING run lives in `ci.yml` as the `invariants` job — on `push` and
+# `pull_request`, and listed in the `build` aggregate that branch protection
+# requires. This workflow used to be the only run, on `pull_request` +
+# `schedule` and outside `build`, which left a direct push to main covered by
+# nothing (BEFUND-GATE-IST-NICHT-CI). It stays for the nightly, whose value is
+# catching drift on main that no push triggered — a rotated dependency, a
+# clock, an external pin.
 #
 # The same script (`bun run audit:invariants`) is invoked from:
-#   - this workflow (PR + nightly)
+#   - ci.yml (push + PR, blocking)
+#   - this workflow (nightly + manual)
 #   - the local release gate (`/verify`)
 #   - the closed-loop driver in apps/engine/scripts/audit-loop/
 #
@@ -12,21 +22,20 @@ name: audit-invariants
 # script — do not silence it here.
 
 on:
-  pull_request:
-    branches: [main]
   schedule:
-    # Nightly at 06:00 UTC; catches drift on main introduced by merges
-    # that bypassed the PR check (rare but must be observable).
+    # Nightly at 06:00 UTC; catches drift on main that no push triggered.
     - cron: "0 6 * * *"
   workflow_dispatch:
 
 concurrency:
   group: audit-invariants-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Never cancel: the only triggers left are the nightly and a manual run,
+  # and both exist to produce a result.
+  cancel-in-progress: false
 
 jobs:
   invariants:
-    name: invariants
+    name: invariants (nightly)
     runs-on: ubuntu-24.04
 
     steps:
