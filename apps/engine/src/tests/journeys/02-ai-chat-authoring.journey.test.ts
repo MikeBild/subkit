@@ -120,7 +120,7 @@ beforeAll(async () => {
     chatRegistry,
     chatEnqueue: async () => {},
   });
-  const server: ServerType = serve({ fetch: app.fetch, port: 0 });
+  const server: ServerType = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
   const addr = (server as unknown as { address: () => { port: number } | null }).address();
   if (!addr) throw new Error("no addr");
   const baseUrl = `http://127.0.0.1:${addr.port}`;

@@ -38,6 +38,9 @@ function bootHttp(hostname: string): Promise<{ address: string; port: number; cl
   const app = new Hono();
   app.get("/_probe", (c) => c.text("ok"));
   return new Promise((resolve, reject) => {
+    // bind-wildcard-allowed: this suite's SUBJECT is which address the server
+    // binds, so the hostname is the parameter under test and cannot be pinned
+    // to a literal here.
     const server = serve({ fetch: app.fetch, port: 0, hostname }, (info) => {
       try {
         resolve({
