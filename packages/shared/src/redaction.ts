@@ -94,7 +94,29 @@ export const SENSITIVE_KEY_PATTERN: RegExp =
 //
 // Non-string, non-object values under any of these keys (counters) still
 // fall through untouched — the caller gates on the VALUE type too.
+//
+// THE TWO HALVES GATE ON DIFFERENT VALUE TYPES, and the split below is the
+// rest of the same lesson (LOCAL-SK-BODY-NETZ-FRISST-STRUKTUR).
+//
+//   PROSE half (`prompt`, `messages`, `instructions`) collapses a string OR
+//   a carrier. `messages: [{ role, content }]` is prose wearing an array,
+//   and there is no structural field that answers to these names.
+//
+//   BODY half (`body`, `*_body`) collapses a STRING only. `body` is the one
+//   word here that is also a common structural name, which is why it is
+//   anchored — and anchoring alone was not enough: `request_body` in the sk
+//   debug trace and the structured log record holds an HTTP payload OBJECT,
+//   and collapsing it wholesale deleted the record an operator opens the log
+//   to read, `api_key` redaction and all. Prose is a string; a body that is
+//   an object is structure. We recurse into it instead, so a prompt nested
+//   one level down (`request_body.messages`) is still caught by the prose
+//   half, and every string leaf still goes through the value-shape net.
+//
+// Kept as one exported constant because it is the union that answers "is
+// this key in the net at all"; `isProseKey` / `isBodyKey` are what decide.
 export const PROMPT_KEY_PATTERN: RegExp = /prompt|messages|instructions|(?:^|_)body$/i;
+const PROSE_KEY_PATTERN: RegExp = /prompt|messages|instructions/i;
+const BODY_KEY_PATTERN: RegExp = /(?:^|_)body$/i;
 
 export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
   { kind: "pat", regex: /\bdop_v1_[A-Za-z0-9]{32,}/g },
@@ -530,11 +552,18 @@ function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEY_PATTERN.test(key);
 }
 
-/** True for a key whose value carries prompt text. Numeric neighbours
- *  (`prompt_tokens`, `message_count`) share the word but carry no prose,
- *  so the caller gates on the VALUE type, not on the key alone. */
-function isPromptKey(key: string): boolean {
-  return PROMPT_KEY_PATTERN.test(key);
+/** True for a key whose value carries prompt text under a name that has no
+ *  structural meaning. Numeric neighbours (`prompt_tokens`,
+ *  `message_count`) share the word but carry no prose, so the caller gates
+ *  on the VALUE type, not on the key alone. */
+function isProseKey(key: string): boolean {
+  return PROSE_KEY_PATTERN.test(key);
+}
+
+/** True for the `body` / `*_body` half of the net. Collapses a string only —
+ *  see the note on `PROMPT_KEY_PATTERN` for why a carrier is structure. */
+function isBodyKey(key: string): boolean {
+  return BODY_KEY_PATTERN.test(key);
 }
 
 function isAlreadyRedacted(value: string): boolean {
@@ -616,13 +645,15 @@ function scrubSecretValue(
       out[key] = isAlreadyRedacted(value) ? value : REDACTED("key_value");
     } else if (
       promptKeys &&
-      isPromptKey(key) &&
-      (typeof value === "string" || isPlainCarrier(value))
+      ((isProseKey(key) && (typeof value === "string" || isPlainCarrier(value))) ||
+        (isBodyKey(key) && typeof value === "string"))
     ) {
       // A prompt reaches the audit trail as a string (`prompt`,
       // `system_prompt`) or as a message array (`messages`), so both
       // shapes collapse to the marker. A number or boolean under the
       // same key is a counter, not prose — it falls through untouched.
+      // Under the `body` half only a string collapses: an object there is
+      // an HTTP payload, and we recurse rather than delete it.
       out[key] = typeof value === "string" && isAlreadyRedacted(value) ? value : REDACTED("prompt");
     } else {
       out[key] = scrubSecretValue(value, depth + 1, seen, promptKeys);
