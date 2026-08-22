@@ -8,7 +8,9 @@
 // additionally call into `rbac/` helpers before dispatching.
 
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { auditAwait } from "../audit/audit.ts";
 import { getAuditRowById, queryAuditLog } from "../audit/query.ts";
+import type { AuditEntry } from "../audit/types.ts";
 import { promoteConnector } from "../connectors/promotion.ts";
 import {
   deleteConnector,
@@ -467,6 +469,16 @@ export class EngineClient {
   /**
    * Record a tool-driven audit entry. Conversation write tools call this
    * before / after a tenant-mutating action.
+   *
+   * LOCAL-SK-ZWEITER-AUDIT-SCHREIBER — this method used to hold its own
+   * `insert(auditLog)`. That made it a SECOND writer for the append-only
+   * trail, and it reached the table without `scrubSecrets`: measured with a
+   * real client, `prompt` and `api_token` landed in the row verbatim across
+   * all ~32 call sites. It now goes through `auditAwait`, the same entry
+   * point `audit()` uses, so the scrub, the logger mirror, the trace id and
+   * the written-rows metric apply to both writers identically. There is no
+   * direct insert left here — see the `audit_log has a single writer`
+   * invariant.
    */
   async audit_write(params: {
     resource_type: string;
@@ -476,19 +488,20 @@ export class EngineClient {
     reason?: string;
     metadata?: Record<string, unknown>;
   }): Promise<string> {
-    const id = crypto.randomUUID();
-    await this.db.insert(auditLog).values({
-      id,
-      tenant_id: this.tenant_id,
-      actor_type: this.actor_type,
-      actor_id: this.actor_id,
-      resource_type: params.resource_type,
-      resource_id: params.resource_id,
-      action: params.action,
-      result: params.result,
-      reason: params.reason ?? null,
-      metadata: params.metadata ?? {},
-    });
-    return id;
+    const entry = await auditAwait(
+      {
+        tenant_id: this.tenant_id,
+        actor_type: this.actor_type,
+        actor_id: this.actor_id,
+        resource_type: params.resource_type,
+        resource_id: params.resource_id,
+        action: params.action as AuditEntry["action"],
+        result: params.result,
+        reason: params.reason ?? null,
+        metadata: params.metadata ?? {},
+      },
+      this.db,
+    );
+    return entry.id;
   }
 }

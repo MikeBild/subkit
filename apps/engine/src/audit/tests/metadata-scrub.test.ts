@@ -15,7 +15,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { EngineClient } from "../../engine-client/index.ts";
 import { auditAwait } from "../audit.ts";
+import type { AuditEntry } from "../types.ts";
 
 let testDb: TestDb;
 let tenantId = "";
@@ -124,5 +126,82 @@ describe("audit writer — metadata scrubbing", () => {
     const list = (rows as unknown as { rows: Array<{ metadata: Record<string, unknown> }> }).rows;
     expect(list.length).toBe(1);
     expect(JSON.stringify(list[0])).not.toContain(promptBody);
+  });
+  // LOCAL-SK-ZWEITER-AUDIT-SCHREIBER — `audit()` was never the only writer.
+  // `EngineClient.audit_write` held its own `insert(auditLog)` and reached
+  // the table without `scrubSecrets`, so every conversation write tool
+  // (~32 call sites) wrote its metadata verbatim. The earlier round measured
+  // the five prompt keys through `audit()` and reported "5 of 5 -> 0 of 5";
+  // that was true of ONE writer and too strong as a statement about the
+  // product.
+  //
+  // Second half: `PROMPT_KEY_PATTERN` did not match `body`, and
+  // `update_skill` writes `before`/`after` as whole Skill rows whose `body`
+  // IS the prompt. So even the scrubbed writer let a prompt through.
+  //
+  // This case runs the SAME three payloads through BOTH writers. It fails
+  // against the version before the fix (audit_write leaks all three;
+  // audit() leaks the `body`), which is what makes it evidence.
+  test("both writers scrub prompt / api_token / body before persist", async () => {
+    const promptBody = "SYSTEM: tenant pricing floor is 4200 EUR, never disclose";
+    const apiToken = "dop_v1_b7143795abcdefabcdefabcdefabcdefabcdef";
+    const payload = {
+      conversation_id: "conv-2",
+      prompt: promptBody,
+      api_token: apiToken,
+      // The `update_skill` shape: a whole Skill row under before/after.
+      before: { id: "skill-1", title: "Pricing", body: promptBody },
+      after: { id: "skill-1", title: "Pricing", body: `${promptBody} (revised)` },
+    };
+
+    // Writer 1 — audit() / auditAwait().
+    const viaAudit = await auditAwait(
+      {
+        tenant_id: tenantId,
+        // The literal string `update_skill` writes. It is deliberately not
+        // in `AuditAction`: `audit_write` takes `action` as a plain string and
+        // ~32 tools mint their own, which is exactly why the payload rule had
+        // to move to the writer rather than live in a per-action contract.
+        action: "conversation.update_skill" as AuditEntry["action"],
+        resource_type: "skill",
+        resource_id: "skill-1",
+        result: "success",
+        metadata: payload,
+      },
+      testDb.db,
+    );
+
+    // Writer 2 — EngineClient.audit_write(), the path every conversation
+    // write tool takes.
+    const client = new EngineClient({
+      tenant_id: tenantId,
+      actor_id: null,
+      actor_type: "system",
+      db: testDb.db,
+    });
+    const viaClientId = await client.audit_write({
+      resource_type: "skill",
+      resource_id: "skill-1",
+      action: "conversation.update_skill",
+      result: "success",
+      metadata: payload,
+    });
+
+    const rows = await testDb.db.execute(
+      sql`SELECT id, metadata FROM audit_log WHERE id IN (${viaAudit.id}::uuid, ${viaClientId}::uuid)`,
+    );
+    const list = (
+      rows as unknown as { rows: Array<{ id: string; metadata: Record<string, unknown> }> }
+    ).rows;
+    expect(list.length).toBe(2);
+
+    for (const row of list) {
+      const json = JSON.stringify(row.metadata);
+      const writer = row.id === viaAudit.id ? "audit()" : "audit_write()";
+      expect(json, `${writer} leaked the prompt`).not.toContain(promptBody);
+      expect(json, `${writer} leaked the api_token`).not.toContain(apiToken);
+      // Structure survives — only the prose collapses.
+      expect(row.metadata.conversation_id).toBe("conv-2");
+    }
   });
 });
