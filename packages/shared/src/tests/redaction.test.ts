@@ -400,3 +400,67 @@ describe("prompt-key net — what collapses and what must survive", () => {
     expect(out.message_count).toBe(3);
   });
 });
+
+// The prompt-key net is a POLICY, not a law — `ScrubOptions.promptKeys`
+// decides where it runs.
+//
+// LOCAL-SK-SAEUBERER-FRISST-HISTORIE — the audit writer runs it on
+// `metadata` / `reason` (caller-minted prose that exists nowhere else) and
+// NOT on the `before` / `after` snapshot columns (copies of rows already
+// stored unredacted in their own tables, and the source `restoreSkill`
+// reads back). With the net on there, a skill snapshot came back as
+// `***REDACTED:prompt***` and the restore wrote that marker in as the live
+// body — the trail destroyed the history it was supposed to preserve.
+//
+// The flag turns off exactly ONE of the three nets. The two credential nets
+// are not hers to switch off, and the cases below pin that: flipping the
+// flag must change the prose and nothing else.
+describe("prompt-key net — promptKeys: false exempts prose, never credentials", () => {
+  const PROSE = "SYSTEM: tenant pricing floor is 4200 EUR, never disclose";
+  const PAT = "dop_v1_e5791346abcdefabcdefabcdefabcdefabcdef";
+
+  test("prose under a prompt-shaped key survives verbatim", () => {
+    const out = scrubSecrets(
+      {
+        body: PROSE,
+        skill_body: PROSE,
+        prompt: PROSE,
+        instructions: PROSE,
+        messages: [{ role: "system", content: PROSE }],
+      },
+      { promptKeys: false },
+    ) as Record<string, unknown>;
+    expect(out.body).toBe(PROSE);
+    expect(out.skill_body).toBe(PROSE);
+    expect(out.prompt).toBe(PROSE);
+    expect(out.instructions).toBe(PROSE);
+    expect(JSON.stringify(out.messages)).toContain(PROSE);
+  });
+
+  test("the value-shape net still fires inside an exempted key", () => {
+    const out = scrubSecrets({ body: `${PROSE} token=${PAT}` }, { promptKeys: false }) as Record<
+      string,
+      unknown
+    >;
+    expect(out.body).toContain(PROSE);
+    expect(out.body).not.toContain(PAT);
+    expect(out.body).toContain("***REDACTED:pat***");
+  });
+
+  test("the sensitive-key net still fires beside an exempted key", () => {
+    const out = scrubSecrets(
+      { body: PROSE, api_key: "plain-looking-value", password: "hunter2" },
+      { promptKeys: false },
+    ) as Record<string, unknown>;
+    expect(out.body).toBe(PROSE);
+    expect(out.api_key).toBe("***REDACTED:key_value***");
+    expect(out.password).toBe("***REDACTED:key_value***");
+  });
+
+  test("the default is unchanged — omitting the option keeps the net on", () => {
+    const out = scrubSecrets({ body: PROSE }) as Record<string, unknown>;
+    expect(out.body).toBe("***REDACTED:prompt***");
+    const explicit = scrubSecrets({ body: PROSE }, {}) as Record<string, unknown>;
+    expect(explicit.body).toBe("***REDACTED:prompt***");
+  });
+});

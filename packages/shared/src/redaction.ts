@@ -69,10 +69,19 @@ export const SENSITIVE_KEY_PATTERN: RegExp =
 // gate, so the two nets stay separate.
 //
 // `body` is in the net because a Skill's prompt is not stored under a
-// prompt-shaped name: `update_skill` audits `before`/`after` as whole Skill
-// rows, and `Skill.body` IS the assembled prompt. The pattern matched the
-// five keys someone thought to look for and missed the one the product
-// actually writes (LOCAL-SK-ZWEITER-AUDIT-SCHREIBER).
+// prompt-shaped name: the conversation `update_skill` tool audits whole
+// Skill rows under `metadata.before` / `metadata.after`, and `Skill.body`
+// IS the assembled prompt. The pattern matched the five keys someone
+// thought to look for and missed the one the product actually writes
+// (LOCAL-SK-ZWEITER-AUDIT-SCHREIBER).
+//
+// WHERE THIS NET RUNS IS ITSELF A CHOICE — see `ScrubOptions.promptKeys`.
+// It runs on `metadata` / `reason` (caller-minted prose that exists
+// nowhere else) and NOT on the `audit_log.before` / `.after` snapshot
+// columns (copies of rows already stored unredacted in their own tables,
+// and the source `restoreSkill` reads back). Applying it there made every
+// skill snapshot unrestorable and wrote the marker in as the live body
+// (LOCAL-SK-SAEUBERER-FRISST-HISTORIE).
 //
 // Unlike its neighbours, `body` is ANCHORED — it fires on `body` and on a
 // `_body` suffix (`skill_body`, `request_body`), never on `body` as a
@@ -538,7 +547,56 @@ function isPlainCarrier(value: unknown): boolean {
   return typeof value === "object" && value !== null;
 }
 
-function scrubSecretValue(input: unknown, depth: number, seen: WeakSet<object>): unknown {
+/**
+ * Which nets `scrubSecrets` runs. There are three, and they are NOT
+ * interchangeable:
+ *
+ *   1. value-shape  — `scrubString` over every string leaf (PATs, JWTs,
+ *                     Bearer operands, AWS keys, presign URLs, generic
+ *                     high-entropy runs). Always on.
+ *   2. sensitive-key — a credential-NAMED key (`token`, `api_key`,
+ *                     `password`, …) collapses whatever it holds. Always on.
+ *   3. prompt-prose — a prose-NAMED key (`prompt`, `messages`,
+ *                     `instructions`, `_body`) collapses. OPTIONAL.
+ *
+ * Only net 3 is a policy choice, because it is the only one that fires on
+ * a key name without any evidence the value is a secret.
+ */
+export interface ScrubOptions {
+  /**
+   * Run the prompt-prose net (3). Default `true`.
+   *
+   * LOCAL-SK-SAEUBERER-FRISST-HISTORIE — set `false` for a STRUCTURED
+   * SNAPSHOT channel, i.e. one whose payload is a copy of a row that is
+   * already stored unredacted in its own table. `audit_log.before` /
+   * `.after` is that channel: `updateSkill` writes whole Skill rows there
+   * and `restoreSkill` reads them back, so the trail doubles as the skill
+   * version history. Collapsing `Skill.body` there redacts a COPY whose
+   * ORIGINAL sits in plaintext in `skills.body` — it buys no
+   * confidentiality, and it cost the restore: the marker came back as the
+   * live body of an append-only record.
+   *
+   * `metadata` / `reason` keep the net on. Those are caller-minted — an
+   * assembled prompt, a message array, a tenant snapshot block — content
+   * that exists NOWHERE else, which is exactly what makes the net worth
+   * its false positives there.
+   *
+   * Nets 1 and 2 are unaffected by this flag: a credential inside an
+   * exempted snapshot still redacts, on its key name and on its value
+   * shape alike. RESIDUAL, accepted and named: a credential typed into
+   * free prose that no pattern matches survives in the snapshot — and
+   * equally survives in the primary table, so the trail is not the
+   * exposure.
+   */
+  readonly promptKeys?: boolean;
+}
+
+function scrubSecretValue(
+  input: unknown,
+  depth: number,
+  seen: WeakSet<object>,
+  promptKeys: boolean,
+): unknown {
   if (input === null || input === undefined) return input;
   if (typeof input === "string") return scrubString(input);
   if (typeof input !== "object") return input;
@@ -549,28 +607,32 @@ function scrubSecretValue(input: unknown, depth: number, seen: WeakSet<object>):
   seen.add(obj);
 
   if (Array.isArray(input)) {
-    return input.map((item) => scrubSecretValue(item, depth + 1, seen));
+    return input.map((item) => scrubSecretValue(item, depth + 1, seen, promptKeys));
   }
 
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
     if (isSensitiveKey(key) && typeof value === "string") {
       out[key] = isAlreadyRedacted(value) ? value : REDACTED("key_value");
-    } else if (isPromptKey(key) && (typeof value === "string" || isPlainCarrier(value))) {
+    } else if (
+      promptKeys &&
+      isPromptKey(key) &&
+      (typeof value === "string" || isPlainCarrier(value))
+    ) {
       // A prompt reaches the audit trail as a string (`prompt`,
       // `system_prompt`) or as a message array (`messages`), so both
       // shapes collapse to the marker. A number or boolean under the
       // same key is a counter, not prose — it falls through untouched.
       out[key] = typeof value === "string" && isAlreadyRedacted(value) ? value : REDACTED("prompt");
     } else {
-      out[key] = scrubSecretValue(value, depth + 1, seen);
+      out[key] = scrubSecretValue(value, depth + 1, seen, promptKeys);
     }
   }
   return out;
 }
 
-export function scrubSecrets(payload: unknown): unknown {
-  return scrubSecretValue(payload, 0, new WeakSet<object>());
+export function scrubSecrets(payload: unknown, options?: ScrubOptions): unknown {
+  return scrubSecretValue(payload, 0, new WeakSet<object>(), options?.promptKeys ?? true);
 }
 
 function scrubStringsDeepValue(input: unknown, depth: number, seen: WeakSet<object>): unknown {

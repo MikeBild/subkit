@@ -1,4 +1,4 @@
-export type { SecretKind, SecretPattern, SecretSpan } from "@shared/redaction.ts";
+export type { ScrubOptions, SecretKind, SecretPattern, SecretSpan } from "@shared/redaction.ts";
 export {
   findSecretSpans,
   SECRET_PATTERNS,
