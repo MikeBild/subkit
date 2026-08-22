@@ -38,10 +38,26 @@ setDefaultTimeout(TEST_DB_HOOK_TIMEOUT);
 // observed pathology: 563 orphans pushed the journey suite into
 // terminal lock-wait.
 //
-// Safety: only drop databases that have no active connections. A
-// concurrent test run's database has its admin/pool connection open,
-// so it shows up in pg_stat_activity and is skipped. The match is
-// gated to the `test_` prefix so production data is untouched.
+// Safety, part 1: only drop databases that have no active connections.
+// The match is gated to the `test_` prefix so production data is
+// untouched.
+//
+// Safety, part 2 — the OWNING PID. "A concurrent run always has a
+// connection open" is false for a window of its own making:
+// `createTestDb` closes its admin connection right after CREATE
+// DATABASE, and `new Pool()` does not dial until the first query. In
+// between, a perfectly healthy brand-new database has ZERO rows in
+// pg_stat_activity and looks exactly like an orphan. Under the release
+// gate — 1432 files, each spawning a process that runs this sweep once
+// — that window gets hit: a sibling process dropped a live database out
+// from under its owner and the suite died with
+// `3D000 database "test_conv_chat_rehydrate_<pid>_…" does not exist`
+// ("It seems to have just been dropped or renamed").
+//
+// The database name carries the pid of the process that created it, and
+// an orphan is by definition the leftover of a process that is GONE. So
+// a name whose pid is still alive is never swept, connections or not.
+// Both gates apply; neither alone is sufficient.
 // Fast reachability preflight — runs at most once per bun test process.
 // Database-backed suites are useless without Postgres, but a missing
 // server otherwise surfaces as a per-file connect-timeout cascade that
@@ -70,6 +86,33 @@ function ensurePreflight(adminUrl: string): Promise<void> {
 }
 
 let _orphanSweepPromise: Promise<void> | null = null;
+/**
+ * The pid `createTestDb` stamped into a database name, or null when the
+ * name predates the convention. Layout is
+ * `test_<label>_<pid>_<rand>`; the label may itself contain
+ * underscores, so the pid is the second-to-last segment.
+ */
+export function owningPidFromTestDbName(datname: string): number | null {
+  const parts = datname.split("_");
+  if (parts.length < 4) return null;
+  const candidate = parts[parts.length - 2] ?? "";
+  if (!/^\d+$/.test(candidate)) return null;
+  const pid = Number(candidate);
+  return Number.isSafeInteger(pid) && pid > 0 ? pid : null;
+}
+
+/** Signal 0 probes for existence without delivering anything. */
+export function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // EPERM means the process exists but belongs to another user —
+    // still alive, still not ours to sweep.
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 async function sweepOrphanTestDatabases(adminUrl: string): Promise<void> {
   const admin = new Client({ connectionString: adminUrl });
   await admin.connect();
@@ -82,6 +125,11 @@ async function sweepOrphanTestDatabases(adminUrl: string): Promise<void> {
           )`,
     );
     for (const { datname } of rows) {
+      const pid = owningPidFromTestDbName(datname);
+      // A live owner means the database is either in use or in the
+      // connectionless window right after CREATE DATABASE. Either way
+      // it is not an orphan.
+      if (pid !== null && isPidAlive(pid)) continue;
       // Identifier comes from pg_database catalog with the test_ prefix
       // already gated above; safe to interpolate into the DDL.
       await admin.query(`DROP DATABASE IF EXISTS "${datname}"`).catch(() => {});
