@@ -204,4 +204,72 @@ describe("audit writer — metadata scrubbing", () => {
       expect(row.metadata.conversation_id).toBe("conv-2");
     }
   });
+
+  // LOCAL-SK-SAEUBERER-FRISST-HISTORIE — `metadata` and the `before`/`after`
+  // COLUMNS are different channels and get different nets. The case above
+  // and this one look like they contradict each other; they do not, and the
+  // distinction is the whole fix:
+  //
+  //   `metadata` is caller-minted. The conversation `update_skill` tool puts
+  //   its skill snapshots under `metadata.before` / `metadata.after` — that
+  //   is the payload the case above pins, and it stays fully scrubbed.
+  //
+  //   The `before`/`after` COLUMNS are the structured snapshot channel, and
+  //   for skills they are also the restorable version history that
+  //   `skills/service.ts#restoreSkill` reads back. The prompt-prose net is
+  //   OFF there so the authored body survives; both CREDENTIAL nets stay on.
+  //
+  // Counter-proof: this case fails against the version that scrubbed the
+  // columns uniformly (prose came back as `***REDACTED:prompt***`), and the
+  // case above fails if the exemption is widened to `metadata`.
+  test("before/after columns keep prose but scrub credential keys and values", async () => {
+    const prose = "SYSTEM: tenant pricing floor is 4200 EUR, never disclose";
+    const pat = "dop_v1_d1357902abcdefabcdefabcdefabcdefabcdef";
+
+    const entry = await auditAwait(
+      {
+        tenant_id: tenantId,
+        action: "skill.updated",
+        resource_type: "skill",
+        resource_id: "skill-2",
+        result: "success",
+        before: { id: "skill-2", title: "Pricing", body: prose },
+        after: {
+          id: "skill-2",
+          title: "Pricing",
+          body: `${prose} (revised)`,
+          // Net 2: collapses on the KEY name, whatever it holds.
+          api_key: "plain-looking-value",
+          // Net 1: collapses on the VALUE shape, whatever it is called.
+          notes: `operator pasted ${pat}`,
+        },
+        metadata: { prompt: prose },
+      },
+      testDb.db,
+    );
+
+    const rows = await testDb.db.execute(
+      sql`SELECT before, after, metadata FROM audit_log WHERE id = ${entry.id}::uuid`,
+    );
+    const list = (
+      rows as unknown as {
+        rows: Array<{
+          before: Record<string, unknown>;
+          after: Record<string, unknown>;
+          metadata: Record<string, unknown>;
+        }>;
+      }
+    ).rows;
+    expect(list.length).toBe(1);
+    const row = list[0]!;
+
+    // Restorable: the authored body is readable on disk, in both columns.
+    expect(row.before.body).toBe(prose);
+    expect(row.after.body).toBe(`${prose} (revised)`);
+    // Still guarded: neither credential net was weakened by the exemption.
+    expect(row.after.api_key).toBe("***REDACTED:key_value***");
+    expect(JSON.stringify(row.after)).not.toContain(pat);
+    // And `metadata` is untouched by the exemption — same row, other channel.
+    expect(row.metadata.prompt).toBe("***REDACTED:prompt***");
+  });
 });

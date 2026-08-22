@@ -4,8 +4,9 @@
 // 409 path for pre-snapshot (thin) audit entries.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { and, desc, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
-import { auditLog, tenants } from "../../db/schema/index.ts";
+import { auditLog, skills, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { HttpError } from "../../http/errors.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -91,11 +92,67 @@ describe("skills/history", () => {
     expect(restored?.tags).toEqual(["beta"]);
     expect(restored?.best_practices).toEqual(["bp-1"]);
 
+    // LOCAL-SK-SAEUBERER-FRISST-HISTORIE — the LIVE row, not just the
+    // returned view. `restoreSkill` delegates to `updateSkill`, so whatever
+    // the snapshot carried is written back as the skill's real body. When
+    // the audit scrubber ran its prompt-prose net over `after`, this row
+    // came back holding `***REDACTED:prompt***` and the authored text was
+    // gone for good — append-only, no second copy. Asserting on the
+    // returned object alone would not have caught the write.
+    const [live] = await ctx.db
+      .select()
+      .from(skills)
+      .where(and(eq(skills.tenant_id, tenant_id), eq(skills.id, skill.id)))
+      .limit(1);
+    expect(live!.body).toBe("v2 body");
+    expect(live!.body).not.toContain("REDACTED");
+    expect(live!.title).toBe("v2-title");
+
     // The restore itself is an audited update — history grows by one.
     const afterRestore = await listSkillHistory(tenant_id, skill.id, ctx.db);
     expect(afterRestore.length).toBe(3);
     expect(afterRestore[0]!.version).toBe(4);
     expect(afterRestore[0]!.has_snapshot).toBe(true);
+  });
+
+  // LOCAL-SK-SAEUBERER-FRISST-HISTORIE — the exemption's BOUNDARY.
+  //
+  // `audit_log.before` / `.after` skip the prompt-prose net so the skill
+  // body stays restorable. They do NOT skip the two credential nets. This
+  // pins both halves at once against the persisted row: authored prose
+  // survives verbatim, while a credential-shaped VALUE inside that same
+  // body and a credential-NAMED key beside it still collapse.
+  //
+  // Without this case the exemption would be a blank cheque; with it, a
+  // future widening that lets a PAT through the snapshot turns red.
+  test("snapshot columns keep authored prose but still scrub credentials", async () => {
+    const tenant_id = await seedTenant();
+    const prose = "Quote the pricing floor verbatim; never round it.";
+    const pat = "dop_v1_c2648041abcdefabcdefabcdefabcdefabcdef";
+
+    const skill = await createSkill(
+      { tenant_id, input: { scope: "global", title: "boundary", body: "v1 body" } },
+      ctx.db,
+    );
+    await updateSkill(tenant_id, skill.id, { body: `${prose} token=${pat}` }, null, ctx.db);
+
+    const [row] = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.resource_id, skill.id)))
+      .orderBy(desc(auditLog.ts))
+      .limit(1);
+    const after = row!.after as { body?: unknown };
+
+    // Net 3 (prompt-prose) is OFF here: the authored text is readable.
+    expect(typeof after.body).toBe("string");
+    expect(after.body as string).toContain(prose);
+    expect(after.body as string).not.toBe("***REDACTED:prompt***");
+    // Net 1 (value-shape) is ON here: the PAT never reached disk.
+    expect(JSON.stringify(row!.after)).not.toContain(pat);
+    expect(after.body as string).toContain("***REDACTED:pat***");
+    // Net 2 (sensitive-key) is covered on the same columns by
+    // `audit/tests/metadata-scrub.test.ts`, which owns the writer-level rule.
   });
 
   test("legacy thin audit entries surface has_snapshot=false and refuse restore with 409", async () => {
