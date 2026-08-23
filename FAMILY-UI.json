@@ -1,0 +1,23 @@
+{
+  "familyVersion": "1.7",
+  "scope": ["shell", "start", "decisions"],
+  "geometry": {
+    "sidebarExpandedPx": 256,
+    "sidebarCollapsedPx": 48,
+    "headerPx": 56,
+    "readingColumnPx": 780
+  },
+  "decisions": {
+    "layout": "single-column",
+    "order": "deadline-then-oldest",
+    "filters": "kind-chips",
+    "grouping": "none",
+    "details": "expandable"
+  },
+  "visualLanguage": {
+    "radius": "0.5rem",
+    "border": "1px",
+    "accent": "product",
+    "motion": "functional-only"
+  }
+}

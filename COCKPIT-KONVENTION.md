@@ -1,6 +1,6 @@
 # Cockpit-Konvention
 
-Version 1.6 · 21.08.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
+Version 1.7 · 23.08.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
 
 **Modell: Konvention statt Bibliothek.** Jedes Produkt bleibt eigenständig — eigenes Repo, eigene shadcn-Komponenten (vendored, wie shadcn gedacht ist), eigene Releases, kein shared Package. Geteilt wird nur dieses Dokument. Eine Kopie liegt in jedem Repo; Abweichungen sind erlaubt, wo das Produkt es begründet — die Konvention ist der Default, nicht das Gesetz.
 
@@ -13,6 +13,7 @@ Referenz-Implementierung: der Zielbild-Prototyp (Artefakt „kit-cockpit-zielbil
 Änderungen v1.5: §6 um Wortmarke, kanonische Schreibweise des Produktnamens, Browser-Titel und App-Icon ergänzt — die Familie war an ihrer sichtbarsten Stelle uneinheitlich, ohne dass eine Regel es benannte.
 Änderungen v1.6: neuer §0 „Wofür das Cockpit da ist" (gilt vor allen anderen Paragrafen); §1 Zone C wird ein Verweis statt eines Ereignisstroms; neue §8.5a Zähler-Kacheln und §8.5b zur Zahl der Entscheidungen.
 Änderungen v1.6 (Fortsetzung): §8.5 neu gefasst — die Regale unter der Queue entfallen ersatzlos. Die Entscheidungs-Seite zeigt nur noch, was wartet; Zurückgestellt, Verworfen und Entschieden sind Vergangenheit und wohnen allein im Audit-Protokoll, erreichbar über genau einen Verweis. §8.8 nennt entsprechend die Trennung von Zustand und Geschichte statt der Regale.
+Änderungen v1.7: §8.2 auf genau ein Ordnungswerkzeug reduziert. Art-Chips mit Zählern bleiben; der redundante Gruppieren-Umschalter entfällt. Die Sortierung ist fest: ablaufend zuerst, dann älteste.
 
 ---
 
@@ -108,7 +109,7 @@ Jedes Produkt, das menschliche Entscheidungen sammelt (Freigaben, Reviews, Budge
 
 **8.1 Navigation.** Der Eintrag steht ungruppiert direkt unter der Übersicht und trägt einen Live-Zähler (offene Positionen, dedupliziert). Der Zähler kippt auf rot, sobald eine Position abgelaufen ist oder ein Health-Problem enthalten ist. Produktname des Eintrags einheitlich: „Entscheidungen".
 
-**8.2 Queue.** Eine Spalte, max-w ~780 px. Default-Sortierung: ablaufend zuerst, dann älteste zuerst. Positionen älter als 3 Tage stehen in einer eigenen Rubrik „Liegt schon länger". Filter-Chips nach Art, Gruppieren-Umschalter (Keine / Art / Verursacher), Persistenz lokal.
+**8.2 Queue.** Eine Spalte, max-w ~780 px. Die Sortierung ist fest: ablaufend zuerst, dann älteste. Positionen älter als 3 Tage stehen in einer eigenen Rubrik „Liegt schon länger". Art-Chips mit Zählern sind das einzige Ordnungswerkzeug; der gewählte Chip bleibt lokal erhalten. Ein zusätzlicher Gruppieren-Umschalter ist Überfluss und damit ein Konventionsbruch.
 
 **8.3 Zeile.** Meta-Zeile (Status-Glyph + Art-Badge · Quell-Referenz als Link · Frist „Entscheiden bis …" wo vorhanden, mit Herkunft) → Titel (line-clamp-2, nie UUID) → Wirkung in einer Zeile → Quellzeile. Aktionen rechts unten: Buttons benennen die Handlung („Freigeben", „Ablehnen", „Änderung anfordern" — nie „OK"). Ablehnung klappt ein Notizfeld in der Zeile auf. Entscheidung verlässt die Seite nie; Optimistic-Hide + Toast, Fehler bringt die Zeile zurück. ⋯-Menü: Später erinnern (Presets + eigener Zeitpunkt) · Dauerhaft verwerfen (mit Bestätigung; wenn endgültig, sagt die UI das) · Quelle öffnen.
 
@@ -254,4 +255,3 @@ gefallen · nicht gebaut (mit Messwert)**. **Eine Zelle ohne Lauf ist nie grün.
 
 **Historische Lücken werden nicht schöngerechnet:** Altdaten werden als `legacy_partial`
 versiegelt, der lückenlose Nachweis beginnt am dokumentierten Umstellungszeitpunkt.
-

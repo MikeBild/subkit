@@ -5,7 +5,6 @@ import { clipAtWord, conversationExcerpt, hideTechnicalIdentifiers } from "@/lib
 import type { ConversationEvidence, PatchEvidence, SkillEvidence } from "./decisions-context";
 
 export type DecisionKind = "patch" | "skill" | "conversation";
-export type GroupMode = "none" | "kind" | "source";
 
 /** Where a position came from — the sentence that answers "why am I seeing this". */
 export type DecisionOrigin =
@@ -647,21 +646,4 @@ export function filterByKinds(
 ): DecisionItem[] {
   if (kinds.length === 0) return [...items];
   return items.filter((item) => kinds.includes(item.kind));
-}
-
-export interface DecisionGroup {
-  key: string;
-  items: DecisionItem[];
-}
-
-export function groupDecisions(items: readonly DecisionItem[], mode: GroupMode): DecisionGroup[] {
-  if (mode === "none") return [{ key: "all", items: [...items] }];
-  const groups = new Map<string, DecisionItem[]>();
-  for (const item of items) {
-    const key = mode === "kind" ? item.kind : (item.target ?? "");
-    const bucket = groups.get(key);
-    if (bucket) bucket.push(item);
-    else groups.set(key, [item]);
-  }
-  return [...groups.entries()].map(([key, grouped]) => ({ key, items: grouped }));
 }

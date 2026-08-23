@@ -43,7 +43,7 @@ import { IDENTITY_META, standAt } from "./lib/cockpit-identity.mjs";
  * as "Standard"). Label and assert stand side by side on purpose — one says what
  * was measured against, the other says whether that is still the family's yardstick.
  */
-const KONVENTION_VERSION = "1.6";
+const KONVENTION_VERSION = "1.7";
 
 /** The version the repository copy actually names — the label, never the assert. */
 let konventionVersionImRepo = null;
@@ -2202,93 +2202,13 @@ async function checkDecisionHistoryIsReadable(page) {
     );
 }
 
-/** The queue's two numbers: the total it claims, and the cards it actually drew. */
-async function readQueueShape(page) {
-  return page.evaluate(() => ({
-    total:
-      document.querySelector('[data-testid="decisions-queue"]')?.getAttribute("data-total") ?? null,
-    positions: [...document.querySelectorAll("article[data-testid]")].filter((element) =>
-      /^decision(-deferred|-aged)-\d+$/.test(element.getAttribute("data-testid") ?? ""),
-    ).length,
-  }));
-}
-
-const GROUP_CONTROL_LABEL = "Gruppieren";
-const GROUP_OPTIONS = [
-  { testId: "decisions-group-0", mode: "none", label: "Keine" },
-  { testId: "decisions-group-1", mode: "kind", label: "Art" },
-  { testId: "decisions-group-2", mode: "source", label: "Verursacher" },
-];
-
 /**
- * §8.2 — the toggle is named, and grouping only rearranges.
- *
- * Two separate claims, and the second is the one nothing watched. Grouping that
- * loses or duplicates a position leaves every grouped view internally
- * consistent while the badge above it goes wrong — the §8.1 failure shape,
- * entering through the one door the four-way assert does not cover, because
- * that assert only ever sees the flat list.
- *
- * The toggle's own words are pinned like every other rubric word (§5): "Keine /
- * Art / Verursacher" name three things without saying of what, so the label
- * beside them is part of the control and not decoration.
+ * §8.2 — kind chips are the one ordering control. A second grouping strip is
+ * redundant and was removed from the family grammar in v1.7.
  */
 async function checkGroupToggle(page) {
-  if ((await page.locator('[data-testid="decisions-group"]').count()) === 0) {
-    breach("§8.2", "/decisions", "no group toggle above the queue");
-    return;
-  }
-  const label = page.locator('[data-testid="decisions-group-label"]');
-  if ((await label.count()) === 0)
-    breach("§8.2", "/decisions · decisions-group", "the toggle does not say what it groups by");
-  else {
-    const text = (await label.first().innerText()).trim();
-    if (text !== GROUP_CONTROL_LABEL)
-      breach(
-        "§5",
-        "/decisions · decisions-group-label",
-        `toggle reads "${text}" instead of "${GROUP_CONTROL_LABEL}"`,
-      );
-  }
-
-  const flat = await readQueueShape(page);
-  for (const option of GROUP_OPTIONS) {
-    const button = page.locator(`[data-testid="${option.testId}"]`);
-    if ((await button.count()) === 0) {
-      breach("§8.2", `/decisions · ${option.testId}`, `mode "${option.label}" is missing`);
-      continue;
-    }
-    const text = (await button.first().innerText()).trim();
-    if (text !== option.label)
-      breach(
-        "§5",
-        `/decisions · ${option.testId}`,
-        `mode reads "${text}" instead of "${option.label}"`,
-      );
-    await button.first().click();
-    await page
-      .locator(`[data-testid="decisions-group"][data-mode="${option.mode}"]`)
-      .waitFor({ state: "attached", timeout: 5_000 });
-    const grouped = await readQueueShape(page);
-    if (grouped.total !== flat.total)
-      breach(
-        "§8.1",
-        `/decisions · decisions-queue (Gruppieren: ${option.label})`,
-        `total is ${grouped.total}, ungrouped it is ${flat.total}`,
-      );
-    if (grouped.positions !== flat.positions)
-      breach(
-        "§8.2",
-        `/decisions · decisions-queue (Gruppieren: ${option.label})`,
-        `${grouped.positions} positions rendered, ungrouped there are ${flat.positions} — grouping rearranges, it does not filter`,
-      );
-  }
-  // Back to the default: the preference is persisted (§8.2), so a mode left on
-  // here would still be on when the route sweep reopens this page.
-  await page.locator('[data-testid="decisions-group-0"]').first().click();
-  await page
-    .locator('[data-testid="decisions-group"][data-mode="none"]')
-    .waitFor({ state: "attached", timeout: 5_000 });
+  if ((await page.locator('[data-testid="decisions-group"]').count()) > 0)
+    breach("§8.2", "/decisions", "a redundant group toggle remains above the queue");
 }
 
 /**
