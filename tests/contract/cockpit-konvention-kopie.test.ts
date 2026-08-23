@@ -52,7 +52,7 @@ const konvention = konventionBytes.toString("utf8");
 const uiux = readFileSync(UI_UX, "utf8");
 
 describe("the root copy of the family convention", () => {
-  test("it is byte-identical to the reviewed v1.6 document", () => {
+  test("it is byte-identical to the reviewed v1.7 document", () => {
     // THE WHOLE FILE, and the digest is typed on purpose: this repository cannot
     // reach the five sibling checkouts, so the only thing it CAN hold is that
     // its own copy still has the bytes that were reviewed. Raising it is a
@@ -67,25 +67,26 @@ describe("the root copy of the family convention", () => {
     // file, not a hold on it.
     //
     // So the value below is no longer "SubKit's current bytes". It is the
-    // digest of the reviewed v1.6 document as distributed, md5
-    // 80e41c48d3c80cc1e5a851e3ab42ffc0, which all six copies carry. Raising it
+    // digest of the reviewed v1.7 document as distributed, md5
+    // 3ca37336047cb1ae1c51b789d1a91aa9, which all six copies carry. Raising it
     // is a deliberate two-line change — the document AND this line — and the
     // new value must come from the distributed document, never from this
     // repository's own file.
     const digest = createHash("sha256").update(konventionBytes).digest("hex");
-    expect(digest, "COCKPIT-KONVENTION.md is no longer the reviewed v1.6 text").toBe(
-      "d659b1f9fca1791b9beb96ee81d5706832ed677d386d33f2bb92088bca4cf125",
+    expect(digest, "COCKPIT-KONVENTION.md is no longer the reviewed v1.7 text").toBe(
+      "547480982c21d0ea608692ec8cb41f659d750ba4f697653fc8a18544c31ba0ab",
     );
   });
 
-  test("it carries the paragraphs v1.5 and v1.6 were cut for, not just its header", () => {
+  test("it carries the paragraphs v1.5 through v1.7 were cut for, not just its header", () => {
     // The digest above catches everything, but it catches it in one word:
     // "different". These name WHAT is missing when it goes red — and they are
     // the reason the two versions exist. A version line is one line, and one
     // line is what a hand edit changes: the header alone would pass on a file
     // saying 1.6 whose body is still 1.4, which is exactly the drift §7 leaves
     // to nobody.
-    expect(konvention).toContain("Version 1.6 · 21.08.2026");
+    expect(konvention).toContain("Version 1.7 · 23.08.2026");
+    expect(konvention).toContain("Art-Chips mit Zählern sind das einzige Ordnungswerkzeug");
     expect(konvention).toContain("## 0. Wofür das Cockpit da ist");
     expect(konvention).toContain("**Wortmarke und App-Icon.**");
     expect(konvention).toContain("**8.5a Zähler-Kacheln.**");
