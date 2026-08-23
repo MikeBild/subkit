@@ -639,16 +639,8 @@ async function runServer(): Promise<void> {
   // do not pin startup events to any tenant. logger.info above
   // already captures the `engine.ready` line.
 
-  // Graceful shutdown, in reverse order of boot: close HTTP first (stop
-  // accepting new requests + drain in-flight), then reconciler, pg-boss,
-  // fanout, listener, connector pools, db, tracing. 15s hard-kill fallback.
-  // How long to let in-flight work — chiefly a `conversation.run-turn` job,
-  // which is non-idempotent (retryLimit:0) and can run up to
-  // CONVERSATION_RUN_TURN_VISIBILITY_SECONDS — drain before we force the
-  // process down. The prior 10s drain budget (+15s hard-kill) was far below a
-  // turn's runtime, so a deploy/restart mid-turn killed the worker → the job
-  // dead-lettered as `worker_expired` and the authoring session was lost.
-  // NOTE: subkit-deploy's systemd unit MUST set TimeoutStopSec above this.
+  // Shutdown in reverse boot order. The drain budget covers non-idempotent
+  // conversation turns; subkit-deploy's TimeoutStopSec must remain above it.
   const SHUTDOWN_DRAIN_TIMEOUT_MS = 120_000;
   let shutting = false;
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
@@ -689,7 +681,15 @@ async function runServer(): Promise<void> {
       // transports rather than useful in-flight mutations; close them so the
       // HTTP server's close callback cannot consume the hard-kill budget.
       httpShutdown.forceClose();
-      await httpShutdown.closed;
+      const httpClosed = await httpShutdown.waitUntilClosed(1_000);
+      if (!httpClosed) {
+        logger.warn({
+          module: "http",
+          action: "shutdown.http_force_close_timeout",
+          msg: "HTTP close callback remained pending after force-closing connections; continuing shutdown",
+          timeout_ms: 1_000,
+        });
+      }
       // Drain every postgres-driver connection pool so the database
       // doesn't observe abandoned connections after the engine exits.
       try {
@@ -707,6 +707,11 @@ async function runServer(): Promise<void> {
       // spans land at the exporter. Best-effort — exporter failure
       // here cannot stop process exit.
       await stopTracing();
+      logger.info({
+        module: "engine",
+        action: "shutdown.complete",
+        msg: "graceful shutdown complete",
+      });
     } catch (err) {
       logger.error({
         module: "engine",
