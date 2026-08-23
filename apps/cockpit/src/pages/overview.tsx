@@ -70,6 +70,7 @@ export function OverviewPage() {
 
   return (
     <PageFrame
+      surface="overview"
       testId="overview-page"
       title={title}
       description={t("overview.description")}
@@ -192,7 +193,9 @@ export function OverviewPage() {
                       className="text-sm text-muted-foreground"
                       data-testid="overview-waiting-oldest"
                     >
-                      {t("overview.waiting.oldest", { days: String(open.oldestAgeDays) })}
+                      {t("overview.waiting.oldest", {
+                        days: String(open.oldestAgeDays),
+                      })}
                     </span>
                   )}
                 </div>
@@ -204,7 +207,9 @@ export function OverviewPage() {
                   <CircleCheck aria-hidden="true" className="shrink-0" />
                   <span>
                     {t("overview.waiting.none")}{" "}
-                    {t("overview.waiting.checked", { date: dateTime(digest.generated_at) })}
+                    {t("overview.waiting.checked", {
+                      date: dateTime(digest.generated_at),
+                    })}
                   </span>
                 </div>
               )}

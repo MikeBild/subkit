@@ -18,6 +18,7 @@ export function PageFrame({
   toolbar,
   scroll,
   width = "full",
+  surface,
   children,
 }: {
   testId: string;
@@ -33,6 +34,7 @@ export function PageFrame({
    */
   scroll: "content" | "page";
   width?: "full" | "column";
+  surface?: "overview" | "decisions" | "collection" | "detail" | "form" | "installation" | "audit";
   children: ReactNode;
 }) {
   // A reading column must be centred in the SAME box as its own heading, and
@@ -48,17 +50,21 @@ export function PageFrame({
   const gutter = width === "column" ? "[scrollbar-gutter:stable_both-edges]" : undefined;
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col" data-testid={testId}>
+    <main
+      className="flex min-h-0 flex-1 flex-col"
+      data-testid={testId}
+      data-family-surface={surface}
+    >
       {/* Header and body carry the SAME horizontal padding at every breakpoint.
           They used to differ between `sm` and `lg` — 32px against 24px — which
           indented every page's content against its own heading in exactly the
           window sizes nobody screenshots. */}
-      <header className="shrink-0 border-b px-4 py-4 sm:px-6 lg:px-8">
+      <header data-family-slot="page-header" className="shrink-0 border-b px-4 py-6 sm:px-6">
         <div
           className={cn("flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between", column)}
         >
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
+            <h1 className="text-2xl font-semibold leading-8 tracking-[-0.02em]">{title}</h1>
             {description && (
               <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>
             )}
@@ -67,7 +73,10 @@ export function PageFrame({
         </div>
       </header>
       {toolbar && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-3 sm:px-6 lg:px-8">
+        <div
+          data-family-slot="filters"
+          className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-3 sm:px-6"
+        >
           {toolbar}
         </div>
       )}
@@ -76,7 +85,7 @@ export function PageFrame({
       ) : (
         <div
           className={cn(
-            "min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6 lg:px-8",
+            "min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-6 sm:px-6",
             gutter,
           )}
         >

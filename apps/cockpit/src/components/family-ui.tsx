@@ -1,0 +1,178 @@
+import type { HTMLAttributes, ReactNode } from "react";
+
+export const FAMILY_UI_VERSION = "1.8";
+
+export type FamilySurface =
+  | "overview"
+  | "decisions"
+  | "collection"
+  | "detail"
+  | "form"
+  | "installation"
+  | "audit";
+
+export type FamilyStateName = "loading" | "empty" | "ready" | "error" | "forbidden";
+
+type FamilyPageProps = HTMLAttributes<HTMLDivElement> & {
+  surface: FamilySurface;
+  measure?: "reading" | "working" | "wide";
+};
+
+const measures = {
+  reading: "max-w-[780px]",
+  working: "max-w-[1120px]",
+  wide: "max-w-none",
+} as const;
+
+function classes(...values: Array<string | false | null | undefined>) {
+  return values.filter(Boolean).join(" ");
+}
+
+export function FamilyPage({
+  surface,
+  measure = "working",
+  className,
+  children,
+  ...props
+}: FamilyPageProps) {
+  return (
+    <div
+      data-family-surface={surface}
+      className={classes(
+        "mx-auto flex w-full min-w-0 flex-col gap-6 px-4 py-6 sm:px-6",
+        measures[measure],
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+}
+
+type FamilyPageHeaderProps = HTMLAttributes<HTMLElement> & {
+  title: ReactNode;
+  description?: ReactNode;
+  context?: ReactNode;
+  actions?: ReactNode;
+};
+
+export function FamilyPageHeader({
+  title,
+  description,
+  context,
+  actions,
+  className,
+  ...props
+}: FamilyPageHeaderProps) {
+  return (
+    <header
+      data-family-slot="page-header"
+      className={classes(
+        "flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between",
+        className,
+      )}
+      {...props}
+    >
+      <div className="min-w-0">
+        {context ? (
+          <div className="mb-2 text-xs leading-4 text-muted-foreground">{context}</div>
+        ) : null}
+        <h1 className="text-2xl font-semibold leading-8 tracking-[-0.02em]">{title}</h1>
+        {description ? (
+          <p className="mt-1 max-w-3xl text-sm leading-5 text-muted-foreground">{description}</p>
+        ) : null}
+      </div>
+      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+    </header>
+  );
+}
+
+type FamilySectionProps = HTMLAttributes<HTMLElement> & {
+  slot: string;
+  title?: ReactNode;
+  description?: ReactNode;
+  actions?: ReactNode;
+};
+
+export function FamilySection({
+  slot,
+  title,
+  description,
+  actions,
+  className,
+  children,
+  ...props
+}: FamilySectionProps) {
+  return (
+    <section data-family-slot={slot} className={classes("min-w-0", className)} {...props}>
+      {title || description || actions ? (
+        <div className="mb-3 flex min-w-0 items-start justify-between gap-4">
+          <div className="min-w-0">
+            {title ? <h2 className="text-base font-semibold leading-6">{title}</h2> : null}
+            {description ? (
+              <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{description}</p>
+            ) : null}
+          </div>
+          {actions ? <div className="shrink-0">{actions}</div> : null}
+        </div>
+      ) : null}
+      {children}
+    </section>
+  );
+}
+
+type FamilyStateProps = HTMLAttributes<HTMLDivElement> & {
+  state: Exclude<FamilyStateName, "ready">;
+  title: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
+};
+
+export function FamilyState({
+  state,
+  title,
+  description,
+  action,
+  className,
+  ...props
+}: FamilyStateProps) {
+  return (
+    <div
+      data-family-state={state}
+      className={classes(
+        "grid min-h-56 place-items-center rounded-lg border border-dashed bg-card px-6 py-10 text-center",
+        state === "error" && "border-destructive/50",
+        className,
+      )}
+      {...props}
+    >
+      <div className="max-w-md">
+        <h3 className="text-sm font-semibold leading-5">{title}</h3>
+        {description ? (
+          <p className="mt-2 text-sm leading-5 text-muted-foreground">{description}</p>
+        ) : null}
+        {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+export function FamilyCard({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={classes("rounded-lg border bg-card p-4 text-card-foreground", className)}
+      {...props}
+    />
+  );
+}
+
+export function FamilyAuditLink({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      data-family-slot="audit-link"
+      className={classes("text-sm text-muted-foreground", className)}
+      {...props}
+    />
+  );
+}
