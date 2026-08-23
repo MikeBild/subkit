@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.2] – 2026-08-23
+
+### Fixed
+
+- **Long-lived HTTP transports can no longer consume the hard-kill budget.**
+  Production proved that pg-boss now drains in milliseconds, but Node's HTTP
+  close callback can remain pending even after all ordinary connections are
+  force-closed. Shutdown now bounds that final callback wait to one second,
+  records the timeout explicitly, and continues closing database and tracing
+  resources instead of waiting for the 140-second process kill.
+- **A completed shutdown is now observable.** The engine emits
+  `shutdown.complete` immediately before its clean exit, so a deployment can
+  distinguish a fully converged stop from a process that only reached
+  `boss.stopped`.
+
 ## [6.22.1] – 2026-08-23
 
 ### Fixed

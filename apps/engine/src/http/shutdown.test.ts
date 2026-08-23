@@ -23,7 +23,19 @@ describe("HTTP shutdown", () => {
     expect(calls).toEqual(["close", "idle"]);
 
     shutdown.forceClose();
-    await shutdown.closed;
+    expect(await shutdown.waitUntilClosed(20)).toBe(true);
     expect(calls).toEqual(["close", "idle", "all"]);
+  });
+
+  test("bounds the wait when a long-lived transport keeps the close callback pending", async () => {
+    const server: ShutdownHttpServer = {
+      close() {},
+      closeAllConnections() {},
+    };
+
+    const shutdown = beginHttpShutdown(server);
+    shutdown.forceClose();
+
+    expect(await shutdown.waitUntilClosed(5)).toBe(false);
   });
 });

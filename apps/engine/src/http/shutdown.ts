@@ -7,6 +7,7 @@ export interface ShutdownHttpServer {
 export interface HttpShutdown {
   closed: Promise<void>;
   forceClose: () => void;
+  waitUntilClosed: (timeoutMs: number) => Promise<boolean>;
 }
 
 /** Stop admission immediately while allowing active requests to finish with their queue work. */
@@ -19,5 +20,10 @@ export function beginHttpShutdown(server: ShutdownHttpServer): HttpShutdown {
   return {
     closed,
     forceClose: () => server.closeAllConnections?.(),
+    waitUntilClosed: (timeoutMs) =>
+      Promise.race([
+        closed.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), timeoutMs)),
+      ]),
   };
 }
