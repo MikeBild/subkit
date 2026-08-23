@@ -27,8 +27,6 @@ import {
   type DecidableKind,
   type DecisionItem,
   filterByKinds,
-  type GroupMode,
-  groupDecisions,
   isDecidable,
   type OpenDecisions,
   partitionByUrgency,
@@ -45,7 +43,6 @@ import {
  * (§8.5a, §8.5b).
  */
 const KINDS: DecidableKind[] = ["patch", "skill"];
-const GROUP_MODES: GroupMode[] = ["none", "kind", "source"];
 const KIND_LABEL: Record<DecidableKind, TranslationKey> = {
   patch: "decisions.kind.patch",
   skill: "decisions.kind.skill",
@@ -56,22 +53,16 @@ const TILE_LABEL: Record<DecidableKind, TranslationKey> = {
   skill: "decisions.tile.skill",
 };
 
-const GROUP_LABEL: Record<GroupMode, TranslationKey> = {
-  none: "decisions.group.none",
-  kind: "decisions.group.kind",
-  source: "decisions.group.source",
-};
 const PREFERENCE_KEY = "sk-cockpit-decisions";
 
 interface Preferences {
   kinds: DecidableKind[];
-  group: GroupMode;
 }
 
 function readPreferences(): Preferences {
   try {
     const raw = window.localStorage.getItem(PREFERENCE_KEY);
-    if (!raw) return { kinds: [], group: "none" };
+    if (!raw) return { kinds: [] };
     const parsed = JSON.parse(raw) as Partial<Preferences>;
     return {
       kinds: Array.isArray(parsed.kinds)
@@ -79,10 +70,9 @@ function readPreferences(): Preferences {
             KINDS.includes(kind as DecidableKind),
           )
         : [],
-      group: GROUP_MODES.includes(parsed.group as GroupMode) ? (parsed.group as GroupMode) : "none",
     };
   } catch {
-    return { kinds: [], group: "none" };
+    return { kinds: [] };
   }
 }
 
@@ -161,35 +151,19 @@ export function DecisionsPage() {
     );
 
   function renderGroups(items: DecidableItem[], prefix: string) {
-    const groups = groupDecisions(items, preferences.group);
-    let position = 0;
-    return groups.map((group) => (
-      <div key={group.key} className="grid gap-1.5 pt-2 first:pt-0">
-        {preferences.group !== "none" && (
-          <p className="text-xs font-medium text-muted-foreground">
-            {preferences.group === "kind"
-              ? t(KIND_LABEL[group.key as DecidableKind])
-              : group.key || t("decisions.group.noSource")}
-          </p>
-        )}
-        {group.items.map((item) => {
-          const index = position++;
-          return (
-            <DecisionCard
-              key={item.id}
-              item={item as DecidableItem}
-              index={index}
-              testIdPrefix={prefix}
-              names={queue.names}
-              canReadRuns={queue.canReadRuns}
-              busy={busyId === item.id}
-              canDecide={item.kind === "patch" ? canDecidePatches : canDecideSkills}
-              onApprove={(target) => decide.mutate({ item: target, approve: true, reason: "" })}
-              onReject={(target, reason) => decide.mutate({ item: target, approve: false, reason })}
-            />
-          );
-        })}
-      </div>
+    return items.map((item, index) => (
+      <DecisionCard
+        key={item.id}
+        item={item}
+        index={index}
+        testIdPrefix={prefix}
+        names={queue.names}
+        canReadRuns={queue.canReadRuns}
+        busy={busyId === item.id}
+        canDecide={item.kind === "patch" ? canDecidePatches : canDecideSkills}
+        onApprove={(target) => decide.mutate({ item: target, approve: true, reason: "" })}
+        onReject={(target, reason) => decide.mutate({ item: target, approve: false, reason })}
+      />
     ));
   }
 
@@ -199,6 +173,7 @@ export function DecisionsPage() {
       title={title}
       description={t("decisions.description")}
       scroll="page"
+      width="column"
       action={
         <IconButton
           variant="outline"
@@ -249,31 +224,6 @@ export function DecisionsPage() {
               {t(KIND_LABEL[kind])}
             </Button>
           ))}
-          {/* The toggle says what it groups BY, so the label is part of the
-              control rather than decoration: "Keine / Art / Verursacher" on
-              their own name three things without saying of what. */}
-          <span
-            className="flex items-center gap-2 sm:ml-auto"
-            data-testid="decisions-group"
-            data-mode={preferences.group}
-          >
-            <span className="text-xs text-muted-foreground" data-testid="decisions-group-label">
-              {t("decisions.group.label")}
-            </span>
-            {GROUP_MODES.map((mode, index) => (
-              <Button
-                key={mode}
-                variant={preferences.group === mode ? "default" : "ghost"}
-                size="sm"
-                data-testid={`decisions-group-${index}`}
-                data-mode={mode}
-                aria-pressed={preferences.group === mode}
-                onClick={() => persist({ ...preferences, group: mode })}
-              >
-                {t(GROUP_LABEL[mode])}
-              </Button>
-            ))}
-          </span>
         </div>
 
         {queue.isPending ? (

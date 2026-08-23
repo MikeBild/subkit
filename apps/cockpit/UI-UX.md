@@ -279,7 +279,7 @@ authenticated bilingual route sweep after SSO and publishes its screenshots as a
 
 ## Decision grammar
 
-What follows is a verbatim German copy of §8 of Cockpit Convention v1.6 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). This product's decisions page is measured against it. Deliberate deviations are justified above under "Decisions surface" — the queue is not a 780 px column (§8.2), and there is no "remind me later" entry in the ⋯ menu (§8.3) because the engine has no deferred state. Both stand; the copy below is not adjusted to them, or it would no longer be a copy.
+What follows is a verbatim German copy of §8 of Cockpit Convention v1.7 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). This product's decisions page is measured against it. Deliberate deviations are justified above under "Decisions surface" — the queue is not a 780 px column (§8.2), and there is no "remind me later" entry in the ⋯ menu (§8.3) because the engine has no deferred state. Both stand; the copy below is not adjusted to them, or it would no longer be a copy.
 
 ### 8. Entscheidungs-Grammatik
 
@@ -287,7 +287,7 @@ Jedes Produkt, das menschliche Entscheidungen sammelt (Freigaben, Reviews, Budge
 
 **8.1 Navigation.** Der Eintrag steht ungruppiert direkt unter der Übersicht und trägt einen Live-Zähler (offene Positionen, dedupliziert). Der Zähler kippt auf rot, sobald eine Position abgelaufen ist oder ein Health-Problem enthalten ist. Produktname des Eintrags einheitlich: „Entscheidungen".
 
-**8.2 Queue.** Eine Spalte, max-w ~780 px. Default-Sortierung: ablaufend zuerst, dann älteste zuerst. Positionen älter als 3 Tage stehen in einer eigenen Rubrik „Liegt schon länger". Filter-Chips nach Art, Gruppieren-Umschalter (Keine / Art / Verursacher), Persistenz lokal.
+**8.2 Queue.** Eine Spalte, max-w ~780 px. Die Sortierung ist fest: ablaufend zuerst, dann älteste. Positionen älter als 3 Tage stehen in einer eigenen Rubrik „Liegt schon länger". Art-Chips mit Zählern sind das einzige Ordnungswerkzeug; der gewählte Chip bleibt lokal erhalten. Ein zusätzlicher Gruppieren-Umschalter ist Überfluss und damit ein Konventionsbruch.
 
 **8.3 Zeile.** Meta-Zeile (Status-Glyph + Art-Badge · Quell-Referenz als Link · Frist „Entscheiden bis …" wo vorhanden, mit Herkunft) → Titel (line-clamp-2, nie UUID) → Wirkung in einer Zeile → Quellzeile. Aktionen rechts unten: Buttons benennen die Handlung („Freigeben", „Ablehnen", „Änderung anfordern" — nie „OK"). Ablehnung klappt ein Notizfeld in der Zeile auf. Entscheidung verlässt die Seite nie; Optimistic-Hide + Toast, Fehler bringt die Zeile zurück. ⋯-Menü: Später erinnern (Presets + eigener Zeitpunkt) · Dauerhaft verwerfen (mit Bestätigung; wenn endgültig, sagt die UI das) · Quelle öffnen.
 
