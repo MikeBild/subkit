@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.1] – 2026-08-23
+
+### Fixed
+
+- **Graceful shutdown can now converge before the hard-kill deadline.** The
+  engine stops HTTP admission without waiting for long-lived SSE or MCP
+  sockets, stops every queue producer and listener, then drains pg-boss before
+  closing the remaining transports. Deploy shutdowns therefore no longer race
+  newly enqueued `event.fanout` work or spend the drain budget waiting on a
+  persistent client connection.
+- **Queue shutdown now explains where its drain budget went.** Structured
+  `boss.stop_begin` and `boss.stopped` records include the timeout, elapsed
+  time, and a sanitized worker snapshot, so an occupied queue can be
+  distinguished from an HTTP transport that has not closed.
+
 ## [6.22.0] – 2026-08-22
 
 ### Fixed

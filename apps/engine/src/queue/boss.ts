@@ -168,6 +168,22 @@ export async function stopBoss(timeoutMs = 10_000): Promise<void> {
   const boss = _boss;
   _boss = null;
   stopDepthPoller();
+  const startedAt = Date.now();
+  const active = boss.getWipData().map((worker) => ({
+    queue: worker.name,
+    state: worker.state,
+    count: worker.count,
+    last_job_started_at: worker.lastJobStartedOn
+      ? new Date(worker.lastJobStartedOn).toISOString()
+      : null,
+  }));
+  logger.info({
+    module: "queue",
+    action: "boss.stop_begin",
+    msg: "pg-boss graceful stop started",
+    timeout_ms: timeoutMs,
+    active,
+  });
   try {
     await boss.stop({ graceful: true, timeout: timeoutMs, close: true });
   } catch (err) {
@@ -182,6 +198,8 @@ export async function stopBoss(timeoutMs = 10_000): Promise<void> {
     module: "queue",
     action: "boss.stopped",
     msg: "pg-boss stopped",
+    elapsed_ms: Date.now() - startedAt,
+    active_before: active,
   });
 }
 
