@@ -1,23 +1,59 @@
 {
-  "familyVersion": "1.7",
-  "scope": ["shell", "start", "decisions"],
+  "familyVersion": "1.8",
+  "scope": [
+    "shell",
+    "overview",
+    "decisions",
+    "collection",
+    "detail",
+    "form",
+    "installation",
+    "audit"
+  ],
   "geometry": {
     "sidebarExpandedPx": 256,
     "sidebarCollapsedPx": 48,
     "headerPx": 56,
-    "readingColumnPx": 780
+    "gutterDesktopPx": 24,
+    "gutterMobilePx": 16,
+    "readingColumnPx": 780,
+    "workingColumnPx": 1120
+  },
+  "typography": {
+    "pageTitle": "24px/32px 650",
+    "sectionTitle": "16px/24px 600",
+    "body": "14px/20px 400",
+    "meta": "12px/16px 400"
+  },
+  "surfaces": {
+    "overview": ["page-header", "incident", "attention", "product-core", "audit-link"],
+    "decisions": ["page-header", "kind-filters", "queue-summary", "queue", "audit-link"],
+    "collection": ["page-header", "filters", "content", "pagination"],
+    "detail": ["breadcrumbs", "page-header", "facts", "content", "evidence", "audit-link"],
+    "form": ["page-header", "fields", "actions"],
+    "installation": ["page-header", "content"],
+    "audit": ["page-header", "filters", "content", "pagination"]
+  },
+  "states": ["loading", "empty", "ready", "error", "forbidden"],
+  "domContract": {
+    "surface": "data-family-surface",
+    "slot": "data-family-slot",
+    "state": "data-family-state"
   },
   "decisions": {
     "layout": "single-column",
     "order": "deadline-then-oldest",
     "filters": "kind-chips",
     "grouping": "none",
-    "details": "expandable"
+    "details": "collapsed-by-default-expandable",
+    "history": "audit-link-only"
   },
   "visualLanguage": {
+    "spacingGridPx": 4,
     "radius": "0.5rem",
     "border": "1px",
     "accent": "product",
-    "motion": "functional-only"
+    "motion": "functional-only",
+    "focusRing": "2px"
   }
 }

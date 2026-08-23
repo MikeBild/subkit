@@ -169,6 +169,7 @@ export function DecisionsPage() {
 
   return (
     <PageFrame
+      surface="decisions"
       testId="decisions-page"
       title={title}
       description={t("decisions.description")}
@@ -383,7 +384,10 @@ function CategoryTiles({
       </div>
       {counted.capped && (
         <p className="text-xs text-muted-foreground" data-testid="decisions-capped">
-          {t("decisions.capped", { shown: String(shown), total: String(counted.total) })}
+          {t("decisions.capped", {
+            shown: String(shown),
+            total: String(counted.total),
+          })}
         </p>
       )}
     </div>
