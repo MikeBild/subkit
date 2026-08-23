@@ -21,6 +21,7 @@ import { setHealthState } from "./http/health-state.ts";
 import { engineServeOptions } from "./http/listen-hostname.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
+import { beginHttpShutdown } from "./http/shutdown.ts";
 import { seedKnowledgeAtBoot } from "./knowledge/seed.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
 import { errorFields, logger } from "./logging/logger.ts";
@@ -673,21 +674,22 @@ async function runServer(): Promise<void> {
     }, SHUTDOWN_DRAIN_TIMEOUT_MS + 20_000);
     (hardKill as unknown as { unref?: () => void }).unref?.();
     try {
-      // Stop accepting new HTTP requests FIRST and let in-flight ones drain.
-      // Closing HTTP last (the previous order) meant a request arriving mid-
-      // shutdown could still be accepted after the queue and pub/sub it
-      // depends on were already torn down. Mirror of boot: HTTP came up last,
-      // so it goes down first.
-      await new Promise<void>((resolve) => {
-        (server as unknown as { close?: (cb: () => void) => void }).close?.(() => resolve()) ??
-          resolve();
-      });
+      // Stop accepting new HTTP requests first, but do not wait on persistent
+      // SSE/MCP sockets before draining the queue work those clients observe.
+      const httpShutdown = beginHttpShutdown(server);
       await reconciler.stop();
-      await stopBoss(SHUTDOWN_DRAIN_TIMEOUT_MS);
       for (const off of fanoutUnsubscribers) off();
       crashRecoveryMonitor.stop();
       abortMonitor.stop();
       await stopListener();
+      // Every producer is now stopped, so the graceful queue drain converges
+      // instead of racing fresh event.fanout jobs from the listener.
+      await stopBoss(SHUTDOWN_DRAIN_TIMEOUT_MS);
+      // Queue-backed work has settled. Remaining sockets are long-lived
+      // transports rather than useful in-flight mutations; close them so the
+      // HTTP server's close callback cannot consume the hard-kill budget.
+      httpShutdown.forceClose();
+      await httpShutdown.closed;
       // Drain every postgres-driver connection pool so the database
       // doesn't observe abandoned connections after the engine exits.
       try {
