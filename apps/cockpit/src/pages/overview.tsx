@@ -97,8 +97,8 @@ export function OverviewPage() {
           </Button>
         </Alert>
       ) : (
-        <div className="grid gap-4">
-          {banner !== null && banner.shown && (
+        <div className="grid gap-6">
+          {banner?.shown && (
             <Alert variant="destructive" data-testid="overview-incident">
               {/* Two claims, never one predicate over both: a lapsed position
                   stopped nothing. Each carries its own share and the base it is
