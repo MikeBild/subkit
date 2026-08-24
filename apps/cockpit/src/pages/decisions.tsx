@@ -179,7 +179,7 @@ export function DecisionsPage() {
         </IconButton>
       }
     >
-      <div className="grid gap-5" data-family-slot="queue">
+      <div className="grid gap-6" data-family-slot="queue">
         <div
           className="flex flex-wrap items-center gap-2"
           data-testid="decisions-toolbar"
