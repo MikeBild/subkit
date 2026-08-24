@@ -43,7 +43,12 @@ export function PageFrame({
   // the content starts exactly one padding-width right of the title naming it —
   // 32px at `lg`, plainly visible, and the reason this surface still looked
   // misaligned after the scrollbar gutter was fixed.
-  const column = width === "column" ? "mx-auto w-full max-w-[780px]" : undefined;
+  const column =
+    width === "column"
+      ? "mx-auto w-full max-w-[780px]"
+      : surface === "overview"
+        ? "mx-auto w-full max-w-[1120px]"
+        : undefined;
   // The scroll owner reserves the gutter symmetrically, so a growing body
   // cannot shift the centre. `both-edges` is the operative part; plain `stable`
   // would only move the step to the other side.
