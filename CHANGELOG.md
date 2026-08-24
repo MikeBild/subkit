@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.3] – 2026-08-24
+
+### Changed
+
+- The decisions cockpit now uses the family's single-queue anatomy. Redundant
+  KPI tiles were removed, and the visual sweep follows the same stable queue.
+
 ## [6.22.2] – 2026-08-23
 
 ### Fixed
