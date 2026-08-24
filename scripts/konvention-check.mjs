@@ -309,15 +309,6 @@ const DECIDABLE_TOTAL = PATCH_CANDIDATES.length + SKILL_CANDIDATES.length;
 const QUEUE_SHOWN = PATCH_CANDIDATES.length + SKILL_CANDIDATES.length;
 
 /**
- * The rows the PAGE holds across all three sources.
- *
- * The capped note is about the page, not about the queue: it explains why the
- * tiles add up to more than the console has in hand.
- */
-const PAGE_SHOWN =
-  PATCH_CANDIDATES.length + SKILL_CANDIDATES.length + AWAITING_CONVERSATIONS.length;
-
-/**
  * What the patch endpoint hands over: the three candidates, one of them twice.
  *
  * A row delivered twice must be one decision on every surface — the badge, the
@@ -970,7 +961,7 @@ gap(
 );
 gap(
   "catalogue en",
-  "every rule runs against de. The silent class: §2 forbids a STATE, what is measured is the WORD „Unbekannt“ — on en the same state reads „Unknown“ and goes unnoticed. §8.5 has a live instance: „Answered“ left the settled alphabet when the prose half was bound, and it is the word `decisions.tile.conversationHint` spells on en",
+  "every rule runs against de. The silent class: §2 forbids a STATE, what is measured is the WORD „Unbekannt“ — on en the same state reads „Unknown“ and goes unnoticed. English decision-state vocabulary therefore remains outside this sweep",
 );
 gap(
   "/decisions · §8.5 completeness of the history",
@@ -978,7 +969,7 @@ gap(
 );
 gap(
   "/decisions · §8.5b the size of the number itself",
-  "the tiles are measured, the cut is not: this check cannot say whether 35 positions should have been 5. What it can say — that a position with no consequence here is not a decision here — is asserted; the grouping of like corrections into one decision remains open (SK-R1)",
+  "the page-wide badge, Zone A and the actionable queue split are measured, the cut is not: this check cannot say whether 35 positions should have been 5. What it can say — that a position with no consequence here is not a decision here — is asserted; the grouping of like corrections into one decision remains open (SK-R1)",
 );
 
 /** The detail surfaces the sweep actually reached, named in the verdict. */
@@ -1560,7 +1551,7 @@ async function checkAgingRubric(page) {
  * Pinning them here would have pinned a heading the page can no longer produce
  * — which is not a stricter check, it is a check that measures the fixture.
  * The two words did not disappear from the product: they are the banner's two
- * claims on the overview, read back against the conversation tile in
+ * claims on the overview, read back against the conversation source in
  * checkBannerAgainstConversations().
  */
 const RUBRIC_HEADINGS = {
@@ -1596,108 +1587,21 @@ async function checkRubricLanguage(page) {
   }
 }
 
-/**
- * §8.5a — one tile per category, each leading to the list it counts.
- *
- * What stood here was one run-on line, and the queue header assert pinned its
- * punctuation: "8 offen · Korrekturen aus Läufen: 3 · Skill-Vorschläge: 1 ·
- * Unterhaltungen: 4 · Angezeigt: 6 von 8". It stated four numbers, led
- * nowhere, and on the real console it read "35 offen … Unterhaltungen: 32" —
- * a sentence whose largest number belonged to positions the page could not
- * decide.
- *
- * What is asserted now is stronger than the wording it replaces: every category
- * carries its own count AS A NUMBER, the counts sum to the page total, and each
- * tile LEADS somewhere — the two decidable ones filter the queue in place, the
- * conversation one leaves for the surface where its positions are answered. A
- * tile that only displays is a number without a destination, which §8.5a
- * forbids by name.
- */
-const TILES = [
-  {
-    testId: "decisions-tile-patch",
-    label: "Korrekturen aus Läufen",
-    expected: PATCH_CANDIDATES.length,
-  },
-  { testId: "decisions-tile-skill", label: "Skill-Vorschläge", expected: SKILL_CANDIDATES.length },
-  {
-    testId: "decisions-tile-conversation",
-    label: "Rückfragen in Unterhaltungen",
-    expected: CONVERSATION_TOTAL,
-    leaves: "/chat",
-  },
-];
-
-async function checkCategoryTiles(page) {
-  let summed = 0;
-  for (const tile of TILES) {
-    const shape = await page.evaluate((testId) => {
-      const element = document.querySelector(`[data-testid="${testId}"]`);
-      if (!(element instanceof HTMLElement)) return null;
-      return {
-        count: element.getAttribute("data-count"),
-        text: element.innerText.replace(/\s+/g, " ").trim(),
-        href: element.getAttribute("href"),
-        pressable: element.hasAttribute("aria-pressed"),
-      };
-    }, tile.testId);
-    if (shape === null) {
-      breach("§8.5a", `/decisions · ${tile.testId}`, `no tile for "${tile.label}"`);
-      continue;
-    }
-    const counted = Number(shape.count);
-    if (!Number.isFinite(counted))
-      breach("§8.5a", `/decisions · ${tile.testId}`, "the tile names no count a check can read");
-    else {
-      summed += counted;
-      if (counted !== tile.expected)
-        breach(
-          "§8.1",
-          `/decisions · ${tile.testId}`,
-          `tile counts ${counted}, the fixture endpoint reports ${tile.expected}`,
-        );
-      if (!shape.text.includes(String(counted)))
-        breach("§8.5a", `/decisions · ${tile.testId}`, `tile shows "${shape.text}", not its count`);
-    }
-    if (!shape.text.includes(tile.label))
-      breach(
-        "§5",
-        `/decisions · ${tile.testId}`,
-        `tile reads "${shape.text}" and does not name "${tile.label}"`,
-      );
-    // Every tile leads to the filtered list. The two decidable ones do it in
-    // place (a pressed chip is a filter), the conversation one by leaving.
-    if (tile.leaves) {
-      if (!(shape.href ?? "").includes(tile.leaves))
-        breach(
-          "§8.5a",
-          `/decisions · ${tile.testId}`,
-          `tile leads to ${shape.href ?? "nowhere"} instead of ${tile.leaves}`,
-        );
-    } else if (!shape.pressable)
-      breach("§8.5a", `/decisions · ${tile.testId}`, "tile does not lead to the filtered list");
-  }
-  if (summed !== QUEUE_TOTAL)
-    breach(
-      "§8.1",
-      "/decisions · decisions-tiles",
-      `the tiles sum to ${summed}, the page counts ${QUEUE_TOTAL}`,
-    );
-  // The page still holds fewer positions than the engine counted, and still has
-  // to say so — the note moved off the header line onto the tiles, it did not
-  // disappear.
-  const capped = await page.evaluate(() => {
-    const element = document.querySelector('[data-testid="decisions-capped"]');
-    return element instanceof HTMLElement ? element.innerText.replace(/\s+/g, " ").trim() : null;
-  });
-  const expectedCapped = german("decisions.capped", { shown: PAGE_SHOWN, total: QUEUE_TOTAL });
-  if (capped === null)
-    breach(
-      "§8.1",
-      "/decisions · decisions-capped",
-      "shows fewer than it counts and does not say so",
-    );
-  else if (capped !== expectedCapped) breach("§8.1", "/decisions · decisions-capped", capped);
+/** §8.5a — one filter row, one actionable queue, one exit to history. */
+async function checkDecisionAnatomy(page) {
+  const shape = await page.evaluate(() => ({
+    filters: document.querySelectorAll('[data-family-slot="filters"]').length,
+    queue: document.querySelectorAll('[data-family-slot="queue"]').length,
+    audit: document.querySelectorAll('[data-family-slot="audit-link"] a').length,
+    legacyTiles: document.querySelectorAll('[data-testid^="decisions-tile-"]').length,
+  }));
+  if (shape.filters !== 1)
+    breach("§8.5a", "/decisions", `expected one filter row, found ${shape.filters}`);
+  if (shape.queue !== 1) breach("§8.5a", "/decisions", `expected one queue, found ${shape.queue}`);
+  if (shape.audit !== 1)
+    breach("§8.5", "/decisions", `expected one audit exit, found ${shape.audit}`);
+  if (shape.legacyTiles !== 0)
+    breach("§8.5a", "/decisions", `found ${shape.legacyTiles} redundant category KPI tiles`);
 }
 
 const german = (key, values) => interpolate(CATALOGS.de[key], values);
@@ -2421,15 +2325,10 @@ async function checkCounterCoherence(page, surfaces) {
       total: wrapper?.getAttribute("data-total") ?? null,
       capped: wrapper?.getAttribute("data-capped") ?? null,
       rubrics: { aged: rubric("decisions-aged") },
-      conversationTile: Number(
-        document
-          .querySelector('[data-testid="decisions-tile-conversation"]')
-          ?.getAttribute("data-count") ?? Number.NaN,
-      ),
     };
   });
 
-  checkBannerAgainstConversations(surfaces.banner, rendered.conversationTile, rendered.rubrics);
+  checkBannerAgainstConversations(surfaces.banner, CONVERSATION_TOTAL, rendered.rubrics);
 
   if (rendered.positions !== QUEUE_SHOWN)
     breach(
@@ -2507,7 +2406,7 @@ const BANNER_CLAIM_LABELS = {
   overdue: "Unterhaltungen mit verfallener Frist",
 };
 
-function checkBannerAgainstConversations(banner, conversationTile, rubrics) {
+function checkBannerAgainstConversations(banner, conversationTotal, rubrics) {
   if (!banner) {
     gap(
       "/overview vs. /decisions",
@@ -2515,19 +2414,11 @@ function checkBannerAgainstConversations(banner, conversationTile, rubrics) {
     );
     return;
   }
-  if (!Number.isFinite(conversationTile)) {
-    breach(
-      "§8.7",
-      "/overview vs. /decisions",
-      "the decisions page names no conversation count, so the banner's base is unmeasurable",
-    );
-    return;
-  }
-  if (banner.total !== conversationTile)
+  if (banner.total !== conversationTotal)
     breach(
       "§8.1",
       "/overview vs. /decisions",
-      `banner states a share of ${banner.total}, the decisions page counts ${conversationTile} conversations`,
+      `banner states a share of ${banner.total}, the conversation source counts ${conversationTotal}`,
     );
   let stated = 0;
   for (const [name, claim] of Object.entries(banner.claims)) {
@@ -2540,11 +2431,11 @@ function checkBannerAgainstConversations(banner, conversationTile, rubrics) {
     if (claim.label !== expected)
       breach("§5", "/overview", `banner claims "${claim.label}" instead of "${expected}"`);
   }
-  if (stated > conversationTile)
+  if (stated > conversationTotal)
     breach(
       "§8.1",
       "/overview vs. /decisions",
-      `banner claims ${stated} positions out of ${conversationTile}`,
+      `banner claims ${stated} positions out of ${conversationTotal}`,
     );
 
   if (!rubrics.aged || rubrics.aged.count === 0) {
@@ -2935,7 +2826,7 @@ try {
   const decisions = await openPage(context, "decisions");
   await checkAgingRubric(decisions);
   await checkRubricLanguage(decisions);
-  await checkCategoryTiles(decisions);
+  await checkDecisionAnatomy(decisions);
   await checkCorrectionTitles(decisions);
   await checkCounterCoherence(decisions, { badge: badgeValue, zoneA, banner });
   await checkGroupToggle(decisions);
