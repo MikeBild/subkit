@@ -98,8 +98,8 @@ export function OverviewPage() {
         </Alert>
       ) : (
         <div className="grid gap-6">
-          {banner?.shown && (
-            <Alert variant="destructive" data-testid="overview-incident">
+          {open !== null && open.total > 0 && (
+            <Alert variant="destructive" data-testid="overview-incident" data-count={open.total}>
               {/* Two claims, never one predicate over both: a lapsed position
                   stopped nothing. Each carries its own share and the base it is
                   a share of — and the base is the conversations, because both
@@ -113,29 +113,36 @@ export function OverviewPage() {
               <AlertTitle
                 className="flex flex-wrap items-baseline gap-x-4 gap-y-1"
                 data-testid="incident-decisions-count"
-                data-subset={String(banner.count)}
-                data-subset-total={String(banner.total)}
+                data-subset={String(banner?.count ?? open.total)}
+                data-subset-total={String(banner?.total ?? open.total)}
               >
-                {banner.blocking > 0 && (
-                  <span data-testid="incident-blocking" data-subset={String(banner.blocking)}>
+                {!banner?.shown && (
+                  <span>{t("overview.incident.openTotal", { count: String(open.total) })}</span>
+                )}
+                {(banner?.blocking ?? 0) > 0 && (
+                  <span data-testid="incident-blocking" data-subset={String(banner!.blocking)}>
                     {t(
-                      banner.atLeast ? "overview.incident.claimAtLeast" : "overview.incident.claim",
+                      banner!.atLeast
+                        ? "overview.incident.claimAtLeast"
+                        : "overview.incident.claim",
                       {
                         label: t("decisions.waiting.blocking"),
-                        count: String(banner.blocking),
-                        total: String(banner.total),
+                        count: String(banner!.blocking),
+                        total: String(banner!.total),
                       },
                     )}
                   </span>
                 )}
-                {banner.overdue > 0 && (
-                  <span data-testid="incident-overdue" data-subset={String(banner.overdue)}>
+                {(banner?.overdue ?? 0) > 0 && (
+                  <span data-testid="incident-overdue" data-subset={String(banner!.overdue)}>
                     {t(
-                      banner.atLeast ? "overview.incident.claimAtLeast" : "overview.incident.claim",
+                      banner!.atLeast
+                        ? "overview.incident.claimAtLeast"
+                        : "overview.incident.claim",
                       {
                         label: t("decisions.waiting.overdue"),
-                        count: String(banner.overdue),
-                        total: String(banner.total),
+                        count: String(banner!.overdue),
+                        total: String(banner!.total),
                       },
                     )}
                   </span>

@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.6] – 2026-08-24
+
+### Changed
+
+- The decisions queue now uses the family status signal, spacing and authoritative open-count banner throughout the cockpit.
+
 ## [6.22.5] – 2026-08-24
 
 ### Changed
