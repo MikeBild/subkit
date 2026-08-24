@@ -28,7 +28,6 @@ import {
   type DecisionItem,
   filterByKinds,
   isDecidable,
-  type OpenDecisions,
   partitionByUrgency,
 } from "./decisions-model";
 
@@ -38,19 +37,14 @@ import {
  * Measured on 21.08.2026: the page reported "35 offen · Korrekturen 2 ·
  * Skill-Vorschläge 1 · Unterhaltungen 32" — and 32 of those 35 positions
  * carried no approve and no reject, because a question asked inside a
- * conversation is answered inside that conversation. They are counted and
- * named on the tile above, which leads to the list where they can be answered
- * (§8.5a, §8.5b).
+ * conversation is answered inside that conversation. The navigation badge
+ * still counts them, while this page only shows positions that can be decided
+ * here (§8.5a, §8.5b).
  */
 const KINDS: DecidableKind[] = ["patch", "skill"];
 const KIND_LABEL: Record<DecidableKind, TranslationKey> = {
   patch: "decisions.kind.patch",
   skill: "decisions.kind.skill",
-};
-/** The tile names the category in the plural; the chip below names the kind. */
-const TILE_LABEL: Record<DecidableKind, TranslationKey> = {
-  patch: "decisions.tile.patch",
-  skill: "decisions.tile.skill",
 };
 
 const PREFERENCE_KEY = "sk-cockpit-decisions";
@@ -138,7 +132,6 @@ export function DecisionsPage() {
   const isFiltered = preferences.kinds.length > 0 && open.length > filtered.length;
   // The breakdown comes from the same count as the badge, not from the rows the
   // page happens to hold: the two disagreed the moment a source hit its cap.
-  const counted = queue.open;
 
   if (!queue.sources.patches && !queue.sources.skills && !queue.sources.conversations)
     return (
@@ -186,16 +179,12 @@ export function DecisionsPage() {
         </IconButton>
       }
     >
-      <div className="grid gap-5">
-        {counted !== null && counted.total > 0 && (
-          <CategoryTiles
-            counted={counted}
-            shown={queue.items.length}
-            selected={preferences.kinds}
-            onSelect={(kinds) => persist({ ...preferences, kinds })}
-          />
-        )}
-        <div className="flex flex-wrap items-center gap-2" data-testid="decisions-toolbar">
+      <div className="grid gap-5" data-family-slot="queue">
+        <div
+          className="flex flex-wrap items-center gap-2"
+          data-testid="decisions-toolbar"
+          data-family-slot="filters"
+        >
           <Button
             variant={preferences.kinds.length === 0 ? "default" : "outline"}
             size="sm"
@@ -277,15 +266,13 @@ export function DecisionsPage() {
             </div>
           )
         ) : (
-          // The queue's own copy of the one number, so a drift between the
-          // tiles, the badge and this list is a failing assertion rather than
-          // something a reader has to notice. `data-total` counts what this
-          // list holds — the decidable positions — not the whole page.
+          // Keep the queue count machine-readable so the shared parity check
+          // can compare the visible rows with the navigation badge.
           <div
             className="grid gap-5"
             data-testid="decisions-queue"
-            data-total={String(counted?.decidable ?? 0)}
-            data-capped={String(counted?.capped ?? false)}
+            data-total={String(queue.open?.decidable ?? 0)}
+            data-capped={String(queue.open?.capped ?? false)}
           >
             {current.length > 0 && (
               <DecisionSection
@@ -321,80 +308,6 @@ export function DecisionsPage() {
 }
 
 /**
- * §8.5a — one tile per category, each leading to the list it counts.
- *
- * This replaces a single run-on line ("35 offen · Korrekturen aus Läufen: 2 ·
- * Skill-Vorschläge: 1 · Unterhaltungen: 32") that stated four numbers and led
- * nowhere. There is no tile for anything settled, and there never may be: §8.5
- * allows counter tiles for what is open only.
- *
- * The conversation tile is the one that leaves this page, because that is where
- * its positions are answered.
- */
-function CategoryTiles({
-  counted,
-  shown,
-  selected,
-  onSelect,
-}: {
-  counted: OpenDecisions;
-  shown: number;
-  selected: DecidableKind[];
-  onSelect: (kinds: DecidableKind[]) => void;
-}) {
-  const { t } = useI18n();
-  const only = (kind: DecidableKind): DecidableKind[] =>
-    selected.length === 1 && selected[0] === kind ? [] : [kind];
-  return (
-    <div className="grid gap-2" data-testid="decisions-tiles">
-      <div className="grid gap-2 sm:grid-cols-3">
-        {KINDS.map((kind) => (
-          <button
-            key={kind}
-            type="button"
-            className={cn(
-              "rounded-lg border p-3 text-left transition-colors hover:bg-muted/50",
-              selected.length === 1 && selected[0] === kind && "border-primary bg-muted/40",
-            )}
-            data-testid={`decisions-tile-${kind}`}
-            data-count={String(counted.byKind[kind])}
-            aria-pressed={selected.length === 1 && selected[0] === kind}
-            onClick={() => onSelect(only(kind))}
-          >
-            <span className="block text-2xl font-semibold tabular-nums">
-              {counted.byKind[kind]}
-            </span>
-            <span className="block text-sm">{t(TILE_LABEL[kind])}</span>
-          </button>
-        ))}
-        <Link
-          to="/chat"
-          className="rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
-          data-testid="decisions-tile-conversation"
-          data-count={String(counted.byKind.conversation)}
-        >
-          <span className="block text-2xl font-semibold tabular-nums">
-            {counted.byKind.conversation}
-          </span>
-          <span className="block text-sm">{t("decisions.tile.conversation")}</span>
-          <span className="mt-0.5 block text-xs text-muted-foreground">
-            {t("decisions.tile.conversationHint")}
-          </span>
-        </Link>
-      </div>
-      {counted.capped && (
-        <p className="text-xs text-muted-foreground" data-testid="decisions-capped">
-          {t("decisions.capped", {
-            shown: String(shown),
-            total: String(counted.total),
-          })}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/**
  * §8.5 — the one way to the past, and the only one.
  *
  * Not a shelf, not a section, not a state chip: a sentence with a link. The
@@ -406,7 +319,11 @@ function HistoryLink() {
   const session = useSession();
   if (!session.permissions.includes("audit:read")) return null;
   return (
-    <p className="text-sm text-muted-foreground" data-testid="decisions-history">
+    <p
+      className="text-sm text-muted-foreground"
+      data-testid="decisions-history"
+      data-family-slot="audit-link"
+    >
       {t("decisions.history.label")}{" "}
       <Link
         to="/audit"
