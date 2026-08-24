@@ -1408,21 +1408,10 @@ for (const locale of variants) {
       if (expandedCards === 0) {
         throw new Error(`${locale.artifact}: no decision card exposed an expand toggle`);
       }
-      // §8.2 and §8.5: the group toggle rearranging the queue, and the shelves
-      // open. Both were photographed only by accident before — they sit in the
-      // toolbar and below the fold of the plain decisions shot.
+      // §8.5: the queue has one stable ordering. Photograph its foot explicitly
+      // because the ordinary viewport frame does not reach the audit exit.
       await stand.visit(page, "decisions");
-      await page.locator('[data-testid="decisions-group-1"]').click();
-      await page
-        .locator('[data-testid="decisions-group"][data-mode="kind"]')
-        .waitFor({ state: "attached" });
-      await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-decisions-grouped`, { fullPage: false });
-      await page.locator('[data-testid="decisions-group-0"]').click();
-      await page
-        .locator('[data-testid="decisions-group"][data-mode="none"]')
-        .waitFor({ state: "attached" });
-      // §8.5: what stands at the FOOT of the decisions page. There used to be
+      // What stands at the FOOT of the decisions page. There used to be
       // two shelves of settled work there; there is one sentence with one link
       // now, and a frame that stops at the viewport would show neither. This
       // console's frames are exactly as tall as the viewport — 1000 px — so the
