@@ -634,6 +634,7 @@ const EN = {
   "overview.incident.description":
     "These positions are stopped, or their deadline passed unanswered. Both are resolved in the decision queue.",
   "overview.incident.open": "Decide now",
+  "overview.incident.openTotal": "{count} decisions are waiting for you",
   "decisions.description":
     "What is waiting to be decided: proposed fixes and skill candidates. A question asked inside a conversation is answered there.",
   "decisions.kind.patch": "Fix",
@@ -1673,6 +1674,7 @@ const DE: Record<TranslationKey, string> = {
   "overview.incident.description":
     "Diese Positionen stehen still, oder ihre Frist ist ohne Antwort verstrichen. Beides wird in der Entscheidungs-Queue aufgelöst.",
   "overview.incident.open": "Jetzt entscheiden",
+  "overview.incident.openTotal": "{count} Entscheidungen warten auf dich",
   "decisions.description":
     "Was auf eine Entscheidung wartet: vorgeschlagene Korrekturen und Skill-Kandidaten. Eine Rückfrage aus einer Unterhaltung wird dort beantwortet.",
   "decisions.kind.patch": "Korrektur",
