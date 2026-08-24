@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.4] – 2026-08-24
+
+### Changed
+
+- The overview now follows the family A/B/C anatomy. Recent-run history moved off the start screen; the failure-and-risk hero now ends in one audit-trail exit.
+
 ## [6.22.3] – 2026-08-24
 
 ### Changed
