@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CircleCheck, ListChecks, RefreshCw } from "lucide-react";
 import { apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
 import { canSeeDecisions, useDecisionQueue } from "@/app/use-decisions";
 import { IconButton } from "@/components/cockpit/icon-button";
@@ -20,12 +19,9 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
-import { statusLabel } from "@/lib/status-label";
 import { bannerSubset } from "./decisions-model";
 import type { FailureGroup, HealthDigest } from "./overview-model";
-import { partitionFailures, recentRuns } from "./overview-model";
-
-type Execution = components["schemas"]["Execution"];
+import { partitionFailures } from "./overview-model";
 
 export function OverviewPage() {
   const { t, dateTime } = useI18n();
@@ -38,15 +34,6 @@ export function OverviewPage() {
     enabled: allowed,
     queryFn: () => apiRequest<HealthDigest>("/v1/operator/health-digest"),
   });
-  // `stats:read` does not imply `execution:read`, so the recent-runs block is
-  // gated on its own permission rather than on the page's.
-  const canSeeRuns = session.permissions.includes("execution:read");
-  const runsQuery = useQuery({
-    queryKey: ["overview", "recent-runs"],
-    enabled: canSeeRuns,
-    staleTime: 30_000,
-    queryFn: () => apiRequest<{ items: Execution[] }>("/v1/executions?limit=8"),
-  });
   // The waiting numbers come from the decision queue, never from the digest:
   // the digest knows only patch candidates, so anything it said about "how many
   // are waiting" was a third of the answer presented as the whole. The digest
@@ -56,7 +43,6 @@ export function OverviewPage() {
   const { incidents, trials } = partitionFailures(digest?.failure_groups ?? []);
   const open = queue.open;
   const banner = open ? bannerSubset(open) : null;
-  const recent = recentRuns(runsQuery.data?.items ?? []);
 
   if (!allowed)
     return (
@@ -169,7 +155,7 @@ export function OverviewPage() {
                 titled from a different field, so the two pages disagreed about
                 what one candidate was called. A count and a link cannot
                 disagree with anything. */}
-          <Card data-testid="overview-waiting">
+          <Card data-testid="overview-waiting" data-family-slot="zone-a">
             <CardHeader>
               <CardTitle>{t("overview.waiting.title")}</CardTitle>
               <CardDescription>{t("overview.waiting.description")}</CardDescription>
@@ -226,122 +212,102 @@ export function OverviewPage() {
             )}
           </Card>
 
-          <Card data-testid="overview-failures">
-            <CardHeader>
-              <CardTitle>{t("operations.failures")}</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-2">
-              {digest.all_clear || (incidents.length === 0 && trials.length === 0) ? (
-                <div
-                  className="flex items-center gap-2 text-sm text-muted-foreground"
-                  data-testid="overview-failures-clear"
-                >
-                  <CircleCheck aria-hidden="true" className="shrink-0" />
-                  <span>{t("overview.failures.allClear")}</span>
-                </div>
-              ) : (
-                <>
-                  {incidents.map((failure, index) => (
-                    <FailureRow
-                      key={`${failure.signature}-${index}`}
-                      failure={failure}
-                      testId={`overview-failure-${index}`}
-                      dateTime={dateTime}
-                      lastSeenLabel={t("overview.failures.lastSeen", {
-                        date: dateTime(failure.last_seen),
-                      })}
-                    />
-                  ))}
-                  {/* Trial runs sit under their own heading. A person building
+          <div className="grid gap-4" data-family-slot="zone-b">
+            <Card data-testid="overview-failures">
+              <CardHeader>
+                <CardTitle>{t("operations.failures")}</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-2">
+                {digest.all_clear || (incidents.length === 0 && trials.length === 0) ? (
+                  <div
+                    className="flex items-center gap-2 text-sm text-muted-foreground"
+                    data-testid="overview-failures-clear"
+                  >
+                    <CircleCheck aria-hidden="true" className="shrink-0" />
+                    <span>{t("overview.failures.allClear")}</span>
+                  </div>
+                ) : (
+                  <>
+                    {incidents.map((failure, index) => (
+                      <FailureRow
+                        key={`${failure.signature}-${index}`}
+                        failure={failure}
+                        testId={`overview-failure-${index}`}
+                        dateTime={dateTime}
+                        lastSeenLabel={t("overview.failures.lastSeen", {
+                          date: dateTime(failure.last_seen),
+                        })}
+                      />
+                    ))}
+                    {/* Trial runs sit under their own heading. A person building
                         a workflow can fail two dozen runs in an afternoon, and
                         counting those as incidents reports a crisis that is not
                         happening. */}
-                  {trials.length > 0 && (
-                    <div className="mt-2 grid gap-2 border-t pt-3" data-testid="overview-trials">
-                      <p className="text-xs font-medium text-muted-foreground">
-                        {t("overview.failures.fromTrials")}
-                      </p>
-                      {trials.map((failure, index) => (
-                        <FailureRow
-                          key={`${failure.signature}-${index}`}
-                          failure={failure}
-                          testId={`overview-trial-${index}`}
-                          dateTime={dateTime}
-                          lastSeenLabel={t("overview.failures.lastSeen", {
-                            date: dateTime(failure.last_seen),
-                          })}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {canSeeRuns && (
-            <Card data-testid="overview-recent">
-              <CardHeader>
-                <CardTitle>{t("overview.recent.title")}</CardTitle>
-                <CardDescription>{t("overview.recent.description")}</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-2">
-                {recent.length === 0 ? (
-                  <p className="text-sm text-muted-foreground" data-testid="overview-recent-empty">
-                    {t("overview.recent.empty")}
-                  </p>
-                ) : (
-                  recent.map((run, index) => (
-                    <div
-                      key={run.id}
-                      className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border p-3"
-                      data-testid={`overview-recent-${index}`}
-                    >
-                      <span className="min-w-0 truncate text-sm font-medium">
-                        {run.name ?? t("overview.recent.unnamed")}
-                      </span>
-                      <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
-                        <Badge variant="secondary">{statusLabel(t, run.status)}</Badge>
-                        {run.startedAt ? dateTime(run.startedAt) : "—"}
-                        <span className="tabular-nums">
-                          {run.durationMs === null
-                            ? "—"
-                            : t("overview.recent.duration", {
-                                seconds: String(Math.round(run.durationMs / 1000)),
-                              })}
-                        </span>
-                      </span>
-                    </div>
-                  ))
+                    {trials.length > 0 && (
+                      <div className="mt-2 grid gap-2 border-t pt-3" data-testid="overview-trials">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          {t("overview.failures.fromTrials")}
+                        </p>
+                        {trials.map((failure, index) => (
+                          <FailureRow
+                            key={`${failure.signature}-${index}`}
+                            failure={failure}
+                            testId={`overview-trial-${index}`}
+                            dateTime={dateTime}
+                            lastSeenLabel={t("overview.failures.lastSeen", {
+                              date: dateTime(failure.last_seen),
+                            })}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
-          )}
 
-          {digest.risk.length > 0 && (
-            <Card data-testid="overview-risks">
-              <CardHeader>
-                <CardTitle>{t("operations.risks")}</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-2">
-                {digest.risk.map((risk, index) => (
-                  <div
-                    key={`${risk.headline}-${index}`}
-                    className="rounded-lg border p-3"
-                    data-testid={`overview-risk-${index}`}
-                  >
-                    <div className="flex gap-2">
-                      <p className="min-w-0 text-sm font-medium break-words">{risk.headline}</p>
-                      <Badge variant={risk.severity === "critical" ? "destructive" : "outline"}>
-                        {t(risk.severity === "critical" ? "severity.critical" : "severity.warning")}
-                      </Badge>
+            {digest.risk.length > 0 && (
+              <Card data-testid="overview-risks">
+                <CardHeader>
+                  <CardTitle>{t("operations.risks")}</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-2">
+                  {digest.risk.map((risk, index) => (
+                    <div
+                      key={`${risk.headline}-${index}`}
+                      className="rounded-lg border p-3"
+                      data-testid={`overview-risk-${index}`}
+                    >
+                      <div className="flex gap-2">
+                        <p className="min-w-0 text-sm font-medium break-words">{risk.headline}</p>
+                        <Badge variant={risk.severity === "critical" ? "destructive" : "outline"}>
+                          {t(
+                            risk.severity === "critical" ? "severity.critical" : "severity.warning",
+                          )}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">{risk.detail}</p>
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">{risk.detail}</p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          <p
+            className="text-sm text-muted-foreground"
+            data-family-slot="zone-c"
+            data-testid="overview-audit-exit"
+          >
+            {t("overview.audit.label")}{" "}
+            <Link
+              to="/audit"
+              className="font-medium underline underline-offset-4"
+              data-testid="overview-audit-link"
+            >
+              {t("overview.audit.link")}
+            </Link>
+          </p>
         </div>
       )}
     </PageFrame>
