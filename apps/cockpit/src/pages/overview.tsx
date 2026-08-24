@@ -97,7 +97,7 @@ export function OverviewPage() {
           </Button>
         </Alert>
       ) : (
-        <div className="grid gap-6">
+        <div className="mx-auto grid w-full max-w-[1120px] gap-6">
           {banner?.shown && (
             <Alert variant="destructive" data-testid="overview-incident">
               {/* Two claims, never one predicate over both: a lapsed position
