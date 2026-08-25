@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.13] – 2026-08-25
+
+### Changed
+
+- Cockpit page content now exposes the shared family measurement slot, and the mobile navigation trigger uses the common 32 px control size.
+
 ## [6.22.12] – 2026-08-25
 
 ### Fixed
