@@ -5,6 +5,7 @@ import {
   joinStepsWithLastRun,
   readStepDefinition,
   stepResultPreview,
+  workflowStepKindKey,
 } from "./workflow-steps";
 
 function runStep(overrides: Partial<ExecutionStep> & { step_key: string }): ExecutionStep {
@@ -104,5 +105,17 @@ describe("the connector a step uses", () => {
   test("prefers a slug the step names directly", () => {
     const definition = readStepDefinition({ id: "a", connector: "radar-api" }, 0);
     expect(connectorNameOf(definition, names)).toBe("radar-api");
+  });
+});
+
+describe("workflow step vocabulary", () => {
+  test("maps engine enums to human-facing catalogue keys", () => {
+    expect(workflowStepKindKey("request")).toBe("workflow.kind.request");
+    expect(workflowStepKindKey("transform")).toBe("workflow.kind.transform");
+    expect(workflowStepKindKey("loop")).toBe("workflow.kind.loop");
+  });
+
+  test("does not leak a new engine enum into the interface", () => {
+    expect(workflowStepKindKey("future_kind")).toBe("workflow.stepType");
   });
 });
