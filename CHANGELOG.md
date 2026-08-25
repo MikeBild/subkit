@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.12] – 2026-08-25
+
+### Fixed
+
+- The audit table now names current credential, settings, inbound-webhook and MCP OAuth resources and operations, and uses truthful neutral labels for future resource or operation kinds instead of exposing raw enums or “Unbekannt”.
+
 ## [6.22.11] – 2026-08-25
 
 ### Fixed
