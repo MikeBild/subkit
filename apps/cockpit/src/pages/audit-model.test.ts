@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { actorTypeKey, auditResourceHref, resourceTypeKey } from "@/pages/audit-model";
+import {
+  actorTypeKey,
+  auditActionKey,
+  auditResourceHref,
+  resourceTypeKey,
+} from "@/pages/audit-model";
 
 describe("audit resource relations", () => {
   test("routes a known resource type to its cockpit page", () => {
@@ -28,10 +33,23 @@ describe("audit vocabulary", () => {
     expect(resourceTypeKey("connector")).toBe("resource.connectors.title");
     expect(resourceTypeKey("notification_delivery")).toBe("nav.notifications");
     expect(resourceTypeKey("session")).toBe("audit.resource.session");
+    expect(resourceTypeKey("credential")).toBe("permission.resource.credentials");
+    expect(resourceTypeKey("setting")).toBe("nav.settings");
+    expect(resourceTypeKey("webhook_inbound")).toBe("audit.resource.inboundWebhook");
+    expect(resourceTypeKey("mcp_oauth_client")).toBe("audit.resource.oauthClient");
+    expect(resourceTypeKey("mcp_oauth_code")).toBe("audit.resource.oauthCode");
+    expect(resourceTypeKey("mcp_oauth_token")).toBe("audit.resource.oauthToken");
   });
 
   test("admits when a type is not one it knows", () => {
     expect(actorTypeKey("robot")).toBe("common.unknown");
-    expect(resourceTypeKey("robot")).toBe("common.unknown");
+    expect(resourceTypeKey("robot")).toBe("audit.resource.other");
+    expect(auditActionKey("robot.started")).toBe("audit.action.other");
+  });
+
+  test("names production audit actions instead of exposing API enums", () => {
+    expect(auditActionKey("settings.changed")).toBe("audit.action.settingsChanged");
+    expect(auditActionKey("mcp_oauth.token_used")).toBe("audit.action.oauthTokenUsed");
+    expect(auditActionKey("credential.oauth2_refreshed")).toBe("audit.action.credentialRefreshed");
   });
 });
