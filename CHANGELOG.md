@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.9] – 2026-08-25
+
+### Fixed
+
+- Reviewer-facing conversation titles now also hide UUID-shaped references that historical title generation had already shortened with an ellipsis.
+
 ## [6.22.8] – 2026-08-25
 
 ### Fixed
