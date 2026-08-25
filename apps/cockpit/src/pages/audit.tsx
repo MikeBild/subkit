@@ -109,7 +109,7 @@ export function AuditPage() {
         t("resource.field.action"),
         (entry) => {
           const key = auditActionKey(entry.action);
-          return <span title={entry.action}>{key ? t(key) : entry.action}</span>;
+          return <span title={entry.action}>{t(key)}</span>;
         },
         { width: "w-[24%]" },
       ),
