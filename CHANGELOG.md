@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.8] – 2026-08-25
+
+### Fixed
+
+- Reviewer-facing conversation titles now hide legacy UUID-shaped references even when historical data does not use RFC-conformant version or variant nibbles.
+- Catalogue details no longer expose opaque resource identifiers in the rendered cockpit.
+
 ## [6.22.7] – 2026-08-25
 
 ### Fixed

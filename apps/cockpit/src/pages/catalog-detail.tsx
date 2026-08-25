@@ -584,17 +584,6 @@ export function CatalogDetailPage({
           <CheckCircle2 className="size-4" />
           {t("detail.workspaceScoped")}
         </div>
-        {/* The record's own reference, one disclosure deep. It is not a value
-            on the page (§5) — but the person who has to quote it to operations
-            should not have to read the address bar for it, and a truncated
-            prefix would be a reference that no longer references anything. */}
-        <details className="text-xs text-muted-foreground" data-testid="detail-technical">
-          <summary className="cursor-pointer select-none">{t("detail.technicalReference")}</summary>
-          <p className="mt-2">{t("detail.technicalReferenceHint")}</p>
-          <p className="mt-1 font-mono break-all" data-testid="detail-technical-id">
-            {id}
-          </p>
-        </details>
       </div>
     </main>
   );
