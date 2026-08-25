@@ -100,5 +100,19 @@ export function stepResultPreview(step: ExecutionStep | null): string | null {
 
 function render(value: unknown): string | null {
   if (value === null || value === undefined) return null;
-  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const rendered = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  return humaniseTechnicalValues(rendered);
+}
+
+const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
+const ISO_DATE = /\b(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d{1,3})?)?Z\b/g;
+
+/** Keeps execution previews useful without exposing storage references or machine timestamps. */
+export function humaniseTechnicalValues(value: string): string {
+  return value
+    .replace(UUID, "Referenz")
+    .replace(
+      ISO_DATE,
+      (_match, year, month, day, hour, minute) => `${day}.${month}.${year}, ${hour}:${minute} UTC`,
+    );
 }

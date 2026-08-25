@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   connectorNameOf,
   type ExecutionStep,
+  humaniseTechnicalValues,
   joinStepsWithLastRun,
   readStepDefinition,
   stepResultPreview,
@@ -75,13 +76,39 @@ describe("step result preview", () => {
   test("prefers the structured value over the string blurb", () => {
     expect(
       stepResultPreview(
-        runStep({ step_key: "a", output_preview: { count: 2 }, result_preview: "two" }),
+        runStep({
+          step_key: "a",
+          output_preview: { count: 2 },
+          result_preview: "two",
+        }),
       ),
     ).toBe('{\n  "count": 2\n}');
   });
 
   test("a step that never ran has nothing to show", () => {
     expect(stepResultPreview(null)).toBeNull();
+  });
+
+  test("humanises references and timestamps inside structured output", () => {
+    expect(
+      stepResultPreview(
+        runStep({
+          step_key: "a",
+          output_preview: {
+            run_id: "457df8bc-2fe7-4a44-8dba-0acfa31821c5",
+            finished_at: "2026-08-25T22:00:00.000Z",
+          },
+        }),
+      ),
+    ).toBe('{\n  "run_id": "Referenz",\n  "finished_at": "25.08.2026, 22:00 UTC"\n}');
+  });
+
+  test("humanises technical values embedded in paths and error text", () => {
+    expect(
+      humaniseTechnicalValues(
+        "run/457df8bc-2fe7-4a44-8dba-0acfa31821c5 failed at 2026-08-25T22:00:00Z",
+      ),
+    ).toBe("run/Referenz failed at 25.08.2026, 22:00 UTC");
   });
 });
 
@@ -90,7 +117,11 @@ describe("the connector a step uses", () => {
 
   test("resolves a reference to the connector name", () => {
     const definition = readStepDefinition(
-      { id: "a", kind: "request", connector_id: "d11b5b98-6c7b-4919-9276-74e5f4b4891b" },
+      {
+        id: "a",
+        kind: "request",
+        connector_id: "d11b5b98-6c7b-4919-9276-74e5f4b4891b",
+      },
       0,
     );
     expect(definition.connector).toBeNull();
