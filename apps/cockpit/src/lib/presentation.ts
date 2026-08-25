@@ -1,5 +1,5 @@
 const UUID_PATTERN =
-  /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
+  /\b(?:fid_)?[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
 
 /**
  * Clip at a word boundary, marking a clipped string with `…`.
@@ -27,6 +27,10 @@ export function hideTechnicalIdentifiers(value: string, replacement: string): st
   return value.replace(UUID_PATTERN, replacement);
 }
 
+export function humanFacingText(value: string, hiddenReferenceLabel: string): string {
+  return hideTechnicalIdentifiers(value, hiddenReferenceLabel).replace(/\bsubkit\b/gi, "SubKit");
+}
+
 /**
  * One line of readable text from a stored message excerpt.
  *
@@ -41,7 +45,7 @@ export function conversationExcerpt(
   hiddenReferenceLabel: string,
   toolLabel?: (toolName: string) => string,
 ): string {
-  const text = hideTechnicalIdentifiers(value?.trim() ?? "", hiddenReferenceLabel);
+  const text = humanFacingText(value?.trim() ?? "", hiddenReferenceLabel);
   if (!text) return "";
   const toolPayload = /^\{\s*"tool"\s*:\s*"([a-zA-Z0-9_-]+)"/.exec(text);
   if (toolPayload) {

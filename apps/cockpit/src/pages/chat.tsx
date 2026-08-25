@@ -80,7 +80,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import type { DiffLine } from "@/lib/line-diff";
-import { conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
+import { conversationExcerpt, hideTechnicalIdentifiers, humanFacingText } from "@/lib/presentation";
 import { statusLabel } from "@/lib/status-label";
 import { patchCandidateId, toolPartVerdict } from "@/lib/tool-parts";
 import { isStaleCall, toolLabel, toolOutcomeKey } from "@/lib/tool-presentation";
@@ -444,17 +444,25 @@ function ConversationList({
       <ScrollArea className="h-0 min-h-0 flex-1">
         <div className="grid gap-1 p-2">
           {conversations.map((conversation, index) => {
-            const row = conversationRow(conversation, {
-              untitled: t("chat.untitled"),
-              status: statusLabel(t, conversation.status),
-              excerpt:
-                conversationExcerpt(
-                  conversation.last_message_excerpt,
-                  t("chat.toolActivity"),
-                  t("tool.referenceHidden"),
-                  (toolName) => actionLabel(t, toolName),
-                ) || null,
-            });
+            const row = conversationRow(
+              {
+                ...conversation,
+                title: conversation.title
+                  ? humanFacingText(conversation.title, t("tool.referenceHidden"))
+                  : conversation.title,
+              },
+              {
+                untitled: t("chat.untitled"),
+                status: statusLabel(t, conversation.status),
+                excerpt:
+                  conversationExcerpt(
+                    conversation.last_message_excerpt,
+                    t("chat.toolActivity"),
+                    t("tool.referenceHidden"),
+                    (toolName) => actionLabel(t, toolName),
+                  ) || null,
+              },
+            );
             return (
               <div key={conversation.id} className="group flex min-w-0 items-center gap-1">
                 <Button
