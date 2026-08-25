@@ -43,6 +43,12 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   file: "nav.files",
   conversation: "nav.chat",
   session: "audit.resource.session",
+  credential: "permission.resource.credentials",
+  setting: "nav.settings",
+  webhook_inbound: "audit.resource.inboundWebhook",
+  mcp_oauth_client: "audit.resource.oauthClient",
+  mcp_oauth_code: "audit.resource.oauthCode",
+  mcp_oauth_token: "audit.resource.oauthToken",
   // Notification fanout records chat.message.sent against the delivery, not
   // against a conversation. It has no detail route, but it still needs a
   // human name in the audit table instead of the forbidden "Unbekannt".
@@ -55,7 +61,11 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
 };
 
 export function resourceTypeKey(resourceType: string): TranslationKey {
-  return RESOURCE_KEYS[resourceType] ?? "common.unknown";
+  // The audit writer is intentionally extensible and can introduce a new
+  // resource before the Cockpit catalogue knows its exact noun. Calling a
+  // recorded resource "unknown" is false; retain a truthful neutral label
+  // until the precise translation lands.
+  return RESOURCE_KEYS[resourceType] ?? "audit.resource.other";
 }
 
 /**
@@ -91,13 +101,26 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "api_key.used": "audit.action.apiKeyUsed",
   "chat.message.sent": "audit.action.chatMessageSent",
   "session.issued": "audit.action.sessionIssued",
+  "connector.mcp_handshake_ok": "audit.action.connectorHandshakeOk",
+  "conversation.created": "audit.action.conversationCreated",
+  "credential.oauth2_refreshed": "audit.action.credentialRefreshed",
+  "credential.rotated": "audit.action.credentialRotated",
+  "file.downloaded": "audit.action.fileDownloaded",
+  "mcp_oauth.code_issued": "audit.action.oauthCodeIssued",
+  "mcp_oauth.consent_denied": "audit.action.oauthConsentDenied",
+  "mcp_oauth.consent_granted": "audit.action.oauthConsentGranted",
+  "mcp_oauth.token_issued": "audit.action.oauthTokenIssued",
+  "mcp_oauth.token_revoked": "audit.action.oauthTokenRevoked",
+  "mcp_oauth.token_used": "audit.action.oauthTokenUsed",
+  "settings.changed": "audit.action.settingsChanged",
+  "user.logged_in": "audit.action.userLoggedIn",
   "webhook.inbound.received": "audit.action.webhookReceived",
   "webhook.inbound.denied": "audit.action.webhookDenied",
   "webhook.inbound.created": "audit.action.webhookCreated",
 };
 
-export function auditActionKey(action: string): TranslationKey | null {
-  return ACTION_KEYS[action] ?? null;
+export function auditActionKey(action: string): TranslationKey {
+  return ACTION_KEYS[action] ?? "audit.action.other";
 }
 
 /**
