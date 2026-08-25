@@ -86,9 +86,15 @@ export function PageFrame({
         </div>
       )}
       {scroll === "content" ? (
-        <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", column)}>{children}</div>
+        <div
+          data-family-slot="content"
+          className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", column)}
+        >
+          {children}
+        </div>
       ) : (
         <div
+          data-family-slot="content"
           className={cn(
             "min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-6 sm:px-6",
             gutter,
