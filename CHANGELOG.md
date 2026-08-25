@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.15] – 2026-08-25
+
+### Changed
+
+- The cockpit settings view now declares its shared family configuration mode for measurable cross-product parity.
+
 ## [6.22.14] – 2026-08-25
 
 ### Changed
