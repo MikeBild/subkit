@@ -42,6 +42,7 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   skill: "nav.skills",
   file: "nav.files",
   conversation: "nav.chat",
+  session: "audit.resource.session",
   // Notification fanout records chat.message.sent against the delivery, not
   // against a conversation. It has no detail route, but it still needs a
   // human name in the audit table instead of the forbidden "Unbekannt".
@@ -89,6 +90,7 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "credential.accessed": "audit.action.credentialAccessed",
   "api_key.used": "audit.action.apiKeyUsed",
   "chat.message.sent": "audit.action.chatMessageSent",
+  "session.issued": "audit.action.sessionIssued",
   "webhook.inbound.received": "audit.action.webhookReceived",
   "webhook.inbound.denied": "audit.action.webhookDenied",
   "webhook.inbound.created": "audit.action.webhookCreated",
