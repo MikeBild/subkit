@@ -1741,7 +1741,7 @@ export function SettingsPage() {
       titleKey="resource.settings.title"
       descriptionKey="resource.settings.description"
     >
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex items-center gap-2" data-family-slot="configuration-content">
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
