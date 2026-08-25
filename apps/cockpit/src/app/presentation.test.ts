@@ -22,6 +22,19 @@ describe("cockpit presentation", () => {
     ).toBe("Inspect conversation reference hidden");
   });
 
+  test("hides UUID-shaped references that historical titles already clipped", () => {
+    const titles = [
+      "Create a schedule for workflow id 3fb5fc90-8e4c-4…",
+      "Inspect conversation 8b2d0827-01b5-4e4a-952e-2b98…",
+      "Lies @file:fid_b99107c1-a44e-4b35-8c26-32af17d2fa…",
+      '{"$file":"fid_a4ec8e9a-d3b4-4151-8bd2-26ac6d3a8bf…',
+    ];
+
+    for (const title of titles) {
+      expect(humanFacingText(title, "reference hidden")).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
+    }
+  });
+
   test("hides file references and canonicalizes the product name", () => {
     expect(
       humanFacingText(

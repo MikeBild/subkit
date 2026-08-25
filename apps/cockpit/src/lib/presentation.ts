@@ -2,7 +2,8 @@
 // variant nibble is not RFC-conformant. They are still opaque identifiers to a
 // reviewer, so presentation must recognise the shape rather than validate the
 // identifier format.
-const UUID_PATTERN = /\b(?:fid_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+const UUID_PATTERN =
+  /\b(?:fid_)?(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{1,4}(?:-[0-9a-f]{1,4})?(?:-[0-9a-f]{1,12})?…|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?![0-9a-f])/gi;
 
 /**
  * Clip at a word boundary, marking a clipped string with `…`.
