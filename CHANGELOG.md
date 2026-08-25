@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.11] – 2026-08-25
+
+### Fixed
+
+- Audit entries for issued browser sessions now use the human resource name “Sitzung” and the action “Sitzung ausgestellt” instead of an unresolved resource label.
+
 ## [6.22.10] – 2026-08-25
 
 ### Fixed
