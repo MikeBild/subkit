@@ -484,7 +484,7 @@ export function DecisionCard({
     // `data-state` says what this position IS: only open work stands on this
     // page, and the convention check reads that back off every card.
     <article
-      className="rounded-lg border"
+      className="rounded-xl border"
       data-testid={testId}
       data-decision-key={key}
       data-state="open"

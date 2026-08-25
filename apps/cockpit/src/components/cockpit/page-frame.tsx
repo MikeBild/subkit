@@ -94,7 +94,7 @@ export function PageFrame({
         </div>
       ) : (
         <div
-          data-family-slot="content"
+          data-family-slot="scroll-region"
           className={cn(
             "min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-6 sm:px-6",
             gutter,
@@ -102,7 +102,9 @@ export function PageFrame({
         >
           {/* The width cap goes on an inner element so the padding above stays
               outside it — the same nesting the header uses. */}
-          <div className={column}>{children}</div>
+          <div data-family-slot="content" className={column}>
+            {children}
+          </div>
         </div>
       )}
     </main>
