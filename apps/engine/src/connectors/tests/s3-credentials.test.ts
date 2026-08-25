@@ -86,15 +86,20 @@ async function startMinio(): Promise<MinioHandle> {
   // allow-wall-clock: container warm-up poll before first request.
   const deadline = Date.now() + 30_000;
   // allow-wall-clock: container warm-up poll before first request.
+  let ready = false;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/minio/health/live`);
-      if (res.ok) break;
+      const res = await fetch(`http://127.0.0.1:${port}/minio/health/ready`);
+      if (res.ok) {
+        ready = true;
+        break;
+      }
     } catch {
       /* not ready yet */
     }
     await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: MinIO warm-up
   }
+  if (!ready) throw new Error("MinIO did not become ready within 30 seconds");
   return {
     endpoint: `http://127.0.0.1:${port}`,
     accessKey,

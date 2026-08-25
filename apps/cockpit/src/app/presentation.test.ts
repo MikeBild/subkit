@@ -13,6 +13,15 @@ describe("cockpit presentation", () => {
     ).toBe("Execution technical reference completed");
   });
 
+  test("hides legacy UUID-shaped references even when their variant nibble is nonstandard", () => {
+    expect(
+      humanFacingText(
+        "Inspect conversation 8b2d0827-01b5-4e4a-2b98-0c0e83d9c9ba",
+        "reference hidden",
+      ),
+    ).toBe("Inspect conversation reference hidden");
+  });
+
   test("hides file references and canonicalizes the product name", () => {
     expect(
       humanFacingText(
