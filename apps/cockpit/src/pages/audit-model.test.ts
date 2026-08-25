@@ -26,6 +26,7 @@ describe("audit vocabulary", () => {
   test("names actor and resource types as words", () => {
     expect(actorTypeKey("system_account")).toBe("audit.actor.systemAccount");
     expect(resourceTypeKey("connector")).toBe("resource.connectors.title");
+    expect(resourceTypeKey("notification_delivery")).toBe("nav.notifications");
   });
 
   test("admits when a type is not one it knows", () => {

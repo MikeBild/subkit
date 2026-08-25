@@ -14,6 +14,7 @@ import {
   joinStepsWithLastRun,
   stepResultPreview,
   type WorkflowStepView,
+  workflowStepKindKey,
 } from "@/lib/workflow-steps";
 
 type Execution = components["schemas"]["Execution"];
@@ -197,7 +198,9 @@ function StepCard({
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
           <span className="min-w-0 truncate">{view.definition.id}</span>
-          {view.definition.kind && <Badge variant="outline">{view.definition.kind}</Badge>}
+          {view.definition.kind && (
+            <Badge variant="outline">{t(workflowStepKindKey(view.definition.kind))}</Badge>
+          )}
           {view.lastRun && (
             <Badge variant="secondary" data-testid={`${testId}-status`}>
               {statusLabel(t, view.lastRun.status)}
