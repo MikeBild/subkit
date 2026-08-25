@@ -1,5 +1,8 @@
-const UUID_PATTERN =
-  /\b(?:fid_)?[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
+// Production history also contains UUID-shaped references whose version or
+// variant nibble is not RFC-conformant. They are still opaque identifiers to a
+// reviewer, so presentation must recognise the shape rather than validate the
+// identifier format.
+const UUID_PATTERN = /\b(?:fid_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 
 /**
  * Clip at a word boundary, marking a clipped string with `…`.
