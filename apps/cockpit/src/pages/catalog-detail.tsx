@@ -116,7 +116,10 @@ function GovernanceBar({ record, canWrite }: { record: RecordValue; canWrite: bo
         : "active";
   const version = record.version ?? record.current_version;
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-6 py-2 text-xs">
+    <div
+      data-family-slot="detail-context"
+      className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-6 py-2 text-xs"
+    >
       <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
       <span className="font-medium">{t("detail.governance")}</span>
       <Badge variant="outline">{statusLabel(t, status)}</Badge>
@@ -493,10 +496,23 @@ export function CatalogDetailPage({
     );
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-auto" data-testid={`detail-${resource}`}>
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b p-6">
+    <main
+      data-family-surface="detail"
+      className="flex min-h-0 flex-1 flex-col overflow-auto"
+      data-testid={`detail-${resource}`}
+    >
+      <header
+        data-family-slot="detail-header"
+        className="flex flex-wrap items-center justify-between gap-4 border-b p-6"
+      >
         <div className="min-w-0">
-          <Button variant="ghost" size="sm" asChild className="-ml-2 mb-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            asChild
+            className="-ml-2 mb-2"
+            data-family-slot="detail-navigation"
+          >
             <a href={`/cockpit/${resource}`} data-testid="detail-back">
               <ArrowLeft data-icon="inline-start" />
               {t("detail.back")}
@@ -505,7 +521,7 @@ export function CatalogDetailPage({
           <h1 className="truncate text-2xl font-semibold tracking-tight">{recordTitle(record)}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t(DESCRIPTION_KEYS[resource])}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div data-family-slot="detail-actions" className="flex flex-wrap gap-2">
           {resource === "workflows" && permissions.includes("workflow:run") && (
             <RunWorkflowDialog
               workflowId={id}
@@ -572,7 +588,7 @@ export function CatalogDetailPage({
           )}
         </div>
       )}
-      <div className="flex min-h-0 flex-1 flex-col gap-5 p-6">
+      <div data-family-slot="detail-main" className="flex min-h-0 flex-1 flex-col gap-5 p-6">
         {resource === "workflows" ? (
           <WorkflowBody id={id} record={record} canRun={permissions.includes("workflow:run")} />
         ) : null}
