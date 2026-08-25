@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.14] – 2026-08-25
+
+### Changed
+
+- Overview content and headers now share the family reading axis, and decision cards use the common family radius.
+
 ## [6.22.13] – 2026-08-25
 
 ### Changed
