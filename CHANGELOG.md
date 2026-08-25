@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.17] – 2026-08-25
+
+### Changed
+
+- Relation-heavy cockpit list rows now stay within the shared family density while preserving every hidden relation through an accessible compact remainder.
+
 ## [6.22.16] – 2026-08-25
 
 ### Changed
