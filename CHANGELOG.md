@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.10] – 2026-08-25
+
+### Fixed
+
+- Audit entries for notification deliveries now use a human resource name instead of the unresolved state “Unbekannt”.
+- Workflow detail cards translate engine step kinds into human-facing German and English labels instead of rendering raw enums.
+
 ## [6.22.9] – 2026-08-25
 
 ### Fixed
