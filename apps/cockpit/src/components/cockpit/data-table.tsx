@@ -189,8 +189,16 @@ export function DataTable<TData extends RowData>({
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="data-table">
-      <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
+    <div
+      className="flex min-h-0 flex-1 flex-col"
+      data-testid="data-table"
+      data-family-slot="list-surface"
+      data-family-list-kind="table"
+    >
+      <div
+        className="flex flex-wrap items-center gap-2 border-b px-3 py-2"
+        data-family-slot="list-toolbar"
+      >
         {toolbar}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -301,6 +309,7 @@ export function DataTable<TData extends RowData>({
               rows.map((row, index) => (
                 <TableRow
                   key={row.id}
+                  data-family-slot="list-row"
                   className={onOpen ? "cursor-pointer" : undefined}
                   tabIndex={onOpen ? 0 : undefined}
                   data-testid={`data-table-row-${index}`}
@@ -386,6 +395,7 @@ export function DataTable<TData extends RowData>({
                   className="flex min-w-0 flex-col gap-3 p-4 text-left"
                   onClick={() => onOpen(row.original)}
                   data-testid={`data-table-mobile-row-${index}`}
+                  data-family-slot="list-row"
                 >
                   {card}
                 </button>
@@ -394,6 +404,7 @@ export function DataTable<TData extends RowData>({
                   key={row.id}
                   className="flex min-w-0 flex-col gap-3 p-4 text-left"
                   data-testid={`data-table-mobile-row-${index}`}
+                  data-family-slot="list-row"
                 >
                   {card}
                 </div>
