@@ -172,14 +172,17 @@ export function tableColumns<TRow extends RowData>({
         cell: ({ row }) => {
           const relations = get(row.original);
           if (relations.length === 0) return MISSING;
+          const visible = relations.slice(0, 2);
+          const hidden = relations.length - visible.length;
           return (
-            <span className="flex flex-wrap gap-1">
-              {relations.map((relation, index) =>
+            <span className="flex min-w-0 flex-col items-start gap-1">
+              {visible.map((relation, index) =>
                 relation.href ? (
                   <a
                     key={relation.label}
-                    className="rounded-md border px-1.5 py-0.5 text-xs underline-offset-4 hover:underline"
+                    className="block max-w-full truncate rounded-md border px-1.5 py-0.5 text-xs underline-offset-4 hover:underline"
                     href={relation.href}
+                    title={relation.label}
                     data-testid={`${id}-chip-${row.index}-${index}`}
                     onClick={(event) => event.stopPropagation()}
                   >
@@ -188,12 +191,30 @@ export function tableColumns<TRow extends RowData>({
                 ) : (
                   <span
                     key={relation.label}
-                    className="rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground"
+                    className="block max-w-full truncate rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground"
+                    title={relation.label}
                   >
                     {relation.label}
                   </span>
                 ),
               )}
+              {hidden > 0 ? (
+                <span
+                  className="rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground"
+                  title={relations
+                    .slice(visible.length)
+                    .map((relation) => relation.label)
+                    .join(", ")}
+                >
+                  <span aria-hidden="true">+{hidden}</span>
+                  <span className="sr-only">
+                    {relations
+                      .slice(visible.length)
+                      .map((relation) => relation.label)
+                      .join(", ")}
+                  </span>
+                </span>
+              ) : null}
             </span>
           );
         },
