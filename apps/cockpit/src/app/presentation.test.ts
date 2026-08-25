@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
+import { conversationExcerpt, hideTechnicalIdentifiers, humanFacingText } from "@/lib/presentation";
 import { asToolPart } from "@/lib/tool-parts";
 import { asStreamedDiff } from "@/pages/chat";
 
@@ -11,6 +11,15 @@ describe("cockpit presentation", () => {
         "technical reference",
       ),
     ).toBe("Execution technical reference completed");
+  });
+
+  test("hides file references and canonicalizes the product name", () => {
+    expect(
+      humanFacingText(
+        "Lies fid_b99107c1-a44e-4b35-8c26-32af17d2fac8 mit subkit",
+        "technical reference",
+      ),
+    ).toBe("Lies technical reference mit SubKit");
   });
 
   test("turns raw tool payload excerpts into a readable label", () => {
