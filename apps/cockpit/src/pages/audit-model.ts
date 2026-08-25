@@ -42,6 +42,10 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   skill: "nav.skills",
   file: "nav.files",
   conversation: "nav.chat",
+  // Notification fanout records chat.message.sent against the delivery, not
+  // against a conversation. It has no detail route, but it still needs a
+  // human name in the audit table instead of the forbidden "Unbekannt".
+  notification_delivery: "nav.notifications",
   execution: "nav.runs",
   api_key: "nav.apiAccess",
   role: "nav.access",

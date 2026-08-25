@@ -1,4 +1,5 @@
 import type { components } from "@/api/schema";
+import type { TranslationKey } from "@/lib/i18n";
 
 export type ExecutionStep = components["schemas"]["ExecutionStep"];
 
@@ -27,6 +28,23 @@ export interface WorkflowStepView {
   definition: WorkflowStepDefinition;
   /** The same step in the most recent run, when it ran at all. */
   lastRun: ExecutionStep | null;
+}
+
+const STEP_KIND_KEYS: Record<string, TranslationKey> = {
+  request: "workflow.kind.request",
+  transform: "workflow.kind.transform",
+  call: "workflow.kind.call",
+  wait: "workflow.kind.wait",
+  wait_for_event: "workflow.kind.waitForEvent",
+  branch: "workflow.kind.branch",
+  parallel: "workflow.kind.parallel",
+  loop: "workflow.kind.loop",
+  tool: "workflow.kind.tool",
+};
+
+/** Names an engine step kind for people; an unknown enum never leaks into UI. */
+export function workflowStepKindKey(kind: string): TranslationKey {
+  return STEP_KIND_KEYS[kind] ?? "workflow.stepType";
 }
 
 function text(value: unknown): string | null {
