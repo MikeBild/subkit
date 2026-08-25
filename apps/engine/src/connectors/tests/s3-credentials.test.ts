@@ -159,11 +159,10 @@ beforeAll(async () => {
       secretKey: minio.secretKey,
       pathStyle: true,
     });
-    try {
-      await bootstrap.makeBucket(BUCKET);
-    } catch {
-      // bucket may already exist
-    }
+    // The bucket name is unique for this run, so creation must succeed. Hiding
+    // an arbitrary MinIO error here only moves the failure into the signing
+    // assertions as a misleading `NoSuchBucket` response.
+    await bootstrap.makeBucket(BUCKET);
   }
 }, 60_000);
 
