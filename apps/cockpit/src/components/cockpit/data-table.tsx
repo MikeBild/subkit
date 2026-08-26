@@ -159,7 +159,12 @@ export function DataTable<TData extends RowData>({
   const emptyCopy = hasActiveFilters ? emptyState.filtered : emptyState.zero;
 
   const stateBlock = pending ? null : error ? (
-    <div className="grid justify-items-center gap-2 py-10 text-center" role="alert">
+    <div
+      className="grid justify-items-center gap-2 py-10 text-center"
+      role="alert"
+      data-family-slot="data-state"
+      data-family-state="error"
+    >
       <p className="text-sm font-medium text-destructive">{error.title}</p>
       <p className="max-w-md text-sm text-muted-foreground">{error.description}</p>
       <Button variant="outline" size="sm" data-testid="data-table-retry" onClick={error.onRetry}>
@@ -170,6 +175,8 @@ export function DataTable<TData extends RowData>({
     <div
       className="grid justify-items-center gap-2 py-10 text-center"
       data-testid="data-table-empty"
+      data-family-slot="data-state"
+      data-family-state="empty"
     >
       <p className="text-sm font-medium">{emptyCopy.title}</p>
       <p className="max-w-md text-sm text-muted-foreground">{emptyCopy.description}</p>
@@ -194,6 +201,8 @@ export function DataTable<TData extends RowData>({
       data-testid="data-table"
       data-family-slot="list-surface"
       data-family-list-kind="table"
+      data-family-state={pending ? "loading" : error ? "error" : empty ? "empty" : "ready"}
+      aria-busy={pending ? true : undefined}
     >
       <div
         className="flex flex-wrap items-center gap-2 border-b px-3 py-2"
@@ -287,7 +296,11 @@ export function DataTable<TData extends RowData>({
               </TableRow>
             ))}
           </TableHeader>
-          <TableBody>
+          <TableBody
+            data-family-slot={pending ? "data-state" : undefined}
+            data-family-state={pending ? "loading" : undefined}
+            aria-busy={pending ? true : undefined}
+          >
             {pending ? (
               Array.from({ length: SKELETON_ROWS }, (_, rowIndex) => (
                 <TableRow key={rowIndex} data-testid={`data-table-skeleton-row-${rowIndex}`}>
@@ -354,7 +367,13 @@ export function DataTable<TData extends RowData>({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto md:hidden" data-testid="data-table-mobile">
         {pending ? (
-          <div className="grid gap-3 p-4" role="status">
+          <div
+            className="grid gap-3 p-4"
+            role="status"
+            data-family-slot="data-state"
+            data-family-state="loading"
+            aria-busy="true"
+          >
             {Array.from({ length: 4 }, (_, index) => (
               <Skeleton key={index} className="h-16 w-full" />
             ))}

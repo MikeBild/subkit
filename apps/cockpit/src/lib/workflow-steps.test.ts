@@ -41,6 +41,19 @@ describe("step definition", () => {
       "/orders",
     );
   });
+
+  test("keeps UUID-shaped references out of a step's visible configuration", () => {
+    expect(
+      readStepDefinition(
+        {
+          id: "load",
+          kind: "request",
+          path: "/v1/databases/457df8bc-2fe7-4a44-8dba-0acfa31821c5",
+        },
+        0,
+      ).detail,
+    ).toBe("/v1/databases/Referenz");
+  });
 });
 
 describe("joining a definition with its last run", () => {

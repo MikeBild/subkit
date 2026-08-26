@@ -627,7 +627,7 @@ function json(route, body, status = 200) {
  * page, and the banner rule is only proven when the fixture can also produce
  * the state in which the banner must be absent.
  */
-function apiMock(gateOpen) {
+function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
   return async function handle(route) {
     const request = route.request();
     const url = new URL(request.url());
@@ -642,7 +642,20 @@ function apiMock(gateOpen) {
     // "nothing is open" through the same endpoints the busy one uses.
     if (path === "/v1/patch-candidates") {
       const items = gateOpen && status === "proposed" ? PATCH_ROWS : [];
-      return json(route, { items, total: gateOpen ? PATCH_CANDIDATES.length : 0 });
+      const presented = unknownDecisionKind
+        ? items.map((candidate, index) =>
+            index === 0
+              ? {
+                  ...candidate,
+                  diff: {
+                    ...candidate.diff,
+                    proposal: { ...candidate.diff.proposal, kind: "future_operator_choice" },
+                  },
+                }
+              : candidate,
+          )
+        : items;
+      return json(route, { items: presented, total: gateOpen ? PATCH_CANDIDATES.length : 0 });
     }
     if (path === "/v1/skill-candidates") {
       const items = gateOpen && status === "proposed" ? SKILL_CANDIDATES : [];
@@ -2755,6 +2768,106 @@ async function openPage(context, route) {
   return page;
 }
 
+/**
+ * §4 / family S1–S3 — prove the three collection states in the shipped bundle.
+ * Production data cannot safely be emptied or failed for a screenshot, so the
+ * mandatory browser gate controls one read locally and checks rendered DOM.
+ */
+async function checkCollectionDataStates(browser) {
+  for (const scenario of ["loading", "empty", "error"]) {
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 1000 },
+      locale: "de-DE",
+    });
+    await context.addInitScript(() => {
+      localStorage.setItem("sk-cockpit-locale", "de");
+      localStorage.setItem("sk-cockpit-theme", "light");
+    });
+    await context.route("**/v1/**", apiMock(true));
+
+    let releaseRead = () => {};
+    const heldRead = new Promise((resolve) => {
+      releaseRead = resolve;
+    });
+    await context.route("**/v1/workflows*", async (route) => {
+      const url = new URL(route.request().url());
+      if (route.request().method() !== "GET" || url.pathname !== "/v1/workflows")
+        return route.fallback();
+      if (scenario === "loading") await heldRead;
+      if (scenario === "error")
+        return json(
+          route,
+          { code: "fixture_unavailable", message: "temporarily unavailable" },
+          503,
+        );
+      return json(route, { items: [], total: 0 });
+    });
+
+    const page = await context.newPage();
+    try {
+      await stand.visit(page, "workflows", { waitUntil: "domcontentloaded" });
+      const state = page.locator(
+        `[data-family-slot="data-state"][data-family-state="${scenario}"]`,
+      );
+      await state.first().waitFor({ state: "visible", timeout: 7_000 });
+      if (scenario === "loading" && (await state.locator('[aria-busy="true"]').count()) === 0) {
+        const selfBusy = await state.first().getAttribute("aria-busy");
+        if (selfBusy !== "true")
+          breach("§4 collection state", "/workflows loading", "no aria-busy loading surface");
+      }
+      if (scenario === "empty" && (await state.first().innerText()).trim().length < 12)
+        breach("§4 collection state", "/workflows empty", "empty state has no explanatory copy");
+      if (
+        scenario === "error" &&
+        (await state.first().locator('[data-testid="data-table-retry"]').count()) !== 1
+      )
+        breach("§4 collection state", "/workflows error", "error state has no single retry action");
+    } catch (error) {
+      breach(
+        "§4 collection state",
+        `/workflows ${scenario}`,
+        `state not measurable: ${error.message}`,
+      );
+    } finally {
+      releaseRead();
+      await page.close();
+      await context.close();
+    }
+  }
+}
+
+/** §8.8 — a newer engine enum may arrive before this cockpit is replaced. */
+async function checkUnknownDecisionKind(browser) {
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    locale: "de-DE",
+  });
+  await context.addInitScript(() => {
+    localStorage.setItem("sk-cockpit-locale", "de");
+    localStorage.setItem("sk-cockpit-theme", "light");
+  });
+  await context.route("**/v1/**", apiMock(true, { unknownDecisionKind: true }));
+  const page = await openPage(context, "decisions");
+  try {
+    const queue = page.locator('[data-testid="decisions-queue"]');
+    if (
+      (await queue.count()) !== 1 ||
+      (await page.locator('[data-testid^="decision-"]').count()) === 0
+    )
+      breach(
+        "§4, §8.8",
+        "/decisions unknown kind",
+        "the queue dropped the future kind or unmounted",
+      );
+    const text = await page.locator('[data-testid="decisions-page"]').innerText();
+    if (text.includes("future_operator_choice"))
+      breach("§5, §8.8", "/decisions unknown kind", "raw future_operator_choice enum is visible");
+  } finally {
+    await page.close();
+    await context.close();
+  }
+}
+
 // The one rule that needs neither a browser nor a server, measured before
 // either is started: a preview that never comes up must not also cost the
 // version assert.
@@ -2886,6 +2999,9 @@ try {
   }
   routenDurchlaufen = true;
   await context.close();
+
+  await checkCollectionDataStates(browser);
+  await checkUnknownDecisionKind(browser);
 
   // Second fixture variant: nothing open, so the banner must be gone.
   const calm = await browser.newContext({
