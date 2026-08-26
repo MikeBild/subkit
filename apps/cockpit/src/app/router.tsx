@@ -94,6 +94,7 @@ const routeTree = rootRoute.addChildren([...chatRoutes, ...dedicatedRoutes, ...c
 export const router = createRouter({
   routeTree,
   basepath: "/cockpit",
+  trailingSlash: "never",
   defaultErrorComponent: ErrorScreen,
 });
 
