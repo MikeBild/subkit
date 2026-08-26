@@ -49,7 +49,6 @@
 ## Developers
 
 - [Developers](developers/README.md): Run sk on your own infrastructure and change it safely.
-- [Detailed Agent Navigation](developers/agent-navigation.md): This on-demand reference preserves the former root agent guide.
 - [Coding-Agent Integration (Claude Code & Codex)](developers/coding-agent-integration.md): sk can act as the central knowledge and skill source for your coding agents.
 - [Evidence process — verifying a behavioral / LLM-path change](developers/evidence-process.md): Changes to LLM-driven paths ship proven rather than guessed.
 - [Input Surfaces](developers/input-surfaces.md): Meet your team where they already work—with one governed engine and one common MCP auth contract.
