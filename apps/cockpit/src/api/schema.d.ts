@@ -13698,8 +13698,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Redirect to the canonical Cockpit shell path */
-        get: operations["redirectCockpit"];
+        /** Serve the canonical Cockpit application shell */
+        get: operations["getCanonicalCockpitShell"];
         put?: never;
         post?: never;
         delete?: never;
@@ -18624,7 +18624,7 @@ export interface operations {
             };
         };
     };
-    redirectCockpit: {
+    getCanonicalCockpitShell: {
         parameters: {
             query?: never;
             header?: never;
@@ -18633,12 +18633,30 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Permanent redirect to /cockpit/ */
-            308: {
+            /** @description Cockpit shell or static asset */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Asset unchanged */
+            304: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Cockpit bundle was not included in this deployment */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
             };
         };
     };

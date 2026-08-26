@@ -26,13 +26,6 @@ const MIME: Record<string, string> = {
 };
 
 const CockpitPathSchema = z.object({ path: z.string().min(1) });
-const cockpitRedirectRoute = createRoute({
-  method: "get",
-  path: "/cockpit",
-  operationId: "redirectCockpit",
-  summary: "Redirect to the canonical Cockpit shell path",
-  responses: { 308: { description: "Permanent redirect to /cockpit/" } },
-});
 const cockpitAssetResponses = {
   200: {
     description: "Cockpit shell or static asset",
@@ -44,6 +37,13 @@ const cockpitAssetResponses = {
     content: { "text/plain": { schema: z.string() } },
   },
 } as const;
+const cockpitCanonicalShellRoute = createRoute({
+  method: "get",
+  path: "/cockpit",
+  operationId: "getCanonicalCockpitShell",
+  summary: "Serve the canonical Cockpit application shell",
+  responses: cockpitAssetResponses,
+});
 const cockpitShellRoute = createRoute({
   method: "get",
   path: "/cockpit/",
@@ -170,7 +170,7 @@ export function registerCockpitRoutes(app: OpenAPIHono<AppEnv>): void {
     return new Response(c.req.method === "HEAD" ? null : asset.body, { status: 200, headers });
   };
 
-  app.openapi(cockpitRedirectRoute, (c) => c.redirect(`${COCKPIT_PREFIX}/`, 308));
+  app.openapi(cockpitCanonicalShellRoute, serve);
   app.openapi(cockpitShellRoute, serve);
   app.openapi(cockpitShellHeadRoute, serve);
   app.openapi(cockpitAssetRoute, serve);
