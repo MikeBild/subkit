@@ -60,11 +60,14 @@ export function readStepDefinition(step: unknown, index: number): WorkflowStepDe
     connector: text(raw.connector) ?? text(raw.connector_slug),
     connectorId: text(raw.connector_id),
     detail:
-      text(raw.expression) ??
-      text(raw.path) ??
-      text(raw.url) ??
-      text(raw.data_selector) ??
-      text(raw.query),
+      humaniseTechnicalValues(
+        text(raw.expression) ??
+          text(raw.path) ??
+          text(raw.url) ??
+          text(raw.data_selector) ??
+          text(raw.query) ??
+          "",
+      ) || null,
     raw,
   };
 }

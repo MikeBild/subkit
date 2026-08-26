@@ -164,7 +164,10 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
     overdue: hasOverdue(items, now),
     isPending: query.isPending,
     isFetching: query.isFetching,
-    failed: Boolean(query.error),
+    // React Query keeps retrying before `error` becomes final. Showing the
+    // failure during that interval prevents a blank loading loop and gives the
+    // operator an immediate, explicit recovery action.
+    failed: Boolean(query.error ?? query.failureReason),
     sources,
     refetch: () => void query.refetch(),
   };

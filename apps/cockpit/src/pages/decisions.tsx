@@ -216,13 +216,25 @@ export function DecisionsPage() {
           ))}
         </div>
 
-        {queue.isPending ? (
-          <div className="grid gap-2" role="status" aria-label={t("common.loading")}>
+        {queue.isPending && !queue.failed ? (
+          <div
+            className="grid gap-2"
+            role="status"
+            aria-label={t("common.loading")}
+            aria-busy="true"
+            data-family-slot="data-state"
+            data-family-state="loading"
+          >
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
           </div>
         ) : queue.failed ? (
-          <Alert variant="destructive" data-testid="decisions-error">
+          <Alert
+            variant="destructive"
+            data-testid="decisions-error"
+            data-family-slot="data-state"
+            data-family-state="error"
+          >
             <AlertTitle>{t("resource.loadFailed", { resource: title })}</AlertTitle>
             <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
             <Button
@@ -240,6 +252,8 @@ export function DecisionsPage() {
             <div
               className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
               data-testid="decisions-empty-filtered"
+              data-family-slot="data-state"
+              data-family-state="empty"
             >
               <p className="text-sm font-medium">{t("decisions.emptyFiltered")}</p>
               <Button
@@ -256,6 +270,8 @@ export function DecisionsPage() {
             <div
               className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
               data-testid="decisions-empty"
+              data-family-slot="data-state"
+              data-family-state="empty"
             >
               <CircleCheck
                 aria-hidden="true"
