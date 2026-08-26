@@ -86,7 +86,7 @@ const bootstrapRoute = createRoute({
 });
 
 function safeCockpitReturnPath(raw: string | undefined): string | null {
-  const value = raw ?? "/cockpit/";
+  const value = raw ?? "/cockpit";
   if ((value !== "/cockpit" && !value.startsWith("/cockpit/")) || value.startsWith("//")) {
     return null;
   }
