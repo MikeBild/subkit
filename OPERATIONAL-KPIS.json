@@ -1,0 +1,70 @@
+{
+  "contractVersion": "2.0",
+  "schemaVersion": "operational-overview.v1",
+  "common": ["decisions.blocked", "decisions.overdue", "decisions.other", "operations.health", "data.freshness"],
+  "products": {
+    "workkit": [
+      "work.active_assistants",
+      "work.running_missions",
+      "runs.success_ratio",
+      "runs.failed_24h",
+      "budget.utilization_ratio",
+      "budget.available_eur",
+      "connections.healthy_ratio",
+      "connections.coverage_ratio"
+    ],
+    "subkit": [
+      "automation.active_workflows",
+      "executions.total_24h",
+      "executions.success_ratio",
+      "executions.incidents_24h",
+      "executions.trial_failures_24h",
+      "connectors.healthy_ratio",
+      "repairs.applied_ratio",
+      "skills.reusable"
+    ],
+    "wikikit": [
+      "knowledge.wikis",
+      "knowledge.concepts",
+      "knowledge.claims",
+      "knowledge.source_coverage_ratio",
+      "knowledge.citation_coverage_ratio",
+      "knowledge.contradictions",
+      "knowledge.age_seconds",
+      "ingest.success_ratio",
+      "ingest.failed_24h"
+    ],
+    "contentkit": [
+      "publishing.drafts",
+      "publishing.scheduled",
+      "publishing.published",
+      "release.health",
+      "build.failed_24h",
+      "delivery.success_ratio",
+      "usage.requests_24h",
+      "production.age_seconds"
+    ],
+    "codekit": [
+      "engineering.projects",
+      "engineering.active_tasks",
+      "tasks.throughput_24h",
+      "tasks.success_ratio",
+      "tasks.duration_seconds",
+      "budget.token_utilization_ratio",
+      "budget.exhausted_tasks",
+      "branches.merged_30d",
+      "branches.discarded_30d"
+    ],
+    "watchkit": [
+      "assurance.services",
+      "assurance.measurement_coverage_ratio",
+      "slo.availability_ratio",
+      "slo.error_budget_ratio",
+      "incidents.open",
+      "incidents.mttr_seconds",
+      "quality.contract_ratio",
+      "quality.documentation_ratio",
+      "quality.security_ratio"
+    ]
+  }
+}

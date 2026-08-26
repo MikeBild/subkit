@@ -30,7 +30,7 @@ export function ErrorScreen({ error, reset }: ErrorComponentProps) {
             {t("session.retry")}
           </Button>
           <Button variant="outline" size="sm" asChild>
-            <a href="/cockpit/overview" data-testid="error-home">
+            <a href="/cockpit" data-testid="error-home">
               {t("error.backToOverview")}
             </a>
           </Button>

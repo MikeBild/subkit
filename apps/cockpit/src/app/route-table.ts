@@ -15,7 +15,7 @@
  * what the router reads.
  */
 export const PAGE_ROUTES = [
-  "/overview",
+  "/",
   "/decisions",
   "/inbox",
   "/runs",
@@ -37,10 +37,7 @@ export type PageRoute = (typeof PAGE_ROUTES)[number];
  * A redirect is a route a person can type or bookmark. `/` picks its target
  * from the session's permissions, which is why it has none written down here.
  */
-export const REDIRECT_ROUTES: Readonly<Record<string, string | null>> = {
-  "/": null,
-  "/approvals": "/decisions",
-};
+export const REDIRECT_ROUTES: Readonly<Record<string, string | null>> = {};
 
 /** The chat, its new-conversation entry, and one conversation by id. */
 export const CHAT_ROUTES = ["/chat", "/chat/new", "/chat/$conversationId"] as const;

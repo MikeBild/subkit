@@ -63,9 +63,8 @@ describe("journey: verification matrix (docs/33)", () => {
     expect(health.status).toBe("ok");
     expect(health.db_connected).toBe(true);
 
-    // `/metrics` carries no product-internal gate; the bearer token is
-    // sent because the matrix step models a real operator scrape, not
-    // because the route needs it.
+    // `/metrics` requires an authenticated principal. The seeded admin
+    // key is accepted here; production scraping uses metrics:read only.
     const metricsRes = await fetch(`${ctx.baseUrl}/metrics`, {
       headers: { authorization: `Bearer ${ctx.apiKey}` },
     });

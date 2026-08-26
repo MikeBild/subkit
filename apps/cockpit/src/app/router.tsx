@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter, Navigate } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import {
   AccessPage,
   ApiAccessPage,
@@ -23,15 +23,6 @@ import { AppShell } from "./shell";
 
 const rootRoute = createRootRoute({ component: AppShell });
 
-// Session permissions live behind React context, so the landing choice is a
-// rendered client-side redirect instead of a beforeLoad decision.
-function IndexRedirect() {
-  const session = useSession();
-  return (
-    <Navigate to={session.permissions.includes("stats:read") ? "/overview" : "/chat"} replace />
-  );
-}
-
 // One component behind all three chat paths: a conversation is chosen from the
 // path, not from a different page. The paths are read off the table by
 // position rather than mapped over it — a mapped tuple loses its literal types,
@@ -44,17 +35,6 @@ const chatRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: CONVERSATION_PATH, component: ChatPage }),
 ];
 
-// The redirects. `/` picks its target from the session's permissions; the other
-// names it in the table.
-const redirectRoutes = [
-  createRoute({ getParentRoute: () => rootRoute, path: "/", component: IndexRedirect }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/approvals",
-    component: () => <Navigate to="/decisions" replace />,
-  }),
-];
-
 // Every page is its own module (CUI-PAGE-2). There is no generic resource
 // renderer any more: a list that cannot say which columns it has cannot say
 // which relations matter either.
@@ -63,7 +43,7 @@ const redirectRoutes = [
 // here — invisible to the navigation and to the conformity sweep — cannot be
 // added: it has to be in the table first, and then it is swept.
 const PAGE_COMPONENTS: Record<PageRoute, () => React.ReactElement> = {
-  "/overview": OverviewPage,
+  "/": OverviewPage,
   "/decisions": DecisionsPage,
   "/inbox": InboxPage,
   "/runs": RunsPage,
@@ -107,12 +87,7 @@ const catalogRoutes = CATALOG_RESOURCES.flatMap((resource) => [
   }),
 ]);
 
-const routeTree = rootRoute.addChildren([
-  ...redirectRoutes,
-  ...chatRoutes,
-  ...dedicatedRoutes,
-  ...catalogRoutes,
-]);
+const routeTree = rootRoute.addChildren([...chatRoutes, ...dedicatedRoutes, ...catalogRoutes]);
 
 // One catch-all for every route: a render fault keeps the shell, the language
 // and a way out, instead of the router's own English default.
