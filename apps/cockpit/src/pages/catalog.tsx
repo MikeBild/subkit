@@ -761,9 +761,9 @@ export function CatalogPage({
         onRefresh={() => void query.refetch()}
         refreshing={query.isFetching}
         refreshLabel={t("common.refresh")}
-        pending={query.isPending}
+        pending={query.isPending && !query.failureReason}
         error={
-          query.error
+          query.error || query.failureReason
             ? {
                 title: t("resource.loadFailed", { resource: title }),
                 description: t("resource.loadFailedDescription"),

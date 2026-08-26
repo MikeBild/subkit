@@ -139,7 +139,9 @@ export function FamilyState({
 }: FamilyStateProps) {
   return (
     <div
+      data-family-slot="data-state"
       data-family-state={state}
+      aria-busy={state === "loading" ? true : undefined}
       className={classes(
         "grid min-h-56 place-items-center rounded-lg border border-dashed bg-card px-6 py-10 text-center",
         state === "error" && "border-destructive/50",
