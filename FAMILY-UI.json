@@ -1,15 +1,49 @@
 {
-  "familyVersion": "1.8",
-  "scope": [
-    "shell",
-    "overview",
-    "decisions",
-    "collection",
-    "detail",
-    "form",
-    "installation",
-    "audit"
-  ],
+  "familyVersion": "2.0",
+  "apiSchemaVersion": "operational-overview.v1",
+  "scope": ["shell", "overview", "decisions", "collection", "detail", "form", "installation", "audit"],
+  "routes": {
+    "overview": "/cockpit",
+    "decisions": "/cockpit/decisions",
+    "runs": "/cockpit/runs",
+    "settings": "/cockpit/settings",
+    "system": "/cockpit/system",
+    "audit": "/cockpit/audit",
+    "notifications": "/cockpit/notifications",
+    "credentials": "/cockpit/credentials"
+  },
+  "navigation": {
+    "firstItems": ["overview", "decisions"],
+    "groups": ["work", "operations", "installation"],
+    "labels": {
+      "de": {
+        "overview": "Übersicht",
+        "decisions": "Entscheidungen",
+        "work": "Arbeit",
+        "operations": "Betrieb",
+        "installation": "Installation",
+        "runs": "Ausführungen",
+        "settings": "Einstellungen",
+        "system": "System",
+        "audit": "Audit",
+        "notifications": "Benachrichtigungen",
+        "credentials": "Zugangsdaten"
+      },
+      "en": {
+        "overview": "Overview",
+        "decisions": "Decisions",
+        "work": "Work",
+        "operations": "Operations",
+        "installation": "Installation",
+        "runs": "Runs",
+        "settings": "Settings",
+        "system": "System",
+        "audit": "Audit",
+        "notifications": "Notifications",
+        "credentials": "Credentials"
+      }
+    }
+  },
   "geometry": {
     "sidebarExpandedPx": 256,
     "sidebarCollapsedPx": 48,
@@ -17,7 +51,10 @@
     "gutterDesktopPx": 24,
     "gutterMobilePx": 16,
     "readingColumnPx": 780,
-    "workingColumnPx": 1120
+    "workingColumnPx": 1120,
+    "cardRadiusPx": 16,
+    "cardGapPx": 16,
+    "sectionGapPx": 24
   },
   "typography": {
     "pageTitle": "24px/32px 650",
@@ -26,19 +63,80 @@
     "meta": "12px/16px 400"
   },
   "surfaces": {
-    "overview": ["page-header", "incident", "attention", "product-core", "audit-link"],
-    "decisions": ["page-header", "kind-filters", "queue-summary", "queue", "audit-link"],
+    "overview": ["page-header", "operational-core", "product-metrics", "audit-meta"],
+    "decisions": ["page-header", "kind-filters", "queue-summary", "queue", "audit-meta"],
     "collection": ["page-header", "filters", "content", "pagination"],
-    "detail": ["breadcrumbs", "page-header", "facts", "content", "evidence", "audit-link"],
+    "detail": ["breadcrumbs", "page-header", "facts", "content", "evidence", "audit-meta"],
     "form": ["page-header", "fields", "actions"],
     "installation": ["page-header", "content"],
     "audit": ["page-header", "filters", "content", "pagination"]
   },
-  "states": ["loading", "empty", "ready", "error", "forbidden"],
+  "overview": {
+    "titleId": "overview",
+    "coreOrder": ["decisions.blocked", "decisions.overdue", "decisions.other", "operations.health", "data.freshness"],
+    "decisionBuckets": {
+      "exclusiveOrder": ["blocked", "overdue", "other"],
+      "fallbackDeadlineHours": 72,
+      "drilldowns": {
+        "blocked": "/cockpit/decisions?bucket=blocked",
+        "overdue": "/cockpit/decisions?bucket=overdue",
+        "other": "/cockpit/decisions?bucket=other"
+      }
+    },
+    "health": {
+      "states": ["healthy", "limited", "critical", "unknown"],
+      "thresholds": { "healthyMin": 90, "limitedMin": 70, "criticalMin": 0 },
+      "missingRequiredMeansUnknown": true,
+      "redistributeMissingOptionalWeight": false
+    },
+    "refresh": {
+      "recommendedSecondsMin": 10,
+      "recommendedSecondsMax": 300,
+      "pauseWhenDocumentHidden": true,
+      "retainPreviousValues": true
+    },
+    "contentLimits": {
+      "headerPurposeSentences": 1,
+      "headerPurposeCharacters": 120,
+      "tooltipSentences": 2,
+      "tooltipCharacters": 240,
+      "sectionDescriptionCharacters": 120,
+      "objectLists": 0,
+      "tables": 0,
+      "feeds": 0,
+      "incidentBanners": 0
+    },
+    "allowedVisualizations": ["kpi", "sparkline", "time-series", "progress", "segmented-distribution"],
+    "maxSegmentCategories": 5,
+    "trendWindows": ["24h", "7d", "30d"]
+  },
+  "states": ["loading", "empty", "ready", "partial", "error", "forbidden", "stale", "unknown", "contract-mismatch"],
   "domContract": {
     "surface": "data-family-surface",
     "slot": "data-family-slot",
-    "state": "data-family-state"
+    "state": "data-family-state",
+    "kpiId": "data-family-kpi-id",
+    "kpiValueState": "data-family-kpi-value-state",
+    "kpiSeverity": "data-family-kpi-severity",
+    "kpiLink": "data-family-kpi-link",
+    "kpiTooltip": "data-family-kpi-tooltip",
+    "visualization": "data-family-visualization",
+    "contractVersion": "data-family-contract-version"
+  },
+  "integration": {
+    "rest": {
+      "method": "GET",
+      "path": "/v1/operational-overview",
+      "p95MsMax": 500
+    },
+    "mcp": { "tool": "get_operational_overview", "readOnly": true },
+    "metrics": {
+      "path": "/metrics",
+      "scope": "metrics:read",
+      "servicePrincipalPerProduct": true,
+      "authenticatedPrincipalRateLimitExempt": true,
+      "highCardinalityLabelsAllowed": false
+    }
   },
   "decisions": {
     "layout": "single-column",
@@ -50,10 +148,32 @@
   },
   "visualLanguage": {
     "spacingGridPx": 4,
-    "radius": "0.5rem",
+    "radius": "16px",
     "border": "1px",
-    "accent": "product",
+    "shadow": "none",
+    "accent": "family",
+    "semanticColors": {
+      "critical": "red",
+      "urgent": "orange",
+      "healthy": "green",
+      "information": "blue",
+      "unknown": "gray"
+    },
     "motion": "functional-only",
     "focusRing": "2px"
+  },
+  "release": {
+    "mode": "atomic-family",
+    "mismatchToleranceMinutes": 15,
+    "mismatchMutationPolicy": "disabled",
+    "rollback": "whole-family"
+  },
+  "screenshots": {
+    "viewports": ["desktop", "mobile"],
+    "themes": ["light", "dark"],
+    "consecutiveRuns": 2,
+    "products": 6,
+    "overviewImagesPerAcceptedRelease": 48,
+    "updateDashboardAfterEveryAttempt": true
   }
 }

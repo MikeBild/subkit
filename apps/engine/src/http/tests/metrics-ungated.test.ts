@@ -1,9 +1,6 @@
-// /metrics carries no product-internal gate: every principal — including
-// none at all — gets the Prometheus document. This test pins that, and
-// pins the absence of the `scope_missing:metrics:read` denial the route
-// used to write, so the gate cannot come back unnoticed. It says nothing
-// about what a deployment puts in front of the port, which is the half
-// this repo cannot verify.
+// /metrics is a product-internal surface. It requires the dedicated
+// metrics:read scope so smoke tests and Prometheus can use a high-volume
+// principal without weakening the rest of the authenticated API.
 //
 // The test spins up its own http server so we can seed the extra api
 // keys directly and still reach the same route surface as a real
@@ -30,11 +27,10 @@ function newKeyPlaintext(): { plaintext: string; prefix: string; hash: string } 
 }
 
 beforeAll(async () => {
-  srv = await createHttpTestServer("metrics-ungated");
+  srv = await createHttpTestServer("metrics-scoped");
 
-  // A system account tagged as the metrics scraper, still carrying the
-  // seeded `metrics:read` scope. The route no longer reads it; the key
-  // shape is kept so a real scraper's request is what we exercise.
+  // A system account tagged as the metrics scraper with the sole scope
+  // required by the endpoint.
   const [scraperAcct] = await srv.db
     .insert(systemAccounts)
     .values({
@@ -53,8 +49,7 @@ beforeAll(async () => {
   });
   scraperKey = skey.plaintext;
 
-  // A regular (non-admin) user whose api key carries a scope unrelated
-  // to metrics — the principal the old gate turned away with 403.
+  // A regular (non-admin) user whose api key carries an unrelated scope.
   const [nonAdmin] = await srv.db
     .insert(users)
     .values({
@@ -78,22 +73,19 @@ afterAll(async () => {
   await srv.cleanup();
 });
 
-describe("/metrics has no product-internal gate", () => {
-  test("unauthenticated → 200 + prom text", async () => {
+describe("/metrics requires metrics:read", () => {
+  test("unauthenticated → 401", async () => {
     const res = await fetch(`${srv.baseUrl}/metrics`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body.startsWith("# HELP")).toBe(true);
+    expect(res.status).toBe(401);
   });
 
-  test("auth without metrics:read → 200, no scope denial audited", async () => {
+  test("auth without metrics:read → 403 and scope denial audited", async () => {
     const res = await fetch(`${srv.baseUrl}/metrics`, {
       headers: { authorization: `Bearer ${scopedUserKey}` },
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
 
-    // The old denial write was fire-and-forget, so give it the same
-    // window the gate test allowed before asserting it never lands.
+    // The audit write is fire-and-forget.
     for (let i = 0; i < 10; i += 1) {
       await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: matches the fire-and-forget audit window
     }
@@ -101,7 +93,7 @@ describe("/metrics has no product-internal gate", () => {
       .select()
       .from(auditLog)
       .where(and(eq(auditLog.tenant_id, srv.tenantId), eq(auditLog.action, "policy.denied")));
-    expect(rows.some((r) => r.reason === "scope_missing:metrics:read")).toBe(false);
+    expect(rows.some((r) => r.reason === "scope_missing:metrics:read")).toBe(true);
   });
 
   test("metrics-scraper key → 200 + prom text", async () => {

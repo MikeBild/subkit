@@ -47,12 +47,12 @@ export const NAVIGATION: readonly NavigationGroup[] = [
     items: [
       {
         labelKey: "nav.overview",
-        path: "/overview",
+        path: "/",
         permission: "stats:read",
         icon: LayoutDashboard,
         // The recent-runs block is gated separately on `execution:read`, which
         // `stats:read` does not imply.
-        api: ["GET /v1/operator/health-digest", "GET /v1/executions"],
+        api: ["GET /v1/operational-overview"],
       },
       {
         labelKey: "nav.decisions",
@@ -232,5 +232,9 @@ export function visibleNavigation(permissions: readonly string[]): NavigationGro
 }
 
 export function navigationItem(pathname: string): NavigationItem | undefined {
-  return NAVIGATION.flatMap((group) => group.items).find((item) => pathname.startsWith(item.path));
+  return NAVIGATION.flatMap((group) => group.items).find((item) =>
+    item.path === "/"
+      ? pathname === "/"
+      : pathname === item.path || pathname.startsWith(`${item.path}/`),
+  );
 }

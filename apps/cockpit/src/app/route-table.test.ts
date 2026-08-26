@@ -64,7 +64,7 @@ describe("cockpit route table", () => {
     // Each of these is reachable by typing, bookmarking or being sent a link,
     // and none of them appears in NAVIGATION.
     const linked = new Set(NAVIGATION.flatMap((group) => group.items).map((item) => item.path));
-    for (const path of ["/", "/approvals", "/chat/new", "/chat/$conversationId"]) {
+    for (const path of ["/chat/new", "/chat/$conversationId"]) {
       expect(ALL_ROUTE_PATHS).toContain(path);
       expect(linked.has(path)).toBe(false);
     }

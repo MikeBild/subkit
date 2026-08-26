@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "6.22.21",
+    "version": "6.22.22",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -13879,6 +13879,1083 @@
           "metric",
           "value",
           "threshold"
+        ]
+      },
+      "OperationalOverviewV1": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "enum": [
+              "operational-overview.v1"
+            ]
+          },
+          "contract_version": {
+            "type": "string",
+            "enum": [
+              "2.0"
+            ]
+          },
+          "product": {
+            "type": "string",
+            "enum": [
+              "subkit"
+            ]
+          },
+          "generated_at": {
+            "type": "string"
+          },
+          "recommended_refresh_seconds": {
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 300
+          },
+          "snapshot_state": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "partial",
+              "forbidden",
+              "contract-mismatch"
+            ]
+          },
+          "core": {
+            "type": "object",
+            "properties": {
+              "blocked": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "definition": {
+                    "type": "string"
+                  },
+                  "relevance": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "count",
+                      "ratio",
+                      "duration",
+                      "score",
+                      "currency",
+                      "state"
+                    ]
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "value_state": {
+                    "type": "string",
+                    "enum": [
+                      "observed",
+                      "zero",
+                      "missing",
+                      "stale",
+                      "forbidden"
+                    ]
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "count",
+                      "ratio",
+                      "seconds",
+                      "bytes",
+                      "eur",
+                      "state"
+                    ]
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "critical",
+                      "urgent",
+                      "healthy",
+                      "information",
+                      "unknown"
+                    ]
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "source_updated_at": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "expected_interval_seconds": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "stale_after_seconds": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "drilldown": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "label_id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "label_id"
+                    ]
+                  },
+                  "prometheus": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "gauge",
+                          "counter"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "type"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "definition",
+                  "relevance",
+                  "kind",
+                  "value",
+                  "value_state",
+                  "unit",
+                  "severity",
+                  "required",
+                  "source_updated_at",
+                  "expected_interval_seconds",
+                  "stale_after_seconds",
+                  "drilldown",
+                  "prometheus"
+                ]
+              },
+              "overdue": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "definition": {
+                    "type": "string"
+                  },
+                  "relevance": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "count",
+                      "ratio",
+                      "duration",
+                      "score",
+                      "currency",
+                      "state"
+                    ]
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "value_state": {
+                    "type": "string",
+                    "enum": [
+                      "observed",
+                      "zero",
+                      "missing",
+                      "stale",
+                      "forbidden"
+                    ]
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "count",
+                      "ratio",
+                      "seconds",
+                      "bytes",
+                      "eur",
+                      "state"
+                    ]
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "critical",
+                      "urgent",
+                      "healthy",
+                      "information",
+                      "unknown"
+                    ]
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "source_updated_at": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "expected_interval_seconds": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "stale_after_seconds": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "drilldown": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "label_id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "label_id"
+                    ]
+                  },
+                  "prometheus": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "gauge",
+                          "counter"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "type"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "definition",
+                  "relevance",
+                  "kind",
+                  "value",
+                  "value_state",
+                  "unit",
+                  "severity",
+                  "required",
+                  "source_updated_at",
+                  "expected_interval_seconds",
+                  "stale_after_seconds",
+                  "drilldown",
+                  "prometheus"
+                ]
+              },
+              "other_decisions": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "definition": {
+                    "type": "string"
+                  },
+                  "relevance": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "count",
+                      "ratio",
+                      "duration",
+                      "score",
+                      "currency",
+                      "state"
+                    ]
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "value_state": {
+                    "type": "string",
+                    "enum": [
+                      "observed",
+                      "zero",
+                      "missing",
+                      "stale",
+                      "forbidden"
+                    ]
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "count",
+                      "ratio",
+                      "seconds",
+                      "bytes",
+                      "eur",
+                      "state"
+                    ]
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "critical",
+                      "urgent",
+                      "healthy",
+                      "information",
+                      "unknown"
+                    ]
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "source_updated_at": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "expected_interval_seconds": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "stale_after_seconds": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "drilldown": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "label_id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "label_id"
+                    ]
+                  },
+                  "prometheus": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "gauge",
+                          "counter"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "type"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "definition",
+                  "relevance",
+                  "kind",
+                  "value",
+                  "value_state",
+                  "unit",
+                  "severity",
+                  "required",
+                  "source_updated_at",
+                  "expected_interval_seconds",
+                  "stale_after_seconds",
+                  "drilldown",
+                  "prometheus"
+                ]
+              },
+              "health": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "definition": {
+                    "type": "string"
+                  },
+                  "relevance": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "count",
+                      "ratio",
+                      "duration",
+                      "score",
+                      "currency",
+                      "state"
+                    ]
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "value_state": {
+                    "type": "string",
+                    "enum": [
+                      "observed",
+                      "zero",
+                      "missing",
+                      "stale",
+                      "forbidden"
+                    ]
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "count",
+                      "ratio",
+                      "seconds",
+                      "bytes",
+                      "eur",
+                      "state"
+                    ]
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "critical",
+                      "urgent",
+                      "healthy",
+                      "information",
+                      "unknown"
+                    ]
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "source_updated_at": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "expected_interval_seconds": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "stale_after_seconds": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "drilldown": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "label_id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "label_id"
+                    ]
+                  },
+                  "prometheus": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "gauge",
+                          "counter"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "type"
+                    ]
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "healthy",
+                      "limited",
+                      "critical",
+                      "unknown"
+                    ]
+                  },
+                  "components": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "raw_value": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "unit": {
+                          "type": "string"
+                        },
+                        "normalized_score": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "weight": {
+                          "type": "number"
+                        },
+                        "contribution": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "freshness": {
+                          "type": "string",
+                          "enum": [
+                            "fresh",
+                            "stale",
+                            "missing",
+                            "forbidden"
+                          ]
+                        },
+                        "required": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "raw_value",
+                        "unit",
+                        "normalized_score",
+                        "weight",
+                        "contribution",
+                        "freshness",
+                        "required"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "definition",
+                  "relevance",
+                  "kind",
+                  "value",
+                  "value_state",
+                  "unit",
+                  "severity",
+                  "required",
+                  "source_updated_at",
+                  "expected_interval_seconds",
+                  "stale_after_seconds",
+                  "drilldown",
+                  "prometheus",
+                  "state",
+                  "components"
+                ]
+              },
+              "data_freshness": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "definition": {
+                    "type": "string"
+                  },
+                  "relevance": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "count",
+                      "ratio",
+                      "duration",
+                      "score",
+                      "currency",
+                      "state"
+                    ]
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "value_state": {
+                    "type": "string",
+                    "enum": [
+                      "observed",
+                      "zero",
+                      "missing",
+                      "stale",
+                      "forbidden"
+                    ]
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "count",
+                      "ratio",
+                      "seconds",
+                      "bytes",
+                      "eur",
+                      "state"
+                    ]
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "critical",
+                      "urgent",
+                      "healthy",
+                      "information",
+                      "unknown"
+                    ]
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "source_updated_at": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "expected_interval_seconds": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "stale_after_seconds": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "drilldown": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "label_id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "label_id"
+                    ]
+                  },
+                  "prometheus": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "gauge",
+                          "counter"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "type"
+                    ]
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "fresh",
+                      "stale",
+                      "missing",
+                      "forbidden"
+                    ]
+                  },
+                  "sources": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "updated_at": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "expected_interval_seconds": {
+                          "type": "integer"
+                        },
+                        "stale_after_seconds": {
+                          "type": "integer"
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "fresh",
+                            "stale",
+                            "missing",
+                            "forbidden"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "updated_at",
+                        "expected_interval_seconds",
+                        "stale_after_seconds",
+                        "state"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "definition",
+                  "relevance",
+                  "kind",
+                  "value",
+                  "value_state",
+                  "unit",
+                  "severity",
+                  "required",
+                  "source_updated_at",
+                  "expected_interval_seconds",
+                  "stale_after_seconds",
+                  "drilldown",
+                  "prometheus",
+                  "state",
+                  "sources"
+                ]
+              }
+            },
+            "required": [
+              "blocked",
+              "overdue",
+              "other_decisions",
+              "health",
+              "data_freshness"
+            ]
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "visualization": {
+                  "type": "string",
+                  "enum": [
+                    "kpi",
+                    "sparkline",
+                    "time-series",
+                    "progress",
+                    "segmented-distribution"
+                  ]
+                },
+                "metrics": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "definition": {
+                        "type": "string"
+                      },
+                      "relevance": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "count",
+                          "ratio",
+                          "duration",
+                          "score",
+                          "currency",
+                          "state"
+                        ]
+                      },
+                      "value": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "value_state": {
+                        "type": "string",
+                        "enum": [
+                          "observed",
+                          "zero",
+                          "missing",
+                          "stale",
+                          "forbidden"
+                        ]
+                      },
+                      "unit": {
+                        "type": "string",
+                        "enum": [
+                          "count",
+                          "ratio",
+                          "seconds",
+                          "bytes",
+                          "eur",
+                          "state"
+                        ]
+                      },
+                      "severity": {
+                        "type": "string",
+                        "enum": [
+                          "critical",
+                          "urgent",
+                          "healthy",
+                          "information",
+                          "unknown"
+                        ]
+                      },
+                      "required": {
+                        "type": "boolean"
+                      },
+                      "source_updated_at": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "expected_interval_seconds": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "stale_after_seconds": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "drilldown": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "label_id": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "path",
+                          "label_id"
+                        ]
+                      },
+                      "prometheus": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "gauge",
+                              "counter"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "type"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "label",
+                      "definition",
+                      "relevance",
+                      "kind",
+                      "value",
+                      "value_state",
+                      "unit",
+                      "severity",
+                      "required",
+                      "source_updated_at",
+                      "expected_interval_seconds",
+                      "stale_after_seconds",
+                      "drilldown",
+                      "prometheus"
+                    ]
+                  }
+                },
+                "drilldown": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "label_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "label_id"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "visualization",
+                "metrics",
+                "drilldown"
+              ]
+            }
+          },
+          "audit": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "enum": [
+                  "/cockpit/audit"
+                ]
+              },
+              "contract_version": {
+                "type": "string",
+                "enum": [
+                  "2.0"
+                ]
+              },
+              "snapshot_generated_at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "contract_version",
+              "snapshot_generated_at"
+            ]
+          }
+        },
+        "required": [
+          "schema_version",
+          "contract_version",
+          "product",
+          "generated_at",
+          "recommended_refresh_seconds",
+          "snapshot_state",
+          "core",
+          "sections",
+          "audit"
         ]
       },
       "SelfHealingScanResponse": {
@@ -29859,6 +30936,32 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OperatorHealthDigest"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/operational-overview": {
+      "get": {
+        "tags": [
+          "operator"
+        ],
+        "summary": "Operational overview",
+        "description": "Role-aware dashboard snapshot shared by Cockpit, MCP and Prometheus.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "operational-overview.v1 snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationalOverviewV1"
                 }
               }
             }

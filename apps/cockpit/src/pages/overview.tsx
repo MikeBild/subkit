@@ -1,359 +1,375 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { CircleCheck, ListChecks, RefreshCw } from "lucide-react";
+import {
+  Activity,
+  Cable,
+  CircleDot,
+  Clock3,
+  Database,
+  Gauge,
+  type LucideIcon,
+  RefreshCw,
+  ShieldAlert,
+  Sparkles,
+  Workflow,
+  XCircle,
+} from "lucide-react";
 import { apiRequest } from "@/api/client";
-import { useSession } from "@/app/session";
-import { canSeeDecisions, useDecisionQueue } from "@/app/use-decisions";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+  FamilyCard,
+  FamilyKpiCard,
+  FamilyKpiGrid,
+  FamilyOperationalMeta,
+  FamilySection,
+} from "@/components/family-ui";
+import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { bannerSubset } from "./decisions-model";
-import type { FailureGroup, HealthDigest } from "./overview-model";
-import { partitionFailures } from "./overview-model";
+
+type ValueState = "observed" | "zero" | "missing" | "stale" | "forbidden";
+type Severity = "critical" | "urgent" | "healthy" | "information" | "unknown";
+interface Metric {
+  id: string;
+  value: number | null;
+  value_state: ValueState;
+  severity: Severity;
+  kind: "count" | "ratio" | "duration" | "score" | "currency" | "state";
+  drilldown: { path: string };
+}
+interface Snapshot {
+  generated_at: string;
+  recommended_refresh_seconds: number;
+  snapshot_state: string;
+  core: {
+    blocked: Metric;
+    overdue: Metric;
+    other_decisions: Metric;
+    health: Metric & { state: "healthy" | "limited" | "critical" | "unknown" };
+    data_freshness: Metric & { state: "fresh" | "stale" | "missing" | "forbidden" };
+  };
+  sections: Array<{
+    id: string;
+    visualization: "kpi" | "sparkline" | "time-series" | "progress" | "segmented-distribution";
+    metrics: Metric[];
+    drilldown: { path: string };
+  }>;
+  audit: { path: "/cockpit/audit"; snapshot_generated_at: string };
+}
+
+const CORE_COPY: Record<
+  string,
+  { label: TranslationKey; tooltip: TranslationKey; link: TranslationKey }
+> = {
+  "decisions.blocked": {
+    label: "operational.core.blocked",
+    tooltip: "operational.core.blocked.tooltip",
+    link: "operational.core.blocked.open",
+  },
+  "decisions.overdue": {
+    label: "operational.core.overdue",
+    tooltip: "operational.core.overdue.tooltip",
+    link: "operational.core.overdue.open",
+  },
+  "decisions.other": {
+    label: "operational.core.other",
+    tooltip: "operational.core.other.tooltip",
+    link: "operational.core.other.open",
+  },
+  "operations.health": {
+    label: "operational.core.health",
+    tooltip: "operational.core.health.tooltip",
+    link: "operational.core.health.open",
+  },
+  "data.freshness": {
+    label: "operational.core.freshness",
+    tooltip: "operational.core.freshness.tooltip",
+    link: "operational.core.freshness.open",
+  },
+};
+const METRIC_COPY: Record<string, { label: TranslationKey; tooltip: TranslationKey }> = {
+  "automation.active_workflows": {
+    label: "operational.metric.activeWorkflows",
+    tooltip: "operational.metric.activeWorkflows.tooltip",
+  },
+  "executions.total_24h": {
+    label: "operational.metric.executionVolume",
+    tooltip: "operational.metric.executionVolume.tooltip",
+  },
+  "executions.success_ratio": {
+    label: "operational.metric.executionSuccess",
+    tooltip: "operational.metric.executionSuccess.tooltip",
+  },
+  "executions.incidents_24h": {
+    label: "operational.metric.productionIncidents",
+    tooltip: "operational.metric.productionIncidents.tooltip",
+  },
+  "executions.trial_failures_24h": {
+    label: "operational.metric.trialFailures",
+    tooltip: "operational.metric.trialFailures.tooltip",
+  },
+  "connectors.healthy_ratio": {
+    label: "operational.metric.connectorHealth",
+    tooltip: "operational.metric.connectorHealth.tooltip",
+  },
+  "repairs.applied_ratio": {
+    label: "operational.metric.repairs",
+    tooltip: "operational.metric.repairs.tooltip",
+  },
+  "skills.reusable": {
+    label: "operational.metric.skills",
+    tooltip: "operational.metric.skills.tooltip",
+  },
+};
+const SECTION_COPY: Record<string, TranslationKey> = {
+  workflows: "operational.section.workflows",
+  reliability: "operational.section.reliability",
+  connections: "operational.section.connections",
+  learning: "operational.section.learning",
+};
+const ICONS: Record<string, LucideIcon> = {
+  "decisions.blocked": ShieldAlert,
+  "decisions.overdue": Clock3,
+  "decisions.other": CircleDot,
+  "operations.health": Activity,
+  "data.freshness": Database,
+  "automation.active_workflows": Workflow,
+  "executions.total_24h": Gauge,
+  "executions.success_ratio": Gauge,
+  "executions.incidents_24h": ShieldAlert,
+  "executions.trial_failures_24h": XCircle,
+  "connectors.healthy_ratio": Cable,
+  "repairs.applied_ratio": Sparkles,
+  "skills.reusable": Sparkles,
+};
+const CORE_ORDER = [
+  "decisions.blocked",
+  "decisions.overdue",
+  "decisions.other",
+  "operations.health",
+  "data.freshness",
+];
+
+function primary(snapshot: Snapshot): string {
+  if (snapshot.core.health.state === "critical") return "operations.health";
+  if ((snapshot.core.blocked.value ?? 0) > 0) return "decisions.blocked";
+  if ((snapshot.core.overdue.value ?? 0) > 0) return "decisions.overdue";
+  if (snapshot.core.data_freshness.state !== "fresh") return "data.freshness";
+  if ((snapshot.core.other_decisions.value ?? 0) > 0) return "decisions.other";
+  return "operations.health";
+}
 
 export function OverviewPage() {
-  const { t, dateTime } = useI18n();
-  const session = useSession();
-  const allowed = session.permissions.includes("stats:read");
-  const canDecide = canSeeDecisions(session.permissions);
-  const title = t("nav.overview");
+  const { t, dateTime, locale } = useI18n();
   const query = useQuery({
-    queryKey: ["overview", "health-digest"],
-    enabled: allowed,
-    queryFn: () => apiRequest<HealthDigest>("/v1/operator/health-digest"),
+    queryKey: ["operational-overview", "v1"],
+    queryFn: () => apiRequest<Snapshot>("/v1/operational-overview"),
+    refetchInterval: (state) => (state.state.data?.recommended_refresh_seconds ?? 30) * 1000,
+    refetchIntervalInBackground: false,
+    placeholderData: (previous) => previous,
   });
-  // The waiting numbers come from the decision queue, never from the digest:
-  // the digest knows only patch candidates, so anything it said about "how many
-  // are waiting" was a third of the answer presented as the whole. The digest
-  // keeps what it does own — failure groups, risks and the all-clear.
-  const queue = useDecisionQueue(session.permissions);
-  const digest = query.data;
-  const { incidents, trials } = partitionFailures(digest?.failure_groups ?? []);
-  const open = queue.open;
-  const banner = open ? bannerSubset(open) : null;
-
-  if (!allowed)
-    return (
-      <main className="p-6" data-testid="resource-permission-denied">
-        <Alert data-testid="resource-permission-alert">
-          <AlertTitle>{t("resource.permission.title")}</AlertTitle>
-          <AlertDescription>{t("resource.permission.description")}</AlertDescription>
-        </Alert>
-      </main>
-    );
-
+  const snapshot = query.data;
+  const core = snapshot
+    ? [
+        snapshot.core.blocked,
+        snapshot.core.overdue,
+        snapshot.core.other_decisions,
+        snapshot.core.health,
+        snapshot.core.data_freshness,
+      ]
+    : [];
   return (
     <PageFrame
       surface="overview"
       testId="overview-page"
-      title={title}
-      description={t("overview.description")}
+      title={t("nav.overview")}
+      description={t("operational.description")}
       scroll="page"
       action={
-        <IconButton
-          variant="outline"
-          label={t("common.refresh")}
-          data-testid="overview-refresh"
-          onClick={() => void query.refetch()}
-        >
-          <RefreshCw className={query.isFetching ? "animate-spin" : undefined} />
-        </IconButton>
-      }
-    >
-      {query.isPending ? (
-        <div
-          className="grid gap-3"
-          data-testid="overview-loading"
-          role="status"
-          aria-label={t("common.loading")}
-        >
-          <Skeleton className="h-40 w-full" />
-          <Skeleton className="h-40 w-full" />
-        </div>
-      ) : query.error || !digest ? (
-        <Alert variant="destructive" data-testid="overview-error">
-          <AlertTitle>{t("resource.loadFailed", { resource: title })}</AlertTitle>
-          <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
-          <Button
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground" data-family-last-update>
+            {snapshot
+              ? t("operational.updated", { value: dateTime(snapshot.generated_at) })
+              : t("operational.updated.pending")}
+          </span>
+          <IconButton
             variant="outline"
-            size="sm"
-            className="mt-3"
-            data-testid="overview-retry"
+            label={t("common.refresh")}
+            data-testid="overview-refresh"
+            data-family-action="refresh"
             onClick={() => void query.refetch()}
           >
-            {t("session.retry")}
-          </Button>
-        </Alert>
-      ) : (
-        <div className="grid gap-6">
-          {open !== null && open.total > 0 && (
-            <Alert variant="destructive" data-testid="overview-incident" data-count={open.total}>
-              {/* Two claims, never one predicate over both: a lapsed position
-                  stopped nothing. Each carries its own share and the base it is
-                  a share of — and the base is the conversations, because both
-                  states belong to a waiting conversation and to nothing else.
-                  Only an elicitation carries a deadline, and only a suspended
-                  agent loop is stopped dead. Stating them as a share of every
-                  open position invited the reader to look for the rest in a
-                  queue that never held them; the decisions page names the same
-                  number on its conversation tile, and the two are asserted
-                  against each other. */}
-              <AlertTitle
-                className="flex flex-wrap items-baseline gap-x-4 gap-y-1"
-                data-testid="incident-decisions-count"
-                data-subset={String(banner?.count ?? open.total)}
-                data-subset-total={String(banner?.total ?? open.total)}
-              >
-                {!banner?.shown && (
-                  <span>{t("overview.incident.openTotal", { count: String(open.total) })}</span>
-                )}
-                {(banner?.blocking ?? 0) > 0 && (
-                  <span data-testid="incident-blocking" data-subset={String(banner!.blocking)}>
-                    {t(
-                      banner!.atLeast
-                        ? "overview.incident.claimAtLeast"
-                        : "overview.incident.claim",
-                      {
-                        label: t("decisions.waiting.blocking"),
-                        count: String(banner!.blocking),
-                        total: String(banner!.total),
-                      },
-                    )}
-                  </span>
-                )}
-                {(banner?.overdue ?? 0) > 0 && (
-                  <span data-testid="incident-overdue" data-subset={String(banner!.overdue)}>
-                    {t(
-                      banner!.atLeast
-                        ? "overview.incident.claimAtLeast"
-                        : "overview.incident.claim",
-                      {
-                        label: t("decisions.waiting.overdue"),
-                        count: String(banner!.overdue),
-                        total: String(banner!.total),
-                      },
-                    )}
-                  </span>
-                )}
-              </AlertTitle>
-              <AlertDescription>{t("overview.incident.description")}</AlertDescription>
-              <Button variant="outline" size="sm" className="mt-3" asChild>
-                <Link to="/decisions" data-testid="overview-incident-open">
-                  {t("overview.incident.open")}
-                </Link>
-              </Button>
-            </Alert>
-          )}
-
-          <div className="grid gap-6" data-testid="overview-kpis">
-            {/* Zone A. This used to render the full candidate list a second
-                time — the same rows as /decisions, not decidable here, and
-                titled from a different field, so the two pages disagreed about
-                what one candidate was called. A count and a link cannot
-                disagree with anything. */}
-            <Card data-testid="overview-waiting" data-family-slot="zone-a">
-              <CardHeader>
-                <CardTitle>{t("overview.waiting.title")}</CardTitle>
-                <CardDescription>{t("overview.waiting.description")}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {open !== null && open.total > 0 ? (
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <span data-testid="zone-a-decisions-count">
-                      <span
-                        className="text-3xl font-semibold tabular-nums"
-                        data-testid="overview-waiting-count"
-                      >
-                        {open.total}
-                      </span>
-                    </span>
-                    <span className="text-sm text-muted-foreground">
-                      {t("overview.waiting.pendingLabel")}
-                    </span>
-                    {open.oldestAgeDays > 0 && (
-                      <span
-                        className="text-sm text-muted-foreground"
-                        data-testid="overview-waiting-oldest"
-                      >
-                        {t("overview.waiting.oldest", {
-                          days: String(open.oldestAgeDays),
-                        })}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <div
-                    className="flex items-center gap-2 text-sm text-muted-foreground"
-                    data-testid="overview-waiting-clear"
-                  >
-                    <CircleCheck aria-hidden="true" className="shrink-0" />
-                    <span>
-                      {t("overview.waiting.none")}{" "}
-                      {t("overview.waiting.checked", {
-                        date: dateTime(digest.generated_at),
-                      })}
-                    </span>
-                  </div>
-                )}
-              </CardContent>
-              {canDecide && open !== null && open.total > 0 && (
-                <CardFooter>
-                  <Button asChild>
-                    <Link to="/decisions" data-testid="overview-open-decisions">
-                      <ListChecks data-icon="inline-start" />
-                      {t("overview.waiting.open")}
-                    </Link>
-                  </Button>
-                </CardFooter>
-              )}
-            </Card>
-
-            <div className="grid gap-4" data-family-slot="zone-b">
-              <Card data-testid="overview-failures">
-                <CardHeader>
-                  <CardTitle>{t("operations.failures")}</CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-2">
-                  {digest.all_clear || (incidents.length === 0 && trials.length === 0) ? (
-                    <div
-                      className="flex items-center gap-2 text-sm text-muted-foreground"
-                      data-testid="overview-failures-clear"
-                    >
-                      <CircleCheck aria-hidden="true" className="shrink-0" />
-                      <span>{t("overview.failures.allClear")}</span>
-                    </div>
-                  ) : (
-                    <>
-                      {incidents.map((failure, index) => (
-                        <FailureRow
-                          key={`${failure.signature}-${index}`}
-                          failure={failure}
-                          testId={`overview-failure-${index}`}
-                          dateTime={dateTime}
-                          lastSeenLabel={t("overview.failures.lastSeen", {
-                            date: dateTime(failure.last_seen),
-                          })}
-                        />
-                      ))}
-                      {/* Trial runs sit under their own heading. A person building
-                        a workflow can fail two dozen runs in an afternoon, and
-                        counting those as incidents reports a crisis that is not
-                        happening. */}
-                      {trials.length > 0 && (
-                        <div
-                          className="mt-2 grid gap-2 border-t pt-3"
-                          data-testid="overview-trials"
-                        >
-                          <p className="text-xs font-medium text-muted-foreground">
-                            {t("overview.failures.fromTrials")}
-                          </p>
-                          {trials.map((failure, index) => (
-                            <FailureRow
-                              key={`${failure.signature}-${index}`}
-                              failure={failure}
-                              testId={`overview-trial-${index}`}
-                              dateTime={dateTime}
-                              lastSeenLabel={t("overview.failures.lastSeen", {
-                                date: dateTime(failure.last_seen),
-                              })}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-
-              {digest.risk.length > 0 && (
-                <Card data-testid="overview-risks">
-                  <CardHeader>
-                    <CardTitle>{t("operations.risks")}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid gap-2">
-                    {digest.risk.map((risk, index) => (
-                      <div
-                        key={`${risk.headline}-${index}`}
-                        className="rounded-lg border p-3"
-                        data-testid={`overview-risk-${index}`}
-                      >
-                        <div className="flex gap-2">
-                          <p className="min-w-0 text-sm font-medium break-words">{risk.headline}</p>
-                          <Badge variant={risk.severity === "critical" ? "destructive" : "outline"}>
-                            {t(
-                              risk.severity === "critical"
-                                ? "severity.critical"
-                                : "severity.warning",
-                            )}
-                          </Badge>
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">{risk.detail}</p>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </div>
-
-          <p
-            className="text-sm text-muted-foreground"
-            data-family-slot="zone-c"
-            data-testid="overview-audit-exit"
-          >
-            {t("overview.audit.label")}{" "}
-            <Link
-              to="/audit"
-              className="font-medium underline underline-offset-4"
-              data-testid="overview-audit-link"
-            >
-              {t("overview.audit.link")}
-            </Link>
-          </p>
+            <RefreshCw className={query.isFetching ? "animate-spin" : undefined} />
+          </IconButton>
         </div>
+      }
+    >
+      {snapshot ? (
+        <div className="flex flex-col gap-6" data-family-state={snapshot.snapshot_state}>
+          <FamilyKpiGrid>
+            {core.map((metric) => {
+              const copy = CORE_COPY[metric.id]!;
+              const Icon = ICONS[metric.id] ?? Gauge;
+              return (
+                <FamilyKpiCard
+                  key={metric.id}
+                  id={metric.id}
+                  label={t(copy.label)}
+                  value={format(metric, locale, t)}
+                  valueRaw={metric.value}
+                  valueState={metric.value_state}
+                  severity={metric.severity}
+                  tooltip={t(copy.tooltip)}
+                  href={metric.drilldown.path}
+                  linkLabel={t(copy.link)}
+                  icon={<Icon className="size-4" />}
+                  status={
+                    metric.id === "operations.health"
+                      ? t(`operational.health.${snapshot.core.health.state}` as TranslationKey)
+                      : metric.id === "data.freshness"
+                        ? t(
+                            `operational.freshness.${snapshot.core.data_freshness.state}` as TranslationKey,
+                          )
+                        : undefined
+                  }
+                  primary={primary(snapshot) === metric.id}
+                />
+              );
+            })}
+          </FamilyKpiGrid>
+          <FamilySection slot="product-metrics" title={t("operational.product.title")}>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {snapshot.sections.map((section) => (
+                <section key={section.id} data-family-visualization={section.visualization}>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h2 className="text-base font-semibold leading-6">
+                      {t(SECTION_COPY[section.id] ?? "operational.product.title")}
+                    </h2>
+                    <a
+                      className="text-sm font-medium underline underline-offset-4"
+                      href={section.drilldown.path}
+                      data-testid={`overview-${section.id.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-open`}
+                    >
+                      {t("operational.details")}
+                    </a>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {section.metrics.map((metric) => {
+                      const copy = METRIC_COPY[metric.id];
+                      const Icon = ICONS[metric.id] ?? Gauge;
+                      return (
+                        <FamilyKpiCard
+                          key={metric.id}
+                          id={metric.id}
+                          label={t(copy?.label ?? "operational.metric.value")}
+                          value={format(metric, locale, t)}
+                          valueRaw={metric.value}
+                          valueState={metric.value_state}
+                          severity={metric.severity}
+                          tooltip={t(copy?.tooltip ?? "operational.metric.value.tooltip")}
+                          href={metric.drilldown.path}
+                          linkLabel={t("operational.details")}
+                          icon={<Icon className="size-4" />}
+                          className="min-h-36"
+                        />
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </FamilySection>
+          <FamilyOperationalMeta
+            auditLink={
+              <a
+                className="font-medium underline underline-offset-4"
+                href={snapshot.audit.path}
+                data-testid="overview-audit-open"
+              >
+                {t("operational.audit")}
+              </a>
+            }
+            snapshot={t("operational.snapshot", {
+              value: dateTime(snapshot.audit.snapshot_generated_at),
+            })}
+          />
+        </div>
+      ) : (
+        <Fallback loading={query.isPending} />
       )}
     </PageFrame>
   );
 }
 
-/** One root-cause group. Shared by the incident list and the trial list so the
- *  two can never drift into different shapes. */
-function FailureRow({
-  failure,
-  testId,
-  lastSeenLabel,
-}: {
-  failure: FailureGroup;
-  testId: string;
-  dateTime: (value: string) => string;
-  lastSeenLabel: string;
-}) {
+function Fallback({ loading }: { loading: boolean }) {
+  const { t } = useI18n();
   return (
-    <div className="rounded-lg border p-3" data-testid={testId}>
-      <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 text-sm font-medium break-words">{failure.cause}</p>
-        <Badge variant="secondary" className="tabular-nums">
-          {failure.count}
-        </Badge>
-      </div>
-      {(failure.workflow_name || failure.guidance) && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          {[failure.workflow_name, failure.guidance].filter(Boolean).join(" · ")}
-        </p>
-      )}
-      <p className="mt-1 text-xs text-muted-foreground">{lastSeenLabel}</p>
+    <div className="flex flex-col gap-6" data-family-state={loading ? "loading" : "error"}>
+      <FamilyKpiGrid>
+        {CORE_ORDER.map((id, index) => {
+          const copy = CORE_COPY[id]!;
+          const Icon = ICONS[id] ?? Gauge;
+          return (
+            <FamilyKpiCard
+              key={id}
+              id={id}
+              label={t(copy.label)}
+              value="—"
+              valueRaw={null}
+              valueState="missing"
+              severity="unknown"
+              tooltip={t(copy.tooltip)}
+              href={
+                id.startsWith("decisions.")
+                  ? `/cockpit/decisions?bucket=${id.split(".")[1]}`
+                  : "/cockpit/operations"
+              }
+              linkLabel={t(copy.link)}
+              icon={<Icon className="size-4" />}
+              status={loading ? t("operational.loading") : t("operational.unavailable")}
+              primary={index === 3}
+            />
+          );
+        })}
+      </FamilyKpiGrid>
+      <FamilySection slot="product-metrics" title={t("operational.product.title")}>
+        <FamilyCard data-family-visualization="kpi" className="text-sm text-muted-foreground">
+          {loading ? t("operational.loading") : t("operational.unavailable")}
+        </FamilyCard>
+      </FamilySection>
+      <FamilyOperationalMeta
+        auditLink={
+          <a
+            className="font-medium underline underline-offset-4"
+            href="/cockpit/audit"
+            data-testid="overview-audit-open"
+          >
+            {t("operational.audit")}
+          </a>
+        }
+        snapshot={loading ? t("operational.loading") : t("operational.unavailable")}
+      />
     </div>
   );
+}
+
+function format(
+  metric: Metric,
+  locale: string,
+  t: (key: TranslationKey, values?: Record<string, string>) => string,
+): string {
+  if (metric.value === null || metric.value_state === "missing")
+    return t("operational.value.unknown");
+  if (metric.value_state === "forbidden") return t("operational.value.forbidden");
+  if (metric.value_state === "stale") return t("operational.value.stale");
+  if (metric.id === "data.freshness" && metric.value === 0) return t("operational.value.current");
+  if (metric.kind === "ratio")
+    return new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 }).format(
+      metric.value,
+    );
+  if (metric.kind === "score") return `${new Intl.NumberFormat(locale).format(metric.value)}/100`;
+  if (metric.kind === "duration")
+    return t("operational.value.seconds", {
+      value: new Intl.NumberFormat(locale).format(metric.value),
+    });
+  return new Intl.NumberFormat(locale).format(metric.value);
 }

@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.22] – 2026-08-26
+
+### Changed
+
+- The default Cockpit route is now a compact operational overview with the shared five-KPI decision model, product KPIs, accessible drilldowns, and no queue or raw backend text on the start page.
+- REST, the read-only `get_operational_overview` MCP tool, and Prometheus now project the same role-scoped operational snapshot.
+- Authenticated read and screenshot traffic has a dedicated high-rate budget while public and write limits stay protected.
+
 ## [6.22.21] – 2026-08-26
 
 ### Fixed

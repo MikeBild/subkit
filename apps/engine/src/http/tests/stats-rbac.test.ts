@@ -2,7 +2,7 @@
 //
 // Every route is gated by `requirePermission("stats:read")`.
 // This suite proves:
-//   - Unauthenticated → 401 on all four routes.
+//   - Unauthenticated → 401 on every operational read route.
 //   - A fresh member-role API key → 403 (memberPermissionFilter excludes
 //     stats:read from the built-in member role).
 //   - A portal-token principal → 403 (portal_token_user role has no
@@ -54,6 +54,7 @@ function recentWindow(): string {
 const WINDOW_PARAMS = recentWindow();
 
 const STATS_ROUTES = [
+  "/v1/operational-overview",
   `/v1/stats/executions?${WINDOW_PARAMS}`,
   `/v1/stats/connectors?${WINDOW_PARAMS}`,
   `/v1/stats/events?${WINDOW_PARAMS}&class=policy`,
@@ -196,9 +197,22 @@ describe("stats:read gate — admin key → 200", () => {
         headers: { authorization: `Bearer ${srv.apiKey}` },
       });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { groups: unknown[]; totals: unknown };
-      expect(Array.isArray(body.groups)).toBe(true);
-      expect(body.totals).toBeDefined();
+      const body = (await res.json()) as Record<string, unknown>;
+      if (path === "/v1/operational-overview") {
+        expect(body.schema_version).toBe("operational-overview.v1");
+        expect(body.contract_version).toBe("2.0");
+        expect(body.product).toBe("subkit");
+        expect(Object.keys(body.core as Record<string, unknown>)).toEqual([
+          "blocked",
+          "overdue",
+          "other_decisions",
+          "health",
+          "data_freshness",
+        ]);
+      } else {
+        expect(Array.isArray(body.groups)).toBe(true);
+        expect(body.totals).toBeDefined();
+      }
     });
   }
 });
