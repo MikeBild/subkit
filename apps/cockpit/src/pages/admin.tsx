@@ -1364,7 +1364,7 @@ export function OperationsPage() {
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
               <Button asChild variant="outline">
-                <Link to="/overview" data-testid="operations-open-overview">
+                <Link to="/" data-testid="operations-open-overview">
                   {t("operations.openOverview")}
                 </Link>
               </Button>

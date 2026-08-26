@@ -10486,6 +10486,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/operational-overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Operational overview
+         * @description Role-aware dashboard snapshot shared by Cockpit, MCP and Prometheus.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description operational-overview.v1 snapshot */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OperationalOverviewV1"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/self-healing/scans": {
         parameters: {
             query?: never;
@@ -17137,6 +17176,228 @@ export interface components {
             metric: string;
             value: number;
             threshold: number;
+        };
+        OperationalOverviewV1: {
+            /** @enum {string} */
+            schema_version: "operational-overview.v1";
+            /** @enum {string} */
+            contract_version: "2.0";
+            /** @enum {string} */
+            product: "subkit";
+            generated_at: string;
+            recommended_refresh_seconds: number;
+            /** @enum {string} */
+            snapshot_state: "ready" | "partial" | "forbidden" | "contract-mismatch";
+            core: {
+                blocked: {
+                    id: string;
+                    label: string;
+                    definition: string;
+                    relevance: string;
+                    /** @enum {string} */
+                    kind: "count" | "ratio" | "duration" | "score" | "currency" | "state";
+                    value: number | null;
+                    /** @enum {string} */
+                    value_state: "observed" | "zero" | "missing" | "stale" | "forbidden";
+                    /** @enum {string} */
+                    unit: "count" | "ratio" | "seconds" | "bytes" | "eur" | "state";
+                    /** @enum {string} */
+                    severity: "critical" | "urgent" | "healthy" | "information" | "unknown";
+                    required: boolean;
+                    source_updated_at: string | null;
+                    expected_interval_seconds: number | null;
+                    stale_after_seconds: number | null;
+                    drilldown: {
+                        path: string;
+                        label_id: string;
+                    };
+                    prometheus: {
+                        name: string;
+                        /** @enum {string} */
+                        type: "gauge" | "counter";
+                    };
+                };
+                overdue: {
+                    id: string;
+                    label: string;
+                    definition: string;
+                    relevance: string;
+                    /** @enum {string} */
+                    kind: "count" | "ratio" | "duration" | "score" | "currency" | "state";
+                    value: number | null;
+                    /** @enum {string} */
+                    value_state: "observed" | "zero" | "missing" | "stale" | "forbidden";
+                    /** @enum {string} */
+                    unit: "count" | "ratio" | "seconds" | "bytes" | "eur" | "state";
+                    /** @enum {string} */
+                    severity: "critical" | "urgent" | "healthy" | "information" | "unknown";
+                    required: boolean;
+                    source_updated_at: string | null;
+                    expected_interval_seconds: number | null;
+                    stale_after_seconds: number | null;
+                    drilldown: {
+                        path: string;
+                        label_id: string;
+                    };
+                    prometheus: {
+                        name: string;
+                        /** @enum {string} */
+                        type: "gauge" | "counter";
+                    };
+                };
+                other_decisions: {
+                    id: string;
+                    label: string;
+                    definition: string;
+                    relevance: string;
+                    /** @enum {string} */
+                    kind: "count" | "ratio" | "duration" | "score" | "currency" | "state";
+                    value: number | null;
+                    /** @enum {string} */
+                    value_state: "observed" | "zero" | "missing" | "stale" | "forbidden";
+                    /** @enum {string} */
+                    unit: "count" | "ratio" | "seconds" | "bytes" | "eur" | "state";
+                    /** @enum {string} */
+                    severity: "critical" | "urgent" | "healthy" | "information" | "unknown";
+                    required: boolean;
+                    source_updated_at: string | null;
+                    expected_interval_seconds: number | null;
+                    stale_after_seconds: number | null;
+                    drilldown: {
+                        path: string;
+                        label_id: string;
+                    };
+                    prometheus: {
+                        name: string;
+                        /** @enum {string} */
+                        type: "gauge" | "counter";
+                    };
+                };
+                health: {
+                    id: string;
+                    label: string;
+                    definition: string;
+                    relevance: string;
+                    /** @enum {string} */
+                    kind: "count" | "ratio" | "duration" | "score" | "currency" | "state";
+                    value: number | null;
+                    /** @enum {string} */
+                    value_state: "observed" | "zero" | "missing" | "stale" | "forbidden";
+                    /** @enum {string} */
+                    unit: "count" | "ratio" | "seconds" | "bytes" | "eur" | "state";
+                    /** @enum {string} */
+                    severity: "critical" | "urgent" | "healthy" | "information" | "unknown";
+                    required: boolean;
+                    source_updated_at: string | null;
+                    expected_interval_seconds: number | null;
+                    stale_after_seconds: number | null;
+                    drilldown: {
+                        path: string;
+                        label_id: string;
+                    };
+                    prometheus: {
+                        name: string;
+                        /** @enum {string} */
+                        type: "gauge" | "counter";
+                    };
+                    /** @enum {string} */
+                    state: "healthy" | "limited" | "critical" | "unknown";
+                    components: {
+                        id: string;
+                        raw_value: number | null;
+                        unit: string;
+                        normalized_score: number | null;
+                        weight: number;
+                        contribution: number | null;
+                        /** @enum {string} */
+                        freshness: "fresh" | "stale" | "missing" | "forbidden";
+                        required: boolean;
+                    }[];
+                };
+                data_freshness: {
+                    id: string;
+                    label: string;
+                    definition: string;
+                    relevance: string;
+                    /** @enum {string} */
+                    kind: "count" | "ratio" | "duration" | "score" | "currency" | "state";
+                    value: number | null;
+                    /** @enum {string} */
+                    value_state: "observed" | "zero" | "missing" | "stale" | "forbidden";
+                    /** @enum {string} */
+                    unit: "count" | "ratio" | "seconds" | "bytes" | "eur" | "state";
+                    /** @enum {string} */
+                    severity: "critical" | "urgent" | "healthy" | "information" | "unknown";
+                    required: boolean;
+                    source_updated_at: string | null;
+                    expected_interval_seconds: number | null;
+                    stale_after_seconds: number | null;
+                    drilldown: {
+                        path: string;
+                        label_id: string;
+                    };
+                    prometheus: {
+                        name: string;
+                        /** @enum {string} */
+                        type: "gauge" | "counter";
+                    };
+                    /** @enum {string} */
+                    state: "fresh" | "stale" | "missing" | "forbidden";
+                    sources: {
+                        id: string;
+                        updated_at: string | null;
+                        expected_interval_seconds: number;
+                        stale_after_seconds: number;
+                        /** @enum {string} */
+                        state: "fresh" | "stale" | "missing" | "forbidden";
+                    }[];
+                };
+            };
+            sections: {
+                id: string;
+                title: string;
+                /** @enum {string} */
+                visualization: "kpi" | "sparkline" | "time-series" | "progress" | "segmented-distribution";
+                metrics: {
+                    id: string;
+                    label: string;
+                    definition: string;
+                    relevance: string;
+                    /** @enum {string} */
+                    kind: "count" | "ratio" | "duration" | "score" | "currency" | "state";
+                    value: number | null;
+                    /** @enum {string} */
+                    value_state: "observed" | "zero" | "missing" | "stale" | "forbidden";
+                    /** @enum {string} */
+                    unit: "count" | "ratio" | "seconds" | "bytes" | "eur" | "state";
+                    /** @enum {string} */
+                    severity: "critical" | "urgent" | "healthy" | "information" | "unknown";
+                    required: boolean;
+                    source_updated_at: string | null;
+                    expected_interval_seconds: number | null;
+                    stale_after_seconds: number | null;
+                    drilldown: {
+                        path: string;
+                        label_id: string;
+                    };
+                    prometheus: {
+                        name: string;
+                        /** @enum {string} */
+                        type: "gauge" | "counter";
+                    };
+                }[];
+                drilldown: {
+                    path: string;
+                    label_id: string;
+                };
+            }[];
+            audit: {
+                /** @enum {string} */
+                path: "/cockpit/audit";
+                /** @enum {string} */
+                contract_version: "2.0";
+                snapshot_generated_at: string;
+            };
         };
         SelfHealingScanResponse: {
             /** Format: uuid */

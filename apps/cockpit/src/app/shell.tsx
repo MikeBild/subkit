@@ -184,7 +184,12 @@ export function AppShell() {
                               pathname.startsWith(`/cockpit${item.path}/`)
                             }
                           >
-                            <Link to={item.path} data-testid={`nav-${item.path.slice(1)}`}>
+                            <Link
+                              to={item.path}
+                              data-testid={
+                                item.path === "/" ? "nav-overview" : `nav-${item.path.slice(1)}`
+                              }
+                            >
                               <item.icon data-icon="inline-start" />
                               <span>{label}</span>
                             </Link>

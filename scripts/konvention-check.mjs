@@ -77,7 +77,6 @@ function concreteRoute(route) {
 const MOUNT_MARKERS = {
   "": '[data-testid="overview-page"]',
   approvals: '[data-testid="decisions-page"]',
-  overview: '[data-testid="overview-page"]',
   decisions: '[data-testid="decisions-page"]',
   chat: '[data-testid="chat-workspace"]',
   "chat/new": '[data-testid="chat-workspace"]',
@@ -553,7 +552,12 @@ const DETAIL_EXTRAS = {
         description: "Zahlen des Vormonats abrufen",
         kind: "connector",
       },
-      { key: "send", uses: "mailer", description: "Bericht verschicken", kind: "connector" },
+      {
+        key: "send",
+        uses: "mailer",
+        description: "Bericht verschicken",
+        kind: "connector",
+      },
     ],
   },
   "/v1/skills": {
@@ -617,7 +621,74 @@ const EXECUTION_STEPS = [
 ];
 
 function json(route, body, status = 200) {
-  return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+  return route.fulfill({
+    status,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+}
+
+function overviewMetric(id, value, path, severity = "information") {
+  return {
+    id,
+    value,
+    value_state: value === 0 ? "zero" : "observed",
+    severity,
+    kind: "count",
+    drilldown: { path },
+  };
+}
+
+function operationalOverview(gateOpen) {
+  const generatedAt = new Date(NOW).toISOString();
+  const blocked = gateOpen ? 2 : 0;
+  const overdue = gateOpen ? 3 : 0;
+  const other = gateOpen ? Math.max(QUEUE_TOTAL - blocked - overdue, 0) : 0;
+  return {
+    schema_version: "operational-overview.v1",
+    contract_version: "2.0",
+    product: "subkit",
+    generated_at: generatedAt,
+    recommended_refresh_seconds: 60,
+    snapshot_state: "ready",
+    core: {
+      blocked: overviewMetric(
+        "decisions.blocked",
+        blocked,
+        "/cockpit/decisions?bucket=blocked",
+        blocked > 0 ? "critical" : "healthy",
+      ),
+      overdue: overviewMetric(
+        "decisions.overdue",
+        overdue,
+        "/cockpit/decisions?bucket=overdue",
+        overdue > 0 ? "urgent" : "healthy",
+      ),
+      other_decisions: overviewMetric("decisions.other", other, "/cockpit/decisions?bucket=other"),
+      health: {
+        ...overviewMetric("operations.health", 94, "/cockpit/operations", "healthy"),
+        kind: "score",
+        state: "healthy",
+        components: [],
+      },
+      data_freshness: {
+        ...overviewMetric("data.freshness", 18, "/cockpit/operations?focus=data", "healthy"),
+        kind: "duration",
+        state: "fresh",
+        sources: [],
+      },
+    },
+    sections: [
+      {
+        id: "workflows",
+        title: "Workflows",
+        visualization: "kpi",
+        metrics: [overviewMetric("automation.active_workflows", 14, "/cockpit/workflows")],
+        drilldown: { path: "/cockpit/workflows" },
+      },
+    ],
+    audit: { path: "/cockpit/audit", snapshot_generated_at: generatedAt },
+  };
 }
 
 /**
@@ -636,6 +707,7 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
 
     if (path === "/v1/cockpit/bootstrap") return json(route, BOOTSTRAP);
     if (path === "/v1/operator/health-digest") return json(route, healthDigest(gateOpen));
+    if (path === "/v1/operational-overview") return json(route, operationalOverview(gateOpen));
 
     // The three decision sources follow `gateOpen` too: the badge, Zone A and
     // the banner all read them now, so the calm variant has to be able to say
@@ -649,13 +721,19 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
                   ...candidate,
                   diff: {
                     ...candidate.diff,
-                    proposal: { ...candidate.diff.proposal, kind: "future_operator_choice" },
+                    proposal: {
+                      ...candidate.diff.proposal,
+                      kind: "future_operator_choice",
+                    },
                   },
                 }
               : candidate,
           )
         : items;
-      return json(route, { items: presented, total: gateOpen ? PATCH_CANDIDATES.length : 0 });
+      return json(route, {
+        items: presented,
+        total: gateOpen ? PATCH_CANDIDATES.length : 0,
+      });
     }
     if (path === "/v1/skill-candidates") {
       const items = gateOpen && status === "proposed" ? SKILL_CANDIDATES : [];
@@ -685,7 +763,12 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
             id: "message-2",
             role: "assistant",
             created_at: days(2),
-            parts: [{ type: "text", text: "Ich habe die fehlerhafte Umwandlung eingegrenzt." }],
+            parts: [
+              {
+                type: "text",
+                text: "Ich habe die fehlerhafte Umwandlung eingegrenzt.",
+              },
+            ],
           },
         ],
         tool_calls: [],
@@ -703,7 +786,11 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
     }
     if (path === `/v1/knowledge-sources/${ID}/content`) return json(route, KNOWLEDGE_CONTENT);
     if (path === `/v1/files/${ID}/content`)
-      return route.fulfill({ status: 200, contentType: "text/markdown", body: FILE_CONTENT });
+      return route.fulfill({
+        status: 200,
+        contentType: "text/markdown",
+        body: FILE_CONTENT,
+      });
 
     if (DETAIL_LISTS.includes(path)) {
       const items = catalogRows(path);
@@ -714,7 +801,11 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
               { category: "betrieb", count: 4 },
             ]
           : undefined;
-      return json(route, { items, total: items.length, ...(categories ? { categories } : {}) });
+      return json(route, {
+        items,
+        total: items.length,
+        ...(categories ? { categories } : {}),
+      });
     }
 
     if (path === "/v1/executions")
@@ -820,7 +911,14 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
     if (path === "/v1/stats/executions") {
       if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
         return json(route, { code: "validation", message: "request validation failed" }, 400);
-      const duration = { total: 44_400, avg: 1110, p50: 850, p95: 2300, p99: 2700, max: 3200 };
+      const duration = {
+        total: 44_400,
+        avg: 1110,
+        p50: 850,
+        p95: 2300,
+        p99: 2700,
+        max: 3200,
+      };
       return json(route, {
         bucket: "day",
         tz: "UTC",
@@ -910,7 +1008,12 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
     if (path === "/v1/rbac/roles")
       return json(route, {
         items: [
-          { id: ID, name: "admin", description: "Workspace administration", is_builtin: true },
+          {
+            id: ID,
+            name: "admin",
+            description: "Workspace administration",
+            is_builtin: true,
+          },
           {
             id: "role-2",
             name: "metrics_scraper",
@@ -920,7 +1023,9 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
         ],
       });
     if (path === "/v1/rbac/groups")
-      return json(route, { items: [{ id: ID, name: "Betrieb", description: "Operators" }] });
+      return json(route, {
+        items: [{ id: ID, name: "Betrieb", description: "Operators" }],
+      });
     if (path === "/v1/rbac/grants")
       return json(route, {
         items: [
@@ -935,7 +1040,13 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
       });
     if (path === "/v1/rbac/permissions")
       return json(route, {
-        items: [{ name: "workflow:run", description: "Run workflows", resource_type: "workflow" }],
+        items: [
+          {
+            name: "workflow:run",
+            description: "Run workflows",
+            resource_type: "workflow",
+          },
+        ],
       });
 
     return json(route, { items: [], total: 0 });
@@ -1342,7 +1453,7 @@ async function checkNoUnknownState(page, where) {
  * breach the paragraph was written for; a banner that appears with nothing open
  * trains people to ignore it.
  */
-async function checkIncidentBanner(page, gateOpen) {
+async function _checkIncidentBanner(page, gateOpen) {
   const banner = page.locator('[data-testid="overview-incident"]');
   const present = (await banner.count()) > 0;
   if (!gateOpen) {
@@ -1382,6 +1493,64 @@ async function checkIncidentBanner(page, gateOpen) {
   return checkBannerSubset(page);
 }
 
+/** Family dashboard v2 — one compact aggregate surface, never a duplicate incident feed. */
+async function checkOperationalDashboard(page, expectedDecisionTotal) {
+  const result = await page.evaluate(() => {
+    const core = document.querySelector('[data-family-slot="operational-core"]');
+    const cards = core
+      ? [...core.querySelectorAll(":scope > [data-family-kpi-id]")].map((card) => ({
+          id: card.getAttribute("data-family-kpi-id"),
+          value: Number(card.getAttribute("data-family-kpi-value") ?? 0),
+          links: card.querySelectorAll('[data-family-kpi-link="true"]').length,
+          linkLabels: card.querySelectorAll('[data-family-kpi-link-label="true"]').length,
+          tooltips: card.querySelectorAll('[data-family-kpi-tooltip="true"]').length,
+          primary: card.getAttribute("data-family-primary") === "true",
+        }))
+      : [];
+    return {
+      cards,
+      incidentBanners: document.querySelectorAll('[data-testid="overview-incident"]').length,
+      tables: document.querySelectorAll('[data-testid="overview-page"] table').length,
+    };
+  });
+  const expectedOrder = [
+    "decisions.blocked",
+    "decisions.overdue",
+    "decisions.other",
+    "operations.health",
+    "data.freshness",
+  ];
+  const actualOrder = result.cards.map((card) => card.id);
+  if (actualOrder.join("|") !== expectedOrder.join("|"))
+    breach(
+      "§1, §8.1",
+      "/cockpit",
+      `operational cards are ${actualOrder.join(", ")} instead of ${expectedOrder.join(", ")}`,
+    );
+  for (const card of result.cards) {
+    if (card.links !== 1 || card.linkLabels !== 1 || card.tooltips !== 1)
+      breach(
+        "§1, §8.1",
+        `/cockpit · ${card.id}`,
+        `${card.links} card links, ${card.linkLabels} visible link labels, ${card.tooltips} tooltips`,
+      );
+  }
+  const primary = result.cards.filter((card) => card.primary).length;
+  if (primary !== 1) breach("§1, §8.1", "/cockpit", `${primary} primary actions instead of one`);
+  if (result.incidentBanners > 0)
+    breach("§8.7", "/cockpit", "legacy incident banner duplicates the KPI summary");
+  if (result.tables > 0)
+    breach("§1", "/cockpit", "overview contains a table instead of aggregate KPI cards");
+  const decisionTotal = result.cards.slice(0, 3).reduce((sum, card) => sum + card.value, 0);
+  if (decisionTotal !== expectedDecisionTotal)
+    breach(
+      "§8.1",
+      "/cockpit",
+      `decision KPIs total ${decisionTotal}, expected ${expectedDecisionTotal}`,
+    );
+  return decisionTotal;
+}
+
 /**
  * §8.1 / §8.7 — the banner names its subsets, and says of what.
  *
@@ -1405,7 +1574,10 @@ async function readBannerClaim(page, testId) {
   return page.evaluate((id) => {
     const element = document.querySelector(`[data-testid="${id}"]`);
     if (!(element instanceof HTMLElement)) return null;
-    return { text: element.innerText.trim(), count: element.getAttribute("data-subset") };
+    return {
+      text: element.innerText.trim(),
+      count: element.getAttribute("data-subset"),
+    };
   }, testId);
 }
 
@@ -1469,7 +1641,7 @@ async function checkBannerSubset(page) {
 }
 
 /** §1 — Zone A's head is the same number the badge carries, or the page lies. */
-async function readZoneACount(page) {
+async function _readZoneACount(page) {
   const value = await page.evaluate(() => {
     const element = document.querySelector('[data-testid="zone-a-decisions-count"]');
     return element instanceof HTMLElement ? element.innerText.trim() : null;
@@ -2341,8 +2513,6 @@ async function checkCounterCoherence(page, surfaces) {
     };
   });
 
-  checkBannerAgainstConversations(surfaces.banner, CONVERSATION_TOTAL, rendered.rubrics);
-
   if (rendered.positions !== QUEUE_SHOWN)
     breach(
       "§8.1",
@@ -2371,7 +2541,7 @@ async function checkCounterCoherence(page, surfaces) {
   const queueTotal = Number(rendered.total);
   const pageWide = {
     "nav-decisions-count": surfaces.badge === null ? null : Number(surfaces.badge),
-    "zone-a-decisions-count": surfaces.zoneA,
+    "overview-decision-kpis": surfaces.overviewDecisions,
   };
   for (const [where, value] of Object.entries(pageWide)) {
     if (value === null || value === undefined) continue;
@@ -2419,7 +2589,7 @@ const BANNER_CLAIM_LABELS = {
   overdue: "Unterhaltungen mit verfallener Frist",
 };
 
-function checkBannerAgainstConversations(banner, conversationTotal, rubrics) {
+function _checkBannerAgainstConversations(banner, conversationTotal, rubrics) {
   if (!banner) {
     gap(
       "/overview vs. /decisions",
@@ -2924,7 +3094,7 @@ try {
   });
   await context.route("**/v1/**", apiMock(true));
 
-  const overview = await openPage(context, "overview");
+  const overview = await openPage(context, "");
   await checkWordmark(overview);
   await checkBrowserTitle(overview);
   await checkFavicon(overview);
@@ -2932,8 +3102,7 @@ try {
   await checkAdminGroupName(overview);
   await checkInstallationEntries(overview);
   const badgeValue = await checkDecisionsNavEntry(overview);
-  const banner = await checkIncidentBanner(overview, true);
-  const zoneA = await readZoneACount(overview);
+  const overviewDecisions = await checkOperationalDashboard(overview, QUEUE_TOTAL);
   await overview.close();
 
   const decisions = await openPage(context, "decisions");
@@ -2941,7 +3110,10 @@ try {
   await checkRubricLanguage(decisions);
   await checkDecisionAnatomy(decisions);
   await checkCorrectionTitles(decisions);
-  await checkCounterCoherence(decisions, { badge: badgeValue, zoneA, banner });
+  await checkCounterCoherence(decisions, {
+    badge: badgeValue,
+    overviewDecisions,
+  });
   await checkGroupToggle(decisions);
   await checkHistoryLink(decisions);
   // Last on this page: it opens every collapsible it can find, and a page left
@@ -3013,8 +3185,8 @@ try {
     localStorage.setItem("sk-cockpit-theme", "light");
   });
   await calm.route("**/v1/**", apiMock(false));
-  const calmOverview = await openPage(calm, "overview");
-  await checkIncidentBanner(calmOverview, false);
+  const calmOverview = await openPage(calm, "");
+  await checkOperationalDashboard(calmOverview, 0);
   await checkSilentWhenEmpty(calmOverview);
   await calmOverview.close();
   await calm.close();

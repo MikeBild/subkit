@@ -10,7 +10,7 @@ const uuid = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
 const routes = [
   // The landing page was never photographed, which is how a whole class of
   // page-shell defect stayed invisible to this sweep.
-  "overview",
+  "",
   "decisions",
   "chat",
   "inbox",
@@ -46,8 +46,16 @@ const routes = [
  * must never leave as "found nothing".
  */
 const AUDIT_FIXTURE_ROWS = [
-  { action: "patch_candidate.approved", resource_type: "patch_candidate", result: "success" },
-  { action: "skill_candidate.rejected", resource_type: "skill_candidate", result: "success" },
+  {
+    action: "patch_candidate.approved",
+    resource_type: "patch_candidate",
+    result: "success",
+  },
+  {
+    action: "skill_candidate.rejected",
+    resource_type: "skill_candidate",
+    result: "success",
+  },
   { action: "workflow.updated", resource_type: "workflow", result: "success" },
   { action: "connector.invoked", resource_type: "connector", result: "denied" },
   { action: "settings.changed", resource_type: "settings", result: "error" },
@@ -190,14 +198,44 @@ const toolTurn = [
     role: "assistant",
     created_at: "2026-08-10T08:04:00.000Z",
     parts: [
-      { type: "tool_call", call_id: "bg-1", tool: "list_workflows", input: { limit: 50 } },
-      { type: "tool_result", call_id: "bg-1", output: { items: [] }, outcome: "ok" },
+      {
+        type: "tool_call",
+        call_id: "bg-1",
+        tool: "list_workflows",
+        input: { limit: 50 },
+      },
+      {
+        type: "tool_result",
+        call_id: "bg-1",
+        output: { items: [] },
+        outcome: "ok",
+      },
       { type: "tool_call", call_id: "bg-2", tool: "get_workflow", input: {} },
-      { type: "tool_result", call_id: "bg-2", output: { id: "x" }, outcome: "ok" },
+      {
+        type: "tool_result",
+        call_id: "bg-2",
+        output: { id: "x" },
+        outcome: "ok",
+      },
       { type: "tool_call", call_id: "bg-3", tool: "get_workflow", input: {} },
-      { type: "tool_result", call_id: "bg-3", output: { id: "y" }, outcome: "ok" },
-      { type: "tool_call", call_id: "bg-4", tool: "search_knowledge_v2", input: { q: "report" } },
-      { type: "tool_result", call_id: "bg-4", output: { hits: 3 }, outcome: "ok" },
+      {
+        type: "tool_result",
+        call_id: "bg-3",
+        output: { id: "y" },
+        outcome: "ok",
+      },
+      {
+        type: "tool_call",
+        call_id: "bg-4",
+        tool: "search_knowledge_v2",
+        input: { q: "report" },
+      },
+      {
+        type: "tool_result",
+        call_id: "bg-4",
+        output: { hits: 3 },
+        outcome: "ok",
+      },
       {
         type: "tool_call",
         call_id: "act-1",
@@ -256,7 +294,71 @@ const messages = [
 ];
 
 function json(route, body, status = 200) {
-  return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+  return route.fulfill({
+    status,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+}
+
+function overviewMetric(id, value, path, severity = "information") {
+  return {
+    id,
+    value,
+    value_state: value === 0 ? "zero" : "observed",
+    severity,
+    kind: "count",
+    drilldown: { path },
+  };
+}
+
+function operationalOverview() {
+  const generatedAt = "2026-08-26T10:00:00.000Z";
+  return {
+    schema_version: "operational-overview.v1",
+    contract_version: "2.0",
+    product: "subkit",
+    generated_at: generatedAt,
+    recommended_refresh_seconds: 60,
+    snapshot_state: "ready",
+    core: {
+      blocked: overviewMetric(
+        "decisions.blocked",
+        2,
+        "/cockpit/decisions?bucket=blocked",
+        "critical",
+      ),
+      overdue: overviewMetric(
+        "decisions.overdue",
+        3,
+        "/cockpit/decisions?bucket=overdue",
+        "urgent",
+      ),
+      other_decisions: overviewMetric("decisions.other", 7, "/cockpit/decisions?bucket=other"),
+      health: {
+        ...overviewMetric("operations.health", 94, "/cockpit/operations", "healthy"),
+        kind: "score",
+        state: "healthy",
+        components: [],
+      },
+      data_freshness: {
+        ...overviewMetric("data.freshness", 18, "/cockpit/operations?focus=data", "healthy"),
+        kind: "duration",
+        state: "fresh",
+        sources: [],
+      },
+    },
+    sections: [
+      {
+        id: "workflows",
+        title: "Workflows",
+        visualization: "kpi",
+        metrics: [overviewMetric("automation.active_workflows", 14, "/cockpit/workflows")],
+        drilldown: { path: "/cockpit/workflows" },
+      },
+    ],
+    audit: { path: "/cockpit/audit", snapshot_generated_at: generatedAt },
+  };
 }
 
 function sse(route, body) {
@@ -281,7 +383,10 @@ async function mockApi(route) {
         provider: "browser_session",
       },
       tenant: { id: uuid, slug: "default", display_name: "Default Tenant" },
-      session: { expires_at: "2026-08-11T09:00:00.000Z", absolute_expires_at: null },
+      session: {
+        expires_at: "2026-08-11T09:00:00.000Z",
+        absolute_expires_at: null,
+      },
       permissions: [
         "conversation:read",
         "conversation:write",
@@ -320,6 +425,7 @@ async function mockApi(route) {
       recent_conversations: [],
     });
   }
+  if (path === "/v1/operational-overview") return json(route, operationalOverview());
   if (path === "/v1/conversations" && request.method() === "GET") {
     // The status filter is answered, not ignored. It used to be: the decisions
     // page asks `?status=awaiting_input`, got all 32 conversations back with
@@ -338,7 +444,13 @@ async function mockApi(route) {
       messages,
       tool_calls: [],
       resume_summary: {
-        active_target: { kind: "none", name: "none", slug: null, id: null, environment: null },
+        active_target: {
+          kind: "none",
+          name: "none",
+          slug: null,
+          id: null,
+          environment: null,
+        },
         stage: "onboarding",
         last_successful_probe: null,
         last_successful_preview: null,
@@ -453,7 +565,12 @@ async function mockApi(route) {
             rotate === 1
               ? { kind: "schedule", cron: "0 6 * * *", tz: "UTC" }
               : rotate === 3
-                ? { kind: "webhook", source: "stripe", events: [], verify: "none" }
+                ? {
+                    kind: "webhook",
+                    source: "stripe",
+                    events: [],
+                    verify: "none",
+                  }
                 : null,
           health_state: rotate === 3 ? "degraded" : rotate === 1 ? "needs_attention" : "ok",
           health_reason: rotate === 3 ? "Drei Läufe in Folge fehlgeschlagen." : null,
@@ -518,7 +635,11 @@ async function mockApi(route) {
             { category: "betrieb", count: 21 },
           ]
         : undefined;
-    return json(route, { items, total: items.length, ...(categories ? { categories } : {}) });
+    return json(route, {
+      items,
+      total: items.length,
+      ...(categories ? { categories } : {}),
+    });
   }
   if (path === "/v1/executions") {
     // The run list has no duration field and no sort: an unfinished run, a
@@ -653,23 +774,51 @@ async function mockApi(route) {
             {
               ts: "2026-08-09T00:00:00.000Z",
               executions: 18,
-              duration_ms: { total: 18000, avg: 1000, p50: 800, p95: 2100, p99: 2400, max: 2600 },
+              duration_ms: {
+                total: 18000,
+                avg: 1000,
+                p50: 800,
+                p95: 2100,
+                p99: 2400,
+                max: 2600,
+              },
             },
             {
               ts: "2026-08-10T00:00:00.000Z",
               executions: 22,
-              duration_ms: { total: 26400, avg: 1200, p50: 900, p95: 2500, p99: 2900, max: 3200 },
+              duration_ms: {
+                total: 26400,
+                avg: 1200,
+                p50: 900,
+                p95: 2500,
+                p99: 2900,
+                max: 3200,
+              },
             },
           ],
           totals: {
             executions: 40,
-            duration_ms: { total: 44400, avg: 1110, p50: 850, p95: 2300, p99: 2700, max: 3200 },
+            duration_ms: {
+              total: 44400,
+              avg: 1110,
+              p50: 850,
+              p95: 2300,
+              p99: 2700,
+              max: 3200,
+            },
           },
         },
       ],
       totals: {
         executions: { count: 40, by_status: { completed: 36, failed: 4 } },
-        duration_ms: { total: 44400, avg: 1110, p50: 850, p95: 2300, p99: 2700, max: 3200 },
+        duration_ms: {
+          total: 44400,
+          avg: 1110,
+          p50: 850,
+          p95: 2300,
+          p99: 2700,
+          max: 3200,
+        },
       },
     });
   }
@@ -794,7 +943,12 @@ async function mockApi(route) {
   if (path === "/v1/rbac/roles")
     return json(route, {
       items: [
-        { id: uuid, name: "admin", description: "Workspace administration", is_builtin: true },
+        {
+          id: uuid,
+          name: "admin",
+          description: "Workspace administration",
+          is_builtin: true,
+        },
         {
           id: "00000000-0000-4000-8000-000000000002",
           name: "metrics_scraper",
@@ -810,7 +964,9 @@ async function mockApi(route) {
       ],
     });
   if (path === "/v1/rbac/groups")
-    return json(route, { items: [{ id: uuid, name: "Operations", description: "Operators" }] });
+    return json(route, {
+      items: [{ id: uuid, name: "Operations", description: "Operators" }],
+    });
   if (path === "/v1/rbac/grants")
     return json(route, {
       items: [
@@ -888,9 +1044,16 @@ async function mockApi(route) {
             drift_signal: { kind: "stdlib_version_drift" },
             classification_reasons: ["major version change", "no fixture to replay against"],
             rejection_chain: [
-              { attempt: 1, reason: "unsafe classification (major version change) and no fixture" },
+              {
+                attempt: 1,
+                reason: "unsafe classification (major version change) and no fixture",
+              },
             ],
-            proposal: { classification: "unsafe", kind: "other", description: "Baustein anheben" },
+            proposal: {
+              classification: "unsafe",
+              kind: "other",
+              description: "Baustein anheben",
+            },
           },
         },
       ],
@@ -904,7 +1067,11 @@ async function mockApi(route) {
       drift_summary: "kind: schema_diff\nwidened: data.id",
       fixture_available: true,
       before_step: { id: "fetch", kind: "request", data_selector: "data.id" },
-      after_step: { id: "fetch", kind: "request", data_selector: "data.result.id" },
+      after_step: {
+        id: "fetch",
+        kind: "request",
+        data_selector: "data.result.id",
+      },
       changed_paths: ["data_selector"],
       proposal: { kind: "update_field_path", patch: { path: "data.id" } },
     });
@@ -985,7 +1152,7 @@ async function mockApi(route) {
 
 function markerFor(route) {
   if (route === "chat") return '[data-testid="chat-workspace"]';
-  if (route === "overview") return '[data-testid="overview-page"]';
+  if (route === "") return '[data-testid="overview-page"]';
   // Decisions owns its page rather than rendering a list of records.
   if (route === "decisions") return '[data-testid="decisions-page"]';
   if (["people", "access", "api-access", "operations", "settings"].includes(route))
@@ -1304,6 +1471,7 @@ for (const locale of variants) {
     });
     await page.route("**/v1/**", mockApi);
     for (const route of routes) {
+      const artifactRoute = route || "overview";
       // The door. Status and identity in one act, on the page that is about to
       // be photographed — not on a page of its own, and not once for the run.
       await stand.visit(page, route);
@@ -1368,7 +1536,9 @@ for (const locale of variants) {
           }
         }
       }
-      await shoot(page, `${locale.artifact}-${viewport.name}-${route}`, { fullPage: false });
+      await shoot(page, `${locale.artifact}-${viewport.name}-${artifactRoute}`, {
+        fullPage: false,
+      });
     }
     if (viewport.name === "desktop") {
       for (const resource of ["workflows", "connectors", "knowledge", "skills", "files"]) {
@@ -1378,7 +1548,9 @@ for (const locale of variants) {
         await assertTables(page, `${locale.artifact}/desktop/${resource}-detail`);
         await assertInteractiveSelectors(page, `${locale.artifact}/desktop/${resource}-detail`);
         await assertBlankLists(page, `${locale.artifact}/desktop/${resource}-detail`);
-        await shoot(page, `${locale.artifact}-desktop-${resource}-detail`, { fullPage: false });
+        await shoot(page, `${locale.artifact}-desktop-${resource}-detail`, {
+          fullPage: false,
+        });
       }
       // The expanded decision card. The sweep only ever photographed collapsed
       // cards, which is how a surface that asks people to approve things they
@@ -1418,13 +1590,17 @@ for (const locale of variants) {
       // foot needs a photograph of its own.
       await page.locator('[data-testid="decisions-history"]').scrollIntoViewIfNeeded();
       await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-decisions-foot`, { fullPage: false });
+      await shoot(page, `${locale.artifact}-desktop-decisions-foot`, {
+        fullPage: false,
+      });
 
       // The other end of that link, opened the way the link opens it.
       await stand.visit(page, "audit?scope=decisions");
       await page.locator('[data-testid="resource-audit"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-audit-decisions`, { fullPage: false });
+      await shoot(page, `${locale.artifact}-desktop-audit-decisions`, {
+        fullPage: false,
+      });
 
       await stand.visit(page, "chat");
       await page.locator('[data-testid="conversation-new"]').click();
@@ -1432,16 +1608,22 @@ for (const locale of variants) {
         .locator('[data-testid="conversation-create-dialog"]')
         .waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-chat-create`, { fullPage: false });
+      await shoot(page, `${locale.artifact}-desktop-chat-create`, {
+        fullPage: false,
+      });
       await page.locator('[data-testid="conversation-create-cancel"]').click();
       const tool = page.locator('[data-testid="chat-message-3-tool-0"]');
       await tool.scrollIntoViewIfNeeded();
       await page.locator('[data-testid="chat-message-3-tool-0-toggle"]').click();
-      await shoot(page, `${locale.artifact}-desktop-chat-tool`, { fullPage: false });
+      await shoot(page, `${locale.artifact}-desktop-chat-tool`, {
+        fullPage: false,
+      });
       await page.locator('[data-testid="chat-context-toggle"]').click();
       await page.locator('[data-testid="chat-context"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-chat-context`, { fullPage: false });
+      await shoot(page, `${locale.artifact}-desktop-chat-context`, {
+        fullPage: false,
+      });
       await page.locator('[data-testid="chat-context-close"]').click();
       await page
         .locator('[data-testid="chat-composer-input"]')
@@ -1451,19 +1633,27 @@ for (const locale of variants) {
         .locator('[data-testid="chat-error"]')
         .waitFor({ state: "hidden" })
         .catch(() => {});
-      await shoot(page, `${locale.artifact}-desktop-chat-interaction`, { fullPage: false });
+      await shoot(page, `${locale.artifact}-desktop-chat-interaction`, {
+        fullPage: false,
+      });
       await stand.visit(page, "usage");
       await page.locator('[data-testid="data-table-refresh"]').hover();
       await page.locator('[data-slot="tooltip-content"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-tooltip`, { fullPage: false });
+      await shoot(page, `${locale.artifact}-desktop-tooltip`, {
+        fullPage: false,
+      });
       await page.locator('[data-testid="account-menu-trigger"]').click();
       await page.locator('[data-testid="account-menu"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-account`, { fullPage: false });
+      await shoot(page, `${locale.artifact}-desktop-account`, {
+        fullPage: false,
+      });
       await page.locator('[data-testid="account-language-menu"]').hover();
       await page.locator('[data-testid="account-language-content"]').waitFor({ state: "visible" });
-      await shoot(page, `${locale.artifact}-desktop-account-language`, { fullPage: false });
+      await shoot(page, `${locale.artifact}-desktop-account-language`, {
+        fullPage: false,
+      });
       await page.keyboard.press("Escape");
       await page.locator('[data-testid="account-language-content"]').waitFor({ state: "hidden" });
       await page.keyboard.press("Escape");
@@ -1472,7 +1662,9 @@ for (const locale of variants) {
       await page.locator('[data-testid="account-menu"]').waitFor({ state: "visible" });
       await page.locator('[data-testid="account-theme-menu"]').hover();
       await page.locator('[data-testid="account-theme-content"]').waitFor({ state: "visible" });
-      await shoot(page, `${locale.artifact}-desktop-account-theme`, { fullPage: false });
+      await shoot(page, `${locale.artifact}-desktop-account-theme`, {
+        fullPage: false,
+      });
     }
     await context.close();
   }
@@ -1480,7 +1672,9 @@ for (const locale of variants) {
 
 for (const locale of variants) {
   for (const viewport of ["desktop", "mobile"]) {
-    const contact = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+    const contact = await browser.newPage({
+      viewport: { width: 1600, height: 1000 },
+    });
     const cards = await Promise.all(
       routes.map(async (route) => {
         // Read back by the label the frame was WRITTEN under, not by a name
@@ -1505,7 +1699,9 @@ for (const locale of variants) {
     </style><main>${cards.join("")}</main>`,
       { waitUntil: "load" },
     );
-    await shootSheet(contact, `${locale.artifact}-${viewport}-contact-sheet`, { fullPage: true });
+    await shootSheet(contact, `${locale.artifact}-${viewport}-contact-sheet`, {
+      fullPage: true,
+    });
     await contact.close();
   }
 }

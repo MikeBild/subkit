@@ -91,6 +91,21 @@ describe("mcp tools — catalog characterization", () => {
 });
 
 describe("mcp tools — call envelope characterization", () => {
+  test("get_operational_overview returns the exact REST snapshot", async () => {
+    const rest = await fetch(`${suite.http.baseUrl}/v1/operational-overview`, {
+      headers: { authorization: `Bearer ${suite.http.apiKey}` },
+    });
+    expect(rest.status).toBe(200);
+    const expected = await rest.json();
+
+    const client = await suite.connect();
+    const result = await client.callTool({ name: "get_operational_overview", arguments: {} });
+    expect(result.isError).not.toBe(true);
+    const content = result.content as Array<{ type: string; text: string }>;
+    const snapshot = JSON.parse(content[0]!.text) as unknown;
+    expect(snapshot).toEqual(expected);
+  });
+
   test("tools/call match_connector_template_by_url returns the canonical {isError, content:[text]} envelope", async () => {
     const client = await suite.connect();
     const result = await client.callTool({

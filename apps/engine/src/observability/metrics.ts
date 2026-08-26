@@ -32,6 +32,22 @@ const HTTP_DURATION_BUCKETS_MS = [5, 25, 100, 500, 2500, 10000] as const;
 const LOOP_LAG_BUCKETS_SECONDS = [60, 300, 1800, 3600, 21600, 86400, 604800] as const;
 
 export const METRIC_NAMES = {
+  OPERATIONAL_BLOCKED: "subkit_operational_blocked",
+  OPERATIONAL_OVERDUE: "subkit_operational_overdue",
+  OPERATIONAL_OTHER_DECISIONS: "subkit_operational_other_decisions",
+  OPERATIONAL_HEALTH_SCORE: "subkit_operational_health_score",
+  OPERATIONAL_DATA_AGE_SECONDS: "subkit_operational_data_age_seconds",
+  OPERATIONAL_ACTIVE_WORKFLOWS: "subkit_operational_active_workflows",
+  OPERATIONAL_EXECUTION_VOLUME_24H: "subkit_operational_execution_volume_24h",
+  OPERATIONAL_EXECUTION_SUCCESS_RATIO: "subkit_operational_execution_success_ratio",
+  OPERATIONAL_FAILED_EXECUTIONS_24H: "subkit_operational_failed_executions_24h",
+  OPERATIONAL_PRODUCTION_INCIDENTS_24H: "subkit_operational_production_incidents_24h",
+  OPERATIONAL_TRIAL_FAILURES_24H: "subkit_operational_trial_failures_24h",
+  OPERATIONAL_CONNECTORS_TOTAL: "subkit_operational_connectors_total",
+  OPERATIONAL_CONNECTOR_HEALTH_RATIO: "subkit_operational_connector_health_ratio",
+  OPERATIONAL_PENDING_REPAIRS: "subkit_operational_pending_repairs",
+  OPERATIONAL_SKILLS_TOTAL: "subkit_operational_skills_total",
+  OPERATIONAL_PENDING_SKILL_CANDIDATES: "subkit_operational_pending_skill_candidates",
   EXECUTION_TOTAL: "execution_total",
   EXECUTION_DURATION_MS: "execution_duration_ms",
   REQUEST_RETRY_TOTAL: "request_retry_total",
@@ -345,6 +361,30 @@ export const METRIC_NAMES = {
 
 function buildRegistry(): MetricsRegistry {
   const reg = new MetricsRegistry();
+  for (const name of [
+    METRIC_NAMES.OPERATIONAL_BLOCKED,
+    METRIC_NAMES.OPERATIONAL_OVERDUE,
+    METRIC_NAMES.OPERATIONAL_OTHER_DECISIONS,
+    METRIC_NAMES.OPERATIONAL_HEALTH_SCORE,
+    METRIC_NAMES.OPERATIONAL_DATA_AGE_SECONDS,
+    METRIC_NAMES.OPERATIONAL_ACTIVE_WORKFLOWS,
+    METRIC_NAMES.OPERATIONAL_EXECUTION_VOLUME_24H,
+    METRIC_NAMES.OPERATIONAL_EXECUTION_SUCCESS_RATIO,
+    METRIC_NAMES.OPERATIONAL_FAILED_EXECUTIONS_24H,
+    METRIC_NAMES.OPERATIONAL_PRODUCTION_INCIDENTS_24H,
+    METRIC_NAMES.OPERATIONAL_TRIAL_FAILURES_24H,
+    METRIC_NAMES.OPERATIONAL_CONNECTORS_TOTAL,
+    METRIC_NAMES.OPERATIONAL_CONNECTOR_HEALTH_RATIO,
+    METRIC_NAMES.OPERATIONAL_PENDING_REPAIRS,
+    METRIC_NAMES.OPERATIONAL_SKILLS_TOTAL,
+    METRIC_NAMES.OPERATIONAL_PENDING_SKILL_CANDIDATES,
+  ]) {
+    reg.registerGauge({
+      name,
+      help: "Current SubKit operational-overview.v1 aggregate.",
+      labels: [],
+    });
+  }
 
   reg.registerCounter({
     name: METRIC_NAMES.EXECUTION_TOTAL,

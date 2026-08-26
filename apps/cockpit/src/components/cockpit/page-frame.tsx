@@ -59,6 +59,7 @@ export function PageFrame({
       className="flex min-h-0 flex-1 flex-col"
       data-testid={testId}
       data-family-surface={surface}
+      data-family-contract-version="2.0"
     >
       {/* Header and body carry the SAME horizontal padding at every breakpoint.
           They used to differ between `sm` and `lg` — 32px against 24px — which

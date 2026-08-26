@@ -47,6 +47,10 @@ import {
   handleAuthenticate,
 } from "../../mcp/tools/authenticate.ts";
 import {
+  handleOperationalOverview,
+  operationalOverviewMcpTool,
+} from "../../mcp/tools/operational-overview.ts";
+import {
   handleListRecipes,
   LIST_RECIPES_TOOL_NAME,
   listRecipesMcpTool,
@@ -111,6 +115,17 @@ function envelopeForError(error_code: string, message: string, details?: unknown
 }
 
 const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
+  {
+    tool: operationalOverviewMcpTool,
+    visibleInMcpModes: null,
+    visibleOnChat: false,
+    category: "tenant_read",
+    rbac: { permission: "stats:read" },
+    async invoke(ctx) {
+      const result = await handleOperationalOverview({ db: ctx.db, principal: ctx.principal });
+      return envelopeForOk(result.data);
+    },
+  },
   {
     tool: authenticateTool,
     visibleInMcpModes: null,
