@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.23] – 2026-08-26
+
+### Fixed
+
+- The overview now canonicalizes the product-family entry address to `/cockpit` without keeping a legacy trailing-slash route.
+
 ## [6.22.22] – 2026-08-26
 
 ### Changed
