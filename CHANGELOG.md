@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.20] – 2026-08-26
+
+### Changed
+
+- Shared collection and decision surfaces now expose measurable loading, empty, and error states, including immediate retry feedback while reads are retried.
+- The mandatory cockpit browser gate now exercises those three controlled states and verifies that a future decision kind cannot unmount the queue or leak its raw enum.
+
+### Fixed
+
+- Workflow step configuration hides UUID-shaped references embedded in paths instead of exposing opaque database identifiers.
+
 ## [6.22.18] – 2026-08-25
 
 ### Changed
