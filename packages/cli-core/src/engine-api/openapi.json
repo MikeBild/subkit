@@ -34574,11 +34574,31 @@
     },
     "/cockpit": {
       "get": {
-        "operationId": "redirectCockpit",
-        "summary": "Redirect to the canonical Cockpit shell path",
+        "operationId": "getCanonicalCockpitShell",
+        "summary": "Serve the canonical Cockpit application shell",
         "responses": {
-          "308": {
-            "description": "Permanent redirect to /cockpit/"
+          "200": {
+            "description": "Cockpit shell or static asset",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Asset unchanged"
+          },
+          "503": {
+            "description": "Cockpit bundle was not included in this deployment",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }

@@ -279,7 +279,7 @@ function AccountMenu() {
     setSigningOut(true);
     try {
       await logout();
-      window.location.assign("/cockpit/");
+      window.location.assign("/cockpit");
     } catch {
       toast.error(t("account.signOutFailed"), {
         description: t("account.signOutFailedDescription"),

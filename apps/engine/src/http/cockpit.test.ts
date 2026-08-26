@@ -12,6 +12,18 @@ import { createOpenApiApp } from "./openapi.ts";
 import { registerCockpitIdentityRoutes } from "./routes/identity/cockpit.ts";
 
 describe("cockpit browser boundary", () => {
+  test("serves /cockpit as the canonical shell URL without redirecting", async () => {
+    const app = createOpenApiApp();
+    registerCockpitRoutes(app);
+
+    const response = await app.request("http://subkit.test/cockpit");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(await response.text()).toContain("SubKit Cockpit");
+  });
+
   test("serves the embedded shell with a hash-based script policy", async () => {
     const app = createOpenApiApp();
     registerCockpitRoutes(app);
