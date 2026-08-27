@@ -97,9 +97,14 @@ export function tableColumns<TRow extends RowData>({
           // right for a one-word chip and wrong here: a state word can be
           // "Zugangsdaten abgelehnt", and in a `table-fixed` cell a pill that
           // refuses to wrap paints over the next column instead of growing.
+          const label = statusLabel(t, String(value));
           return (
-            <Badge variant="outline" className="h-auto whitespace-normal text-left">
-              {statusLabel(t, String(value))}
+            <Badge
+              variant="outline"
+              className="h-auto max-h-10 overflow-hidden whitespace-normal text-left"
+              title={label}
+            >
+              {label}
             </Badge>
           );
         },
@@ -172,10 +177,10 @@ export function tableColumns<TRow extends RowData>({
         cell: ({ row }) => {
           const relations = get(row.original);
           if (relations.length === 0) return MISSING;
-          const visible = relations.slice(0, 2);
+          const visible = relations.slice(0, 1);
           const hidden = relations.length - visible.length;
           return (
-            <span className="flex min-w-0 flex-col items-start gap-1">
+            <span className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1">
               {visible.map((relation, index) =>
                 relation.href ? (
                   <a
@@ -201,18 +206,10 @@ export function tableColumns<TRow extends RowData>({
               {hidden > 0 ? (
                 <span
                   className="rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground"
-                  title={relations
-                    .slice(visible.length)
-                    .map((relation) => relation.label)
-                    .join(", ")}
+                  title={t("common.moreRelations", { count: hidden })}
                 >
                   <span aria-hidden="true">+{hidden}</span>
-                  <span className="sr-only">
-                    {relations
-                      .slice(visible.length)
-                      .map((relation) => relation.label)
-                      .join(", ")}
-                  </span>
+                  <span className="sr-only">{t("common.moreRelations", { count: hidden })}</span>
                 </span>
               ) : null}
             </span>

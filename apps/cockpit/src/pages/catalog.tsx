@@ -219,7 +219,7 @@ function HealthMark({ row }: { row: CatalogRow }) {
       <span className="flex min-w-0 flex-col">
         <span className="min-w-0">{t("workflows.health", { state: statusLabel(t, state) })}</span>
         {reason ? (
-          <span className="min-w-0" data-testid="workflow-health-engine-wording">
+          <span className="min-w-0 truncate" data-testid="workflow-health-engine-wording">
             {t("workflows.healthEngineWording", { reason })}
           </span>
         ) : null}
