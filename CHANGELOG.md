@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.28] – 2026-08-27
+
+### Fixed
+
+- Dense catalogue tables now keep one compact relation chip per row, summarize additional links without exposing raw engine names to assistive technology, and use the shared row height across primary collections.
+
 ## [6.22.27] – 2026-08-27
 
 ### Changed
