@@ -127,7 +127,8 @@ export function DecisionsPage() {
   // about them — but they have no card here.
   const open = queue.items.filter(isDecidable).filter((item) => !decided.includes(item.id));
   const filtered = filterByKinds(open, preferences.kinds) as DecidableItem[];
-  const urgency = partitionByUrgency(filtered, Date.now());
+  const initial = filtered.slice(0, 25);
+  const urgency = partitionByUrgency(initial, Date.now());
   const { current, aged } = urgency.deferred;
   const isFiltered = preferences.kinds.length > 0 && open.length > filtered.length;
   // The breakdown comes from the same count as the badge, not from the rows the
@@ -143,7 +144,7 @@ export function DecisionsPage() {
       </main>
     );
 
-  function renderGroups(items: DecidableItem[], prefix: string) {
+  function renderGroups(items: DecidableItem[], prefix: string, priority: "urgent" | "normal") {
     return items.map((item, index) => (
       <DecisionCard
         key={item.id}
@@ -152,6 +153,7 @@ export function DecisionsPage() {
         testIdPrefix={prefix}
         names={queue.names}
         canReadRuns={queue.canReadRuns}
+        priority={priority}
         busy={busyId === item.id}
         canDecide={item.kind === "patch" ? canDecidePatches : canDecideSkills}
         onApprove={(target) => decide.mutate({ item: target, approve: true, reason: "" })}
@@ -179,143 +181,155 @@ export function DecisionsPage() {
         </IconButton>
       }
     >
-      <div className="grid gap-6" data-family-slot="queue">
-        <div
-          className="flex flex-wrap items-center gap-2"
-          data-testid="decisions-toolbar"
-          data-family-slot="filters"
-        >
-          <Button
-            variant={preferences.kinds.length === 0 ? "default" : "outline"}
-            size="sm"
-            data-testid="decisions-chip-all"
-            onClick={() => persist({ ...preferences, kinds: [] })}
+      <div className="grid gap-6">
+        <div data-family-slot="filters">
+          <div
+            className="flex flex-wrap items-center gap-2"
+            data-testid="decisions-toolbar"
+            data-family-slot="kind-filters"
           >
-            {t("decisions.chip.all")}
-          </Button>
-          {/* Art-Chips only. §8.5 forbids a chip that puts the queue into a past
+            <Button
+              variant={preferences.kinds.length === 0 ? "default" : "outline"}
+              size="sm"
+              data-testid="decisions-chip-all"
+              onClick={() => persist({ ...preferences, kinds: [] })}
+            >
+              {t("decisions.chip.all")}
+            </Button>
+            {/* Art-Chips only. §8.5 forbids a chip that puts the queue into a past
               STATE — decided, discarded, deferred — and there is none: this list
               is closed over the two kinds the page can act on. */}
-          {KINDS.map((kind, index) => (
-            <Button
-              key={kind}
-              variant={preferences.kinds.includes(kind) ? "default" : "outline"}
-              size="sm"
-              data-testid={`decisions-chip-${index}`}
-              onClick={() =>
-                persist({
-                  ...preferences,
-                  kinds: preferences.kinds.includes(kind)
-                    ? preferences.kinds.filter((entry) => entry !== kind)
-                    : [...preferences.kinds, kind],
-                })
-              }
-            >
-              {t(KIND_LABEL[kind])}
-            </Button>
-          ))}
+            {KINDS.map((kind, index) => (
+              <Button
+                key={kind}
+                variant={preferences.kinds.includes(kind) ? "default" : "outline"}
+                size="sm"
+                data-testid={`decisions-chip-${index}`}
+                onClick={() =>
+                  persist({
+                    ...preferences,
+                    kinds: preferences.kinds.includes(kind)
+                      ? preferences.kinds.filter((entry) => entry !== kind)
+                      : [...preferences.kinds, kind],
+                  })
+                }
+              >
+                {t(KIND_LABEL[kind])}
+              </Button>
+            ))}
+          </div>
         </div>
 
-        {queue.isPending && !queue.failed ? (
-          <div
-            className="grid gap-2"
-            role="status"
-            aria-label={t("common.loading")}
-            aria-busy="true"
-            data-family-slot="data-state"
-            data-family-state="loading"
-          >
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : queue.failed ? (
-          <Alert
-            variant="destructive"
-            data-testid="decisions-error"
-            data-family-slot="data-state"
-            data-family-state="error"
-          >
-            <AlertTitle>{t("resource.loadFailed", { resource: title })}</AlertTitle>
-            <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-3"
-              data-testid="decisions-retry"
-              onClick={() => queue.refetch()}
-            >
-              {t("session.retry")}
-            </Button>
-          </Alert>
-        ) : filtered.length === 0 ? (
-          isFiltered ? (
+        <p className="text-sm text-muted-foreground" data-family-slot="queue-summary">
+          {t("decisions.queueSummary", {
+            count: String(queue.open?.decidable ?? open.length),
+          })}
+        </p>
+
+        <div className="grid gap-5" data-family-slot="queue">
+          {queue.isPending && !queue.failed ? (
             <div
-              className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
-              data-testid="decisions-empty-filtered"
+              className="grid gap-2"
+              role="status"
+              aria-label={t("common.loading")}
+              aria-busy="true"
               data-family-slot="data-state"
-              data-family-state="empty"
+              data-family-state="loading"
             >
-              <p className="text-sm font-medium">{t("decisions.emptyFiltered")}</p>
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : queue.failed ? (
+            <Alert
+              variant="destructive"
+              data-testid="decisions-error"
+              data-family-slot="data-state"
+              data-family-state="error"
+            >
+              <AlertTitle>{t("resource.loadFailed", { resource: title })}</AlertTitle>
+              <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
               <Button
                 variant="outline"
                 size="sm"
                 className="mt-3"
-                data-testid="decisions-show-all"
-                onClick={() => persist({ ...preferences, kinds: [] })}
+                data-testid="decisions-retry"
+                onClick={() => queue.refetch()}
               >
-                {t("decisions.showAll")}
+                {t("session.retry")}
               </Button>
-            </div>
-          ) : (
-            <div
-              className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
-              data-testid="decisions-empty"
-              data-family-slot="data-state"
-              data-family-state="empty"
-            >
-              <CircleCheck
-                aria-hidden="true"
-                className="mx-auto size-6 text-emerald-600 dark:text-emerald-400"
-              />
-              <p className="mt-2 text-sm font-medium">{t("decisions.emptyTitle")}</p>
-              <p className="text-sm text-muted-foreground">{t("decisions.emptyDescription")}</p>
-            </div>
-          )
-        ) : (
-          // Keep the queue count machine-readable so the shared parity check
-          // can compare the visible rows with the navigation badge.
-          <div
-            className="grid gap-5"
-            data-testid="decisions-queue"
-            data-total={String(queue.open?.decidable ?? 0)}
-            data-capped={String(queue.open?.capped ?? false)}
-          >
-            {current.length > 0 && (
-              <DecisionSection
-                testId="decisions-current"
-                title={t("decisions.section.deferred")}
-                hint={t("decisions.section.deferredHint")}
-                count={current.length}
+            </Alert>
+          ) : filtered.length === 0 ? (
+            isFiltered ? (
+              <div
+                className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
+                data-testid="decisions-empty-filtered"
+                data-family-slot="data-state"
+                data-family-state="filtered-empty"
               >
-                {renderGroups(current as DecidableItem[], "decision-deferred")}
-              </DecisionSection>
-            )}
-            {/* §8.2 names this rubric, and it is a rubric of its own rather
+                <p className="text-sm font-medium">{t("decisions.emptyFiltered")}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  data-testid="decisions-show-all"
+                  onClick={() => persist({ ...preferences, kinds: [] })}
+                >
+                  {t("decisions.showAll")}
+                </Button>
+              </div>
+            ) : (
+              <div
+                className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
+                data-testid="decisions-empty"
+                data-family-slot="data-state"
+                data-family-state="empty"
+              >
+                <CircleCheck
+                  aria-hidden="true"
+                  className="mx-auto size-6 text-emerald-600 dark:text-emerald-400"
+                />
+                <p className="mt-2 text-sm font-medium">{t("decisions.emptyTitle")}</p>
+                <p className="text-sm text-muted-foreground">{t("decisions.emptyDescription")}</p>
+              </div>
+            )
+          ) : (
+            // Keep the queue count machine-readable so the shared parity check
+            // can compare the visible rows with the navigation badge.
+            <div
+              className="grid gap-5"
+              data-testid="decisions-queue"
+              data-total={String(queue.open?.decidable ?? 0)}
+              data-capped={String(queue.open?.capped ?? false)}
+            >
+              {/* §8.2 names this rubric, and it is a rubric of its own rather
                 than a sub-heading inside another one: it used to sit under
                 a section headed "Kann warten", which is the product
                 deciding on the reader's behalf what it has no way to know. */}
-            {aged.length > 0 && (
-              <DecisionSection
-                testId="decisions-aged"
-                title={t("decisions.agedTitle")}
-                hint={t("decisions.agedHint")}
-                count={aged.length}
-              >
-                {renderGroups(aged as DecidableItem[], "decision-aged")}
-              </DecisionSection>
-            )}
-          </div>
-        )}
+              {aged.length > 0 && (
+                <DecisionSection
+                  testId="decisions-aged"
+                  title={t("decisions.agedTitle")}
+                  hint={t("decisions.agedHint")}
+                  count={aged.length}
+                  bucket="overdue"
+                >
+                  {renderGroups(aged as DecidableItem[], "decision-aged", "urgent")}
+                </DecisionSection>
+              )}
+              {current.length > 0 && (
+                <DecisionSection
+                  testId="decisions-current"
+                  title={t("operational.core.other")}
+                  hint={t("decisions.section.deferredHint")}
+                  count={current.length}
+                  bucket="other"
+                >
+                  {renderGroups(current as DecidableItem[], "decision-deferred", "normal")}
+                </DecisionSection>
+              )}
+            </div>
+          )}
+        </div>
 
         <HistoryLink />
       </div>
@@ -335,21 +349,23 @@ function HistoryLink() {
   const session = useSession();
   if (!session.permissions.includes("audit:read")) return null;
   return (
-    <p
-      className="text-sm text-muted-foreground"
-      data-testid="decisions-history"
-      data-family-slot="audit-link"
-    >
-      {t("decisions.history.label")}{" "}
-      <Link
-        to="/audit"
-        search={{ scope: "decisions" }}
-        className="underline underline-offset-2"
-        data-testid="decisions-history-link"
+    <div data-family-slot="audit-link">
+      <p
+        className="text-sm text-muted-foreground"
+        data-testid="decisions-history"
+        data-family-slot="audit-meta"
       >
-        {t("decisions.history.link")}
-      </Link>
-    </p>
+        {t("decisions.history.label")}{" "}
+        <Link
+          to="/audit"
+          search={{ scope: "decisions" }}
+          className="underline underline-offset-2"
+          data-testid="decisions-history-link"
+        >
+          {t("decisions.history.link")}
+        </Link>
+      </p>
+    </div>
   );
 }
 
@@ -359,6 +375,7 @@ function DecisionSection({
   title,
   hint,
   count,
+  bucket,
   muted = false,
   children,
 }: {
@@ -366,6 +383,7 @@ function DecisionSection({
   title: string;
   hint: string;
   count: number;
+  bucket: "overdue" | "other";
   muted?: boolean;
   children: ReactNode;
 }) {
@@ -377,9 +395,12 @@ function DecisionSection({
       className={cn("grid gap-2", muted && "opacity-70")}
       data-testid={testId}
       data-count={String(count)}
+      data-family-decision-bucket={bucket}
     >
       <div className="flex items-center gap-2">
-        <h2 className="text-sm font-semibold">{title}</h2>
+        <h2 className="text-sm font-semibold" data-family-slot="decision-group-title">
+          {title}
+        </h2>
         <Badge variant="secondary" className="tabular-nums">
           {count}
         </Badge>

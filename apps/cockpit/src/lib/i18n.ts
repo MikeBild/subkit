@@ -744,6 +744,7 @@ const EN = {
   "decisions.kind.skill": "Skill candidate",
   "decisions.effect.patch": "Approving writes a new workflow version.",
   "decisions.effect.skill": "Approving promotes the candidate into a skill.",
+  "decisions.queueSummary": "{count} open decision(s), most urgent first.",
   "decisions.age.today": "Waiting since today",
   "decisions.age.day": "Waiting 1 day",
   "decisions.age.days": "Waiting {days} days",
@@ -1893,6 +1894,7 @@ const DE: Record<TranslationKey, string> = {
   "decisions.kind.skill": "Skill-Kandidat",
   "decisions.effect.patch": "Eine Freigabe schreibt eine neue Workflow-Version.",
   "decisions.effect.skill": "Eine Freigabe macht aus dem Kandidaten einen Skill.",
+  "decisions.queueSummary": "{count} offene Entscheidung(en), die dringendsten zuerst.",
   "decisions.age.today": "Wartet seit heute",
   "decisions.age.day": "Wartet 1 Tag",
   "decisions.age.days": "Wartet {days} Tage",
@@ -2295,7 +2297,10 @@ const DE: Record<TranslationKey, string> = {
   "status.unknown": "Unbekannt",
 };
 
-export const CATALOGS: Record<Locale, Record<TranslationKey, string>> = { en: EN, de: DE };
+export const CATALOGS: Record<Locale, Record<TranslationKey, string>> = {
+  en: EN,
+  de: DE,
+};
 
 export function interpolate(
   template: string,
