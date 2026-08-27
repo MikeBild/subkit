@@ -1740,7 +1740,7 @@ async function checkAgingRubric(page) {
  * checkBannerAgainstConversations().
  */
 const RUBRIC_HEADINGS = {
-  "decisions-current": "Blockiert nichts",
+  "decisions-current": "Weitere Entscheidungen",
   "decisions-aged": AGED_RUBRIC,
 };
 
