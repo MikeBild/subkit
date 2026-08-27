@@ -1,6 +1,6 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
-export const FAMILY_UI_VERSION = "2.0";
+export const FAMILY_UI_VERSION = "2.1";
 
 export type FamilySurface =
   | "overview"
@@ -28,12 +28,13 @@ export type FamilyKpiSeverity = "critical" | "urgent" | "healthy" | "information
 
 type FamilyPageProps = HTMLAttributes<HTMLDivElement> & {
   surface: FamilySurface;
-  measure?: "reading" | "working" | "wide";
+  measure?: "reading" | "working" | "workbench" | "wide";
 };
 
 const measures = {
   reading: "max-w-[780px]",
   working: "max-w-[1120px]",
+  workbench: "max-w-[1280px]",
   wide: "max-w-none",
 } as const;
 
@@ -338,6 +339,75 @@ export function FamilyAuditLink({ className, ...props }: HTMLAttributes<HTMLDivE
     <div
       data-family-slot="audit-meta"
       className={classes("text-sm text-muted-foreground", className)}
+      {...props}
+    />
+  );
+}
+
+export type FamilyCollectionTier = "primary" | "embedded";
+
+type FamilyCollectionFrameProps = HTMLAttributes<HTMLElement> & {
+  id: string;
+  tier?: FamilyCollectionTier;
+  state?: FamilyStateName;
+};
+
+export function FamilyCollectionFrame({
+  id,
+  tier = "primary",
+  state = "ready",
+  className,
+  ...props
+}: FamilyCollectionFrameProps) {
+  return (
+    <section
+      data-family-slot="list-surface"
+      data-family-collection-id={id}
+      data-family-collection-tier={tier}
+      data-family-state={state}
+      className={classes("min-w-0", className)}
+      {...props}
+    />
+  );
+}
+
+export function FamilyCollectionToolbar({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      data-family-slot="collection-toolbar"
+      className={classes("flex min-w-0 flex-wrap items-center justify-between gap-3", className)}
+      {...props}
+    />
+  );
+}
+
+export function FamilyCollectionMeta({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      data-family-slot="collection-meta"
+      className={classes(
+        "flex min-w-0 flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export function FamilyCollectionRow({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div data-family-collection-row="true" className={classes("min-w-0", className)} {...props} />
+  );
+}
+
+export function FamilyCollectionMobileCard({ className, ...props }: HTMLAttributes<HTMLElement>) {
+  return (
+    <article
+      data-family-collection-mobile-card="true"
+      className={classes(
+        "min-w-0 rounded-2xl border bg-card p-4 text-card-foreground shadow-none",
+        className,
+      )}
       {...props}
     />
   );

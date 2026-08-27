@@ -3,7 +3,7 @@ import type { Db } from "../db/client.ts";
 import { getMetrics } from "../observability/index.ts";
 
 export const OPERATIONAL_SCHEMA_VERSION = "operational-overview.v1" as const;
-export const FAMILY_CONTRACT_VERSION = "2.0" as const;
+export const FAMILY_CONTRACT_VERSION = "2.1" as const;
 
 export type ValueState = "observed" | "zero" | "missing" | "stale" | "forbidden";
 export type Severity = "critical" | "urgent" | "healthy" | "information" | "unknown";
@@ -334,7 +334,10 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       id: "workflows",
       title: "Workflows",
       visualization: "kpi",
-      drilldown: { path: "/cockpit/workflows", label_id: "operational.open_workflows" },
+      drilldown: {
+        path: "/cockpit/workflows",
+        label_id: "operational.open_workflows",
+      },
       metrics: [
         product({
           id: "automation.active_workflows",
@@ -422,7 +425,10 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       id: "connections",
       title: "Connections",
       visualization: "progress",
-      drilldown: { path: "/cockpit/connectors", label_id: "operational.open_connectors" },
+      drilldown: {
+        path: "/cockpit/connectors",
+        label_id: "operational.open_connectors",
+      },
       metrics: [
         product({
           id: "connectors.healthy_ratio",
@@ -450,7 +456,10 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       id: "learning",
       title: "Learning",
       visualization: "kpi",
-      drilldown: { path: "/cockpit/skills", label_id: "operational.open_skills" },
+      drilldown: {
+        path: "/cockpit/skills",
+        label_id: "operational.open_skills",
+      },
       metrics: [
         product({
           id: "repairs.applied_ratio",

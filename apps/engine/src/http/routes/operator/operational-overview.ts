@@ -20,7 +20,10 @@ const Metric = z.object({
   expected_interval_seconds: z.number().int().nullable(),
   stale_after_seconds: z.number().int().nullable(),
   drilldown: Drilldown,
-  prometheus: z.object({ name: z.string(), type: z.enum(["gauge", "counter"]) }),
+  prometheus: z.object({
+    name: z.string(),
+    type: z.enum(["gauge", "counter"]),
+  }),
 });
 const Health = Metric.extend({
   state: z.enum(["healthy", "limited", "critical", "unknown"]),
@@ -52,7 +55,7 @@ const Freshness = Metric.extend({
 const Response = z
   .object({
     schema_version: z.literal("operational-overview.v1"),
-    contract_version: z.literal("2.0"),
+    contract_version: z.literal("2.1"),
     product: z.literal("subkit"),
     generated_at: z.string(),
     recommended_refresh_seconds: z.number().int().min(10).max(300),
@@ -81,7 +84,7 @@ const Response = z
     ),
     audit: z.object({
       path: z.literal("/cockpit/audit"),
-      contract_version: z.literal("2.0"),
+      contract_version: z.literal("2.1"),
       snapshot_generated_at: z.string(),
     }),
   })
