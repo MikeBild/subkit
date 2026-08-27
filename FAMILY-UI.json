@@ -1,7 +1,16 @@
 {
-  "familyVersion": "2.0",
+  "familyVersion": "2.1",
   "apiSchemaVersion": "operational-overview.v1",
-  "scope": ["shell", "overview", "decisions", "collection", "detail", "form", "installation", "audit"],
+  "scope": [
+    "shell",
+    "overview",
+    "decisions",
+    "collection",
+    "detail",
+    "form",
+    "installation",
+    "audit"
+  ],
   "routes": {
     "overview": "/cockpit",
     "decisions": "/cockpit/decisions",
@@ -52,6 +61,7 @@
     "gutterMobilePx": 16,
     "readingColumnPx": 780,
     "workingColumnPx": 1120,
+    "workbenchColumnPx": 1280,
     "cardRadiusPx": 16,
     "cardGapPx": 16,
     "sectionGapPx": 24
@@ -63,17 +73,47 @@
     "meta": "12px/16px 400"
   },
   "surfaces": {
-    "overview": ["page-header", "operational-core", "product-metrics", "audit-meta"],
-    "decisions": ["page-header", "kind-filters", "queue-summary", "queue", "audit-meta"],
-    "collection": ["page-header", "filters", "content", "pagination"],
-    "detail": ["breadcrumbs", "page-header", "facts", "content", "evidence", "audit-meta"],
+    "overview": [
+      "page-header",
+      "operational-core",
+      "product-metrics",
+      "audit-meta"
+    ],
+    "decisions": [
+      "page-header",
+      "kind-filters",
+      "queue-summary",
+      "queue",
+      "audit-meta"
+    ],
+    "collection": [
+      "page-header",
+      "collection-toolbar",
+      "list-surface",
+      "collection-meta",
+      "pagination"
+    ],
+    "detail": [
+      "breadcrumbs",
+      "page-header",
+      "facts",
+      "content",
+      "evidence",
+      "audit-meta"
+    ],
     "form": ["page-header", "fields", "actions"],
     "installation": ["page-header", "content"],
     "audit": ["page-header", "filters", "content", "pagination"]
   },
   "overview": {
     "titleId": "overview",
-    "coreOrder": ["decisions.blocked", "decisions.overdue", "decisions.other", "operations.health", "data.freshness"],
+    "coreOrder": [
+      "decisions.blocked",
+      "decisions.overdue",
+      "decisions.other",
+      "operations.health",
+      "data.freshness"
+    ],
     "decisionBuckets": {
       "exclusiveOrder": ["blocked", "overdue", "other"],
       "fallbackDeadlineHours": 72,
@@ -106,11 +146,27 @@
       "feeds": 0,
       "incidentBanners": 0
     },
-    "allowedVisualizations": ["kpi", "sparkline", "time-series", "progress", "segmented-distribution"],
+    "allowedVisualizations": [
+      "kpi",
+      "sparkline",
+      "time-series",
+      "progress",
+      "segmented-distribution"
+    ],
     "maxSegmentCategories": 5,
     "trendWindows": ["24h", "7d", "30d"]
   },
-  "states": ["loading", "empty", "ready", "partial", "error", "forbidden", "stale", "unknown", "contract-mismatch"],
+  "states": [
+    "loading",
+    "empty",
+    "ready",
+    "partial",
+    "error",
+    "forbidden",
+    "stale",
+    "unknown",
+    "contract-mismatch"
+  ],
   "domContract": {
     "surface": "data-family-surface",
     "slot": "data-family-slot",
@@ -121,7 +177,15 @@
     "kpiLink": "data-family-kpi-link",
     "kpiTooltip": "data-family-kpi-tooltip",
     "visualization": "data-family-visualization",
-    "contractVersion": "data-family-contract-version"
+    "contractVersion": "data-family-contract-version",
+    "decisionBucket": "data-family-decision-bucket",
+    "decisionKind": "data-family-decision-kind",
+    "decisionPriority": "data-family-decision-priority",
+    "collectionId": "data-family-collection-id",
+    "collectionTier": "data-family-collection-tier",
+    "collectionCapability": "data-family-collection-capability",
+    "collectionRow": "data-family-collection-row",
+    "collectionMobileCard": "data-family-collection-mobile-card"
   },
   "integration": {
     "rest": {
@@ -139,12 +203,70 @@
     }
   },
   "decisions": {
-    "layout": "single-column",
-    "order": "deadline-then-oldest",
+    "layout": "operational-workbench",
+    "pageMeasure": "workbench",
+    "order": ["blocked", "overdue", "other"],
     "filters": "kind-chips",
-    "grouping": "none",
+    "grouping": {
+      "blocked": "Blockiert Arbeit",
+      "overdue": "Liegt schon länger",
+      "other": "Weitere Entscheidungen"
+    },
+    "rowSlots": [
+      "decision-meta",
+      "decision-title",
+      "decision-effect",
+      "decision-source",
+      "decision-details",
+      "decision-actions"
+    ],
+    "rowTitleCharactersMax": 120,
+    "rowEffectCharactersMax": 160,
+    "initialVisibleRowsMax": 25,
+    "technicalDetailsCollapsed": true,
+    "rawIdentifiersOnPrimarySurface": false,
+    "rawErrorsOnPrimarySurface": false,
+    "bucketQuery": ["blocked", "overdue", "other"],
     "details": "collapsed-by-default-expandable",
     "history": "audit-link-only"
+  },
+  "collections": {
+    "pageMeasure": "workbench",
+    "primary": {
+      "requiredCapabilities": [
+        "search",
+        "relevant-filters",
+        "sort",
+        "column-visibility",
+        "result-count",
+        "pagination",
+        "url-state",
+        "responsive-cards",
+        "loading-state",
+        "empty-state",
+        "error-state"
+      ],
+      "defaultPageSize": 25,
+      "pageSizeOptions": [25, 50, 100],
+      "stickyToolbar": false,
+      "horizontalScrollDesktop": "last-resort"
+    },
+    "embedded": {
+      "requiredCapabilities": [
+        "sort-when-useful",
+        "responsive-cards",
+        "loading-state",
+        "empty-state",
+        "error-state"
+      ],
+      "pagination": "only-when-more-than-25",
+      "columnVisibility": "not-required",
+      "urlState": "not-required"
+    },
+    "rowHeightDesktopPx": { "minimum": 44, "maximum": 72 },
+    "mobileCardGapPx": 12,
+    "rawIdentifiers": "secondary-only",
+    "technicalText": "collapsed-or-detail-only"
   },
   "visualLanguage": {
     "spacingGridPx": 4,

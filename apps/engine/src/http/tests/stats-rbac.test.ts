@@ -71,7 +71,11 @@ beforeAll(async () => {
   // --- member-role user (stats:read excluded by memberPermissionFilter) -----
   const [member] = await srv.db
     .insert(users)
-    .values({ tenant_id: srv.tenantId, email: "member-stats@test.local", role: "member" })
+    .values({
+      tenant_id: srv.tenantId,
+      email: "member-stats@test.local",
+      role: "member",
+    })
     .returning();
   const mk = genKey("wf_live_");
   await srv.db.insert(apiKeys).values({
@@ -86,7 +90,11 @@ beforeAll(async () => {
   // --- portal-token principal (portal_token_user role has no stats:read) ----
   const [ptUser] = await srv.db
     .insert(users)
-    .values({ tenant_id: srv.tenantId, email: "enduser-stats@test.local", role: "enduser" })
+    .values({
+      tenant_id: srv.tenantId,
+      email: "enduser-stats@test.local",
+      role: "enduser",
+    })
     .returning();
   const pt = genKey("wf_portal_");
   await srv.db.insert(portalTokens).values({
@@ -200,7 +208,7 @@ describe("stats:read gate — admin key → 200", () => {
       const body = (await res.json()) as Record<string, unknown>;
       if (path === "/v1/operational-overview") {
         expect(body.schema_version).toBe("operational-overview.v1");
-        expect(body.contract_version).toBe("2.0");
+        expect(body.contract_version).toBe("2.1");
         expect(body.product).toBe("subkit");
         expect(Object.keys(body.core as Record<string, unknown>)).toEqual([
           "blocked",

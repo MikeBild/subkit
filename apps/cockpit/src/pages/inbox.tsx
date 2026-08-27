@@ -123,7 +123,10 @@ export function InboxPage() {
         (item): Relation | null => {
           if (!item.resource_type) return null;
           const key = RESOURCE_LABEL[item.resource_type];
-          return { href: inboxHref(item), label: key ? t(key) : item.resource_type };
+          return {
+            href: inboxHref(item),
+            label: key ? t(key) : item.resource_type,
+          };
         },
         t("inbox.column.concerns"),
         { width: "w-[16%]" },
@@ -186,12 +189,14 @@ export function InboxPage() {
 
   return (
     <PageFrame
+      surface="collection"
       testId="resource-inbox"
       title={title}
       description={t("resource.inbox.description")}
       scroll="content"
     >
       <DataTable
+        showDefaultSearch
         columns={columns}
         data={rows}
         toolbar={
@@ -211,7 +216,10 @@ export function InboxPage() {
               </Button>
             ))}
             <span className="text-muted-foreground text-xs sm:ml-auto" data-testid="inbox-counts">
-              {t("inbox.counts", { unread: String(unread), actionable: String(actionable) })}
+              {t("inbox.counts", {
+                unread: String(unread),
+                actionable: String(actionable),
+              })}
             </span>
           </>
         }

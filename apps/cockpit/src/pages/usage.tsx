@@ -36,7 +36,9 @@ export function UsagePage() {
   const columns = useMemo<CockpitColumn<UsageRow>[]>(() => {
     const column = tableColumns<UsageRow>({ t, dateTime });
     return [
-      column.date("date", (row) => row.date, t("resource.field.date"), { width: "w-[34%]" }),
+      column.date("date", (row) => row.date, t("resource.field.date"), {
+        width: "w-[34%]",
+      }),
       column.custom(
         "executions",
         (row) => row.executions,
@@ -83,6 +85,7 @@ export function UsagePage() {
 
   return (
     <PageFrame
+      surface="collection"
       testId="resource-usage"
       title={title}
       description={t("resource.usage.description")}

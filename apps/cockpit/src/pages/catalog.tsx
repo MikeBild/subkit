@@ -318,7 +318,10 @@ function catalogColumns(
           const name = stringField(row, "display_name");
           const id = stringField(row, "id");
           return name
-            ? { href: id ? `/cockpit/connectors/${encodeURIComponent(id)}` : null, label: name }
+            ? {
+                href: id ? `/cockpit/connectors/${encodeURIComponent(id)}` : null,
+                label: name,
+              }
             : null;
         },
         t("common.name"),
@@ -492,7 +495,10 @@ function catalogColumns(
         const filename = stringField(row, "filename");
         const id = stringField(row, "id");
         return filename
-          ? { href: id ? `/cockpit/files/${encodeURIComponent(id)}` : null, label: filename }
+          ? {
+              href: id ? `/cockpit/files/${encodeURIComponent(id)}` : null,
+              label: filename,
+            }
           : null;
       },
       t("catalog.filename"),
@@ -563,9 +569,11 @@ export function CatalogPage({
           params.set("status", state.status);
         }
       }
-      return apiRequest<{ items: CatalogRow[]; total?: number; categories?: CategoryCount[] }>(
-        `${config.endpoint}?${params}`,
-      );
+      return apiRequest<{
+        items: CatalogRow[];
+        total?: number;
+        categories?: CategoryCount[];
+      }>(`${config.endpoint}?${params}`);
     },
   });
 
@@ -640,7 +648,14 @@ export function CatalogPage({
 
   const resetFilters = useCallback(() => {
     setSearch("");
-    setState({ q: "", status: "all", category: "all", connector: "", linkedTo: "", page: 0 });
+    setState({
+      q: "",
+      status: "all",
+      category: "all",
+      connector: "",
+      linkedTo: "",
+      page: 0,
+    });
   }, [setState]);
 
   if (!permissions.includes(config.permission)) {
@@ -668,6 +683,7 @@ export function CatalogPage({
 
   return (
     <PageFrame
+      surface="collection"
       testId={`catalog-${resource}`}
       title={title}
       description={t(config.descriptionKey)}
@@ -799,7 +815,12 @@ export function CatalogPage({
         sorting={sorting}
         onSortingChange={(next) => {
           const first = next[0];
-          if (first) setState({ sort: first.id, order: first.desc ? "desc" : "asc", page: 0 });
+          if (first)
+            setState({
+              sort: first.id,
+              order: first.desc ? "desc" : "asc",
+              page: 0,
+            });
         }}
         onOpen={(row) => {
           const id = row.id;
@@ -933,7 +954,9 @@ function RecategorizeDialog({
         <p className="text-sm text-muted-foreground">{t("catalog.renameWarning")}</p>
         {target !== UNCATEGORIZED && members < MIN_CATEGORY_SIZE && (
           <p className="text-sm text-muted-foreground" data-testid="catalog-recategorize-hint">
-            {t("catalog.categoryTooSmall", { count: String(MIN_CATEGORY_SIZE) })}
+            {t("catalog.categoryTooSmall", {
+              count: String(MIN_CATEGORY_SIZE),
+            })}
           </p>
         )}
         <DialogFooter>

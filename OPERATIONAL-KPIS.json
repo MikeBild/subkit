@@ -1,7 +1,13 @@
 {
-  "contractVersion": "2.0",
+  "contractVersion": "2.1",
   "schemaVersion": "operational-overview.v1",
-  "common": ["decisions.blocked", "decisions.overdue", "decisions.other", "operations.health", "data.freshness"],
+  "common": [
+    "decisions.blocked",
+    "decisions.overdue",
+    "decisions.other",
+    "operations.health",
+    "data.freshness"
+  ],
   "products": {
     "workkit": [
       "work.active_assistants",

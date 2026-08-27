@@ -100,7 +100,9 @@ export function AuditPage() {
   const columns = useMemo<CockpitColumn<AuditEntry>[]>(() => {
     const column = tableColumns<AuditEntry>({ t, dateTime });
     return [
-      column.date("ts", (entry) => entry.ts, t("audit.column.time"), { width: "w-[18%]" }),
+      column.date("ts", (entry) => entry.ts, t("audit.column.time"), {
+        width: "w-[18%]",
+      }),
       // The verb, named. The engine's own string stays reachable as the cell's
       // title, because that is what an operator quotes in a ticket.
       column.custom(
@@ -173,6 +175,7 @@ export function AuditPage() {
 
   return (
     <PageFrame
+      surface="audit"
       testId="resource-audit"
       title={title}
       description={t("resource.audit.description")}

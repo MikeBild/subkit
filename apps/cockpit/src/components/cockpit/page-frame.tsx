@@ -33,7 +33,7 @@ export function PageFrame({
    * `page` scrolls the whole body and pads it.
    */
   scroll: "content" | "page";
-  width?: "full" | "column";
+  width?: "full" | "column" | "workbench";
   surface?: "overview" | "decisions" | "collection" | "detail" | "form" | "installation" | "audit";
   children: ReactNode;
 }) {
@@ -46,20 +46,28 @@ export function PageFrame({
   const column =
     width === "column"
       ? "mx-auto w-full max-w-[780px]"
-      : surface === "overview"
-        ? "mx-auto w-full max-w-[1120px]"
-        : undefined;
+      : width === "workbench" ||
+          surface === "decisions" ||
+          surface === "collection" ||
+          surface === "audit"
+        ? "mx-auto w-full max-w-[1280px]"
+        : surface === "overview"
+          ? "mx-auto w-full max-w-[1280px]"
+          : undefined;
   // The scroll owner reserves the gutter symmetrically, so a growing body
   // cannot shift the centre. `both-edges` is the operative part; plain `stable`
   // would only move the step to the other side.
-  const gutter = width === "column" ? "[scrollbar-gutter:stable_both-edges]" : undefined;
+  const gutter =
+    width === "column" || width === "workbench"
+      ? "[scrollbar-gutter:stable_both-edges]"
+      : undefined;
 
   return (
     <main
       className="flex min-h-0 flex-1 flex-col"
       data-testid={testId}
       data-family-surface={surface}
-      data-family-contract-version="2.0"
+      data-family-contract-version="2.1"
     >
       {/* Header and body carry the SAME horizontal padding at every breakpoint.
           They used to differ between `sm` and `lg` — 32px against 24px — which
