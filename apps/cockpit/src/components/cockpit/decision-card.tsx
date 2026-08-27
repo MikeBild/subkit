@@ -431,6 +431,7 @@ export interface DecisionCardProps {
   /** Whether this person may open a run. The permission is evaluated per
    *  object, so a link for someone without it leads to a refusal. */
   canReadRuns?: boolean;
+  priority: "urgent" | "normal";
 }
 
 export function DecisionCard({
@@ -444,6 +445,7 @@ export function DecisionCard({
   testIdPrefix = "decision",
   names = EMPTY_NAME_INDEX,
   canReadRuns = false,
+  priority,
 }: DecisionCardProps) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -484,12 +486,21 @@ export function DecisionCard({
     // `data-state` says what this position IS: only open work stands on this
     // page, and the convention check reads that back off every card.
     <article
-      className="rounded-xl border"
+      className={cn(
+        "rounded-2xl border border-l-2",
+        priority === "urgent" ? "border-l-warning" : "border-l-border",
+      )}
       data-testid={testId}
       data-decision-key={key}
       data-state="open"
+      data-family-slot="decision-row"
+      data-family-decision-kind={item.kind}
+      data-family-decision-priority={priority}
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+      <div
+        className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2"
+        data-family-slot="decision-meta"
+      >
         <Badge variant="outline" data-testid={`${testId}-kind`}>
           {t(KIND_LABEL[item.kind])}
         </Badge>
@@ -509,9 +520,13 @@ export function DecisionCard({
           className="min-w-0 flex-1 truncate text-sm font-medium"
           title={item.title}
           data-testid={`${testId}-title`}
+          data-family-slot="decision-title"
         >
           {hideTechnicalIdentifiers(item.title, t("tool.referenceHiddenInline"))}
         </p>
+        <span className="text-xs text-muted-foreground" data-family-slot="decision-source">
+          {t(ORIGIN_LABEL[item.origin])}
+        </span>
         <span className="text-xs text-muted-foreground" data-testid={`${testId}-age`}>
           {age === 0
             ? t("decisions.age.today")
@@ -527,64 +542,72 @@ export function DecisionCard({
             {deadline.label}
           </span>
         )}
-        {hasDetail && !compact && (
-          <Button
-            variant="ghost"
-            size="sm"
-            data-testid={`${testId}-toggle`}
-            aria-expanded={expanded}
-            onClick={() => setExpanded((value) => !value)}
-          >
-            {t(expanded ? "decisions.showLess" : "decisions.showMore")}
-          </Button>
-        )}
-        {canDecide && (
-          <div className="flex flex-wrap items-center gap-2">
-            {rejecting ? (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  data-testid={`${testId}-reject-cancel`}
-                  onClick={() => {
-                    setRejecting(false);
-                    setReason("");
-                  }}
-                >
-                  {t("common.cancel")}
-                </Button>
+        <span data-family-slot="decision-details">
+          {hasDetail && !compact ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid={`${testId}-toggle`}
+              aria-expanded={expanded}
+              onClick={() => setExpanded((value) => !value)}
+            >
+              {t(expanded ? "decisions.showLess" : "decisions.showMore")}
+            </Button>
+          ) : null}
+        </span>
+        <div className="flex flex-wrap items-center gap-2" data-family-slot="decision-actions">
+          {canDecide ? (
+            <>
+              {rejecting ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid={`${testId}-reject-cancel`}
+                    onClick={() => {
+                      setRejecting(false);
+                      setReason("");
+                    }}
+                  >
+                    {t("common.cancel")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    data-testid={`${testId}-reject-confirm`}
+                    onClick={() => onReject(item, reason.trim())}
+                  >
+                    {t("decisions.reject")}
+                  </Button>
+                </>
+              ) : (
                 <Button
                   variant="outline"
                   size="sm"
                   disabled={busy}
-                  data-testid={`${testId}-reject-confirm`}
-                  onClick={() => onReject(item, reason.trim())}
+                  data-testid={`${testId}-reject`}
+                  onClick={() => setRejecting(true)}
                 >
                   {t("decisions.reject")}
                 </Button>
-              </>
-            ) : (
+              )}
               <Button
-                variant="outline"
                 size="sm"
-                disabled={busy}
-                data-testid={`${testId}-reject`}
-                onClick={() => setRejecting(true)}
+                disabled={busy || rejecting}
+                data-testid={`${testId}-approve`}
+                onClick={() => onApprove(item)}
               >
-                {t("decisions.reject")}
+                {t("decisions.approve")}
               </Button>
-            )}
-            <Button
-              size="sm"
-              disabled={busy || rejecting}
-              data-testid={`${testId}-approve`}
-              onClick={() => onApprove(item)}
-            >
-              {t("decisions.approve")}
-            </Button>
-          </div>
-        )}
+            </>
+          ) : null}
+        </div>
       </div>
+
+      <p className="px-3 pb-2 text-xs text-muted-foreground" data-family-slot="decision-effect">
+        {t(KIND_EFFECT[item.kind])}
+      </p>
 
       {rejecting && (
         <div className="border-t px-3 pt-2 pb-3">
@@ -635,7 +658,9 @@ export function DecisionCard({
             // its scale named and the count it rests on, never a bar and never
             // the success colour.
             <p className="mt-1 text-xs text-muted-foreground" data-testid={`${testId}-confidence`}>
-              {t("decisions.confidence", { level: t(CONFIDENCE_LABEL[item.confidence]) })}
+              {t("decisions.confidence", {
+                level: t(CONFIDENCE_LABEL[item.confidence]),
+              })}
               {item.evidenceCount !== null
                 ? ` · ${t("decisions.evidence", { count: String(item.evidenceCount) })}`
                 : ""}
