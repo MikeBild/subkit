@@ -116,6 +116,19 @@ describe("step result preview", () => {
     ).toBe('{\n  "run_id": "Referenz",\n  "finished_at": "25.08.2026, 22:00 UTC"\n}');
   });
 
+  test("humanises references and timestamps in the legacy string preview too", () => {
+    expect(
+      stepResultPreview(
+        runStep({
+          step_key: "a",
+          output_preview: null,
+          result_preview:
+            '{"id":"457df8bc-2fe7-4a44-8dba-0acfa31821c5","finished_at":"2026-08-25T22:00:00.000Z"}',
+        }),
+      ),
+    ).toBe('{"id":"Referenz","finished_at":"25.08.2026, 22:00 UTC"}');
+  });
+
   test("humanises technical values embedded in paths and error text", () => {
     expect(
       humaniseTechnicalValues(
