@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.26] – 2026-08-27
+
+### Fixed
+
+- Legacy workflow step previews now humanize UUIDs and ISO timestamps before rendering, so the cockpit keeps machine identifiers in the evidence depth instead of exposing them as primary content.
+
 ## [6.22.25] – 2026-08-27
 
 ### Changed
