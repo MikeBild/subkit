@@ -169,7 +169,7 @@ export function DecisionsPage() {
       title={title}
       description={t("decisions.description")}
       scroll="page"
-      width="column"
+      width="workbench"
       action={
         <IconButton
           variant="outline"

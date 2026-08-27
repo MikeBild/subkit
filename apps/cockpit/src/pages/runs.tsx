@@ -321,6 +321,7 @@ export function RunsPage() {
 
   return (
     <PageFrame
+      surface="collection"
       testId="resource-runs"
       title={title}
       description={t("resource.runs.description")}

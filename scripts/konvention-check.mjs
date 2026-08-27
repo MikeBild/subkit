@@ -646,7 +646,7 @@ function operationalOverview(gateOpen) {
   const other = gateOpen ? Math.max(QUEUE_TOTAL - blocked - overdue, 0) : 0;
   return {
     schema_version: "operational-overview.v1",
-    contract_version: "2.0",
+    contract_version: "2.1",
     product: "subkit",
     generated_at: generatedAt,
     recommended_refresh_seconds: 60,

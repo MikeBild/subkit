@@ -13893,7 +13893,7 @@
           "contract_version": {
             "type": "string",
             "enum": [
-              "2.0"
+              "2.1"
             ]
           },
           "product": {
@@ -14932,7 +14932,7 @@
               "contract_version": {
                 "type": "string",
                 "enum": [
-                  "2.0"
+                  "2.1"
                 ]
               },
               "snapshot_generated_at": {

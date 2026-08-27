@@ -17,8 +17,9 @@ import {
   Columns3,
   MoreHorizontal,
   RefreshCw,
+  Search,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useId, useMemo, useState } from "react";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -66,7 +68,12 @@ export interface TableEmptyState {
   /** Nothing exists yet. */
   zero: { title: string; description: string; action?: ReactNode };
   /** Things exist, the current filters exclude them all. */
-  filtered: { title: string; description: string; resetLabel: string; onReset(): void };
+  filtered: {
+    title: string;
+    description: string;
+    resetLabel: string;
+    onReset(): void;
+  };
 }
 
 const SKELETON_ROWS = 8;
@@ -99,6 +106,11 @@ export function DataTable<TData extends RowData>({
   actionsLabel,
   openLabel,
   rowActions,
+  collectionId = "data-table",
+  collectionTier = "primary",
+  searchLabel = "Tabelle durchsuchen",
+  searchText = (row) => JSON.stringify(row) ?? "",
+  showDefaultSearch,
 }: {
   columns: CockpitColumn<TData>[];
   data: TData[];
@@ -135,28 +147,45 @@ export function DataTable<TData extends RowData>({
   loadedLabel: string;
   actionsLabel: string;
   openLabel: string;
+  collectionId?: string;
+  collectionTier?: "primary" | "embedded";
+  searchLabel?: string;
+  searchText?: (row: TData) => string;
+  /** Use the shared search unless the page toolbar already owns a domain search. */
+  showDefaultSearch?: boolean;
 }) {
+  const searchInputId = useId();
+  const [queryText, setQueryText] = useState("");
+  const filteredData = useMemo(() => {
+    const needle = queryText.trim().toLocaleLowerCase();
+    if (!needle || collectionTier === "embedded") return data;
+    return data.filter((row) => searchText(row).toLocaleLowerCase().includes(needle));
+  }, [collectionTier, data, queryText, searchText]);
   const table = useTable(
     {
       features: cockpitTableFeatures,
       columns,
-      data,
+      data: filteredData,
       state: { sorting },
       manualSorting: true,
       onSortingChange: (updater) => onSortingChange(functionalUpdate(updater, sorting)),
     },
-    (state) => ({ sorting: state.sorting, columnVisibility: state.columnVisibility }),
+    (state) => ({
+      sorting: state.sorting,
+      columnVisibility: state.columnVisibility,
+    }),
   );
   const visibleColumns = table.getAllLeafColumns().filter((column) => column.getIsVisible());
   const bodySpan = visibleColumns.length + 1;
   const rows = table.getRowModel().rows;
-  const offsetTotal = total ?? data.length;
+  const offsetTotal = queryText.trim() ? filteredData.length : (total ?? data.length);
   const firstRecord = offsetTotal === 0 ? 0 : page * pageSize + 1;
   const lastRecord = Math.min(offsetTotal, (page + 1) * pageSize);
   const canPrevious = page > 0;
   const canNext = mode === "cursor" ? Boolean(hasNext) : lastRecord < offsetTotal;
   const empty = !pending && !error && rows.length === 0;
   const emptyCopy = hasActiveFilters ? emptyState.filtered : emptyState.zero;
+  const usesDefaultSearch = collectionTier === "primary" && (showDefaultSearch ?? !toolbar);
 
   const stateBlock = pending ? null : error ? (
     <div
@@ -201,6 +230,13 @@ export function DataTable<TData extends RowData>({
       data-testid="data-table"
       data-family-slot="list-surface"
       data-family-list-kind="table"
+      data-family-collection-id={collectionId}
+      data-family-collection-tier={collectionTier}
+      data-family-collection-capability={
+        collectionTier === "primary"
+          ? "search relevant-filters sort column-visibility result-count pagination url-state responsive-cards loading-state empty-state error-state"
+          : "sort responsive-cards loading-state empty-state error-state"
+      }
       data-family-state={pending ? "loading" : error ? "error" : empty ? "empty" : "ready"}
       aria-busy={pending ? true : undefined}
     >
@@ -208,6 +244,25 @@ export function DataTable<TData extends RowData>({
         className="flex flex-wrap items-center gap-2 border-b px-3 py-2"
         data-family-slot="list-toolbar"
       >
+        {usesDefaultSearch && (
+          <label htmlFor={searchInputId} className="relative min-w-52 flex-1 sm:max-w-xs">
+            <span className="sr-only">{searchLabel}</span>
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id={searchInputId}
+              type="search"
+              value={queryText}
+              onChange={(event) => {
+                setQueryText(event.target.value);
+                onPageChange(0);
+              }}
+              placeholder={searchLabel}
+              className="pl-8"
+              data-family-action="search"
+              data-testid="data-table-search"
+            />
+          </label>
+        )}
         {toolbar}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -323,6 +378,7 @@ export function DataTable<TData extends RowData>({
                 <TableRow
                   key={row.id}
                   data-family-slot="list-row"
+                  data-family-collection-row="true"
                   className={onOpen ? "cursor-pointer" : undefined}
                   tabIndex={onOpen ? 0 : undefined}
                   data-testid={`data-table-row-${index}`}
@@ -415,6 +471,8 @@ export function DataTable<TData extends RowData>({
                   onClick={() => onOpen(row.original)}
                   data-testid={`data-table-mobile-row-${index}`}
                   data-family-slot="list-row"
+                  data-family-collection-row="true"
+                  data-family-collection-mobile-card="true"
                 >
                   {card}
                 </button>
@@ -424,6 +482,8 @@ export function DataTable<TData extends RowData>({
                   className="flex min-w-0 flex-col gap-3 p-4 text-left"
                   data-testid={`data-table-mobile-row-${index}`}
                   data-family-slot="list-row"
+                  data-family-collection-row="true"
+                  data-family-collection-mobile-card="true"
                 >
                   {card}
                 </div>
@@ -432,8 +492,15 @@ export function DataTable<TData extends RowData>({
           </div>
         )}
       </div>
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2">
-        <span className="text-xs text-muted-foreground">
+      <footer
+        className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2"
+        data-family-slot="pagination"
+      >
+        <span
+          className="text-xs text-muted-foreground"
+          data-family-slot="collection-meta"
+          data-family-result-count
+        >
           {mode === "cursor"
             ? loadedLabel
             : `${recordsLabel}: ${firstRecord}–${lastRecord} / ${offsetTotal}`}

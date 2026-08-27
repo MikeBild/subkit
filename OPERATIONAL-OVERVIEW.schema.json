@@ -17,9 +17,16 @@
   ],
   "properties": {
     "schema_version": { "const": "operational-overview.v1" },
-    "contract_version": { "const": "2.0" },
+    "contract_version": { "const": "2.1" },
     "product": {
-      "enum": ["workkit", "subkit", "wikikit", "contentkit", "codekit", "watchkit"]
+      "enum": [
+        "workkit",
+        "subkit",
+        "wikikit",
+        "contentkit",
+        "codekit",
+        "watchkit"
+      ]
     },
     "generated_at": { "type": "string", "format": "date-time" },
     "recommended_refresh_seconds": {
@@ -33,7 +40,13 @@
     "core": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["blocked", "overdue", "other_decisions", "health", "data_freshness"],
+      "required": [
+        "blocked",
+        "overdue",
+        "other_decisions",
+        "health",
+        "data_freshness"
+      ],
       "properties": {
         "blocked": { "$ref": "#/$defs/metric" },
         "overdue": { "$ref": "#/$defs/metric" },
@@ -49,7 +62,7 @@
       "required": ["path", "contract_version", "snapshot_generated_at"],
       "properties": {
         "path": { "const": "/cockpit/audit" },
-        "contract_version": { "const": "2.0" },
+        "contract_version": { "const": "2.1" },
         "snapshot_generated_at": { "type": "string", "format": "date-time" }
       }
     }
@@ -145,7 +158,16 @@
     "healthComponent": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "raw_value", "unit", "normalized_score", "weight", "contribution", "freshness", "required"],
+      "required": [
+        "id",
+        "raw_value",
+        "unit",
+        "normalized_score",
+        "weight",
+        "contribution",
+        "freshness",
+        "required"
+      ],
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]+$" },
         "raw_value": { "type": ["number", "null"] },
@@ -181,7 +203,13 @@
     "freshnessSource": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "updated_at", "expected_interval_seconds", "stale_after_seconds", "state"],
+      "required": [
+        "id",
+        "updated_at",
+        "expected_interval_seconds",
+        "stale_after_seconds",
+        "state"
+      ],
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]+$" },
         "updated_at": { "type": ["string", "null"], "format": "date-time" },
@@ -215,7 +243,13 @@
         "id": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]+$" },
         "title": { "type": "string", "minLength": 1, "maxLength": 80 },
         "visualization": {
-          "enum": ["kpi", "sparkline", "time-series", "progress", "segmented-distribution"]
+          "enum": [
+            "kpi",
+            "sparkline",
+            "time-series",
+            "progress",
+            "segmented-distribution"
+          ]
         },
         "metrics": { "type": "array", "items": { "$ref": "#/$defs/metric" } },
         "drilldown": { "$ref": "#/$defs/drilldown" }
