@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.29] – 2026-08-27
+
+### Fixed
+
+- Catalogue tables now use the shared compact cell density so skill records stay within the family row-height contract.
+
 ## [6.22.28] – 2026-08-27
 
 ### Fixed
