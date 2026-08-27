@@ -98,7 +98,7 @@ export function stepResultPreview(step: ExecutionStep | null): string | null {
   if (!step) return null;
   const error = render(step.error);
   if (error) return error;
-  return render(step.output_preview) ?? step.result_preview ?? null;
+  return render(step.output_preview) ?? render(step.result_preview);
 }
 
 function render(value: unknown): string | null {
