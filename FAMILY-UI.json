@@ -1,8 +1,11 @@
 {
-  "familyVersion": "2.1",
+  "familyVersion": "2.2",
   "apiSchemaVersion": "operational-overview.v1",
   "scope": [
     "shell",
+    "auth",
+    "not-found",
+    "fatal-error",
     "overview",
     "decisions",
     "collection",
@@ -73,6 +76,14 @@
     "meta": "12px/16px 400"
   },
   "surfaces": {
+    "auth": [
+      "product-identity",
+      "auth-heading",
+      "provider-actions",
+      "auth-meta"
+    ],
+    "not-found": ["failure-state", "failure-actions"],
+    "fatal-error": ["failure-state", "failure-actions"],
     "overview": [
       "page-header",
       "operational-core",
@@ -185,7 +196,37 @@
     "collectionTier": "data-family-collection-tier",
     "collectionCapability": "data-family-collection-capability",
     "collectionRow": "data-family-collection-row",
-    "collectionMobileCard": "data-family-collection-mobile-card"
+    "collectionMobileCard": "data-family-collection-mobile-card",
+    "failureKind": "data-family-failure-kind",
+    "authContract": "data-auth-contract",
+    "authProduct": "data-auth-product",
+    "authProvider": "data-auth-provider"
+  },
+  "auth": {
+    "flow": "direct-provider-choice",
+    "locale": ["de", "en"],
+    "localeSource": "accept-language",
+    "fallbackLocale": "en",
+    "returnPath": "current-cockpit-path-and-query",
+    "productIdentity": "real-cockpit-favicon-and-canonical-product-name",
+    "providerOrder": ["sso", "api-key"],
+    "footer": "{Product} · OAuth 2.1",
+    "intermediateSpaSignIn": false
+  },
+  "failures": {
+    "notFound": {
+      "transport": "spa-shell-http-200",
+      "shellRetained": true,
+      "actions": ["overview"],
+      "technicalDetails": false
+    },
+    "fatalError": {
+      "shellActions": ["retry", "overview"],
+      "bootstrapActions": ["retry"],
+      "technicalDetails": false,
+      "productionCrashRoute": false
+    },
+    "outsideCockpit": "existing-api-envelope"
   },
   "integration": {
     "rest": {

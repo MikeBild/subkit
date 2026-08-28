@@ -81,6 +81,14 @@ const EN = {
   "session.unavailable.title": "Cockpit unavailable",
   "session.unavailable.description": "The engine did not return a session.",
   "session.retry": "Try again",
+  "familyFailure.notFound.title": "Page not found",
+  "familyFailure.notFound.description": "This address is not part of the current cockpit.",
+  "familyFailure.fatal.title": "This page could not be shown",
+  "familyFailure.fatal.description":
+    "The view could not be loaded. Try again or return to the overview.",
+  "familyFailure.bootstrap.description": "The cockpit could not be loaded. Try again.",
+  "familyFailure.retry": "Try again",
+  "familyFailure.overview": "Back to the overview",
   "error.title": "This page could not be shown",
   "error.description":
     "Something in this view failed while rendering. Nothing was changed \u2014 try again, or go back to the overview.",
@@ -1217,6 +1225,15 @@ const DE: Record<TranslationKey, string> = {
   "session.unavailable.title": "Cockpit nicht verfügbar",
   "session.unavailable.description": "Die Engine hat keine Sitzung zurückgegeben.",
   "session.retry": "Erneut versuchen",
+  "familyFailure.notFound.title": "Seite nicht gefunden",
+  "familyFailure.notFound.description": "Diese Adresse gehört nicht zum aktuellen Cockpit.",
+  "familyFailure.fatal.title": "Diese Seite konnte nicht angezeigt werden",
+  "familyFailure.fatal.description":
+    "Die Ansicht konnte nicht geladen werden. Versuche es erneut oder kehre zur Übersicht zurück.",
+  "familyFailure.bootstrap.description":
+    "Das Cockpit konnte nicht geladen werden. Versuche es erneut.",
+  "familyFailure.retry": "Erneut versuchen",
+  "familyFailure.overview": "Zurück zur Übersicht",
   "error.title": "Diese Seite ließ sich nicht anzeigen",
   "error.description":
     "Beim Aufbau dieser Ansicht ist etwas schiefgegangen. Geändert wurde nichts \u2014 versuch es erneut oder geh zurück zur Übersicht.",

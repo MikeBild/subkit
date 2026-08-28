@@ -13,7 +13,7 @@ const TOKENS = `
   *{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;display:flex;align-items:center;justify-content:center;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--background);color:var(--foreground)}
   :focus-visible{outline:2px solid var(--ring);outline-offset:2px}
   .card{background:var(--card);width:100%;max-width:420px;border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--shadow);padding:32px}
-  .brand{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:var(--radius-lg);background:var(--primary);color:var(--primary-foreground);font-weight:700;font-size:18px;letter-spacing:-.03em;margin:0 0 20px}
+  .brand{display:block;width:42px;height:42px;border-radius:var(--radius-lg);object-fit:cover;margin:0 0 20px}
   h1{font-size:1.2rem;line-height:1.3;margin:0 0 8px}p{margin:0 0 10px;line-height:1.5}.muted{color:var(--muted-foreground);font-size:.9rem}.strong{font-weight:600}.error{color:var(--destructive)}
   ul.scopes{list-style:none;margin:18px 0 4px;padding:0}ul.scopes li{padding:12px 14px;margin-bottom:8px;background:var(--muted);border:1px solid var(--border);border-radius:var(--radius-md)}.provider-stack{display:grid;gap:10px;margin-top:20px}
   .scope-row{display:flex;align-items:flex-start;gap:10px;cursor:pointer}.scope-row input[type=checkbox]{margin-top:2px;flex:none;accent-color:var(--primary)}.scope-text{display:flex;flex-direction:column;gap:2px}.scope-name{font-weight:600;font-size:.92rem}.scope-desc{color:var(--muted-foreground);font-size:.85rem}
@@ -40,18 +40,30 @@ function sharedRegion(css: string): string {
   return css.match(/\/\*mcp-auth:begin\*\/([\s\S]*?)\/\*mcp-auth:end\*\//)?.[1] ?? "";
 }
 
-function page(title: string, body: string): string {
+export type AuthLocale = "de" | "en";
+
+export function resolveAuthLocale(acceptLanguage: string | undefined): AuthLocale {
+  for (const range of acceptLanguage?.split(",") ?? []) {
+    const language = range.trim().split(";", 1)[0]?.toLowerCase();
+    if (language === "de" || language?.startsWith("de-")) return "de";
+    if (language === "en" || language?.startsWith("en-")) return "en";
+  }
+  return "en";
+}
+
+function page(title: string, body: string, locale: AuthLocale = "en"): string {
   return `<!doctype html>
-<html lang="en">
+<html lang="${locale}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow,noarchive">
   <meta name="mcp-auth-ui-contract" content="${AUTH_UI_DIGEST}">
+  <link rel="icon" type="image/svg+xml" href="/cockpit/favicon.svg">
   <title>${escapeHtml(title)} — SubKit</title>
   <style>${TOKENS}</style>
 </head>
-<body><main class="card" data-auth-contract="${AUTH_CONTRACT}"><div class="brand" aria-label="SubKit">sk</div>${body}<div class="footer">SubKit MCP · OAuth 2.1</div></main></body>
+<body><main class="card" data-auth-contract="${AUTH_CONTRACT}" data-auth-product="subkit" data-testid="auth-page"><img class="brand" src="/cockpit/favicon.svg" alt="" data-testid="auth-product-icon">${body}<div class="footer" data-family-slot="auth-meta">SubKit · OAuth 2.1</div></main></body>
 </html>`;
 }
 
@@ -62,7 +74,7 @@ export function authHtmlResponse(html: string, status = 200): Response {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "private,no-store",
       "content-security-policy":
-        "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+        "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
       "referrer-policy": "no-referrer",
@@ -91,16 +103,31 @@ export interface LoginProviderChoice {
   href: string;
 }
 
-export function renderProviderChoice(providers: LoginProviderChoice[]): string {
-  const links = providers
-    .map(
-      (provider) =>
-        `<a class="button approve" href="${escapeHtml(provider.href)}">${provider.protocol === "api_key" ? "Continue with API key" : "Continue with SSO"}</a>`,
+export function renderProviderChoice(
+  providers: LoginProviderChoice[],
+  locale: AuthLocale = "en",
+): string {
+  const links = [...providers]
+    .sort(
+      (left, right) => Number(left.protocol === "api_key") - Number(right.protocol === "api_key"),
     )
+    .map((provider) => {
+      const apiKey = provider.protocol === "api_key";
+      const label =
+        locale === "de"
+          ? apiKey
+            ? "Mit API-Schlüssel fortfahren"
+            : "Mit SSO fortfahren"
+          : apiKey
+            ? "Continue with API key"
+            : "Continue with SSO";
+      return `<a class="button ${apiKey ? "deny" : "approve"}" data-auth-provider="${apiKey ? "api-key" : "sso"}" data-testid="auth-provider-${apiKey ? "api-key" : "sso"}" href="${escapeHtml(provider.href)}">${label}</a>`;
+    })
     .join("");
   return page(
-    "Sign in",
-    `<h1>Sign in to SubKit</h1><p class="muted">Choose how to authenticate this authorization request.</p><div class="provider-stack">${links}</div>`,
+    locale === "de" ? "Anmelden" : "Sign in",
+    `<h1 data-family-slot="auth-heading">${locale === "de" ? "Bei SubKit anmelden" : "Sign in to SubKit"}</h1><p class="muted">${locale === "de" ? "Wähle die Anmeldung für SubKit." : "Choose how to sign in to SubKit."}</p><div class="provider-stack" data-family-slot="provider-actions">${links}</div>`,
+    locale,
   );
 }
 
@@ -109,10 +136,12 @@ export function renderApiKeyLogin(
   providerId: string,
   state: string,
   error?: string,
+  locale: AuthLocale = "en",
 ): string {
   return page(
-    "Sign in",
-    `<h1>Sign in to SubKit</h1><p class="muted">Use a scoped SubKit API key to authorize this MCP client.</p>${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}<form method="POST" action="${escapeHtml(action)}"><input type="hidden" name="provider" value="${escapeHtml(providerId)}"><input type="hidden" name="login_state" value="${escapeHtml(state)}"><label class="field">API key<input type="password" name="api_key" autocomplete="current-password" required></label><div class="actions"><button class="approve" type="submit">Continue</button></div></form>`,
+    locale === "de" ? "Anmelden" : "Sign in",
+    `<h1 data-family-slot="auth-heading">${locale === "de" ? "Bei SubKit anmelden" : "Sign in to SubKit"}</h1><p class="muted">${locale === "de" ? "Verwende einen bereichsgebundenen SubKit API-Schlüssel." : "Use a scoped SubKit API key."}</p>${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}<form method="POST" action="${escapeHtml(action)}"><input type="hidden" name="provider" value="${escapeHtml(providerId)}"><input type="hidden" name="login_state" value="${escapeHtml(state)}"><label class="field">${locale === "de" ? "API-Schlüssel" : "API key"}<input type="password" name="api_key" autocomplete="current-password" required></label><div class="actions"><button class="approve" type="submit">${locale === "de" ? "Fortfahren" : "Continue"}</button></div></form>`,
+    locale,
   );
 }
 
