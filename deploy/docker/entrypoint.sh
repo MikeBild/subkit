@@ -111,7 +111,7 @@ cat >&2 <<'BANNER'
 ──────────────────────────────────────────────────────────────────────
  subkit engine — starting
    API    : http://localhost:3000   (publish with -p 3000:3000)
-   Health : GET /v1/health
+   Health : GET /health
  First-run onboarding (a one-time `sk init --token …` banner with the
  bootstrap token is printed below once the engine is up):
    1. copy the token from this log

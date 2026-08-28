@@ -3,7 +3,7 @@
 // Aggregates the checks an operator hits when "something is wrong":
 //
 //   1. Profile         — does the resolved profile have an engine_url + api_key?
-//   2. Reachability    — does GET /v1/health respond + report db_connected?
+//   2. Reachability    — do GET /health and GET /ready agree that the engine can serve?
 //   3. Authn           — does the api_key resolve to a principal?
 //   4. Setup           — what does /v1/diagnostics/setup say overall + per-section?
 //   5. Schema drift    — does this engine binary's embedded migration set
@@ -112,13 +112,14 @@ export const doctorCommand = defineCommand({
     let reachability: CheckResult;
     let engineVersion: string | undefined;
     try {
-      const h = await client.health();
+      const [h, ready] = await Promise.all([client.health(), client.ready()]);
       engineVersion = h.version;
+      const databaseReady = ready.checks.database === "pass";
       reachability = {
         name: "reachability",
-        status: h.db_connected ? "ok" : "blocked",
-        detail: `engine ${h.status} version=${h.version} db_connected=${h.db_connected} uptime=${h.uptime_seconds}s`,
-        ...(h.db_connected ? {} : { hint: "engine is up but cannot reach the database" }),
+        status: ready.status === "ready" ? "ok" : "blocked",
+        detail: `engine live=${h.status} ready=${ready.status} version=${h.version} database=${ready.checks.database}`,
+        ...(databaseReady ? {} : { hint: "engine is up but cannot reach the database" }),
       };
     } catch (err) {
       const detail = isTransportError(err)
@@ -203,7 +204,7 @@ export const doctorCommand = defineCommand({
     } else {
       // The `audit:read`-gated `/v1/diagnostics/drift` is the
       // canonical source of the actionable drift detail (the public
-      // `/v1/health` deliberately omits it to avoid leaking
+      // `/health` deliberately omits it to avoid leaking
       // operational posture to unauthenticated callers), so always
       // pull it. Every `sk doctor` run writes one
       // `DIAGNOSTICS_DRIFT_READ` audit row, even on a clean DB —

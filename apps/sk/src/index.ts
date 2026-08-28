@@ -130,8 +130,8 @@ const loginCommand = defineCommand({
       process.stdout.write(`sk: profile '${profileName}' saved to ${configPath()}\n`);
       try {
         const client = new EngineClient({ engine_url: engineUrl, api_key: apiKey, tenant });
-        const h = await client.health();
-        process.stdout.write(`sk: engine health: ${h.status} db=${h.db_connected}\n`);
+        const [h, ready] = await Promise.all([client.health(), client.ready()]);
+        process.stdout.write(`sk: engine health: live=${h.status} ready=${ready.status}\n`);
         await recordPersonaHint(client, profileName, engineUrl, apiKey, tenant);
         // Best-effort leading-indicator risk line — never blocks login.
         const risk = await riskSummaryLine(client);
@@ -312,8 +312,8 @@ const statusCommand = defineCommand({
         api_key: profile.api_key,
         tenant: profile.active_tenant_id,
       });
-      const h = await client.health();
-      process.stdout.write(`  engine_ok    ${h.status} db=${h.db_connected}\n`);
+      const [h, ready] = await Promise.all([client.health(), client.ready()]);
+      process.stdout.write(`  engine_ok    live=${h.status} ready=${ready.status}\n`);
     } catch (err) {
       process.stdout.write(
         `  engine_ok    unreachable (${err instanceof Error ? err.message : String(err)})\n`,

@@ -103,7 +103,9 @@ describe("sk mcp stdio proxy", () => {
     const client = await connectProxy();
     try {
       const ping = await client.callTool({ name: "sk_ping", arguments: {} });
-      expect(textContent(ping)).toContain(`engine=${env.baseUrl} status=ok`);
+      expect(textContent(ping)).toContain(
+        `engine=${env.baseUrl} live=ok ready=ready database=pass`,
+      );
 
       const created = await client.callTool({
         name: "sk_conversation_create",

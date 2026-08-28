@@ -132,8 +132,8 @@ const addCommand = defineCommand({
     if (apiKey) {
       try {
         const client = new EngineClient({ engine_url: engineUrl, api_key: apiKey, tenant: null });
-        const h = await client.health();
-        prompts.log.success(`Engine reachable — status: ${h.status}, db: ${h.db_connected}`);
+        const [h, ready] = await Promise.all([client.health(), client.ready()]);
+        prompts.log.success(`Engine reachable — live: ${h.status}, ready: ${ready.status}`);
       } catch (err) {
         prompts.log.warn(
           `Could not reach ${engineUrl}: ${err instanceof Error ? err.message : String(err)}`,
@@ -174,8 +174,8 @@ const showCommand = defineCommand({
           api_key: p.api_key,
           tenant: p.active_tenant_id,
         });
-        const h = await client.health();
-        process.stdout.write(`  health       ${pc.green(h.status)} db=${h.db_connected}\n`);
+        const [h, ready] = await Promise.all([client.health(), client.ready()]);
+        process.stdout.write(`  health       live=${pc.green(h.status)} ready=${ready.status}\n`);
       } catch (err) {
         process.stdout.write(
           `  health       ${pc.red("unreachable")} (${err instanceof Error ? err.message : String(err)})\n`,

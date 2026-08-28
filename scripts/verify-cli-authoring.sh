@@ -67,13 +67,20 @@ printf '▶ slug         %s\n' "$SLUG"
 printf '▶ sk version   '
 "$SK_BIN" --help 2>/dev/null | head -1 | sed -E 's/.*sk v([0-9.]+).*/\1/'
 
-printf '▶ engine /v1/health '
-HEALTH=$(curl -fsS "$ENGINE_URL/v1/health" || true)
+printf '▶ engine /health '
+HEALTH=$(curl -fsS "$ENGINE_URL/health" || true)
 if [ -z "$HEALTH" ]; then
   echo "unreachable" >&2
   exit 2
 fi
-echo "$HEALTH" | jq -r '"version=\(.version) db=\(.db_connected)"'
+if ! echo "$HEALTH" | jq -e '
+  .status == "ok" and .service == "subkit" and (.version | type == "string" and length > 0) and
+  (keys | sort) == ["service", "status", "version"]
+' >/dev/null; then
+  echo "invalid family liveness response: $HEALTH" >&2
+  exit 2
+fi
+echo "$HEALTH" | jq -r '"service=\(.service) version=\(.version)"'
 
 echo
 echo "▶ sk -p \"<authoring prompt>\" --output json"

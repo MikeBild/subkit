@@ -8,7 +8,7 @@ import type { AppEnv } from "../openapi.ts";
 
 // The unversioned alias is the same probe under another name, so it gets the
 // same silence — otherwise a fleet-wide health poll fills the log.
-const SILENT_PATHS = new Set(["/v1/health", "/health"]);
+const SILENT_PATHS = new Set(["/health", "/health"]);
 
 export function loggingMiddleware(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {

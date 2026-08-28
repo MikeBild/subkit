@@ -26,7 +26,7 @@ bun run compose:up     # creates .env with a generated MASTER_KEY + starts Postg
 bun run test:unit      # fast layer — should be green before you start
 ```
 
-`bun run dev` starts the engine in watch mode on `:3000`; `curl localhost:3000/v1/health`
+`bun run dev` starts the engine in watch mode on `:3000`; `curl localhost:3000/health`
 confirms it is up. The full walkthrough lives in
 [`docs/developers/quickstart.md`](docs/developers/quickstart.md).
 

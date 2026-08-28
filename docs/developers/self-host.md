@@ -53,8 +53,11 @@ docker run -d --name subkit -p 3000:3000 -v subkit-data:/data mikebild/subkit:la
 Wait a few seconds, then confirm it is healthy:
 
 ```bash
-curl -s http://localhost:3000/v1/health
-# {"status":"ok","db_connected":true,"uptime_seconds":3}
+curl -s http://localhost:3000/health
+# {"status":"ok","service":"subkit","version":"<version>"}
+
+curl -s http://localhost:3000/ready
+# {"status":"ready","service":"subkit","version":"<version>","checks":{"lifecycle":"pass","database":"pass"}}
 ```
 
 The `subkit-data` volume holds **all** state — database, config, encryption key,

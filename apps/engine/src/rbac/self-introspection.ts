@@ -30,7 +30,7 @@ export const SELF_INTROSPECTION_ROUTES = Object.freeze([
   "identity-login",
   // POST /v1/identity/sessions (provider assertion exchange)
   "identity-sessions",
-  // GET /healthz, /v1/health (liveness, no auth needed)
+  // GET /healthz, /health (liveness, no auth needed)
   "health",
   // GET /metrics (prometheus, gated by auth-middleware-only)
   "metrics",

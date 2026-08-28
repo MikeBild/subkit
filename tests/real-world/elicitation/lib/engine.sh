@@ -12,7 +12,7 @@ ENGINE_PID_FILE="$SHOTS_DIR/engine.pid"
 
 engine_start() {
   mkdir -p "$SHOTS_DIR"
-  if curl -sf http://localhost:3000/v1/health >/dev/null 2>&1; then
+  if curl -sf http://localhost:3000/health >/dev/null 2>&1; then
     echo "FATAL: port 3000 already serves an engine — stop it first (the matrix must own the log)" >&2
     return 1
   fi
@@ -24,7 +24,7 @@ engine_start() {
     echo $! > "$ENGINE_PID_FILE"
   )
   for _ in $(seq 1 60); do
-    curl -sf http://localhost:3000/v1/health >/dev/null 2>&1 && return 0
+    curl -sf http://localhost:3000/health >/dev/null 2>&1 && return 0
     sleep 1
   done
   echo "FATAL: engine did not become healthy; tail of log:" >&2

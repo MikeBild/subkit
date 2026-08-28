@@ -168,7 +168,8 @@ also fails after rotation**. There is no key-rotation envelope today.
    docker start subkit
    docker logs --since 1m subkit
    ```
-   `/v1/health` should return `db_connected: true` within 30s.
+   `/health` should return `status: "ok"` and `/ready` should return
+   `checks.database: "pass"` within 30s.
 
 6. **Re-issue every connector credential.** For each tenant × connector:
    - Regenerate static API keys at the upstream system (Stripe, GitHub, etc.)
@@ -191,7 +192,7 @@ also fails after rotation**. There is no key-rotation envelope today.
    affected OIDC record in the structural `auth.providers` list inside
    `subkit.config.json`; tenant LLM keys remain scalar `llm.api_key` settings.
 
-10. **Verify.** Hit `${ENGINE_URL}/v1/health` and run the tenant-scoped
+10. **Verify.** Hit `${ENGINE_URL}/health` and run the tenant-scoped
     integration smoke; expect zero `decrypt_failed` `CryptoError` entries in the
     structured log.
 

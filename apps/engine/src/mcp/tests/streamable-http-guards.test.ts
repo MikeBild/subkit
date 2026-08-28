@@ -372,7 +372,7 @@ describe("guards: pure helpers", () => {
   test("originOf extracts the scheme+host+port from a full URL", () => {
     expect(guardsTest.originOf("https://example.com/path?q=1")).toBe("https://example.com");
     expect(guardsTest.originOf("http://localhost:3000/mcp")).toBe("http://localhost:3000");
-    expect(guardsTest.originOf("https://api.subkit.io/v1/health")).toBe("https://api.subkit.io");
+    expect(guardsTest.originOf("https://api.subkit.io/health")).toBe("https://api.subkit.io");
   });
 
   test("originOf returns null for non-URL strings", () => {

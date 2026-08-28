@@ -82,20 +82,32 @@ console.log(`verify:release: expecting ${args.version} at ${args.engineUrl}\n`);
 
 // ── health: the engine is up, reachable, and on the expected build ──────────
 try {
-  const health = (await getJson(`${args.engineUrl}/v1/health`)) as {
+  const health = (await getJson(`${args.engineUrl}/health`)) as {
     status?: string;
+    service?: string;
     version?: string;
-    db_connected?: boolean;
+  };
+  const ready = (await getJson(`${args.engineUrl}/ready`)) as {
+    status?: string;
+    service?: string;
+    version?: string;
+    checks?: { lifecycle?: string; database?: string };
   };
   record(
-    health.status === "ok" ? "PASS" : "FAIL",
-    "health.status",
-    `status=${health.status ?? "(missing)"}`,
+    health.status === "ok" && health.service === "subkit" ? "PASS" : "FAIL",
+    "health.contract",
+    `status=${health.status ?? "(missing)"} service=${health.service ?? "(missing)"}`,
   );
   record(
-    health.db_connected === true ? "PASS" : "FAIL",
-    "health.db",
-    `db_connected=${health.db_connected}`,
+    ready.status === "ready" &&
+      ready.service === "subkit" &&
+      ready.version === args.version &&
+      ready.checks?.lifecycle === "pass" &&
+      ready.checks?.database === "pass"
+      ? "PASS"
+      : "FAIL",
+    "ready.contract",
+    `status=${ready.status ?? "(missing)"} service=${ready.service ?? "(missing)"} lifecycle=${ready.checks?.lifecycle ?? "(missing)"} database=${ready.checks?.database ?? "(missing)"}`,
   );
   record(
     health.version === args.version ? "PASS" : "FAIL",

@@ -55,7 +55,7 @@ async function main(): Promise<void> {
   let healthy = false;
   for (let i = 0; i < 60; i++) {
     try {
-      const r = await fetch(`${BASE}/v1/health`);
+      const r = await fetch(`${BASE}/health`);
       if (r.ok) {
         healthy = true;
         break;

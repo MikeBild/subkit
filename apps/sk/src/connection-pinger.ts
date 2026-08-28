@@ -2,7 +2,7 @@
 //
 // The old sk-cli swallowed every transport failure (status refresh +
 // stream errors were caught silently), so a disconnected engine
-// produced an unresponsive TUI. This pinger calls `/v1/health` on a
+// produced an unresponsive TUI. This pinger calls `/health` on a
 // steady cadence, tracks consecutive failures, and broadcasts a
 // three-state result (online / reconnecting / offline) so the Ink
 // status line can show something useful.

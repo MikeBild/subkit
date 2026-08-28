@@ -2,14 +2,14 @@
 // Run `bun run gen:openapi-client` after changing engine routes or schemas.
 
 export interface paths {
-    "/v1/health": {
+    "/health": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Engine health and DB connectivity */
+        /** Engine liveness */
         get: {
             parameters: {
                 query?: never;
@@ -22,6 +22,8 @@ export interface paths {
                 /** @description Health snapshot */
                 200: {
                     headers: {
+                        /** @description Availability responses are always evaluated live and must not be cached. */
+                        "Cache-Control"?: "no-store";
                         [name: string]: unknown;
                     };
                     content: {
@@ -38,7 +40,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/readyz": {
+    "/ready": {
         parameters: {
             query?: never;
             header?: never;
@@ -58,6 +60,8 @@ export interface paths {
                 /** @description Ready */
                 200: {
                     headers: {
+                        /** @description Availability responses are always evaluated live and must not be cached. */
+                        "Cache-Control"?: "no-store";
                         [name: string]: unknown;
                     };
                     content: {
@@ -67,6 +71,8 @@ export interface paths {
                 /** @description Not ready — database unreachable */
                 503: {
                     headers: {
+                        /** @description Availability responses are always evaluated live and must not be cached. */
+                        "Cache-Control"?: "no-store";
                         [name: string]: unknown;
                     };
                     content: {
@@ -13826,14 +13832,22 @@ export interface components {
         HealthResponse: {
             /** @enum {string} */
             status: "ok";
+            /** @enum {string} */
+            service: "subkit";
             version: string;
-            db_connected: boolean;
-            uptime_seconds: number;
         };
         ReadyResponse: {
             /** @enum {string} */
-            status: "ready" | "unavailable";
-            db_connected: boolean;
+            status: "ready" | "not_ready";
+            /** @enum {string} */
+            service: "subkit";
+            version: string;
+            checks: {
+                /** @enum {string} */
+                lifecycle: "pass" | "fail";
+                /** @enum {string} */
+                database: "pass" | "fail";
+            };
         };
         SetupStatusResponse: {
             pending: boolean;

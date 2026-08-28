@@ -47,12 +47,12 @@ describe("connector create → probe → call (HTTP)", () => {
     expect(typeof probe.body.ok).toBe("boolean");
     expect(typeof probe.body.latency_ms).toBe("number");
 
-    // Call: explicitly target /v1/health which deterministically 200s.
+    // Call: explicitly target /health which deterministically 200s.
     const call = await api.post<{ status: number; latency_ms: number }>(
       `/v1/connectors/${id}/call`,
       {
         method: "GET",
-        path: "/v1/health",
+        path: "/health",
       },
     );
     expect(call.status).toBe(200);

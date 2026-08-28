@@ -1221,7 +1221,7 @@ export class SchedulerReconciler {
     // Defer the first sweep off the boot path. The initial reconcileOnce()
     // is awaited inside the boot sequence, before the HTTP listener binds;
     // with the local model active a first backfill embeds the whole backlog
-    // in-process (WASM inference), which blocks /v1/health from ever coming
+    // in-process (WASM inference), which blocks /health from ever coming
     // up and balloons RSS. Seeding lastRun on the first call moves the first
     // real sweep to one cadence after boot, once the engine is serving.
     if (this.lastEmbeddingBackfillAt === null) {
@@ -1247,7 +1247,7 @@ export class SchedulerReconciler {
    * Deferred off the boot path (first call only seeds the watermark): the
    * initial reconcileOnce() is awaited during boot before the HTTP listener
    * binds, and this sweep makes bounded outbound discovery HTTP calls, so
-   * running it on boot would delay /v1/health.
+   * running it on boot would delay /health.
    *
    * Multi-instance overlap is safe — runDiscoveryCached is idempotent (it only
    * rewrites the discovery cache + the connector's self_description metadata,

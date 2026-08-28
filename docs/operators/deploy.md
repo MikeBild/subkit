@@ -14,7 +14,7 @@ is in PostgreSQL.
   ships a new `vX.Y.Z` tag. The tag triggers `release.yml`, which builds and
   publishes the signed multi-platform assets (`engine_<os>_<arch>`,
   `SHA256SUMS`, `SHA256SUMS.sig`).
-- The running version is reported by `GET /v1/health` (`"version"`).
+- The running version is reported by `GET /health` (`"version"`).
 
 ## Before a major-version upgrade
 
@@ -63,12 +63,12 @@ ACT=$(shasum -a 256 engine_linux_x64 | grep -oE '^[0-9a-f]{64}')
 [ "$EXP" = "$ACT" ] && echo CHECKSUM_OK || { echo MISMATCH; exit 1; }
 
 # 2. Back up the running binary, then swap + restart on the host
-ssh root@<engine-host> 'cp -a /usr/local/bin/engine /usr/local/bin/engine.bak-$(curl -s localhost:3000/v1/health | grep -o "\"version\":\"[^\"]*\"")'
+ssh root@<engine-host> 'cp -a /usr/local/bin/engine /usr/local/bin/engine.bak-$(curl -s localhost:3000/health | grep -o "\"version\":\"[^\"]*\"")'
 scp engine_linux_x64 root@<engine-host>:/tmp/engine-new
 ssh root@<engine-host> 'chmod +x /tmp/engine-new && mv /tmp/engine-new /usr/local/bin/engine && systemctl restart subkit-engine'
 
 # 3. Verify
-ssh root@<engine-host> 'curl -s localhost:3000/v1/health'   # expect the new "version"
+ssh root@<engine-host> 'curl -s localhost:3000/health'   # expect the new "version"
 ssh root@<engine-host> 'journalctl -u subkit-engine --since "60 seconds ago" | grep -E "ready.*version|migrate.applied|hydrate.completed"'
 ```
 
@@ -77,18 +77,18 @@ hash with `grep -oE '^[0-9a-f]{64}'` on the matching line, not `awk '{print $1}'
 
 ## Probe endpoints
 
-The engine answers four probe paths, two names for each of two probes:
+The engine exposes one canonical path for each probe:
 
 | Path | Probe | Codes |
 | --- | --- | --- |
-| `GET /v1/health`, `GET /health` | liveness — the process is up; `db_connected` is informational | 200 |
-| `GET /v1/readyz`, `GET /ready` | readiness — refuses traffic while the database is unreachable or the unit is draining | 200 / 503 |
+| `GET /health` | liveness — if the handler runs, it returns `{status, service, version}` | 200 |
+| `GET /ready` | readiness — checks lifecycle and database access | 200 / 503 |
 
-All four are unauthenticated and answer without an `Authorization` header. The
-versioned pair is the documented API contract and the only one in
-`openapi.json`; the unversioned pair exists so an infrastructure probe that
-knows only `/health` and `/ready` does not read a 404 as a dead service. Gate
-load-balancer routing on a readiness path, never on a liveness one.
+Both are unauthenticated, return JSON with `Cache-Control: no-store`, and are
+documented in `openapi.json`. `/health` never checks a dependency. `/ready`
+returns `checks.lifecycle` and `checks.database` as `pass` or `fail`; gate
+load-balancer routing on `/ready`, never on `/health`. The former legacy paths
+`/v1/health` and `/v1/readyz` are intentionally not available.
 
 ## Serving the `sk` CLI from the engine (`/install`)
 
