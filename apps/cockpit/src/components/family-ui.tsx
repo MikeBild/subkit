@@ -319,7 +319,7 @@ export function FamilyKpiCard({
       data-family-kpi-severity={severity}
       data-family-primary={primary ? "true" : undefined}
       className={classes(
-        "group relative min-h-40 min-w-0 rounded-2xl border p-4 shadow-none transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 hover:border-foreground/25",
+        "group relative min-h-[186px] min-w-0 rounded-2xl border p-4 shadow-none transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 hover:border-foreground/25",
         severityClasses[severity],
         className,
       )}
