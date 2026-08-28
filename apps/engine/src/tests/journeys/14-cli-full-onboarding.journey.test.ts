@@ -1,7 +1,7 @@
 // User story: As an operator on my laptop, I want to drive the whole
 // onboarding through the CLI client so there's no REST Postman theatre.
 // Acceptance criteria:
-//   - AC1: The CLI `health` handler reports db_connected=true.
+//   - AC1: The CLI `health` handler reports live and ready family probes.
 //   - AC2: `connectors create` and `connectors docs ingest` produce real
 //          rows against the engine using `EngineClient`.
 //   - AC3: `workflows create` + `workflows run` drive a real execution
@@ -49,10 +49,11 @@ afterAll(async () => {
 }, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: CLI full onboarding", () => {
-  test("AC1: health reports ok + db_connected", async () => {
-    const health = await client.health();
+  test("AC1: health and readiness report the family contract", async () => {
+    const [health, ready] = await Promise.all([client.health(), client.ready()]);
     expect(health.status).toBe("ok");
-    expect(health.db_connected).toBe(true);
+    expect(ready.status).toBe("ready");
+    expect(ready.checks.database).toBe("pass");
   });
 
   test("AC2: connectors create + docs ingest via the CLI client", async () => {

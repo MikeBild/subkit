@@ -169,7 +169,7 @@ export function registerStatusRoute(app: OpenAPIHono<AppEnv>): void {
         user_monthly_budget_tokens: userBudget,
         user_remaining_monthly_budget_tokens: userRemaining,
         // `OPENAPI_INFO.version` is the single source of truth for
-        // engine version in HTTP surfaces — matches `/v1/health`.
+        // engine version in HTTP surfaces — matches `/health`.
         // `process.env.npm_package_version` is not set in the compiled
         // Bun binary, so that path returned "dev" in production.
         version: OPENAPI_INFO.version,

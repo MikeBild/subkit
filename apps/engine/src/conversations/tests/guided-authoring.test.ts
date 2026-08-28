@@ -22,7 +22,7 @@ beforeAll(async () => {
     hostname: "127.0.0.1",
     fetch(req) {
       const url = new URL(req.url);
-      if (url.pathname === "/v1/health") {
+      if (url.pathname === "/health") {
         return Response.json({ ok: true, service: "guided-authoring-test" });
       }
       // Serve everything else as 200 OK so connector probes (which

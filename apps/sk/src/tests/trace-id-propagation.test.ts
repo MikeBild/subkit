@@ -48,7 +48,7 @@ describe("outbound trace-id propagation", () => {
       },
     });
 
-    await client.request("GET", "/v1/health");
+    await client.request("GET", "/health");
     expect(seenHeaders).toHaveLength(1);
     const sentTraceId = seenHeaders[0]!.get("x-sk-trace-id");
     expect(sentTraceId).toMatch(/^cli-[a-zA-Z0-9_-]{8,}$/);

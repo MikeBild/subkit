@@ -100,12 +100,12 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
     try {
       if (name === "sk_ping") {
-        const h = await client.health();
+        const [h, ready] = await Promise.all([client.health(), client.ready()]);
         return {
           content: [
             {
               type: "text",
-              text: `engine=${profile.engine_url} status=${h.status} db=${h.db_connected}`,
+              text: `engine=${profile.engine_url} live=${h.status} ready=${ready.status} database=${ready.checks.database}`,
             },
           ],
         };

@@ -1,7 +1,7 @@
 // Module-scoped health state for the engine.
 //
 // Boot-time code (apps/engine/src/index.ts) writes here; the
-// /v1/health route reads from it. A single record-typed accessor
+// /health route reads from it. A single record-typed accessor
 // keeps the boot path's mutation surface compact: each new flag is
 // one new field rather than another import + setter pair, and the
 // test reset surface stays one call.
@@ -18,10 +18,10 @@ export interface EngineHealthState {
   /**
    * `true` once the process has begun graceful shutdown. Flipped at the
    * top of `shutdown()` (apps/engine/src/index.ts) BEFORE the HTTP server
-   * stops accepting connections, so `/v1/readyz` returns 503 and the load
+   * stops accepting connections, so `/ready` returns 503 and the load
    * balancer / systemd health gate stops routing to this instance while
    * in-flight `conversation.run-turn` jobs drain. Deliberately NOT surfaced
-   * on `/v1/health` (that route must not leak operational posture).
+   * on `/health` (that route must not leak operational posture).
    */
   draining: boolean;
 }

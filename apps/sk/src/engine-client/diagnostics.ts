@@ -90,19 +90,27 @@ export interface StatusSummary {
 export const diagnosticsMethods = {
   // --------------------------- Health + Health-like ---------------------------
   health(this: EngineClient): Promise<{
-    status: string;
-    db_connected: boolean;
-    version?: string;
-    uptime_seconds?: number;
+    status: "ok";
+    service: "subkit";
+    version: string;
   }> {
-    return this.request("GET", "/v1/health");
+    return this.request("GET", "/health");
+  },
+
+  ready(this: EngineClient): Promise<{
+    status: "ready" | "not_ready";
+    service: "subkit";
+    version: string;
+    checks: { lifecycle: "pass" | "fail"; database: "pass" | "fail" };
+  }> {
+    return this.request("GET", "/ready");
   },
 
   // --------------------------- Version diagnostics ---------------------------
   /**
    * Engine version + update + schema-drift posture. Backed by
    * `/v1/diagnostics/version`, which requires `audit:read`. The
-   * public `/v1/health` deliberately omits these fields so the engine
+   * public `/health` deliberately omits these fields so the engine
    * does not leak operational posture to unauthenticated callers.
    */
   diagnosticsVersion(this: EngineClient): Promise<{

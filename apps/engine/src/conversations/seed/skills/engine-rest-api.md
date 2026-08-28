@@ -37,7 +37,7 @@ proven over one surface holds over the other.
   `/v1/knowledge-sources`, `/v1/patch-candidates`, `/v1/discovery`, `/v1/self-healing`,
   `/v1/rbac`, `/v1/identity` (api-keys, portal-tokens, system-accounts, invites),
   `/v1/webhooks/inbound`, `/v1/schedules`, `/v1/subscriptions`, `/v1/diagnostics`,
-  `/v1/stats`, and `/v1/status` + `/v1/health`. Each follows the same list / get / mutate
+  `/v1/stats`, and `/v1/status` + `/health`. Each follows the same list / get / mutate
   shape on `/{id}` sub-paths.
 - **MCP tool names are underscore, never dotted** (`run_workflow`, `conversation_start`,
   `search_knowledge`, `get_engine_status`, `whoami`). Any `wf.<slug>` / `conversation.*` form

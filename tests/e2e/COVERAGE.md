@@ -269,7 +269,7 @@ sequences. Run via `bun run test:docker` (needs `compose:test:up`).
 
 | File | When | Coverage |
 |------|------|----------|
-| `bootstrap.docker.test.ts` | PR (`docker-e2e` job) | health `ok`+`db_connected`; minted `wf_live_` key; `sk health`/`status`; `/v1/diagnostics/version`; operator `engine --issue-admin-key` |
+| `bootstrap.docker.test.ts` | PR (`docker-e2e` job) | family liveness/readiness contract; minted `wf_live_` key; `sk health`/`status`; `/v1/diagnostics/version`; operator `engine --issue-admin-key` |
 | `surface-crud.docker.test.ts` | PR (`docker-e2e` job) | connector create+probe+call (call egress-guarded → 422 OK); workflow save+history + `sk workflows list`; knowledge inline+search; saved transform execution |
 | `scheduler.docker.test.ts` | nightly (`docker-nightly`) | real in-container reconciler fires an `every:30` schedule → `request_source="scheduler"` (capped poll) |
 | `repl-smoke.docker.test.ts` | nightly (`docker-nightly`) | host `sk` REPL boots to the quick-start banner over a PTY against the container and exits cleanly |

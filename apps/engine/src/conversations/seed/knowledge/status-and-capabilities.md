@@ -11,7 +11,7 @@ version: 1
 
 Runtime self-inspection lets a client answer "what is sk's state, who am I, what may I do, and how much have I spent?" without guessing. Two surfaces expose the same underlying reads:
 
-- REST: `GET /v1/status`, `GET /v1/health`, `GET /v1/identity/whoami`, `GET /v1/identity/permissions`, `GET /v1/operator/health-digest`, `GET /v1/diagnostics/version`.
+- REST: `GET /v1/status`, `GET /health`, `GET /ready`, `GET /v1/identity/whoami`, `GET /v1/identity/permissions`, `GET /v1/operator/health-digest`, `GET /v1/diagnostics/version`.
 - MCP tools (underscore names): `get_engine_status`, `whoami`, `get_token_budget`, `get_llm_usage`.
 
 Every read is tenant-scoped. Self-introspection (`/v1/status`, `whoami`, `/v1/identity/permissions`) is gated by authentication only — a caller can always discover its own state and rights without already holding a permission. Operational posture (health digest, version/drift) is gated by a permission.
@@ -31,7 +31,7 @@ Fields:
 - `remaining_monthly_budget_tokens` — `budget - month` floored at 0; `null` = unlimited.
 - `tokens_today_user`, `tokens_month_user` — the CALLER's own usage. `null` for `system_account` principals (no per-user attribution).
 - `user_monthly_budget_tokens`, `user_remaining_monthly_budget_tokens` — the caller's own per-user cap and remaining. `null` when there is no per-user cap or the principal is not a user.
-- `version` — engine version (single source of truth; matches `/v1/health`). Use to diagnose client/engine skew.
+- `version` — engine version (single source of truth; matches `/health`). Use to diagnose client/engine skew.
 - `llm_provider` — `{ detected, ok, message, missing[] }`. Provider config health. `ok=false` with a non-empty `missing` array means the first conversation turn will fail (e.g. detected `bedrock`, `missing: ["AWS_REGION"]`). Show this as a warning before firing a turn rather than eating a mid-conversation 5xx.
 
 How to read: a healthy line is `ok:true`, `missing:[]`, and `remaining_*` > 0. A leading warning chip is warranted when `llm_provider.ok` is false. Tenant-wide budget vs. the caller's own budget are reported separately — distinguish "the tenant is over budget" from "you personally are."
@@ -42,15 +42,21 @@ Calls `GET /v1/status` and returns its full payload under `{ ok: true, data: <St
 
 Read the same fields as `/v1/status` above. Use it to answer "how many connectors/skills do I have, what's my token spend, what version, is my LLM provider wired correctly?"
 
-## GET /v1/health — liveness
+## GET /health — liveness
 
 Public, unauthenticated, reachable from the open internet. Deliberately minimal so an anonymous caller cannot fingerprint operational posture. Fields:
 - `status` — always the literal `"ok"` when the process is serving.
+- `service` — always the literal `"subkit"`.
 - `version` — engine version.
-- `db_connected` — boolean; result of a live `select 1` ping. `false` means the engine is up but the database is unreachable.
-- `uptime_seconds` — seconds since boot.
 
-How to read: process is alive iff this responds 200; the engine can talk to its database iff `db_connected` is true. Operational fields (update availability, schema drift) are NOT here — they live behind `audit:read` at `GET /v1/diagnostics/version`.
+How to read: process is alive iff this responds 200. It never checks the database or another dependency.
+
+## GET /ready — readiness
+
+Public and unauthenticated. Returns HTTP 200 with `status: "ready"` when the
+process accepts traffic and its database query succeeds, otherwise HTTP 503
+with `status: "not_ready"`. Fields are `status`, `service`, `version`, and
+`checks`, whose `lifecycle` and `database` values are exactly `pass` or `fail`.
 
 ## GET /v1/identity/whoami — who am I
 
@@ -115,7 +121,7 @@ How to read: `monthly_total_tokens` is the rollup; `recent[]` is the per-call le
 
 ## GET /v1/diagnostics/version — version, update, drift
 
-Behind `audit:read` (kept off public `/v1/health` so anonymous callers cannot fingerprint the engine). Each read writes an audit row. Fields:
+Behind `audit:read` (kept off public `/health` so anonymous callers cannot fingerprint the engine). Each read writes an audit row. Fields:
 - `engine_version` — version baked in at compile time.
 - `latest_version` (optional) — newest release the boot probe found; absent if the probe is disabled or has not finished its first cycle.
 - `update_available` — boolean; whether a newer release was observed.
@@ -126,8 +132,9 @@ How to read: use to confirm "is this deploy current and is its schema in sync?" 
 
 ## Quick map: question → read
 
-- Is the engine alive / can it reach its DB? → `GET /v1/health` (`status`, `db_connected`).
-- What version is running? → `/v1/health.version`, `/v1/status.version`, or `/v1/diagnostics/version.engine_version`.
+- Is the engine alive? → `GET /health` (`status`, `service`, `version`).
+- Can it accept traffic and reach its DB? → `GET /ready` (`status`, `checks`).
+- What version is running? → `/health.version`, `/v1/status.version`, or `/v1/diagnostics/version.engine_version`.
 - Is the LLM provider wired? → `/v1/status.llm_provider` or `get_engine_status`.
 - How many connectors/skills, total token spend? → `/v1/status` or `get_engine_status`.
 - Who am I, what tenant, what role, raw scopes? → `/v1/identity/whoami` or `whoami`.

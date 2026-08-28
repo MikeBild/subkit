@@ -30,15 +30,21 @@ afterAll(() => {
 }, 60_000);
 
 describe("container bootstrap", () => {
-  test("health reports ok + db_connected", async () => {
-    const res = await dockerApi<{ status: string; db_connected: boolean }>(
+  test("health and readiness implement the family contract", async () => {
+    const res = await dockerApi<{ status: string; service: string; version: string }>(
       env,
       "GET",
-      "/v1/health",
+      "/health",
     );
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe("ok");
-    expect(res.body.db_connected).toBe(true);
+    expect(res.body).toMatchObject({ status: "ok", service: "subkit" });
+    const ready = await dockerApi<{ status: string; checks: { database: string } }>(
+      env,
+      "GET",
+      "/ready",
+    );
+    expect(ready.status).toBe(200);
+    expect(ready.body).toMatchObject({ status: "ready", checks: { database: "pass" } });
   });
 
   test("first-run onboarding minted a wf_live_ admin key", () => {

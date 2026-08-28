@@ -48,7 +48,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     );
     expectSuccess(result, "matrix api-key login");
     expect(result.stdout).toContain("saved");
-    expect(result.stdout).toContain("engine health: ok");
+    expect(result.stdout).toContain("engine health: live=ok ready=ready");
   });
 
   test.todo("portal-token login boots and exits clean — needs portal-token mint harness");

@@ -44,13 +44,12 @@ export function runCommand(
 }
 
 export interface HealthResponse {
-  status: string;
-  db_connected: boolean;
-  version?: string;
-  uptime_seconds?: number;
+  status: "ok";
+  service: "subkit";
+  version: string;
 }
 
-/** Poll `${BASE_URL}/v1/health` until status=ok + db_connected=true.
+/** Poll the canonical family probes until liveness and readiness agree.
  *  The public health response is intentionally minimal (no operational
  *  posture fields). For drift / version data, hit
  *  `/v1/diagnostics/version` with an `audit:read` token. */
@@ -58,10 +57,22 @@ export async function waitForHealth(timeoutMs = 120_000): Promise<HealthResponse
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${BASE_URL}/v1/health`);
+      const response = await fetch(`${BASE_URL}/health`);
       if (response.ok) {
         const body = (await response.json()) as HealthResponse;
-        if (body.status === "ok" && body.db_connected === true) return body;
+        const readyResponse = await fetch(`${BASE_URL}/ready`);
+        const ready = (await readyResponse.json()) as {
+          status?: string;
+          checks?: { database?: string };
+        };
+        if (
+          body.status === "ok" &&
+          readyResponse.ok &&
+          ready.status === "ready" &&
+          ready.checks?.database === "pass"
+        ) {
+          return body;
+        }
       }
     } catch {
       /* retry */

@@ -596,7 +596,7 @@ export function cannedConnectorWorkflowPlan(baseUrl: string): ConverseMockStep[]
       },
     },
     { tool: "validate_connector_draft", args: {} },
-    { tool: "probe_connector_draft", args: { method: "GET", path: "/v1/health" } },
+    { tool: "probe_connector_draft", args: { method: "GET", path: "/health" } },
     { tool: "inspect_connector_draft", args: {} },
     // One call. It pauses on the policy gate's ask_user_confirm, whose
     // commit_intent the harness dispatches on approve — the model does not, and
@@ -620,7 +620,7 @@ export function cannedConnectorWorkflowPlan(baseUrl: string): ConverseMockStep[]
               id: "health",
               kind: "request",
               method: "GET",
-              url: `${baseUrl}/v1/health`,
+              url: `${baseUrl}/health`,
             },
           },
         ],
