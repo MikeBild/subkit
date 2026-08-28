@@ -73,13 +73,6 @@ const EN = {
   "account.signingOut": "Signing out…",
   "account.signOutFailed": "Sign out failed",
   "account.signOutFailedDescription": "Your session is still active. Please try again.",
-  "session.signIn.title": "Sign in to SubKit",
-  "session.signIn.description": "Your cockpit uses the identity provider of this SubKit engine.",
-  "session.signIn.explanation":
-    "Continue to your workspace. Your role controls which tools and records are available.",
-  "session.signIn.action": "Continue to sign in",
-  "session.unavailable.title": "Cockpit unavailable",
-  "session.unavailable.description": "The engine did not return a session.",
   "session.retry": "Try again",
   "familyFailure.notFound.title": "Page not found",
   "familyFailure.notFound.description": "This address is not part of the current cockpit.",
@@ -1216,14 +1209,6 @@ const DE: Record<TranslationKey, string> = {
   "account.signingOut": "Wird abgemeldet…",
   "account.signOutFailed": "Abmeldung fehlgeschlagen",
   "account.signOutFailedDescription": "Deine Sitzung ist noch aktiv. Bitte versuch es erneut.",
-  "session.signIn.title": "Bei SubKit anmelden",
-  "session.signIn.description":
-    "Das Cockpit verwendet den Identitätsanbieter dieser SubKit-Engine.",
-  "session.signIn.explanation":
-    "Weiter zum Arbeitsbereich. Deine Rolle bestimmt, welche Werkzeuge und Datensätze verfügbar sind.",
-  "session.signIn.action": "Weiter zur Anmeldung",
-  "session.unavailable.title": "Cockpit nicht verfügbar",
-  "session.unavailable.description": "Die Engine hat keine Sitzung zurückgegeben.",
   "session.retry": "Erneut versuchen",
   "familyFailure.notFound.title": "Seite nicht gefunden",
   "familyFailure.notFound.description": "Diese Adresse gehört nicht zum aktuellen Cockpit.",
