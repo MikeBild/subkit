@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.30] – 2026-08-28
+
+### Fixed
+
+- Cockpit sign-in now opens the product-local SSO/API-key chooser directly with browser-localized German and English copy and consistent product identity.
+- Unknown Cockpit routes and bootstrap failures now use the concise family 404/500 states, while API errors outside the Cockpit remain machine-readable.
+
 ## [6.22.29] – 2026-08-27
 
 ### Fixed
