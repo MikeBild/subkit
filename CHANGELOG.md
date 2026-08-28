@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.32] – 2026-08-28
+
+### Fixed
+
+- Cockpit actions now use the family-wide neutral primary hierarchy; blue is
+  reserved for links and informational emphasis across sign-in, failure, and
+  application surfaces.
+
 ## [6.22.31] – 2026-08-28
 
 ### Fixed
