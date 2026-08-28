@@ -1,5 +1,5 @@
 {
-  "familyVersion": "2.2",
+  "familyVersion": "2.3",
   "apiSchemaVersion": "operational-overview.v1",
   "scope": [
     "shell",
@@ -315,6 +315,18 @@
     "border": "1px",
     "shadow": "none",
     "accent": "family",
+    "actions": {
+      "primary": {
+        "variant": "default",
+        "backgroundToken": "primary",
+        "foregroundToken": "primary-foreground",
+        "hoverOpacityPercent": 90
+      },
+      "secondary": { "variant": "outline" },
+      "tertiary": { "variant": "ghost" },
+      "link": { "variant": "link", "foregroundToken": "accent" },
+      "destructive": { "variant": "destructive", "foregroundToken": "destructive" }
+    },
     "semanticColors": {
       "critical": "red",
       "urgent": "orange",

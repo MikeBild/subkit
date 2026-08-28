@@ -75,8 +75,9 @@ describe("cockpit-ui family contract", () => {
 
   test("keeps the local action grammar and spacing contract explicit", () => {
     const button = readFileSync(join(root, "apps/cockpit/src/components/ui/button.tsx"), "utf8");
-    expect(button).toContain('default: "bg-accent text-accent-foreground');
-    expect(button).not.toContain('default: "bg-primary text-primary-foreground');
+    expect(button).toContain('default: "bg-primary text-primary-foreground hover:bg-primary/90"');
+    expect(button).toContain('link: "text-accent underline-offset-4 hover:underline"');
+    expect(button).not.toContain('default: "bg-accent');
 
     for (const file of [
       "apps/cockpit/src/pages/admin.tsx",
