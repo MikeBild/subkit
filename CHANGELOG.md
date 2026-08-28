@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.34] – 2026-08-28
+
+### Fixed
+
+- Aligned KPI cards and compact decision records with the family-wide
+  dashboard and decision-workbench geometry.
+
 ## [6.22.33] – 2026-08-28
 
 ### Changed
