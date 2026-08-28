@@ -54,6 +54,16 @@ export function rateLimitMiddleware(opts: RateLimitOptions = {}): MiddlewareHand
   let lastPrune = Date.now();
 
   return async (c, next): Promise<undefined | Response> => {
+    // Authentication runs before this middleware. A resolved principal has
+    // already paid the credential-validation cost and is governed by tenant,
+    // RBAC, and audit controls, so it must not share the anonymous per-IP
+    // budget. This is especially important for browser clients: a single
+    // cockpit view intentionally fans out into many authenticated reads.
+    if (c.get("principal")) {
+      await next();
+      return undefined;
+    }
+
     const now = Date.now();
 
     // Periodic prune of expired buckets.
