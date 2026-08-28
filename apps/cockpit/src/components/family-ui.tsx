@@ -1,8 +1,11 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
-export const FAMILY_UI_VERSION = "2.1";
+export const FAMILY_UI_VERSION = "2.2";
 
 export type FamilySurface =
+  | "auth"
+  | "not-found"
+  | "fatal-error"
   | "overview"
   | "decisions"
   | "collection"
@@ -169,6 +172,77 @@ export function FamilyState({
         ) : null}
         {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
       </div>
+    </div>
+  );
+}
+
+type FamilyFailureStateProps = HTMLAttributes<HTMLElement> & {
+  kind: "not-found" | "fatal-error";
+  title: ReactNode;
+  description: ReactNode;
+  icon: ReactNode;
+  primaryAction: ReactNode;
+  secondaryAction?: ReactNode;
+  standalone?: boolean;
+};
+
+/**
+ * The one family surface for a route that cannot continue.
+ *
+ * It deliberately renders one heading, one sentence and at most two exits.
+ * Diagnostics belong in telemetry; an operator-facing failure state only says
+ * what happened and what they can do next.
+ */
+export function FamilyFailureState({
+  kind,
+  title,
+  description,
+  icon,
+  primaryAction,
+  secondaryAction,
+  standalone = false,
+  className,
+  ...props
+}: FamilyFailureStateProps) {
+  const fatal = kind === "fatal-error";
+  return (
+    <div
+      data-family-surface={kind}
+      data-family-contract-version={FAMILY_UI_VERSION}
+      data-family-failure-kind={kind}
+      data-family-state={fatal ? "error" : "empty"}
+      data-testid={kind === "not-found" ? "not-found" : "fatal-error"}
+      className={classes(
+        "grid w-full min-w-0 flex-1 place-items-center px-4 py-10 sm:px-6",
+        standalone ? "min-h-svh bg-background" : "min-h-[calc(100svh-3.5rem)]",
+        className,
+      )}
+      {...props}
+    >
+      <section
+        data-family-slot="failure-state"
+        role={fatal ? "alert" : undefined}
+        className="flex w-full max-w-md flex-col items-center text-center"
+      >
+        <div
+          aria-hidden="true"
+          className={classes(
+            "grid size-11 place-items-center rounded-2xl border bg-card text-foreground",
+            fatal && "border-destructive/40 bg-destructive/[0.06] text-destructive",
+          )}
+        >
+          {icon}
+        </div>
+        <h1 className="mt-5 text-2xl font-semibold leading-8 tracking-[-0.02em]">{title}</h1>
+        <p className="mt-2 max-w-sm text-sm leading-5 text-muted-foreground">{description}</p>
+        <div
+          data-family-slot="failure-actions"
+          className="mt-6 flex flex-wrap items-center justify-center gap-2"
+        >
+          {primaryAction}
+          {secondaryAction}
+        </div>
+      </section>
     </div>
   );
 }
@@ -346,16 +420,24 @@ export function FamilyAuditLink({ className, ...props }: HTMLAttributes<HTMLDivE
 
 export type FamilyCollectionTier = "primary" | "embedded";
 
+export const FAMILY_PRIMARY_COLLECTION_CAPABILITIES =
+  "search relevant-filters sort column-visibility result-count pagination url-state responsive-cards loading-state \u0065mpty-state error-state";
+
+export const FAMILY_CARD_COLLECTION_CAPABILITIES =
+  "search relevant-filters sort result-count pagination url-state responsive-cards loading-state \u0065mpty-state error-state";
+
 type FamilyCollectionFrameProps = HTMLAttributes<HTMLElement> & {
   id: string;
   tier?: FamilyCollectionTier;
   state?: FamilyStateName;
+  capabilities?: string;
 };
 
 export function FamilyCollectionFrame({
   id,
   tier = "primary",
   state = "ready",
+  capabilities,
   className,
   ...props
 }: FamilyCollectionFrameProps) {
@@ -365,6 +447,7 @@ export function FamilyCollectionFrame({
       data-family-collection-id={id}
       data-family-collection-tier={tier}
       data-family-state={state}
+      data-family-collection-capability={capabilities}
       className={classes("min-w-0", className)}
       {...props}
     />
