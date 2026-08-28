@@ -33,7 +33,7 @@ export function NotFoundPage() {
       description={t("familyFailure.notFound.description")}
       icon={<RouteOff className="size-5" />}
       primaryAction={
-        <Button asChild>
+        <Button asChild data-testid="not-found-home-action">
           <a href="/cockpit" data-testid="not-found-home">
             {t("familyFailure.overview")}
           </a>
@@ -57,7 +57,7 @@ export function RouteErrorPage({ reset }: ErrorComponentProps) {
         </Button>
       }
       secondaryAction={
-        <Button variant="outline" asChild>
+        <Button variant="outline" asChild data-testid="fatal-error-home-action">
           <a href="/cockpit" data-testid="fatal-error-home">
             {t("familyFailure.overview")}
           </a>
