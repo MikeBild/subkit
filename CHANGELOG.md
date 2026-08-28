@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.31] – 2026-08-28
+
+### Fixed
+
+- Authenticated Cockpit and API reads no longer consume the shared anonymous
+  per-IP rate-limit budget, so browser smoke tests and screenshot captures can
+  complete without weakening protection for public requests.
+
 ## [6.22.30] – 2026-08-28
 
 ### Fixed

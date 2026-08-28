@@ -214,10 +214,11 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   const app = createOpenApiApp();
   const registry = opts.registry ?? buildDefaultRegistry(opts.db);
 
-  // Order matters: trace -> logging -> rate-limit -> metrics -> error wrap -> db -> auth -> routes.
+  // Order matters: trace -> logging -> metrics -> error wrap -> db -> auth -> anonymous
+  // rate-limit -> routes. The limiter must see the resolved principal so authenticated
+  // cockpit/API reads do not consume the shared anonymous per-IP budget.
   app.use("*", traceMiddleware());
   app.use("*", loggingMiddleware());
-  app.use("*", rateLimitMiddleware(opts.rateLimit ?? {}));
   app.use("*", metricsMiddleware());
   app.use("*", errorMiddleware());
 
@@ -290,6 +291,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
     });
   }
   app.use("*", authMiddleware(registry));
+  app.use("*", rateLimitMiddleware(opts.rateLimit ?? {}));
   app.use("/v1/*", browserCsrfMiddleware());
 
   registerHealthRoute(app, opts.db ? { db: opts.db } : {});
