@@ -22,6 +22,7 @@ import {
   renderApiKeyLogin,
   renderErrorPage,
   renderProviderChoice,
+  resolveAuthLocale,
   SIGN_IN_FAILED_TITLE,
   STATE_ERROR_MESSAGE,
 } from "../oauth/ui.ts";
@@ -106,7 +107,9 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
         href: `${base}/v1/identity/login/start?provider=${encodeURIComponent(provider.id)}&login_state=${encodeURIComponent(state)}`,
       }));
       return choices.length
-        ? authHtmlResponse(renderProviderChoice(choices))
+        ? authHtmlResponse(
+            renderProviderChoice(choices, resolveAuthLocale(c.req.header("accept-language"))),
+          )
         : c.json(
             { code: "login_not_configured", message: "no MCP login provider configured" },
             503,
@@ -127,7 +130,15 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     if (selected.protocol === "api_key") {
-      return authHtmlResponse(renderApiKeyLogin("/v1/identity/login/start", selected.id, state));
+      return authHtmlResponse(
+        renderApiKeyLogin(
+          "/v1/identity/login/start",
+          selected.id,
+          state,
+          undefined,
+          resolveAuthLocale(c.req.header("accept-language")),
+        ),
+      );
     }
 
     const redirectTo = safeRedirect(String(loginState.redirect_to ?? ""));
@@ -159,6 +170,7 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
           selected.id,
           parsed.data.login_state,
           "The API key is invalid, expired, or is not owned by a user.",
+          resolveAuthLocale(c.req.header("accept-language")),
         ),
         401,
       );

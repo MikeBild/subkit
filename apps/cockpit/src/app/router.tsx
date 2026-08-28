@@ -1,4 +1,5 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import { NotFoundPage, RouteErrorPage } from "@/components/failure-state";
 import {
   AccessPage,
   ApiAccessPage,
@@ -16,12 +17,11 @@ import { InboxPage } from "@/pages/inbox";
 import { OverviewPage } from "@/pages/overview";
 import { RunsPage } from "@/pages/runs";
 import { UsagePage } from "@/pages/usage";
-import { ErrorScreen } from "./error-screen";
 import { CATALOG_RESOURCES, CHAT_ROUTES, PAGE_ROUTES, type PageRoute } from "./route-table";
 import { useSession } from "./session";
 import { AppShell } from "./shell";
 
-const rootRoute = createRootRoute({ component: AppShell });
+const rootRoute = createRootRoute({ component: AppShell, notFoundComponent: NotFoundPage });
 
 // One component behind all three chat paths: a conversation is chosen from the
 // path, not from a different page. The paths are read off the table by
@@ -95,7 +95,7 @@ export const router = createRouter({
   routeTree,
   basepath: "/cockpit",
   trailingSlash: "never",
-  defaultErrorComponent: ErrorScreen,
+  defaultErrorComponent: RouteErrorPage,
 });
 
 declare module "@tanstack/react-router" {

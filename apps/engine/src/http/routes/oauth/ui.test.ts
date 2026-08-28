@@ -6,11 +6,12 @@ import {
   renderConsentPage,
   renderErrorPage,
   renderProviderChoice,
+  resolveAuthLocale,
   SIGN_IN_FAILED_TITLE,
   STATE_ERROR_MESSAGE,
 } from "./ui.ts";
 
-const COMMON_STYLE_SHA256 = "ebdaece15b70206254f6430990bd14abfbc51a62d319cda6383bc8163b10b4d3";
+const COMMON_STYLE_SHA256 = "be7803cb8701e77144e7e91642f5a6e2d2fd8284d9c6c82b0f4e5efa9c4fea5a";
 
 describe("common MCP auth UI contract", () => {
   test("is branded, escaped, script-free and request-bounded", () => {
@@ -27,7 +28,7 @@ describe("common MCP auth UI contract", () => {
       resource: "",
     });
     expect(html).toContain('data-auth-contract="mcp-auth"');
-    expect(html).toContain('name="mcp-auth-ui-contract" content="sha256-ebdaece15b70"');
+    expect(html).toContain('name="mcp-auth-ui-contract" content="sha256-be7803cb8701"');
     expect(html).toContain("max-width:420px");
     expect(html).toContain('value="mcp:read" checked disabled');
     expect(html).toContain('value="switch_account"');
@@ -48,6 +49,26 @@ describe("common MCP auth UI contract", () => {
     expect(html).not.toContain("Continue with Continue with");
     const styles = html.match(/\/\*mcp-auth:begin\*\/([\s\S]*?)\/\*mcp-auth:end\*\//)?.[1] ?? "";
     expect(createHash("sha256").update(styles).digest("hex")).toBe(COMMON_STYLE_SHA256);
+  });
+
+  test("provider chooser follows the family identity and browser locale contract", () => {
+    expect(resolveAuthLocale("de-DE,de;q=0.9,en;q=0.8")).toBe("de");
+    expect(resolveAuthLocale("fr-FR,fr;q=0.9")).toBe("en");
+    const html = renderProviderChoice(
+      [
+        { id: "api-key", protocol: "api_key", href: "/api-key" },
+        { id: "workforce", protocol: "oidc", href: "/workforce" },
+      ],
+      "de",
+    );
+    expect(html).toContain('<html lang="de">');
+    expect(html).toContain('data-auth-product="subkit"');
+    expect(html).toContain('data-testid="auth-product-icon"');
+    expect(html).toContain("Bei SubKit anmelden");
+    expect(html).toContain("SubKit · OAuth 2.1");
+    expect(html.indexOf('data-auth-provider="sso"')).toBeLessThan(
+      html.indexOf('data-auth-provider="api-key"'),
+    );
   });
 
   test("the funnel declares both schemes, in the family palette", () => {
@@ -76,7 +97,7 @@ describe("common MCP auth UI contract", () => {
     expect(html).toContain('href="/v1/identity/login/start"');
     expect(html).toContain(">Sign in again</a>");
     expect(html).toContain('data-auth-contract="mcp-auth"');
-    expect(html).toContain('name="mcp-auth-ui-contract" content="sha256-ebdaece15b70"');
+    expect(html).toContain('name="mcp-auth-ui-contract" content="sha256-be7803cb8701"');
     const styles = html.match(/\/\*mcp-auth:begin\*\/([\s\S]*?)\/\*mcp-auth:end\*\//)?.[1] ?? "";
     expect(createHash("sha256").update(styles).digest("hex")).toBe(COMMON_STYLE_SHA256);
     const response = authHtmlResponse(html, 400);
