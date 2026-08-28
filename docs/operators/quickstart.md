@@ -45,7 +45,7 @@ docker run -d --name subkit -p 3000:3000 -v subkit-data:/data mikebild/subkit:la
 On first boot it initializes Postgres, persists a `MASTER_KEY`, runs migrations, and serves the API on `:3000`. The `subkit-data` volume holds all state. Verify:
 
 ```bash
-curl -s http://localhost:3000/v1/health | jq
+curl -s http://localhost:3000/health | jq
 ```
 
 Full guide (external-DB mode, TLS-fronting, persistence, resource limits): [docs/developers/self-host.md](../developers/self-host.md).

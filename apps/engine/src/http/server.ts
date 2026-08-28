@@ -1,6 +1,6 @@
 // Hono app factory. Wires:
 //   - trace + logging + auth + error middleware
-//   - /v1/health
+//   - /health
 //   - /v1/identity/* routes
 //   - /openapi.json
 //   - /docs (Scalar)

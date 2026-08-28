@@ -78,7 +78,7 @@ beforeAll(async () => {
           // up. Both httpbin.org and httpstat.us have hung CI runners
           // (180s timeouts on every attempt, 2026-06-11); this journey
           // asserts fast-path dispatch, not outbound networking.
-          url: `${ctx.baseUrl}/v1/health`,
+          url: `${ctx.baseUrl}/health`,
         },
       ],
     }),
@@ -192,7 +192,7 @@ describe("journey: sk fast-path — list enumerates completely with exact total 
         body: JSON.stringify({
           name: `Bulk WF ${i}`,
           slug: `bulk-wf-${String(i).padStart(2, "0")}`,
-          steps: [{ kind: "request", id: "noop", method: "GET", url: `${ctx.baseUrl}/v1/health` }],
+          steps: [{ kind: "request", id: "noop", method: "GET", url: `${ctx.baseUrl}/health` }],
         }),
       });
       expect(res.status).toBe(201);

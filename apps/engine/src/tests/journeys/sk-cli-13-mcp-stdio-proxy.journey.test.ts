@@ -111,10 +111,10 @@ async function buildServer(): Promise<{
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
     try {
       if (name === "sk.ping") {
-        const h = await client.health();
+        const [h, ready] = await Promise.all([client.health(), client.ready()]);
         return {
           content: [
-            { type: "text", text: `engine=${ctx.baseUrl} status=${h.status} db=${h.db_connected}` },
+            { type: "text", text: `engine=${ctx.baseUrl} live=${h.status} ready=${ready.status}` },
           ],
         };
       }

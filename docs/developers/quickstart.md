@@ -58,7 +58,7 @@ bun run dev                 # engine in watch mode
 In another shell:
 
 ```bash
-curl -s http://localhost:3000/v1/health | jq
+curl -s http://localhost:3000/health | jq
 ```
 
 ## 5. Where things live

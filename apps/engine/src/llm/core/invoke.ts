@@ -104,7 +104,7 @@ const DEFAULT_PRIMARY = "claude-sonnet-4-6";
 const DEFAULT_FALLBACK = "claude-opus-4-7";
 
 /**
- * Snapshot of the global LLM-routing configuration for /v1/health.
+ * Snapshot of the global LLM-routing configuration for /health.
  *
  * Surfaces both the env (`LLM_PROVIDER`) and the inferred provider so
  * operators can spot the regression that caused the production

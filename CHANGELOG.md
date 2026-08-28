@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.33] – 2026-08-28
+
+### Changed
+
+- Standardized the public family probes on dependency-free `GET /health` and
+  lifecycle/database-aware `GET /ready`; removed the legacy `/v1/health` and
+  `/v1/readyz` aliases and aligned CLI, OpenAPI, docs and deployment checks.
+
 ## [6.22.32] – 2026-08-28
 
 ### Fixed

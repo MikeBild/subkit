@@ -5,7 +5,7 @@
 // setup preflight, and the REPL's needs-attention panel. This composes
 // the steady-state signals into a single view:
 //
-//   1. Reachability  — GET /v1/health (liveness, kept auth-free-friendly).
+//   1. Reachability  — GET /health and GET /ready.
 //   2. Token budget  — month-to-date spend vs. the monthly budget
 //                      (from /v1/status — same figures the REPL footer
 //                      shows, so the CLI and the dashboard never disagree).
@@ -172,8 +172,10 @@ export const healthCommand = defineCommand({
     // 1. Reachability — the only required section. A liveness failure is
     // a hard exit; everything else is best-effort chrome.
     let liveness: Awaited<ReturnType<EngineClient["health"]>>;
+    let readiness: Awaited<ReturnType<EngineClient["ready"]>> | null = null;
     try {
       liveness = await client.health();
+      readiness = await tryFetch(() => client.ready());
     } catch (err) {
       process.stderr.write(`unreachable: ${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));
@@ -190,11 +192,7 @@ export const healthCommand = defineCommand({
     ]);
 
     if (args.json) {
-      // Superset of the original liveness contract: spread `liveness`
-      // (status, db_connected, version) at the top level so existing
-      // machine consumers — and the CLI e2e contract — keep working,
-      // then attach the richer composite sections.
-      printJson({ ...liveness, budget: status, digest, drift, runtime });
+      printJson({ health: liveness, ready: readiness, budget: status, digest, drift, runtime });
       return;
     }
 
@@ -202,9 +200,9 @@ export const healthCommand = defineCommand({
     process.stdout.write(
       `\n${pc.bold("sk health")} · engine ${pc.dim(profile.engine_url)} · tenant ${pc.cyan(profile.active_tenant_id ?? "(none)")}\n`,
     );
-    const liveGlyph = liveness.db_connected ? pc.green("✔") : pc.red("✘");
+    const liveGlyph = readiness?.status === "ready" ? pc.green("✔") : pc.yellow("⚠");
     process.stdout.write(
-      `${liveGlyph} ${liveness.status} · version ${liveness.version ?? "?"} · db_connected ${liveness.db_connected}\n`,
+      `${liveGlyph} live=${liveness.status} · ready=${readiness?.status ?? "unreachable"} · version ${liveness.version}\n`,
     );
 
     if (status) renderTokenBudget(status);

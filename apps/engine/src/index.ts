@@ -418,7 +418,7 @@ async function runServer(): Promise<void> {
 
   // Warm the in-process embedding model in the BACKGROUND — deliberately not
   // awaited. The model is a ~1.5 GB-RSS WASM load; blocking boot on it delays
-  // (and on a slow load, fails) the /v1/health gate the deploy polls. Kicking
+  // (and on a slow load, fails) the /health gate the deploy polls. Kicking
   // it off detached lets the listener bind immediately, with the model
   // becoming available a few seconds later; any retrieval before then simply
   // uses FTS. Non-fatal — a load failure (e.g. a build without the fetched

@@ -3038,7 +3038,7 @@ is in PostgreSQL.
   ships a new `vX.Y.Z` tag. The tag triggers `release.yml`, which builds and
   publishes the signed multi-platform assets (`engine_<os>_<arch>`,
   `SHA256SUMS`, `SHA256SUMS.sig`).
-- The running version is reported by `GET /v1/health` (`"version"`).
+- The running version is reported by `GET /health` (`"version"`).
 
 ## Before a major-version upgrade
 
@@ -3087,12 +3087,12 @@ ACT=$(shasum -a 256 engine_linux_x64 | grep -oE '^[0-9a-f]{64}')
 [ "$EXP" = "$ACT" ] && echo CHECKSUM_OK || { echo MISMATCH; exit 1; }
 
 # 2. Back up the running binary, then swap + restart on the host
-ssh root@<engine-host> 'cp -a /usr/local/bin/engine /usr/local/bin/engine.bak-$(curl -s localhost:3000/v1/health | grep -o "\"version\":\"[^\"]*\"")'
+ssh root@<engine-host> 'cp -a /usr/local/bin/engine /usr/local/bin/engine.bak-$(curl -s localhost:3000/health | grep -o "\"version\":\"[^\"]*\"")'
 scp engine_linux_x64 root@<engine-host>:/tmp/engine-new
 ssh root@<engine-host> 'chmod +x /tmp/engine-new && mv /tmp/engine-new /usr/local/bin/engine && systemctl restart subkit-engine'
 
 # 3. Verify
-ssh root@<engine-host> 'curl -s localhost:3000/v1/health'   # expect the new "version"
+ssh root@<engine-host> 'curl -s localhost:3000/health'   # expect the new "version"
 ssh root@<engine-host> 'journalctl -u subkit-engine --since "60 seconds ago" | grep -E "ready.*version|migrate.applied|hydrate.completed"'
 ```
 
@@ -3101,18 +3101,18 @@ hash with `grep -oE '^[0-9a-f]{64}'` on the matching line, not `awk '{print $1}'
 
 ## Probe endpoints
 
-The engine answers four probe paths, two names for each of two probes:
+The engine exposes one canonical path for each probe:
 
 | Path | Probe | Codes |
 | --- | --- | --- |
-| `GET /v1/health`, `GET /health` | liveness — the process is up; `db_connected` is informational | 200 |
-| `GET /v1/readyz`, `GET /ready` | readiness — refuses traffic while the database is unreachable or the unit is draining | 200 / 503 |
+| `GET /health` | liveness — if the handler runs, it returns `{status, service, version}` | 200 |
+| `GET /ready` | readiness — checks lifecycle and database access | 200 / 503 |
 
-All four are unauthenticated and answer without an `Authorization` header. The
-versioned pair is the documented API contract and the only one in
-`openapi.json`; the unversioned pair exists so an infrastructure probe that
-knows only `/health` and `/ready` does not read a 404 as a dead service. Gate
-load-balancer routing on a readiness path, never on a liveness one.
+Both are unauthenticated, return JSON with `Cache-Control: no-store`, and are
+documented in `openapi.json`. `/health` never checks a dependency. `/ready`
+returns `checks.lifecycle` and `checks.database` as `pass` or `fail`; gate
+load-balancer routing on `/ready`, never on `/health`. The former legacy paths
+`/v1/health` and `/v1/readyz` are intentionally not available.
 
 ## Serving the `sk` CLI from the engine (`/install`)
 
@@ -3831,7 +3831,7 @@ docker run -d --name subkit -p 3000:3000 -v subkit-data:/data mikebild/subkit:la
 On first boot it initializes Postgres, persists a `MASTER_KEY`, runs migrations, and serves the API on `:3000`. The `subkit-data` volume holds all state. Verify:
 
 ```bash
-curl -s http://localhost:3000/v1/health | jq
+curl -s http://localhost:3000/health | jq
 ```
 
 Full guide (external-DB mode, TLS-fronting, persistence, resource limits): [docs/developers/self-host.md](../developers/self-host.md).
@@ -9340,7 +9340,7 @@ bun run dev                 # engine in watch mode
 In another shell:
 
 ```bash
-curl -s http://localhost:3000/v1/health | jq
+curl -s http://localhost:3000/health | jq
 ```
 
 ## 5. Where things live
@@ -9914,8 +9914,11 @@ docker run -d --name subkit -p 3000:3000 -v subkit-data:/data mikebild/subkit:la
 Wait a few seconds, then confirm it is healthy:
 
 ```bash
-curl -s http://localhost:3000/v1/health
-# {"status":"ok","db_connected":true,"uptime_seconds":3}
+curl -s http://localhost:3000/health
+# {"status":"ok","service":"subkit","version":"<version>"}
+
+curl -s http://localhost:3000/ready
+# {"status":"ready","service":"subkit","version":"<version>","checks":{"lifecycle":"pass","database":"pass"}}
 ```
 
 The `subkit-data` volume holds **all** state — database, config, encryption key,
@@ -11536,7 +11539,8 @@ also fails after rotation**. There is no key-rotation envelope today.
    docker start subkit
    docker logs --since 1m subkit
    ```
-   `/v1/health` should return `db_connected: true` within 30s.
+   `/health` should return `status: "ok"` and `/ready` should return
+   `checks.database: "pass"` within 30s.
 
 6. **Re-issue every connector credential.** For each tenant × connector:
    - Regenerate static API keys at the upstream system (Stripe, GitHub, etc.)
@@ -11559,7 +11563,7 @@ also fails after rotation**. There is no key-rotation envelope today.
    affected OIDC record in the structural `auth.providers` list inside
    `subkit.config.json`; tenant LLM keys remain scalar `llm.api_key` settings.
 
-10. **Verify.** Hit `${ENGINE_URL}/v1/health` and run the tenant-scoped
+10. **Verify.** Hit `${ENGINE_URL}/health` and run the tenant-scoped
     integration smoke; expect zero `decrypt_failed` `CryptoError` entries in the
     structured log.
 

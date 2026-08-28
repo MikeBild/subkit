@@ -36,7 +36,7 @@ Authorization: Bearer <api_key>
 
 - `GET /openapi.json` — the raw OpenAPI 3.1 document. The security scheme is `bearerAuth` (HTTP bearer). Generated from the Zod route schemas.
 - `GET /docs` — Scalar API reference UI, rendered against `/openapi.json`.
-- `GET /v1/health` — unauthenticated liveness/readiness probe.
+- `GET /health` — unauthenticated liveness/readiness probe.
 - `GET /v1/status` — engine status summary.
 
 # Conventions: Pagination, Filtering, Errors

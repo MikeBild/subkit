@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "6.22.32",
+    "version": "6.22.33",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -338,22 +338,22 @@
               "ok"
             ]
           },
+          "service": {
+            "type": "string",
+            "enum": [
+              "subkit"
+            ]
+          },
           "version": {
             "type": "string"
-          },
-          "db_connected": {
-            "type": "boolean"
-          },
-          "uptime_seconds": {
-            "type": "number"
           }
         },
         "required": [
           "status",
-          "version",
-          "db_connected",
-          "uptime_seconds"
-        ]
+          "service",
+          "version"
+        ],
+        "additionalProperties": false
       },
       "ReadyResponse": {
         "type": "object",
@@ -362,17 +362,50 @@
             "type": "string",
             "enum": [
               "ready",
-              "unavailable"
+              "not_ready"
             ]
           },
-          "db_connected": {
-            "type": "boolean"
+          "service": {
+            "type": "string",
+            "enum": [
+              "subkit"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "object",
+            "properties": {
+              "lifecycle": {
+                "type": "string",
+                "enum": [
+                  "pass",
+                  "fail"
+                ]
+              },
+              "database": {
+                "type": "string",
+                "enum": [
+                  "pass",
+                  "fail"
+                ]
+              }
+            },
+            "required": [
+              "lifecycle",
+              "database"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
           "status",
-          "db_connected"
-        ]
+          "service",
+          "version",
+          "checks"
+        ],
+        "additionalProperties": false
       },
       "SetupStatusResponse": {
         "type": "object",
@@ -17729,15 +17762,26 @@
     "parameters": {}
   },
   "paths": {
-    "/v1/health": {
+    "/health": {
       "get": {
         "tags": [
           "health"
         ],
-        "summary": "Engine health and DB connectivity",
+        "summary": "Engine liveness",
         "responses": {
           "200": {
             "description": "Health snapshot",
+            "headers": {
+              "Cache-Control": {
+                "description": "Availability responses are always evaluated live and must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -17749,7 +17793,7 @@
         }
       }
     },
-    "/v1/readyz": {
+    "/ready": {
       "get": {
         "tags": [
           "health"
@@ -17758,6 +17802,17 @@
         "responses": {
           "200": {
             "description": "Ready",
+            "headers": {
+              "Cache-Control": {
+                "description": "Availability responses are always evaluated live and must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -17768,6 +17823,17 @@
           },
           "503": {
             "description": "Not ready — database unreachable",
+            "headers": {
+              "Cache-Control": {
+                "description": "Availability responses are always evaluated live and must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {

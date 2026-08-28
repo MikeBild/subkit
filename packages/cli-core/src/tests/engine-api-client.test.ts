@@ -21,7 +21,7 @@ describe("createEngineClient", () => {
       },
     });
 
-    const result = await client.GET("/v1/health");
+    const result = await client.GET("/health");
     expect(result.response.status).toBe(200);
     expect(captured).not.toBeNull();
     const headers = captured as unknown as Headers;
@@ -35,13 +35,13 @@ describe("createEngineClient", () => {
       token: "t",
       fetch: async (input) => {
         const url = input instanceof Request ? input.url : String(input);
-        expect(url).toBe("http://example.test/v1/health");
+        expect(url).toBe("http://example.test/health");
         return new Response(JSON.stringify({ status: "ok", db: "ok" }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
       },
     });
-    await client.GET("/v1/health");
+    await client.GET("/health");
   });
 });

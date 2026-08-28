@@ -5,7 +5,7 @@
 # pinned for hermetic CI: a fixed MASTER_KEY, the mock LLM provider so no
 # model is ever called in the gate, and ndjson logs so the log-artifact is
 # machine-parseable on failure. One service, one published port, the image's
-# own /v1/health healthcheck (so `docker compose up --wait` blocks on
+# own /health healthcheck (so `docker compose up --wait` blocks on
 # readiness — no fixed sleeps).
 services:
   engine:
@@ -28,7 +28,7 @@ services:
     # The Dockerfile already declares the healthcheck; restate the timings
     # here so a slow embedded initdb on a cold CI runner doesn't flap.
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/v1/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
       interval: 5s
       timeout: 5s
       retries: 30

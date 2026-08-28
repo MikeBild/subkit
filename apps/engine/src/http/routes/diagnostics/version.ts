@@ -4,7 +4,7 @@
 //
 // The operational fields (engine version, latest available release,
 // schema-drift posture) live here behind `audit:read` instead of on
-// the public `/v1/health`, so an unauthenticated caller cannot
+// the public `/health`, so an unauthenticated caller cannot
 // fingerprint the engine. Mirrors the layering of
 // `diagnostics/drift.ts`: `audit:read` permission via the path-scoped
 // middleware in `diagnostics/index.ts`, an `auditAwait`-bound row

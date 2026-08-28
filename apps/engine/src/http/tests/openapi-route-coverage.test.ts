@@ -42,7 +42,7 @@ const EXCLUDED_ROUTES = new Set<string>([
   "GET /metrics",
   "GET /llms/{param}",
   // Unversioned probe aliases. The probes themselves ARE documented — as
-  // `GET /v1/health` and `GET /v1/readyz`, with their schemas. These two are
+  // `GET /health` and `GET /ready`, with their schemas. These two are
   // the same handlers under the names an infrastructure probe defaults to;
   // publishing them would put a second name for one operation into the spec
   // and into every generated client. `routes/health.ts` owns the aliasing and

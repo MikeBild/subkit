@@ -1,6 +1,6 @@
 // Integration test for /v1/diagnostics/version.
 //
-// Replaces the test surface that used to cover the public `/v1/health`
+// Replaces the test surface that used to cover the public `/health`
 // update fields — those moved off that route and now require
 // `audit:read`. This test covers:
 //

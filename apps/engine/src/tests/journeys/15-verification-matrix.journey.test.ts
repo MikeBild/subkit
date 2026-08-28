@@ -58,10 +58,17 @@ afterAll(async () => {
 }, 120_000);
 
 describe("journey: verification matrix (docs/33)", () => {
-  test("01. Bring up the stack — health + db_connected + metrics scrape", async () => {
-    const health = await (await journeyFetch(ctx, "/v1/health")).json();
-    expect(health.status).toBe("ok");
-    expect(health.db_connected).toBe(true);
+  test("01. Bring up the stack — liveness + readiness + metrics scrape", async () => {
+    const health = await (await journeyFetch(ctx, "/health")).json();
+    expect(health).toEqual({ status: "ok", service: "subkit", version: expect.any(String) });
+
+    const ready = await (await journeyFetch(ctx, "/ready")).json();
+    expect(ready).toEqual({
+      status: "ready",
+      service: "subkit",
+      version: health.version,
+      checks: { lifecycle: "pass", database: "pass" },
+    });
 
     // `/metrics` requires an authenticated principal. The seeded admin
     // key is accepted here; production scraping uses metrics:read only.

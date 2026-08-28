@@ -29,18 +29,21 @@ afterAll(async () => {
 // ---------------------------------------------------------------------------
 describe("sk CLI admin commands", () => {
   describe("health", () => {
-    test("returns ok with db_connected", async () => {
+    test("reports liveness and readiness", async () => {
       const out = await run(["health"], { env });
-      expect(out).toContain("ok");
-      expect(out).toContain("true");
+      expect(out).toContain("live=ok");
+      expect(out).toContain("ready=ready");
     });
 
     test("returns JSON when --json", async () => {
-      const data = await runJson<{ status: string; db_connected: boolean }>(["health"], {
-        env,
-      });
-      expect(data.status).toBe("ok");
-      expect(data.db_connected).toBe(true);
+      const data = await runJson<{ health: { status: string }; ready: { status: string } }>(
+        ["health"],
+        {
+          env,
+        },
+      );
+      expect(data.health.status).toBe("ok");
+      expect(data.ready.status).toBe("ready");
     });
   });
 

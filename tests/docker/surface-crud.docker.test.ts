@@ -62,7 +62,7 @@ describe("connectors over the wire", () => {
       `/v1/connectors/${created.body.id}/call`,
       {
         method: "GET",
-        path: "/v1/health",
+        path: "/health",
       },
     );
     expect([200, 422]).toContain(call.status);
