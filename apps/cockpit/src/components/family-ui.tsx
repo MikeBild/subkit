@@ -1,6 +1,6 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
-export const FAMILY_UI_VERSION = "2.2";
+export const FAMILY_UI_VERSION = "2.3";
 
 export type FamilySurface =
   | "auth"
