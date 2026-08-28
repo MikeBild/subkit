@@ -474,20 +474,13 @@ export function DecisionCard({
   });
 
   return (
-    // One line, not a quarter of a screen. The card used to stack a badge row,
-    // an origin sentence, a title, a summary, an effect line and a two-column
-    // "Comes from / Affects" block before its buttons — 35 positions needed
-    // nine screens, where CodeKit shows three per screen. Everything below the
-    // first line is real and stays; it moves behind the named toggle §8.4 asks
-    // for, so the queue is scannable and the detail is one click away.
-    //
-    // The dedup key the counter uses is carried here so "one position is one
-    // decision" is observable on the rendered page and not only in a unit.
-    // `data-state` says what this position IS: only open work stands on this
-    // page, and the convention check reads that back off every card.
+    // The collapsed row follows the family anatomy: context, decision,
+    // consequence, then disclosure and actions. The detailed evidence remains
+    // one click away, but every product now gives the same amount of space to
+    // the decision a person has to scan.
     <article
       className={cn(
-        "rounded-2xl border border-l-2",
+        "@container flex min-h-[162px] flex-col gap-1.5 rounded-2xl border border-l-2 p-3",
         priority === "urgent" ? "border-l-warning" : "border-l-border",
       )}
       data-testid={testId}
@@ -498,50 +491,57 @@ export function DecisionCard({
       data-family-decision-priority={priority}
     >
       <div
-        className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2"
+        className="flex min-w-0 items-start justify-between gap-2"
         data-family-slot="decision-meta"
       >
-        <Badge variant="outline" data-testid={`${testId}-kind`}>
-          {t(KIND_LABEL[item.kind])}
-        </Badge>
-        {item.classification && (
-          <Badge variant={item.classification === "safe" ? "secondary" : "destructive"}>
-            {t(
-              item.classification === "safe"
-                ? "overview.classification.safe"
-                : "overview.classification.unsafe",
-            )}
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Badge variant="outline" data-testid={`${testId}-kind`}>
+            {t(KIND_LABEL[item.kind])}
           </Badge>
-        )}
-        {/* The title carries the line. It is truncated here and whole in the
-            panel — a queue has to be scannable, and nothing is lost, because
-            opening the row shows the same sentence unclipped. */}
-        <p
-          className="min-w-0 flex-1 truncate text-sm font-medium"
-          title={item.title}
-          data-testid={`${testId}-title`}
-          data-family-slot="decision-title"
-        >
-          {hideTechnicalIdentifiers(item.title, t("tool.referenceHiddenInline"))}
-        </p>
-        <span className="text-xs text-muted-foreground" data-family-slot="decision-source">
-          {t(ORIGIN_LABEL[item.origin])}
-        </span>
-        <span className="text-xs text-muted-foreground" data-testid={`${testId}-age`}>
-          {age === 0
-            ? t("decisions.age.today")
-            : age === 1
-              ? t("decisions.age.day")
-              : t("decisions.age.days", { days: String(age) })}
-        </span>
-        {deadline && (
-          <span
-            className={cn("text-xs", deadline.expired ? "text-destructive" : "text-warning")}
-            data-testid={`${testId}-deadline`}
-          >
-            {deadline.label}
+          {item.classification && (
+            <Badge variant={item.classification === "safe" ? "secondary" : "destructive"}>
+              {t(
+                item.classification === "safe"
+                  ? "overview.classification.safe"
+                  : "overview.classification.unsafe",
+              )}
+            </Badge>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
+          <span data-family-slot="decision-source">{t(ORIGIN_LABEL[item.origin])}</span>
+          <span data-testid={`${testId}-age`}>
+            {age === 0
+              ? t("decisions.age.today")
+              : age === 1
+                ? t("decisions.age.day")
+                : t("decisions.age.days", { days: String(age) })}
           </span>
-        )}
+          {deadline && (
+            <span
+              className={cn(deadline.expired ? "text-destructive" : "text-warning")}
+              data-testid={`${testId}-deadline`}
+            >
+              {deadline.label}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <h3
+        className="line-clamp-2 text-sm font-medium"
+        title={item.title}
+        data-testid={`${testId}-title`}
+        data-family-slot="decision-title"
+      >
+        {hideTechnicalIdentifiers(item.title, t("tool.referenceHiddenInline"))}
+      </h3>
+
+      <p className="truncate text-sm text-muted-foreground" data-family-slot="decision-effect">
+        {t(KIND_EFFECT[item.kind])}
+      </p>
+
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
         <span data-family-slot="decision-details">
           {hasDetail && !compact ? (
             <Button
@@ -555,7 +555,10 @@ export function DecisionCard({
             </Button>
           ) : null}
         </span>
-        <div className="flex flex-wrap items-center gap-2" data-family-slot="decision-actions">
+        <div
+          className="flex min-w-0 flex-wrap items-center justify-end gap-2"
+          data-family-slot="decision-actions"
+        >
           {canDecide ? (
             <>
               {rejecting ? (
@@ -605,12 +608,8 @@ export function DecisionCard({
         </div>
       </div>
 
-      <p className="px-3 pb-2 text-xs text-muted-foreground" data-family-slot="decision-effect">
-        {t(KIND_EFFECT[item.kind])}
-      </p>
-
       {rejecting && (
-        <div className="border-t px-3 pt-2 pb-3">
+        <div className="border-t pt-3">
           <Textarea
             value={reason}
             onChange={(event) => setReason(event.target.value)}
@@ -623,7 +622,7 @@ export function DecisionCard({
       )}
 
       {expanded && (
-        <div className="border-t px-3 pt-2 pb-3">
+        <div className="border-t pt-3">
           {/* Where this came from, before what it is: a position nobody can
               explain is a demand without a reason. */}
           <p className="text-xs text-muted-foreground" data-testid={`${testId}-origin`}>
