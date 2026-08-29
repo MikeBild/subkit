@@ -4,7 +4,7 @@
 //
 // Surfaces the structured drift report so `sk doctor` can show the
 // operator the rows that don't belong in this engine's lineage. Read
-// from `drizzle.__drizzle_migrations` and compared against the
+// from `subkit.__drizzle_migrations` and compared against the
 // migrations embedded in the binary at compile time.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
@@ -29,7 +29,7 @@ const DriftResponse = DriftReportSchema.extend({
   engine_version: z.string(),
   /** Number of migrations baked into this binary at build time. */
   embedded_migration_count: z.number().int(),
-  /** Number of rows currently in `drizzle.__drizzle_migrations`. */
+  /** Number of rows currently in `subkit.__drizzle_migrations`. */
   db_migration_count: z.number().int(),
 }).openapi("DriftReport");
 

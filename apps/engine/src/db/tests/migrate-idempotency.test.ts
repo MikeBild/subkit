@@ -4,7 +4,7 @@
 // migrator skipped migrations silently when journal timestamps were
 // non-monotonic ("reported success, applied nothing"). Our custom
 // migrator identifies an applied migration by its stable `tag` (a row in
-// `drizzle.__drizzle_migrations`), so an edited .sql backfills its hash
+// `subkit.__drizzle_migrations`), so an edited .sql backfills its hash
 // without re-running, and a genuinely-new migration always applies.
 //
 // Scope:
@@ -30,7 +30,7 @@ afterAll(async () => {
 
 async function rowCount(testDb: TestDb): Promise<number> {
   const rows = (await testDb.db.execute(
-    sql`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`,
+    sql`SELECT count(*)::int AS n FROM subkit.__drizzle_migrations`,
   )) as unknown as { rows: Array<{ n: number }> };
   return rows.rows?.[0]?.n ?? 0;
 }
@@ -57,14 +57,14 @@ describe("migration runner", () => {
     // updates the stored hash back to the current file hash and returns
     // without re-running the SQL.
     await ctx.db.execute(
-      sql`UPDATE drizzle.__drizzle_migrations SET hash = 'deadbeef_fake_hash_drift' WHERE id = (SELECT max(id) FROM drizzle.__drizzle_migrations)`,
+      sql`UPDATE subkit.__drizzle_migrations SET hash = 'deadbeef_fake_hash_drift' WHERE id = (SELECT max(id) FROM subkit.__drizzle_migrations)`,
     );
     const before = await rowCount(ctx);
     await runMigrations(ctx.db); // must not throw
     const after = await rowCount(ctx);
     expect(after).toBe(before);
     const stale = (await ctx.db.execute(
-      sql`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations WHERE hash = 'deadbeef_fake_hash_drift'`,
+      sql`SELECT count(*)::int AS n FROM subkit.__drizzle_migrations WHERE hash = 'deadbeef_fake_hash_drift'`,
     )) as unknown as { rows: Array<{ n: number }> };
     expect(stale.rows?.[0]?.n ?? 0).toBe(0);
   }, 30_000);

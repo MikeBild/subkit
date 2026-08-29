@@ -4,13 +4,24 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.39] – 2026-08-29
+
+### Changed
+
+- Move SubKit tables, types, functions, migration metadata, and job queues into
+  product-owned PostgreSQL schemas without adopting unrelated database objects.
+- Run embedded SQL migrations and data backfills on one advisory-locked session,
+  then open the isolated runtime pool only after initialization completes.
+- Make binary-embedded migrations, `llms*.txt`, and OpenAPI permanent release
+  contracts and keep private infrastructure details out of source documentation.
+
 ## [6.22.38] – 2026-08-29
 
 ### Fixed
 
-- Accept Upraft's managed PostgreSQL binding as a zero-config database source
-  and use its documented libpq-compatible TLS behavior without weakening
-  operator-supplied database URLs.
+- Accept a platform-managed PostgreSQL binding as a zero-config database source
+  and apply its libpq-compatible TLS behavior without weakening operator-supplied
+  database URLs.
 
 ## [6.22.37] – 2026-08-29
 

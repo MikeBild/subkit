@@ -7,6 +7,14 @@ Canonical repo-wide instructions for the SubKit engine and CLI. Closer AGENTS.md
 - Preserve the engine, CLI, shared-package, contribution, approval, and deployment boundaries.
 - Extend behavior through the documented contribution format rather than creating parallel sources of truth.
 - Keep the repository independent of the private deployment implementation.
+- Keep all persisted data in the product-owned PostgreSQL schema. Other products
+  are reachable only through their documented public APIs, never through their
+  database objects, files, queues, or runtime internals.
+- Keep migrations, `llms*.txt`, OpenAPI, and comparable self-description assets
+  embedded in every shipped binary/image and covered by drift tests.
+- Do not record concrete production hosts, credentials, deployment identifiers,
+  or private infrastructure in source comments or general docs. Deployment
+  examples belong only in an end-user/operator guide and use placeholder values.
 - Preserve human approval semantics and deterministic execution.
 
 ## Sources and workflow

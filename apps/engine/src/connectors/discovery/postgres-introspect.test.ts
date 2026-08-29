@@ -55,8 +55,8 @@ describe("postgresIntrospectStrategy", () => {
 
     const corpus = result.text_corpus ?? "";
     // Section per table.
-    expect(corpus).toContain("## public.customers");
-    expect(corpus).toContain("## public.orders");
+    expect(corpus).toContain("## subkit.customers");
+    expect(corpus).toContain("## subkit.orders");
     // Columns + nullability.
     expect(corpus).toContain("| email | text | NO |");
     expect(corpus).toContain("| total_cents | integer | YES |");
@@ -64,7 +64,7 @@ describe("postgresIntrospectStrategy", () => {
     expect(corpus).toMatch(/\| id \| integer \| NO \|.*\| PK \|/);
     // Foreign-key callout on orders.customer_id.
     expect(corpus).toContain("**Foreign keys:**");
-    expect(corpus).toContain("`customer_id` → `public.customers.id`");
+    expect(corpus).toContain("`customer_id` → `subkit.customers.id`");
   });
 
   test("declines non-postgres URLs", () => {

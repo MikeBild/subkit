@@ -51,10 +51,9 @@ if [ -n "${DATABASE_URL_FILE:-}" ]; then
   export DATABASE_URL="$file_database_url"
 fi
 
-# Upraft exposes managed database bindings under a stable component variable
-# and may alias the same URL to DATABASE_URL. Its `sslmode=require` endpoint
-# uses a platform certificate, so request libpq-compatible encryption semantics
-# only when the value is the unmodified Upraft-provided binding.
+# Some container platforms expose managed database bindings through a component
+# variable and may alias the same value to DATABASE_URL. Preserve an explicitly
+# supplied URL and apply compatibility options only to the unchanged binding.
 if [ -z "${DATABASE_URL:-}" ] && [ -n "${UPRAFT_DB_PRIMARY_URL:-}" ]; then
   export DATABASE_URL="$UPRAFT_DB_PRIMARY_URL"
 fi

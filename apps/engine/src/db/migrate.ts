@@ -27,14 +27,16 @@
 // already in the table?") instead of a timestamp watermark.
 
 import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
 import type pg from "pg";
 import { z } from "zod";
 import { errorFields, logger } from "../logging/logger.ts";
-import type { Db } from "./client.ts";
+import { createMigrationDbFromUrl, type Db } from "./client.ts";
 import { runConversationTitleBackfill } from "./migrations/conversation-title-backfill.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedded.ts";
 import { runItemvarBackfill } from "./migrations/itemvar-backfill.ts";
 import { runLoopToForEachBackfill } from "./migrations/loop-to-for-each-backfill.ts";
+import * as schema from "./schema/index.ts";
 
 export interface MigrationReport {
   applied: number;
@@ -76,11 +78,11 @@ export type DriftReport = z.infer<typeof DriftReportSchema>;
 async function ensureMigrationsTable(db: Db): Promise<void> {
   // pgcrypto is required for `gen_random_uuid()` defaults. Drizzle does
   // not emit this automatically when schemas use `.defaultRandom()`.
-  await db.execute(sql`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`);
-  await db.execute(sql`CREATE SCHEMA IF NOT EXISTS "drizzle"`);
+  await db.execute(sql`CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "public"`);
+  await db.execute(sql`CREATE SCHEMA IF NOT EXISTS "subkit"`);
   await db.execute(
     sql`
-      CREATE TABLE IF NOT EXISTS "drizzle"."__drizzle_migrations" (
+      CREATE TABLE IF NOT EXISTS "subkit"."__drizzle_migrations" (
         id SERIAL PRIMARY KEY,
         hash text NOT NULL,
         created_at bigint
@@ -98,8 +100,24 @@ async function ensureMigrationsTable(db: Db): Promise<void> {
   // created). Tracking the stable `tag` removes the positional guess: a
   // migration is applied iff its tag is recorded, full stop.
   await db.execute(
-    sql`ALTER TABLE "drizzle"."__drizzle_migrations" ADD COLUMN IF NOT EXISTS tag text`,
+    sql`ALTER TABLE "subkit"."__drizzle_migrations" ADD COLUMN IF NOT EXISTS tag text`,
   );
+  const legacy = (await db.execute(
+    sql`SELECT to_regclass('drizzle.__drizzle_migrations') IS NOT NULL AS present`,
+  )) as unknown as { rows: Array<{ present: boolean }> };
+  if (legacy.rows[0]?.present === true) {
+    await db.execute(sql`
+      INSERT INTO "subkit"."__drizzle_migrations" (hash, created_at, tag)
+      SELECT legacy.hash, legacy.created_at, legacy.tag
+        FROM "drizzle"."__drizzle_migrations" legacy
+       WHERE NOT EXISTS (
+         SELECT 1
+           FROM "subkit"."__drizzle_migrations" isolated
+          WHERE isolated.hash = legacy.hash
+            AND isolated.tag IS NOT DISTINCT FROM legacy.tag
+       )
+    `);
+  }
 }
 
 interface AppliedState {
@@ -115,7 +133,7 @@ interface AppliedState {
 
 async function readAppliedHashes(db: Db): Promise<AppliedState> {
   const rows = (await db.execute(
-    sql`SELECT hash, tag FROM "drizzle"."__drizzle_migrations"`,
+    sql`SELECT hash, tag FROM "subkit"."__drizzle_migrations"`,
   )) as unknown as { rows: Array<{ hash: string; tag: string | null }> };
   const dbRows = rows.rows ?? [];
   const hashes = new Set(dbRows.map((r) => r.hash));
@@ -162,7 +180,12 @@ export async function runMigrations(
   const lockClient = await pool.connect();
   try {
     await lockClient.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
-    return await applyMigrations(db, migrations);
+    // Run every DDL statement, journal write and code backfill through the
+    // exact session holding the advisory lock. Besides making the lock real,
+    // this keeps the post-migration search_path switch session-local and lets a
+    // one-connection migration pool remain genuinely bounded.
+    const lockedDb = drizzle(lockClient, { schema }) as Db;
+    return await applyMigrations(lockedDb, migrations);
   } finally {
     try {
       await lockClient.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]);
@@ -170,6 +193,23 @@ export async function runMigrations(
       /* releasing on a broken connection is best-effort */
     }
     lockClient.release();
+  }
+}
+
+/**
+ * Apply the embedded lineage through a connection whose startup search path is
+ * PostgreSQL's default. The historical SQL remains reproducible as committed;
+ * the last migration performs the one-way move into SubKit's isolated schema.
+ */
+export async function runMigrationsFromUrl(
+  url: string,
+  migrations: readonly EmbeddedMigration[] = EMBEDDED_MIGRATIONS,
+): Promise<MigrationReport> {
+  const { pool, db } = createMigrationDbFromUrl(url);
+  try {
+    return await runMigrations(db, migrations);
+  } finally {
+    await pool.end();
   }
 }
 
@@ -208,7 +248,7 @@ async function applyMigrations(
           new_hash: m.hash,
         });
         await db.execute(
-          sql`UPDATE "drizzle"."__drizzle_migrations" SET hash = ${m.hash} WHERE tag = ${m.tag}`,
+          sql`UPDATE "subkit"."__drizzle_migrations" SET hash = ${m.hash} WHERE tag = ${m.tag}`,
         );
         applied.hashes.add(m.hash);
       }
@@ -220,7 +260,7 @@ async function applyMigrations(
     if (applied.hashes.has(m.hash)) {
       skippedCount++;
       await db.execute(
-        sql`UPDATE "drizzle"."__drizzle_migrations" SET tag = ${m.tag} WHERE hash = ${m.hash} AND tag IS NULL`,
+        sql`UPDATE "subkit"."__drizzle_migrations" SET tag = ${m.tag} WHERE hash = ${m.hash} AND tag IS NULL`,
       );
       applied.tags.add(m.tag);
       continue;
@@ -240,7 +280,7 @@ async function applyMigrations(
         new_hash: m.hash,
       });
       await db.execute(
-        sql`INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at, tag) VALUES (${m.hash}, ${m.when}, ${m.tag})`,
+        sql`INSERT INTO "subkit"."__drizzle_migrations" (hash, created_at, tag) VALUES (${m.hash}, ${m.when}, ${m.tag})`,
       );
       applied.hashes.add(m.hash);
       applied.tags.add(m.tag);
@@ -265,7 +305,7 @@ async function applyMigrations(
         await tx.execute(sql.raw(stmt));
       }
       await tx.execute(
-        sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at", "tag") VALUES (${m.hash}, ${m.when}, ${m.tag})`,
+        sql`INSERT INTO "subkit"."__drizzle_migrations" ("hash", "created_at", "tag") VALUES (${m.hash}, ${m.when}, ${m.tag})`,
       );
     });
     applied.hashes.add(m.hash);
@@ -286,6 +326,11 @@ async function applyMigrations(
   }
 
   // Code backfills — run after the SQL set so their schema exists.
+  // A dedicated migration pool has one session and intentionally started on
+  // the legacy `public` search path. Switch that session only after the final
+  // schema migration, so the compiled backfills resolve the isolated tables.
+  await db.execute(sql`SELECT set_config('search_path', 'subkit,pg_catalog,public', false)`);
+
   // Each is one-shot via a `data_migrations` marker row and never
   // breaks boot: a failure logs + leaves the marker unset so the next
   // boot retries.
@@ -338,7 +383,7 @@ async function applyMigrations(
 }
 
 /**
- * Compare the database's `drizzle.__drizzle_migrations` rows against
+ * Compare the database's `subkit.__drizzle_migrations` rows against
  * this binary's embedded set.
  *
  * Modern migration identity is the stable tag + hash pair. Tagless
@@ -347,7 +392,7 @@ async function applyMigrations(
  *
  * Side effect: the function calls `ensureMigrationsTable`
  * before reading, which `CREATE EXTENSION IF NOT EXISTS pgcrypto`,
- * `CREATE SCHEMA IF NOT EXISTS drizzle`, and creates the journal table
+ * `CREATE SCHEMA IF NOT EXISTS subkit`, and creates the journal table
  * if missing. On every boot path migrations run first, so this is a
  * no-op; on direct calls against a virgin database it primes the
  * journal table so a follow-up `runMigrations(db)` doesn't re-create
@@ -356,7 +401,7 @@ async function applyMigrations(
 export async function detectDrift(db: Db): Promise<DriftReport> {
   await ensureMigrationsTable(db);
   const rows = (await db.execute(
-    sql`SELECT id, hash, created_at, tag FROM "drizzle"."__drizzle_migrations" ORDER BY id`,
+    sql`SELECT id, hash, created_at, tag FROM "subkit"."__drizzle_migrations" ORDER BY id`,
   )) as unknown as {
     rows: Array<{ id: number; hash: string; created_at: number | null; tag: string | null }>;
   };

@@ -6,7 +6,7 @@ import { SkCliAdapter } from "./chat/sk-cli/adapter.ts";
 import { closeAllPools } from "./connectors/drivers/postgres.ts";
 import { assertCryptoKeyOrExit } from "./crypto/aes-gcm.ts";
 import { closeDb, getDb, getPool } from "./db/client.ts";
-import { type DriftReport, detectDrift, runMigrations } from "./db/migrate.ts";
+import { type DriftReport, detectDrift, runMigrationsFromUrl } from "./db/migrate.ts";
 import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
 import { warmEmbeddings } from "./embeddings/local-provider.ts";
 import { startAbortMonitor } from "./execution/index.ts";
@@ -234,25 +234,12 @@ async function runServer(): Promise<void> {
   const stopTracing = await startTracing();
   recordBootConsumer("tracing");
 
-  // Boot-time dependency validation. Runs every probe (DB connect,
-  // pgcrypto, filesystem write, AES self-test, runtime info) and
-  // exits 1 if any blocker fails — operator sees one clean error
-  // instead of a confusing migrate.* / drift.* downstream failure.
-  // Non-blocker degradations log at warn and continue.
-  const { validateBootDependencies } = await import("./observability/boot-dependencies.ts");
-  await bootPhase("boot_dependencies", () => validateBootDependencies(db));
-
   // Apply embedded migrations BEFORE any subsystem touches a table.
-  // This used to be a separate `migrate` compose container
-  // that could ship a different lineage than the engine binary, which
-  // is exactly how prod ended up with 27 unknown migration rows. The
-  // migration set is now compiled into this binary via the
-  // `embed.macro.ts` Bun macro, so engine + migrations are one
-  // bit-for-bit artifact. **Failure here is fatal** — a half-migrated
-  // schema would make every downstream subsystem misbehave the way
-  // wait_reaper / docs_refresh / skills.seed did before this fix.
+  // The migration set is compiled into this binary, so the engine and its
+  // schema lineage are one bit-for-bit artifact. Failure here is fatal: no
+  // subsystem is allowed to run against a partial schema.
   try {
-    await bootPhase("migrations", () => runMigrations(db));
+    await bootPhase("migrations", () => runMigrationsFromUrl(cfg.database.url));
   } catch (err) {
     logger.fatal({
       module: "engine",
@@ -263,6 +250,11 @@ async function runServer(): Promise<void> {
     });
     process.exit(1);
   }
+
+  // Validate every external runtime dependency after self-migration has
+  // installed the database capabilities a fresh deployment requires.
+  const { validateBootDependencies } = await import("./observability/boot-dependencies.ts");
+  await bootPhase("boot_dependencies", () => validateBootDependencies(db));
 
   // Drift detection is read-only; tagless pre-squash rows are retained history,
   // while unknown tagged identities or missing embedded identities are actionable.
@@ -319,7 +311,7 @@ async function runServer(): Promise<void> {
   // Start pg-boss + register handlers before the HTTP server so enqueue
   // requests hitting the first byte always find a live boss.
   const boss = await bootPhase("queue_start", () =>
-    startBoss({ connectionString: getConfig().database.url }),
+    startBoss({ connectionString: getConfig().database.url, schema: "subkit_queue" }),
   );
   recordBootConsumer("queue");
   await bootPhase("queue_handlers", () => registerAllHandlers({ boss, db, chatRegistry }));
@@ -640,7 +632,7 @@ async function runServer(): Promise<void> {
   // already captures the `engine.ready` line.
 
   // Shutdown in reverse boot order. The drain budget covers non-idempotent
-  // conversation turns; subkit-deploy's TimeoutStopSec must remain above it.
+  // conversation turns; any process supervisor's stop timeout must remain above it.
   const SHUTDOWN_DRAIN_TIMEOUT_MS = 120_000;
   let shutting = false;
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
@@ -743,7 +735,7 @@ async function runServer(): Promise<void> {
  * config is loaded. Hoisted out of the per-flag helpers so the
  * dynamic-import pattern lives in one place.
  */
-async function loadConfigAndReconfigureLogger(): Promise<void> {
+async function loadConfigAndReconfigureLogger() {
   const { loadConfig, getConfig } = await import("./config/loader.ts");
   await loadConfig();
   const cfg = getConfig();
@@ -754,20 +746,19 @@ async function loadConfigAndReconfigureLogger(): Promise<void> {
     service_name: cfg.observability.otlp.service_name,
     deployment_environment: cfg.observability.deployment_environment,
   });
+  return cfg;
 }
 async function runMigrateOnce(): Promise<void> {
-  await loadConfigAndReconfigureLogger();
-  const db = getDb();
-  await runMigrations(db);
-  await closeDb();
+  const cfg = await loadConfigAndReconfigureLogger();
+  await runMigrationsFromUrl(cfg.database.url);
 }
 
 async function runSeedOnce(): Promise<void> {
-  await loadConfigAndReconfigureLogger();
-  const db = getDb();
+  const cfg = await loadConfigAndReconfigureLogger();
   // Migrations run first — operators expect `engine --seed` to be safe
   // against a fresh DB the same way the boot path is.
-  await runMigrations(db);
+  await runMigrationsFromUrl(cfg.database.url);
+  const db = getDb();
   const result = await seedAtBoot(db);
   for (const key of result.issued_keys) {
     printIssuedKey(key, { source: "cli" });

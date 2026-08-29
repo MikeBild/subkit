@@ -9,6 +9,8 @@ import { instrument } from "../observability/runtime-telemetry.ts";
 import * as schema from "./schema/index.ts";
 
 const { Pool } = pg;
+export const SUBKIT_DATABASE_OPTIONS = "-c search_path=subkit,pg_catalog,public";
+export const SUBKIT_MIGRATION_DATABASE_OPTIONS = "-c search_path=public,pg_catalog";
 
 let _pool: pg.Pool | null = null;
 let _db: NodePgDatabase<typeof schema> | null = null;
@@ -25,9 +27,9 @@ let _db: NodePgDatabase<typeof schema> | null = null;
  *      test that called `loadConfig({env:{DATABASE_URL:"placeholder/x"}})`
  *      to satisfy `getConfig().storage` would otherwise force this pool
  *      to dial `placeholder/x` and fail DNS under concurrency.
- *   2. `getConfig().database.url` — the production path. The engine
+ *   2. `getConfig().database.url` — the configured runtime path. The engine
  *      boots with `loadConfig()` reading `process.env.DATABASE_URL`,
- *      so in production both paths agree.
+ *      so both paths agree during a normal start.
  *   3. Empty → throw a helpful error.
  */
 export function getPool(): pg.Pool {
@@ -45,7 +47,7 @@ export function getPool(): pg.Pool {
       "database.url is not set. Configure via `sk settings set database.url '\"…\"'` or set DATABASE_URL.",
     );
   }
-  _pool = new Pool({ connectionString: url });
+  _pool = new Pool({ connectionString: url, options: SUBKIT_DATABASE_OPTIONS });
   _pool.on("error", (err) => {
     logger.error({
       module: "db",
@@ -105,7 +107,7 @@ export function createDbFromUrl(url: string): {
   pool: pg.Pool;
   db: NodePgDatabase<typeof schema>;
 } {
-  const pool = new Pool({ connectionString: url });
+  const pool = new Pool({ connectionString: url, options: SUBKIT_DATABASE_OPTIONS });
   pool.on("error", (err) => {
     logger.error({
       module: "db",
@@ -116,6 +118,37 @@ export function createDbFromUrl(url: string): {
   });
   const db = instrumentTransactions(drizzle(pool, { schema }));
   return { pool, db };
+}
+
+/**
+ * Build the dedicated client used while applying the historical migration
+ * lineage. Those migrations intentionally create their legacy objects in
+ * `public`; the final embedded migration moves the complete product-owned set
+ * into `subkit`. Runtime connections use `SUBKIT_DATABASE_OPTIONS` only after
+ * that transition has completed.
+ */
+export function createMigrationDbFromUrl(url: string): {
+  pool: pg.Pool;
+  db: NodePgDatabase<typeof schema>;
+} {
+  // A role named `subkit` makes PostgreSQL's default `$user,public` path pick
+  // the already-created `subkit` schema first. Historical migrations contain
+  // explicit `public` foreign-key references, so they must reproduce their
+  // original public-schema lineage before 0041 moves the complete owned set.
+  const pool = new Pool({
+    connectionString: url,
+    max: 1,
+    options: SUBKIT_MIGRATION_DATABASE_OPTIONS,
+  });
+  pool.on("error", (err) => {
+    logger.error({
+      module: "db",
+      action: "migration_pool.error",
+      msg: "postgres migration pool emitted error",
+      error: err.message,
+    });
+  });
+  return { pool, db: drizzle(pool, { schema }) };
 }
 
 /**

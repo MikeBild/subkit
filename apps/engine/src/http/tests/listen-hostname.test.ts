@@ -1,7 +1,7 @@
 // Regression: the engine HTTP server must bind 127.0.0.1 BY DEFAULT in
 // production, not 0.0.0.0.
 //
-// Caddy on the production host reverse-proxies the public TLS endpoint
+// A deployment proxy forwards the public TLS endpoint
 // to 127.0.0.1:3000. Defense-in-depth: a misconfigured firewall must
 // not be able to leak the engine upstream. A future refactor that flips
 // the default `hostname: "127.0.0.1"` back to `"0.0.0.0"` (or omits it,

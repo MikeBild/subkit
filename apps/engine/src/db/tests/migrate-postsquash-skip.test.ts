@@ -1,17 +1,16 @@
 // Migration runner — a NEW migration must apply on a post-baseline-squash
 // DB whose tracking table carries leftover pre-squash rows.
 //
-// The production bug (v7.7.0, 2026-06-22): the runner recognised an
+// The legacy upgrade bug (v7.7.0, 2026-06-22): the runner recognised an
 // already-applied migration via a positional fallback — "if the tracking
 // row COUNT already covers this migration's idx, treat it as applied".
 // After the v6 baseline squash a long-lived DB still holds dozens of
-// pre-squash rows, so `count` (51 on prod) dwarfs the embedded set's idx
+// pre-squash rows, so `count` dwarfs the embedded set's idx
 // range. Every genuinely-new migration was therefore positionally skipped:
 // `0001_condemned_maestro` never ran, `conversations.turn_count` was never
 // created, and the first real conversation turn would have thrown. Fresh
-// CI/test DBs start at count 0 and apply everything in order, which is why
-// the whole suite was green while prod silently diverged — this test closes
-// that gap by reproducing the inflated-count state.
+// Fresh databases start at count 0 and apply everything in order; this test
+// closes the upgrade gap by reproducing the inflated-count state.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
@@ -41,25 +40,25 @@ describe("migration runner — post-squash inflated tracking count", () => {
     // Sanity: createTestDb already applied 0001.
     expect(await turnCountColumnExists(ctx)).toBe(true);
 
-    // Reconstruct the buggy prod state:
+    // Reconstruct the buggy legacy state:
     //  1. Undo 0001's schema effect (the column it was supposed to add).
     await ctx.db.execute(sql`ALTER TABLE conversations DROP COLUMN IF EXISTS turn_count`);
     //  2. Forget that 0001 was ever applied (drop its tracking row entirely).
     await ctx.db.execute(
-      sql`DELETE FROM drizzle.__drizzle_migrations WHERE tag = '0001_condemned_maestro'`,
+      sql`DELETE FROM subkit.__drizzle_migrations WHERE tag = '0001_condemned_maestro'`,
     );
-    //  3. Simulate a pre-tag-tracking DB: blank every tag (prod rows predate
+    //  3. Simulate a pre-tag-tracking DB: blank every tag (legacy rows predate
     //     the tag column) so the baseline is matched by hash, not tag.
-    await ctx.db.execute(sql`UPDATE drizzle.__drizzle_migrations SET tag = NULL`);
+    await ctx.db.execute(sql`UPDATE subkit.__drizzle_migrations SET tag = NULL`);
     //  4. Flood the table with pre-squash orphan rows so count >> idx — this
     //     is what made the old positional fallback fire and skip 0001.
     await ctx.db.execute(
-      sql`INSERT INTO drizzle.__drizzle_migrations (hash, created_at, tag)
+      sql`INSERT INTO subkit.__drizzle_migrations (hash, created_at, tag)
           SELECT md5(g::text), 0, NULL FROM generate_series(1, 50) AS g`,
     );
 
     const before = (await ctx.db.execute(
-      sql`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`,
+      sql`SELECT count(*)::int AS n FROM subkit.__drizzle_migrations`,
     )) as unknown as { rows: Array<{ n: number }> };
     expect(before.rows?.[0]?.n ?? 0).toBeGreaterThan(10); // inflated count
 

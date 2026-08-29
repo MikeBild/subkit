@@ -288,6 +288,13 @@
       "when": 1787138857040,
       "tag": "0040_regular_lady_ursula",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1788000360000,
+      "tag": "0041_isolated_schema",
+      "breakpoints": true
     }
   ]
 }

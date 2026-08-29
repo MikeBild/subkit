@@ -25,7 +25,7 @@ describe("docs-ingestion/postgres", () => {
       {
         tenant_id: ctx.tenantId,
         connector_id: ctx.connectorId,
-        input: { source_type: "postgres", url: ctx.testDb.url, schemas: ["public"] },
+        input: { source_type: "postgres", url: ctx.testDb.url, schemas: ["subkit"] },
       },
       ctx.testDb.db,
     );

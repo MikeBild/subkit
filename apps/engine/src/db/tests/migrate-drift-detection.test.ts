@@ -1,6 +1,6 @@
 // Drift detection — surfaces the actionable signal a silent schema mismatch otherwise hides.
 //
-// We seed `drizzle.__drizzle_migrations` with rows that don't belong
+// We seed `subkit.__drizzle_migrations` with rows that don't belong
 // to this binary's embedded set and confirm `detectDrift` reports them.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -29,7 +29,7 @@ describe("detectDrift", () => {
   test("an unknown tagged row in the journal surfaces in unknown_in_db", async () => {
     const fakeHash = "deadbeefcafebabefacefeed".padEnd(64, "0");
     await ctx.db.execute(
-      sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at", "tag")
+      sql`INSERT INTO "subkit"."__drizzle_migrations" ("hash", "created_at", "tag")
           VALUES (${fakeHash}, ${999_999_999_999}, ${"9999_foreign_lineage"})`,
     );
 
@@ -41,15 +41,13 @@ describe("detectDrift", () => {
     expect(report.missing_in_db).toEqual([]);
 
     // Cleanup so the next test runs against a clean ring.
-    await ctx.db.execute(
-      sql`DELETE FROM "drizzle"."__drizzle_migrations" WHERE hash = ${fakeHash}`,
-    );
+    await ctx.db.execute(sql`DELETE FROM "subkit"."__drizzle_migrations" WHERE hash = ${fakeHash}`);
   });
 
   test("a tagless pre-squash row is accepted history rather than drift", async () => {
     const historicalHash = "pre-squash-history".padEnd(64, "0");
     await ctx.db.execute(
-      sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at", "tag")
+      sql`INSERT INTO "subkit"."__drizzle_migrations" ("hash", "created_at", "tag")
           VALUES (${historicalHash}, ${999_999_999_998}, NULL)`,
     );
     try {
@@ -59,7 +57,7 @@ describe("detectDrift", () => {
       expect(report.missing_in_db).toEqual([]);
     } finally {
       await ctx.db.execute(
-        sql`DELETE FROM "drizzle"."__drizzle_migrations" WHERE hash = ${historicalHash}`,
+        sql`DELETE FROM "subkit"."__drizzle_migrations" WHERE hash = ${historicalHash}`,
       );
     }
   });
@@ -68,8 +66,8 @@ describe("detectDrift", () => {
     // Drop the most recently applied embedded migration row.
     const lastTag = listEmbeddedMigrations().at(-1)!.tag;
     await ctx.db.execute(
-      sql`DELETE FROM "drizzle"."__drizzle_migrations"
-          WHERE id = (SELECT max(id) FROM drizzle.__drizzle_migrations)`,
+      sql`DELETE FROM "subkit"."__drizzle_migrations"
+          WHERE id = (SELECT max(id) FROM subkit.__drizzle_migrations)`,
     );
     const report = await detectDrift(ctx.db);
     expect(report.missing_in_db.map((m) => m.tag)).toContain(lastTag);
