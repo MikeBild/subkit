@@ -50,6 +50,20 @@ if [ -n "${DATABASE_URL_FILE:-}" ]; then
   fi
   export DATABASE_URL="$file_database_url"
 fi
+
+# Upraft exposes managed database bindings under a stable component variable
+# and may alias the same URL to DATABASE_URL. Its `sslmode=require` endpoint
+# uses a platform certificate, so request libpq-compatible encryption semantics
+# only when the value is the unmodified Upraft-provided binding.
+if [ -z "${DATABASE_URL:-}" ] && [ -n "${UPRAFT_DB_PRIMARY_URL:-}" ]; then
+  export DATABASE_URL="$UPRAFT_DB_PRIMARY_URL"
+fi
+if [ -n "${UPRAFT_DB_PRIMARY_URL:-}" ] && [ "${DATABASE_URL:-}" = "$UPRAFT_DB_PRIMARY_URL" ]; then
+  case "$DATABASE_URL" in
+    *sslmode=require*uselibpqcompat=*) ;;
+    *sslmode=require*) export DATABASE_URL="${DATABASE_URL}&uselibpqcompat=true" ;;
+  esac
+fi
 [ -n "${DATABASE_URL:-}" ] || {
   log "DATABASE_URL or DATABASE_URL_FILE is required; PostgreSQL is not bundled in this image"
   exit 64
