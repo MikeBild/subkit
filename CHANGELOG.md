@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.36] – 2026-08-29
+
+### Fixed
+
+- Reuse the production image already built by the Docker E2E gate instead of
+  rebuilding it from each test file and exhausting hosted-runner disk space.
+
 ## [6.22.35] – 2026-08-29
 
 ### Changed
