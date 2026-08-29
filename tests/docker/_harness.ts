@@ -45,9 +45,15 @@ export function compose(args: string[], extraEnv?: Record<string, string>): Comm
   };
 }
 
-/** Build (if needed) and start the container, blocking until healthy. */
+/** Start the container (building only when no image exists), blocking until healthy. */
 export async function composeUp(): Promise<void> {
-  const up = compose(["up", "-d", "--build", "--wait"]);
+  // CI and the documented compose:test:up command already build the exact
+  // production image once before the tests start. Rebuilding from every test
+  // file invalidates the COPY layer after the first file writes its log
+  // artifact and can exhaust a hosted runner while reinstalling ONNX assets.
+  // Plain `compose up` still builds automatically for a clean local checkout
+  // where the declared image does not exist.
+  const up = compose(["up", "-d", "--wait"]);
   if (up.status !== 0) {
     throw new Error(`compose up failed (${up.status}):\n${up.stdout}\n${up.stderr}`);
   }

@@ -538,7 +538,7 @@ database is mandatory and the engine auto-migrates on boot:
 docker run -d --name subkit -p 3000:3000 -v subkit-data:/data \
   -e DATABASE_URL="postgres://user:pass@db-host:5432/subkit" \
   -e MASTER_KEY="<your-64-hex-key>" \
-  mikebild/subkit:6.22.35
+  mikebild/subkit:6.22.36
 ```
 
 ### Persistence & upgrades
