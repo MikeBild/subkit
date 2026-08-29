@@ -28,6 +28,7 @@ describe("release manifest workflow", () => {
     expect(sumsStep).not.toContain("> SHA256SUMS.tmp");
     expect(sumsStep).toContain("sbom_actual");
     expect(sumsStep).toContain('test "$sbom_actual" -eq 1');
-    expect(sumsStep).toContain("! grep -Eq 'SHA256SUMS|\\.sig$' SHA256SUMS");
+    expect(sumsStep).toContain("if grep -Eq 'SHA256SUMS|\\.sig$' SHA256SUMS; then");
+    expect(sumsStep).toContain("SHA256SUMS must not hash itself or signature files");
   });
 });

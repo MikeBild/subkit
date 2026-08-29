@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.35] – 2026-08-29
+
+### Changed
+
+- Rebuilt the public application-complete image around mandatory external
+  PostgreSQL, persistent bootstrap/blob/client state, and container-native
+  `/health` and `/ready` checks.
+- Release builds now publish pinned Linux `amd64`/`arm64` images to Docker Hub
+  and GHCR alongside every supported native CLI platform artifact.
+
 ## [6.22.34] – 2026-08-28
 
 ### Fixed

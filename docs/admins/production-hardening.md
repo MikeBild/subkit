@@ -188,7 +188,7 @@ warn  config  override.active   override_keys=["storage.files.dir"]
 | File AV scan | `NoopScanner` (always clean) | ❌ wire clamd before untrusted uploads | `files/scanner.ts` |
 | `storage.files.dir` | empty → ephemeral tmpdir | ✅ set to a persistent path (done via `SK_OVERRIDE_*`) | `config/loader.ts`, `index.ts` |
 | `MASTER_KEY` | required | ✅ set; rotate per `credentials-and-keys.md` | `docs/admins/credentials-and-keys.md` |
-| PostgreSQL | bundled in the all-in-one image | ✅ for scale, point at an external managed Postgres | `docs/developers/self-host.md` |
+| PostgreSQL | external service is mandatory | ✅ use a backed-up, supported PostgreSQL deployment | `docs/developers/self-host.md` |
 
 See also: [`self-host.md`](../developers/self-host.md) · [`configuration.md`](./configuration.md) ·
 [`settings-reference.md`](./settings-reference.md) · [`credentials-and-keys.md`](./credentials-and-keys.md).
