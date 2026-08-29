@@ -1,23 +1,20 @@
-# subkit — all-in-one image (engine + bundled PostgreSQL).
+# subkit — application-complete image (external PostgreSQL required).
 #
-# Designed for the easiest possible customer onramp: one `docker run`
-# yields a working engine with zero external dependencies. The container
-# boots an embedded PostgreSQL, auto-generates+persists a MASTER_KEY, and
-# starts the engine bound to 0.0.0.0 so `-p 3000:3000` is reachable.
-#
-# Supply your own DATABASE_URL to skip the embedded PostgreSQL and point
-# at an external database (the production-shaped topology). See
-# docs/operations/docker.md for the full contract.
+# The image contains the engine, Cockpit, migrations, every supported `sk`
+# client artifact and Chromium. PostgreSQL deliberately stays outside the
+# application container; DATABASE_URL (or DATABASE_URL_FILE) is mandatory.
 #
 # Build (single-arch, local):   docker build -t subkit:local .
 # Publish (multi-arch):         bash scripts/docker-publish.sh
+
+ARG CLI_BINARIES_SOURCE=generated-cli
 
 # ---------------------------------------------------------------------------
 # Stage 1 — builder: compile the engine + sk CLI to self-contained binaries.
 # buildx runs this stage natively per target arch, so `bun build --compile`
 # emits a binary for the runtime arch with no cross-compile flag needed.
 # ---------------------------------------------------------------------------
-FROM oven/bun:1-debian AS builder
+FROM oven/bun:1.4.0-debian@sha256:5bb0f9be3a1a36a03e27c9a9dd894a3b1ad26657155c7df4dda771e17bf872ef AS builder
 
 WORKDIR /app
 
@@ -67,22 +64,24 @@ RUN set -eux; \
       --define "BUILD_VERSION=\"$VERSION\"" \
       --outfile /out/sk
 
-# Stage all five client-platform `sk` binaries + SHA256SUMS so the running
-# engine can serve the matching CLI for ANY client via GET /install/{asset}
-# (SUBKIT_BINARIES_DIR). This is what makes `curl <engine>/install | bash`
-# work without any github.com egress — the private-repo GitHub Release
-# fallback in the install script is never on the critical path. Single source
-# of truth for on-disk names + sums format: scripts/stage-cli-binaries.ts.
+# Local-build fallback: stage all five client-platform `sk` binaries plus
+# SHA256SUMS. Release builds replace this stage with a named build context
+# containing the exact binaries produced natively by the release matrix.
+FROM builder AS generated-cli
 RUN set -eux; \
     VERSION="${ENGINE_VERSION:-$(bun -e 'console.log(require("./package.json").version)')}"; \
     bun scripts/stage-cli-binaries.ts --dir /out/binaries --version "$VERSION"
 
+# `generated-cli` keeps `docker build .` self-contained. CI passes
+# CLI_BINARIES_SOURCE=cli_binaries and a same-named additional context, so the
+# image serves byte-for-byte the signed/checksummed GitHub Release artifacts.
+FROM ${CLI_BINARIES_SOURCE} AS cli-binaries
+
 # ---------------------------------------------------------------------------
-# Stage 2 — runtime: postgres:18 base bundles PostgreSQL 18, initdb, gosu,
-# and a glibc userland for the bun-compiled binary. We only add curl +
-# ca-certificates (healthcheck + outbound TLS to LLM providers).
+# Stage 2 — runtime: Playwright provides the exact Chromium build and its OS
+# libraries used by browser-backed engine workflows.
 # ---------------------------------------------------------------------------
-FROM postgres:18-bookworm AS runtime
+FROM mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e AS runtime
 
 # Retry apt-get update: under buildx/QEMU multi-arch builds the InRelease
 # fetch occasionally fails transiently ("is not signed"). Acquire::Retries
@@ -101,29 +100,34 @@ COPY --from=builder /out/engine /usr/local/bin/engine.bin
 COPY --from=builder /out/sk /usr/local/bin/sk.bin
 # All-platform `sk` binaries served by GET /install/{asset}. SUBKIT_BINARIES_DIR
 # defaults to this path (install-binary.ts), so no extra ENV is needed.
-COPY --from=builder /out/binaries /usr/local/share/subkit/binaries
+COPY --from=cli-binaries /out/binaries /usr/local/share/subkit/binaries
 COPY deploy/docker/subkit-wrap.sh /usr/local/bin/subkit-wrap.sh
 COPY deploy/docker/entrypoint.sh /usr/local/bin/subkit-entrypoint.sh
 RUN chmod +x /usr/local/bin/engine.bin /usr/local/bin/sk.bin \
         /usr/local/bin/subkit-wrap.sh /usr/local/bin/subkit-entrypoint.sh \
     && ln -s /usr/local/bin/subkit-wrap.sh /usr/local/bin/engine \
-    && ln -s /usr/local/bin/subkit-wrap.sh /usr/local/bin/sk
+    && ln -s /usr/local/bin/subkit-wrap.sh /usr/local/bin/sk \
+    && mkdir -p /data/config /data/blobs /data/home \
+    && chown -R pwuser:pwuser /data
 
-# Single /data volume holds pgdata + config (incl. the persisted MASTER_KEY)
-# + file blobs + the sk CLI profile, so one volume mount preserves all state
+# Single /data volume holds config (incl. the persisted MASTER_KEY), file blobs
+# and the sk CLI profile, so one volume mount preserves all application state
 # across restarts. HOME points the sk profile (~/.sk) onto the volume so an
 # in-container `docker exec … sk init`/login stays usable after restarts.
 ENV NODE_ENV=production \
     ENGINE_LISTEN_HOST=0.0.0.0 \
-    PGDATA=/data/pgdata \
     SUBKIT_CONFIG=/data/config/subkit.config.json \
     SUBKIT_BOOTSTRAP_TOKEN_FILE=/data/config/bootstrap.token \
-    HOME=/data/home
+    HOME=/data/home \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 EXPOSE 3000
 VOLUME ["/data"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \
-    CMD curl -fsS http://127.0.0.1:3000/health || exit 1
+    CMD curl -fsS http://127.0.0.1:3000/health >/dev/null \
+      && curl -fsS http://127.0.0.1:3000/ready >/dev/null \
+      || exit 1
 
+USER pwuser
 ENTRYPOINT ["/usr/local/bin/subkit-entrypoint.sh"]

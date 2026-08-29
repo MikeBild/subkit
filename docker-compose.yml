@@ -1,17 +1,4 @@
-# Local development backend services for the subkit engine.
-#
-# This compose file is **dev-only**: it brings up postgres for local
-# development while `bun run dev` runs the engine on the host. For a
-# self-contained production engine use the all-in-one image
-# (`mikebild/subkit`) — see docs/developers/self-host.md.
-#
-# Quick start (from repo root):
-#   docker compose up -d              # postgres only
-#   docker compose --profile storage up -d  # adds MinIO (S3 API)
-#   bun run dev                        # runs the engine on the host
-#
-# The engine reads DATABASE_URL=postgres://subkit:subkit@127.0.0.1:5432/subkit
-# (default in .env.example) and listens on :3000.
+name: subkit
 
 x-logging: &default-logging
   driver: json-file
@@ -20,60 +7,51 @@ x-logging: &default-logging
     max-file: "3"
 
 volumes:
+  subkit_data:
   subkit_pgdata:
-  subkit_minio:
 
 services:
   postgres:
-    image: postgres:18-alpine
+    image: postgres:18.6-trixie@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
     restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-subkit}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-subkit}
-      POSTGRES_DB: ${POSTGRES_DB:-subkit}
-      # PG18+ official images default PGDATA to a major-version subdir of
-      # /var/lib/postgresql and reject a bare /var/lib/postgresql/data mount as
-      # an "unused" volume. Pin PGDATA into the mounted volume so initdb runs
-      # where we persist it (works on 16 and 18 alike).
+      POSTGRES_USER: subkit
+      POSTGRES_PASSWORD: ${SUBKIT_DB_PASSWORD:-subkit-local-only}
+      POSTGRES_DB: subkit
       PGDATA: /var/lib/postgresql/data/pgdata
-    ports:
-      - "5432:5432"
     volumes:
       - subkit_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-subkit} -d ${POSTGRES_DB:-subkit}"]
+      test: ["CMD-SHELL", "pg_isready -U subkit -d subkit"]
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 5s
     logging: *default-logging
 
-  # MinIO — optional S3-compatible object storage for tests that
-  # exercise the storage subsystem locally. Enable with:
-  #   docker compose --profile storage up -d
-  minio:
-    image: minio/minio:latest
+  engine:
+    image: ${SUBKIT_IMAGE:-mikebild/subkit:${SUBKIT_IMAGE_TAG:-6.22.35}}
     restart: unless-stopped
-    profiles: ["storage"]
-    env_file:
-      - path: .env
-        required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-subkit}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-subkitsubkit}
-    command: server /data --console-address ":9001"
+      DATABASE_URL: postgres://subkit:${SUBKIT_DB_PASSWORD:-subkit-local-only}@postgres:5432/subkit
+      MASTER_KEY: ${MASTER_KEY:-}
+      NODE_ENV: production
+      LOG_FORMAT: ${LOG_FORMAT:-ndjson}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${BIND_ADDRESS:-127.0.0.1}:${SUBKIT_HOST_PORT:-3000}:3000"
     volumes:
-      - subkit_minio:/data
+      - subkit_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live || exit 1"]
-      interval: 10s
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://127.0.0.1:3000/health >/dev/null && curl -fsS http://127.0.0.1:3000/ready >/dev/null",
+        ]
+      interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 10s
+      retries: 30
+      start_period: 90s
     logging: *default-logging

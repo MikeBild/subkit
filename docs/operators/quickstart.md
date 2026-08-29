@@ -29,39 +29,46 @@ curl -fsSL <your-engine-url>/install | bash   # e.g. http://localhost:3000/insta
 ```
 
 Before your engine exists, the all-in-one image also bundles `sk` on the
-container PATH — `docker exec <container> sk …` — so you can drive the engine
+container PATH — `docker compose exec engine sk …` — so you can drive the engine
 without a local install first.
 
 See [docs/developers/input-surfaces.md](../developers/input-surfaces.md) for Windows and manual platform installs. The install script may place a `subkit` compatibility alias on disk; the canonical command surface is `sk`.
 
-## 2. Run the engine (Docker)
+## 2. Run the engine (Docker Compose)
 
-sk ships an all-in-one image (`mikebild/subkit`) that bundles the engine + PostgreSQL:
+sk ships an application-complete image (`mikebild/subkit`) with the engine,
+Cockpit, migrations, `sk`, every supported CLI platform artifact, local blob
+storage, and Chromium. PostgreSQL is deliberately a separate, mandatory
+service. The repository Compose file starts both with version-pinned images:
 
 ```bash
-docker run -d --name subkit -p 3000:3000 -v subkit-data:/data mikebild/subkit:latest
+docker compose up -d
 ```
 
-On first boot it initializes Postgres, persists a `MASTER_KEY`, runs migrations, and serves the API on `:3000`. The `subkit-data` volume holds all state. Verify:
+On first boot the engine persists a `MASTER_KEY`, runs migrations against the
+external database, and serves the API on `127.0.0.1:3000`. Application files
+and database data use separate named volumes. Verify both liveness and
+readiness:
 
 ```bash
 curl -s http://localhost:3000/health | jq
+curl -s http://localhost:3000/ready | jq
 ```
 
-Full guide (external-DB mode, TLS-fronting, persistence, resource limits): [docs/developers/self-host.md](../developers/self-host.md).
+Full guide (managed-DB mode, TLS-fronting, persistence, resource limits): [docs/developers/self-host.md](../developers/self-host.md).
 
 ## 3. Create the first tenant + admin key
 
 A fresh engine has no tenants. It prints a one-time bootstrap token to the logs:
 
 ```bash
-docker logs subkit 2>&1 | grep 'sk init --token'
+docker compose logs engine 2>&1 | grep 'sk init --token'
 ```
 
 Complete setup with `sk init` — creates the tenant, mints the admin key, and wires the LLM provider in one shot (the bundled CLI runs inside the container):
 
 ```bash
-docker exec subkit sk init --token <token> \
+docker compose exec engine sk init --token <token> \
   --admin-email you@example.com \
   --tenant-name "My Org" \
   --llm-provider anthropic \
@@ -71,7 +78,7 @@ docker exec subkit sk init --token <token> \
 To get a full admin key you can paste into a `sk` CLI on your host (tenant slug is the kebab-cased name, e.g. `My Org` → `my-org`):
 
 ```bash
-docker exec subkit engine --issue-admin-key --tenant my-org   # printed once
+docker compose exec engine engine --issue-admin-key --tenant my-org   # printed once
 sk login --engine-url http://localhost:3000 --api-key wf_live_…
 ```
 
