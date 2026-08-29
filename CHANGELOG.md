@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.37] – 2026-08-29
+
+### Fixed
+
+- Keep GitHub Container Registry packages private while verifying Docker Hub
+  images are publicly and anonymously available for both release architectures.
+
 ## [6.22.36] – 2026-08-29
 
 ### Fixed
