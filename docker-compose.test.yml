@@ -1,19 +1,32 @@
 # CI-only compose for the Docker-image E2E track (tests/docker/*.docker.test.ts).
 #
-# Builds and runs the production all-in-one image (Dockerfile) with the
-# embedded PostgreSQL, exactly as a customer would `docker run` it — but
+# Builds and runs the production image with a real external PostgreSQL service,
+# exactly as the supported topology requires — but
 # pinned for hermetic CI: a fixed MASTER_KEY, the mock LLM provider so no
 # model is ever called in the gate, and ndjson logs so the log-artifact is
-# machine-parseable on failure. One service, one published port, the image's
-# own /health healthcheck (so `docker compose up --wait` blocks on
-# readiness — no fixed sleeps).
+# machine-parseable on failure. The application has one loopback-published
+# port. Its Compose healthcheck calls both /health and /ready, so
+# `docker compose up --wait` blocks on readiness without fixed sleeps.
 services:
+  postgres:
+    image: postgres:18.6-trixie@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    environment:
+      POSTGRES_USER: subkit
+      POSTGRES_PASSWORD: subkit-test
+      POSTGRES_DB: subkit
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U subkit -d subkit"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   engine:
     build:
       context: .
       dockerfile: Dockerfile
     image: subkit:cintest
     environment:
+      DATABASE_URL: postgres://subkit:subkit-test@postgres:5432/subkit
       NODE_ENV: production
       # Mock provider: bootstrap (POST /v1/setup) accepts "mock", and no
       # gating Docker test invokes an LLM endpoint.
@@ -24,11 +37,16 @@ services:
       # Machine-parseable logs for the failure artifact + log assertions.
       LOG_FORMAT: ndjson
     ports:
-      - "3000:3000"
-    # The Dockerfile already declares the healthcheck; restate the timings
-    # here so a slow embedded initdb on a cold CI runner doesn't flap.
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://127.0.0.1:3000/health >/dev/null && curl -fsS http://127.0.0.1:3000/ready >/dev/null",
+        ]
       interval: 5s
       timeout: 5s
       retries: 30

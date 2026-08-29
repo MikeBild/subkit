@@ -3815,39 +3815,46 @@ curl -fsSL <your-engine-url>/install | bash   # e.g. http://localhost:3000/insta
 ```
 
 Before your engine exists, the all-in-one image also bundles `sk` on the
-container PATH — `docker exec <container> sk …` — so you can drive the engine
+container PATH — `docker compose exec engine sk …` — so you can drive the engine
 without a local install first.
 
 See [docs/developers/input-surfaces.md](../developers/input-surfaces.md) for Windows and manual platform installs. The install script may place a `subkit` compatibility alias on disk; the canonical command surface is `sk`.
 
-## 2. Run the engine (Docker)
+## 2. Run the engine (Docker Compose)
 
-sk ships an all-in-one image (`mikebild/subkit`) that bundles the engine + PostgreSQL:
+sk ships an application-complete image (`mikebild/subkit`) with the engine,
+Cockpit, migrations, `sk`, every supported CLI platform artifact, local blob
+storage, and Chromium. PostgreSQL is deliberately a separate, mandatory
+service. The repository Compose file starts both with version-pinned images:
 
 ```bash
-docker run -d --name subkit -p 3000:3000 -v subkit-data:/data mikebild/subkit:latest
+docker compose up -d
 ```
 
-On first boot it initializes Postgres, persists a `MASTER_KEY`, runs migrations, and serves the API on `:3000`. The `subkit-data` volume holds all state. Verify:
+On first boot the engine persists a `MASTER_KEY`, runs migrations against the
+external database, and serves the API on `127.0.0.1:3000`. Application files
+and database data use separate named volumes. Verify both liveness and
+readiness:
 
 ```bash
 curl -s http://localhost:3000/health | jq
+curl -s http://localhost:3000/ready | jq
 ```
 
-Full guide (external-DB mode, TLS-fronting, persistence, resource limits): [docs/developers/self-host.md](../developers/self-host.md).
+Full guide (managed-DB mode, TLS-fronting, persistence, resource limits): [docs/developers/self-host.md](../developers/self-host.md).
 
 ## 3. Create the first tenant + admin key
 
 A fresh engine has no tenants. It prints a one-time bootstrap token to the logs:
 
 ```bash
-docker logs subkit 2>&1 | grep 'sk init --token'
+docker compose logs engine 2>&1 | grep 'sk init --token'
 ```
 
 Complete setup with `sk init` — creates the tenant, mints the admin key, and wires the LLM provider in one shot (the bundled CLI runs inside the container):
 
 ```bash
-docker exec subkit sk init --token <token> \
+docker compose exec engine sk init --token <token> \
   --admin-email you@example.com \
   --tenant-name "My Org" \
   --llm-provider anthropic \
@@ -3857,7 +3864,7 @@ docker exec subkit sk init --token <token> \
 To get a full admin key you can paste into a `sk` CLI on your host (tenant slug is the kebab-cased name, e.g. `My Org` → `my-org`):
 
 ```bash
-docker exec subkit engine --issue-admin-key --tenant my-org   # printed once
+docker compose exec engine engine --issue-admin-key --tenant my-org   # printed once
 sk login --engine-url http://localhost:3000 --api-key wf_live_…
 ```
 
@@ -9869,7 +9876,8 @@ indexed knowledge article — all from the released Docker image.
 
 ```mermaid
 flowchart LR
-    Op["docker run"] --> Engine["engine container<br/>(bundled sk + PostgreSQL)"]
+    Op["docker compose"] --> Engine["engine container<br/>(engine + sk + Cockpit + Chromium)"]
+    Op --> PG
     Engine --> PG[("PostgreSQL<br/>your data, your volume")]
     Engine -. outbound only .-> LLM[("LLM provider")]
 ```
@@ -9905,10 +9913,13 @@ Full glossary: [`docs/concepts/glossary.md`](../concepts/glossary.md).
 
 ## Step 1 — Run the engine
 
-The all-in-one image bundles the engine, PostgreSQL, **and** the `sk` CLI.
+The application-complete image bundles the engine, Cockpit, migrations,
+Chromium, **and** the `sk` CLI plus every supported client-platform artifact.
+PostgreSQL remains a separate, mandatory service. The repository Compose file
+starts the pinned application and database images together.
 
 ```bash
-docker run -d --name subkit -p 3000:3000 -v subkit-data:/data mikebild/subkit:latest
+docker compose up -d
 ```
 
 Wait a few seconds, then confirm it is healthy:
@@ -9921,8 +9932,9 @@ curl -s http://localhost:3000/ready
 # {"status":"ready","service":"subkit","version":"<version>","checks":{"lifecycle":"pass","database":"pass"}}
 ```
 
-The `subkit-data` volume holds **all** state — database, config, encryption key,
-uploaded files — so restarts keep your data.
+The `subkit_data` volume holds application state — config, encryption key,
+uploaded files, and the in-container CLI profile. PostgreSQL data lives in the
+separate `subkit_pgdata` volume. Restarts preserve both.
 
 ---
 
@@ -9933,7 +9945,7 @@ image the bundled CLI **auto-detects the one-time bootstrap token** the engine
 dropped on the `/data` volume, so you don't copy anything:
 
 ```bash
-docker exec subkit sk init \
+docker compose exec engine sk init \
   --admin-email you@example.com \
   --tenant-name "My Org" \
   --llm-provider anthropic \
@@ -9944,13 +9956,13 @@ docker exec subkit sk init \
 ```
 
 > **No API key handy?** Use `--llm-provider mock` to walk the mechanics with zero
-> external accounts. Or pass `-e ANTHROPIC_API_KEY=sk-ant-…` at `docker run` time
-> and drop `--llm-api-key`.
+> external accounts. Or set `ANTHROPIC_API_KEY` in the engine service
+> environment and drop `--llm-api-key`.
 >
 > **Manual token (non-bundled deploys):** copy it from the logs and pass
 > `--token` (valid 15 min; the engine reprints a fresh one on the next attempt):
 > ```bash
-> docker logs subkit 2>&1 | grep -oE 'sk init --token [a-f0-9]{64}' | tail -1
+> docker compose logs engine 2>&1 | grep -oE 'sk init --token [a-f0-9]{64}' | tail -1
 > ```
 
 > **Authentication defaults to the `api_key` adapter** — people are added by
@@ -9997,9 +10009,9 @@ contains only a provider-verified address.
 Verify:
 
 ```bash
-docker exec subkit sk doctor
+docker compose exec engine sk doctor
 # ✔ profile / reachability / authn / setup / version_match … (exit 0)
-docker exec subkit sk -p "Say only the word: pong" --output text
+docker compose exec engine sk -p "Say only the word: pong" --output text
 # pong            ← confirms the LLM is wired correctly
 ```
 
@@ -10011,7 +10023,7 @@ This is the main way to use sk. Open the interactive REPL (it needs a terminal,
 so add `-it`):
 
 ```bash
-docker exec -it subkit sk
+docker compose exec engine sk
 ```
 
 Now just say what you want. The AI proposes; **nothing is saved or run until you
@@ -10071,11 +10083,11 @@ Whether you authored in the REPL or via a script, the artifacts are normal,
 versioned resources you can list and run:
 
 ```bash
-docker exec subkit sk connectors list                 # name + slug + status
-docker exec subkit sk connectors test <CONNECTOR_ID>  # re-probe connectivity
-docker exec subkit sk workflows run berlin-current-temperature --follow
-docker exec subkit sk executions list --limit 5
-docker exec subkit sk executions result <EXECUTION_ID>  # the value it produced
+docker compose exec engine sk connectors list                 # name + slug + status
+docker compose exec engine sk connectors test <CONNECTOR_ID>  # re-probe connectivity
+docker compose exec engine sk workflows run berlin-current-temperature --follow
+docker compose exec engine sk executions list --limit 5
+docker compose exec engine sk executions result <EXECUTION_ID>  # the value it produced
 ```
 
 ---
@@ -10086,12 +10098,12 @@ In the REPL you can just say *“add this file as a knowledge source tagged
 weather, runbook”*. The scriptable form:
 
 ```bash
-docker cp note.md subkit:/tmp/note.md
-docker exec subkit sk knowledge-sources create --file /tmp/note.md \
+docker compose cp note.md engine:/tmp/note.md
+docker compose exec engine sk knowledge-sources create --file /tmp/note.md \
   --title "Weather Runbook" --tags "weather,runbook,open-meteo"
 # ✓ Created knowledge source "Weather Runbook" · 4 chunks
-docker exec subkit sk knowledge-sources list
-docker exec subkit sk knowledge-sources search "open-meteo"   # semantic search; ranks by relevance
+docker compose exec engine sk knowledge-sources list
+docker compose exec engine sk knowledge-sources search "open-meteo"   # semantic search; ranks by relevance
 ```
 
 `--tags` you supply are authoritative (no AI auto-tagging); omit both `--tags`
@@ -10171,7 +10183,7 @@ curl -s http://localhost:3000/mcp \
 
 ## Use `sk` from your own machine (instead of `docker exec`)
 
-`docker exec subkit sk …` is the zero-install path. To run `sk` directly on your
+`docker compose exec engine sk …` is the zero-install path. To run `sk` directly on your
 host:
 
 ```bash
@@ -10179,7 +10191,7 @@ host:
 curl -fsSL http://localhost:3000/install | bash
 
 # 2. Mint a full admin key — prints a ready-to-paste `sk login` line
-docker exec subkit engine --issue-admin-key --tenant my-org
+docker compose exec engine engine --issue-admin-key --tenant my-org
 #   run this on your machine to log the host `sk` in:
 #     sk login --engine-url http://localhost:3000 --api-key wf_live_…
 
@@ -10200,14 +10212,14 @@ admin never sees that key. Three commands, in order:
 
 ```bash
 # 1. Admin: create the user (roles: admin | member | enduser, default member)
-docker exec subkit sk users create --email teammate@example.com --role member
+docker compose exec engine sk users create --email teammate@example.com --role member
 # created user
 #   id     <USER_ID>
 #   email  teammate@example.com
 #   role   member
 
 # 2. Admin: issue a single-use invite — the wf_invite_ token is shown ONCE
-docker exec subkit sk users invite <USER_ID>
+docker compose exec engine sk users invite <USER_ID>
 # invite issued for user <USER_ID>
 #   token    wf_invite_…
 #   expires  …
@@ -10235,10 +10247,10 @@ Every runtime setting is managed with `sk settings` (the REPL's `/config` opens
 the same thing):
 
 ```bash
-docker exec subkit sk settings list                       # every leaf + value
-docker exec subkit sk settings get llm.provider
-docker exec subkit sk settings set llm.model '"claude-sonnet-4-6"'   # value is JSON
-docker exec subkit sk settings configure                  # interactive UI
+docker compose exec engine sk settings list                       # every leaf + value
+docker compose exec engine sk settings get llm.provider
+docker compose exec engine sk settings set llm.model '"claude-sonnet-4-6"'   # value is JSON
+docker compose exec engine sk settings configure                  # interactive UI
 ```
 
 A few values are **not** `sk settings` on purpose: `MASTER_KEY`, `DATABASE_URL`,
@@ -10256,9 +10268,9 @@ The REPL is for humans; these are for automation. Same engine, same governance.
 commands; the AI completes autonomously up to `--max-turns`):
 
 ```bash
-docker exec subkit sk -p "Create a keyless HTTP connector named open-meteo for \
+docker compose exec engine sk -p "Create a keyless HTTP connector named open-meteo for \
 https://api.open-meteo.com, endpoint GET /v1/forecast, then probe it." --output text
-docker exec subkit sk -p "list my workflows" --output json
+docker compose exec engine sk -p "list my workflows" --output json
 ```
 
 **Declarative workflow** — exact and repeatable; `create` runs
@@ -10281,18 +10293,18 @@ connector works. Save `weather.json` (use your connector id from
 ```
 ```bash
 docker cp weather.json subkit:/tmp/weather.json
-docker exec subkit sk workflows create --file /tmp/weather.json   # validate→preview→save
-docker exec subkit sk workflows run berlin-current-temperature --follow
+docker compose exec engine sk workflows create --file /tmp/weather.json   # validate→preview→save
+docker compose exec engine sk workflows run berlin-current-temperature --follow
 ```
 
 **Key-based connector, fully scripted** — create from a template, attach the
 credential without a conversation:
 
 ```bash
-docker exec subkit sk connectors create --template stripe --name stripe-prod --skip-checks
-docker exec subkit sk credentials set <CONNECTOR_ID> --mode bearer --token sk_live_…
+docker compose exec engine sk connectors create --template stripe --name stripe-prod --skip-checks
+docker compose exec engine sk credentials set <CONNECTOR_ID> --mode bearer --token sk_live_…
 #   modes: bearer | header | query | basic | aws_sigv4 | none  (probes after, unless --skip-checks)
-docker exec subkit sk credentials list <CONNECTOR_ID>
+docker compose exec engine sk credentials list <CONNECTOR_ID>
 ```
 
 ---
@@ -10305,15 +10317,15 @@ docker exec subkit sk credentials list <CONNECTOR_ID>
 | `bootstrap token expired` | Re-run `sk init` (it auto-detects a fresh token) or re-grep the logs (Step 2). |
 | Connector `probe failed` | Wrong base URL / endpoint — tell the REPL the correct values and `/probe`. |
 | `validation failed` on `workflows create` | Check the JSON against the Scripting section; `connector_id` must be a real id from `sk connectors list`. |
-| Interactive prompt hangs under `docker exec` | Add `-it`: `docker exec -it subkit sk …`. |
+| Interactive prompt hangs under `docker compose exec` | Run it from an interactive terminal; Compose allocates a TTY by default. |
 
 ---
 
 ## Production deployment
 
-The quickstart above uses the all-in-one image — engine and PostgreSQL in one
-container — ideal for trials, demos, and small single-node self-hosting. This
-section covers what changes when you run sk for real.
+The quickstart above uses the same application image as production with a
+separate PostgreSQL container. For production, replace that database service
+with managed PostgreSQL and put the engine behind your TLS ingress.
 
 ### Deployment Topology
 
@@ -10345,7 +10357,7 @@ flowchart TB
 | **Standard model** | one engine service + one PostgreSQL instance |
 | **High availability** | run multiple engine containers behind a load balancer (no coordination overhead) |
 | **Production database** | point at [external PostgreSQL](#external-database); engine auto-migrates on boot |
-| **Local development** | `docker-compose.yml` brings up postgres only (MinIO under `--profile storage`); `bun run dev` runs the engine on the host |
+| **Release-image rehearsal** | `docker-compose.yml` runs the released engine image and a separate PostgreSQL service |
 
 ### Installation
 
@@ -10372,7 +10384,7 @@ Everything else lives in `subkit.config.json` on the volume. Full leaf reference
 | Env var | Default | Purpose |
 |---|---|---|
 | `MASTER_KEY` | auto-generated + persisted to `/data/config/master.key` | 64-hex AES-256 key for at-rest credential encryption. **Set your own in production** — losing it makes stored credentials unrecoverable. |
-| `DATABASE_URL` | embedded PostgreSQL | Set to use an external database (disables the embedded one). |
+| `DATABASE_URL` | **required** | PostgreSQL connection URL. The image does not contain a database server. `DATABASE_URL_FILE` is also supported. |
 | `ENGINE_LISTEN_HOST` | `0.0.0.0` | Bind interface. The image defaults to all-interfaces so `-p` works; leave it. |
 | `SK_OVERRIDE_*` | — | Override any config leaf at runtime (e.g. `SK_OVERRIDE_LLM_API_KEY`). |
 | `NODE_ENV` | `production` | — |
@@ -10380,47 +10392,50 @@ Everything else lives in `subkit.config.json` on the volume. Full leaf reference
 ### Bring your own MASTER_KEY
 
 ```bash
-docker run -d --name subkit -p 3000:3000 -v subkit-data:/data \
-  -e MASTER_KEY="$(openssl rand -hex 32)" \
-  mikebild/subkit:latest
+MASTER_KEY="$(openssl rand -hex 32)" docker compose up -d
 ```
 
 Store it somewhere safe and pass the **same** value on every run — it must stay constant or previously encrypted credentials become unreadable. Rotation procedure: [`../admins/credentials-and-keys.md`](../admins/credentials-and-keys.md).
 
 ### External database
 
-Skip the embedded PostgreSQL and connect to your own (managed RDS, a separate container, etc.). The engine still auto-migrates on boot:
+Connect the image to PostgreSQL (managed RDS, a separate container, etc.). The
+database is mandatory and the engine auto-migrates on boot:
 
 ```bash
 docker run -d --name subkit -p 3000:3000 -v subkit-data:/data \
   -e DATABASE_URL="postgres://user:pass@db-host:5432/subkit" \
   -e MASTER_KEY="<your-64-hex-key>" \
-  mikebild/subkit:latest
+  mikebild/subkit:6.22.35
 ```
 
 ### Persistence & upgrades
 
-State lives entirely in the `/data` volume. To upgrade, pull a newer tag and recreate the container against the same volume — migrations apply automatically on boot:
+Application state lives in `/data`; durable relational state lives in
+PostgreSQL. Back up both. To upgrade the Compose deployment, change the pinned
+`SUBKIT_IMAGE_TAG`, pull, and recreate the engine. Migrations apply
+automatically on boot:
 
 ```bash
-docker pull mikebild/subkit:latest
-docker rm -f subkit
-docker run -d --name subkit -p 3000:3000 -v subkit-data:/data mikebild/subkit:latest
+SUBKIT_IMAGE_TAG=<new-version> docker compose pull engine
+SUBKIT_IMAGE_TAG=<new-version> docker compose up -d engine
+curl -fsS http://127.0.0.1:3000/health
+curl -fsS http://127.0.0.1:3000/ready
 ```
 
 ### Notes & limits
 
-- **Web-scraping connector**: Playwright browsers are not bundled (keeps the image lean). Scraping-dependent flows degrade gracefully; install browsers separately if you need them.
+- **Web-scraping connector**: the image includes the Playwright-matched Chromium build and its operating-system libraries.
 - **File scanning**: uploads are not virus-scanned by default — see [`../admins/production-hardening.md`](../admins/production-hardening.md) before accepting untrusted uploads.
-- **Single-node only**: the embedded-database image is not built for horizontal scaling. Use an external `DATABASE_URL` (and run multiple engine containers) or the systemd path for production scale.
+- **Horizontal scaling**: run multiple engine containers against the same external PostgreSQL database and blob-storage strategy, behind a load balancer.
 
 ---
 
 ## Cleanup & next steps
 
 ```bash
-docker rm -f subkit            # stop & remove the container
-docker volume rm subkit-data   # also wipe all state (optional)
+docker compose down            # stop and remove containers; preserve volumes
+docker compose down --volumes  # also erase application and database data
 ```
 
 - [**Using the `sk` REPL**](../authors/repl-tour.md) — the primary interface, in depth.
@@ -11951,7 +11966,7 @@ warn  config  override.active   override_keys=["storage.files.dir"]
 | File AV scan | `NoopScanner` (always clean) | ❌ wire clamd before untrusted uploads | `files/scanner.ts` |
 | `storage.files.dir` | empty → ephemeral tmpdir | ✅ set to a persistent path (done via `SK_OVERRIDE_*`) | `config/loader.ts`, `index.ts` |
 | `MASTER_KEY` | required | ✅ set; rotate per `credentials-and-keys.md` | `docs/admins/credentials-and-keys.md` |
-| PostgreSQL | bundled in the all-in-one image | ✅ for scale, point at an external managed Postgres | `docs/developers/self-host.md` |
+| PostgreSQL | external service is mandatory | ✅ use a backed-up, supported PostgreSQL deployment | `docs/developers/self-host.md` |
 
 See also: [`self-host.md`](../developers/self-host.md) · [`configuration.md`](./configuration.md) ·
 [`settings-reference.md`](./settings-reference.md) · [`credentials-and-keys.md`](./credentials-and-keys.md).

@@ -1,14 +1,6 @@
 #!/usr/bin/env bash
-# All-in-one entrypoint for the subkit image: bootstrap state, optionally
-# start an embedded PostgreSQL, then run the engine. Everything lives under
-# the single /data volume so one mount preserves state across restarts.
-#
-# Modes:
-#   • Embedded DB (default) — no DATABASE_URL set: initdb on first boot,
-#     start a local PostgreSQL, create the subkit role/db, point the engine
-#     at it. Easiest onramp; app + db in one container.
-#   • External DB — DATABASE_URL provided: skip PostgreSQL entirely and
-#     connect to the operator's database (production-shaped topology).
+# Application bootstrap for the subkit image. PostgreSQL is intentionally an
+# external service; this process only owns product state below /data.
 set -euo pipefail
 
 log() { printf '[subkit] %s\n' "$*" >&2; }
@@ -16,7 +8,6 @@ log() { printf '[subkit] %s\n' "$*" >&2; }
 DATA_DIR=/data
 CONFIG_DIR="$DATA_DIR/config"
 BLOBS_DIR="$DATA_DIR/blobs"
-export PGDATA="${PGDATA:-$DATA_DIR/pgdata}"
 export SUBKIT_CONFIG="${SUBKIT_CONFIG:-$CONFIG_DIR/subkit.config.json}"
 export NODE_ENV="${NODE_ENV:-production}"
 # The container is the trust boundary; bind all interfaces so Docker's
@@ -40,58 +31,57 @@ export SK_OVERRIDE_STORAGE_FILES_DIR="${SK_OVERRIDE_STORAGE_FILES_DIR:-$BLOBS_DI
 export CONFIGURATION_DIRECTORY="${CONFIGURATION_DIRECTORY:-$CONFIG_DIR}"
 export STATE_DIRECTORY="${STATE_DIRECTORY:-$DATA_DIR}"
 
-mkdir -p "$CONFIG_DIR" "$BLOBS_DIR" "$PGDATA" "${HOME:-/data/home}"
-chown -R postgres:postgres "$DATA_DIR"
+mkdir -p "$CONFIG_DIR" "$BLOBS_DIR" "${HOME:-/data/home}"
+
+read_secret_file() {
+  name="$1"
+  path="$2"
+  [ -r "$path" ] || { log "$name file is not readable: $path"; exit 64; }
+  value="$(cat "$path")"
+  [ -n "$value" ] || { log "$name file is empty: $path"; exit 64; }
+  printf '%s' "$value"
+}
+
+if [ -n "${DATABASE_URL_FILE:-}" ]; then
+  file_database_url="$(read_secret_file DATABASE_URL "$DATABASE_URL_FILE")"
+  if [ -n "${DATABASE_URL:-}" ] && [ "$DATABASE_URL" != "$file_database_url" ]; then
+    log "DATABASE_URL and DATABASE_URL_FILE disagree"
+    exit 64
+  fi
+  export DATABASE_URL="$file_database_url"
+fi
+[ -n "${DATABASE_URL:-}" ] || {
+  log "DATABASE_URL or DATABASE_URL_FILE is required; PostgreSQL is not bundled in this image"
+  exit 64
+}
 
 # --- MASTER_KEY: env > persisted > generated ------------------------------
 # Auto-generate on first boot for a frictionless trial, but PERSIST it so
 # restarts can still decrypt stored credentials. Production operators should
 # supply their own MASTER_KEY (lose it and every encrypted credential is
 # unrecoverable).
-KEY_FILE="$CONFIG_DIR/master.key"
+KEY_FILE="${MASTER_KEY_PERSIST_FILE:-$CONFIG_DIR/master.key}"
+if [ -n "${MASTER_KEY_FILE:-}" ]; then
+  file_master_key="$(read_secret_file MASTER_KEY "$MASTER_KEY_FILE")"
+  if [ -n "${MASTER_KEY:-}" ] && [ "$MASTER_KEY" != "$file_master_key" ]; then
+    log "MASTER_KEY and MASTER_KEY_FILE disagree"
+    exit 64
+  fi
+  MASTER_KEY="$file_master_key"
+fi
 if [ -z "${MASTER_KEY:-}" ]; then
   if [ -s "$KEY_FILE" ]; then
     MASTER_KEY="$(cat "$KEY_FILE")"
     log "loaded persisted MASTER_KEY from $KEY_FILE"
   else
-    MASTER_KEY="$(openssl rand -hex 32)"
+    MASTER_KEY="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
     ( umask 077; printf '%s' "$MASTER_KEY" >"$KEY_FILE" )
-    chown postgres:postgres "$KEY_FILE"
     log "generated a new MASTER_KEY and persisted it to $KEY_FILE"
     log "WARNING: for production set MASTER_KEY yourself — losing this key makes stored credentials unrecoverable."
   fi
 fi
 export MASTER_KEY
-
-# --- Database -------------------------------------------------------------
-EMBEDDED_PG=0
-if [ -z "${DATABASE_URL:-}" ]; then
-  EMBEDDED_PG=1
-  if [ ! -s "$PGDATA/PG_VERSION" ]; then
-    log "initializing embedded PostgreSQL cluster at $PGDATA"
-    chmod 700 "$PGDATA"
-    gosu postgres initdb -D "$PGDATA" --username=postgres \
-      --auth-local=trust --auth-host=trust >/dev/null
-    # Loopback-only: the engine connects over 127.0.0.1 inside the container.
-    echo "listen_addresses = '127.0.0.1'" >>"$PGDATA/postgresql.conf"
-  fi
-
-  log "starting embedded PostgreSQL"
-  gosu postgres pg_ctl -D "$PGDATA" -w -t 60 start >/dev/null
-
-  # Idempotently ensure the subkit role + database exist.
-  if ! gosu postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='subkit'" | grep -q 1; then
-    gosu postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE subkit LOGIN PASSWORD 'subkit'" >/dev/null
-  fi
-  if ! gosu postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='subkit'" | grep -q 1; then
-    gosu postgres psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE subkit OWNER subkit" >/dev/null
-  fi
-
-  export DATABASE_URL="postgres://subkit:subkit@127.0.0.1:5432/subkit"
-  log "embedded database ready"
-else
-  log "using external DATABASE_URL — embedded PostgreSQL disabled"
-fi
+log "using external PostgreSQL"
 
 # Persist the resolved bootstrap env so the engine/sk wrappers can make
 # one-off `docker exec` invocations (e.g. `engine --issue-admin-key`) work
@@ -105,13 +95,13 @@ RUNTIME_ENV="$CONFIG_DIR/runtime.env"
   printf 'SK_OVERRIDE_STORAGE_FILES_BACKEND=%q\n' "$SK_OVERRIDE_STORAGE_FILES_BACKEND"
   printf 'SK_OVERRIDE_STORAGE_FILES_DIR=%q\n' "$SK_OVERRIDE_STORAGE_FILES_DIR"
 } >"$RUNTIME_ENV" )
-chown postgres:postgres "$RUNTIME_ENV"
 
 cat >&2 <<'BANNER'
 ──────────────────────────────────────────────────────────────────────
  subkit engine — starting
-   API    : http://localhost:3000   (publish with -p 3000:3000)
+   API    : http://localhost:3000   (publish with -p 127.0.0.1:3000:3000)
    Health : GET /health
+   Ready  : GET /ready
  First-run onboarding (a one-time `sk init --token …` banner with the
  bootstrap token is printed below once the engine is up):
    1. copy the token from this log
@@ -122,34 +112,5 @@ cat >&2 <<'BANNER'
 ──────────────────────────────────────────────────────────────────────
 BANNER
 
-# The engine auto-runs migrations and starts the in-Postgres job queue on
-# boot — no separate migrate/seed step. Run it as `postgres` (owns /data).
-if [ "$EMBEDDED_PG" = "0" ]; then
-  # External DB: nothing local to tear down — exec so the engine is PID 1
-  # and receives Docker's signals directly.
-  exec gosu postgres /usr/local/bin/engine.bin "$@"
-fi
-
-# Embedded DB: keep this shell as PID 1 so we can stop PostgreSQL cleanly
-# when the engine exits or the container is signalled.
-gosu postgres /usr/local/bin/engine.bin "$@" &
-ENGINE_PID=$!
-
-stop_pg() {
-  gosu postgres pg_ctl -D "$PGDATA" -m fast -w stop >/dev/null 2>&1 || true
-}
-forward_term() { kill -TERM "$ENGINE_PID" 2>/dev/null || true; }
-trap forward_term TERM INT
-
-set +e
-wait "$ENGINE_PID"; code=$?
-# `wait` returns early when a trapped signal fires; loop until the engine
-# actually exits so we capture its real status before stopping PostgreSQL.
-while kill -0 "$ENGINE_PID" 2>/dev/null; do
-  wait "$ENGINE_PID"; code=$?
-done
-set -e
-
-log "engine exited (code $code) — stopping PostgreSQL"
-stop_pg
-exit "$code"
+# The engine auto-runs its embedded migrations before accepting traffic.
+exec /usr/local/bin/engine.bin "$@"

@@ -1,6 +1,7 @@
 // Docker-image E2E harness (Track B).
 //
-// Drives the PRODUCTION all-in-one container (Dockerfile + entrypoint.sh)
+// Drives the production application container plus external PostgreSQL
+// (Dockerfile + entrypoint.sh + docker-compose.test.yml)
 // over the network, the way a customer runs it. Distinct from the in-process
 // `tests/e2e/setup.ts` harness — this one cannot pin LLM tool sequences
 // (the engine is a separate process) so Track B is outcome-based only.
@@ -68,8 +69,8 @@ export function collectContainerLogs(dest: string): void {
 
 /** Read the one-time bootstrap token the engine wrote to the volume. */
 function readBootstrapToken(): string | null {
-  // The token file is 0600 + postgres-owned; `compose exec` runs as root so
-  // the cat succeeds. Fall back to scraping the (ANSI) startup banner.
+  // The token file is 0600 and owned by the application user. `compose exec`
+  // uses that same user, so the cat succeeds. Fall back to the startup banner.
   const file = compose(["exec", "-T", SERVICE, "cat", BOOTSTRAP_TOKEN_PATH]);
   const fromFile = file.stdout.match(/[a-f0-9]{64}/);
   if (fromFile) return fromFile[0];
