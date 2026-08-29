@@ -295,6 +295,13 @@
       "when": 1788000360000,
       "tag": "0041_isolated_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1788000360001,
+      "tag": "0042_restore_queue_schema",
+      "breakpoints": true
     }
   ]
 }

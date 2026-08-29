@@ -311,7 +311,7 @@ async function runServer(): Promise<void> {
   // Start pg-boss + register handlers before the HTTP server so enqueue
   // requests hitting the first byte always find a live boss.
   const boss = await bootPhase("queue_start", () =>
-    startBoss({ connectionString: getConfig().database.url, schema: "subkit_queue" }),
+    startBoss({ connectionString: getConfig().database.url }),
   );
   recordBootConsumer("queue");
   await bootPhase("queue_handlers", () => registerAllHandlers({ boss, db, chatRegistry }));
