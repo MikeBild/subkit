@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.38] – 2026-08-29
+
+### Fixed
+
+- Accept Upraft's managed PostgreSQL binding as a zero-config database source
+  and use its documented libpq-compatible TLS behavior without weakening
+  operator-supplied database URLs.
+
 ## [6.22.37] – 2026-08-29
 
 ### Fixed
