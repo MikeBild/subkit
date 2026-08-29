@@ -30,7 +30,7 @@ services:
     logging: *default-logging
 
   engine:
-    image: ${SUBKIT_IMAGE:-mikebild/subkit:${SUBKIT_IMAGE_TAG:-6.22.39}}
+    image: ${SUBKIT_IMAGE:-mikebild/subkit:${SUBKIT_IMAGE_TAG:-6.22.40}}
     restart: unless-stopped
     depends_on:
       postgres:
