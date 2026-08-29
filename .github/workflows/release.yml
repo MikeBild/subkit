@@ -588,7 +588,7 @@ jobs:
           docker compose -p "subkit-release-${{ matrix.arch }}" -f docker-compose.yml down --volumes --remove-orphans || true
 
   docker-publish:
-    name: Publish public Docker manifests
+    name: Publish public Docker Hub and private GHCR manifests
     needs: [gate, docker-build]
     if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.tag != '' }}
     runs-on: ubuntu-24.04
@@ -620,17 +620,19 @@ jobs:
             docker buildx imagetools create --tag "$image:$VERSION" "$image:$VERSION-amd64" "$image:$VERSION-arm64"
             docker buildx imagetools create --tag "$image:latest" "$image:$VERSION-amd64" "$image:$VERSION-arm64"
           done
-      # GHCR has no supported API mutation for package visibility. Visibility
-      # is a one-time package setting; fail closed if either registry is not
-      # already public instead of reporting a successful private release.
-      - name: Verify public anonymous multi-platform access
+      - name: Verify public Docker Hub and private GHCR access
         env:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
+          ghcr_output="$(docker buildx imagetools inspect "ghcr.io/mikebild/subkit:$VERSION")"
+          grep -q 'linux/amd64' <<<"$ghcr_output"
+          grep -q 'linux/arm64' <<<"$ghcr_output"
           docker logout docker.io
+          dockerhub_output="$(docker buildx imagetools inspect "docker.io/mikebild/subkit:$VERSION")"
+          grep -q 'linux/amd64' <<<"$dockerhub_output"
+          grep -q 'linux/arm64' <<<"$dockerhub_output"
           docker logout ghcr.io
-          for registry in docker.io ghcr.io; do
-            output="$(docker buildx imagetools inspect "$registry/mikebild/subkit:$VERSION")"
-            grep -q 'linux/amd64' <<<"$output"
-            grep -q 'linux/arm64' <<<"$output"
-          done
+          if docker buildx imagetools inspect "ghcr.io/mikebild/subkit:$VERSION"; then
+            echo '::error::GHCR image must remain private'
+            exit 1
+          fi
