@@ -8,8 +8,8 @@
 // module import (which would attempt to load config, run migrations,
 // and probe the DB).
 //
-// 127.0.0.1 is the DEFAULT and is defense-in-depth: Caddy on the
-// production host reverse-proxies the public-facing TLS endpoint to
+// 127.0.0.1 is the DEFAULT and is defense-in-depth: a deployment proxy
+// forwards the public-facing TLS endpoint to
 // 127.0.0.1:3000; the firewall closes the port to the public internet,
 // but binding to localhost means a misconfigured firewall can't leak
 // the engine upstream. e2e tests use random ports on 127.0.0.1 too

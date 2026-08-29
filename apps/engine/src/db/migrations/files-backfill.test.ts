@@ -49,7 +49,7 @@ async function tableExists(name: string): Promise<boolean> {
   const r = (await ctx.db.execute(sql`
     SELECT EXISTS (
       SELECT 1 FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_name = ${name}
+      WHERE table_schema = 'subkit' AND table_name = ${name}
     ) AS "exists"
   `)) as unknown as { rows: Array<{ exists: boolean }> };
   return Boolean(r.rows?.[0]?.exists);

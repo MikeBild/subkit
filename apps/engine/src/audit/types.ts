@@ -547,7 +547,7 @@ export const AuditAction = {
   // compliance see who tailed logs and when.
   DIAGNOSTICS_LOGS_TAILED: "diagnostics.logs_tailed",
   // `/v1/diagnostics/drift` — emitted on every drift-report read.
-  // The report exposes migration hashes from `drizzle.__drizzle_migrations`
+  // The report exposes migration hashes from `subkit.__drizzle_migrations`
   // (process-wide, not tenant-scoped) to any tenant admin, which is
   // accepted by design (the hash names a SQL file, not tenant data).
   // The audit row makes the read traceable for compliance the same
@@ -828,7 +828,7 @@ export type DiagnosticsLogsTailedMetadata = z.infer<typeof DiagnosticsLogsTailed
 export const DiagnosticsDriftReadMetadataSchema = z.object({
   /** Number of migrations baked into the binary. */
   embedded: z.number().int().nonnegative(),
-  /** Number of rows currently in `drizzle.__drizzle_migrations`. */
+  /** Number of rows currently in `subkit.__drizzle_migrations`. */
   db: z.number().int().nonnegative(),
   /** Tagged rows whose identity does not match the embedded set. */
   unknown: z.number().int().nonnegative(),

@@ -1,6 +1,6 @@
 // Regression guard for the post-squash positional-skip migration bug (fixed in
 // v7.7.1): a NEW migration appended to the embedded set must apply on a DB whose
-// `__drizzle_migrations` is in the exact prod shape — embedded rows tag-stamped,
+// `__drizzle_migrations` has the legacy upgrade shape — embedded rows tag-stamped,
 // plus a flood of pre-squash ORPHAN rows (tag NULL) that inflate the row count
 // far past the embedded idx range. The old runner used a positional fallback
 // ("row COUNT already covers this idx → treat as applied → skip"), which
@@ -43,27 +43,27 @@ async function syntheticTableExists(testDb: TestDb): Promise<boolean> {
 
 async function rowCount(testDb: TestDb, where: ReturnType<typeof sql>): Promise<number> {
   const rows = (await testDb.db.execute(
-    sql`SELECT count(*)::int AS n FROM "drizzle"."__drizzle_migrations" WHERE ${where}`,
+    sql`SELECT count(*)::int AS n FROM "subkit"."__drizzle_migrations" WHERE ${where}`,
   )) as unknown as { rows: Array<{ n: number }> };
   return rows.rows?.[0]?.n ?? 0;
 }
 
 describe("appended migration — post-squash inflated count + orphan tag-NULL rows", () => {
   test("a new appended migration applies via the real runner despite inflated count, and is idempotent by tag", async () => {
-    // Reproduce the prod tracking shape: embedded rows stay tag-stamped (as
+    // Reproduce the legacy tracking shape: embedded rows stay tag-stamped (as
     // createTestDb left them), plus ~50 pre-squash ORPHAN rows with NULL tags
     // that inflate the count past any embedded idx — exactly what made the old
     // positional fallback fire.
     await ctx.db.execute(
-      sql`INSERT INTO "drizzle"."__drizzle_migrations" (hash, created_at, tag)
+      sql`INSERT INTO "subkit"."__drizzle_migrations" (hash, created_at, tag)
           SELECT md5(g::text), 0, NULL FROM generate_series(1, 50) AS g`,
     );
     const totalRows = await rowCount(ctx, sql`true`);
     expect(totalRows).toBeGreaterThan(EMBEDDED_MIGRATIONS.length + 40);
-    const prodShapeDrift = await detectDrift(ctx.db);
-    expect(prodShapeDrift.unknown_in_db).toEqual([]);
-    expect(prodShapeDrift.historical_in_db).toHaveLength(50);
-    expect(prodShapeDrift.missing_in_db).toEqual([]);
+    const legacyShapeDrift = await detectDrift(ctx.db);
+    expect(legacyShapeDrift.unknown_in_db).toEqual([]);
+    expect(legacyShapeDrift.historical_in_db).toHaveLength(50);
+    expect(legacyShapeDrift.missing_in_db).toEqual([]);
 
     // Synthetic appended migration: idx BELOW the inflated count (so a
     // positional regression would wrongly skip it), fresh tag/hash absent from

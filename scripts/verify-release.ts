@@ -14,8 +14,8 @@
 //
 // Host-agnostic by construction. The target comes from argv or SK_ENGINE_URL /
 // SK_API_KEY; no deployment address is compiled in, and this script never
-// reads .env files. Concrete production targets live in the private deploy
-// repository, not here.
+// reads .env files. Installation targets are supplied explicitly by the
+// operator and are never compiled into this repository.
 //
 // Exit codes: 0 — every check passed; 1 — at least one FAIL; 2 — usage error.
 

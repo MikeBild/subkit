@@ -5,7 +5,7 @@ import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
  * migrations boot phase (`db/migrate.ts` → after the embedded SQL set).
  *
  * SQL backfills carry their own marker implicitly — the drizzle journal
- * row (`drizzle.__drizzle_migrations`) guarantees once-only execution
+ * row (`subkit.__drizzle_migrations`) guarantees once-only execution
  * of the DO $$ block (precedent: 0019_files_unify). A backfill written
  * in TypeScript (because it needs engine logic, e.g. the jsonata AST
  * rewriter of the item_var migration) cannot ride that journal: it runs
