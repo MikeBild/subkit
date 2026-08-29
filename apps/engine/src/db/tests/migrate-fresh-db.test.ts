@@ -30,7 +30,7 @@ async function tableExists(name: string): Promise<boolean> {
   const r = (await ctx.db.execute(
     sql`SELECT EXISTS (
           SELECT 1 FROM information_schema.tables
-          WHERE table_schema = 'public' AND table_name = ${name}
+          WHERE table_schema = 'subkit' AND table_name = ${name}
         ) AS "exists"`,
   )) as unknown as ExistsRow;
   return Boolean(r.rows?.[0]?.exists);
@@ -59,24 +59,34 @@ describe("runMigrations on a fresh database", () => {
     }
   });
 
-  test("drizzle.__drizzle_migrations row count equals embedded entry count", async () => {
+  test("subkit.__drizzle_migrations row count equals embedded entry count", async () => {
     const r = (await ctx.db.execute(
-      sql`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`,
+      sql`SELECT count(*)::int AS n FROM subkit.__drizzle_migrations`,
     )) as unknown as { rows: Array<{ n: number }> };
     expect(r.rows?.[0]?.n).toBe(listEmbeddedMigrations().length);
   });
 
   test("re-running runMigrations is a no-op", async () => {
     const before = (await ctx.db.execute(
-      sql`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`,
+      sql`SELECT count(*)::int AS n FROM subkit.__drizzle_migrations`,
     )) as unknown as { rows: Array<{ n: number }> };
     const report = await runMigrations(ctx.db);
     expect(report.applied).toBe(0);
     expect(report.skipped).toBe(listEmbeddedMigrations().length);
     const after = (await ctx.db.execute(
-      sql`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`,
+      sql`SELECT count(*)::int AS n FROM subkit.__drizzle_migrations`,
     )) as unknown as { rows: Array<{ n: number }> };
     expect(after.rows?.[0]?.n).toBe(before.rows?.[0]?.n);
+  });
+
+  test("leaves no SubKit-owned tables in public", async () => {
+    const r = (await ctx.db.execute(sql`
+      SELECT count(*)::int AS n
+        FROM information_schema.tables
+       WHERE table_schema = 'public'
+         AND table_name IN ('tenants', 'users', 'connectors', 'workflows', 'executions', 'workflow_waits')
+    `)) as unknown as { rows: Array<{ n: number }> };
+    expect(r.rows?.[0]?.n).toBe(0);
   });
 
   // Secret-by-reference CHECK guard, now on `connectors`. The gate moved

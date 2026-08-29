@@ -52,7 +52,7 @@ describe("migration runner — concurrency", () => {
     expect(tbl.rows?.[0]?.n ?? 0).toBe(1);
 
     const tracked = (await ctx.db.execute(
-      sql`SELECT count(*)::int AS n FROM "drizzle"."__drizzle_migrations" WHERE tag = ${synthetic.tag}`,
+      sql`SELECT count(*)::int AS n FROM "subkit"."__drizzle_migrations" WHERE tag = ${synthetic.tag}`,
     )) as unknown as { rows: Array<{ n: number }> };
     expect(tracked.rows?.[0]?.n ?? 0).toBe(1);
   }, 60_000);

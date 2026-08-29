@@ -30,7 +30,7 @@ async function tableExists(name: string): Promise<boolean> {
   const r = (await ctx.db.execute(sql`
     SELECT EXISTS (
       SELECT 1 FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_name = ${name}
+      WHERE table_schema = 'subkit' AND table_name = ${name}
     ) AS "exists"
   `)) as unknown as { rows: Array<{ exists: boolean }> };
   return Boolean(r.rows?.[0]?.exists);
@@ -52,7 +52,7 @@ describe("0019_files_unify — post-migration schema smoke", () => {
   test("knowledge_sources.file_id column exists (added by migration)", async () => {
     const r = (await ctx.db.execute(sql`
       SELECT column_name FROM information_schema.columns
-      WHERE table_schema = 'public'
+      WHERE table_schema = 'subkit'
         AND table_name = 'knowledge_sources'
         AND column_name = 'file_id'
     `)) as unknown as { rows: Array<{ column_name: string }> };

@@ -37,7 +37,7 @@ describe("v3.5 migration state", () => {
   test("tenants.settings column was dropped (0009 migration ran)", async () => {
     const result = (await db.db.execute(sql`
       select column_name from information_schema.columns
-      where table_schema = 'public'
+      where table_schema = 'subkit'
         and table_name = 'tenants'
     `)) as unknown as { rows?: InfoSchemaRow[] } | InfoSchemaRow[];
     const rowList = Array.isArray(result) ? result : (result.rows ?? []);
@@ -56,7 +56,7 @@ describe("v3.5 migration state", () => {
   test("engine_settings table is retained (carries the bootstrap sentinel keys)", async () => {
     const result = (await db.db.execute(sql`
       select table_name from information_schema.tables
-      where table_schema = 'public' and table_name = 'engine_settings'
+      where table_schema = 'subkit' and table_name = 'engine_settings'
     `)) as unknown as { rows?: InfoSchemaRow[] } | InfoSchemaRow[];
     const rowList = Array.isArray(result) ? result : (result.rows ?? []);
     const tables = rowList.map((r) => r.table_name).filter((c): c is string => !!c);

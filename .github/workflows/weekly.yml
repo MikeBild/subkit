@@ -67,9 +67,5 @@ jobs:
       - name: Connector template ingestion URLs
         run: bun test apps/engine/src/connectors/tests/template-urls.test.ts
 
-  # docker-e2e job retired in 4.2.0: subkit no longer ships a docker
-  # production image, and the docker-only e2e tests were deleted alongside
-  # the compose engine retire. The systemd-deploy invariants are
-  # exercised by tests/e2e/migrate-drift-logstream.e2e.test.ts (boot →
-  # /v1/health → migrate.applied audit row → /v1/diagnostics/drift +
-  # /v1/log-stream SSE handshake) which `ci.yml` runs on every push.
+  # Tagged image smoke coverage lives in the release workflow. This schedule
+  # retains the deeper binary migration and log-stream lifecycle checks.

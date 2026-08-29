@@ -5,9 +5,9 @@
 // opens its own pool against that database, runs the embedded migration
 // bundle (the same one the engine binary uses), hands a drizzle client
 // back to the caller, and drops the database in the teardown hook. This
-// is simpler than schema-scoped isolation because drizzle-kit's
-// migration SQL is not search_path-friendly (enum types end up in
-// `public` regardless).
+// is simpler than schema-scoped isolation. Historical migrations are replayed
+// with an explicit public search path; the final migration moves only the
+// product-owned objects into the isolated schema.
 //
 // Tests that share a file share a database — bun-test runs tests in a
 // file serially by default. Different files get different databases so
@@ -18,6 +18,7 @@ import { randomBytes } from "node:crypto";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
+import { createMigrationDbFromUrl, SUBKIT_DATABASE_OPTIONS } from "../client.ts";
 import { runMigrations } from "../migrate.ts";
 import { EMBEDDED_MIGRATIONS } from "../migrations/embedded.ts";
 import * as schema from "../schema/index.ts";
@@ -204,20 +205,31 @@ export async function createTestDb(
   }
 
   const url = rewriteDbName(adminUrl, dbName);
-  const pool = new Pool({ connectionString: url });
+  // The embedded migration runner installs pgcrypto + the drizzle journal
+  // table itself; no extra prep needed. Apply the historical lineage with the
+  // default search path, then create the same isolated runtime pool as the
+  // compiled server.
+  const upToIdx = options.upToIdx;
+  const migration = createMigrationDbFromUrl(url);
+  try {
+    await runMigrations(
+      migration.db,
+      upToIdx === undefined
+        ? EMBEDDED_MIGRATIONS
+        : EMBEDDED_MIGRATIONS.filter((m) => m.idx <= upToIdx),
+    );
+  } finally {
+    await migration.pool.end();
+  }
+
+  const pool = new Pool({
+    connectionString: url,
+    ...(upToIdx === undefined ? { options: SUBKIT_DATABASE_OPTIONS } : {}),
+  });
   // Swallow async errors so a connection hiccup doesn't crash the runner.
   pool.on("error", () => {});
 
   const db = drizzle(pool, { schema });
-  // The embedded migration runner installs pgcrypto + the drizzle journal
-  // table itself; no extra prep needed.
-  const upToIdx = options.upToIdx;
-  await runMigrations(
-    db,
-    upToIdx === undefined
-      ? EMBEDDED_MIGRATIONS
-      : EMBEDDED_MIGRATIONS.filter((m) => m.idx <= upToIdx),
-  );
 
   // Seed the RBAC catalog + built-in roles so `can()` has something to
   // evaluate even in unit tests that bypass the journey harness.

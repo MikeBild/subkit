@@ -58,6 +58,7 @@ import sql0037YieldingTinkerer from "./0037_yielding_tinkerer.sql" with { type: 
 import sql0038SolidBaronZemo from "./0038_solid_baron_zemo.sql" with { type: "text" };
 import sql0039CloudyZodiak from "./0039_cloudy_zodiak.sql" with { type: "text" };
 import sql0040RegularLadyUrsula from "./0040_regular_lady_ursula.sql" with { type: "text" };
+import sql0041IsolatedSchema from "./0041_isolated_schema.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -123,6 +124,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0038_solid_baron_zemo": sql0038SolidBaronZemo,
   "0039_cloudy_zodiak": sql0039CloudyZodiak,
   "0040_regular_lady_ursula": sql0040RegularLadyUrsula,
+  "0041_isolated_schema": sql0041IsolatedSchema,
 };
 
 const journal = journalMeta as unknown as Journal;

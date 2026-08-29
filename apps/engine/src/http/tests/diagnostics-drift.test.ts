@@ -1,7 +1,7 @@
 // Integration test for /v1/diagnostics/drift.
 //
 // Drives a real engine, plants synthetic rows in
-// `drizzle.__drizzle_migrations`, and confirms the route surfaces them
+// `subkit.__drizzle_migrations`, and confirms the route surfaces them
 // to operator clients. Without this surface, drift is invisible until
 // a downstream subsystem fails.
 
@@ -111,7 +111,7 @@ describe("/v1/diagnostics/drift", () => {
   test("an unknown tagged row surfaces in unknown_in_db", async () => {
     const fakeHash = "deadbeefcafebabefacefeed".padEnd(64, "0");
     await srv.db.execute(
-      sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at", "tag")
+      sql`INSERT INTO "subkit"."__drizzle_migrations" ("hash", "created_at", "tag")
           VALUES (${fakeHash}, ${999_999_999_999}, ${"9999_foreign_lineage"})`,
     );
     try {
@@ -127,7 +127,7 @@ describe("/v1/diagnostics/drift", () => {
       expect(body.db_migration_count).toBe(body.embedded_migration_count + 1);
     } finally {
       await srv.db.execute(
-        sql`DELETE FROM "drizzle"."__drizzle_migrations" WHERE hash = ${fakeHash}`,
+        sql`DELETE FROM "subkit"."__drizzle_migrations" WHERE hash = ${fakeHash}`,
       );
     }
   });
@@ -135,7 +135,7 @@ describe("/v1/diagnostics/drift", () => {
   test("a tagless pre-squash row is reported as accepted history", async () => {
     const historicalHash = "pre-squash-history".padEnd(64, "0");
     await srv.db.execute(
-      sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at", "tag")
+      sql`INSERT INTO "subkit"."__drizzle_migrations" ("hash", "created_at", "tag")
           VALUES (${historicalHash}, ${999_999_999_998}, NULL)`,
     );
     try {
@@ -152,7 +152,7 @@ describe("/v1/diagnostics/drift", () => {
       expect(body.db_migration_count).toBe(body.embedded_migration_count + 1);
     } finally {
       await srv.db.execute(
-        sql`DELETE FROM "drizzle"."__drizzle_migrations" WHERE hash = ${historicalHash}`,
+        sql`DELETE FROM "subkit"."__drizzle_migrations" WHERE hash = ${historicalHash}`,
       );
     }
   });

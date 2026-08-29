@@ -378,7 +378,7 @@ async function mockApi(route) {
       principal: {
         id: uuid,
         kind: "user",
-        email: "mike@mikebild.com",
+        email: "operator@example.com",
         role_name: "admin",
         provider: "browser_session",
       },
@@ -917,7 +917,7 @@ async function mockApi(route) {
       items: [
         {
           id: uuid,
-          email: "mike@mikebild.com",
+          email: "operator@example.com",
           role: "admin",
           effective_role: "admin",
           role_consistent: true,
