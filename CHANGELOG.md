@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.41] – 2026-08-30
+
+### Added
+
+- Expose the complete revisioned installation configuration through the
+  Cockpit, HTTP API, OpenAPI, and MCP, with immediate hot application and the
+  exact restart-only keys reported to operators.
+
+### Changed
+
+- Keep environment variables focused on bootstrap and secret inputs, document
+  the runtime configuration contract in the end-user and `llms*.txt` corpus,
+  and align the settings workspace with the neutral family Cockpit language.
+
 ## [6.22.40] – 2026-08-29
 
 ### Fixed
