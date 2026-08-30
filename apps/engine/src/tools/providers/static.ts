@@ -1,5 +1,5 @@
 // StaticToolProvider — TRULY MCP-unique tools that have no
-// ConversationTool counterpart. Three entries today:
+// ConversationTool counterpart. The inventory includes:
 //
 //   authenticate       — OAuth2 reauth-URL provider; MCP-specific
 //                        envelope (no conversation analog). Now audits
@@ -7,6 +7,7 @@
 //   list_recipes       — recipe-catalog browse; conversation registry
 //                        has inspect_recipe but not list_recipes.
 //   self_healing.scan  — admin-only LLM repair trigger; MCP-only.
+//   subkit_settings / subkit_update_setting — admin runtime config parity.
 //
 // All other "MCP-native" handlers are duplicates of conversation tools
 // with the same name; the conversation versions win and serve both
@@ -60,6 +61,14 @@ import {
   SELF_HEALING_SCAN_TOOL_NAME,
   selfHealingScanMcpTool,
 } from "../../mcp/tools/self-healing-scan.ts";
+import {
+  handleSubkitSettings,
+  handleSubkitUpdateSetting,
+  SUBKIT_SETTINGS_TOOL_NAME,
+  SUBKIT_UPDATE_SETTING_TOOL_NAME,
+  subkitSettingsMcpTool,
+  subkitUpdateSettingMcpTool,
+} from "../../mcp/tools/settings.ts";
 import type { ToolListFilter, ToolProvider, ToolRegistry } from "../registry.ts";
 import type { ToolCategory, ToolDescriptor, ToolEnvelope } from "../types.ts";
 
@@ -190,6 +199,33 @@ const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
       return envelopeForError("self_healing_scan_failed", errMsg, result.data);
     },
   },
+  {
+    tool: subkitSettingsMcpTool,
+    visibleInMcpModes: ["admin"],
+    visibleOnChat: false,
+    category: "tenant_read",
+    rbac: { permission: "settings:read" },
+    async invoke(ctx, args) {
+      const result = await handleSubkitSettings({ principal: ctx.principal }, args);
+      if (result.ok) return envelopeForOk(result.data);
+      return envelopeForError(result.data.error_code, result.data.message, result.data);
+    },
+  },
+  {
+    tool: subkitUpdateSettingMcpTool,
+    visibleInMcpModes: ["admin"],
+    visibleOnChat: false,
+    category: "tenant_write",
+    rbac: { permission: "settings:write" },
+    async invoke(ctx, args) {
+      const result = await handleSubkitUpdateSetting(
+        { db: ctx.db, principal: ctx.principal },
+        args,
+      );
+      if (result.ok) return envelopeForOk(result.data);
+      return envelopeForError(result.data.error_code, result.data.message, result.data);
+    },
+  },
 ];
 
 export interface StaticProviderEntry {
@@ -240,4 +276,10 @@ export const staticToolProvider: ToolProvider = {
   },
 };
 
-export { AUTHENTICATE_TOOL_NAME, LIST_RECIPES_TOOL_NAME, SELF_HEALING_SCAN_TOOL_NAME };
+export {
+  AUTHENTICATE_TOOL_NAME,
+  LIST_RECIPES_TOOL_NAME,
+  SELF_HEALING_SCAN_TOOL_NAME,
+  SUBKIT_SETTINGS_TOOL_NAME,
+  SUBKIT_UPDATE_SETTING_TOOL_NAME,
+};

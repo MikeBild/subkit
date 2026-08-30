@@ -94,13 +94,14 @@ function main(): void {
     "",
     "# subkit runtime settings",
     "",
-    "Every value below lives in `subkit.config.json` and is editable via",
-    "`sk settings configure` or `sk settings set <path> <value>`. Per-tenant",
+    "Every value below lives in canonical runtime configuration and is editable via",
+    "the Cockpit, HTTP/MCP settings APIs, `sk settings configure`, or `sk settings set`. Per-tenant",
     "overrides go into the file's `tenants` section and only honor leaves",
     "tagged `scope=tenant`.",
     "",
-    "Path resolution: `SK_OVERRIDE_<UPPERCASE_PATH>` env → tenant overlay →",
-    "global value → schema default. Overrides apply across all tenants.",
+    "Path resolution: tenant overlay → global value → schema default. Legacy",
+    "`SK_OVERRIDE_<UPPERCASE_PATH>` values only seed a missing leaf once and are then persisted;",
+    "they never override an existing Cockpit/API value.",
     "",
   ];
 

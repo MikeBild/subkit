@@ -137,7 +137,12 @@ describe("mcp tools/list", () => {
     const client = await suite.connectWithApiKey(adminKey);
     const byName = new Map((await client.listTools()).tools.map((t) => [t.name, t]));
     // call_connector + authenticate are tenant_read for visibility but write.
-    for (const name of ["call_connector", "authenticate", "run_workflow"]) {
+    for (const name of [
+      "call_connector",
+      "authenticate",
+      "run_workflow",
+      "subkit_update_setting",
+    ]) {
       const a = byName.get(name)?.annotations;
       if (!a) continue; // tool not in this mode's catalog — skip, don't false-pass
       expect(a.readOnlyHint).toBe(false);

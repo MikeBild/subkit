@@ -509,7 +509,9 @@ Every **runtime setting** is managed with `sk settings` (get / set / list / `con
 
 - **`MASTER_KEY` / `DATABASE_URL` / `ENGINE_LISTEN_HOST` are bootstrap-only.** They're needed *before* the engine, its database, or its HTTP API exist — `MASTER_KEY` decrypts the credential vault, `DATABASE_URL` is *how* the engine reaches the database where settings are stored, and `ENGINE_LISTEN_HOST` is where the server binds. `sk settings` talks to a *running* engine, so it cannot set them (chicken-and-egg). `MASTER_KEY` isn't even a config leaf.
 - **`engine --issue-admin-key` is the operator escape hatch for the *first* key.** `sk` authenticates with an API key, so it can't mint its own first one; that runs directly against the database on the `engine` binary. Once you have a key, `sk apikeys create` mints more through the API.
-- **`SK_OVERRIDE_*` is the no-disk complement to `sk settings`** — ephemeral env overrides for CI / secret managers, re-applied each boot, never persisted.
+- **Legacy `SK_OVERRIDE_*` values are migration inputs only.** A value seeds a
+  missing canonical leaf once and is persisted; it never overrides a value set
+  through Cockpit, HTTP, MCP, or `sk settings`. Remove it after the first boot.
 
 Everything else lives in `subkit.config.json` on the volume. Full leaf reference: [`../admins/settings-reference.md`](../admins/settings-reference.md); the surrounding configuration model is [`../admins/configuration.md`](../admins/configuration.md).
 
@@ -518,7 +520,7 @@ Everything else lives in `subkit.config.json` on the volume. Full leaf reference
 | `MASTER_KEY` | auto-generated + persisted to `/data/config/master.key` | 64-hex AES-256 key for at-rest credential encryption. **Set your own in production** — losing it makes stored credentials unrecoverable. |
 | `DATABASE_URL` | **required** | PostgreSQL connection URL. The image does not contain a database server. `DATABASE_URL_FILE` is also supported. |
 | `ENGINE_LISTEN_HOST` | `0.0.0.0` | Bind interface. The image defaults to all-interfaces so `-p` works; leave it. |
-| `SK_OVERRIDE_*` | — | Override any config leaf at runtime (e.g. `SK_OVERRIDE_LLM_API_KEY`). |
+| `SK_OVERRIDE_*` | — | Legacy one-time import for a missing leaf; ignored when canonical config already contains the path. |
 | `NODE_ENV` | `production` | — |
 
 ### Bring your own MASTER_KEY

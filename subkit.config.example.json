@@ -18,6 +18,7 @@
     "fallback_model": "",
     "summarize_provider": null,
     "summarize_model": "",
+    "suggestion_model": "claude-haiku-4-5",
     "context_1m": false,
     "web_search": true,
     "output_guard": "soft",
@@ -181,10 +182,15 @@
   "queue": {
     "concurrency": 8,
     "abort_poll_interval_ms": 500,
-    "crash_recovery_sweep_interval_ms": 60000
+    "crash_recovery_sweep_interval_ms": 60000,
+    "crash_recovery_threshold_ms": 0
   },
   "tokens": {
     "monthly_budget": 0
+  },
+  "operations": {
+    "update_check_enabled": true,
+    "seed_skills_at_boot": true
   },
   "sandbox": {
     "memory_bytes": 134217728,

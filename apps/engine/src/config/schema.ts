@@ -180,6 +180,11 @@ const LlmSection = z
       .default("")
       .describe("Model used for summarization passes")
       .meta(tenant()),
+    suggestion_model: z
+      .string()
+      .default("claude-haiku-4-5")
+      .describe("Small model used to generate post-turn suggestions")
+      .meta(tenant()),
     context_1m: z
       .boolean()
       .default(false)
@@ -786,6 +791,15 @@ const QueueSection = z
         "Hot-reloadable interval for reconciling executions orphaned by a worker or engine restart.",
       )
       .meta(global()),
+    crash_recovery_threshold_ms: z
+      .number()
+      .int()
+      .nonnegative()
+      .default(0)
+      .describe(
+        "Hard age threshold for crash recovery. 0 uses each workflow timeout multiplied by its grace factor.",
+      )
+      .meta(global()),
   })
   .prefault({})
   .describe("Queue worker");
@@ -802,6 +816,22 @@ const TokensSection = z
   })
   .prefault({})
   .describe("Token budget");
+
+const OperationsSection = z
+  .object({
+    update_check_enabled: z
+      .boolean()
+      .default(true)
+      .describe("Check for a newer engine release during startup")
+      .meta(global({ requiresRestart: true })),
+    seed_skills_at_boot: z
+      .boolean()
+      .default(true)
+      .describe("Upsert embedded skill seeds for all tenants during startup")
+      .meta(global({ requiresRestart: true })),
+  })
+  .prefault({})
+  .describe("Startup operations");
 
 // QuickJS sandbox limits for user-authored JavaScript (transforms,
 // validation/output-transform functions, loop/for_each selectors). These
@@ -1228,6 +1258,7 @@ const TenantOverlaySchema = z
         fallback_model: z.string().optional(),
         summarize_provider: LlmProvider.nullable().optional(),
         summarize_model: z.string().optional(),
+        suggestion_model: z.string().optional(),
         context_1m: z.boolean().optional(),
         providers: z
           .object({
@@ -1369,6 +1400,7 @@ export const ConfigSchema = z
     spec: SpecSection,
     queue: QueueSection,
     tokens: TokensSection,
+    operations: OperationsSection,
     sandbox: SandboxSection,
     repl: ReplSection,
     ui: UiSection,
@@ -1412,6 +1444,7 @@ export const SECTION_ORDER = [
   "spec",
   "queue",
   "tokens",
+  "operations",
   "sandbox",
   "repl",
   "ui",

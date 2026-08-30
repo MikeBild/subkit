@@ -310,7 +310,7 @@
       "audience": "admins",
       "path": "docs/admins/settings-reference.md",
       "title": "subkit runtime settings",
-      "summary": "Every value below lives in subkit.config.json and is editable via sk settings configure or sk settings set ."
+      "summary": "Every value below lives in canonical runtime configuration and is editable via the Cockpit, HTTP/MCP settings APIs, sk settings configure, or sk settings set."
     }
   ]
 }

@@ -49,8 +49,8 @@ export interface RecoverCrashedExecutionsOptions {
   source?: "boot_recovery" | "periodic_recovery";
   /**
    * Per-tenant override threshold in ms. If provided and positive,
-   * trumps the per-workflow `timeout_ms × 1.5` calculation. Useful for
-   * an env-var fallback (see `resolveCrashRecoveryThresholdMs`).
+   * trumps the per-workflow `timeout_ms × 1.5` calculation. The runtime
+   * setting `queue.crash_recovery_threshold_ms` supplies this when non-zero.
    * The override is a hard cap on the grace window — callers that want
    * "never reap" should not call this function.
    */
@@ -63,10 +63,8 @@ export interface RecoverCrashedExecutionsResult {
 }
 
 /**
- * Resolve the recovery threshold in ms from env. The default is a
- * defensive 9h (6h × 1.5) — long enough that a healthy long-running
- * execution never gets reaped by mistake, short enough that a crashed
- * one is cleared by the next boot rather than lingering for a week.
+ * Parse a legacy textual recovery threshold. Retained for migration tooling;
+ * production reads the typed runtime setting.
  */
 export function resolveCrashRecoveryThresholdMs(envValue: string | undefined): number | undefined {
   if (!envValue) return undefined;
@@ -433,12 +431,10 @@ export function startCrashRecoveryMonitor(
   const recover =
     options.recover ??
     (() => {
-      const overrideThresholdMs = resolveCrashRecoveryThresholdMs(
-        process.env.SK_EXECUTION_CRASH_RECOVERY_THRESHOLD_MS,
-      );
+      const overrideThresholdMs = getConfig().queue.crash_recovery_threshold_ms;
       return recoverCrashedExecutions(db, {
         source: "periodic_recovery",
-        ...(overrideThresholdMs !== undefined ? { overrideThresholdMs } : {}),
+        ...(overrideThresholdMs > 0 ? { overrideThresholdMs } : {}),
       });
     });
 

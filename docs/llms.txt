@@ -70,7 +70,7 @@
 
 ## Optional
 
-- [subkit runtime settings](admins/settings-reference.md): Every value below lives in subkit.config.json and is editable via sk settings configure or sk settings set .
+- [subkit runtime settings](admins/settings-reference.md): Every value below lives in canonical runtime configuration and is editable via the Cockpit, HTTP/MCP settings APIs, sk settings configure, or sk settings set.
 - [sk settings](authors/settings.md): Settings for the sk CLI itself — separate from the engine's runtime settings (see settings-reference).
 - [Slash commands](authors/slash-commands.md): Slash commands run from the sk REPL.
 - [Connector & recipe catalog](catalog.md): What ships in the box: 57 connector templates across 16 categories, carrying 240 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page.

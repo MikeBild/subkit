@@ -8,7 +8,11 @@
 // proves no provider charge was incurred for the rejected call.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
+import { _resetConfigForTests, getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { auditLog } from "../../db/schema/index.ts";
 import { runExecution } from "../engine.ts";
 import {
@@ -22,9 +26,17 @@ import {
 
 let ctx: EngineTestCtx;
 let mock: MockServer;
+let configDir: string;
+let previousProviderHosts: string[];
 
 beforeAll(async () => {
   ctx = await createEngineCtx("llm-budget");
+  configDir = mkdtempSync(join(tmpdir(), "subkit-llm-budget-"));
+  _resetConfigForTests();
+  await loadConfig({
+    env: { NODE_ENV: "test", DATABASE_URL: ctx.testDb.url },
+    configPathOverride: join(configDir, "subkit.config.json"),
+  });
   // Mock an OpenAI-shaped responses endpoint. Each call returns a
   // usage envelope with prompt + completion totaling 60 tokens — two
   // calls land at 120 cumulative, well past the 100-token cap, so the
@@ -42,15 +54,18 @@ beforeAll(async () => {
     });
   });
   // Mark the mock host as an LLM provider for budget detection. The
-  // production whitelist covers the real provider hosts; the env
-  // override is the supported test seam.
-  process.env.SUBKIT_LLM_PROVIDER_HOSTS_EXTRA = "127.0.0.1";
+  // production whitelist covers the real provider hosts; runtime config
+  // makes the local provider visible to accounting without an env seam.
+  previousProviderHosts = [...getConfig().egress.provider_hosts_extra];
+  await setConfigKey("egress.provider_hosts_extra", ["127.0.0.1"], { force: true });
 });
 
 afterAll(async () => {
-  process.env.SUBKIT_LLM_PROVIDER_HOSTS_EXTRA = undefined;
+  await setConfigKey("egress.provider_hosts_extra", previousProviderHosts, { force: true });
   await mock.close();
   await ctx.cleanup();
+  _resetConfigForTests();
+  rmSync(configDir, { recursive: true, force: true });
 });
 
 describe("execution · per-run LLM token budget", () => {

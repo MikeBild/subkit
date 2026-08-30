@@ -155,7 +155,7 @@ Providers contribute descriptors + executors:
 
 | Provider | Contributes |
 |---|---|
-| `StaticToolProvider` | MCP-unique handlers: `authenticate`, `list_recipes`, `self_healing.scan`. |
+| `StaticToolProvider` | MCP-unique handlers: `authenticate`, `list_recipes`, `self_healing.scan`, plus admin-only `subkit_settings` and `subkit_update_setting`. |
 | `ConversationToolProvider` | everything in `conversations/tools/index.ts:listTools()`, filtered per `(surface, mcpMode, readOnly)`. |
 
 `buildRegistry(providers)` enforces cross-provider name uniqueness at boot.
