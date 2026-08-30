@@ -100,6 +100,7 @@ const ENGINE_ROUTE_FILES = [
   "apps/engine/src/http/routes/executions/transform.ts",
   "apps/engine/src/http/routes/executions/cancel.ts",
   "apps/engine/src/http/routes/workflows.ts",
+  "apps/engine/src/http/routes/settings.ts",
   // MCP OAuth 2.1 boundary endpoints — raw Hono routes (not createRoute).
   "apps/engine/src/http/routes/oauth/dcr.ts",
   "apps/engine/src/http/routes/oauth/consent.ts",
