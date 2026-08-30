@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.42] – 2026-08-30
+
+### Changed
+
+- Use the neutral Cockpit language for activation state, restart-only badges,
+  category selection, and the sticky save surface so settings match the other
+  application views without warning-color noise.
+
 ## [6.22.41] – 2026-08-30
 
 ### Added
