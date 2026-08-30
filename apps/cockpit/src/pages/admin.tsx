@@ -1803,7 +1803,7 @@ export function SettingsPage() {
             <dl className="grid divide-y md:grid-cols-3 md:divide-x md:divide-y-0">
               <div className="grid gap-1 p-4">
                 <dt className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <SlidersHorizontal className="size-3.5 text-primary" aria-hidden="true" />
+                  <SlidersHorizontal className="size-3.5 text-foreground/70" aria-hidden="true" />
                   {t("settings.status.resolved")}
                 </dt>
                 <dd className="text-lg font-semibold tabular-nums">{allItems.length}</dd>
@@ -1828,9 +1828,7 @@ export function SettingsPage() {
                   <Badge
                     variant={pendingRestartCount > 0 ? "outline" : "default"}
                     className={
-                      pendingRestartCount > 0
-                        ? "border-primary/25 bg-primary/5 text-primary"
-                        : undefined
+                      pendingRestartCount > 0 ? "border-border bg-muted text-foreground" : undefined
                     }
                   >
                     {pendingRestartCount > 0
@@ -1857,7 +1855,7 @@ export function SettingsPage() {
                     <TabsTrigger
                       key={section}
                       value={section}
-                      className="h-10 flex-none rounded-none px-0 after:bg-primary"
+                      className="h-10 flex-none rounded-none px-0 after:bg-foreground"
                       data-testid={`settings-category-${sectionIndex}`}
                     >
                       {settingSection(`${section}.value`, t)}
@@ -1960,7 +1958,7 @@ export function SettingsPage() {
                                 {item.meta.requiresRestart && (
                                   <Badge
                                     variant="outline"
-                                    className="border-primary/25 bg-primary/5 text-primary"
+                                    className="border-border bg-muted text-foreground"
                                   >
                                     {t("settings.restart")}
                                   </Badge>
@@ -1985,7 +1983,7 @@ export function SettingsPage() {
           data-testid="settings-change-bar"
         >
           <div className="flex items-start gap-2">
-            <CheckCircle2 className="mt-0.5 size-4 text-primary" aria-hidden="true" />
+            <CheckCircle2 className="mt-0.5 size-4 text-foreground/70" aria-hidden="true" />
             <div>
               <p className="text-sm font-medium">
                 {t("settings.unsavedCount", { count: changedItems.length })}
