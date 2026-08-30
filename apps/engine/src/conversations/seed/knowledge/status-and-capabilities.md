@@ -65,7 +65,7 @@ Minimal identity shape for a persona banner; auth required. Fields:
 - `tenant_id`, `tenant_slug` (nullable).
 - `email` (nullable), `role_name` (nullable — the role's display name, falling back to a legacy role string).
 - `provider` — the auth provider that authenticated the credential.
-- `base_url` — public origin (`https://host[:port]`) the engine was reached at; reflects the request host header, then `SUBKIT_PUBLIC_BASE_URL`, else `null`. Use it to emit paste-ready snippets without hard-coding placeholder hosts.
+- `base_url` — public origin (`https://host[:port]`) the engine was reached at; reflects the request host header, then canonical `server.public_base_url`, else `null`. Use it to emit paste-ready snippets without hard-coding placeholder hosts.
 - `scopes` — the RAW scopes the calling credential carries, NOT the enforced permission set. `null` when scopes are not enumerable; `["*"]` for full access. `mcp:*` scopes select the MCP catalog mode and do not bound REST permissions. For ENFORCED effective rights on a resource, call `GET /v1/identity/permissions`.
 
 How to read: `scopes` answers "what does my credential claim"; it is a ceiling, not the decision. Never infer "I can write connector X" from `scopes` — call `/v1/identity/permissions`.

@@ -31,7 +31,8 @@ const VersionResponse = z
     /** Engine binary version baked in at compile time. */
     engine_version: z.string(),
     /** Latest version the boot probe found on the configured channel.
-     *  Absent when the probe didn't run (NO_UPDATE_CHECK=1) or hasn't
+     *  Absent when the probe is disabled by operations.update_check_enabled
+     *  or has not
      *  finished its first cycle yet. */
     latest_version: z.string().optional(),
     /** Whether the boot probe observed a newer release. Defaults to

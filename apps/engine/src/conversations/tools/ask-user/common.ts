@@ -104,7 +104,7 @@ async function secretElicitationBlockedOverMcp(
         ok: false,
         error_code: grant.error,
         message:
-          "The engine has no public origin for secure credential entry. Configure server.public_base_url or SUBKIT_PUBLIC_BASE_URL, then request the credential again.",
+          "The engine has no public origin for secure credential entry. Configure server.public_base_url, then request the credential again.",
         next_best_actions: [p.tool_name],
       };
     }

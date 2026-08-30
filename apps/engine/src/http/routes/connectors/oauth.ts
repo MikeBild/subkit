@@ -129,7 +129,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     const redirect_uri = buildOAuthRedirectUri({ req: c.req.raw });
     if (!redirect_uri) {
       throw new BadRequestError(
-        "engine has no resolvable public origin — set server.public_base_url or SUBKIT_PUBLIC_BASE_URL",
+        "engine has no resolvable public origin — set server.public_base_url",
       );
     }
 

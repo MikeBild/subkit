@@ -119,7 +119,7 @@ export async function handleAuthenticate(
       ok: false,
       data: {
         error:
-          "engine has no resolvable public origin — set server.public_base_url or SUBKIT_PUBLIC_BASE_URL before running an OAuth2 flow",
+          "engine has no resolvable public origin — set server.public_base_url before running an OAuth2 flow",
         reason: "engine_public_url_missing",
       },
     };

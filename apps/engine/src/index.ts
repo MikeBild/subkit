@@ -10,11 +10,7 @@ import { type DriftReport, detectDrift, runMigrationsFromUrl } from "./db/migrat
 import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
 import { warmEmbeddings } from "./embeddings/local-provider.ts";
 import { startAbortMonitor } from "./execution/index.ts";
-import {
-  recoverCrashedExecutions,
-  resolveCrashRecoveryThresholdMs,
-  startCrashRecoveryMonitor,
-} from "./execution/recovery.ts";
+import { recoverCrashedExecutions, startCrashRecoveryMonitor } from "./execution/recovery.ts";
 import { reapOrphanedWaits } from "./execution/wait-reaper.ts";
 import { getScanner, NoopScanner } from "./files/scanner.ts";
 import { setHealthState } from "./http/health-state.ts";
@@ -192,7 +188,7 @@ async function runServer(): Promise<void> {
   const db = getDb();
 
   // Non-blocking update check — fire and forget
-  if (process.env.NO_UPDATE_CHECK !== "1")
+  if (cfg.operations.update_check_enabled)
     checkForUpdate(defaultUpdaterConfig("engine", OPENAPI_INFO.version))
       .then((info) => {
         if (info) {
@@ -358,12 +354,10 @@ async function runServer(): Promise<void> {
   // Wrapped in try/catch so a sweep failure (e.g. transient DB blip)
   // never blocks engine startup — the next boot will retry.
   try {
-    const overrideThresholdMs = resolveCrashRecoveryThresholdMs(
-      process.env.SK_EXECUTION_CRASH_RECOVERY_THRESHOLD_MS,
-    );
+    const overrideThresholdMs = getConfig().queue.crash_recovery_threshold_ms;
     const { recovered, reconciled_steps } = await recoverCrashedExecutions(
       db,
-      overrideThresholdMs ? { overrideThresholdMs } : {},
+      overrideThresholdMs > 0 ? { overrideThresholdMs } : {},
     );
     logger.info({
       module: "queue",
@@ -523,7 +517,7 @@ async function runServer(): Promise<void> {
   // Idempotent + content-hash-gated so unchanged seeds are a no-op on
   // subsequent boots. Runs in the background so a large skill catalog
   // never delays serving the first HTTP request.
-  if (process.env.SK_SEED_SKILLS !== "0") {
+  if (cfg.operations.seed_skills_at_boot) {
     void (async () => {
       try {
         const loaded = loadEmbeddedSkillSeeds();

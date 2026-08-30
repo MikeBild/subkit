@@ -33,20 +33,17 @@ beforeAll(async () => {
     },
   });
   baseUrl = `http://127.0.0.1:${server.port}`;
-  // v3.5: create.ts now reads getConfig().server.public_base_url
-  // (was process.env.SUBKIT_PUBLIC_BASE_URL).
+  // The conversation surface reads canonical server.public_base_url.
   await setConfigKey("server.public_base_url", baseUrl, { force: true });
-  process.env.SUBKIT_PUBLIC_BASE_URL = baseUrl;
 });
 
 afterAll(async () => {
   server.stop(true);
   await ctx.cleanup();
-  // Reset the config singleton + env this suite set in beforeAll. Bun runs
+  // Reset the config singleton this suite set in beforeAll. Bun runs
   // files alphabetically, so a leaked `server.public_base_url` would make a
   // later suite's stub-DB dispatch try to mint a portal link and throw. Same
   // config-pollution-across-suites class as the global-pool test race.
-  delete process.env.SUBKIT_PUBLIC_BASE_URL;
   _resetConfigForTests();
 });
 

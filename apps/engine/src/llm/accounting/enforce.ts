@@ -45,10 +45,9 @@ const PROMPT_FLOOR_TOKENS = 50;
  *  customer-owned proxies that happen to embed a provider name in the
  *  path.
  *
- *  Test overrides: comma-separated `SUBKIT_LLM_PROVIDER_HOSTS_EXTRA`
- *  appends additional hosts (e.g. `127.0.0.1` for an in-process mock
- *  server in integration tests). The variable is resolved on every
- *  call so tests can flip it per-suite. */
+ *  Additional hosts come from the hot-reloadable
+ *  `egress.provider_hosts_extra` setting (for example `127.0.0.1` for
+ *  an in-process integration-test provider). */
 const LLM_PROVIDER_HOSTS = new Set<string>([
   "api.openai.com",
   "api.anthropic.com",
@@ -67,10 +66,6 @@ function extraHosts(): Set<string> {
   } catch {
     /* loader not initialised */
   }
-  // Env fallback (kept for parity with v3.4.x test seams; production
-  // operators set this via subkit.config.json).
-  const raw = process.env.SUBKIT_LLM_PROVIDER_HOSTS_EXTRA;
-  if (raw) merged.push(...raw.split(","));
   return new Set(merged.map((s) => s.trim().toLowerCase()).filter((s) => s.length > 0));
 }
 
@@ -136,8 +131,7 @@ export class RunLlmBudget {
 }
 
 /** Hostname check. Case-insensitive; subdomains must match an exact
- *  entry in `LLM_PROVIDER_HOSTS` or in the test-only env override
- *  `SUBKIT_LLM_PROVIDER_HOSTS_EXTRA`. */
+ *  entry in `LLM_PROVIDER_HOSTS` or `egress.provider_hosts_extra`. */
 export function isLlmProviderUrl(url: string | URL | null | undefined): boolean {
   if (!url) return false;
   try {

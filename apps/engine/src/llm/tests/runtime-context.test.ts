@@ -62,19 +62,19 @@ describe("resolveEngineUrl", () => {
     expect(url).toBe("https://host:8443");
   });
 
-  it("falls back to SUBKIT_PUBLIC_BASE_URL on a malformed url", () => {
+  it("does not use a retired env value on a malformed url", () => {
     const prev = process.env.SUBKIT_PUBLIC_BASE_URL;
     process.env.SUBKIT_PUBLIC_BASE_URL = "https://from-env.example";
     try {
       const url = resolveEngineUrl({ url: "not a url" });
-      expect(url).toBe("https://from-env.example");
+      expect(url).toBeUndefined();
     } finally {
       if (prev === undefined) delete process.env.SUBKIT_PUBLIC_BASE_URL;
       else process.env.SUBKIT_PUBLIC_BASE_URL = prev;
     }
   });
 
-  it("returns undefined when both the request and the env are unusable", () => {
+  it("returns undefined when both the request and canonical config are unusable", () => {
     const prev = process.env.SUBKIT_PUBLIC_BASE_URL;
     delete process.env.SUBKIT_PUBLIC_BASE_URL;
     try {

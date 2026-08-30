@@ -88,8 +88,8 @@ describe("smoke — corrupt config", () => {
   });
 });
 
-describe("smoke — SK_OVERRIDE_*", () => {
-  test("override env populates the diagnostics override_keys", async () => {
+describe("smoke — legacy SK_OVERRIDE_* import", () => {
+  test("legacy env seeds canonical config without active overrides", async () => {
     await loadConfig({
       env: {
         DATABASE_URL: "postgres://x",
@@ -100,7 +100,9 @@ describe("smoke — SK_OVERRIDE_*", () => {
       configPathOverride: cfgPath,
     });
     const diag = getDiagnostics();
-    expect(diag.override_keys.sort()).toEqual(["errors.ring_size", "llm.api_key"]);
+    expect(diag.override_keys).toEqual([]);
+    expect(diag.source_map["llm.api_key"]).toBe("global");
+    expect(diag.source_map["errors.ring_size"]).toBe("global");
     expect(getConfig().llm.api_key).toBe("override-key");
     expect(getConfig().errors.ring_size).toBe(42);
   });

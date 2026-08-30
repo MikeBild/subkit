@@ -847,7 +847,7 @@ export const DiagnosticsVersionReadMetadataSchema = z.object({
   /** Engine binary version that served the request. */
   engine_version: z.string(),
   /** Cached latest version from the boot-time update probe; absent if
-   *  the probe hasn't run yet (e.g. NO_UPDATE_CHECK=1). */
+   *  the probe hasn't run yet (for example update checking is disabled). */
   latest_version: z.string().optional(),
   /** Whether the boot-time check observed a newer release. */
   update_available: z.boolean(),

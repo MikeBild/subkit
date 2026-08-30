@@ -51,7 +51,7 @@ describe("loadConfig", () => {
     expect(mode).toBe(0o600);
   });
 
-  test("SK_OVERRIDE_LLM_API_KEY wins across all tenants", async () => {
+  test("legacy SK_OVERRIDE_LLM_API_KEY seeds a missing leaf once", async () => {
     await loadFresh({
       DATABASE_URL: "postgres://x",
       NODE_ENV: "test",
@@ -59,7 +59,27 @@ describe("loadConfig", () => {
     });
     expect(getConfig().llm.api_key).toBe("override-key");
     expect(getConfig("tenant-a").llm.api_key).toBe("override-key");
-    expect(getDiagnostics().override_keys).toContain("llm.api_key");
+    expect(getDiagnostics().override_keys).toEqual([]);
+    expect(getDiagnostics().source_map["llm.api_key"]).toBe("global");
+  });
+
+  test("canonical API value wins over a legacy env value on later boots", async () => {
+    await loadFresh({
+      DATABASE_URL: "postgres://x",
+      NODE_ENV: "test",
+      SK_OVERRIDE_LLM_API_KEY: "legacy-key",
+    });
+    await setConfigKey("llm.api_key", "api-key");
+
+    _resetConfigForTests();
+    await loadFresh({
+      DATABASE_URL: "postgres://x",
+      NODE_ENV: "test",
+      SK_OVERRIDE_LLM_API_KEY: "stale-env-key",
+    });
+
+    expect(getConfig().llm.api_key).toBe("api-key");
+    expect(getDiagnostics().override_keys).toEqual([]);
   });
 
   test("tenant overlay schema rejects non-scope:tenant leaves at parse time", async () => {
@@ -197,8 +217,8 @@ describe("setConfigKey", () => {
   });
 });
 
-describe("settings_override_active{key} gauge", () => {
-  test("sets the gauge per active override leaf and zeros stale labels on reload", async () => {
+describe("settings_override_active{key} legacy metric", () => {
+  test("does not publish active override samples for one-time env imports", async () => {
     const { getMetrics, resetMetricsRegistryForTests } = await import(
       "../../observability/metrics.ts"
     );
@@ -211,18 +231,8 @@ describe("settings_override_active{key} gauge", () => {
       SK_OVERRIDE_ERRORS_RING_SIZE: "200",
     });
     const reg = getMetrics();
-    const renderedAfterBoot = reg.render();
-    expect(renderedAfterBoot).toContain('settings_override_active{key="llm.api_key"} 1');
-    expect(renderedAfterBoot).toContain('settings_override_active{key="errors.ring_size"} 1');
-
-    // Re-load with only one override — the dropped key must zero out.
-    await loadFresh({
-      DATABASE_URL: "postgres://x",
-      NODE_ENV: "test",
-      SK_OVERRIDE_LLM_API_KEY: "second-override",
-    });
-    const renderedAfterReload = reg.render();
-    expect(renderedAfterReload).toContain('settings_override_active{key="llm.api_key"} 1');
-    expect(renderedAfterReload).toContain('settings_override_active{key="errors.ring_size"} 0');
+    const rendered = reg.render();
+    expect(rendered).not.toContain('settings_override_active{key="llm.api_key"}');
+    expect(rendered).not.toContain('settings_override_active{key="errors.ring_size"}');
   });
 });

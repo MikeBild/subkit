@@ -20,21 +20,15 @@ let _db: NodePgDatabase<typeof schema> | null = null;
  * touched. Tests may call `createDbFromUrl()` directly to get an isolated
  * instance against a disposable database.
  *
- * URL resolution order:
- *   1. `process.env.DATABASE_URL` if set — wins over the loaded config.
- *      Tests set this explicitly (e.g. `self-update.test.ts` boots its
- *      own per-suite Postgres and pins env DB_URL to it); a sibling
- *      test that called `loadConfig({env:{DATABASE_URL:"placeholder/x"}})`
- *      to satisfy `getConfig().storage` would otherwise force this pool
- *      to dial `placeholder/x` and fail DNS under concurrency.
- *   2. `getConfig().database.url` — the configured runtime path. The engine
- *      boots with `loadConfig()` reading `process.env.DATABASE_URL`,
- *      so both paths agree during a normal start.
- *   3. Empty → throw a helpful error.
+ * In production, canonical `database.url` always wins. DATABASE_URL remains
+ * a bootstrap import when that leaf is initially absent. Test processes may
+ * explicitly pin DATABASE_URL to an isolated database before touching the
+ * shared pool; production never uses that test seam after config is loaded.
  */
 export function getPool(): pg.Pool {
   if (_pool) return _pool;
-  let url = process.env.DATABASE_URL ?? "";
+  let url = "";
+  if (process.env.NODE_ENV === "test") url = process.env.DATABASE_URL ?? "";
   if (!url) {
     try {
       url = getConfig().database.url;
@@ -42,6 +36,7 @@ export function getPool(): pg.Pool {
       url = "";
     }
   }
+  if (!url) url = process.env.DATABASE_URL ?? "";
   if (!url) {
     throw new Error(
       "database.url is not set. Configure via `sk settings set database.url '\"…\"'` or set DATABASE_URL.",

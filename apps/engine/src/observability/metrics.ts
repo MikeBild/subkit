@@ -177,12 +177,8 @@ export const METRIC_NAMES = {
   // as a billing surprise.
   LLM_TOKEN_DRIFT_PCT: "llm_token_drift_pct",
 
-  // v3.5 — runtime config moved to subkit.config.json. Operators
-  // override individual leaves via SK_OVERRIDE_<KEY> env vars during
-  // incidents; this gauge reports which leaves are currently
-  // override-driven so dashboards can flag a drifted host without
-  // exposing the secret value itself. Set at every loadConfig() and
-  // every setConfigKey() commit.
+  // Deprecated compatibility metric. Runtime env overrides were retired;
+  // canonical settings win and the loader emits no active samples.
   SETTINGS_OVERRIDE_ACTIVE: "settings_override_active",
   // Engine self-update + rollback outcomes. Cardinality is
   // intentionally bounded: `result` is one of `success` / `failed` /
@@ -759,7 +755,7 @@ function buildRegistry(): MetricsRegistry {
   });
   reg.registerGauge({
     name: METRIC_NAMES.SETTINGS_OVERRIDE_ACTIVE,
-    help: "Active SK_OVERRIDE_<key> env overrides. 1 per dotted leaf path while the override is in effect; never carries the value itself.",
+    help: "Deprecated compatibility metric; runtime environment overrides are no longer active.",
     labels: ["key"],
   });
 

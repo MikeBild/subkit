@@ -35,7 +35,7 @@ flowchart TB
 | Layer | Production-ready when | Section |
 |---|---|---|
 | File AV scan | a real scanner (clamd) answers under budget | [§1](#1-file-uploads-are-not-virus-scanned-scannernoop_in_production) |
-| File storage | points at a persistent, backed-up path | [§2](#2-storage-directory-is-set-via-a-config-override-overrideactive) |
+| File storage | points at a persistent, backed-up path | [§2](#2-store-uploads-on-a-persistent-directory) |
 | Secrets | `MASTER_KEY` set + rotated | [credentials-and-keys.md](./credentials-and-keys.md) |
 | Database | external managed PostgreSQL | [self-host.md](../developers/self-host.md) |
 | Recovery | versioned workflows + PG backups | [Backup and Recovery](#backup-and-recovery) |
@@ -46,7 +46,7 @@ The engine emits these at boot so you can grep for them:
 
 ```sh
 # from the engine container logs
-docker logs subkit 2>&1 | grep -E '"action":"(scanner.noop_in_production|override.active|ephemeral_dir_warning)"'
+docker logs subkit 2>&1 | grep -E '"action":"(scanner.noop_in_production|requires_restart_pending|ephemeral_dir_warning)"'
 ```
 
 ---
@@ -132,61 +132,50 @@ warn  files  scanner.noop_in_production
 
 ---
 
-## 2. Storage directory is set via a config override (`override.active`)
+## 2. Store uploads on a persistent directory
 
 ### What it is
 
-The engine resolves config from `subkit.config.json` plus **`SK_OVERRIDE_*`
-environment overlays** (prefix `SK_OVERRIDE_`, see `config/loader.ts`). In
-production, point file storage at a persistent path (e.g. the all-in-one
-image's `/data` volume):
+In production, set the canonical `storage.files.dir` leaf to a persistent path
+(for example the all-in-one image's `/data` volume):
 
 ```
-SK_OVERRIDE_STORAGE_FILES_DIR=/data/files
+sk settings set storage.files.dir '"/data/files"' --force
 ```
 
-overrides `storage.files.dir`. Boot log:
+The same change is available in Cockpit → Settings, through
+`PUT /v1/settings/storage.files.dir`, or MCP `subkit_update_setting`. Because
+the object store is constructed at boot, this leaf reports
+`restart_required`; restart the deployment after persisting it.
 
 ```
-warn  config  override.active   override_keys=["storage.files.dir"]
-"SK_OVERRIDE_* active"
+activation=restart_required pending_restart_keys=["storage.files.dir"]
 ```
 
-### Why this is correct (not a problem)
+### Why this matters
 
 - `storage.files.dir` is **where uploaded files are written on disk**.
 - If left **empty** with the `local` backend, `LocalDiskObjectStore` falls back
   to `os.tmpdir()/sk-files` and the engine emits a *different*, more serious
   warning — `ephemeral_dir_warning` — because **tmpdir is wiped on reboot and
   every customer file is lost**.
-- Setting it to a **persistent path** (`/var/lib/subkit/files`) is exactly what
-  you want: files survive reboots and redeploys. The `override.active` line is
-  **pure transparency** — it tells an operator "this value didn't come from the
-  default config."
+- Setting it to a **persistent path** (`/var/lib/subkit/files`) makes files
+  survive reboots and redeploys.
 
 ### Action required
 
-**None.** This is the intended production configuration. Keep the directory:
+Keep the directory:
 
 - on persistent storage (not tmpfs),
 - backed up if uploads matter,
 - owned/writable by the engine's system user.
-
-### TODO (future, optional)
-
-- [ ] Move `storage.files.dir` (and other stable prod values) from a
-      `SK_OVERRIDE_*` env into the committed `subkit.config.json` so the
-      `override.active` line stops appearing for settled config and overrides are
-      reserved for secrets / per-host values.
-
----
 
 ## Quick production readiness checklist
 
 | Item | Default | Production-ready? | Where |
 |---|---|---|---|
 | File AV scan | `NoopScanner` (always clean) | ❌ wire clamd before untrusted uploads | `files/scanner.ts` |
-| `storage.files.dir` | empty → ephemeral tmpdir | ✅ set to a persistent path (done via `SK_OVERRIDE_*`) | `config/loader.ts`, `index.ts` |
+| `storage.files.dir` | empty → ephemeral tmpdir | ✅ set through Cockpit/API/CLI and restart | `config/loader.ts`, `index.ts` |
 | `MASTER_KEY` | required | ✅ set; rotate per `credentials-and-keys.md` | `docs/admins/credentials-and-keys.md` |
 | PostgreSQL | external service is mandatory | ✅ use a backed-up, supported PostgreSQL deployment | `docs/developers/self-host.md` |
 

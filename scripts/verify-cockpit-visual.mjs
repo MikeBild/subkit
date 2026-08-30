@@ -1680,12 +1680,15 @@ for (const locale of variants) {
         // Read back by the label the frame was WRITTEN under, not by a name
         // rebuilt here. A second place that knows how a frame is called is a
         // second place that can be wrong about it.
-        const frame = written.get(`${locale.artifact}-${viewport}-${route}`);
+        const artifactRoute = route || "overview";
+        const frame = written.get(`${locale.artifact}-${viewport}-${artifactRoute}`);
         if (frame === undefined)
-          throw new Error(`no frame ${locale.artifact}/${viewport}/${route} to build a sheet from`);
+          throw new Error(
+            `no frame ${locale.artifact}/${viewport}/${artifactRoute} to build a sheet from`,
+          );
         const bytes = await readFile(frame);
         const source = `data:image/png;base64,${bytes.toString("base64")}`;
-        return `<figure><img src="${source}" alt=""><figcaption>${route}</figcaption></figure>`;
+        return `<figure><img src="${source}" alt=""><figcaption>${artifactRoute}</figcaption></figure>`;
       }),
     );
     await contact.setContent(

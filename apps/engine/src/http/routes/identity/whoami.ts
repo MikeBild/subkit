@@ -21,7 +21,7 @@ const WhoamiSchema = z
      * Public origin (`https://host[:port]`) the engine was reached at —
      * lets clients (chat UI, sk CLI, Skills) emit paste-ready snippets
      * without hard-coding placeholder hosts. Reflects the host header on
-     * the request, then `SUBKIT_PUBLIC_BASE_URL`, else null.
+     * the request, then canonical `server.public_base_url`, else null.
      */
     base_url: z.string().nullable(),
     /**

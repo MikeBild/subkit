@@ -5,49 +5,55 @@ middle state to debug later. Every runtime setting lives in one JSON file that i
 against a schema at boot, and a mistake fails immediately, naming the exact setting that is
 wrong. A broken deploy never reaches live traffic.
 
-| You want | You run |
+| You want | Surface |
 | --- | --- |
-| Interactive form | `sk settings configure` |
-| Scriptable access | `sk settings list / get / set` |
+| Browser administration | Cockpit → **Settings** (`/cockpit/settings`) |
+| Interactive terminal form | `sk settings configure` |
+| Scriptable HTTP | `GET /v1/settings`, `PUT /v1/settings/{path}` (OpenAPI at `/openapi.json`) |
+| AI/agent administration | MCP `subkit_settings`, `subkit_update_setting` |
+| CLI automation | `sk settings list / get / set` |
 | Hand edit | `vim subkit.config.json`, then restart |
 
 The per-leaf reference (type, default, scope, sensitivity, restart flag) is
 auto-generated in
 [`settings-reference.md`](./settings-reference.md). **This page covers the
-model around it** — where the file lives, how a value resolves, what stays in
-env, and how incident overrides work.
+model around it** — where values live, how they resolve, what stays in env, and
+how activation is reported.
 
 ### How a value resolves
 
 ```mermaid
 flowchart TB
     boot([Engine boot]) --> env{Bootstrap env\nMASTER_KEY, NODE_ENV,\nSUBKIT_CONFIG, DATABASE_URL}
-    env --> load[Load subkit.config.json\nmissing file = schema defaults]
-    load --> validate{Validate against\nZod schema}
+    env --> load[Load canonical config\nmissing file = schema defaults]
+    load --> legacy{Legacy SK_OVERRIDE value\nfor a missing leaf?}
+    legacy -- yes --> import[Import once and persist]
+    legacy -- no --> validate
+    import --> validate
     validate -- invalid --> fail[Exit non-zero\nwith exact leaf path]
     validate -- valid --> ready([Engine ready])
 
-    read([Every settings read]) --> o{SK_OVERRIDE_KEY set?}
-    o -- yes --> useo[Use override\nall tenants]
-    o -- no --> t{Tenant overlay?}
+    read([Every settings read]) --> t{Tenant overlay?}
     t -- yes --> uset[Use tenant value]
     t -- no --> g{Global value set?}
     g -- yes --> useg[Use global value]
     g -- no --> d[Use schema default]
 ```
 
-Precedence, highest to lowest: **`SK_OVERRIDE_<KEY>` env → tenant overlay →
-global value → schema default.**
+Precedence, highest to lowest: **tenant overlay → global value → schema
+default.** An old `SK_OVERRIDE_<KEY>` can only initialize a missing leaf once;
+it is persisted and never wins over a Cockpit/API value.
 
 ---
 
-## Bootstrap env (the only env vars the engine reads at startup)
+## Bootstrap env
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `MASTER_KEY` | yes | 64-char hex AES-256-GCM key. Used to encrypt connector credentials at rest. Generate once with `openssl rand -hex 32`. Must be injected from a secret manager — keep it out of the config file. |
 | `NODE_ENV` | no | `development` (default in dev) / `test` / `production`. Controls the `requiresRestart` guard and other defaults. |
 | `SUBKIT_CONFIG` | no | Override the config-file path. Defaults to `./subkit.config.json` in dev or `/etc/subkit/subkit.config.json` under `NODE_ENV=production`. |
+| `CONFIGURATION_DIRECTORY` | platform-provided | systemd directory hint used to locate `subkit.config.json` before the loader is available. |
 | `DATABASE_URL` | fallback | Consulted only when `database.url` is absent from the config file. Once the operator runs `sk settings set database.url '"…"'` the file value wins; if both are set and they differ the engine emits a warn line at boot and the **config-file value wins**. |
 
 Every other historical env var (`LLM_PROVIDER`, `ANTHROPIC_API_KEY`,
@@ -125,12 +131,10 @@ paths/query strings, IP addresses, user agents, OAuth material, or plaintext dyn
 
 ### Resolution order (every read)
 
-`SK_OVERRIDE_<KEY>` env var → tenant overlay → global value → schema
-default (see the boot/read flowchart above).
+Tenant overlay → global value → schema default (see the boot/read flowchart above).
 
 | Layer | Scope | Set by |
 | --- | --- | --- |
-| `SK_OVERRIDE_<KEY>` | All tenants (no per-tenant override env) | Incident-response env injection |
 | Tenant overlay | One tenant, `scope: tenant` leaves only | `sk settings set … --tenant <id>` |
 | Global value | All tenants | `sk settings set …` |
 | Schema default | All tenants | Shipped in the schema |
@@ -187,24 +191,35 @@ line documenting the change is emitted *before* the live logger is
 reconfigured, so an operator who flips `log.level=error` still sees
 the entry that flipped the threshold.
 
-## SK_OVERRIDE_<KEY> — incident escape hatch
+## Legacy `SK_OVERRIDE_<KEY>` — one-time migration only
 
-To rotate an LLM key under pressure without going through the
-config file:
+Old deployments may still inject values such as:
 
 ```bash
 SK_OVERRIDE_LLM_API_KEY=sk-new-key engine
 ```
 
-- Active overrides surface in `/v1/diagnostics/setup` and as
-  `settings_override_active{key}` on `/metrics`.
-- The override value never appears in `GET /v1/settings`, audit
-  rows, or any other operator-readable surface — only the leaf
-  path is visible.
-- The override applies to **all** tenants. There is no per-tenant
-  override env var.
-- A boot warn line lists active overrides so they can't accumulate
-  silently across container restarts.
+- If the canonical leaf is absent, the value is parsed, validated, persisted
+  atomically, and logged as `legacy_env.seeded` (path only, never value).
+- If the leaf already exists, the env value is ignored and logged as
+  `legacy_env.ignored`. Cockpit, HTTP, MCP, CLI, and file values always win.
+- `diagnostics.override_keys` remains empty and the deprecated
+  `settings_override_active` metric has no active samples.
+- New automation must use HTTP, MCP, or `sk settings`; this compatibility
+  importer exists only to make old deployments migrate safely.
+
+## Activation contract
+
+All write surfaces return the same activation truth. A hot leaf reports
+`activation: "active"`, `applied_immediately: true`, and can be observed by the
+next runtime read without a restart. A restart-sensitive leaf reports
+`activation: "restart_required"`, `applied_immediately: false`,
+`requires_restart: true`, and its path in `pending_restart_keys`.
+
+In production, restart-sensitive writes are rejected until the caller confirms
+with `force=true`. Confirmation persists the value; it does **not** restart the
+process. The Cockpit presents this as a neutral-blue pending state and directs
+the operator to restart through the deployment platform.
 
 ## `engine_settings` table
 
@@ -226,6 +241,8 @@ probe reads/writes it for sentinel state. Two keys:
   `apps/engine/src/http/routes/__tests__/settings.integration.test.ts`
   testcontainers test (audit identity, three response envelopes,
   scope rules).
+- The Streamable HTTP MCP integration test writes a hot value through
+  `subkit_update_setting`, reads it through REST, and verifies the audit source.
 - The Ink form's bridge is locked down by the schema-walk test in
   `apps/sk/src/settings-ui/__tests__/schema-walk.test.ts` — a new
   Zod kind in the schema fails the test until a corresponding
@@ -235,9 +252,10 @@ probe reads/writes it for sentinel state. Two keys:
 
 - **Fail-fast boot.** Missing or invalid required settings exit non-zero with
   a descriptive, leaf-pathed error. No silent degraded mode.
-- **Secrets stay out of the file.** Database passwords and API keys belong in a
-  secrets manager, env injection (`MASTER_KEY`), or the masked, audited
-  `sk settings` path — never in committed config.
+- **Secrets stay out of source control and logs.** `MASTER_KEY` remains in a
+  secret manager. Other secret leaves are written through masked, audited
+  Cockpit/API/CLI surfaces into the mode-`0600` canonical config — never into a
+  committed repository file or an audit value.
 - **OpenAI-compatible endpoints.** To point the `openai` provider at a
   self-hosted or third-party endpoint (custom `base_url`), see
   [AI-Assisted Authoring → OpenAI-compatible endpoints](../authors/authoring-workflows.md#openai-compatible-endpoints).
