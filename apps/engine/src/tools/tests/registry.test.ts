@@ -17,6 +17,8 @@ describe("tools/registry — providers (active)", () => {
     expect(names).toContain("authenticate");
     expect(names).toContain("list_recipes");
     expect(names).toContain("self_healing_scan");
+    expect(names).toContain("subkit_settings");
+    expect(names).toContain("subkit_update_setting");
     // The following names exist on the conversation registry — the
     // conversation version wins; the deleted mcp/tools/* duplicates
     // are replaced by the conversation-side tool routed through the
@@ -32,6 +34,8 @@ describe("tools/registry — providers (active)", () => {
       .list({ surface: "mcp", mcpMode: "product" })
       .map((d) => d.name);
     expect(productNames).not.toContain("self_healing_scan");
+    expect(productNames).not.toContain("subkit_settings");
+    expect(productNames).not.toContain("subkit_update_setting");
     expect(productNames).toContain("authenticate");
   });
 

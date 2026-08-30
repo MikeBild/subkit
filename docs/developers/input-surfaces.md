@@ -11,6 +11,7 @@
 |---|---|---|---|
 | **sk CLI** | `sk` in a terminal | Human authoring + operator admin | API key · OIDC · portal token · headless |
 | **REST API** | `/v1/*` + OpenAPI | Programmatic + CI | API key |
+| **Cockpit** | `/cockpit/settings` | Browser-based runtime administration | Browser session |
 | **MCP server** (coding agent) | stdio or Streamable HTTP, alongside the `sk` CLI | Lookup **and** authoring — the CLI supplies the definition writes MCP does not carry | OAuth 2.1 or API key |
 | **MCP server** (browser client) | Streamable HTTP | Running workflows, reading results, first drafts — **not** definition edits | OAuth 2.1 |
 | **Chat** | Slack · Teams · Google Chat | Read-only Q&A + gated workflow runs | Linked platform identity |
@@ -113,6 +114,15 @@ The REST API is the full programmatic interface to sk and the canonical interfac
 | **Promotion** | `POST /v1/connectors/{id}/promote` promotes DEV to PROD with explicit `copy` or `move` semantics, a required `Idempotency-Key`, admin-only RBAC, and connector/credential audit ids in the response. |
 | **Discoverability** | OpenAPI spec served at `/openapi.json`; interactive Scalar UI at `/docs`. Both available to any authenticated client. |
 | **LLM grounding** | The engine publishes its own docs in the [llms-txt](https://llmstxt.org) format, unauthenticated, as `text/markdown`: `GET /llms.txt` (a robots.txt-style index) and `GET /llms-full.txt` (the full docs in one fetch). Point an MCP client or model at these to ground it on auth, error-code semantics, and conventions in prose the bare schema can't express. |
+
+### Runtime configuration across surfaces
+
+Cockpit Settings, `GET /v1/settings` + `PUT /v1/settings/{path}`, and the
+admin-only MCP tools `subkit_settings` + `subkit_update_setting` share the same
+schema, persistence, RBAC, audit events, tenant scoping, secret masking, and
+activation response. Hot values are visible to the next runtime read. A
+restart-sensitive write reports `restart_required` and its pending path; no
+surface pretends to restart the deployment itself.
 
 ---
 

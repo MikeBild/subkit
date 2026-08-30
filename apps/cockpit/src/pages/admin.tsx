@@ -1,6 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Copy, Plus, RefreshCw, RotateCw, ScanSearch, Trash2 } from "lucide-react";
+import {
+  CheckCircle2,
+  Copy,
+  Plus,
+  RefreshCw,
+  RotateCw,
+  ScanSearch,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
@@ -139,6 +148,14 @@ interface SettingItem {
     requiresRestart: boolean;
     description?: string;
     kind: string;
+  };
+}
+
+interface SettingsResponse {
+  items: SettingItem[];
+  diagnostics: {
+    pending_restart_keys: string[];
+    override_keys: string[];
   };
 }
 
@@ -1685,20 +1702,27 @@ export function SettingsPage() {
   const [search, setSearch] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [restartSetting, setRestartSetting] = useState<SettingItem | null>(null);
+  const [activeSection, setActiveSection] = useState("");
   const query = useQuery({
     queryKey: ["admin", "settings"],
-    queryFn: () => apiRequest<Envelope<SettingItem>>("/v1/settings"),
+    queryFn: () => apiRequest<SettingsResponse>("/v1/settings"),
   });
+  const allItems = query.data?.items ?? [];
   const items = useMemo(
     () =>
-      (query.data?.items ?? []).filter((item) =>
-        item.path.toLowerCase().includes(search.toLowerCase()),
-      ),
-    [query.data, search],
+      allItems.filter((item) => {
+        const needle = search.trim().toLowerCase();
+        if (!needle) return true;
+        return (
+          item.path.toLowerCase().includes(needle) ||
+          item.meta.description?.toLowerCase().includes(needle)
+        );
+      }),
+    [allItems, search],
   );
   const changedItems = useMemo(
-    () => items.filter((item) => Object.hasOwn(drafts, item.path)),
-    [drafts, items],
+    () => allItems.filter((item) => Object.hasOwn(drafts, item.path)),
+    [allItems, drafts],
   );
   const sections = useMemo(() => {
     const grouped = new Map<string, SettingItem[]>();
@@ -1708,6 +1732,12 @@ export function SettingsPage() {
     }
     return [...grouped.entries()];
   }, [items]);
+  const selectedSection = sections.some(([section]) => section === activeSection)
+    ? activeSection
+    : (sections[0]?.[0] ?? "");
+  const selectedItems = sections.find(([section]) => section === selectedSection)?.[1] ?? [];
+  const pendingRestartCount = query.data?.diagnostics?.pending_restart_keys.length ?? 0;
+  const overrideCount = query.data?.diagnostics?.override_keys.length ?? 0;
   const save = useMutation({
     mutationFn: async ({
       items: pending,
@@ -1741,14 +1771,19 @@ export function SettingsPage() {
       titleKey="resource.settings.title"
       descriptionKey="resource.settings.description"
     >
-      <div className="mb-4 flex items-center gap-2" data-family-slot="configuration-content">
+      <div
+        className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end"
+        data-family-slot="configuration-content"
+      >
         <Input
+          className="sm:max-w-sm"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder={t("settings.search")}
           data-testid="settings-search"
         />
         <IconButton
+          variant="outline"
           label={t("common.refresh")}
           data-testid="settings-refresh"
           onClick={() => query.refetch()}
@@ -1759,108 +1794,205 @@ export function SettingsPage() {
       {query.isPending ? (
         <LoadingCards testId="settings-loading" />
       ) : (
-        <div className="grid gap-4 pb-20" data-testid="settings-list">
-          {sections.map(([section, sectionItems], sectionIndex) => (
-            <Card key={section} data-testid={`settings-section-${sectionIndex}`}>
-              <CardHeader>
-                <CardTitle>{settingSection(`${section}.value`, t)}</CardTitle>
-                <CardDescription>{t("settings.sectionDescription")}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <FieldGroup>
-                  {sectionItems.map((item) => {
-                    const index = items.indexOf(item);
-                    const value =
-                      drafts[item.path] ??
-                      (item.meta.sensitive
-                        ? ""
-                        : typeof item.value === "string"
-                          ? item.value
-                          : JSON.stringify(item.value));
-                    return (
-                      <Field
-                        key={item.path}
-                        orientation="responsive"
-                        data-disabled={!canWrite || undefined}
-                        className="border-t pt-4 first:border-t-0 first:pt-0"
-                        data-testid={`setting-item-${index}`}
-                      >
-                        <FieldLabel
-                          className="min-w-0 @md/field-group:max-w-64"
-                          htmlFor={`setting-${index}`}
-                        >
-                          <span className="truncate">{settingLabel(item.path, t)}</span>
-                          <ContextHelp
-                            label={t("settings.about", { setting: settingLabel(item.path, t) })}
-                            testId={`setting-help-${index}`}
+        <div className="grid gap-5 pb-20" data-testid="settings-list">
+          <section
+            className="overflow-hidden rounded-xl ring-1 ring-foreground/10"
+            aria-label={t("settings.status.title")}
+            data-testid="settings-activation-status"
+          >
+            <dl className="grid divide-y md:grid-cols-3 md:divide-x md:divide-y-0">
+              <div className="grid gap-1 p-4">
+                <dt className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  <SlidersHorizontal className="size-3.5 text-primary" aria-hidden="true" />
+                  {t("settings.status.resolved")}
+                </dt>
+                <dd className="text-lg font-semibold tabular-nums">{allItems.length}</dd>
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.status.resolvedDescription")}
+                </p>
+              </div>
+              <div className="grid gap-1 p-4">
+                <dt className="text-xs font-medium text-muted-foreground">
+                  {t("settings.status.overrides")}
+                </dt>
+                <dd className="text-lg font-semibold tabular-nums">{overrideCount}</dd>
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.status.overridesDescription")}
+                </p>
+              </div>
+              <div className="grid gap-1 p-4">
+                <dt className="text-xs font-medium text-muted-foreground">
+                  {t("settings.status.activation")}
+                </dt>
+                <dd>
+                  <Badge
+                    variant={pendingRestartCount > 0 ? "outline" : "default"}
+                    className={
+                      pendingRestartCount > 0
+                        ? "border-primary/25 bg-primary/5 text-primary"
+                        : undefined
+                    }
+                  >
+                    {pendingRestartCount > 0
+                      ? t("settings.status.pending", { count: pendingRestartCount })
+                      : t("settings.status.active")}
+                  </Badge>
+                </dd>
+                <p className="text-xs text-muted-foreground">
+                  {pendingRestartCount > 0
+                    ? t("settings.status.pendingDescription")
+                    : t("settings.status.activeDescription")}
+                </p>
+              </div>
+            </dl>
+          </section>
+
+          {sections.length === 0 ? (
+            <EmptyCard text={t("settings.noMatches")} testId="settings-no-matches" />
+          ) : (
+            <Tabs value={selectedSection} onValueChange={setActiveSection}>
+              <div className="overflow-x-auto border-b" data-testid="settings-categories">
+                <TabsList variant="line" className="h-10 w-max min-w-full justify-start gap-4 p-0">
+                  {sections.map(([section, sectionItems], sectionIndex) => (
+                    <TabsTrigger
+                      key={section}
+                      value={section}
+                      className="h-10 flex-none rounded-none px-0 after:bg-primary"
+                      data-testid={`settings-category-${sectionIndex}`}
+                    >
+                      {settingSection(`${section}.value`, t)}
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {sectionItems.length}
+                      </span>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
+              <TabsContent value={selectedSection} className="mt-2">
+                <Card
+                  data-testid={`settings-section-${sections.findIndex(([section]) => section === selectedSection)}`}
+                >
+                  <CardHeader className="border-b">
+                    <CardTitle>{settingSection(`${selectedSection}.value`, t)}</CardTitle>
+                    <CardDescription>{t("settings.sectionDescription")}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <FieldGroup>
+                      {selectedItems.map((item) => {
+                        const index = allItems.indexOf(item);
+                        const value =
+                          drafts[item.path] ??
+                          (item.meta.sensitive
+                            ? ""
+                            : typeof item.value === "string"
+                              ? item.value
+                              : JSON.stringify(item.value));
+                        return (
+                          <Field
+                            key={item.path}
+                            orientation="responsive"
+                            data-disabled={!canWrite || undefined}
+                            className="border-t pt-5 first:border-t-0 first:pt-0"
+                            data-testid={`setting-item-${index}`}
                           >
-                            {t("settings.resolution", {
-                              path: item.path,
-                              source: settingMetaLabel(item.meta.source, t),
-                              scope: settingMetaLabel(item.meta.scope, t),
-                            })}
-                          </ContextHelp>
-                        </FieldLabel>
-                        <FieldContent className="min-w-0">
-                          {typeof item.value === "boolean" ? (
-                            <Switch
-                              id={`setting-${index}`}
-                              checked={value === "true"}
-                              onCheckedChange={(checked) =>
-                                setDrafts((current) => ({
-                                  ...current,
-                                  [item.path]: String(checked),
-                                }))
-                              }
-                              disabled={!canWrite || save.isPending}
-                              aria-label={settingLabel(item.path, t)}
-                              data-testid={`setting-input-${index}`}
-                            />
-                          ) : (
-                            <Input
-                              id={`setting-${index}`}
-                              type={item.meta.sensitive ? "password" : "text"}
-                              value={value}
-                              placeholder={
-                                item.meta.sensitive ? t("settings.secretPlaceholder") : undefined
-                              }
-                              onChange={(event) =>
-                                setDrafts((current) => ({
-                                  ...current,
-                                  [item.path]: event.target.value,
-                                }))
-                              }
-                              disabled={!canWrite || save.isPending}
-                              data-testid={`setting-input-${index}`}
-                            />
-                          )}
-                          <FieldDescription className="flex flex-wrap gap-1.5 pt-1">
-                            <Badge variant="secondary">
-                              {settingMetaLabel(item.meta.source, t)}
-                            </Badge>
-                            {item.meta.requiresRestart && (
-                              <Badge variant="outline">{t("settings.restart")}</Badge>
-                            )}
-                          </FieldDescription>
-                        </FieldContent>
-                      </Field>
-                    );
-                  })}
-                </FieldGroup>
-              </CardContent>
-            </Card>
-          ))}
+                            <FieldLabel
+                              className="min-w-0 @md/field-group:max-w-sm"
+                              htmlFor={`setting-${index}`}
+                            >
+                              <span className="min-w-0">
+                                <span className="block truncate">{settingLabel(item.path, t)}</span>
+                                <span className="mt-1 block truncate font-mono text-xs font-normal text-muted-foreground">
+                                  {item.path}
+                                </span>
+                              </span>
+                              <ContextHelp
+                                label={t("settings.about", {
+                                  setting: settingLabel(item.path, t),
+                                })}
+                                testId={`setting-help-${index}`}
+                              >
+                                {t("settings.resolution", {
+                                  path: item.path,
+                                  source: settingMetaLabel(item.meta.source, t),
+                                  scope: settingMetaLabel(item.meta.scope, t),
+                                })}
+                              </ContextHelp>
+                            </FieldLabel>
+                            <FieldContent className="min-w-0 @md/field-group:max-w-lg">
+                              {typeof item.value === "boolean" ? (
+                                <Switch
+                                  id={`setting-${index}`}
+                                  checked={value === "true"}
+                                  onCheckedChange={(checked) =>
+                                    setDrafts((current) => ({
+                                      ...current,
+                                      [item.path]: String(checked),
+                                    }))
+                                  }
+                                  disabled={!canWrite || save.isPending}
+                                  aria-label={settingLabel(item.path, t)}
+                                  data-testid={`setting-input-${index}`}
+                                />
+                              ) : (
+                                <Input
+                                  id={`setting-${index}`}
+                                  type={item.meta.sensitive ? "password" : "text"}
+                                  value={value}
+                                  placeholder={
+                                    item.meta.sensitive
+                                      ? t("settings.secretPlaceholder")
+                                      : undefined
+                                  }
+                                  onChange={(event) =>
+                                    setDrafts((current) => ({
+                                      ...current,
+                                      [item.path]: event.target.value,
+                                    }))
+                                  }
+                                  disabled={!canWrite || save.isPending}
+                                  data-testid={`setting-input-${index}`}
+                                />
+                              )}
+                              <FieldDescription className="flex flex-wrap gap-1.5 pt-1.5">
+                                <Badge variant="secondary">
+                                  {settingMetaLabel(item.meta.source, t)}
+                                </Badge>
+                                {item.meta.requiresRestart && (
+                                  <Badge
+                                    variant="outline"
+                                    className="border-primary/25 bg-primary/5 text-primary"
+                                  >
+                                    {t("settings.restart")}
+                                  </Badge>
+                                )}
+                              </FieldDescription>
+                            </FieldContent>
+                          </Field>
+                        );
+                      })}
+                    </FieldGroup>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          )}
         </div>
       )}
       {canWrite && changedItems.length > 0 && (
         <div
-          className="sticky bottom-0 z-10 -mx-1 mt-4 flex flex-col gap-3 rounded-xl border bg-background/95 p-3 shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between"
+          className="sticky bottom-3 z-10 -mx-1 mt-4 flex flex-col gap-3 rounded-xl bg-background/95 p-3 shadow-lg ring-1 ring-foreground/10 backdrop-blur sm:flex-row sm:items-center sm:justify-between"
           role="status"
           data-testid="settings-change-bar"
         >
-          <p className="text-sm font-medium">
-            {t("settings.unsavedCount", { count: changedItems.length })}
-          </p>
+          <div className="flex items-start gap-2">
+            <CheckCircle2 className="mt-0.5 size-4 text-primary" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-medium">
+                {t("settings.unsavedCount", { count: changedItems.length })}
+              </p>
+              <p className="text-xs text-muted-foreground">{t("settings.unsavedHint")}</p>
+            </div>
+          </div>
           <div className="flex gap-2">
             <Button
               className="flex-1 sm:flex-none"

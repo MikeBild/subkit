@@ -2372,7 +2372,7 @@ durable cross-replica path and queued-start race are exercised in
 
 Step results are written inline when serialized payload size is
 ≤ `STEP_RESULT_DB_BYTES`. Larger payloads are spilled to either S3
-(when `S3_OFFLOAD_BUCKET` and credentials are set) or the
+(when `storage.offload.bucket` and credentials are configured) or the
 `execution_fixtures` table, and the original row records a
 `storage_uri` of the form `s3://...` or `fixture://<uuid>`. A 512-byte
 text preview always lands inline so an operator can see at a glance
@@ -8850,6 +8850,7 @@ the repo; the committed driver above is the portable interface.
 |---|---|---|---|
 | **sk CLI** | `sk` in a terminal | Human authoring + operator admin | API key · OIDC · portal token · headless |
 | **REST API** | `/v1/*` + OpenAPI | Programmatic + CI | API key |
+| **Cockpit** | `/cockpit/settings` | Browser-based runtime administration | Browser session |
 | **MCP server** (coding agent) | stdio or Streamable HTTP, alongside the `sk` CLI | Lookup **and** authoring — the CLI supplies the definition writes MCP does not carry | OAuth 2.1 or API key |
 | **MCP server** (browser client) | Streamable HTTP | Running workflows, reading results, first drafts — **not** definition edits | OAuth 2.1 |
 | **Chat** | Slack · Teams · Google Chat | Read-only Q&A + gated workflow runs | Linked platform identity |
@@ -8952,6 +8953,15 @@ The REST API is the full programmatic interface to sk and the canonical interfac
 | **Promotion** | `POST /v1/connectors/{id}/promote` promotes DEV to PROD with explicit `copy` or `move` semantics, a required `Idempotency-Key`, admin-only RBAC, and connector/credential audit ids in the response. |
 | **Discoverability** | OpenAPI spec served at `/openapi.json`; interactive Scalar UI at `/docs`. Both available to any authenticated client. |
 | **LLM grounding** | The engine publishes its own docs in the [llms-txt](https://llmstxt.org) format, unauthenticated, as `text/markdown`: `GET /llms.txt` (a robots.txt-style index) and `GET /llms-full.txt` (the full docs in one fetch). Point an MCP client or model at these to ground it on auth, error-code semantics, and conventions in prose the bare schema can't express. |
+
+### Runtime configuration across surfaces
+
+Cockpit Settings, `GET /v1/settings` + `PUT /v1/settings/{path}`, and the
+admin-only MCP tools `subkit_settings` + `subkit_update_setting` share the same
+schema, persistence, RBAC, audit events, tenant scoping, secret masking, and
+activation response. Hot values are visible to the next runtime read. A
+restart-sensitive write reports `restart_required` and its pending path; no
+surface pretends to restart the deployment itself.
 
 ---
 
@@ -10377,7 +10387,9 @@ Every **runtime setting** is managed with `sk settings` (get / set / list / `con
 
 - **`MASTER_KEY` / `DATABASE_URL` / `ENGINE_LISTEN_HOST` are bootstrap-only.** They're needed *before* the engine, its database, or its HTTP API exist — `MASTER_KEY` decrypts the credential vault, `DATABASE_URL` is *how* the engine reaches the database where settings are stored, and `ENGINE_LISTEN_HOST` is where the server binds. `sk settings` talks to a *running* engine, so it cannot set them (chicken-and-egg). `MASTER_KEY` isn't even a config leaf.
 - **`engine --issue-admin-key` is the operator escape hatch for the *first* key.** `sk` authenticates with an API key, so it can't mint its own first one; that runs directly against the database on the `engine` binary. Once you have a key, `sk apikeys create` mints more through the API.
-- **`SK_OVERRIDE_*` is the no-disk complement to `sk settings`** — ephemeral env overrides for CI / secret managers, re-applied each boot, never persisted.
+- **Legacy `SK_OVERRIDE_*` values are migration inputs only.** A value seeds a
+  missing canonical leaf once and is persisted; it never overrides a value set
+  through Cockpit, HTTP, MCP, or `sk settings`. Remove it after the first boot.
 
 Everything else lives in `subkit.config.json` on the volume. Full leaf reference: [`../admins/settings-reference.md`](../admins/settings-reference.md); the surrounding configuration model is [`../admins/configuration.md`](../admins/configuration.md).
 
@@ -10386,7 +10398,7 @@ Everything else lives in `subkit.config.json` on the volume. Full leaf reference
 | `MASTER_KEY` | auto-generated + persisted to `/data/config/master.key` | 64-hex AES-256 key for at-rest credential encryption. **Set your own in production** — losing it makes stored credentials unrecoverable. |
 | `DATABASE_URL` | **required** | PostgreSQL connection URL. The image does not contain a database server. `DATABASE_URL_FILE` is also supported. |
 | `ENGINE_LISTEN_HOST` | `0.0.0.0` | Bind interface. The image defaults to all-interfaces so `-p` works; leave it. |
-| `SK_OVERRIDE_*` | — | Override any config leaf at runtime (e.g. `SK_OVERRIDE_LLM_API_KEY`). |
+| `SK_OVERRIDE_*` | — | Legacy one-time import for a missing leaf; ignored when canonical config already contains the path. |
 | `NODE_ENV` | `production` | — |
 
 ### Bring your own MASTER_KEY
@@ -10643,7 +10655,7 @@ Providers contribute descriptors + executors:
 
 | Provider | Contributes |
 |---|---|
-| `StaticToolProvider` | MCP-unique handlers: `authenticate`, `list_recipes`, `self_healing.scan`. |
+| `StaticToolProvider` | MCP-unique handlers: `authenticate`, `list_recipes`, `self_healing.scan`, plus admin-only `subkit_settings` and `subkit_update_setting`. |
 | `ConversationToolProvider` | everything in `conversations/tools/index.ts:listTools()`, filtered per `(surface, mcpMode, readOnly)`. |
 
 `buildRegistry(providers)` enforces cross-provider name uniqueness at boot.
@@ -11136,49 +11148,55 @@ middle state to debug later. Every runtime setting lives in one JSON file that i
 against a schema at boot, and a mistake fails immediately, naming the exact setting that is
 wrong. A broken deploy never reaches live traffic.
 
-| You want | You run |
+| You want | Surface |
 | --- | --- |
-| Interactive form | `sk settings configure` |
-| Scriptable access | `sk settings list / get / set` |
+| Browser administration | Cockpit → **Settings** (`/cockpit/settings`) |
+| Interactive terminal form | `sk settings configure` |
+| Scriptable HTTP | `GET /v1/settings`, `PUT /v1/settings/{path}` (OpenAPI at `/openapi.json`) |
+| AI/agent administration | MCP `subkit_settings`, `subkit_update_setting` |
+| CLI automation | `sk settings list / get / set` |
 | Hand edit | `vim subkit.config.json`, then restart |
 
 The per-leaf reference (type, default, scope, sensitivity, restart flag) is
 auto-generated in
 [`settings-reference.md`](./settings-reference.md). **This page covers the
-model around it** — where the file lives, how a value resolves, what stays in
-env, and how incident overrides work.
+model around it** — where values live, how they resolve, what stays in env, and
+how activation is reported.
 
 ### How a value resolves
 
 ```mermaid
 flowchart TB
     boot([Engine boot]) --> env{Bootstrap env\nMASTER_KEY, NODE_ENV,\nSUBKIT_CONFIG, DATABASE_URL}
-    env --> load[Load subkit.config.json\nmissing file = schema defaults]
-    load --> validate{Validate against\nZod schema}
+    env --> load[Load canonical config\nmissing file = schema defaults]
+    load --> legacy{Legacy SK_OVERRIDE value\nfor a missing leaf?}
+    legacy -- yes --> import[Import once and persist]
+    legacy -- no --> validate
+    import --> validate
     validate -- invalid --> fail[Exit non-zero\nwith exact leaf path]
     validate -- valid --> ready([Engine ready])
 
-    read([Every settings read]) --> o{SK_OVERRIDE_KEY set?}
-    o -- yes --> useo[Use override\nall tenants]
-    o -- no --> t{Tenant overlay?}
+    read([Every settings read]) --> t{Tenant overlay?}
     t -- yes --> uset[Use tenant value]
     t -- no --> g{Global value set?}
     g -- yes --> useg[Use global value]
     g -- no --> d[Use schema default]
 ```
 
-Precedence, highest to lowest: **`SK_OVERRIDE_<KEY>` env → tenant overlay →
-global value → schema default.**
+Precedence, highest to lowest: **tenant overlay → global value → schema
+default.** An old `SK_OVERRIDE_<KEY>` can only initialize a missing leaf once;
+it is persisted and never wins over a Cockpit/API value.
 
 ---
 
-## Bootstrap env (the only env vars the engine reads at startup)
+## Bootstrap env
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `MASTER_KEY` | yes | 64-char hex AES-256-GCM key. Used to encrypt connector credentials at rest. Generate once with `openssl rand -hex 32`. Must be injected from a secret manager — keep it out of the config file. |
 | `NODE_ENV` | no | `development` (default in dev) / `test` / `production`. Controls the `requiresRestart` guard and other defaults. |
 | `SUBKIT_CONFIG` | no | Override the config-file path. Defaults to `./subkit.config.json` in dev or `/etc/subkit/subkit.config.json` under `NODE_ENV=production`. |
+| `CONFIGURATION_DIRECTORY` | platform-provided | systemd directory hint used to locate `subkit.config.json` before the loader is available. |
 | `DATABASE_URL` | fallback | Consulted only when `database.url` is absent from the config file. Once the operator runs `sk settings set database.url '"…"'` the file value wins; if both are set and they differ the engine emits a warn line at boot and the **config-file value wins**. |
 
 Every other historical env var (`LLM_PROVIDER`, `ANTHROPIC_API_KEY`,
@@ -11256,12 +11274,10 @@ paths/query strings, IP addresses, user agents, OAuth material, or plaintext dyn
 
 ### Resolution order (every read)
 
-`SK_OVERRIDE_<KEY>` env var → tenant overlay → global value → schema
-default (see the boot/read flowchart above).
+Tenant overlay → global value → schema default (see the boot/read flowchart above).
 
 | Layer | Scope | Set by |
 | --- | --- | --- |
-| `SK_OVERRIDE_<KEY>` | All tenants (no per-tenant override env) | Incident-response env injection |
 | Tenant overlay | One tenant, `scope: tenant` leaves only | `sk settings set … --tenant <id>` |
 | Global value | All tenants | `sk settings set …` |
 | Schema default | All tenants | Shipped in the schema |
@@ -11318,24 +11334,35 @@ line documenting the change is emitted *before* the live logger is
 reconfigured, so an operator who flips `log.level=error` still sees
 the entry that flipped the threshold.
 
-## SK_OVERRIDE_<KEY> — incident escape hatch
+## Legacy `SK_OVERRIDE_<KEY>` — one-time migration only
 
-To rotate an LLM key under pressure without going through the
-config file:
+Old deployments may still inject values such as:
 
 ```bash
 SK_OVERRIDE_LLM_API_KEY=sk-new-key engine
 ```
 
-- Active overrides surface in `/v1/diagnostics/setup` and as
-  `settings_override_active{key}` on `/metrics`.
-- The override value never appears in `GET /v1/settings`, audit
-  rows, or any other operator-readable surface — only the leaf
-  path is visible.
-- The override applies to **all** tenants. There is no per-tenant
-  override env var.
-- A boot warn line lists active overrides so they can't accumulate
-  silently across container restarts.
+- If the canonical leaf is absent, the value is parsed, validated, persisted
+  atomically, and logged as `legacy_env.seeded` (path only, never value).
+- If the leaf already exists, the env value is ignored and logged as
+  `legacy_env.ignored`. Cockpit, HTTP, MCP, CLI, and file values always win.
+- `diagnostics.override_keys` remains empty and the deprecated
+  `settings_override_active` metric has no active samples.
+- New automation must use HTTP, MCP, or `sk settings`; this compatibility
+  importer exists only to make old deployments migrate safely.
+
+## Activation contract
+
+All write surfaces return the same activation truth. A hot leaf reports
+`activation: "active"`, `applied_immediately: true`, and can be observed by the
+next runtime read without a restart. A restart-sensitive leaf reports
+`activation: "restart_required"`, `applied_immediately: false`,
+`requires_restart: true`, and its path in `pending_restart_keys`.
+
+In production, restart-sensitive writes are rejected until the caller confirms
+with `force=true`. Confirmation persists the value; it does **not** restart the
+process. The Cockpit presents this as a neutral-blue pending state and directs
+the operator to restart through the deployment platform.
 
 ## `engine_settings` table
 
@@ -11357,6 +11384,8 @@ probe reads/writes it for sentinel state. Two keys:
   `apps/engine/src/http/routes/__tests__/settings.integration.test.ts`
   testcontainers test (audit identity, three response envelopes,
   scope rules).
+- The Streamable HTTP MCP integration test writes a hot value through
+  `subkit_update_setting`, reads it through REST, and verifies the audit source.
 - The Ink form's bridge is locked down by the schema-walk test in
   `apps/sk/src/settings-ui/__tests__/schema-walk.test.ts` — a new
   Zod kind in the schema fails the test until a corresponding
@@ -11366,9 +11395,10 @@ probe reads/writes it for sentinel state. Two keys:
 
 - **Fail-fast boot.** Missing or invalid required settings exit non-zero with
   a descriptive, leaf-pathed error. No silent degraded mode.
-- **Secrets stay out of the file.** Database passwords and API keys belong in a
-  secrets manager, env injection (`MASTER_KEY`), or the masked, audited
-  `sk settings` path — never in committed config.
+- **Secrets stay out of source control and logs.** `MASTER_KEY` remains in a
+  secret manager. Other secret leaves are written through masked, audited
+  Cockpit/API/CLI surfaces into the mode-`0600` canonical config — never into a
+  committed repository file or an audit value.
 - **OpenAI-compatible endpoints.** To point the `openai` provider at a
   self-hosted or third-party endpoint (custom `base_url`), see
   [AI-Assisted Authoring → OpenAI-compatible endpoints](../authors/authoring-workflows.md#openai-compatible-endpoints).
@@ -11813,7 +11843,7 @@ flowchart TB
 | Layer | Production-ready when | Section |
 |---|---|---|
 | File AV scan | a real scanner (clamd) answers under budget | [§1](#1-file-uploads-are-not-virus-scanned-scannernoop_in_production) |
-| File storage | points at a persistent, backed-up path | [§2](#2-storage-directory-is-set-via-a-config-override-overrideactive) |
+| File storage | points at a persistent, backed-up path | [§2](#2-store-uploads-on-a-persistent-directory) |
 | Secrets | `MASTER_KEY` set + rotated | [credentials-and-keys.md](./credentials-and-keys.md) |
 | Database | external managed PostgreSQL | [self-host.md](../developers/self-host.md) |
 | Recovery | versioned workflows + PG backups | [Backup and Recovery](#backup-and-recovery) |
@@ -11824,7 +11854,7 @@ The engine emits these at boot so you can grep for them:
 
 ```sh
 # from the engine container logs
-docker logs subkit 2>&1 | grep -E '"action":"(scanner.noop_in_production|override.active|ephemeral_dir_warning)"'
+docker logs subkit 2>&1 | grep -E '"action":"(scanner.noop_in_production|requires_restart_pending|ephemeral_dir_warning)"'
 ```
 
 ---
@@ -11910,61 +11940,50 @@ warn  files  scanner.noop_in_production
 
 ---
 
-## 2. Storage directory is set via a config override (`override.active`)
+## 2. Store uploads on a persistent directory
 
 ### What it is
 
-The engine resolves config from `subkit.config.json` plus **`SK_OVERRIDE_*`
-environment overlays** (prefix `SK_OVERRIDE_`, see `config/loader.ts`). In
-production, point file storage at a persistent path (e.g. the all-in-one
-image's `/data` volume):
+In production, set the canonical `storage.files.dir` leaf to a persistent path
+(for example the all-in-one image's `/data` volume):
 
 ```
-SK_OVERRIDE_STORAGE_FILES_DIR=/data/files
+sk settings set storage.files.dir '"/data/files"' --force
 ```
 
-overrides `storage.files.dir`. Boot log:
+The same change is available in Cockpit → Settings, through
+`PUT /v1/settings/storage.files.dir`, or MCP `subkit_update_setting`. Because
+the object store is constructed at boot, this leaf reports
+`restart_required`; restart the deployment after persisting it.
 
 ```
-warn  config  override.active   override_keys=["storage.files.dir"]
-"SK_OVERRIDE_* active"
+activation=restart_required pending_restart_keys=["storage.files.dir"]
 ```
 
-### Why this is correct (not a problem)
+### Why this matters
 
 - `storage.files.dir` is **where uploaded files are written on disk**.
 - If left **empty** with the `local` backend, `LocalDiskObjectStore` falls back
   to `os.tmpdir()/sk-files` and the engine emits a *different*, more serious
   warning — `ephemeral_dir_warning` — because **tmpdir is wiped on reboot and
   every customer file is lost**.
-- Setting it to a **persistent path** (`/var/lib/subkit/files`) is exactly what
-  you want: files survive reboots and redeploys. The `override.active` line is
-  **pure transparency** — it tells an operator "this value didn't come from the
-  default config."
+- Setting it to a **persistent path** (`/var/lib/subkit/files`) makes files
+  survive reboots and redeploys.
 
 ### Action required
 
-**None.** This is the intended production configuration. Keep the directory:
+Keep the directory:
 
 - on persistent storage (not tmpfs),
 - backed up if uploads matter,
 - owned/writable by the engine's system user.
-
-### TODO (future, optional)
-
-- [ ] Move `storage.files.dir` (and other stable prod values) from a
-      `SK_OVERRIDE_*` env into the committed `subkit.config.json` so the
-      `override.active` line stops appearing for settled config and overrides are
-      reserved for secrets / per-host values.
-
----
 
 ## Quick production readiness checklist
 
 | Item | Default | Production-ready? | Where |
 |---|---|---|---|
 | File AV scan | `NoopScanner` (always clean) | ❌ wire clamd before untrusted uploads | `files/scanner.ts` |
-| `storage.files.dir` | empty → ephemeral tmpdir | ✅ set to a persistent path (done via `SK_OVERRIDE_*`) | `config/loader.ts`, `index.ts` |
+| `storage.files.dir` | empty → ephemeral tmpdir | ✅ set through Cockpit/API/CLI and restart | `config/loader.ts`, `index.ts` |
 | `MASTER_KEY` | required | ✅ set; rotate per `credentials-and-keys.md` | `docs/admins/credentials-and-keys.md` |
 | PostgreSQL | external service is mandatory | ✅ use a backed-up, supported PostgreSQL deployment | `docs/developers/self-host.md` |
 
@@ -12215,13 +12234,14 @@ This is intentional: `stats:read` is the operator-tier permission, and "your run
 
 # subkit runtime settings
 
-Every value below lives in `subkit.config.json` and is editable via
-`sk settings configure` or `sk settings set <path> <value>`. Per-tenant
+Every value below lives in canonical runtime configuration and is editable via
+the Cockpit, HTTP/MCP settings APIs, `sk settings configure`, or `sk settings set`. Per-tenant
 overrides go into the file's `tenants` section and only honor leaves
 tagged `scope=tenant`.
 
-Path resolution: `SK_OVERRIDE_<UPPERCASE_PATH>` env → tenant overlay →
-global value → schema default. Overrides apply across all tenants.
+Path resolution: tenant overlay → global value → schema default. Legacy
+`SK_OVERRIDE_<UPPERCASE_PATH>` values only seed a missing leaf once and are then persisted;
+they never override an existing Cockpit/API value.
 
 ## log
 Logging
@@ -12291,6 +12311,7 @@ LLM configuration
 | `llm.providers.vertex.model` | string | `""` | tenant | no | no |  |
 | `llm.providers.vertex.private_key` | string | `""` | global | yes | no |  |
 | `llm.providers.vertex.project` | string | `""` | global | no | no |  |
+| `llm.suggestion_model` | string | `"claude-haiku-4-5"` | tenant | no | no | Small model used to generate post-turn suggestions |
 | `llm.summarize_model` | string | `""` | tenant | no | no | Model used for summarization passes |
 | `llm.summarize_provider` | enum("mock" \| "anthropic" \| "openai" \| "gemini" \| "azure" \| "bedrock" \| "vertex" \| "ai_gateway") | `null` | tenant | no | no | Provider used for summarization passes |
 | `llm.web_search` | boolean | `true` | tenant | no | no | Allow the assistant to use Anthropic-native server-side web search (billed per search; Anthropic models only). Toggle off per tenant via /settings. |
@@ -12407,6 +12428,7 @@ Queue worker
 | `queue.abort_poll_interval_ms` | number | `500` | global | no | no | Hot-reloadable interval for workers to observe durable cross-replica execution cancellation requests. |
 | `queue.concurrency` | number | `8` | tenant | no | no |  |
 | `queue.crash_recovery_sweep_interval_ms` | number | `60000` | global | no | no | Hot-reloadable interval for reconciling executions orphaned by a worker or engine restart. |
+| `queue.crash_recovery_threshold_ms` | number | `0` | global | no | no | Hard age threshold for crash recovery. 0 uses each workflow timeout multiplied by its grace factor. |
 
 ## tokens
 Token budget
@@ -12414,6 +12436,14 @@ Token budget
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `tokens.monthly_budget` | number | `0` | tenant | no | no | Hard cap on tokens consumed per calendar month. 0 = unlimited. |
+
+## operations
+Startup operations
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `operations.seed_skills_at_boot` | boolean | `true` | global | no | yes | Upsert embedded skill seeds for all tenants during startup |
+| `operations.update_check_enabled` | boolean | `true` | global | no | yes | Check for a newer engine release during startup |
 
 ## sandbox
 QuickJS JS sandbox limits

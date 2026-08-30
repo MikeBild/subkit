@@ -8,7 +8,7 @@
 // `getConfig().llm.critic`. Operators set them through
 // `sk settings configure` (per-tenant when applicable) — there are
 // NO feature-flag environment variables. The standard
-// `SK_OVERRIDE_LLM_CRITIC_*` runtime-override mechanism still works
+// Canonical llm.critic.* runtime configuration remains hot-reloadable
 // for incident response without restarts.
 //
 // Run gate:

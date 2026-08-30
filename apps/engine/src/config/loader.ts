@@ -89,7 +89,7 @@ function getDeep(source: Record<string, unknown>, leafPath: string[]): unknown {
   return cursor;
 }
 
-function coerceOverrideValue(raw: string, leaf: ConfigLeaf): unknown {
+function coerceLegacySeedValue(raw: string, leaf: ConfigLeaf): unknown {
   switch (leaf.kind) {
     case "string":
       return raw;
@@ -116,23 +116,33 @@ function coerceOverrideValue(raw: string, leaf: ConfigLeaf): unknown {
   }
 }
 
-function collectOverrides(env: Record<string, string | undefined>): {
-  overrides: Record<string, unknown>;
-  keys: string[];
+function collectLegacyEnvSeeds(
+  env: Record<string, string | undefined>,
+  fileConfig: Record<string, unknown>,
+): {
+  seeds: Record<string, unknown>;
+  seededKeys: string[];
+  ignoredKeys: string[];
 } {
-  const overrides: Record<string, unknown> = {};
-  const keys: string[] = [];
+  const seeds: Record<string, unknown> = {};
+  const seededKeys: string[] = [];
+  const ignoredKeys: string[] = [];
 
   for (const leaf of listConfigLeaves()) {
     const envKey = envKeyForLeaf(leaf.path);
     const raw = env[envKey];
     if (raw === undefined) continue;
-    const value = coerceOverrideValue(raw, leaf);
-    setDeep(overrides, leaf.path, value);
-    keys.push(dottedPath(leaf));
+    const dotted = dottedPath(leaf);
+    if (getDeep(fileConfig, leaf.path) !== undefined) {
+      ignoredKeys.push(dotted);
+      continue;
+    }
+    const value = coerceLegacySeedValue(raw, leaf);
+    setDeep(seeds, leaf.path, value);
+    seededKeys.push(dotted);
   }
 
-  return { overrides, keys };
+  return { seeds, seededKeys, ignoredKeys };
 }
 
 // Exported for unit tests that need to assert path resolution without
@@ -205,17 +215,10 @@ async function atomicWrite(configPath: string, content: string): Promise<void> {
   await fs.rename(tmp, configPath);
 }
 
-function buildSourceMap(
-  raw: Record<string, unknown>,
-  overrides: Record<string, unknown>,
-): SourceMap {
+function buildSourceMap(raw: Record<string, unknown>): SourceMap {
   const map: SourceMap = {};
   for (const leaf of listConfigLeaves()) {
     const dotted = dottedPath(leaf);
-    if (getDeep(overrides, leaf.path) !== undefined) {
-      map[dotted] = "override";
-      continue;
-    }
     const fromFile = getDeep(raw, leaf.path);
     if (fromFile !== undefined) {
       map[dotted] = "global";
@@ -291,10 +294,14 @@ export async function loadConfig(
   const fileObj =
     typeof fileRaw === "object" && fileRaw !== null ? (fileRaw as Record<string, unknown>) : {};
 
-  const { overrides, keys: overrideKeys } = collectOverrides(env);
+  const { seeds, seededKeys, ignoredKeys } = collectLegacyEnvSeeds(env, fileObj);
 
-  // Merge the file config with SK_OVERRIDE_* env overlays using
-  // REPLACE-array semantics (overrides win). We deliberately do NOT use
+  // SK_OVERRIDE_* is a compatibility import only: a legacy value may seed
+  // a leaf that is absent from the canonical file, but can never override a
+  // file/API value. The parsed config is persisted below on first import, so
+  // subsequent boots no longer depend on that environment variable.
+  //
+  // We deliberately do NOT use
   // c12/defu here: defu CONCATENATES arrays, and the previous code also
   // handed c12 the same file twice — once via `configFile` (which c12
   // reads) and again via `defaults: fileObj` — so every load DOUBLED every
@@ -304,8 +311,8 @@ export async function loadConfig(
   // hung boot (config parse + reserialize spun a core and ~3.6 GB heap).
   // `deepMergeReplaceArrays` replaces arrays, matching `applyTenantOverlay`.
   const mergedObj = deepMergeReplaceArrays(
-    deepMergeReplaceArrays({} as Record<string, unknown>, fileObj),
-    overrides,
+    deepMergeReplaceArrays({} as Record<string, unknown>, seeds),
+    fileObj,
   ) as Record<string, unknown>;
 
   // DATABASE_URL fallback: only consulted when database.url is absent.
@@ -353,7 +360,7 @@ export async function loadConfig(
         .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
         .join("\n");
       throw new ConfigLoaderError(
-        `subkit.config.json validation failed at ${configPath}:\n${issues}\n\nSet missing values via SK_OVERRIDE_<KEY> env or \`sk settings configure\`.`,
+        `subkit.config.json validation failed at ${configPath}:\n${issues}\n\nSet missing values via the Cockpit, settings HTTP/MCP API, or \`sk settings configure\`.`,
       );
     }
     throw err;
@@ -364,39 +371,54 @@ export async function loadConfig(
   mirrorGenericLlmKey(parsed);
 
   // Auto-generate session secret on first boot if missing.
-  let needsPersist = false;
+  let needsPersist = seededKeys.length > 0;
+  let generatedSessionSecret = false;
   if (!parsed.auth.session.secret) {
     parsed.auth.session.secret = randomBytes(32).toString("hex");
     needsPersist = true;
+    generatedSessionSecret = true;
   }
 
   if (needsPersist) {
     await atomicWrite(configPath, serialize(parsed));
     const { logger } = await import("../logging/logger.ts");
-    logger.info({
-      module: "config",
-      msg: "auth.session.secret was empty; generated a new value and persisted",
-    });
+    if (generatedSessionSecret) {
+      logger.info({
+        module: "config",
+        msg: "auth.session.secret was empty; generated a new value and persisted",
+      });
+    }
   }
 
-  if (overrideKeys.length > 0) {
+  if (seededKeys.length > 0) {
     const { logger } = await import("../logging/logger.ts");
     logger.warn({
       module: "config",
-      action: "override.active",
-      msg: "SK_OVERRIDE_* active",
-      override_keys: overrideKeys,
+      action: "legacy_env.seeded",
+      msg: "legacy SK_OVERRIDE_* values imported into canonical config",
+      seeded_keys: seededKeys,
+      config_path: configPath,
+    });
+  }
+  if (ignoredKeys.length > 0) {
+    const { logger } = await import("../logging/logger.ts");
+    logger.warn({
+      module: "config",
+      action: "legacy_env.ignored",
+      msg: "legacy SK_OVERRIDE_* values ignored because canonical config wins",
+      ignored_keys: ignoredKeys,
+      config_path: configPath,
     });
   }
 
   // Per-leaf source map at boot — one structured info line that
-  // summarises which leaves came from override env, which were
-  // populated by the file, and which are riding the schema default.
+  // summarises which leaves were populated by canonical config (including
+  // a just-persisted legacy seed) and which are riding the schema default.
   // Operators reading the boot log can confirm every setting is
   // sourced from the layer they expect.
   try {
     const { logger } = await import("../logging/logger.ts");
-    const sourceMap = buildSourceMap(mergedObj, overrides);
+    const sourceMap = buildSourceMap(mergedObj);
     const tally = { override: 0, global: 0, default: 0 };
     for (const src of Object.values(sourceMap)) {
       if (src === "override") tally.override += 1;
@@ -415,33 +437,14 @@ export async function loadConfig(
     /* logger module not loaded yet */
   }
 
-  // settings_override_active{key} gauge — operator dashboards flip on
-  // any leaf where the in-memory value comes from an SK_OVERRIDE_* env
-  // var. The label carries the dotted leaf path; the value itself is
-  // never exported. Stale labels from a prior loadConfig (e.g. a
-  // restart that dropped an override) are zeroed out so dashboards
-  // don't carry phantom data.
-  try {
-    const { getMetrics, METRIC_NAMES } = await import("../observability/metrics.ts");
-    const reg = getMetrics();
-    if (_state) {
-      for (const k of _state.overrideKeys) {
-        if (!overrideKeys.includes(k)) {
-          reg.set(METRIC_NAMES.SETTINGS_OVERRIDE_ACTIVE, 0, { key: k });
-        }
-      }
-    }
-    for (const k of overrideKeys) reg.set(METRIC_NAMES.SETTINGS_OVERRIDE_ACTIVE, 1, { key: k });
-  } catch {
-    /* metrics module not loaded yet (some boot orderings) */
-  }
-
   _state = {
     config: parsed,
     configPath,
     pendingRestartKeys: new Set(),
-    overrideKeys: new Set(overrideKeys),
-    globalSourceMap: buildSourceMap(mergedObj, overrides),
+    // Kept in the diagnostics wire shape for compatibility. Runtime env
+    // overrides no longer exist; canonical configuration always wins.
+    overrideKeys: new Set(),
+    globalSourceMap: buildSourceMap(mergedObj),
   };
 
   return parsed;

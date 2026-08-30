@@ -117,9 +117,9 @@ export function countModelMessagesTokens(messages: ModelMessage[]): number {
  * `anthropic-beta: context-1m-2025-08-07` on every Claude call. The cap
  * here just lifts the *prompt budget* the assembler is allowed to fill.
  *
- * Three trigger paths:
+ * Two trigger paths:
  *   - model id ends in `-1m` (explicit per-tenant pin)
- *   - env `LLM_CONTEXT_1M=1` (cluster-wide opt-in)
+ *   - `llm.context_1m` in canonical runtime configuration
  *
  * When active, usable cap is 900k (1M window minus ~100k completion
  * buffer). Eviction logic in `context-assembler.ts` still runs — it just
@@ -141,7 +141,6 @@ function isOneMillionContextActive(id: string): boolean {
   } catch {
     /* loader not initialised */
   }
-  if (process.env.LLM_CONTEXT_1M === "1") return true;
   return false;
 }
 

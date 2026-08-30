@@ -4,28 +4,13 @@
 // `contextCapFor` actually opens the 900k usable budget so the
 // assembler stops evicting skills and docs unnecessarily.
 //
-// Three trigger paths verified:
+// Trigger paths verified here:
 //   - model id ends in `-1m`
-//   - env LLM_CONTEXT_1M=1
 //   - default Claude cap (180k) when neither trigger fires
+// Runtime `llm.context_1m` read-back is covered by consumer-readback.test.ts.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { contextCapFor } from "../accounting/index.ts";
-
-let originalEnv: string | undefined;
-
-beforeEach(() => {
-  originalEnv = process.env.LLM_CONTEXT_1M;
-  delete process.env.LLM_CONTEXT_1M;
-});
-
-afterEach(() => {
-  if (originalEnv === undefined) {
-    delete process.env.LLM_CONTEXT_1M;
-  } else {
-    process.env.LLM_CONTEXT_1M = originalEnv;
-  }
-});
 
 describe("contextCapFor · 1M Claude cap", () => {
   test("default Claude (sonnet/opus/haiku) caps at 180k", () => {
@@ -42,26 +27,6 @@ describe("contextCapFor · 1M Claude cap", () => {
 
   test("model id with explicit beta tag lifts cap to 900k", () => {
     expect(contextCapFor("claude-sonnet-4-6-1m-2025-08-07")).toBe(900_000);
-  });
-
-  test("env LLM_CONTEXT_1M=1 lifts every Claude id to 900k", () => {
-    process.env.LLM_CONTEXT_1M = "1";
-    expect(contextCapFor("claude-sonnet-4-6")).toBe(900_000);
-    expect(contextCapFor("claude-opus-4-7")).toBe(900_000);
-  });
-
-  test("env LLM_CONTEXT_1M=1 leaves non-Claude ids unaffected", () => {
-    process.env.LLM_CONTEXT_1M = "1";
-    expect(contextCapFor("gpt-4o")).toBe(120_000);
-    expect(contextCapFor("gpt-4")).toBe(110_000);
-    expect(contextCapFor("mock")).toBe(13_000);
-  });
-
-  test("env LLM_CONTEXT_1M values other than '1' are ignored", () => {
-    process.env.LLM_CONTEXT_1M = "0";
-    expect(contextCapFor("claude-sonnet-4-6")).toBe(180_000);
-    process.env.LLM_CONTEXT_1M = "true";
-    expect(contextCapFor("claude-sonnet-4-6")).toBe(180_000);
   });
 });
 

@@ -321,7 +321,7 @@ durable cross-replica path and queued-start race are exercised in
 
 Step results are written inline when serialized payload size is
 ≤ `STEP_RESULT_DB_BYTES`. Larger payloads are spilled to either S3
-(when `S3_OFFLOAD_BUCKET` and credentials are set) or the
+(when `storage.offload.bucket` and credentials are configured) or the
 `execution_fixtures` table, and the original row records a
 `storage_uri` of the form `s3://...` or `fixture://<uuid>`. A 512-byte
 text preview always lands inline so an operator can see at a glance

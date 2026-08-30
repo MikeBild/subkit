@@ -224,7 +224,7 @@ export const requestConnectorReauthTool: ConversationTool = {
         if (!grantResult.ok) {
           return structuredError(
             "engine_public_url_missing",
-            "engine has no resolvable public origin — set server.public_base_url or SUBKIT_PUBLIC_BASE_URL so a secure credential-setup URL can be minted",
+            "engine has no resolvable public origin — set server.public_base_url so a secure credential-setup URL can be minted",
           );
         }
         logger.info({
@@ -300,7 +300,7 @@ export const requestConnectorReauthTool: ConversationTool = {
       if (!redirect_uri) {
         return structuredError(
           "engine_public_url_missing",
-          "engine has no resolvable public origin — set server.public_base_url or SUBKIT_PUBLIC_BASE_URL",
+          "engine has no resolvable public origin — set server.public_base_url",
         );
       }
       try {
@@ -350,7 +350,7 @@ export const requestConnectorReauthTool: ConversationTool = {
       if (grantResult.error === "engine_public_url_missing") {
         return structuredError(
           "engine_public_url_missing",
-          "engine has no resolvable public origin — set server.public_base_url or SUBKIT_PUBLIC_BASE_URL",
+          "engine has no resolvable public origin — set server.public_base_url",
         );
       }
       // no_browser_flow — shouldn't reach here since we handled ccj above

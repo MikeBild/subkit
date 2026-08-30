@@ -1,11 +1,11 @@
-// SK_OVERRIDE_<KEY> sweep — every leaf in ConfigSchema is reachable via
-// the override env path. For each leaf we boot the loader with a single
-// override env var set, then assert:
+// Legacy SK_OVERRIDE_<KEY> import sweep — every leaf in ConfigSchema is
+// reachable as a one-time seed. For each leaf we boot the loader with a
+// single legacy env var set, then assert:
 //
-//   1. getConfig() returns the override value (per the precedence chain)
-//   2. getDiagnostics().source_map[<dotted>] === "override"
-//   3. getDiagnostics().override_keys contains the dotted leaf
-//   4. config.override.active log fires once with that leaf in the list
+//   1. getConfig() returns the imported value
+//   2. getDiagnostics().source_map[<dotted>] === "global"
+//   3. getDiagnostics().override_keys stays empty
+//   4. config.legacy_env.seeded logs the imported leaf once
 //
 // Catches mapping bugs in the SK_OVERRIDE_*-to-leaf-path translator (e.g.
 // snake_case vs. dot drift). Boolean and number leaves go through their
@@ -24,7 +24,7 @@ let cfgPath: string;
 interface CapturedLog {
   module?: string;
   action?: string;
-  override_keys?: string[];
+  seeded_keys?: string[];
   [k: string]: unknown;
 }
 
@@ -136,8 +136,8 @@ function readDeep(source: unknown, leafPath: string[]): unknown {
 
 const LEAVES = listConfigLeaves();
 
-describe(`SK_OVERRIDE_<KEY> sweep — ${LEAVES.length} leaves`, () => {
-  test("every leaf is reachable via SK_OVERRIDE_*; source_map flips to override; override_keys reports the leaf", async () => {
+describe(`legacy SK_OVERRIDE_<KEY> seed sweep — ${LEAVES.length} leaves`, () => {
+  test("every leaf can seed canonical config without becoming a runtime override", async () => {
     const failures: string[] = [];
     let salt = 0;
     for (const leaf of LEAVES) {
@@ -164,6 +164,7 @@ describe(`SK_OVERRIDE_<KEY> sweep — ${LEAVES.length} leaves`, () => {
         continue;
       }
       _resetConfigForTests();
+      rmSync(cfgPath, { force: true });
       captured.length = 0;
       const k = envKey(dotted);
       const v = pickOverrideValue(leaf, salt++);
@@ -189,17 +190,17 @@ describe(`SK_OVERRIDE_<KEY> sweep — ${LEAVES.length} leaves`, () => {
         continue;
       }
       const diag = getDiagnostics();
-      if (diag.source_map[dotted] !== "override") {
+      if (diag.source_map[dotted] !== "global") {
         failures.push(`${dotted}: source_map=${diag.source_map[dotted]}`);
       }
-      if (!diag.override_keys.includes(dotted)) {
-        failures.push(`${dotted}: not in override_keys [${diag.override_keys.join(",")}]`);
+      if (diag.override_keys.length !== 0) {
+        failures.push(`${dotted}: unexpected override_keys [${diag.override_keys.join(",")}]`);
       }
-      const overrideLog = captured.filter(
-        (l) => l.module === "config" && l.action === "override.active",
+      const seedLog = captured.filter(
+        (l) => l.module === "config" && l.action === "legacy_env.seeded",
       );
-      if (overrideLog.length !== 1 || !overrideLog[0]?.override_keys?.includes(dotted)) {
-        failures.push(`${dotted}: override.active log absent or missing leaf`);
+      if (seedLog.length !== 1 || !seedLog[0]?.seeded_keys?.includes(dotted)) {
+        failures.push(`${dotted}: legacy_env.seeded log absent or missing leaf`);
       }
     }
     expect(

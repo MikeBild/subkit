@@ -19,6 +19,7 @@
 
 import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
+import { getConfig } from "../config/loader.ts";
 import { sha256Hex } from "../identity/api-key.ts";
 import { createDbFromUrl } from "./client.ts";
 import { apiKeys, tenants, users } from "./schema/index.ts";
@@ -110,10 +111,12 @@ export async function issueAdminKey(opts: { tenantSlug: string }): Promise<Issue
 export function formatIssuedKeyBanner(issued: IssuedAdminKey): string {
   // Emit a fully copy-paste `sk login` line so logging in from the host is one
   // step. Prefer the configured public base URL; fall back to the local default.
-  const engineUrl =
-    process.env.SUBKIT_PUBLIC_BASE_URL?.trim() ||
-    process.env.PUBLIC_BASE_URL?.trim() ||
-    "http://localhost:3000";
+  let engineUrl = "http://localhost:3000";
+  try {
+    engineUrl = getConfig().server.public_base_url?.trim() || engineUrl;
+  } catch {
+    // Standalone bootstrap script before config initialization.
+  }
   return [
     "",
     "----------------------------------------------------------------",

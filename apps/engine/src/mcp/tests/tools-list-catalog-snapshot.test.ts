@@ -308,6 +308,8 @@ const ADMIN_TOOLS = [
   "search_knowledge",
   "search_knowledge_v2",
   "self_healing_scan",
+  "subkit_settings",
+  "subkit_update_setting",
   "suggest_connector_templates",
   "suggest_jsonata_paths",
   "suggest_related_conversations",

@@ -1,9 +1,8 @@
 // Large-payload offload. When a serialized step result exceeds the
 // threshold (10 KB), the engine writes it to either:
 //
-//   (a) S3-compatible object storage when S3_OFFLOAD_BUCKET is set
-//       (plus S3_OFFLOAD_REGION / S3_OFFLOAD_ENDPOINT /
-//       S3_OFFLOAD_ACCESS_KEY / S3_OFFLOAD_SECRET_KEY). The returned
+//   (a) S3-compatible object storage when `storage.offload.bucket` is set
+//       (plus its region / endpoint / access-key settings). The returned
 //       `storage_uri` is `s3://<bucket>/<key>`.
 //
 //   (b) Otherwise, the `execution_fixtures` table with `kind = 'offload'`.
@@ -280,8 +279,8 @@ export function _s3OffloadConfigForTests(): S3OffloadConfig | null {
 }
 
 function s3OffloadConfig(): S3OffloadConfig | null {
-  // Prefer the runtime config; fall back to historical env vars when
-  // the loader is uninitialised (unit tests + standalone scripts).
+  // Runtime configuration is the sole production source. When the loader is
+  // not initialised (standalone unit seams), offload is simply unavailable.
   let off: {
     bucket: string;
     region: string;
@@ -300,20 +299,12 @@ function s3OffloadConfig(): S3OffloadConfig | null {
     bedrockAccess = cfg.llm.providers.bedrock.access_key_id;
     bedrockSecret = cfg.llm.providers.bedrock.secret_access_key;
   } catch {
-    /* loader not initialised — fall through to env */
+    return null;
   }
-  const bucket = off?.bucket || process.env.S3_OFFLOAD_BUCKET || "";
+  const bucket = off?.bucket || "";
   if (!bucket) return null;
-  const accessKey =
-    off?.access_key ||
-    process.env.S3_OFFLOAD_ACCESS_KEY ||
-    bedrockAccess ||
-    process.env.AWS_ACCESS_KEY_ID;
-  const secretKey =
-    off?.secret_key ||
-    process.env.S3_OFFLOAD_SECRET_KEY ||
-    bedrockSecret ||
-    process.env.AWS_SECRET_ACCESS_KEY;
+  const accessKey = off?.access_key || bedrockAccess;
+  const secretKey = off?.secret_key || bedrockSecret;
   if (!accessKey || !secretKey) {
     logger.warn({
       module: "execution",
@@ -324,17 +315,12 @@ function s3OffloadConfig(): S3OffloadConfig | null {
   }
   const cfg: S3OffloadConfig = {
     bucket,
-    region:
-      off?.region ||
-      process.env.S3_OFFLOAD_REGION ||
-      bedrockRegion ||
-      process.env.AWS_REGION ||
-      "us-east-1",
+    region: off?.region || bedrockRegion || "us-east-1",
     accessKey,
     secretKey,
-    keyPrefix: off?.key_prefix || process.env.S3_OFFLOAD_KEY_PREFIX || "offload",
+    keyPrefix: off?.key_prefix || "offload",
   };
-  const endpoint = off?.endpoint || process.env.S3_OFFLOAD_ENDPOINT;
+  const endpoint = off?.endpoint;
   if (endpoint) cfg.endpoint = endpoint;
   return cfg;
 }

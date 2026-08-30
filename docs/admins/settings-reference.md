@@ -2,13 +2,14 @@
 
 # subkit runtime settings
 
-Every value below lives in `subkit.config.json` and is editable via
-`sk settings configure` or `sk settings set <path> <value>`. Per-tenant
+Every value below lives in canonical runtime configuration and is editable via
+the Cockpit, HTTP/MCP settings APIs, `sk settings configure`, or `sk settings set`. Per-tenant
 overrides go into the file's `tenants` section and only honor leaves
 tagged `scope=tenant`.
 
-Path resolution: `SK_OVERRIDE_<UPPERCASE_PATH>` env → tenant overlay →
-global value → schema default. Overrides apply across all tenants.
+Path resolution: tenant overlay → global value → schema default. Legacy
+`SK_OVERRIDE_<UPPERCASE_PATH>` values only seed a missing leaf once and are then persisted;
+they never override an existing Cockpit/API value.
 
 ## log
 Logging
@@ -78,6 +79,7 @@ LLM configuration
 | `llm.providers.vertex.model` | string | `""` | tenant | no | no |  |
 | `llm.providers.vertex.private_key` | string | `""` | global | yes | no |  |
 | `llm.providers.vertex.project` | string | `""` | global | no | no |  |
+| `llm.suggestion_model` | string | `"claude-haiku-4-5"` | tenant | no | no | Small model used to generate post-turn suggestions |
 | `llm.summarize_model` | string | `""` | tenant | no | no | Model used for summarization passes |
 | `llm.summarize_provider` | enum("mock" \| "anthropic" \| "openai" \| "gemini" \| "azure" \| "bedrock" \| "vertex" \| "ai_gateway") | `null` | tenant | no | no | Provider used for summarization passes |
 | `llm.web_search` | boolean | `true` | tenant | no | no | Allow the assistant to use Anthropic-native server-side web search (billed per search; Anthropic models only). Toggle off per tenant via /settings. |
@@ -194,6 +196,7 @@ Queue worker
 | `queue.abort_poll_interval_ms` | number | `500` | global | no | no | Hot-reloadable interval for workers to observe durable cross-replica execution cancellation requests. |
 | `queue.concurrency` | number | `8` | tenant | no | no |  |
 | `queue.crash_recovery_sweep_interval_ms` | number | `60000` | global | no | no | Hot-reloadable interval for reconciling executions orphaned by a worker or engine restart. |
+| `queue.crash_recovery_threshold_ms` | number | `0` | global | no | no | Hard age threshold for crash recovery. 0 uses each workflow timeout multiplied by its grace factor. |
 
 ## tokens
 Token budget
@@ -201,6 +204,14 @@ Token budget
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `tokens.monthly_budget` | number | `0` | tenant | no | no | Hard cap on tokens consumed per calendar month. 0 = unlimited. |
+
+## operations
+Startup operations
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `operations.seed_skills_at_boot` | boolean | `true` | global | no | yes | Upsert embedded skill seeds for all tenants during startup |
+| `operations.update_check_enabled` | boolean | `true` | global | no | yes | Check for a newer engine release during startup |
 
 ## sandbox
 QuickJS JS sandbox limits

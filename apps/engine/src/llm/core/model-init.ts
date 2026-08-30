@@ -133,7 +133,7 @@ function requireEnv(name: string, provider: ProviderKind, tenantId?: string): st
   if (!value) {
     throw new ProviderMisconfiguredError(
       provider,
-      `${name} is not set. Configure via \`sk settings configure\` or SK_OVERRIDE_${name}.`,
+      `${name} is not set. Configure it in the Cockpit, settings API, or with \`sk settings configure\`.`,
     );
   }
   return value;
