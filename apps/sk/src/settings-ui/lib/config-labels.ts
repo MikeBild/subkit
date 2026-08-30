@@ -43,6 +43,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "llm.fallback_model": "Fallback model",
   "llm.summarize_provider": "Summarization provider",
   "llm.summarize_model": "Summarization model",
+  "llm.suggestion_model": "Suggestion model",
   "llm.context_1m": "Enable 1M context",
   "llm.web_search": "AI web search",
   "llm.output_guard": "Output safety mode",
@@ -156,7 +157,12 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "queue.concurrency": "Worker concurrency",
   "queue.abort_poll_interval_ms": "Execution cancel poll interval (ms)",
   "queue.crash_recovery_sweep_interval_ms": "Orphaned execution recovery interval (ms)",
+  "queue.crash_recovery_threshold_ms": "Orphaned execution threshold (ms)",
   "tokens.monthly_budget": "Monthly token budget",
+
+  // ── Boot operations ────────────────────────────────────────────
+  "operations.update_check_enabled": "Check for updates at startup",
+  "operations.seed_skills_at_boot": "Seed built-in skills at startup",
 
   // ── JS sandbox (QuickJS) ───────────────────────────────────────
   "sandbox.memory_bytes": "JS sandbox memory cap (bytes)",
@@ -233,6 +239,7 @@ export const SECTION_LABEL: Readonly<Record<string, string>> = {
   ui: "REPL chrome",
   notifications: "Notifications",
   connectors: "Connectors",
+  operations: "Startup operations",
 };
 
 /** Last-resort label derivation when a leaf isn't in the table.
