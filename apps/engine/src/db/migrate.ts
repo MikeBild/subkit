@@ -31,7 +31,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import type pg from "pg";
 import { z } from "zod";
 import { errorFields, logger } from "../logging/logger.ts";
-import { createMigrationDbFromUrl, type Db } from "./client.ts";
+import { createMigrationDbFromUrl, type Db, MIGRATION_SEARCH_PATH_SQL } from "./client.ts";
 import { runConversationTitleBackfill } from "./migrations/conversation-title-backfill.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedded.ts";
 import { runItemvarBackfill } from "./migrations/itemvar-backfill.ts";
@@ -296,6 +296,9 @@ async function applyMigrations(
     });
     const migStartedAt = Date.now();
     await db.transaction(async (tx) => {
+      // Historical migrations create their objects unqualified and expect
+      // `public` first. Transaction scoped so it is correct behind a pooler.
+      await tx.execute(sql.raw(MIGRATION_SEARCH_PATH_SQL));
       for (const stmt of m.statements) {
         // Safe `sql.raw`: `stmt` originates from `EMBEDDED_MIGRATIONS`,
         // i.e. SQL bodies imported with `with { type: "text" }` and
@@ -403,7 +406,12 @@ export async function detectDrift(db: Db): Promise<DriftReport> {
   const rows = (await db.execute(
     sql`SELECT id, hash, created_at, tag FROM "subkit"."__drizzle_migrations" ORDER BY id`,
   )) as unknown as {
-    rows: Array<{ id: number; hash: string; created_at: number | null; tag: string | null }>;
+    rows: Array<{
+      id: number;
+      hash: string;
+      created_at: number | null;
+      tag: string | null;
+    }>;
   };
   const dbRows = rows.rows ?? [];
 

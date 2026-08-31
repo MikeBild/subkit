@@ -20,7 +20,37 @@ auto-generated in
 model around it** — where values live, how they resolve, what stays in env, and
 how activation is reported.
 
-### How a value resolves
+### The database role must carry the search path
+
+The engine stores its tables in its own `subkit` schema (plus pg-boss's `pgboss`) and no longer
+sends `-c search_path=subkit,pg_catalog,public` as a connection startup option. Set it on the
+role the engine connects as, once, before the first boot:
+
+```sql
+ALTER ROLE <subkit_role> SET search_path = subkit, pg_catalog, public;
+```
+
+PostgreSQL applies role defaults at connection time, server-side. The startup option was
+dropped because a connection pooler in transaction mode rejects startup parameters outright —
+PgBouncer answers `unsupported startup parameter in options: search_path` (SQLSTATE 08P01) and
+the engine cannot boot behind one.
+
+Three operational consequences:
+
+- A pooler picks the role default up only on **new** server connections.
+- `public` must stay in the path: pgcrypto lives there and migrations call its functions
+  unqualified.
+- Without the role default the search path falls back to `"$user", public`, where an
+  unqualified table name resolves against pre-isolation objects and returns the wrong rows
+  instead of failing. The engine verifies the resolved schema at boot and refuses to start if
+  it is not `subkit`.
+
+Migrations are the exception and deliberately run with `public` first — all 100 historical
+`CREATE TABLE` statements are unqualified and must reproduce their original lineage before
+`0041` moves the owned set into `subkit`. That path is applied per migration transaction with
+`SET LOCAL`, which is transaction scoped and therefore correct behind any pooler.
+
+## How a value resolves
 
 ```mermaid
 flowchart TB
