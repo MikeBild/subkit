@@ -220,19 +220,28 @@ export async function createTestDb(
       upToIdx === undefined
         ? EMBEDDED_MIGRATIONS
         : EMBEDDED_MIGRATIONS.filter((m) => m.idx <= upToIdx),
+      // Replaying the lineage from scratch, exactly like a fresh deployment:
+      // the pre-isolation migrations must build in `public` before 0041 moves
+      // the owned set into `subkit`.
+      true,
     );
   } finally {
     await migration.pool.end();
   }
 
-  // Production takes the search path from the database role, because a pooler
+  // Production takes the search path from the database ROLE, because a pooler
   // in transaction mode rejects startup parameters. Tests connect straight to
-  // PostgreSQL with no pooler in between, so a startup parameter is both safe
-  // here and the only way to keep the partial-migration case expressible: a
-  // half-applied lineage must still see the legacy `public` layout.
+  // PostgreSQL with no pooler in between, so a startup option is safe here,
+  // and stating it explicitly stops a role default from silently changing what
+  // the harness sees.
+  //
+  // One path covers both cases: a half-applied lineage still has its objects
+  // in `public` and falls through to it, while a fully applied one finds them
+  // in `subkit` first. This is exactly what the previous default (`"$user",
+  // public` with a role named subkit) resolved to.
   const pool = new Pool({
     connectionString: url,
-    ...(upToIdx === undefined ? { options: "-c search_path=subkit,pg_catalog,public" } : {}),
+    options: "-c search_path=subkit,pg_catalog,public",
   });
   // Swallow async errors so a connection hiccup doesn't crash the runner.
   pool.on("error", () => {});

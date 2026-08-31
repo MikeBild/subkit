@@ -21,12 +21,18 @@ const { Pool } = pg;
 // call its functions unqualified.
 export const EXPECTED_SCHEMA = "subkit";
 
-// Migrations need `public` FIRST — all 100 historical CREATE TABLE statements
-// are unqualified and reproduce their original public-schema lineage before
-// 0041 moves the owned set into `subkit`. A role default can only carry one
-// value, so the migration path is set per transaction with SET LOCAL, which is
-// transaction scoped and therefore correct under any pooling mode.
+// Pre-isolation migrations need `public` FIRST — the historical CREATE TABLE
+// statements are unqualified and reproduce their original public-schema
+// lineage. A role default can only carry one value, so this is set per
+// migration transaction with SET LOCAL, which is transaction scoped and
+// therefore correct under any pooling mode.
+//
+// It applies ONLY up to and including the isolation migration. Everything
+// after 0041 operates on the already-moved objects in `subkit`, and forcing
+// `public` there makes an `ALTER TABLE conversations` look in a schema the
+// table left long ago.
 export const MIGRATION_SEARCH_PATH_SQL = "SET LOCAL search_path = public, pg_catalog";
+export const ISOLATION_MIGRATION_TAG = "0041_isolated_schema";
 
 let _pool: pg.Pool | null = null;
 let _db: NodePgDatabase<typeof schema> | null = null;
