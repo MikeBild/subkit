@@ -192,7 +192,10 @@ async function runServer(): Promise<void> {
     checkForUpdate(defaultUpdaterConfig("engine", OPENAPI_INFO.version))
       .then((info) => {
         if (info) {
-          setUpdateState({ update_available: true, latest_version: info.version });
+          setUpdateState({
+            update_available: true,
+            latest_version: info.version,
+          });
           logger.warn({
             module: "engine",
             action: "update.available",
@@ -201,7 +204,10 @@ async function runServer(): Promise<void> {
             latest_version: info.version,
           });
         } else {
-          setUpdateState({ update_available: false, latest_version: OPENAPI_INFO.version });
+          setUpdateState({
+            update_available: false,
+            latest_version: OPENAPI_INFO.version,
+          });
         }
       })
       .catch(() => {
@@ -246,6 +252,11 @@ async function runServer(): Promise<void> {
     });
     process.exit(1);
   }
+
+  // The search path is a role default now, not a startup parameter; verify it
+  // resolved before any subsystem queries.
+  const { assertSearchPathOrAbort } = await import("./db/assert-search-path-or-abort.ts");
+  await bootPhase("search_path", assertSearchPathOrAbort);
 
   // Validate every external runtime dependency after self-migration has
   // installed the database capabilities a fresh deployment requires.
@@ -577,7 +588,11 @@ async function runServer(): Promise<void> {
   recordBootConsumer("http_server");
 
   const opts = engineServeOptions(port);
-  const server = serve({ fetch: app.fetch, port: opts.port, hostname: opts.hostname });
+  const server = serve({
+    fetch: app.fetch,
+    port: opts.port,
+    hostname: opts.hostname,
+  });
 
   logger.info({
     module: "engine",

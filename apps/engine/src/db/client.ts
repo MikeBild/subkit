@@ -9,8 +9,24 @@ import { instrument } from "../observability/runtime-telemetry.ts";
 import * as schema from "./schema/index.ts";
 
 const { Pool } = pg;
-export const SUBKIT_DATABASE_OPTIONS = "-c search_path=subkit,pg_catalog,public";
-export const SUBKIT_MIGRATION_DATABASE_OPTIONS = "-c search_path=public,pg_catalog";
+// The product-owned schema. It is NOT sent as a `-c search_path=...` startup
+// option any more: a connection pooler in transaction mode rejects startup
+// parameters outright — PgBouncer answers `unsupported startup parameter in
+// options: search_path` (SQLSTATE 08P01) — and the engine cannot boot behind
+// one. The runtime path is a property of the database ROLE instead:
+//
+//   ALTER ROLE <role> SET search_path = subkit, pg_catalog, public;
+//
+// `public` stays in the path on purpose: pgcrypto lives there and migrations
+// call its functions unqualified.
+export const EXPECTED_SCHEMA = "subkit";
+
+// Migrations need `public` FIRST — all 100 historical CREATE TABLE statements
+// are unqualified and reproduce their original public-schema lineage before
+// 0041 moves the owned set into `subkit`. A role default can only carry one
+// value, so the migration path is set per transaction with SET LOCAL, which is
+// transaction scoped and therefore correct under any pooling mode.
+export const MIGRATION_SEARCH_PATH_SQL = "SET LOCAL search_path = public, pg_catalog";
 
 let _pool: pg.Pool | null = null;
 let _db: NodePgDatabase<typeof schema> | null = null;
@@ -42,7 +58,7 @@ export function getPool(): pg.Pool {
       "database.url is not set. Configure via `sk settings set database.url '\"…\"'` or set DATABASE_URL.",
     );
   }
-  _pool = new Pool({ connectionString: url, options: SUBKIT_DATABASE_OPTIONS });
+  _pool = new Pool({ connectionString: url });
   _pool.on("error", (err) => {
     logger.error({
       module: "db",
@@ -102,7 +118,7 @@ export function createDbFromUrl(url: string): {
   pool: pg.Pool;
   db: NodePgDatabase<typeof schema>;
 } {
-  const pool = new Pool({ connectionString: url, options: SUBKIT_DATABASE_OPTIONS });
+  const pool = new Pool({ connectionString: url });
   pool.on("error", (err) => {
     logger.error({
       module: "db",
@@ -119,7 +135,7 @@ export function createDbFromUrl(url: string): {
  * Build the dedicated client used while applying the historical migration
  * lineage. Those migrations intentionally create their legacy objects in
  * `public`; the final embedded migration moves the complete product-owned set
- * into `subkit`. Runtime connections use `SUBKIT_DATABASE_OPTIONS` only after
+ * into `subkit`. Runtime connections take the role default only after
  * that transition has completed.
  */
 export function createMigrationDbFromUrl(url: string): {
@@ -133,7 +149,6 @@ export function createMigrationDbFromUrl(url: string): {
   const pool = new Pool({
     connectionString: url,
     max: 1,
-    options: SUBKIT_MIGRATION_DATABASE_OPTIONS,
   });
   pool.on("error", (err) => {
     logger.error({
@@ -174,3 +189,24 @@ export type Db = NodePgDatabase<typeof schema>;
  * alias from here rather than redeclaring it locally.
  */
 export type Executor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/**
+ * Refuse to serve when the connection does not resolve to the product schema.
+ *
+ * WHY abort instead of warn: with no role default the search path falls back
+ * to `"$user", public`, where an unqualified table name resolves against
+ * whatever pre-isolation objects survive in `public` — the query succeeds and
+ * returns the wrong rows. An engine executing workflows against a stale schema
+ * is worse than one that is down.
+ */
+export async function assertSearchPath(pool: {
+  query: (sql: string) => Promise<{ rows: Array<{ schema: string | null }> }>;
+}): Promise<void> {
+  const result = await pool.query("SELECT current_schema() AS schema");
+  const schema = result.rows[0]?.schema ?? null;
+  if (schema === EXPECTED_SCHEMA) return;
+  throw new Error(
+    `database search_path resolves to ${schema ?? "no schema"} instead of ${EXPECTED_SCHEMA}. ` +
+      `Set it on the role: ALTER ROLE <role> SET search_path = ${EXPECTED_SCHEMA}, pg_catalog, public;`,
+  );
+}

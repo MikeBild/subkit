@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 6.22.43 — 2026-08-31
+
+### Changed
+
+- Stop sending `-c search_path=...` as a connection startup option on the
+  runtime and migration pools, and take the runtime path from the database role
+  instead. A pooler in transaction mode rejects startup parameters — PgBouncer
+  answers `unsupported startup parameter in options: search_path` (SQLSTATE
+  08P01) — so the engine could not boot behind one. Operators must set
+  `ALTER ROLE <role> SET search_path = subkit, pg_catalog, public;` once before
+  the first boot. Migrations keep `public` first through `SET LOCAL` inside
+  each migration transaction, because the historical lineage creates its tables
+  unqualified.
+
+### Added
+
+- Refuse to start when the connection does not resolve to the `subkit` schema.
+  Without the role default the path falls back to `"$user", public`, where an
+  unqualified table name resolves against pre-isolation objects and returns the
+  wrong rows instead of failing.
+
 ## [6.22.42] – 2026-08-30
 
 ### Changed
@@ -926,7 +947,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`GET /v1/mcp/tools` now answers with the catalog it is named after.** It
   served a seven-name constant — no principal, no database, `input_shape: null`,
   the same answer for every caller in every tenant. Measured against production,
-  that constant and `tools/list` for the *same* principal shared not one name: 7
+  that constant and `tools/list` for the _same_ principal shared not one name: 7
   against 107. The seven were the authoring loop's draft-only intents, which the
   MCP surface omits deliberately, so the route was not a stale approximation of
   the catalog — it was answering a different question under the catalog's name,
@@ -948,7 +969,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **The two flows that exist to be elevated were being demoted instead.**
   `judge` (the verdict that gates auto-commit) and `generate` (whole-workflow
-  authoring) are routed in code onto the model route's *fallback*, on the stated
+  authoring) are routed in code onto the model route's _fallback_, on the stated
   convention that the fallback is the stronger model — cheap primary for volume,
   strong fallback for capability. The shipped default violated that convention:
   primary `claude-sonnet-4-6`, fallback `claude-sonnet-4-5`. Every installation
@@ -1096,10 +1117,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `mcp-authorize`.
 
 - **BREAKING: `mcp.servers` and `mcp.client.*` are removed from the engine
-  configuration, and an engine that still finds them *populated* refuses to
+  configuration, and an engine that still finds them _populated_ refuses to
   boot.** The refusal is deliberate: `ConfigSchema` strips an unknown key
   silently and the next settings write reserializes the whole file, so
-  warn-and-continue would have *deleted* an operator's server declarations on
+  warn-and-continue would have _deleted_ an operator's server declarations on
   the first `sk settings set` after the upgrade. That is data, and only stopping
   is honest. The error names every offending path (including per-tenant
   overlays), which keys are at stake, the config file, and the migration. An
@@ -1118,11 +1139,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   sk credentials set <CONNECTOR_ID> --mode bearer --token '<TOKEN>'
   ```
 
-  | Removed | Replacement |
-  |---|---|
+  | Removed                                   | Replacement                                   |
+  | ----------------------------------------- | --------------------------------------------- |
   | `mcp.client.per_server_manifest_byte_cap` | `connectors.mcp.per_server_manifest_byte_cap` |
-  | `mcp.client.remote_tool_call_timeout_ms` | `connectors.mcp.remote_tool_call_timeout_ms` |
-  | `mcp.client.tools_list_max_pages` | `connectors.mcp.tools_list_max_pages` |
+  | `mcp.client.remote_tool_call_timeout_ms`  | `connectors.mcp.remote_tool_call_timeout_ms`  |
+  | `mcp.client.tools_list_max_pages`         | `connectors.mcp.tools_list_max_pages`         |
 
   A config secret is not carried over by design: `config.mcp.auth` is refused at
   the storage layer if it holds a secret-shaped key — a database `CHECK`, not a
@@ -1295,7 +1316,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A conflict error stopped dictating its own bypass.** It used to name the
   exact field that would overrule the conflict "after the user confirms"; the
   model supplied the field four seconds later and skipped the confirming. It now
-  says what to *ask*.
+  says what to _ask_.
 
 ## [5.12.0] – 2026-07-27
 
@@ -1390,7 +1411,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   precisely the workaround the approval portal exists to replace. Only the
   universal confirmation carrier ever minted an approval; every shape-specific
   one — draft saves, deletes, key creation, the run commit — skipped it. All of
-  them mint one now. What the approval *means* still differs by carrier, and
+  them mint one now. What the approval _means_ still differs by carrier, and
   deliberately so: the universal carrier grants a claimable capability the
   harness replays byte-exactly, while a shape-specific one supplies the portal
   channel plus the decision record. Ordinary clarifying questions are untouched.
@@ -1405,8 +1426,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   OIDC provider, so on the default configuration a human who had just signed in
   was, to every route, an anonymous browser. Possession of the grant link decided
   the write, unattributably, in a system whose whole promise is an audited one.
-  The portal now separates the two facts it needs: the grant scopes *which*
-  approval is on the table, and a signed-in account supplies *who* is deciding.
+  The portal now separates the two facts it needs: the grant scopes _which_
+  approval is on the table, and a signed-in account supplies _who_ is deciding.
   An unidentified browser goes through the login funnel and returns to the same
   link; an unidentified POST is refused rather than recorded as "somebody". The
   decision form carries a CSRF token bound to both the approver's session and the
@@ -1430,7 +1451,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   in the write preview were not necessarily the arguments that executed. The
   resume was running as the browser approver, who on an unauthenticated portal is
   usually nobody, so the claim failed before it could bind. The turn now runs as
-  the principal that *owns* the approval — the one whose permissions the original
+  the principal that _owns_ the approval — the one whose permissions the original
   call already passed. Attribution of the decision stays separate: the approver
   decides, they do not execute.
 
@@ -1444,7 +1465,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Across the entire history of the feature, 0 of 5 approval-backed confirmations
   had ever resolved in production. Granting was the end of the story: advancing
   the paused conversation was delegated to a client poll that the clients which
-  *need* the portal never make, and the only durable reactor keyed on an approval
+  _need_ the portal never make, and the only durable reactor keyed on an approval
   expiring, never on one being granted. The portal decision now stages the
   answer and enqueues the resume inside the approver's own request.
 - **A grant now opens its own claim window.** The expiry was set from mint time,
@@ -1468,7 +1489,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and returned the existing connector, so a fresh draft was never started and
   the secure credential setup-link flow — which requires a fresh, unsaved
   draft — was never reached. The request dead-ended on a prose question and
-  nothing was persisted. A distinct connector *name* is not the signal to
+  nothing was persisted. A distinct connector _name_ is not the signal to
   fork (that is the normal re-describe case, which reuse deliberately
   protects so cached credentials are not lost). Connector authoring now takes
   an explicit `force_new` flag: the default stays credential-preserving, and
@@ -1489,8 +1510,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   full re-authorization — roughly hourly, matching the access-token TTL. The
   audience now rides on the refresh token and is copied onto every rotated
   access token, so a client stays connected for the full 30-day refresh
-  lifetime. Adds a `resource` column to `mcp_oauth_refresh_tokens` (migration
-  0029) and propagates the audience through the code-exchange and both
+  lifetime. Adds a `resource` column to `mcp_oauth_refresh_tokens` (migration 0029) and propagates the audience through the code-exchange and both
   rotation inserts in the OAuth server provider.
 
 ## [5.4.0] – 2026-07-24
@@ -1502,7 +1522,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the single-use approval-portal link (`approval_url`) on the paused
   elicitation and in the model-facing tool result, so an agent can hand the
   operator a bare browser URL. Opening the link is already authorized — the
-  one-shot grant *is* the authorization, no sign-in — exactly as the
+  one-shot grant _is_ the authorization, no sign-in — exactly as the
   credential-setup portal already works. A url-capable client receives the
   confirmation as a native URL-mode elicitation; a form-capable client keeps
   the rich confirm form unchanged.
@@ -1530,7 +1550,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`conversation_start` no longer funnels new intents into an unrelated
   stuck conversation.** The start-idempotency check matched kebab tokens
   extracted from the incoming message against tokens extracted from a
-  candidate conversation's opening-message *prose*. German (and hyphenated
+  candidate conversation's opening-message _prose_. German (and hyphenated
   English) compounds — `http-connector`, `api-key`, `authorization-header` —
   count as kebab tokens, so once one authoring conversation existed, every
   later start sharing a single such compound "resumed" it, observed live as
@@ -1545,7 +1565,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   vanished. A resume is now an append: the message lands in the resumed
   conversation and a background turn runs it.
 - **Agents must not claim actions they never performed.** New `ACTION
-  HONESTY` prompt rule on every real surface (REPL included): an action may
+HONESTY` prompt rule on every real surface (REPL included): an action may
   only be reported as done when a tool call in the conversation returned
   success for it, and a request no palette tool can perform is answered
   honestly instead of with a fabricated "done"/"deleted" under user
@@ -1708,6 +1728,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [3.0.2] – 2026-07-22
 
 ### Security
+
 - Reject MCP OAuth access tokens that do not carry an RFC 8707 `resource`
   audience whenever the public product URL is configured. Audience-less tokens
   have no compatibility path and cannot be replayed against the production MCP
@@ -1716,6 +1737,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [3.0.1] – 2026-07-22
 
 ### Fixed
+
 - Revoke the complete refresh-token family, including every associated access
   token, when a client explicitly revokes a refresh token. Replay-triggered and
   explicit family revocation now use the same transactional persistence path
@@ -1724,10 +1746,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [3.0.0] – 2026-07-22
 
 ### Added
+
 - Publish and test the exact common MCP-auth OpenAPI operation set, schema
   names, safe SSO-first provider discovery and assertion exchange contract.
 
 ### Changed
+
 - Make API-key and direct OIDC the complete SubKit-owned MCP authentication
   model. SubKit owns every OIDC client, secret, callback, session and tenant
   mapping; no shared cross-product authentication runtime is supported.
@@ -1741,6 +1765,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   provider-discovery and identity-session schemas.
 
 ### Removed
+
 - Remove the hosted assertion-adapter protocol, CLI browser handoff and POST
   callback surface.
 - Replace the SubKit-only session response fields `user_id` and `tenant_id`
@@ -1750,6 +1775,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [2.0.4] – 2026-07-22
 
 ### Changed
+
 - Replace the last concrete identity-product example with deployment-owned
   provider ids and protocol-only documentation, then regenerate agent docs.
 - Extend the architecture contract to reject concrete provider products in
@@ -1758,6 +1784,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [2.0.3] – 2026-07-22
 
 ### Fixed
+
 - Return `400 invalid_state` from the generic browser callback when its signed
   state is missing, distinguishing malformed input from an unregistered route.
 - Extend the HTTP boundary regression suite to prove the shared generic
@@ -1766,6 +1793,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [2.0.2] – 2026-07-22
 
 ### Fixed
+
 - Pin the assertion exchange to the exact provider-neutral
   `POST /v1/identity/sessions` boundary and reject nested protocol or provider
   route variants with `404`.
@@ -1775,6 +1803,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [2.0.1] – 2026-07-22
 
 ### Fixed
+
 - Replace the last retired `auth.oidc` documentation shape with the canonical
   `auth.providers` protocol list and regenerate agent-facing documentation.
 - Add a contract test that rejects the former parallel auth trees in both the
@@ -1783,6 +1812,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [2.0.0] – 2026-07-22
 
 ### Added
+
 - Add one provider-neutral `auth.providers` list that can offer one user-owned
   API-key adapter plus multiple named direct OIDC adapters.
 - Add the common `mcp-auth-v1` sign-in/consent card with the SubKit `sk` badge,
@@ -1791,6 +1821,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   direct OIDC adapters without a product-specific provider branch.
 
 ### Changed
+
 - Remove the parallel provider-specific auth trees and
   MCP-only provider list. Discovery, browser login and bearer verification now
   consume the same structural list, with no legacy parser or route aliases.
@@ -1804,6 +1835,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   canonical config update and restart.
 
 ### Removed
+
 - Remove the former provider-specific config trees and subject columns without
   aliases or runtime migration logic. External users authenticate again to
   create a binding under the configured provider id.
@@ -1813,6 +1845,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `mcp:read` is mandatory and never silently substituted.
 
 ### Security
+
 - Sign short-lived login state, require same-origin return targets, validate
   all form boundaries with Zod, audit session issue/revoke, and reject duplicate
   provider ids or explicitly unverified external identities.
@@ -1820,11 +1853,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [1.23.3] – 2026-07-21
 
 ### Fixed
+
 - Reconcile completed MCP poll envelopes with the live elicitation state. Once an input prompt is
   resolved or expires, `conversation_get` and `tasks/result` no longer replay its stale setup URL,
   nested `awaiting_input` status, or retry suggestion from the persisted turn snapshot.
 
 ### Tests
+
 - Model the full production credential-prompt turn envelope in the expiry integration test and
   assert both MCP poll surfaces remove stale prompt data while preserving a genuinely live prompt.
 - Make the native-decline Streamable HTTP journey wait for the rejection audit to become readable,
@@ -1833,18 +1868,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [1.23.2] – 2026-07-21
 
 ### Fixed
+
 - Expire unanswered draft-credential setup elicitations when their single-use grant dies. The
   scheduler now marks the elicitation `timeout`, reactivates the conversation transactionally,
   back-fills the abandoned tool result, and lets both `conversation_get` and MCP Tasks leave
   `input_required` so the operator can request a fresh secure prompt.
 
 ### Tests
+
 - Cover the full expired-grant lifecycle against Postgres, the real `conversation_get` capability,
   and the MCP TaskStore; also prove an unexpired grant and ordinary untimed prompts remain pending.
 
 ## [1.23.1] – 2026-07-21
 
 ### Fixed
+
 - Canonicalize a single sensitive Bearer credential field to `token` before opening the
   credential prompt. Agents may now label or name that one field for the vendor without turning
   a recoverable alias into an extra failed conversation turn; ambiguous multi-secret forms still
@@ -1853,12 +1891,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the authoring model receives the contract before its first call, not only after a rejection.
 
 ### Tests
+
 - Reproduce the production Cloudflare draft using a vendor-specific Bearer field alias and prove
   the persisted elicitation is normalized to the extractor's canonical `token` slot.
 
 ## [1.23.0] – 2026-07-21
 
 ### Added
+
 - Ship Cloudflare as a normal built-in connector template with scoped Bearer-token setup,
   official OpenAPI ingestion, a credential probe, operator guidance, and read-only token,
   zone, and DNS starter recipes.
@@ -1867,6 +1907,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   service roots, and OAuth/query-key hints now seed connector drafts and documentation chunks.
 
 ### Changed
+
 - Upgrade the Firebase/Firestore built-in to template revision 2 and ingest the official
   Firestore v1 Discovery document instead of incorrectly treating it as OpenAPI. Setup guidance
   now distinguishes Google OAuth clients, Firebase ID tokens, and service-account JSON keys.
@@ -1874,6 +1915,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   material catalog migrations.
 
 ### Fixed
+
 - Remove the new static-credential connector deadlock: MCP URL elicitation can now collect a
   bearer, basic, header, query, or AWS SigV4 credential for an unsaved draft before its mandatory
   live probe; a green probe then persists the connector and encrypted credential atomically.
@@ -1884,11 +1926,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Stop prose ending in “bearer credential.” from being misclassified and cached as a bearer token.
 
 ### Tests
+
 - Cover the full Streamable HTTP journey from an unsaved bearer connector through URL credential
   input, queue resume, authenticated probe, connector save, and encrypted credential persistence.
   Native elicitation tests now also fail when the resumed background task fails or never finishes.
 
 ### Security
+
 - Document least-privilege Cloudflare tokens and explicit revocation of any credential exposed
   through chat, logs, shell history, or source control; no operator credential is used by the
   test or release pipeline.
@@ -1896,6 +1940,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [1.22.4] – 2026-07-21
 
 ### Fixed
+
 - Stream URL-fetched OpenAPI documents with a 50 MiB hard limit, rejecting oversized
   `Content-Length` values before reading and cancelling chunked bodies at the first byte over
   budget. The fetch deadline now covers the complete response body instead of only headers.
@@ -1905,23 +1950,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   host with no authentication.
 
 ### Added
+
 - YAML support and real Cloudflare JSON/YAML regression coverage for OpenAPI connector imports.
 
 ## [1.22.3] – 2026-07-21
 
 ### Fixed
+
 - Persist native MCP `decline`, `cancel`, and failed external-interaction outcomes as
   cancelled elicitations and record `approval.rejected` in both the immutable audit log and
   structured runtime logs. The queue transport now carries an explicit decision state so
   free-form reason text cannot alter governance semantics.
 
 ### Added
+
 - Real Streamable HTTP regression coverage proving that a native client decline survives the
   queue boundary as a cancelled decision with a rejected approval audit entry.
 
 ## [1.22.2] – 2026-07-21
 
 ### Fixed
+
 - Deliver conversation questions and governed write confirmations that were persisted by a
   background worker as native MCP `elicitation/create` requests on `conversation_get` and
   `tasks/get`. Answers now retain verified human provenance, Tasks reuse their original id,
@@ -1933,12 +1982,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   model-relayed answers for approval-bearing elicitations.
 
 ### Added
+
 - Real Streamable HTTP, pg-boss, Tasks, form, URL, callback, and governed-write regression
   coverage for the complete persisted MCP human-in-the-loop lifecycle.
 
 ## [1.22.1] – 2026-07-21
 
 ### Fixed
+
 - Give the GitHub-hosted TypeScript check a 4 GiB V8 heap. The complete generated
   OpenAPI type graph exceeded Node's default ~2 GiB old-space limit even though
   the typecheck itself was clean; release gates remain unchanged and fail closed.
@@ -1946,6 +1997,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [1.22.0] – 2026-07-20
 
 ### Added
+
 - Opt-in, product-internal usage telemetry for canonical HTTP routes, Google Chat and other
   Chat turns, Conversation calls/streams, and MCP JSON-RPC/session/task/capacity behavior.
   Tenant-scoped actor/session identities use a dedicated product-local HMAC; the bounded
@@ -1961,6 +2013,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [1.21.1] – 2026-07-20
 
 ### Fixed
+
 - Workflow validation now rejects bare JSONata calls such as `not(...)` in
   branch predicates and suggests the runtime-compatible `$not(...)` form.
 - Successful connector responses now build a cumulative shape contract per
@@ -2000,6 +2053,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [1.21.0] – 2026-07-20
 
 ### Added
+
 - Admin-only, tenant-scoped connector promotion moves or copies a complete
   DEV binding to PROD without secret re-entry. The transactional REST,
   conversation, and CLI surfaces require idempotency, preserve explicit
@@ -2010,6 +2064,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   state, and end-user credential ownership.
 
 ### Fixed
+
 - Schedule catalog responses now include the persisted JSON input payload,
   and create/update/list paths round-trip objects, arrays, scalars, and null.
 - Repeated `POST /v1/schedules` upserts return 200 with
@@ -2027,6 +2082,7 @@ failed its CI gate (systemd-inherited `JOURNAL_STREAM` on the runners flipped
 the new sd-daemon prefix on during tests) and was never published.
 
 ### Fixed
+
 - `edit_workflow_patch` reports `workflow_unsupported_placeholder` (with its
   did-you-mean rewrite) again for unknown placeholder namespaces on
   addressing surfaces — the commit-time resolvability gate had shadowed it
@@ -2045,6 +2101,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.20.3] – 2026-07-19
 
 ### Added
+
 - Log lines now carry sd-daemon priority prefixes (`<3>` error, `<4>` warn)
   when running under systemd, so `journalctl -p err` surfaces application
   errors instead of filing everything at info.
@@ -2057,6 +2114,7 @@ the new sd-daemon prefix on during tests) and was never published.
   trigger — failures that previously only surfaced at runtime.
 
 ### Fixed
+
 - Fan-outs against a connector with an open circuit breaker now fail once at
   the parent step instead of scheduling every branch into a doomed
   `circuit_open` failure (observed: 464 step failures in 3.5 minutes).
@@ -2072,12 +2130,14 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.20.2] – 2026-07-18
 
 ### Added
+
 - Workflow schedules now persist an explicit `execution_mode` and expose it
   consistently through workflow triggers, REST/OpenAPI, CLI, conversation
   tools, audits and documentation. Durable automation defaults to `prod`;
   short authoring loops can opt into `dev`.
 
 ### Fixed
+
 - Scheduler-created executions now carry their schedule's execution mode into
   the queue worker. Production schedules therefore resolve production
   connectors directly instead of recording `execution_mode=dev` and emitting
@@ -2086,6 +2146,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.20.1] – 2026-07-18
 
 ### Fixed
+
 - Connector statistics now read both canonical audit metadata and the aliases
   emitted by the shared egress wrapper. Successful HTTP and GraphQL calls are
   classified by their real status instead of appearing as `network_error`;
@@ -2097,10 +2158,12 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.20.0] – 2026-07-18
 
 ### Added
+
 - Canonical W3C Trace Context continuation at the HTTP edge and OpenTelemetry
   service/deployment resource fields on structured logs.
 
 ### Changed
+
 - HTTP tracing now follows W3C Trace Context semantics: all-zero IDs are
   rejected, every request creates a fresh server span, sampled flags propagate,
   and new HTTP traces use full 128-bit trace IDs. Structured records include
@@ -2114,6 +2177,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.19.1] – 2026-07-17
 
 ### Changed
+
 - GitHub release pages now carry the release's own `CHANGELOG.md` section as
   their body, so "what shipped in this tag?" is answered on the release page
   itself — an empty body made a released commit look unreleased. A tag without
@@ -2124,6 +2188,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.19.0] – 2026-07-17
 
 ### Added
+
 - [Use sk from a coding agent](docs/authors/coding-agents.md) — one page from
   install to a grounded session, for Claude Code, Codex, Cursor, Claude Desktop,
   claude.ai, and ChatGPT: connect the client, import your wiki with the
@@ -2134,6 +2199,7 @@ the new sd-daemon prefix on during tests) and was never published.
   users straight to it instead of through the contributor lane.
 
 ### Fixed
+
 - `sk --help` hid most of the CLI. `persona_hint` was only ever set for
   portal-token logins, so every profile from a normal `sk login` fell back to
   the lowest tier and the whole authoring surface — `sk agent`,
@@ -2162,8 +2228,9 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.18.0] – 2026-07-17
 
 ### Added
+
 - Import a whole markdown directory as one knowledge source: `sk
-  knowledge-sources import ./team-wiki` for CI, `/knowledge import ./team-wiki`
+knowledge-sources import ./team-wiki` for CI, `/knowledge import ./team-wiki`
   in the REPL. An Obsidian vault, an agent-maintained wiki, an
   [OKF](https://okf.md/) bundle, or a Notion export becomes one searchable
   source with a passage per file, so chat, MCP clients, and workflows ground on
@@ -2182,6 +2249,7 @@ the new sd-daemon prefix on during tests) and was never published.
   locked in — an agent or script can pull every byte back out.
 
 ### Changed
+
 - The `knowledge://` MCP resource now serves the actual markdown content
   (byte-capped, with a truncation notice) instead of a metadata stub, so an MCP
   client can read a source it can already see.
@@ -2190,6 +2258,7 @@ the new sd-daemon prefix on during tests) and was never published.
   silently admitted.
 
 ### Fixed
+
 - Frontmatter from an untrusted vault can no longer mint `domain:*` routing
   keys — only the bounded `type:` mapping and operator-supplied `--tags` may —
   so importing a third-party wiki cannot steer another domain's grounding.
@@ -2199,6 +2268,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.17.0] – 2026-07-16
 
 ### Added
+
 - Answers grounded in a knowledge source or connector documentation now show a
   dim `Sources: <name>` footer in `sk`, naming the sources the answer was built
   on so a reader can verify the claim rather than trust the prose. A source-less
@@ -2212,6 +2282,7 @@ the new sd-daemon prefix on during tests) and was never published.
   false warning.
 
 ### Changed
+
 - A declined confirmation now sticks within the conversation: after you decline
   a concrete action, an identical re-proposal is answered with the prior decline
   instead of re-prompting — even in auto mode. The guard is one-shot, so a
@@ -2219,6 +2290,7 @@ the new sd-daemon prefix on during tests) and was never published.
   and a plain question (no concrete action) is never suppressed.
 
 ### Fixed
+
 - Source citations now actually fire. The harvester read the wrong tool-result
   shape, so the `Sources:` footer and the `conversation.answer_cited` audit
   mirror never appeared in production. As a result the source-faithful
@@ -2230,6 +2302,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.16.0] – 2026-07-15
 
 ### Changed
+
 - Chat/MCP `create_skill` now files a PROPOSED skill candidate for human
   review instead of silently activating a skill — it lands in the same
   queue as session learnings (`sk learnings review`, the REPL
@@ -2239,6 +2312,7 @@ the new sd-daemon prefix on during tests) and was never published.
   bypass of the never-auto-promote invariant.
 
 ### Fixed
+
 - `SK.md` memory merge is byte-accurate and keeps the closest project
   file: under over-cap it previously discarded exactly the
   highest-priority (cwd-closest) section first and measured UTF-16 code
@@ -2252,6 +2326,7 @@ the new sd-daemon prefix on during tests) and was never published.
   dropped sections).
 
 ### Added
+
 - `policy.denied` audit rows from the tool dispatcher carry `args_hash`
   — the same fingerprint the approval lifecycle uses — so a denied
   intent joins forensically with any approval for the identical call
@@ -2260,6 +2335,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.15.0] – 2026-07-15
 
 ### Added
+
 - The skill-candidates list endpoint returns `total` — the true
   matching-row count for the applied filters, independent of the page
   cap. The sk REPL's "Review N proposed learnings" starter now shows the
@@ -2267,6 +2343,7 @@ the new sd-daemon prefix on during tests) and was never published.
   100 full candidate payloads on every boot just to render a number).
 
 ### Fixed
+
 - The post-ingest embedding kick is truly source-scoped: it no longer
   sweeps the tenant's entire un-embedded connector-doc and
   conversation-topic backlog (unbounded, with an N+1 query per
@@ -2279,6 +2356,7 @@ the new sd-daemon prefix on during tests) and was never published.
   re-home a source out of a domain (now documented).
 
 ### Changed
+
 - Internal hardening from the post-release review: the read-only MCP
   exemption is a declared per-tool property instead of a hand-curated
   name set, `/learnings` and the starter action share one prompt source,
@@ -2289,6 +2367,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.14.1] – 2026-07-15
 
 ### Fixed
+
 - The "Review N proposed learnings" starter reliably appears on the sk
   REPL's first paint — the count is now resolved with the other boot
   snapshots instead of racing Ink's once-flushed welcome banner.
@@ -2296,6 +2375,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.14.0] – 2026-07-15
 
 ### Added
+
 - Approve a captured learning without leaving the coding session:
   `approve_skill_candidate` is directly callable over MCP — the client's
   native destructive-write dialog is the explicit operator approval, and
@@ -2305,6 +2385,7 @@ the new sd-daemon prefix on during tests) and was never published.
   `/learnings` opens the same chat-first review.
 
 ### Fixed
+
 - Knowledge analysis preserves namespaced tags (`domain:*` etc.) —
   re-analysis no longer drops a source out of its domain briefing and
   tag-filtered search.
@@ -2316,6 +2397,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.13.3] – 2026-07-14
 
 ### Fixed
+
 - CI stability: audit-log test assertions poll for their own rows instead
   of draining the process-global pending-writes set (a hung neighboring
   suite could stall the drain for the whole test timeout). Supersedes the
@@ -2324,6 +2406,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.13.2] – 2026-07-14 (tag never released — gate failure, superseded by 1.13.3)
 
 ### Fixed
+
 - Test-only audit drain awaits a snapshot of in-flight writes instead of
   looping until the process-global set is empty — a background writer could
   livelock the drain and time the calling test out on CI. (v1.13.1's release
@@ -2332,11 +2415,13 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.13.1] – 2026-07-14 (tag never released — gate failure, superseded by 1.13.2)
 
 ### Added
+
 - Coding-agent integration guide (`docs/developers/coding-agent-integration.md`)
   — the full briefing → lookup → capture → review → sync loop for Claude Code
   and Codex, beginner-first; served via `/llms.txt` and `/llms-full.txt`.
 
 ### Changed
+
 - The embedded platform-reference knowledge seeds (`sk-ref-cli`,
   `sk-ref-rest-api`, `sk-ref-mcp-tools`, knowledge-and-skills) and the
   default skills (`sk-cli-reference`, `domain-setup-onboarding`) now cover
@@ -2344,6 +2429,7 @@ the new sd-daemon prefix on during tests) and was never published.
   shipped commands and routes.
 
 ### Fixed
+
 - The dead-letter reconciliation now stamps `mcp_tasks.failure_reason` and
   writes the `conversation.turn_failed` audit entry in one transaction —
   no more observation window where the state change is visible without its
@@ -2352,6 +2438,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.13.0] – 2026-07-14
 
 ### Added
+
 - `sk skills sync` materializes active, domain-tagged skills as
   Agent-Skills-standard `SKILL.md` directories into `.claude/skills/`
   and `.agents/skills/` of the repo declaring the domains. Only
@@ -2359,6 +2446,7 @@ the new sd-daemon prefix on during tests) and was never published.
   pruned — hand-authored skills are never touched.
 
 ### Fixed
+
 - Deleting a promoted skill no longer fails on the candidate's foreign
   key: `skill_candidates.promoted_skill_id` is set null on skill delete
   and the candidate keeps its approved status as history.
@@ -2366,6 +2454,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.12.1] – 2026-07-14
 
 ### Fixed
+
 - `GET /v1/skill-candidates` accepts every `pattern_kind` filter value —
   a hand-copied subset enum silently rejected `session_learning` and
   `authoring_capability`, breaking `sk learnings list`.
@@ -2373,6 +2462,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.12.0] – 2026-07-14
 
 ### Added
+
 - Coding-agent session capture: `POST /v1/agent/sessions` accepts a
   session transcript and distills durable, human-taught learnings into
   `session_learning` skill candidates (new `skill:propose` permission;
@@ -2390,6 +2480,7 @@ the new sd-daemon prefix on during tests) and was never published.
   automatically (Codex uses the printed Stop-hook snippet).
 
 ### Changed
+
 - Skill candidates carry `tags`; approval copies them onto the promoted
   skill. Session learnings are fingerprint-identified (normalized title +
   domains): re-taught rules accrue evidence instead of duplicating, and
@@ -2398,6 +2489,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.11.0] – 2026-07-14
 
 ### Added
+
 - `GET /v1/agent/briefing` — budgeted, domain-scoped grounding block for
   external coding agents (Claude Code, Codex): active skills tagged
   `domain:<slug>` as conventions, a knowledge index (full documents stay
@@ -2413,6 +2505,7 @@ the new sd-daemon prefix on during tests) and was never published.
   prints the Codex hook snippet and MCP registration commands).
 
 ### Changed
+
 - MCP connect instructions now carry the search-first grounding rule;
   `search_knowledge_v2` and `find_skill` are exempted from client-side
   deferred tool loading (`anthropic/alwaysLoad`).
@@ -2420,6 +2513,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.10.0] – 2026-07-13
 
 ### Added
+
 - The full HTTP API is now documented: all previously spec-invisible
   routes (the `/v1/rbac/*` family, discovery runs, knowledge-source and
   conversation uploads, the credential-setup form) carry OpenAPI
@@ -2434,6 +2528,7 @@ the new sd-daemon prefix on during tests) and was never published.
   connector (tenant-scoped SELECT defense).
 
 ### Changed
+
 - Discovery archives and knowledge uploads persist their bytes into the
   canonical `files` table (deduplicated, scanned, linked and audited)
   instead of writing past it; `knowledge_sources.file_id` is populated
@@ -2444,6 +2539,7 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.9.6] – 2026-07-13
 
 ### Fixed
+
 - Honest run results: `on_error: continue` failures surface as warnings instead of a
   false-positive success or a false error.
 - MCP conversation approvals are reconciled after engine restarts — no more zombie
@@ -2452,46 +2548,55 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.9.5] – 2026-07-09
 
 ### Fixed
+
 - Wildcard-scope principals resolve to the authoring catalog on the MCP surface.
 
 ## [1.9.4] – 2026-07-09
 
 ### Changed
+
 - MCP advertises the full authoring catalog; removed `find_tool` and the
   token-budget catalog trim.
 
 ## [1.9.3] – 2026-07-09
 
 ### Changed
+
 - Writes over MCP are gated via the client's native `destructiveHint` dialog
   instead of the approval portal (re-cut of 1.9.0/1.9.2).
 
 ### Fixed
+
 - Reground the `mcp-tool-contract` skill to the client-dialog write gate;
   English-only skill content.
 
 ## [1.8.2] – 2026-07-09
 
 ### Fixed
+
 - Portal-only write approval on MCP plus `find_tool` catalog discovery.
 
 ## [1.8.1] – 2026-07-09
 
 ### Added
+
 - Human-in-the-loop write governance for MCP via the approval portal (1.8.0,
   re-cut as 1.8.1).
 
 ### Fixed
+
 - RBAC runs before tool-name canonicalization on the MCP surface.
 
 ## [1.7.1] – 2026-07-07
 
 ### Added
+
 - Cross-layer regression test for the install-answer output guard.
 
 ## [1.7.0] – 2026-07-07
 
 ### Added
+
 - Credential-setup portal for connector re-authentication.
 - Graceful drain on deploy — in-flight executions finish before shutdown.
 - Row-first workflow descriptions.
@@ -2499,29 +2604,34 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.6.0] – 2026-07-07
 
 ### Changed
+
 - `tenant_read` inventory tools are RBAC-gated on the chat and MCP surfaces;
   self-status answers are grounded.
 
 ## [1.5.0] – 2026-07-07
 
 ### Added
+
 - `sk chat install-space` with pending-space discovery for Google Chat.
 - Google Search Console connector template.
 
 ## [1.4.3] – 2026-07-07
 
 ### Fixed
+
 - Chat-surface guard exempts the sk installer instructions (1.4.1–1.4.3:
   authoring-leak fix, engine-URL grounding, output-guard follow-ups).
 
 ## [1.4.0] – 2026-07-06
 
 ### Added
+
 - Grounded skills-vs-knowledge answers and guided domain setup in chat.
 
 ## [1.3.6] – 2026-07-06
 
 ### Fixed
+
 - Chat channel end-to-end polish (1.3.0–1.3.6): run workflows from prose, native
   chat formatting, surface-gated install grounding, table rendering, honest
   self-update failures with private-repo token support, sk served from the
@@ -2530,17 +2640,20 @@ the new sd-daemon prefix on during tests) and was never published.
 ## [1.2.0] – 2026-07-05
 
 ### Security
+
 - Secret input mode: elicitation answers and secret tool arguments never
   transit the transcript or LLM context.
 
 ## [1.1.1] – 2026-07-05
 
 ### Fixed
+
 - Data-fidelity root causes in held writes and vendor payload shaping;
   `conversation_commit` derives its reply from the persisted rows; bounded
   per-turn memory in model-message assembly.
 
 ### Changed
+
 - Generic stdlib surface names — vendor wire formats hidden behind shape
   detection; dependency refresh (TypeScript 6, Biome 2.5, js-yaml 5).
 
