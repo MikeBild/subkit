@@ -15,7 +15,7 @@
 // let subkit retire the SSE-held-stream elicitation/confirm-gate machinery at
 // the root. Until the SDK lands it, do not add new session-state dependencies.
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import { conversationToolCalls, mcpTasks } from "../../db/schema/index.ts";
@@ -69,6 +69,11 @@ export interface McpTaskRow {
   last_action: string | null;
   progress_step: string | null;
   heartbeat_at: Date | null;
+  // Park state, written by `setMcpTaskPark` when a provider usage limit
+  // defers the turn. Declared here because `getMcpTask` selects the whole
+  // row: the values were always present, only invisible to the type.
+  parked_until: Date | null;
+  parked_reason: string | null;
   created_at: Date;
 }
 
@@ -208,6 +213,41 @@ export async function setMcpTaskFailureIfNotTerminal(
     )
     .returning({ id: mcpTasks.id });
   return rows.length > 0;
+}
+
+/**
+ * True when a LATER turn of the same conversation already produced a
+ * result — the conversation moved past `turn_seq` rather than merely
+ * alongside it.
+ *
+ * A completed `respond_elicitation` counts, deliberately. That kind only
+ * exists downstream of a turn that paused for input, so its result is
+ * evidence the conversation progressed and not an unrelated turn that
+ * happened to finish first.
+ *
+ * Read by the run-turn worker's supersession guard. It is NOT a general
+ * ordering check: MCP turns are not serialized, so an ordinary queued
+ * turn may sit behind a later one that finishes first and must still run.
+ */
+export async function laterTurnCompleted(
+  tenant_id: string,
+  conversation_id: string,
+  turn_seq: number,
+  db: Executor,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: mcpTasks.id })
+    .from(mcpTasks)
+    .where(
+      and(
+        eq(mcpTasks.tenant_id, tenant_id),
+        eq(mcpTasks.conversation_id, conversation_id),
+        gt(mcpTasks.turn_seq, turn_seq),
+        sql`${mcpTasks.result} IS NOT NULL`,
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
 }
 
 /** `tasks/cancel` path — stamp `cancelled_at`. Idempotent. */
