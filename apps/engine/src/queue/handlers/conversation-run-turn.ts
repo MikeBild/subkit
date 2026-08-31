@@ -42,7 +42,9 @@ import {
   type ConversationTurnEnvelope,
   clearMcpTaskPark,
   getMcpTask,
+  laterTurnCompleted,
   setMcpTaskFailure,
+  setMcpTaskFailureIfNotTerminal,
   setMcpTaskParked,
   setMcpTaskResult,
 } from "../../mcp/tasks/store.ts";
@@ -99,6 +101,12 @@ function toEnvelope(outcome: svc.ConversationTurnOutcome): ConversationTurnEnvel
   };
 }
 
+/**
+ * Machine-readable failure code for a parked turn the conversation
+ * outran. Named for the only condition under which it is stamped.
+ */
+export const SUPERSEDED_WHILE_PARKED_FAILURE_REASON = "superseded_while_parked";
+
 async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss): Promise<void> {
   const data = job.data;
   log.queue.job.dequeued({
@@ -131,6 +139,55 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       duration_ms: Date.now() - started,
     });
     return;
+  }
+
+  // (a1) A parked turn that the conversation outran.
+  //
+  // `planProviderLimitPark` defers a turn until the provider's quota
+  // resets — up to 45 days — and nothing stops the operator from simply
+  // retrying in the meantime. Measured on 2026-08-18: turns 1 and 2 parked
+  // on an exhausted quota, the retry went through as turns 3-5, the
+  // conversation committed, and the two parked turns stayed runnable with
+  // the original admin principal's authoring scopes against a workflow
+  // that had since gone live. Guard (a) does not catch them — "superseded"
+  // is not one of its three terminal columns.
+  //
+  // The predicate is deliberately narrow and fires ONLY on a parked turn.
+  // MCP turns are not serialized — `withConversationTurnLock` guards the
+  // chat surface, not this one — so an ordinary queued turn may sit behind
+  // a later one that finishes first, and discarding it would silently drop
+  // a user message.
+  //
+  // `parked_until` in the past is exactly the state a waking park is in,
+  // so this reads the column for presence, unlike `getMcpTaskPark` which
+  // treats an elapsed deadline as no longer parked.
+  //
+  // Stamped as a failure_reason, without an audit row or usage event: the
+  // turn never ran, charged nothing and broke nothing, so recording an
+  // operator-facing turn failure would put a false entry in the record.
+  // The stamp exists so the task stops deriving `working` forever.
+  if (task.parked_until) {
+    const superseded = await laterTurnCompleted(
+      data.tenant_id,
+      data.conversation_id,
+      task.turn_seq,
+      db,
+    );
+    if (superseded) {
+      await setMcpTaskFailureIfNotTerminal(
+        data.tenant_id,
+        data.mcp_task_id,
+        SUPERSEDED_WHILE_PARKED_FAILURE_REASON,
+        db,
+      );
+      log.queue.job.completed({
+        msg: "conversation.run-turn parked turn superseded by a later completed turn — not run",
+        queue: CONVERSATION_RUN_TURN_QUEUE,
+        job_id: job.id,
+        duration_ms: Date.now() - started,
+      });
+      return;
+    }
   }
 
   // (a2) The turn is running now, so it is no longer parked. Clearing the

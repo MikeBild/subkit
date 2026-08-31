@@ -30,6 +30,7 @@ import {
   insertMcpTask,
   setMcpTaskCancelled,
   setMcpTaskFailure,
+  setMcpTaskParked,
   setMcpTaskResult,
 } from "../../mcp/tasks/store.ts";
 import { ConversationTaskStore } from "../../mcp/tasks/task-store.ts";
@@ -39,6 +40,7 @@ import { createQueueCtx, type QueueTestCtx } from "../tests/setup.ts";
 import {
   enqueueConversationRunTurn,
   registerConversationRunTurnHandler,
+  SUPERSEDED_WHILE_PARKED_FAILURE_REASON,
 } from "./conversation-run-turn.ts";
 
 let queue: QueueTestCtx;
@@ -757,4 +759,123 @@ describe("conversation.run-turn worker — concurrent turns (B2)", () => {
     expect(userTextOf(rowA)).toBe("MESSAGE-ALPHA");
     expect(userTextOf(rowB)).toBe("MESSAGE-BRAVO");
   }, 90_000);
+});
+
+describe("conversation.run-turn worker — parked turn supersession", () => {
+  // ── Supersession of a parked turn ──────────────────────────────────
+  //
+  // A provider-limit park defers a turn for as long as the provider's
+  // quota window — up to 45 days. The operator's natural response is to
+  // retry, so the conversation can finish while an earlier turn is still
+  // parked and runnable. These three pin the guard AND its boundaries:
+  // it must fire on a superseded park, and must stay out of the way of
+  // both a legitimate park resume and an ordinary queued turn.
+
+  /** Complete a fresh, later turn on the same conversation. */
+  async function completeLaterTurn(conversation_id: string): Promise<void> {
+    const laterId = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id,
+        kind: "append",
+        actor_id: userId,
+        request_source: "mcp",
+        user_message_id: null,
+      },
+      queue.testDb.db,
+    );
+    await setMcpTaskResult(
+      tenantId,
+      laterId,
+      { conversation_id, status: "active", events: [{ marker: "later-turn" }] },
+      queue.testDb.db,
+    );
+  }
+
+  test("a parked turn the conversation outran is not run — stamped superseded, the model is never called", async () => {
+    const { conversation_id, mcp_task_id } = await seedConversationAndTask("outrun me");
+    await setMcpTaskParked(
+      tenantId,
+      mcp_task_id,
+      new Date(getTestNow() - 1_000),
+      "provider_quota_exhausted",
+      queue.testDb.db,
+    );
+    await completeLaterTurn(conversation_id);
+
+    // Both models refuse: if the guard let the turn through, the run
+    // would reach the provider and the task would end up parked again or
+    // failed — either way NOT the superseded stamp asserted below.
+    getMockProvider().setFailure("runturn-primary", "quota_exhausted");
+    getMockProvider().setFailure("runturn-fallback", "quota_exhausted");
+    try {
+      await enqueueConversationRunTurn(queue.boss, {
+        tenant_id: tenantId,
+        conversation_id,
+        mcp_task_id,
+        actor_id: userId,
+        kind: "start",
+        provider_limit_parks: 1,
+      });
+      await waitForTerminal(mcp_task_id);
+    } finally {
+      resetMockProvider();
+    }
+
+    const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    expect(row?.failure_reason).toBe(SUPERSEDED_WHILE_PARKED_FAILURE_REASON);
+    expect(row?.result).toBeNull();
+    // The park stamp is left as it was: the turn never entered (a2).
+    expect(row?.parked_reason).toBe("provider_quota_exhausted");
+  }, 45_000);
+
+  test("a parked turn with no later completed turn resumes normally", async () => {
+    // The regression guard. A park whose conversation did NOT move on is
+    // the case the whole park mechanism exists for — it must still run.
+    const { conversation_id, mcp_task_id } = await seedConversationAndTask("resume me");
+    await setMcpTaskParked(
+      tenantId,
+      mcp_task_id,
+      new Date(getTestNow() - 1_000),
+      "provider_quota_exhausted",
+      queue.testDb.db,
+    );
+
+    await enqueueConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id,
+      actor_id: userId,
+      kind: "start",
+      provider_limit_parks: 1,
+    });
+    await waitForTerminal(mcp_task_id);
+
+    const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    expect(row?.result).not.toBeNull();
+    expect(row?.failure_reason).toBeNull();
+    // (a2) ran, so the park stamp is gone.
+    expect(row?.parked_until).toBeNull();
+  }, 45_000);
+
+  test("an unparked turn is never superseded, even with a later completed turn", async () => {
+    // MCP turns are not serialized, so an ordinary queued turn may sit
+    // behind a later one that finishes first. Discarding it would drop a
+    // user message — the guard must not reach it.
+    const { conversation_id, mcp_task_id } = await seedConversationAndTask("queued behind");
+    await completeLaterTurn(conversation_id);
+
+    await enqueueConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id,
+      actor_id: userId,
+      kind: "start",
+    });
+    await waitForTerminal(mcp_task_id);
+
+    const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    expect(row?.result).not.toBeNull();
+    expect(row?.failure_reason).toBeNull();
+  }, 45_000);
 });
