@@ -18,7 +18,7 @@ import { randomBytes } from "node:crypto";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
-import { createMigrationDbFromUrl, SUBKIT_DATABASE_OPTIONS } from "../client.ts";
+import { createMigrationDbFromUrl } from "../client.ts";
 import { runMigrations } from "../migrate.ts";
 import { EMBEDDED_MIGRATIONS } from "../migrations/embedded.ts";
 import * as schema from "../schema/index.ts";
@@ -66,7 +66,10 @@ setDefaultTimeout(TEST_DB_HOOK_TIMEOUT);
 // timeout and fail the suite with the fix instead.
 let _preflightPromise: Promise<void> | null = null;
 async function preflightPostgres(adminUrl: string): Promise<void> {
-  const probe = new Client({ connectionString: adminUrl, connectionTimeoutMillis: 2_000 });
+  const probe = new Client({
+    connectionString: adminUrl,
+    connectionTimeoutMillis: 2_000,
+  });
   try {
     await probe.connect();
   } catch (err) {
@@ -222,9 +225,14 @@ export async function createTestDb(
     await migration.pool.end();
   }
 
+  // Production takes the search path from the database role, because a pooler
+  // in transaction mode rejects startup parameters. Tests connect straight to
+  // PostgreSQL with no pooler in between, so a startup parameter is both safe
+  // here and the only way to keep the partial-migration case expressible: a
+  // half-applied lineage must still see the legacy `public` layout.
   const pool = new Pool({
     connectionString: url,
-    ...(upToIdx === undefined ? { options: SUBKIT_DATABASE_OPTIONS } : {}),
+    ...(upToIdx === undefined ? { options: "-c search_path=subkit,pg_catalog,public" } : {}),
   });
   // Swallow async errors so a connection hiccup doesn't crash the runner.
   pool.on("error", () => {});
