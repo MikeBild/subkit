@@ -31,7 +31,12 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import type pg from "pg";
 import { z } from "zod";
 import { errorFields, logger } from "../logging/logger.ts";
-import { createMigrationDbFromUrl, type Db, MIGRATION_SEARCH_PATH_SQL } from "./client.ts";
+import {
+  createMigrationDbFromUrl,
+  type Db,
+  ISOLATION_MIGRATION_TAG,
+  MIGRATION_SEARCH_PATH_SQL,
+} from "./client.ts";
 import { runConversationTitleBackfill } from "./migrations/conversation-title-backfill.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedded.ts";
 import { runItemvarBackfill } from "./migrations/itemvar-backfill.ts";
@@ -167,6 +172,12 @@ export async function runMigrations(
   // (proving the tag-membership logic, not a hand-copy of it). Production always
   // uses the default.
   migrations: readonly EmbeddedMigration[] = EMBEDDED_MIGRATIONS,
+  // True only when replaying the lineage from scratch through
+  // createMigrationDbFromUrl(). The historical migrations create their objects
+  // unqualified and expect `public` first; replaying one of them onto an
+  // already-isolated database must NOT, because 0041 moved those objects into
+  // `subkit` and forcing `public` makes them invisible.
+  replayLegacyLineage = false,
 ): Promise<MigrationReport> {
   // `db.$client` is the node-postgres Pool backing this drizzle instance
   // (the global pool in prod, a disposable per-suite pool in tests), so the
@@ -175,7 +186,7 @@ export async function runMigrations(
   if (!pool || typeof pool.connect !== "function") {
     // No reachable pool (e.g. a mock/tx handle in a unit test) — fall back
     // to running without the cross-process lock.
-    return applyMigrations(db, migrations);
+    return applyMigrations(db, migrations, replayLegacyLineage);
   }
   const lockClient = await pool.connect();
   try {
@@ -185,7 +196,7 @@ export async function runMigrations(
     // this keeps the post-migration search_path switch session-local and lets a
     // one-connection migration pool remain genuinely bounded.
     const lockedDb = drizzle(lockClient, { schema }) as Db;
-    return await applyMigrations(lockedDb, migrations);
+    return await applyMigrations(lockedDb, migrations, replayLegacyLineage);
   } finally {
     try {
       await lockClient.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]);
@@ -207,7 +218,7 @@ export async function runMigrationsFromUrl(
 ): Promise<MigrationReport> {
   const { pool, db } = createMigrationDbFromUrl(url);
   try {
-    return await runMigrations(db, migrations);
+    return await runMigrations(db, migrations, true);
   } finally {
     await pool.end();
   }
@@ -216,6 +227,7 @@ export async function runMigrationsFromUrl(
 async function applyMigrations(
   db: Db,
   migrations: readonly EmbeddedMigration[] = EMBEDDED_MIGRATIONS,
+  replayLegacyLineage = false,
 ): Promise<MigrationReport> {
   logger.info({
     module: "db",
@@ -296,9 +308,12 @@ async function applyMigrations(
     });
     const migStartedAt = Date.now();
     await db.transaction(async (tx) => {
-      // Historical migrations create their objects unqualified and expect
-      // `public` first. Transaction scoped so it is correct behind a pooler.
-      await tx.execute(sql.raw(MIGRATION_SEARCH_PATH_SQL));
+      // Only while replaying the lineage from scratch, and only for the
+      // pre-isolation migrations. Transaction scoped, so it is correct behind
+      // a pooler in transaction mode, which rejects startup parameters.
+      if (replayLegacyLineage && m.tag <= ISOLATION_MIGRATION_TAG) {
+        await tx.execute(sql.raw(MIGRATION_SEARCH_PATH_SQL));
+      }
       for (const stmt of m.statements) {
         // Safe `sql.raw`: `stmt` originates from `EMBEDDED_MIGRATIONS`,
         // i.e. SQL bodies imported with `with { type: "text" }` and
