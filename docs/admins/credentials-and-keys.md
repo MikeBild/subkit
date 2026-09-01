@@ -121,8 +121,8 @@ also fails after rotation**. There is no key-rotation envelope today.
    ```
    Update the secret store (Doppler / 1Password / DigitalOcean app-level env /
    `.env` for self-hosters) — never commit to git, never write to the config
-   file. `MASTER_KEY` is the one bootstrap env that stays outside
-   `subkit.config.json` (see [Configuration](configuration.md)).
+   file. `MASTER_KEY` is the root process binding that stays outside the
+   PostgreSQL runtime revisions (see [Configuration](configuration.md)).
 
 4. **Invalidate every ciphertext keyed by the old `MASTER_KEY`.** Run as a
    single transaction so a partial failure doesn't leave half-rotated state.

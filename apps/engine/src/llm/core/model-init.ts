@@ -10,7 +10,7 @@ import { getConfig } from "../../config/loader.ts";
 
 const CONFIG_UNINITIALIZED = Symbol("config_uninitialized");
 
-// Engine LLM config moved to subkit.config.json in v3.5. Each historical
+// Engine LLM config is read from the active PostgreSQL runtime snapshot. Each historical
 // env-var name maps to a dotted config path; existing call sites use
 // `readEnv(name)` / `requireEnv(name, provider)` which now read from
 // `getConfig()` via this map. Operator-facing diagnostics (status line,

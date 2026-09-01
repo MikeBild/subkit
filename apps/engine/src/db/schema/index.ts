@@ -28,6 +28,7 @@ export * from "./mcp_tasks.ts";
 export * from "./notifications.ts";
 export * from "./rbac.ts";
 export * from "./request_hooks.ts";
+export * from "./runtime_config.ts";
 export * from "./self_healing_scans.ts";
 export * from "./skills.ts";
 export * from "./tool_approvals.ts";

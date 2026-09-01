@@ -88,7 +88,7 @@ export function useStatusLine(deps: StatusLineDeps): string {
         connectors_count: statusSnapshot?.connectors_count ?? null,
         // Surface transient upload progress (and any other short-lived
         // status messages) here. The ref is set by file-paste and
-        // knowledge uploads while a presigned PUT is in flight and cleared on
+        // knowledge uploads while a streamed PUT is in flight and cleared on
         // completion or failure — matches the upload-progress callback
         // cadence (per-chunk).
         status_message: transientStatusRef.current,

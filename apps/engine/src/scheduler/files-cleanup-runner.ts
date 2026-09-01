@@ -4,8 +4,8 @@
 // sweeps in order:
 //
 //   1) Pending / stuck-scanning orphans. Two row categories:
-//      a. `status='pending'` rows whose presign URL has been expired for
-//         at least an hour — the client minted a token but never
+//      a. `status='pending'` rows whose authenticated upload slot has been
+//         expired for at least an hour — the client reserved a slot but never
 //         finalized. Hard-deleted along with any partial object the
 //         client may have written; emits
 //         `FILE_DELETED { reason:'pending_expired' }`.
@@ -82,9 +82,8 @@ import { getObjectStore } from "../storage/object-store.ts";
  *  complete before the bytes are reaped. */
 const UNLINKED_HARD_DELETE_AFTER = sql`interval '7 days'`;
 
-/** Pending presigned uploads get reaped one hour after their URL
- *  expires. The extra hour absorbs clock skew between the engine and
- *  S3 / the local presign minter. */
+/** Pending authenticated upload slots get reaped one hour after they expire.
+ *  The extra hour absorbs clock skew between clients and the engine. */
 const PENDING_EXPIRY_GRACE = sql`interval '1 hour'`;
 
 /** Stuck `scanning` rows: the scanner exceeded its per-call budget and
@@ -117,7 +116,7 @@ async function bestEffortDeleteObject(storage_uri: string): Promise<void> {
  * Two passes share this sweep because both are "row never finished its
  * upload pipeline" cases:
  *
- *  a. Hard-delete `status='pending'` rows whose presign URL expired more
+ *  a. Hard-delete `status='pending'` rows whose upload slot expired more
  *     than an hour ago. For each row emit `FILE_DELETED` with
  *     `reason='pending_expired'` and best-effort remove any partial
  *     object the client may have written before abandoning the upload.

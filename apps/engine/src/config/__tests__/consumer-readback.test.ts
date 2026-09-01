@@ -104,7 +104,9 @@ describe("consumer read-back per subsystem", () => {
   });
 
   test("editing generic llm.api_key updates the active provider's effective key", async () => {
-    await setConfigKey("llm.providers.anthropic.api_key", "old-provider-key", { force: true });
+    await setConfigKey("llm.providers.anthropic.api_key", "old-provider-key", {
+      force: true,
+    });
     await setConfigKey("llm.provider", "anthropic", { force: true });
     await setConfigKey("llm.api_key", "fresh-primary-key", { force: true });
 
@@ -112,7 +114,9 @@ describe("consumer read-back per subsystem", () => {
   });
 
   test("clearing generic llm.api_key clears the active provider's effective key", async () => {
-    await setConfigKey("llm.providers.anthropic.api_key", "old-provider-key", { force: true });
+    await setConfigKey("llm.providers.anthropic.api_key", "old-provider-key", {
+      force: true,
+    });
     await setConfigKey("llm.provider", "anthropic", { force: true });
     await setConfigKey("llm.api_key", "", { force: true });
 
@@ -120,7 +124,10 @@ describe("consumer read-back per subsystem", () => {
   });
 
   test("tenant generic llm.api_key updates the tenant active provider leaf", async () => {
-    await setConfigKey("llm.provider", "anthropic", { tenantId: "tenant-a", force: true });
+    await setConfigKey("llm.provider", "anthropic", {
+      tenantId: "tenant-a",
+      force: true,
+    });
     await setConfigKey("llm.providers.anthropic.api_key", "old-tenant-key", {
       tenantId: "tenant-a",
       force: true,
@@ -136,10 +143,19 @@ describe("consumer read-back per subsystem", () => {
   });
 
   test("tenant provider switch does not leak the previous provider key", async () => {
-    await setConfigKey("llm.provider", "anthropic", { tenantId: "tenant-a", force: true });
-    await setConfigKey("llm.api_key", "tenant-ant-key", { tenantId: "tenant-a", force: true });
+    await setConfigKey("llm.provider", "anthropic", {
+      tenantId: "tenant-a",
+      force: true,
+    });
+    await setConfigKey("llm.api_key", "tenant-ant-key", {
+      tenantId: "tenant-a",
+      force: true,
+    });
 
-    await setConfigKey("llm.provider", "openai", { tenantId: "tenant-a", force: true });
+    await setConfigKey("llm.provider", "openai", {
+      tenantId: "tenant-a",
+      force: true,
+    });
 
     expect(getConfig("tenant-a").llm.api_key).toBe("");
     expect(getConfig("tenant-a").llm.providers.openai.api_key).toBe("");
@@ -166,7 +182,9 @@ describe("consumer read-back per subsystem", () => {
     expect(st.anthropic_key_set).toBe(false);
     expect(st.openai_key_set).toBe(false);
 
-    await setConfigKey("llm.providers.anthropic.api_key", "ant", { force: true });
+    await setConfigKey("llm.providers.anthropic.api_key", "ant", {
+      force: true,
+    });
     await setConfigKey("llm.providers.openai.api_key", "opn", { force: true });
 
     st = globalLlmStatus();
@@ -182,13 +200,17 @@ describe("consumer read-back per subsystem", () => {
     const { globalLlmStatus } = await import("../../llm/core/invoke.ts");
     expect(globalLlmStatus().bedrock_key_set).toBe(false);
 
-    await setConfigKey("llm.providers.bedrock.access_key_id", "AKIA...", { force: true });
+    await setConfigKey("llm.providers.bedrock.access_key_id", "AKIA...", {
+      force: true,
+    });
     expect(globalLlmStatus().bedrock_key_set).toBe(false);
 
     await setConfigKey("llm.providers.bedrock.secret_access_key", "secret-bytes", { force: true });
     expect(globalLlmStatus().bedrock_key_set).toBe(false);
 
-    await setConfigKey("llm.providers.bedrock.region", "us-east-1", { force: true });
+    await setConfigKey("llm.providers.bedrock.region", "us-east-1", {
+      force: true,
+    });
     expect(globalLlmStatus().bedrock_key_set).toBe(true);
 
     // Drop one leaf — flips back to false. Proves the predicate is
@@ -251,7 +273,9 @@ describe("consumer read-back per subsystem", () => {
 
   test("crash recovery sweep interval hot-reloads without restart", async () => {
     expect(getConfig().queue.crash_recovery_sweep_interval_ms).toBe(60_000);
-    await setConfigKey("queue.crash_recovery_sweep_interval_ms", 5_000, { force: true });
+    await setConfigKey("queue.crash_recovery_sweep_interval_ms", 5_000, {
+      force: true,
+    });
     expect(getConfig().queue.crash_recovery_sweep_interval_ms).toBe(5_000);
   });
 
@@ -263,39 +287,31 @@ describe("consumer read-back per subsystem", () => {
 
   test("getConfig().observability.* updates are visible to subsequent reads", async () => {
     expect(getConfig().observability.langfuse.host).toBe("");
-    await setConfigKey("observability.langfuse.host", "https://lf.local", { force: true });
+    await setConfigKey("observability.langfuse.host", "https://lf.local", {
+      force: true,
+    });
     await setConfigKey("observability.otlp.endpoint", "https://otel.local:4318", { force: true });
     expect(getConfig().observability.langfuse.host).toBe("https://lf.local");
     expect(getConfig().observability.otlp.endpoint).toBe("https://otel.local:4318");
   });
 
-  test("offload resolver picks up storage.offload.* changes without restart", async () => {
+  test("offload resolver picks up storage.object_store.bucket without restart", async () => {
     const { _s3OffloadConfigForTests } = await import("../../execution/offload.ts");
     // No bucket configured → resolver returns null (offload disabled).
     expect(_s3OffloadConfigForTests()).toBeNull();
 
-    // Set the minimum required leaves: bucket + access keys.
-    await setConfigKey("storage.offload.bucket", "test-bucket", { force: true });
-    await setConfigKey("storage.offload.access_key", "ak", { force: true });
-    await setConfigKey("storage.offload.secret_key", "sk", { force: true });
-    await setConfigKey("storage.offload.region", "eu-central-1", { force: true });
+    await setConfigKey("storage.object_store.bucket", "test-bucket", {
+      force: true,
+    });
 
     const cfg = _s3OffloadConfigForTests();
     expect(cfg).not.toBeNull();
     expect(cfg!.bucket).toBe("test-bucket");
-    expect(cfg!.region).toBe("eu-central-1");
-    expect(cfg!.accessKey).toBe("ak");
-    expect(cfg!.secretKey).toBe("sk");
+    expect(cfg!.keyPrefix).toBe("offload");
   });
 
   test("cached process-wide settings are marked as restart-required", () => {
     const restartRequired = [
-      "storage.files.backend",
-      "storage.files.dir",
-      "storage.files.bucket",
-      "storage.s3.endpoint",
-      "storage.s3.access_key",
-      "storage.s3.secret_key",
       "platform.slack.signing_secret",
       "platform.slack.client_id",
       "platform.slack.client_secret",

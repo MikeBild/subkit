@@ -1,7 +1,7 @@
 // `sk files` — operator surface for the unified files resource.
 //
 // Seven verbs: list, get, upload, download, delete, link, stats. The
-// `upload` verb picks inline vs presigned-PUT based on Bun.file size;
+// `upload` verb picks inline vs authenticated streamed PUT based on Bun.file size;
 // the routing is invisible to the user. Existing CLI conventions:
 // `--json` on read verbs, exit codes per `headless.ts:9-10`, lazy
 // profile resolution via `resolveProfile`.
@@ -102,13 +102,13 @@ function finishProgress(opts: UploadProgressOpts): void {
   if (process.stderr.isTTY) process.stderr.write("\n");
 }
 
-/** Upload a local path, picking inline or presigned-PUT based on size.
+/** Upload a local path, picking inline or authenticated streamed PUT based on size.
  *  Returns the resulting `FileWire` row. Shared by file upload
  *  commands, REPL file-paste, knowledge / discovery / workflow, and
  *  headless flows.
  *
  *  `opts.onProgress` is invoked once per uploaded chunk during the
- *  presigned PUT phase. Callers that want a custom UX (e.g. the Ink
+ *  streamed PUT phase. Callers that want a custom UX (e.g. the Ink
  *  REPL's status line) pass this in lieu of `quiet`/`json` so they
  *  can route the cumulative event into their own renderer without
  *  having stderr scribbled on. */
@@ -145,14 +145,14 @@ export async function uploadPath(
   };
 
   // Routing decision is invisible to the user. The 5 MB threshold
-  // mirrors the engine's MAX_INLINE_BYTES; above it we go presigned.
+  // mirrors the engine's MAX_INLINE_BYTES; above it we stream via the engine.
   if (st.size <= MAX_INLINE_BYTES) {
     const bytes = readFileSync(filePath);
     const content_base64 = bytes.toString("base64");
     return await client.uploadInline({ filename, content_type, content_base64 });
   }
 
-  // Presigned path: batch-create → PUT → finalize. The sha256 is
+  // Streamed path: batch-create → authenticated PUT → finalize. The sha256 is
   // computed up-front so the engine can dedup on the request rather
   // than re-hashing on finalize.
   const bytes = readFileSync(filePath);
@@ -177,10 +177,9 @@ export async function uploadPath(
     renderProgress(ev, progress);
     opts.onProgress?.(ev);
   });
-  // The local presign sink rejects chunked transfer-encoding (per
-  // engine/files.ts:208). Bun's `fetch` adds `transfer-encoding:
-  // chunked` for ReadableStream bodies unless we set `content-length`
-  // explicitly. We do so here — the stream length is fixed.
+  // The provider-neutral object-store contract requires a known length.
+  // Bun's `fetch` adds `transfer-encoding: chunked` for ReadableStream
+  // bodies unless we set `content-length` explicitly.
   const headers: Record<string, string> = {
     ...entry.headers,
     "content-length": String(bytes.byteLength),
@@ -279,7 +278,7 @@ const getCommand = defineCommand({
 const uploadCommand = defineCommand({
   meta: {
     name: "upload",
-    description: "Upload a file (inline ≤5 MB, presigned-PUT above)",
+    description: "Upload a file (inline ≤5 MB, authenticated streaming above)",
   },
   args: {
     path: { type: "positional", required: true, description: "Path to file" },

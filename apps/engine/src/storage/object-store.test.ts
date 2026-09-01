@@ -1,71 +1,48 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { LocalDiskObjectStore } from "./object-store.ts";
+import { describe, expect, test } from "bun:test";
+import { MemoryObjectStore } from "./object-store.ts";
 
-const tmpRoots: string[] = [];
-
-function makeRoot(): string {
-  const dir = mkdtempSync(join(tmpdir(), "sk-object-store-test-"));
-  tmpRoots.push(dir);
-  return dir;
+async function* chunks(...values: string[]): AsyncIterable<Uint8Array> {
+  for (const value of values) yield Buffer.from(value);
 }
 
-afterEach(() => {
-  for (const dir of tmpRoots.splice(0)) {
-    try {
-      rmSync(dir, { recursive: true, force: true });
-    } catch {}
-  }
-});
+async function drain(stream: AsyncIterable<Uint8Array>): Promise<string> {
+  const parts: Uint8Array[] = [];
+  for await (const part of stream) parts.push(part);
+  return Buffer.concat(parts).toString("utf8");
+}
 
-describe("LocalDiskObjectStore", () => {
-  test("put then get round-trips bytes", async () => {
-    const store = new LocalDiskObjectStore(makeRoot());
-    const payload = Buffer.from("hello world");
-    await store.put("a/b/file.bin", payload);
-    const got = await store.get("a/b/file.bin");
-    expect(got.toString("utf8")).toBe("hello world");
+describe("ObjectStore contract", () => {
+  test("immutable put, head, get and exists", async () => {
+    const store = new MemoryObjectStore();
+    await store.put("tenant/object", Buffer.from("hello"));
+    expect(await store.exists("tenant/object")).toBe(true);
+    expect(await store.head("tenant/object")).toEqual({ size: 5 });
+    expect((await store.get("tenant/object")).toString()).toBe("hello");
+    await expect(store.put("tenant/object", Buffer.from("replace"))).rejects.toThrow(/immutable/);
   });
 
-  test("exists returns true after put, false after delete", async () => {
-    const store = new LocalDiskObjectStore(makeRoot());
-    await store.put("k", Buffer.from("x"));
-    expect(await store.exists("k")).toBe(true);
-    await store.delete("k");
-    expect(await store.exists("k")).toBe(false);
+  test("streaming put requires the exact declared Content-Length", async () => {
+    const store = new MemoryObjectStore();
+    await store.putStream("tenant/exact", chunks("abc", "def"), 6);
+    expect((await store.get("tenant/exact")).toString()).toBe("abcdef");
+    await expect(store.putStream("tenant/short", chunks("abc"), 4)).rejects.toThrow(
+      /did not match/,
+    );
+    await expect(store.putStream("tenant/long", chunks("abcde"), 4)).rejects.toThrow(/exceeded/);
   });
 
-  test("delete is idempotent on a missing key", async () => {
-    const store = new LocalDiskObjectStore(makeRoot());
-    await store.delete("never-existed");
-    expect(await store.exists("never-existed")).toBe(false);
-  });
-
-  test("rejects path-traversal keys", async () => {
-    const store = new LocalDiskObjectStore(makeRoot());
-    await expect(store.put("../escape.bin", Buffer.from("x"))).rejects.toThrow(/invalid key/);
-  });
-
-  test("rejects empty keys", async () => {
-    const store = new LocalDiskObjectStore(makeRoot());
-    await expect(store.put("", Buffer.from("x"))).rejects.toThrow(/invalid key/);
-  });
-
-  test("presignPut returns a local:// sentinel with expires_in", async () => {
-    const store = new LocalDiskObjectStore(makeRoot());
-    const presigned = await store.presignPut("knowledge/abc.pdf", 600);
-    expect(presigned.url.startsWith("local://knowledge/abc.pdf")).toBe(true);
-    expect(presigned.expires_in).toBeGreaterThanOrEqual(60);
-    expect(presigned.expires_in).toBeLessThanOrEqual(3600);
-  });
-
-  test("presignPut TTL clamps to [60, max] from env", async () => {
-    const store = new LocalDiskObjectStore(makeRoot());
-    const tooSmall = await store.presignPut("k", 1);
-    expect(tooSmall.expires_in).toBeGreaterThanOrEqual(60);
-    const tooLarge = await store.presignPut("k", 99_999);
-    expect(tooLarge.expires_in).toBeLessThanOrEqual(3600);
+  test("range, list and batch delete follow the common surface", async () => {
+    const store = new MemoryObjectStore();
+    await store.put("tenant/a", Buffer.from("abcdef"));
+    await store.put("tenant/b", Buffer.from("second"));
+    await store.put("other/c", Buffer.from("ignored"));
+    expect(await drain(await store.openReadRange("tenant/a", { start: 1, end: 3 }))).toBe("bcd");
+    expect((await store.list("tenant/")).map((item) => item.key).sort()).toEqual([
+      "tenant/a",
+      "tenant/b",
+    ]);
+    await store.deleteMany(["tenant/a", "tenant/b"]);
+    expect(await store.exists("tenant/a")).toBe(false);
+    expect(await store.exists("tenant/b")).toBe(false);
   });
 });

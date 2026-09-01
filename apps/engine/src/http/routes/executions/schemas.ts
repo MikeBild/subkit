@@ -52,6 +52,10 @@ export const StepRowSchema = z
     duration_ms: z.number().nullable(),
     retry_count: z.number(),
     result_storage_uri: z.string().nullable(),
+    result_sha256: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .nullable(),
     result_preview: z.string().nullable(),
     output_preview: z.unknown().nullable(),
     error: z.unknown().nullable(),
@@ -273,6 +277,7 @@ export function serializeStep(row: typeof executionSteps.$inferSelect) {
     duration_ms: row.duration_ms ?? null,
     retry_count: row.retry_count ?? 0,
     result_storage_uri: row.result_storage_uri ?? null,
+    result_sha256: row.result_sha256 ?? null,
     result_preview: row.result_preview ?? null,
     output_preview: row.output_preview ?? null,
     error: row.error ?? null,

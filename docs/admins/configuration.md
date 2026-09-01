@@ -1,300 +1,216 @@
 # Configuring the engine
 
-Either the configuration is valid or the engine does not start — there is no half-working
-middle state to debug later. Every runtime setting lives in one JSON file that is checked
-against a schema at boot, and a mistake fails immediately, naming the exact setting that is
-wrong. A broken deploy never reaches live traffic.
+SubKit keeps its canonical non-fundamental runtime configuration in PostgreSQL. Every change
+creates an immutable revision; the database always wins on later boots. `DATABASE_URL`,
+`MASTER_KEY`, and the listen-host binding remain process bootstrap because they are needed
+before the database snapshot can be reached. Cockpit, HTTP, MCP, and the `sk` CLI expose the
+same saved revision, active revision, activation state, and audit history.
 
-| You want | Surface |
-| --- | --- |
-| Browser administration | Cockpit → **Settings** (`/cockpit/settings`) |
-| Interactive terminal form | `sk settings configure` |
-| Scriptable HTTP | `GET /v1/settings`, `PUT /v1/settings/{path}` (OpenAPI at `/openapi.json`) |
-| AI/agent administration | MCP `subkit_settings`, `subkit_update_setting` |
-| CLI automation | `sk settings list / get / set` |
-| Hand edit | `vim subkit.config.json`, then restart |
+| You want                        | Surface                                                 |
+| ------------------------------- | ------------------------------------------------------- |
+| Browser administration          | Cockpit → **Settings** (`/cockpit/settings`)            |
+| Interactive terminal form       | `sk settings configure`                                 |
+| Scriptable HTTP                 | `GET /v1/settings`, `PATCH /v1/settings`                |
+| Revision history and activation | `/v1/settings/revisions*`, `/v1/settings/activations/*` |
+| Secret versions                 | `/v1/secrets*`                                          |
+| AI/agent administration         | MCP `subkit_settings`, `subkit_update_setting`          |
+| CLI automation                  | `sk settings list / get / set`                          |
 
-The per-leaf reference (type, default, scope, sensitivity, restart flag) is
-auto-generated in
-[`settings-reference.md`](./settings-reference.md). **This page covers the
-model around it** — where values live, how they resolve, what stays in env, and
-how activation is reported.
+The generated [settings reference](./settings-reference.md) lists every leaf's type, default,
+scope, sensitivity, and restart requirement.
 
-### The database role must carry the search path
+## The database role must carry the search path
 
-The engine stores its tables in its own `subkit` schema (plus pg-boss's `pgboss`) and no longer
-sends `-c search_path=subkit,pg_catalog,public` as a connection startup option. Set it on the
-role the engine connects as, once, before the first boot:
+The engine owns the `subkit` schema and pg-boss owns `pgboss`. Configure the database role
+before the first boot:
 
 ```sql
 ALTER ROLE <subkit_role> SET search_path = subkit, pg_catalog, public;
 ```
 
-PostgreSQL applies role defaults at connection time, server-side. The startup option was
-dropped because a connection pooler in transaction mode rejects startup parameters outright —
-PgBouncer answers `unsupported startup parameter in options: search_path` (SQLSTATE 08P01) and
-the engine cannot boot behind one.
+This role-level setting works through transaction-mode poolers. `public` remains in the path
+because migrations use pgcrypto. The engine verifies the resolved schema and refuses to start
+against an unsafe search path.
 
-Three operational consequences:
+## Bootstrap, then database authority
 
-- A pooler picks the role default up only on **new** server connections.
-- `public` must stay in the path: pgcrypto lives there and migrations call its functions
-  unqualified.
-- Without the role default the search path falls back to `"$user", public`, where an
-  unqualified table name resolves against pre-isolation objects and returns the wrong rows
-  instead of failing. The engine verifies the resolved schema at boot and refuses to start if
-  it is not `subkit`.
+Only process-start values live in environment variables:
 
-Migrations are the exception and deliberately run with `public` first — all 100 historical
-`CREATE TABLE` statements are unqualified and must reproduce their original lineage before
-`0041` moves the owned set into `subkit`. That path is applied per migration transaction with
-`SET LOCAL`, which is transaction scoped and therefore correct behind any pooler.
+| Variable                           | Required                 | Purpose                                                                                                                                          |
+| ---------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MASTER_KEY`                       | yes                      | Product-isolated, 64-character hex AES-256-GCM key used to encrypt versioned secrets in PostgreSQL. Losing it makes those secrets unrecoverable. |
+| `DATABASE_URL`                     | every process start      | Fundamental PostgreSQL connection used to find the canonical runtime revision; never runtime-editable.                                          |
+| `NODE_ENV`                         | no                       | `development`, `test`, or `production`.                                                                                                          |
+| `ENGINE_LISTEN_HOST`               | no                       | Process bind address.                                                                                                                            |
+| `PORT`                             | revision 1 only          | Seeds `server.port` in an empty database.                                                                                                        |
+| `SUBKIT_BOOTSTRAP_KEY`             | no                       | Optional one-time onboarding key. Once bootstrap completes it is invalid even if the binding remains present.                                    |
+| `OBJECT_STORAGE_ENDPOINT`          | revision 1 only          | S3-compatible endpoint.                                                                                                                          |
+| `OBJECT_STORAGE_REGION`            | revision 1 only          | SigV4 region.                                                                                                                                    |
+| `OBJECT_STORAGE_BUCKET`            | revision 1 only          | Private product bucket.                                                                                                                          |
+| `OBJECT_STORAGE_ACCESS_KEY_ID`     | revision 1 only          | S3 access-key id.                                                                                                                                |
+| `OBJECT_STORAGE_SECRET_ACCESS_KEY` | revision 1 only          | S3 secret access key.                                                                                                                            |
+| `OBJECT_STORAGE_SESSION_TOKEN`     | revision 1 only          | Optional temporary credential token.                                                                                                             |
+| `OBJECT_STORAGE_PATH_STYLE`        | revision 1 only          | `true` for path-style endpoints such as Garage/Upraft.                                                                                           |
 
-## How a value resolves
+On an empty database, bootstrap bindings and schema defaults become revision 1. Secret-valued
+runtime leaves are immediately encrypted as immutable secret versions and the revision stores
+only `secret://<name>/<version>` references. `DATABASE_URL` is the deliberate exception: the
+revision contains only the non-secret `bootstrap://DATABASE_URL` sentinel and the real DSN
+remains the active process binding, so a DSN rotation cannot split the request pool from
+queue/listener connections. On every later boot, revision-1 seed variables cannot override
+saved PostgreSQL state. Rotate the DSN in the workload secret and restart replicas; settings
+writes to `database.url` fail closed.
 
-```mermaid
-flowchart TB
-    boot([Engine boot]) --> env{Bootstrap env\nMASTER_KEY, NODE_ENV,\nSUBKIT_CONFIG, DATABASE_URL}
-    env --> load[Load canonical config\nmissing file = schema defaults]
-    load --> legacy{Legacy SK_OVERRIDE value\nfor a missing leaf?}
-    legacy -- yes --> import[Import once and persist]
-    legacy -- no --> validate
-    import --> validate
-    validate -- invalid --> fail[Exit non-zero\nwith exact leaf path]
-    validate -- valid --> ready([Engine ready])
+`OBJECT_STORAGE_FORCE_PATH_STYLE` remains accepted as a compatibility alias. Do not set both
+path-style aliases to different values.
 
-    read([Every settings read]) --> t{Tenant overlay?}
-    t -- yes --> uset[Use tenant value]
-    t -- no --> g{Global value set?}
-    g -- yes --> useg[Use global value]
-    g -- no --> d[Use schema default]
+Historical runtime variables and `SK_OVERRIDE_*` are development/import compatibility only.
+Production startup does not read `subkit.config.json` or `SUBKIT_CONFIG`. Use the one-shot
+bridge for an existing file-based installation:
+
+```bash
+engine --bridge-stateless \
+  --legacy-config=/etc/subkit/subkit.config.json \
+  --legacy-files-dir=/var/lib/subkit/blobs
 ```
 
-Precedence, highest to lowest: **tenant overlay → global value → schema
-default.** An old `SK_OVERRIDE_<KEY>` can only initialize a missing leaf once;
-it is persisted and never wins over a Cockpit/API value.
+The bridge is rerunnable. It imports supported settings, creates the initial database revision
+only when safe, streams legacy files and offloads into the configured object store, verifies
+size and application SHA-256, switches PostgreSQL pointers transactionally, and writes audit
+markers. It refuses to overwrite a different pre-existing runtime configuration.
 
----
+## First-run lifecycle
 
-## Bootstrap env
+`GET /v1/bootstrap/status` reports `pending`, `completed`, and `token_expired`. Complete the
+one-time setup through Cockpit, `sk init`, or `POST /v1/bootstrap/complete`. The completion call
+creates the first tenant and administrator and returns the administrator API key exactly once.
+Subsequent completion attempts return `410 Gone`.
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `MASTER_KEY` | yes | 64-char hex AES-256-GCM key. Used to encrypt connector credentials at rest. Generate once with `openssl rand -hex 32`. Must be injected from a secret manager — keep it out of the config file. |
-| `NODE_ENV` | no | `development` (default in dev) / `test` / `production`. Controls the `requiresRestart` guard and other defaults. |
-| `SUBKIT_CONFIG` | no | Override the config-file path. Defaults to `./subkit.config.json` in dev or `/etc/subkit/subkit.config.json` under `NODE_ENV=production`. |
-| `CONFIGURATION_DIRECTORY` | platform-provided | systemd directory hint used to locate `subkit.config.json` before the loader is available. |
-| `DATABASE_URL` | fallback | Consulted only when `database.url` is absent from the config file. Once the operator runs `sk settings set database.url '"…"'` the file value wins; if both are set and they differ the engine emits a warn line at boot and the **config-file value wins**. |
+The legacy `/v1/setup` aliases remain available for compatible clients.
 
-Every other historical env var (`LLM_PROVIDER`, `ANTHROPIC_API_KEY`,
-`OIDC_*`, `SLACK_*`, `LANGFUSE_*`, …) has moved to
-`subkit.config.json`. Setting any of them at runtime emits a one-line
-stderr warning at boot pointing at `sk settings configure`.
+## Saved and active revisions
 
-## The config file
+`GET /v1/settings` provides the human-oriented settings view. The canonical state endpoint is
+`GET /v1/settings/runtime`; it reports:
 
-`subkit.config.json` (or whatever `SUBKIT_CONFIG` points at). On a
-fresh install the engine treats a missing file as "use schema
-defaults" — the operator never has to hand-write the file.
-
-- **Mode:** `0600`. Parent directory: `0700`. Both created
-  automatically on first write.
-- **Format:** JSON. Hand-edits are valid; the engine validates
-  against the Zod schema at boot and exits non-zero with the
-  precise leaf path when something is malformed.
-- **Atomicity:** writes go through a same-directory temp file +
-  `fsync(file)` + `fsync(parentDir)` + `rename`. A crashed write
-  leaves the prior file intact.
-
-### Sections
-
-The schema groups leaves by section. Defaults live in the schema, so
-the file only needs to carry overrides:
-
-```jsonc
+```json
 {
-  "log":     { "level": "info", "format": "ndjson" },
-  "server":  { "port": 3000, "public_base_url": "https://api.example.com" },
-  "database":{ "url": "postgresql://..." },
-  "llm":     { "provider": "anthropic",
-               "api_key":  "…",                 // sensitive, masked everywhere
-               "providers": { "anthropic": { "model": "claude-sonnet-4-6" } } },
-  "auth":    { "providers": [
-                 { "protocol": "api_key", "id": "api-key", "label": "SubKit API key" },
-                 { "protocol": "oidc", "id": "workforce", "label": "Work account",
-                   "issuer_url": "https://identity.example.com", "client_id": "…",
-                   "tenant_slug": "default" }
-               ],
-               "session": { "secret": "auto-generated" } },
-  "platform":      { "slack": { … }, "teams": { … }, "googlechat": { … } },
-  "storage":       { "s3": { … }, "knowledge": { "backend": "local" } },
-  "observability": { "langfuse": { "secret_key": "…" },
-                     "otlp": { "endpoint": "…" },
-                     "usage": { "enabled": false,
-                                "hmac_secret": "…at least 32 chars…",
-                                "retention_days": 90 } },
-  "egress":        { "mode": "permissive", "provider_hosts_extra": [] },
-  "mcp":     { "read_only": false },
-  "errors":  { "ring_size": 100 },
-  "spec":    { "allow_private_fetch": false },
-  "queue":   { "concurrency": 8 },
-  "tokens":  { "monthly_budget": 0 },
-
-  "tenants": {
-    "<tenant_id>": {
-      // Only `scope: "tenant"` leaves are honored here. The schema
-      // ships llm.* + queue.concurrency + tokens.monthly_budget as
-      // tenant-overridable; everything else is global.
-      "llm": { "api_key": "tenant-specific" }
-    }
-  }
+  "saved_revision": 12,
+  "active_revision": 11,
+  "activation_status": "saved",
+  "pending_restart_fields": [],
+  "settings": {}
 }
 ```
 
-`observability.usage` is the local, content-free product measurement surface. Set its
-dedicated HMAC secret first, then enable it; changing either leaf is hot-applied. Raw events
-stay in the engine Postgres for `retention_days` (31–365, default 90) and are exposed only as
-tenant-scoped aggregates behind `stats:read`. This is separate from
-`observability.analytics`, which optionally forwards a smaller HTTP event to an external
-endpoint. Usage rows have no fields for prompts, messages, tool arguments/results, raw
-paths/query strings, IP addresses, user agents, OAuth material, or plaintext dynamic IDs.
+Save a compare-and-swap revision with:
 
-### Resolution order (every read)
+```http
+PATCH /v1/settings
+Content-Type: application/json
 
-Tenant overlay → global value → schema default (see the boot/read flowchart above).
-
-| Layer | Scope | Set by |
-| --- | --- | --- |
-| Tenant overlay | One tenant, `scope: tenant` leaves only | `sk settings set … --tenant <id>` |
-| Global value | All tenants | `sk settings set …` |
-| Schema default | All tenants | Shipped in the schema |
-
-## `sk settings configure` — interactive form
-
-```bash
-sk settings configure                      # open the form
-sk settings configure --tab llm            # land on the llm section
-sk settings configure --tenant <id>        # show only scope:tenant leaves
-sk settings configure --non-interactive    # print JSON for piping / CI
+{
+  "expected_revision": 11,
+  "changes": {
+    "log.level": "debug",
+    "llm.model": "claude-sonnet-4-6"
+  },
+  "scope": "global"
+}
 ```
 
-The form is auto-detected as headless when stdin or stdout is not a
-TTY, or when `--non-interactive` is passed; in that mode it prints
-the `GET /v1/settings` response unchanged.
+Use `scope: "tenant"` plus `tenant_id` for a tenant override. `scope: "global"` changes the
+product-wide default, including the default inherited by tenant-scoped leaves. A stale
+`expected_revision` returns `409 revision_conflict`; invalid paths, values, or scope return
+`422 validation_failed`. Every successful save creates a new immutable revision and an audit
+entry containing paths, never secret values.
 
-Keyboard model:
+Inspect history with:
 
-| Key | Action |
-| --- | --- |
-| `Tab` / `Shift-Tab` | Next / previous section |
-| `↑` / `↓` | Move row cursor |
-| `Enter` | Edit the selected leaf |
-| `/` | Filter by path or description |
-| `Esc` (in search) | Clear the query and exit search |
-| `Esc` / `q` | Exit the form |
-| `Ctrl-R` (in editor) | Reveal a masked secret |
-| `Y` / `N` | Restart-required prompt: retry with `force=true` / cancel |
+- `GET /v1/settings/revisions`
+- `GET /v1/settings/revisions/{revision}`
 
-Every successful write emits a `settings.changed` audit row carrying
-the actor's principal, the target tenant (if any), and a masked
-diff. Raw secrets never appear in audit rows.
+## Hot activation and restart-required changes
 
-## Headless: `sk settings list / get / set`
+Activate a saved hot-capable revision with:
 
-```bash
-sk settings list                                    # tree + diagnostics
-sk settings get llm.api_key                          # one leaf
-sk settings set llm.api_key '"sk-…"'                 # JSON value
-sk settings set server.port 3001 --force             # bypass the
-                                                     # requiresRestart guard
-sk settings set llm.api_key '"…"' --tenant <id>      # tenant overlay
+```http
+POST /v1/settings/revisions/{revision}/activate
 ```
 
-`set` accepts JSON for the value (`'"abc"'`, `42`, `true`, `null`).
-`--force` is required in production for any leaf marked
-`requiresRestart: true` — the engine writes the value but tells you
-to restart for the change to take full effect.
+Each engine replica heartbeats every 10 seconds. A lease is healthy for 30 seconds. During
+activation every healthy replica validates and resolves the exact revision digest and writes
+an ACK or NACK. The active pointer advances only after all healthy replicas ACK; activation
+times out after 60 seconds and remains observable as failed otherwise.
 
-`log.level` and `log.format` are explicitly **hot-reloaded** at the
-moment of write — `requiresRestart: false`. The setting.applied log
-line documenting the change is emitted *before* the live logger is
-reconfigured, so an operator who flips `log.level=error` still sees
-the entry that flipped the threshold.
+`GET /v1/settings/activations/{revision}` lists replica health, ACK/NACK state, digest, reason,
+and last heartbeat. Cockpit shows the same information.
 
-## Legacy `SK_OVERRIDE_<KEY>` — one-time migration only
+Changes to restart-required leaves are saved but not hot-applied. Their status is
+`restart_required`; `saved_revision` and `active_revision` remain different and
+`pending_restart_fields` names the exact leaves. After a coordinated restart—and only after old
+replica leases expire—the new process promotes that revision during boot.
 
-Old deployments may still inject values such as:
+## Immutable secret versions
 
-```bash
-SK_OVERRIDE_LLM_API_KEY=sk-new-key engine
+Create a secret version without putting plaintext into a settings document:
+
+```http
+POST /v1/secrets/llm.primary/versions
+Content-Type: application/json
+
+{ "value": "the-plaintext-is-write-only" }
 ```
 
-- If the canonical leaf is absent, the value is parsed, validated, persisted
-  atomically, and logged as `legacy_env.seeded` (path only, never value).
-- If the leaf already exists, the env value is ignored and logged as
-  `legacy_env.ignored`. Cockpit, HTTP, MCP, CLI, and file values always win.
-- `diagnostics.override_keys` remains empty and the deprecated
-  `settings_override_active` metric has no active samples.
-- New automation must use HTTP, MCP, or `sk settings`; this compatibility
-  importer exists only to make old deployments migrate safely.
+The response contains a reference such as `secret://llm.primary/3`. Use that reference in a
+settings patch. `GET /v1/secrets` returns metadata and references only—never plaintext or
+ciphertext. Revoke an unreferenced version with
+`POST /v1/secrets/{name}/versions/{version}/revoke`; referenced versions fail closed with 409.
 
-## Activation contract
+## Object storage contract
 
-All write surfaces return the same activation truth. A hot leaf reports
-`activation: "active"`, `applied_immediately: true`, and can be observed by the
-next runtime read without a restart. A restart-sensitive leaf reports
-`activation: "restart_required"`, `applied_immediately: false`,
-`requires_restart: true`, and its path in `pending_restart_keys`.
+All new file bodies and oversized execution payloads use the configured S3-compatible private
+bucket. There is no durable local-storage mode and no PostgreSQL blob fallback for new writes.
+The adapter uses SigV4, path style where configured, known Content-Length, 64 MiB multipart
+parts, and only the common Head/Put/Multipart/Get-Range/List/Delete operations. Object keys are
+immutable, application SHA-256 is authoritative, and ETags are opaque.
 
-In production, restart-sensitive writes are rejected until the caller confirms
-with `force=true`. Confirmation persists the value; it does **not** restart the
-process. The Cockpit presents this as a neutral-blue pending state and directs
-the operator to restart through the deployment platform.
+The runtime deliberately does not depend on bucket versioning, CopyObject, presigned URLs,
+SSE-C, checksum headers, ACLs, tagging, lifecycle policies, or object lock.
 
-## `engine_settings` table
+Before adopting a new S3-compatible service, run the one-time destructive probe against a
+dedicated empty test bucket:
 
-The `engine_settings` table is internal-only — only the bootstrap
-probe reads/writes it for sentinel state. Two keys:
+```bash
+OBJECT_STORAGE_ENDPOINT=https://objects.example.com \
+OBJECT_STORAGE_REGION=garage \
+OBJECT_STORAGE_BUCKET=temporary-subkit-conformance \
+OBJECT_STORAGE_ACCESS_KEY_ID=... \
+OBJECT_STORAGE_SECRET_ACCESS_KEY=... \
+OBJECT_STORAGE_PATH_STYLE=true \
+bun run storage:conformance
+```
 
-| key | shape | purpose |
-| --- | --- | --- |
-| `bootstrap.completed` | `boolean` | Sentinel flipped after the first-run setup wizard succeeds. Prevents `sk init` from re-arming on a populated engine. |
-| `bootstrap.token` | `{ token_sha256, expires_at_ms }` | Hashed one-time token + 15-minute TTL printed in the boot banner. Consumed by `POST /v1/setup`; deleted on success. |
-
-## Quality gates wired into `bun run verify`
-
-- `check:settings-doc-drift` — regenerates
-  `docs/admins/settings-reference.md` and fails if it differs.
-- `check:config-example-drift` — regenerates
-  `subkit.config.example.json` and fails if it differs.
-- The route's wire shape is locked down by the
-  `apps/engine/src/http/routes/__tests__/settings.integration.test.ts`
-  testcontainers test (audit identity, three response envelopes,
-  scope rules).
-- The Streamable HTTP MCP integration test writes a hot value through
-  `subkit_update_setting`, reads it through REST, and verifies the audit source.
-- The Ink form's bridge is locked down by the schema-walk test in
-  `apps/sk/src/settings-ui/__tests__/schema-walk.test.ts` — a new
-  Zod kind in the schema fails the test until a corresponding
-  `FormFieldKind` lands.
+It covers small and multipart uploads, Head, bounded and open-ended Range reads,
+ListObjectsV2, DeleteObject/DeleteObjects, application hash rejection, multipart abort, and a
+retry using the aborted key. To verify credential rotation in the same run, also provide
+`OBJECT_STORAGE_ROTATED_ACCESS_KEY_ID` and
+`OBJECT_STORAGE_ROTATED_SECRET_ACCESS_KEY` (plus the optional rotated session token). The probe
+prints no credentials and removes its UUID-scoped objects. It is an implementation/adoption
+check, not a permanent release gate.
 
 ## Operational guarantees
 
-- **Fail-fast boot.** Missing or invalid required settings exit non-zero with
-  a descriptive, leaf-pathed error. No silent degraded mode.
-- **Secrets stay out of source control and logs.** `MASTER_KEY` remains in a
-  secret manager. Other secret leaves are written through masked, audited
-  Cockpit/API/CLI surfaces into the mode-`0600` canonical config — never into a
-  committed repository file or an audit value.
-- **OpenAI-compatible endpoints.** To point the `openai` provider at a
-  self-hosted or third-party endpoint (custom `base_url`), see
-  [AI-Assisted Authoring → OpenAI-compatible endpoints](../authors/authoring-workflows.md#openai-compatible-endpoints).
-- **Resource-limit tunables** (timeouts, token budgets, ingestion/knowledge byte
-  caps, circuit breakers) are kept cohesive in
-  [Observability & Resource Limits](../operators/observability.md#resource-limits-and-operational-safety).
+- Invalid bootstrap input, an unreadable active revision, an unresolved secret, or an
+  unreachable object bucket fails startup before readiness.
+- PostgreSQL is the source of truth for non-fundamental runtime configuration, revision state, secret metadata,
+  object pointers, and audits.
+- Cockpit, HTTP, MCP, CLI, OpenAPI, and generated `llm*.txt` describe the same activation model.
+- Scratch files may use the container's ephemeral filesystem, but no product state requires a
+  persistent `/data` mount.
 
 ## See also
 
-- [`settings-reference.md`](./settings-reference.md) — auto-generated
-  per-leaf reference (path, type, default, scope, sensitive,
-  requiresRestart).
+- [Settings reference](./settings-reference.md)
+- [Production hardening](./production-hardening.md)
+- [Self-hosting](../developers/self-host.md)

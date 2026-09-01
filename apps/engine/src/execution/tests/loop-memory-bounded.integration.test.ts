@@ -7,11 +7,11 @@
 // Coverage:
 //   1. Large-payload loop — scope holds OffloadRefs; persisted output is
 //      plain JSON (no discriminant leaks through the external surface).
-//   2. Persisted fixture rows for each large body step are readable after
+//   2. Persisted object-store objects for each large body step are readable after
 //      the run; the re-hydrated iteration data is correct.
 //   3. A downstream transform that reads `$scope.<loop>.data` receives
 //      the transparently re-hydrated array and computes correctly.
-//   4. Tenant isolation: a fixture row owned by tenant A cannot be read
+//   4. Legacy tenant isolation: a fixture row owned by tenant A cannot be read
 //      under tenant B's identity (OffloadResolutionError).
 //   5. Small-payload loop — inline path still works, no OffloadRef created.
 //   6. Loop with no downstream consumer — scope keeps refs (fast-path),
@@ -20,6 +20,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { executionFixtures, executionSteps, tenants } from "../../db/schema/index.ts";
+import { getObjectStore } from "../../storage/object-store.ts";
 import { runExecution } from "../engine.ts";
 import { isOffloadRef, OffloadResolutionError, resolveOffloaded } from "../offload.ts";
 import { containsOffloadRef } from "../offload-rehydrate.ts";
@@ -99,7 +100,7 @@ describe("loop memory-bounded: OOM guard", () => {
     expect(containsOffloadRef(result.output)).toBe(false);
 
     // Body step rows for each iteration must each have a result_storage_uri
-    // (the fixture:// locator written by the step-runner when the payload
+    // (the s3:// locator written by the step-runner when the payload
     // exceeded the threshold).
     const allStepRows = await ctx.testDb.db
       .select()
@@ -110,7 +111,7 @@ describe("loop memory-bounded: OOM guard", () => {
     expect(bodyRows).toHaveLength(3);
     for (const r of bodyRows) {
       expect(r.result_storage_uri).not.toBeNull();
-      expect(r.result_storage_uri?.startsWith("fixture://")).toBe(true);
+      expect(r.result_storage_uri?.startsWith("s3://test/offload/")).toBe(true);
     }
 
     // The returned output is the loop's iteration array.
@@ -128,8 +129,8 @@ describe("loop memory-bounded: OOM guard", () => {
     }
   });
 
-  test("TC2 — fixture rows are re-hydrated to the correct full payload", async () => {
-    // Single-iteration loop; after the run we read the fixture row directly
+  test("TC2 — object-store refs are re-hydrated to the correct full payload", async () => {
+    // Single-iteration loop; after the run we resolve its immutable S3 ref
     // and compare against what the mock returned.
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "loop-rehydrate-check",
@@ -165,7 +166,7 @@ describe("loop memory-bounded: OOM guard", () => {
 
     expect(result.status).toBe("succeeded");
 
-    // Locate the fixture row written by the body step.
+    // Locate the object-store reference written by the body step.
     const bodyStepRows = await ctx.testDb.db
       .select()
       .from(executionSteps)
@@ -175,18 +176,14 @@ describe("loop memory-bounded: OOM guard", () => {
     expect(bodyRow).toBeDefined();
     const storageUri = bodyRow!.result_storage_uri;
     expect(storageUri).not.toBeNull();
-    expect(storageUri!.startsWith("fixture://")).toBe(true);
+    expect(storageUri!.startsWith("s3://test/offload/")).toBe(true);
 
-    // Re-hydrate from the fixture table.
-    const fixtureId = storageUri!.slice("fixture://".length);
-    const fixtureRows = await ctx.testDb.db
-      .select()
-      .from(executionFixtures)
-      .where(
-        and(eq(executionFixtures.id, fixtureId), eq(executionFixtures.tenant_id, ctx.tenantId)),
-      );
-    expect(fixtureRows).toHaveLength(1);
-    const body = fixtureRows[0]!.body as { blob?: string };
+    const body = (await resolveOffloaded(ctx.testDb.db, ctx.tenantId, {
+      $offloaded: true,
+      storage_uri: storageUri!,
+      preview: "{}",
+      size_bytes: LARGE_SIZE,
+    })) as { blob?: string };
     // The re-hydrated payload matches what the mock HTTP server returned.
     expect(body?.blob).toBe(LARGE_BLOB);
   });
@@ -261,7 +258,10 @@ describe("loop memory-bounded: OOM guard", () => {
 
     const [foreignTenant] = await ctx.testDb.db
       .insert(tenants)
-      .values({ slug: "loop-bounded-foreign", display_name: "Foreign Tenant (TC4)" })
+      .values({
+        slug: "loop-bounded-foreign",
+        display_name: "Foreign Tenant (TC4)",
+      })
       .returning({ id: tenants.id });
 
     const ref = {
@@ -348,28 +348,26 @@ describe("loop memory-bounded: OOM guard", () => {
     // resolveScopeForJsonata must return the original scope reference
     // without resolving the refs — we can't observe the internal scope
     // directly, but we CAN verify the run succeeds and that the number
-    // of new fixture rows is EXACTLY accounted for.
+    // of new immutable objects is EXACTLY accounted for.
     //
     // Size budget — this assertion is deterministic only because the
     // sizes below are pinned:
     //   * The loop is a SINGLE iteration. Its one body step fetches a
     //     payload of `LARGE_SIZE` (= STEP_RESULT_DB_BYTES + 1) bytes —
     //     one byte over the inline threshold — so the body step writes
-    //     exactly ONE `offload` fixture row.
+    //     exactly ONE object.
     //   * `engine.ts` re-hydrates the loop output before the top-level
     //     `maybeOffload`. The re-hydrated top-level output is the
     //     single iteration's body payload (`LARGE_SIZE` bytes plus the
     //     surrounding envelope), which is ALSO above STEP_RESULT_DB_BYTES,
-    //     so the aggregate write produces exactly ONE more `offload` row.
+    //     so the aggregate write produces exactly ONE more object.
     //   * Total: 1 body row + 1 aggregate row = delta of exactly 2.
     // A second iteration would push the re-hydrated aggregate to ~2×
     // the body size and add a third row in a way that depends on the
     // exact envelope overhead — non-deterministic to assert. Keeping
     // the loop single-iteration pins the count.
-    const fixtureCountBefore = await ctx.testDb.db
-      .select({ id: executionFixtures.id })
-      .from(executionFixtures)
-      .where(eq(executionFixtures.tenant_id, ctx.tenantId));
+    const prefix = `offload/${ctx.tenantId}/`;
+    const objectCountBefore = (await getObjectStore().list(prefix)).length;
 
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "loop-no-consumer",
@@ -406,14 +404,11 @@ describe("loop memory-bounded: OOM guard", () => {
 
     expect(result.status).toBe("succeeded");
 
-    const fixtureCountAfter = await ctx.testDb.db
-      .select({ id: executionFixtures.id })
-      .from(executionFixtures)
-      .where(eq(executionFixtures.tenant_id, ctx.tenantId));
+    const objectCountAfter = (await getObjectStore().list(prefix)).length;
 
-    // Exactly 2 new fixture rows: 1 body-step offload + 1 top-level
+    // Exactly 2 new objects: 1 body-step offload + 1 top-level
     // aggregate offload (see the size budget above). No off-by-one.
-    const delta = fixtureCountAfter.length - fixtureCountBefore.length;
+    const delta = objectCountAfter - objectCountBefore;
     expect(delta).toBe(2);
 
     // No OffloadRef in the returned output.

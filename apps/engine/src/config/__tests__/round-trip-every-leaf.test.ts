@@ -142,28 +142,9 @@ function readDeep(source: unknown, leafPath: string[]): unknown {
 describe("ConfigSchema round-trip — every leaf", () => {
   const leaves = listConfigLeaves();
 
-  // Cross-leaf invariants we can't satisfy by writing a single leaf:
-  // `storage.files.backend = "s3"` is only valid when
-  // storage.s3.access_key, storage.s3.secret_key, and
-  // storage.files.bucket are all non-empty (schema refine). The
-  // generic enum picker would land on "s3" and trip the refinement
-  // even with force=true (force bypasses the leaf's own schema, not
-  // cross-leaf refinements). The sweep below detects this leaf and
-  // primes the dependencies before the write, then asserts the
-  // backend value round-trips like every other enum.
-  const PRIME_BEFORE_WRITE: Record<string, () => Promise<void>> = {
-    "storage.files.backend": async () => {
-      await setConfigKey(["storage", "s3", "access_key"], "ak", { force: true });
-      await setConfigKey(["storage", "s3", "secret_key"], "sk", { force: true });
-      await setConfigKey(["storage", "files", "bucket"], "test-bucket", { force: true });
-    },
-  };
-
   test(`writes and reads back every leaf (${leaves.length} leaves)`, async () => {
     let salt = 0;
     for (const leaf of leaves) {
-      const prime = PRIME_BEFORE_WRITE[dottedPath(leaf)];
-      if (prime) await prime();
       const written = valueFor(leaf, salt++);
       const result = await setConfigKey(leaf.path, written, { force: true });
       expect(result.leafPath, `${dottedPath(leaf)} setConfigKey returns the dotted path`).toBe(
@@ -199,7 +180,9 @@ describe("ConfigSchema round-trip — every leaf", () => {
   test("requiresRestart leaves flip pending_restart_keys", async () => {
     const restartLeaf = leaves.find((l) => l.meta.requiresRestart && l.kind === "number");
     expect(restartLeaf).toBeDefined();
-    await setConfigKey(restartLeaf!.path, valueFor(restartLeaf!, 7), { force: true });
+    await setConfigKey(restartLeaf!.path, valueFor(restartLeaf!, 7), {
+      force: true,
+    });
     expect(getDiagnostics().pending_restart_keys).toContain(dottedPath(restartLeaf!));
   });
 });

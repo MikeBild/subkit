@@ -10,7 +10,7 @@ import {
   FileRefSchema,
   FinalizeRequestSchema,
   MAX_FINALIZE_VERIFY_BYTES,
-  MAX_PRESIGN_BYTES,
+  MAX_STREAM_UPLOAD_BYTES,
   parseFileId,
   parseFileIdOrThrow,
   toFileId,
@@ -193,14 +193,14 @@ describe("FinalizeRequestSchema", () => {
   });
 });
 
-describe("MAX_FINALIZE_VERIFY_BYTES / MAX_PRESIGN_BYTES coupling", () => {
+describe("MAX_FINALIZE_VERIFY_BYTES / MAX_STREAM_UPLOAD_BYTES coupling", () => {
   // The finalize verifier rehashes the object after the streaming PUT;
-  // its size ceiling is the same payload-shape contract the presign
+  // its size ceiling is the same payload-shape contract the upload slot
   // accepted at batch-create time. Keeping the two in lockstep prevents
-  // a silent drift where presign would accept N bytes but finalize
+  // a silent drift where upload would accept N bytes but finalize
   // would refuse to verify them, leaving the row stuck in `pending`
   // until the cleanup cron reaps it.
-  test("MAX_FINALIZE_VERIFY_BYTES === MAX_PRESIGN_BYTES so a future split is intentional", () => {
-    expect(MAX_FINALIZE_VERIFY_BYTES).toBe(MAX_PRESIGN_BYTES);
+  test("MAX_FINALIZE_VERIFY_BYTES === MAX_STREAM_UPLOAD_BYTES so a future split is intentional", () => {
+    expect(MAX_FINALIZE_VERIFY_BYTES).toBe(MAX_STREAM_UPLOAD_BYTES);
   });
 });

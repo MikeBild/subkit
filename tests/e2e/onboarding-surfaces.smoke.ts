@@ -1,167 +1,116 @@
 // Docker-backed smoke for the two end-user surfaces highlighted in the
-// zero-to-running guide: the MCP embedding (Codex streamable-HTTP path) and the
-// conversational REPL loop (driven headless — same engine the TUI uses).
+// zero-to-running guide: MCP over streamable HTTP and the conversational REPL.
 //
-// Self-contained: starts a fresh all-in-one container, bootstraps it with the
-// keyless `mock` LLM provider (no secret needed), mints an admin key, then:
-//   1. MCP: POST {engine}/mcp with `Authorization: Bearer <key>` →
-//      initialize + tools/list returns the tenant tool surface (author_workflow,
-//      test_connector, dry_run_workflow, …). This is exactly how Codex / Claude
-//      Desktop / Cursor connect.
-//   2. REPL loop: `sk -p "<prompt>"` (the REPL's headless drive) runs a turn to
-//      completion without a provider/internal error.
+// The production application container is intentionally stateless. This smoke
+// therefore uses docker-compose.test.yml to provide external PostgreSQL and S3
+// services and asserts that the engine itself has no mounts.
 //
-// Run:  SMOKE_IMAGE=mikebild/subkit:7.2.1 bun run tests/e2e/onboarding-surfaces.smoke.ts
-// Exit: 0 = all green, 1 = a check failed (prints ✓/✘ per step).
+// Run: SMOKE_IMAGE=mikebild/subkit:6.22.46 bun run smoke:surfaces
 
 import { spawnSync } from "node:child_process";
 
-const IMAGE = process.env.SMOKE_IMAGE ?? "mikebild/subkit:latest";
+const IMAGE = process.env.SMOKE_IMAGE ?? "subkit:cintest";
 const NAME = process.env.SMOKE_NAME ?? "subkit-smoke";
 const PORT = Number(process.env.SMOKE_PORT ?? "3099");
-const VOL = `${NAME}-data`;
-const BASE = `http://localhost:${PORT}`;
+const BASE = `http://127.0.0.1:${PORT}`;
 
-function ok(msg: string): void {
-  console.log(`✓ ${msg}`);
+process.env.COMPOSE_PROJECT_NAME = NAME;
+process.env.SUBKIT_TEST_IMAGE = IMAGE;
+process.env.SUBKIT_TEST_PORT = String(PORT);
+process.env.SUBKIT_DOCKER_BASE_URL = BASE;
+
+type Harness = typeof import("../docker/_harness.ts");
+let harness: Harness | null = null;
+
+function ok(message: string): void {
+  console.log(`✓ ${message}`);
 }
-function fail(msg: string): never {
-  console.error(`✘ ${msg}`);
+
+function teardown(): void {
+  harness?.composeDown();
+}
+
+function fail(message: string): never {
+  console.error(`✘ ${message}`);
   teardown();
   process.exit(1);
 }
-function sh(cmd: string, args: string[]): { status: number; out: string } {
-  const r = spawnSync(cmd, args, { encoding: "utf8" });
-  return { status: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
-}
-function dockerExec(args: string[]): { status: number; out: string } {
-  return sh("docker", ["exec", NAME, ...args]);
-}
-function teardown(): void {
-  sh("docker", ["rm", "-f", NAME]);
-  sh("docker", ["volume", "rm", VOL]);
-}
 
 async function main(): Promise<void> {
+  if (spawnSync("docker", ["info"], { stdio: "ignore" }).status !== 0) {
+    fail("Docker is unavailable");
+  }
+
+  harness = await import("../docker/_harness.ts");
   teardown();
-  if (
-    sh("docker", ["run", "-d", "--name", NAME, "-p", `${PORT}:3000`, "-v", `${VOL}:/data`, IMAGE])
-      .status !== 0
-  ) {
-    fail(`could not start container from ${IMAGE}`);
+  const env = await harness.dockerBoot();
+  if (harness.engineMounts().length !== 0) fail("engine container unexpectedly has mounts");
+  ok(`stateless engine healthy with external PostgreSQL/S3 (${IMAGE})`);
+
+  const issued = harness.issueAdminKeyViaExec("default");
+  if (issued.status !== 0 || !/wf_live_[A-Za-z0-9_-]+/.test(`${issued.stdout}\n${issued.stderr}`)) {
+    fail(`could not mint admin key: ${issued.stdout}${issued.stderr}`);
   }
-
-  // Poll health.
-  let healthy = false;
-  for (let i = 0; i < 60; i++) {
-    try {
-      const r = await fetch(`${BASE}/health`);
-      if (r.ok) {
-        healthy = true;
-        break;
-      }
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((res) => setTimeout(res, 2000));
-  }
-  if (!healthy) fail("engine did not become healthy");
-  ok(`engine healthy (${IMAGE})`);
-
-  // Bootstrap with the keyless mock provider — token auto-detected from the volume.
-  const init = dockerExec([
-    "sk",
-    "init",
-    "--admin-email",
-    "you@example.com",
-    "--tenant-name",
-    "My Org",
-    "--llm-provider",
-    "mock",
-    "--llm-api-key",
-    "mock",
-  ]);
-  if (!/bootstrap complete/.test(init.out)) fail(`sk init failed: ${init.out.trim()}`);
-  ok("bootstrapped (mock provider, token auto-detected)");
-
-  // Mint an admin key (the Codex path needs a Bearer key).
-  const issued = dockerExec(["engine", "--issue-admin-key", "--tenant", "my-org"]);
-  const key = issued.out.match(/wf_live_[A-Za-z0-9_-]+/)?.[0];
-  if (!key) fail(`could not mint admin key: ${issued.out.trim()}`);
-  ok("minted admin key");
-  // The issue-admin-key banner should be copy-paste (includes `sk login --engine-url`).
-  if (!/sk login --engine-url .* --api-key /.test(issued.out)) {
+  if (!/sk login --engine-url .* --api-key /.test(`${issued.stdout}\n${issued.stderr}`)) {
     fail("issue-admin-key did not print a copy-paste `sk login` line");
   }
-  ok("issue-admin-key prints a copy-paste `sk login` line");
+  ok("operator key issuance is copy-paste ready");
 
-  // ── 1. MCP (Codex streamable-HTTP) ──────────────────────────────────────────
   let sessionId: string | null = null;
   const mcpCall = async (method: string, params: Record<string, unknown>) => {
     const headers: Record<string, string> = {
-      authorization: `Bearer ${key}`,
+      authorization: `Bearer ${env.adminKey}`,
       "content-type": "application/json",
       accept: "application/json, text/event-stream",
     };
     if (sessionId) headers["mcp-session-id"] = sessionId;
-    const r = await fetch(`${BASE}/mcp`, {
+    const response = await fetch(`${BASE}/mcp`, {
       method: "POST",
       headers,
       body: JSON.stringify({ jsonrpc: "2.0", id: `${method}-1`, method, params }),
     });
-    const sid = r.headers.get("mcp-session-id");
-    if (sid && !sessionId) sessionId = sid;
-    const text = (await r.text()).trim();
+    const assigned = response.headers.get("mcp-session-id");
+    if (assigned && !sessionId) sessionId = assigned;
+    const text = (await response.text()).trim();
     const body =
       text.startsWith("event:") || text.startsWith("data:")
         ? JSON.parse(
             text
               .split("\n")
-              .find((l) => l.startsWith("data:"))!
+              .find((line) => line.startsWith("data:"))!
               .slice(5)
               .trim(),
           )
         : JSON.parse(text);
-    return { status: r.status, body };
+    return { status: response.status, body };
   };
 
-  const initRes = await mcpCall("initialize", {
+  const initialized = await mcpCall("initialize", {
     protocolVersion: "2024-11-05",
     capabilities: {},
     clientInfo: { name: "smoke", version: "0.0.0" },
   });
-  if (initRes.status !== 200 || !sessionId)
-    fail(`MCP initialize failed (status ${initRes.status}, session ${sessionId})`);
-  ok("MCP initialize → 200 + mcp-session-id (Codex streamable-HTTP path)");
-
-  const listRes = await mcpCall("tools/list", {});
-  const tools: Array<{ name: string }> =
-    (listRes.body?.result?.tools as Array<{ name: string }>) ?? [];
-  const names = new Set(tools.map((t) => t.name));
-  if (tools.length < 10) fail(`MCP tools/list returned only ${tools.length} tools`);
+  if (initialized.status !== 200 || !sessionId) fail("MCP initialize failed");
+  const listed = await mcpCall("tools/list", {});
+  const tools = (listed.body?.result?.tools as Array<{ name: string }> | undefined) ?? [];
+  const names = new Set(tools.map((tool) => tool.name));
   for (const required of ["author_workflow", "test_connector"]) {
-    if (!names.has(required))
-      fail(`MCP tools/list missing '${required}' (got ${tools.length} tools)`);
+    if (!names.has(required)) fail(`MCP tools/list missing '${required}'`);
   }
-  ok(`MCP tools/list → ${tools.length} tenant tools (incl. author_workflow, test_connector)`);
+  ok(`MCP streamable-HTTP exposes ${tools.length} tenant tools`);
 
-  // ── 2. REPL loop (headless drive of the same engine) ────────────────────────
-  const turn = dockerExec([
-    "sk",
-    "-p",
-    "list my workflows",
-    "--output",
-    "text",
-    "--max-turns",
-    "4",
-  ]);
-  if (turn.status !== 0) fail(`headless REPL turn exited ${turn.status}: ${turn.out.trim()}`);
-  if (/internal error|misconfigured/i.test(turn.out))
-    fail(`headless REPL turn surfaced an error: ${turn.out.trim()}`);
-  ok("REPL loop runs a turn to completion (headless, no errors)");
+  const turn = await harness.skDocker(
+    env,
+    ["-p", "list my workflows", "--output", "text", "--max-turns", "4"],
+    { timeout: 60_000 },
+  );
+  if (turn.exitCode !== 0 || /internal error|misconfigured/i.test(turn.stdout + turn.stderr)) {
+    fail(`headless REPL failed: ${turn.stdout}${turn.stderr}`);
+  }
+  ok("REPL completes a headless turn without errors");
 
   teardown();
   console.log("\nAll onboarding-surface smoke checks passed.");
 }
 
-main().catch((err) => fail(err instanceof Error ? err.message : String(err)));
+main().catch((error) => fail(error instanceof Error ? error.message : String(error)));

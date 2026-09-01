@@ -306,23 +306,23 @@ export const AuditAction = {
   FILE_CREATED: "file.created",
   // `FILE_BATCH_CREATED` — one row per batch-create request (not per
   // entry). Metadata records the batch shape (`count`, `dedup_hits`)
-  // so operators can chart presign throughput without joining back to
+  // so operators can chart streamed-upload throughput without joining back to
   // the per-file `FILE_CREATED` rows that fire on finalize.
   FILE_BATCH_CREATED: "file.batch_created",
-  // `FILE_FINALIZED` — presigned-upload path completed
+  // `FILE_FINALIZED` — authenticated streamed-upload path completed
   // (`POST /v1/files/:id/finalize`). Metadata records the
   // post-finalize status (`ready` / `failed`) and the verified
   // sha256-match outcome. Paired with `FILE_SCAN_COMPLETED` when the
   // synchronous scanner ran.
   FILE_FINALIZED: "file.finalized",
-  // `FILE_UPLOAD_RECEIVED` — emitted from the local-disk presign sink
+  // `FILE_UPLOAD_RECEIVED` — emitted from the authenticated engine sink
   // (`PUT /v1/files/{id}/upload`) after `putStream` writes bytes but
   // before the client calls finalize. Closes the audit gap where a
   // client uploads and then abandons the session — without this row
   // the audit ledger only sees the bytes when the cleanup cron
   // eventually reaps the pending row (≥1h later). Tagged with
-  // `source: "local_presign"` so SIEM can distinguish from a future
-  // S3-side notification path.
+  // `source: "authenticated_engine_upload"` so SIEM can distinguish it
+  // from any future S3-side notification path.
   FILE_UPLOAD_RECEIVED: "file.upload_received",
   // `FILE_DOWNLOADED` — `GET /v1/files/:id/content` served bytes to a
   // caller. Metadata carries `size_bytes_bucket` and `range` (true /
@@ -505,6 +505,15 @@ export const AuditAction = {
   // an audit row with the redacted before/after diff. Secret values
   // are masked (***) so audit consumers never see the live material.
   SETTINGS_CHANGED: "settings.changed",
+  SETTINGS_REVISION_SAVED: "settings.revision_saved",
+  SETTINGS_REVISION_ACTIVATED: "settings.revision_activated",
+  SETTINGS_REVISION_RESTART_REQUIRED: "settings.revision_restart_required",
+  SETTINGS_REVISION_ACTIVATION_FAILED: "settings.revision_activation_failed",
+  SECRET_VERSION_CREATED: "secret.version_created",
+  SECRET_VERSION_REVOKED: "secret.version_revoked",
+  STATELESS_BRIDGE_CONFIG_IMPORTED: "stateless_bridge.config_imported",
+  STATELESS_BRIDGE_OBJECT_MIGRATED: "stateless_bridge.object_migrated",
+  STATELESS_BRIDGE_COMPLETED: "stateless_bridge.completed",
 
   // Trigger lifecycle for workflow-bound webhooks + schedules. The
   // `bound` / `unbound` events fire from the workflow save/delete
@@ -1002,15 +1011,15 @@ export const FileBatchCreatedMetadataSchema = z.object({
 });
 export type FileBatchCreatedMetadata = z.infer<typeof FileBatchCreatedMetadataSchema>;
 
-/** `file.upload_received` metadata. Emitted from the local-disk
- *  presign sink AFTER the streaming put completes — closes the audit
+/** `file.upload_received` metadata. Emitted from the authenticated
+ *  engine upload sink AFTER the streaming S3 put completes — closes the audit
  *  gap where a client uploads bytes and abandons the session before
  *  finalize. `source` distinguishes future emission paths (today only
- *  `local_presign`). */
+ *  path. */
 export const FileUploadReceivedMetadataSchema = z.object({
   file_id: z.string().uuid(),
   size_bytes_bucket: SizeBucketSchema,
-  source: z.enum(["local_presign"]),
+  source: z.enum(["authenticated_engine_upload"]),
   request_source: RequestSourceSchema.optional(),
 });
 export type FileUploadReceivedMetadata = z.infer<typeof FileUploadReceivedMetadataSchema>;

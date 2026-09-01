@@ -25,7 +25,6 @@
 // to until the bootstrap transaction lands.
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { unlinkSync, writeFileSync } from "node:fs";
 import { eq } from "drizzle-orm";
 import pc from "picocolors";
 import { z } from "zod";
@@ -37,6 +36,13 @@ import { engineSettings, tenants } from "../db/schema/identity.ts";
 import { seedTenantBootstrap, type TenantBootstrapPayload } from "../db/seed.ts";
 import { logger } from "../logging/logger.ts";
 import type { SeededRoleIds } from "../rbac/seed.ts";
+import {
+  activateRuntimeRevision,
+  createSecretVersion,
+  getRuntimeConfigState,
+  RuntimeConfigNotFoundError,
+  saveRuntimeConfigPatch,
+} from "../runtime-config/service.ts";
 import { now } from "../utils/clock.ts";
 
 /** Storage key for the post-bootstrap sentinel.  Boolean payload.  */
@@ -179,53 +185,16 @@ async function mintToken(db: Db): Promise<{ plaintext: string; expires_at: Date 
   // 32 bytes -> 64-char hex.  randomBytes is cryptographically secure
   // — this is the operator-facing one-time secret, treat it like any
   // bearer credential.
-  const plaintext = randomBytes(32).toString("hex");
+  const plaintext = process.env.SUBKIT_BOOTSTRAP_KEY ?? randomBytes(32).toString("hex");
+  if (plaintext.length < 64 || plaintext.length > 128) {
+    throw new Error("SUBKIT_BOOTSTRAP_KEY must contain 64..128 characters");
+  }
   const envelope: TokenEnvelope = {
     token_sha256: sha256Hex(plaintext),
     expires_at_ms: now() + BOOTSTRAP_TOKEN_TTL_MS,
   };
   await writeSetting(db, BOOTSTRAP_TOKEN_KEY, envelope);
-  writeTokenFile(plaintext);
   return { plaintext, expires_at: new Date(envelope.expires_at_ms) };
-}
-
-/**
- * Convenience for the single-container (all-in-one) image: when
- * SUBKIT_BOOTSTRAP_TOKEN_FILE is set, also drop the plaintext token into a
- * 0600 file on the shared volume so `sk init` (run via `docker exec` in the
- * SAME container) can auto-discover it — no copy-paste from the logs. The
- * trust boundary is identical to the banner the engine already prints to
- * stdout/logs; anyone who can `docker exec` already has full control.
- * No-op (and never fatal) when the env var is unset or the write fails.
- */
-function tokenFilePath(): string | undefined {
-  const p = process.env.SUBKIT_BOOTSTRAP_TOKEN_FILE;
-  return p && p.length > 0 ? p : undefined;
-}
-
-function writeTokenFile(plaintext: string): void {
-  const p = tokenFilePath();
-  if (!p) return;
-  try {
-    writeFileSync(p, plaintext, { mode: 0o600 });
-  } catch (err) {
-    logger.warn({
-      module: "onboarding.bootstrap",
-      action: "bootstrap.token_file_write_failed",
-      msg: "could not write bootstrap token file (auto-discovery disabled)",
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-}
-
-function removeTokenFile(): void {
-  const p = tokenFilePath();
-  if (!p) return;
-  try {
-    unlinkSync(p);
-  } catch {
-    /* already gone / never written — fine */
-  }
 }
 
 /**
@@ -358,13 +327,21 @@ export async function consume(
   const sentinel = await readSetting<boolean>(db, BOOTSTRAP_COMPLETED_KEY);
   if (sentinel === true || (await tenantsCount(db)) > 0) {
     await emitFailure(db, "gone", "bootstrap already completed", opts);
-    return { status: "failed", code: "gone", message: "bootstrap already completed" };
+    return {
+      status: "failed",
+      code: "gone",
+      message: "bootstrap already completed",
+    };
   }
 
   const envelope = await readSetting<TokenEnvelope>(db, BOOTSTRAP_TOKEN_KEY);
   if (!envelope) {
     await emitFailure(db, "invalid_token", "no bootstrap token on file", opts);
-    return { status: "failed", code: "invalid_token", message: "no active bootstrap token" };
+    return {
+      status: "failed",
+      code: "invalid_token",
+      message: "no active bootstrap token",
+    };
   }
   if (envelope.expires_at_ms < now()) {
     // Bootstrap is still pending (the sentinel + tenant gate above
@@ -393,13 +370,20 @@ export async function consume(
   }
   if (!constantTimeEquals(sha256Hex(opts.token), envelope.token_sha256)) {
     await emitFailure(db, "invalid_token", "token mismatch", opts);
-    return { status: "failed", code: "invalid_token", message: "invalid bootstrap token" };
+    return {
+      status: "failed",
+      code: "invalid_token",
+      message: "invalid bootstrap token",
+    };
   }
 
   const parsed = BootstrapSetupPayloadSchema.safeParse(rawPayload);
   if (!parsed.success) {
     await emitFailure(db, "validation_failed", "payload failed schema validation", opts, {
-      issues: parsed.error.issues.map((i) => ({ path: i.path, message: i.message })),
+      issues: parsed.error.issues.map((i) => ({
+        path: i.path,
+        message: i.message,
+      })),
     });
     return {
       status: "failed",
@@ -433,29 +417,95 @@ export async function consume(
       message: "tenant bootstrap failed",
     };
   }
+  const completedResult = { ...result, api_key: result.api_key };
 
-  // Persist the LLM settings to subkit.config.json — bootstrap is the
-  // first runtime write and seeds llm.provider + llm.api_key globally
-  // so the new tenant has working LLM dispatch immediately. Wrapped
-  // because some unit-test paths drive consume() directly without
-  // booting the loader; the per-tenant tenant_llm_settings row above
-  // already covers the new tenant's config in that case.
+  // Persist the new tenant's LLM settings as one immutable DB revision.
+  // Unit tests that drive consume() without runtime-config initialization
+  // keep the legacy in-process fallback below.
   try {
-    await setConfigKey(["llm", "provider"], payload.llm_provider, { force: true });
-    await setConfigKey(["llm", "api_key"], payload.llm_api_key, { force: true });
+    const state = await getRuntimeConfigState(db);
+    const secret = await createSecretVersion(db, {
+      name: `tenants.${result.tenant_id}.settings.llm.api_key`,
+      value: payload.llm_api_key,
+      created_by: result.user_id,
+    });
+    const saved = await saveRuntimeConfigPatch(db, {
+      expected_revision: state.saved_revision,
+      changes: {
+        "llm.provider": payload.llm_provider,
+        "llm.api_key": secret.reference,
+      },
+      scope: "tenant",
+      tenant_id: result.tenant_id,
+      created_by: result.user_id,
+    });
+    const activated = await activateRuntimeRevision(db, saved.saved_revision);
+    if (activated.activation_status !== "active") {
+      throw new Error(`bootstrap config activation failed: ${activated.activation_status}`);
+    }
+    await auditAwait(
+      {
+        tenant_id: result.tenant_id,
+        actor_type: "user",
+        actor_id: result.user_id,
+        action: AuditAction.SECRET_VERSION_CREATED,
+        resource_type: "runtime_secret",
+        resource_id: secret.reference,
+        metadata: {
+          name: secret.name,
+          version: secret.version,
+          source: "bootstrap",
+        },
+      },
+      db,
+    );
   } catch (err) {
+    if (err instanceof RuntimeConfigNotFoundError) {
+      try {
+        await setConfigKey(["llm", "provider"], payload.llm_provider, {
+          force: true,
+        });
+        await setConfigKey(["llm", "api_key"], payload.llm_api_key, {
+          force: true,
+        });
+      } catch (fallbackError) {
+        logger.warn({
+          module: "onboarding.bootstrap",
+          action: "setup.config_persist_skipped",
+          msg: "runtime config is not initialized in this standalone path; tenant settings remain canonical",
+          error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+        });
+      }
+      return finishBootstrap(db, completedResult, payload, opts);
+    }
     logger.warn({
       module: "onboarding.bootstrap",
-      action: "setup.config_persist_skipped",
-      msg: "config-file write skipped (loader not initialised); tenant_llm_settings row still populated",
+      action: "setup.config_persist_failed",
+      msg: "runtime configuration revision failed; tenant bootstrap remains incomplete",
       error: err instanceof Error ? err.message : String(err),
     });
+    await emitFailure(db, "validation_failed", "runtime configuration activation failed", opts);
+    return {
+      status: "failed",
+      code: "validation_failed",
+      message: "runtime configuration activation failed",
+    };
   }
 
+  return finishBootstrap(db, completedResult, payload, opts);
+}
+
+async function finishBootstrap(
+  db: Db,
+  result: Awaited<ReturnType<typeof seedTenantBootstrap>> & {
+    api_key: NonNullable<Awaited<ReturnType<typeof seedTenantBootstrap>>["api_key"]>;
+  },
+  payload: BootstrapSetupPayload,
+  opts: ConsumeOptions,
+): Promise<ConsumeOutcome> {
   // Flip the sentinel and revoke the token in the same logical step.
   await writeSetting(db, BOOTSTRAP_COMPLETED_KEY, true);
   await deleteSetting(db, BOOTSTRAP_TOKEN_KEY);
-  removeTokenFile();
 
   await auditAwait(
     {

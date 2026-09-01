@@ -76,15 +76,13 @@ export async function requireFileForTenant(
   return row;
 }
 
-/** Storage-URI parser: extract the backend key from a `local://`,
- *  `s3://<bucket>/`, or `memory://` URI. */
+/** Storage-URI parser. New rows use `s3://`; legacy bridge imports may
+ *  still carry `local://` or `memory://` locators while they are migrated. */
 export function storageKey(storage_uri: string): string {
   // `memory://<key>` — legacy in-process journey-test fixtures.
   if (storage_uri.startsWith("memory://")) return storage_uri.slice("memory://".length);
   if (storage_uri.startsWith("local://")) {
-    // Drop any query params (the LocalDiskObjectStore presign sentinel
-    // carries `?expires_at=`); we never store presign params in the
-    // canonical row, but be defensive.
+    // Drop any query params from a legacy presign locator.
     const q = storage_uri.indexOf("?");
     const tail =
       q >= 0 ? storage_uri.slice("local://".length, q) : storage_uri.slice("local://".length);

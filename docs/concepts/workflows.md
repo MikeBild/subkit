@@ -27,11 +27,11 @@ stateDiagram-v2
     archived --> [*]
 ```
 
-*Draft → active → archived. Every transition lands in the Audit Log with the actor, the version, and the timestamp.*
+_Draft → active → archived. Every transition lands in the Audit Log with the actor, the version, and the timestamp._
 
 ### The authoring critic
 
-Static validation catches what a schema can prove: unknown step kinds, malformed placeholders, a scope reference that can't resolve. It cannot catch a draft that is *structurally valid but semantically wrong* — a workflow that parses cleanly yet quietly drifts from what the author actually asked for (the wrong endpoint, an inverted condition, a dropped field).
+Static validation catches what a schema can prove: unknown step kinds, malformed placeholders, a scope reference that can't resolve. It cannot catch a draft that is _structurally valid but semantically wrong_ — a workflow that parses cleanly yet quietly drifts from what the author actually asked for (the wrong endpoint, an inverted condition, a dropped field).
 
 The authoring critic closes that gap. It is an LLM gate that runs **after** static validation in the authoring pipeline and reads the draft against the stated intent, flagging semantic drift a parser can't see. When it finds a problem, the finding is fed back into the same bounded-repair loop the engine uses everywhere else, so the fix is proposed and re-validated rather than silently applied.
 
@@ -43,7 +43,7 @@ The critic is **off by default** and enabled through the `llm.critic.*` settings
 
 The **control flow** of an Execution is deterministic. A Workflow is a DAG of Steps; the execution engine walks that DAG in order, following branching and parallel directives exactly as defined. The engine does not re-interpret, adapt, or infer at runtime: it never calls a model to decide what runs next, and committed execution never queries Skills or Knowledge Sources.
 
-What a Step *returns* is a different matter — a `request` Step calls the outside world, and the outside world is not deterministic. That includes a Step an author points at a model provider: sk supports this deliberately (see [Calling a model from a Step](#calling-a-model-from-a-step)), and such a Workflow does not produce identical output on every run. The guarantee is that no model decides what the Workflow *does*.
+What a Step _returns_ is a different matter — a `request` Step calls the outside world, and the outside world is not deterministic. That includes a Step an author points at a model provider: sk supports this deliberately (see [Calling a model from a Step](#calling-a-model-from-a-step)), and such a Workflow does not produce identical output on every run. The guarantee is that no model decides what the Workflow _does_.
 
 There is a single runtime entry point for manual execution: `POST /v1/executions`. Persisted workflows, inline draft definitions, and single-step previews all flow through this same route and the same execution engine. Inline runs complete synchronously by default. Queued background execution is explicit and reserved for persisted workflows, scheduler fires, webhook fan-out, and other detached cases.
 
@@ -51,7 +51,7 @@ All execution surfaces normalize workflow input through the same boundary before
 
 Provider failures on the authoring side do not leak through as generic internal errors anymore. Usage-limit and rate-limit failures are surfaced as typed provider-limited responses, context-window failures are surfaced as context-too-large responses, and temporary provider outages are surfaced as typed provider-unavailable responses. The execution engine remains deterministic; these envelopes only describe authoring-time model failures.
 
-This is a deliberate architectural decision, not a limitation. AI is for authoring — exploring, proposing, and revising. Once a Workflow is approved and committed, the enterprise needs to know which steps will run, in which order, against which systems. The moment the *engine* infers that, the audit trail becomes "the AI decided" rather than "the workflow ran as specified."
+This is a deliberate architectural decision, not a limitation. AI is for authoring — exploring, proposing, and revising. Once a Workflow is approved and committed, the enterprise needs to know which steps will run, in which order, against which systems. The moment the _engine_ infers that, the audit trail becomes "the AI decided" rather than "the workflow ran as specified."
 
 An Execution is a permanent record. It captures the specific Workflow version that ran, who or what triggered it, the inputs and outputs of every Step, timing at every boundary, and the final status. sk never modifies it after it completes. If something goes wrong, the complete record of what happened is preserved exactly as it occurred.
 
@@ -89,22 +89,22 @@ flowchart LR
     Time --> wait_for_event["wait_for_event<br/>HITL signal pause"]
 ```
 
-| `kind` | What it carries |
-|---|---|
-| `request` | Calls a system through a connector — HTTP, GraphQL, SQL, S3, or a remote MCP server. One step kind, five drivers, so retry, backoff, and the audit envelope behave identically whichever system is on the other end. |
-| `transform` | Reshapes data between steps in a sandboxed JavaScript expression — no network access, bounded time and memory. |
-| `branch` | Deterministic conditional routing — the engine evaluates the condition and dispatches the matching branch, no inference, no fallthrough. |
-| `loop` | Iterates a collection, running its body once per item. Expensive or side-effecting loops can set `fail_fast: true` to stop after the first non-tolerated body failure; the default collects every iteration result. |
-| `parallel` | Fans out independent step sequences concurrently and merges their results. |
-| `wait` | A deliberate delay (up to 24 h) — polling, rate-limit pacing, human-paced flows. |
+| `kind`           | What it carries                                                                                                                                                                                                                                                                                      |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `request`        | Calls a system through a connector — HTTP, GraphQL, SQL, S3, or a remote MCP server. One step kind, five drivers, so retry, backoff, and the audit envelope behave identically whichever system is on the other end.                                                                                 |
+| `transform`      | Reshapes data between steps in a sandboxed JavaScript expression — no network access, bounded time and memory.                                                                                                                                                                                       |
+| `branch`         | Deterministic conditional routing — the engine evaluates the condition and dispatches the matching branch, no inference, no fallthrough.                                                                                                                                                             |
+| `loop`           | Iterates a collection, running its body once per item. Expensive or side-effecting loops can set `fail_fast: true` to stop after the first non-tolerated body failure; the default collects every iteration result.                                                                                  |
+| `parallel`       | Fans out independent step sequences concurrently and merges their results.                                                                                                                                                                                                                           |
+| `wait`           | A deliberate delay (up to 24 h) — polling, rate-limit pacing, human-paced flows.                                                                                                                                                                                                                     |
 | `wait_for_event` | Pauses the run for an external signal — the human-in-the-loop gate. The run resumes when the signal arrives, or takes an explicit timeout path the author defines. The shipped `merge-pr-after-approval` recipe is the canonical example: open a PR, wait up to 24 h for approval, merge or abandon. |
-| `call` | Invokes another saved workflow — sub-processes compose into pipelines. |
+| `call`           | Invokes another saved workflow — sub-processes compose into pipelines.                                                                                                                                                                                                                               |
 
 Two contracts sit on top and matter to everyone, not just contributors:
 
 **Every request is classified read or write.** The driver classifies at dispatch time (a GET is a read, a mutation is a write; an external MCP tool call is a write until someone inside the tenant says otherwise), and the author can override either way.
 
-**Previews hold writes.** A dry run executes read steps live but fully resolves and *holds* every write — URL, headers, the materialized body are recorded, nothing is dispatched. You see exactly what would have been sent before anything is sent; executing writes during a preview takes an explicit confirmation.
+**Previews hold writes.** A dry run executes read steps live but fully resolves and _holds_ every write — URL, headers, the materialized body are recorded, nothing is dispatched. You see exactly what would have been sent before anything is sent; executing writes during a preview takes an explicit confirmation.
 
 The exact field contract of every step kind — schemas, sandbox limits, timeout interplay — is the [step-kinds field reference](../developers/step-kinds-reference.md).
 
@@ -126,17 +126,17 @@ flowchart LR
     Core --> Exec
 ```
 
-*Three trigger kinds, one execution core. The trigger lands in the immutable Execution and Audit Log alongside the actor identity envelope, so an operator can answer "who/what triggered this and from where" without joining tables.*
+_Three trigger kinds, one execution core. The trigger lands in the immutable Execution and Audit Log alongside the actor identity envelope, so an operator can answer "who/what triggered this and from where" without joining tables._
 
 `WorkflowDef.trigger` is a discriminated union over `kind`. Omitting the block is equivalent to `{ kind: "request" }`, so every workflow authored before this field existed keeps its behaviour. Setting `webhook` or `schedule` reverse-binds an inbound binding or cron schedule keyed on `(tenant_id, workflow_id)` at save time and removes the binding on delete or version rotate. The schema source of truth is [`apps/engine/src/workflows/types.ts`](../../apps/engine/src/workflows/types.ts) (`RequestTriggerSchema`, `WebhookTriggerSchema`, `ScheduleTriggerSchema`).
 
 The trigger is recorded in every Execution and every Audit Log entry alongside the actor identity envelope.
 
-| `kind` | Fields | Behaviour |
-|---|---|---|
-| `request` | (none) | Default. Run is initiated on demand by a caller — chat `run_workflow`, MCP, the CLI, or `POST /v1/executions`. Inline runs complete on the request path; `async: true` is honoured only for `source=saved`. |
-| `webhook` | `source` (string slug per integration — a provider label stored in `native_verifier_config.source`, **not** the ingress URL path), `events[]` (provider event names; empty means "any"), `verify` (`stripe-signature` \| `github-hmac` \| `none`) | Reverse-bound to a `webhooks_inbound` row. Inbound posts are signature-verified before any processing begins; replay-id deduplication suppresses retried deliveries. Executor lives in `apps/engine/src/webhooks/inbound/service.ts`. |
-| `schedule` | `cron` (5-field `m h dom mon dow` or `every:N` shorthand), `tz` (IANA, default `UTC`); optional `execution_mode` (`dev` \| `prod`, default `prod`), `business_days_only`, `skip_dates[]` (ISO `YYYY-MM-DD`) | Reverse-bound to a `workflows_schedules` row. The scheduler reconciler validates the cron expression at bind time, persists the connector environment, and uses `tz` so firings land at the operator's local wall-clock time. Unattended runs target production connectors by default; dev schedules are explicit. `business_days_only` skips weekends; `skip_dates` declares holidays / freezes explicitly (no holiday calendar is inferred). Catch-up semantics: a missed firing fires on the next reconciler pass rather than being silently skipped. Executor lives in `apps/engine/src/scheduler/reconciler.ts`. |
+| `kind`     | Fields                                                                                                                                                                                                                                            | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `request`  | (none)                                                                                                                                                                                                                                            | Default. Run is initiated on demand by a caller — chat `run_workflow`, MCP, the CLI, or `POST /v1/executions`. Inline runs complete on the request path; `async: true` is honoured only for `source=saved`.                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `webhook`  | `source` (string slug per integration — a provider label stored in `native_verifier_config.source`, **not** the ingress URL path), `events[]` (provider event names; empty means "any"), `verify` (`stripe-signature` \| `github-hmac` \| `none`) | Reverse-bound to a `webhooks_inbound` row. Inbound posts are signature-verified before any processing begins; replay-id deduplication suppresses retried deliveries. Executor lives in `apps/engine/src/webhooks/inbound/service.ts`.                                                                                                                                                                                                                                                                                                                                                                                 |
+| `schedule` | `cron` (5-field `m h dom mon dow` or `every:N` shorthand), `tz` (IANA, default `UTC`); optional `execution_mode` (`dev` \| `prod`, default `prod`), `business_days_only`, `skip_dates[]` (ISO `YYYY-MM-DD`)                                       | Reverse-bound to a `workflows_schedules` row. The scheduler reconciler validates the cron expression at bind time, persists the connector environment, and uses `tz` so firings land at the operator's local wall-clock time. Unattended runs target production connectors by default; dev schedules are explicit. `business_days_only` skips weekends; `skip_dates` declares holidays / freezes explicitly (no holiday calendar is inferred). Catch-up semantics: a missed firing fires on the next reconciler pass rather than being silently skipped. Executor lives in `apps/engine/src/scheduler/reconciler.ts`. |
 
 All three variants land at the same `runExecution()` core through the same execution contract; only the way the run is initiated differs.
 
@@ -147,7 +147,7 @@ All three variants land at the same `runExecution()` core through the same execu
 - **`verify` is not the stored verifier.** `stripe-signature` → stored `verifier = "stripe"`; `github-hmac` → `"github"`; `none` → `"standard"` with `native_verifier_config.skip = true`. The stored `verifier` column is always one of `standard` / `github` / `stripe` — never `none`. A row whose `verifier` is set to `none` (or anything unrecognized) is denied at ingress with `unknown_verifier` / 401.
 - **The public ingress is `POST /v1/hooks/{slug}`, and `{slug}` is the derived `wf-<workflow-slug>`, not the trigger's `source`.** The default (`standard`) verifier requires the Standard Webhooks headers `webhook-id`, `webhook-timestamp`, `webhook-signature`; the event type is read from the `webhook-type` header and must match one of `events[]` (non-empty) or the delivery is denied with `event_not_subscribed` / 401.
 
-**Reverse-bind is a mirror, not an add.** Saving a workflow *with* a `webhook` trigger upserts the inbound hook; saving it *without* one (an edit that drops the `trigger` block, or switches it to `request` / `schedule`) **deletes** the hook and its stored signing secret. Re-adding the trigger recreates the row with a fresh placeholder secret that must be re-provisioned. See [Scheduling & Hooks](../operators/scheduling-and-hooks.md#verify--stored-verifier-mapping-read-this-before-touching-the-crud-api) for the full mapping table, ingress request contract, and end-to-end wiring recipe.
+**Reverse-bind is a mirror, not an add.** Saving a workflow _with_ a `webhook` trigger upserts the inbound hook; saving it _without_ one (an edit that drops the `trigger` block, or switches it to `request` / `schedule`) **deletes** the hook and its stored signing secret. Re-adding the trigger recreates the row with a fresh placeholder secret that must be re-provisioned. See [Scheduling & Hooks](../operators/scheduling-and-hooks.md#verify--stored-verifier-mapping-read-this-before-touching-the-crud-api) for the full mapping table, ingress request contract, and end-to-end wiring recipe.
 
 ---
 
@@ -157,12 +157,12 @@ A catalog grows into the dozens quickly, and a flat list stops being useful long
 
 A category is **derived, never maintained**. There is no folder to create, no tag to apply, no field to keep current: sk reads the naming your team already uses. Workflows that share a leading slug segment form a block, so `notion-search-pages`, `notion-append-markdown`, and `notion-page-to-markdown` present together as **notion**. A prefix only becomes a block once at least three workflows share it — otherwise every one-off would become a heading of its own, which reads worse than no grouping at all. Everything without a qualifying family collects under **other**.
 
-Because the category comes from the whole catalog rather than from a stored attribute, the blocks *emerge* as the catalog grows: the third sibling of a would-be family promotes all three out of **other** into a block of their own. Nothing is migrated and nothing is edited.
+Because the category comes from the whole catalog rather than from a stored attribute, the blocks _emerge_ as the catalog grows: the third sibling of a would-be family promotes all three out of **other** into a block of their own. Nothing is migrated and nothing is edited.
 
 Two filters follow from this, and they are the same on every surface — CLI, HTTP API, MCP, and chat:
 
 - **by category** — show one block instead of the whole catalog.
-- **by connector** — show every workflow that touches a given external system. This answers the operational question directly: *before I rotate these credentials, what depends on them?* It counts both ways a step can bind a connector, so a workflow referencing it only through a `${connector.<slug>.base_url}` URL is not missed.
+- **by connector** — show every workflow that touches a given external system. This answers the operational question directly: _before I rotate these credentials, what depends on them?_ It counts both ways a step can bind a connector, so a workflow referencing it only through a `${connector.<slug>.base_url}` URL is not missed.
 
 Each listed workflow reports its `category` and the `connectors` it uses, so the same answer is available to an operator reading a terminal, a dashboard rendering the API, and an agent calling the tools.
 
@@ -217,7 +217,7 @@ flowchart LR
     NewVer -. next run .-> Run
 ```
 
-*No autonomous repair in production. The loop runs through a human gate. The compounding effect — each run improving the next — comes from operator-reviewed drift repair feeding back into authoring.*
+_No autonomous repair in production. The loop runs through a human gate. The compounding effect — each run improving the next — comes from operator-reviewed drift repair feeding back into authoring._
 
 The engine monitors active Connectors for schema drift from real execution results. Successful response evidence is accumulated per endpoint, Workflow, and Step; optional field absence is compatible, while incompatible type changes are proactive drift. Missing paths, validation failures, and endpoint removals remain reactive signals from the affected run. Detection is passive: no vendor polling, just observation of what actually executes plus the scheduled comparison of recorded evidence.
 
@@ -279,21 +279,21 @@ LLM tool-result truncation, repair attempts — live in
 so operators have one place to look and reviewers have one place to
 gate. The current values:
 
-| Constant | Default | What bites first |
-|---|---|---|
-| `WORKFLOW_TIMEOUT_DEFAULT_MS` | 6 h | Workflow status flips to `timed_out`; in-flight steps abort. |
-| `STEP_TIMEOUT_DEFAULT_MS` | 1 h | Per-step safety net when the step does not declare its own. |
-| `TRANSFORM_TIMEOUT_DEFAULT_MS` | 60 s | QuickJS wall-clock and abort signal. |
-| `MAX_CALL_DEPTH` | 5 | `call` step refuses to recurse further. |
-| `MAX_CALL_RETRIES` | 5 | Transient `request` retries. pg-boss handles backoff. |
-| `MAX_PAGINATION_REQUESTS` | 1 000 | Safeguard against missing termination conditions. |
-| `MAX_REPAIR_ATTEMPTS` | 2 | Self-healing LLM revision budget per drift signal. |
-| `STEP_RESULT_DB_BYTES` | 10 KB | Payload spillover threshold (see below). |
-| `STEP_RESULT_PREVIEW_BYTES` | 512 | Inline operator-facing preview when spilled. |
-| `LLM_TOOL_RESULT_SUCCESS_BYTES` | 80 KB | Tool-result truncation budget for successful results. |
-| `LLM_TOOL_RESULT_ERROR_BYTES` | 50 KB | Same for error results. |
-| `SANDBOX_MEMORY_LIMIT_BYTES` | 128 MB | QuickJS heap cap. |
-| `SANDBOX_WALL_MS_DEFAULT` | 30 s | Default sandbox wall-clock. |
+| Constant                        | Default | What bites first                                             |
+| ------------------------------- | ------- | ------------------------------------------------------------ |
+| `WORKFLOW_TIMEOUT_DEFAULT_MS`   | 6 h     | Workflow status flips to `timed_out`; in-flight steps abort. |
+| `STEP_TIMEOUT_DEFAULT_MS`       | 1 h     | Per-step safety net when the step does not declare its own.  |
+| `TRANSFORM_TIMEOUT_DEFAULT_MS`  | 60 s    | QuickJS wall-clock and abort signal.                         |
+| `MAX_CALL_DEPTH`                | 5       | `call` step refuses to recurse further.                      |
+| `MAX_CALL_RETRIES`              | 5       | Transient `request` retries. pg-boss handles backoff.        |
+| `MAX_PAGINATION_REQUESTS`       | 1 000   | Safeguard against missing termination conditions.            |
+| `MAX_REPAIR_ATTEMPTS`           | 2       | Self-healing LLM revision budget per drift signal.           |
+| `STEP_RESULT_DB_BYTES`          | 10 KB   | Payload spillover threshold (see below).                     |
+| `STEP_RESULT_PREVIEW_BYTES`     | 512     | Inline operator-facing preview when spilled.                 |
+| `LLM_TOOL_RESULT_SUCCESS_BYTES` | 80 KB   | Tool-result truncation budget for successful results.        |
+| `LLM_TOOL_RESULT_ERROR_BYTES`   | 50 KB   | Same for error results.                                      |
+| `SANDBOX_MEMORY_LIMIT_BYTES`    | 128 MB  | QuickJS heap cap.                                            |
+| `SANDBOX_WALL_MS_DEFAULT`       | 30 s    | Default sandbox wall-clock.                                  |
 
 These constants are not env-overridable except where explicitly noted.
 The intent is that an operator should be able to read this table once
@@ -320,12 +320,12 @@ durable cross-replica path and queued-start race are exercised in
 ### Result Persistence
 
 Step results are written inline when serialized payload size is
-≤ `STEP_RESULT_DB_BYTES`. Larger payloads are spilled to either S3
-(when `storage.offload.bucket` and credentials are configured) or the
-`execution_fixtures` table, and the original row records a
-`storage_uri` of the form `s3://...` or `fixture://<uuid>`. A 512-byte
-text preview always lands inline so an operator can see at a glance
-what the payload looked like without resolving it.
+≤ `STEP_RESULT_DB_BYTES`. Larger payloads always spill to the configured
+S3-compatible object store, and the original row records an immutable
+`s3://<bucket>/<key>` pointer plus application SHA-256 metadata. A 512-byte text
+preview always lands inline so an operator can see at a glance what the payload
+looked like without resolving it. Historical `fixture://` rows remain readable
+for recovery, but new writes never use PostgreSQL as a blob fallback.
 
 The `GET /v1/executions/:id` route hydrates from the storage URI when
 present; consumers never read the URI directly.

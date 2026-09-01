@@ -91,6 +91,7 @@ import { registerOperationalOverviewRoute } from "./routes/operator/operational-
 import { registerPatchCandidateRoutes } from "./routes/patch-candidates.ts";
 import { registerRbacRoutes } from "./routes/rbac/index.ts";
 import { registerRequestHookRoutes } from "./routes/request-hooks.ts";
+import { registerRuntimeConfigRoutes } from "./routes/runtime-config.ts";
 import { registerSelfHealingRoutes } from "./routes/self-healing.ts";
 import { registerSettingsRoutes } from "./routes/settings.ts";
 import { registerSetupRoute } from "./routes/setup.ts";
@@ -299,6 +300,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerSetupRoute(app);
   registerStatusRoute(app);
   registerStatsRoutes(app);
+  registerRuntimeConfigRoutes(app);
   registerSettingsRoutes(app);
   registerMetricsRoute(app);
   registerLlmsTxtRoutes(app);

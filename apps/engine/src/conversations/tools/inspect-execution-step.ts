@@ -8,13 +8,15 @@
 // LLM had no way to peek at the underlying step output to fix the
 // JSONata path. The tool reads `output_preview` from the
 // `execution_steps` row plus the offloaded payload from
-// `execution_fixtures` when present, so the LLM can author the next
+// the canonical object-store reference (with legacy fixture:// read support),
+// so the LLM can author the next
 // transform iteration against the REAL shape — post-execution
 // introspection.
 
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
-import { executionFixtures, executionSteps, executions } from "../../db/schema/index.ts";
+import { executionSteps, executions } from "../../db/schema/index.ts";
+import { OffloadResolutionError, resolveOffloaded } from "../../execution/offload.ts";
 import type { ConversationTool } from "./index.ts";
 
 const Input = z
@@ -117,6 +119,7 @@ export const inspectExecutionStepTool: ConversationTool = {
         status: executionSteps.status,
         output_preview: executionSteps.output_preview,
         result_storage_uri: executionSteps.result_storage_uri,
+        result_sha256: executionSteps.result_sha256,
         request_meta: executionSteps.request_meta,
         duration_ms: executionSteps.duration_ms,
         retry_count: executionSteps.retry_count,
@@ -135,7 +138,10 @@ export const inspectExecutionStepTool: ConversationTool = {
     if (!step) {
       // List available step_keys so the LLM can retry without guessing.
       const allSteps = await ctx.db
-        .select({ step_key: executionSteps.step_key, status: executionSteps.status })
+        .select({
+          step_key: executionSteps.step_key,
+          status: executionSteps.status,
+        })
         .from(executionSteps)
         .where(
           and(
@@ -156,29 +162,26 @@ export const inspectExecutionStepTool: ConversationTool = {
     let fullPayload: unknown;
     let payloadSource: "preview" | "offload" | "none" = step.output_preview ? "preview" : "none";
     if (args.include_full_payload && step.result_storage_uri) {
-      // The fixture row's PRIMARY KEY (`executionFixtures.id`) is a
-      // random UUID minted at insert time; the FK back to the step row
-      // is `executionFixtures.step_id` (verified at `db/schema/executions.ts:137`
-      // and against `execution/offload.ts:177` which writes it). Querying
-      // by `.id` therefore never matches and the LLM saw `payload_source: "none"`
-      // even when the body was sitting in the table (session 0498925e:
-      // 279 KB Confluence body was offloaded but unreachable). We also
-      // filter on `kind = "offload"` so a self-healing fixture sharing
-      // the same step_id doesn't masquerade as the offloaded body.
-      const fixtureRows = await ctx.db
-        .select({ body: executionFixtures.body })
-        .from(executionFixtures)
-        .where(
-          and(
-            eq(executionFixtures.tenant_id, ctx.tenant_id),
-            eq(executionFixtures.step_id, step.id),
-            eq(executionFixtures.kind, "offload"),
-          ),
-        )
-        .limit(1);
-      if (fixtureRows[0]?.body !== undefined && fixtureRows[0].body !== null) {
-        fullPayload = fixtureRows[0].body;
+      try {
+        fullPayload = await resolveOffloaded(ctx.db, ctx.tenant_id, {
+          $offloaded: true,
+          storage_uri: step.result_storage_uri,
+          preview: JSON.stringify(step.output_preview ?? null),
+          size_bytes: 0,
+          ...(step.result_sha256 ? { sha256: step.result_sha256 } : {}),
+        });
         payloadSource = "offload";
+      } catch (error) {
+        if (!(error instanceof OffloadResolutionError)) throw error;
+        return {
+          ok: false,
+          data: {
+            error_code: error.code,
+            message: error.message,
+            execution_id: args.execution_id,
+            step_key: step.step_key,
+          },
+        };
       }
     }
 

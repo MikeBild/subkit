@@ -1,4 +1,4 @@
-// Size-routing parity: ≤5 MB → inline, >5 MB → batch-create + presigned PUT + finalize.
+// Size-routing parity: ≤5 MB → inline, >5 MB → batch-create + authenticated PUT + finalize.
 //
 // The mock intercepts at the `fetchImpl` boundary so we verify the actual
 // wire paths without any process spawning.
@@ -39,6 +39,25 @@ afterEach(() => {
 });
 
 describe("uploadPath size routing", () => {
+  test("absolute legacy upload URLs never receive the engine bearer token", async () => {
+    let authorization: string | null = null;
+    const client = new EngineClient({
+      engine_url: "http://engine.local",
+      api_key: "wf_live_must_not_leak",
+      fetchImpl: async (_input, init) => {
+        authorization = new Headers(init?.headers).get("authorization");
+        return new Response(null, { status: 200 });
+      },
+    });
+
+    await client.putToPresignedUrl(
+      "https://object-store.example/upload",
+      { "content-length": "1" },
+      new Uint8Array([1]),
+    );
+    expect(authorization).toBeNull();
+  });
+
   test("file ≤ MAX_INLINE_BYTES goes to /v1/files/inline", async () => {
     const paths: string[] = [];
     const client = new EngineClient({
@@ -68,6 +87,7 @@ describe("uploadPath size routing", () => {
   test("file > MAX_INLINE_BYTES goes batch-create → PUT → finalize", async () => {
     const paths: string[] = [];
     const methods: string[] = [];
+    const uploadAuthorizations: string[] = [];
 
     const LARGE = MAX_INLINE_BYTES + 1;
     const client = new EngineClient({
@@ -98,6 +118,7 @@ describe("uploadPath size routing", () => {
         }
 
         if (method === "PUT" && url.includes("/upload")) {
+          uploadAuthorizations.push(new Headers(init?.headers).get("authorization") ?? "");
           return new Response(null, { status: 200 });
         }
 
@@ -119,16 +140,17 @@ describe("uploadPath size routing", () => {
     const row = await uploadPath(client, fp, { quiet: true });
 
     expect(row.id).toBe(FID);
-    // batch-create, PUT to presigned, finalize = 3 calls minimum.
+    // batch-create, authenticated PUT, finalize = 3 calls minimum.
     expect(paths.length).toBeGreaterThanOrEqual(3);
     expect(paths.some((p) => p.includes("batch-create"))).toBe(true);
     expect(methods.some((m) => m === "PUT")).toBe(true);
+    expect(uploadAuthorizations).toContain("Bearer wf_live_test");
     expect(paths.some((p) => p.includes("finalize"))).toBe(true);
     // The inline endpoint must NOT have been called.
     expect(paths.some((p) => p.includes("/v1/files/inline"))).toBe(false);
   });
 
-  test("dedup hit on presigned path returns existing row without PUT", async () => {
+  test("dedup hit on streamed path returns existing row without PUT", async () => {
     const paths: string[] = [];
     const methods: string[] = [];
 

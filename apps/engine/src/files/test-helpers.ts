@@ -2,7 +2,7 @@
 //
 // Inserts a `files` row + `file_links` row directly so attachment-aware
 // tests don't have to spin up the full HTTP route. The bytes land in
-// the configured object store (in-process LocalDiskObjectStore unless
+// the configured object store (in-process MemoryObjectStore in tests,
 // the test overrode it via `setObjectStoreForTesting`), keeping the
 // content read path identical to production — `requireFileForTenant`
 // + `openRead` see the same shape they'd see for a real upload.
@@ -58,18 +58,12 @@ function buildObjectKey(tenant_id: string, file_uuid: string, now: Date = new Da
 }
 
 function composeStorageUri(key: string): string {
-  // Resilient against tests that haven't bootstrapped the config
-  // loader. Default to the local backend (the test ObjectStore is
-  // local-disk in every harness we ship); fall back to local for
-  // s3-backed deployments too, since the test never goes through the
-  // real download path here.
   try {
-    const cfg = getConfig().storage;
-    if (cfg.files.backend === "s3") return `s3://${cfg.files.bucket}/${key}`;
+    const bucket = getConfig().storage.object_store.bucket || "test";
+    return `s3://${bucket}/${key}`;
   } catch {
-    /* config not loaded — tests default to local */
+    return `s3://test/${key}`;
   }
-  return `local://${key}`;
 }
 
 function slugify(filename: string): string {

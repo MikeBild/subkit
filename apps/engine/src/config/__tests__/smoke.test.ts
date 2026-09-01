@@ -3,13 +3,14 @@
 // asserts the documented boot invariants.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   _resetConfigForTests,
   ConfigLoaderError,
   getConfig,
+  getConfigPath,
   getDiagnostics,
   loadConfig,
 } from "../loader.ts";
@@ -45,6 +46,41 @@ describe("smoke — zero-config boot", () => {
     const diag = getDiagnostics();
     expect(diag.pending_restart_keys).toEqual([]);
     expect(diag.override_keys).toEqual([]);
+  });
+
+  test("production uses bootstrap bindings without reading or writing a config file", async () => {
+    writeFileSync(
+      cfgPath,
+      JSON.stringify({ database: { url: "postgres://must-not-win/legacy" } }),
+      "utf8",
+    );
+    await loadConfig({
+      env: {
+        NODE_ENV: "production",
+        DATABASE_URL: "postgres://bootstrap/runtime",
+        PORT: "3100",
+        OBJECT_STORAGE_ENDPOINT: "https://objects.example.test",
+        OBJECT_STORAGE_REGION: "eu-central-1",
+        OBJECT_STORAGE_BUCKET: "subkit",
+        OBJECT_STORAGE_ACCESS_KEY_ID: "access",
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+        SUBKIT_CONFIG: cfgPath,
+      },
+    });
+    expect(getConfigPath()).toBe("<postgresql-runtime-config>");
+    expect(getConfig().database.url).toBe("postgres://bootstrap/runtime");
+    expect(getConfig().server.port).toBe(3100);
+    expect(getConfig().storage.object_store).toMatchObject({
+      endpoint: "https://objects.example.test",
+      region: "eu-central-1",
+      bucket: "subkit",
+      access_key_id: "access",
+      secret_access_key: "secret",
+    });
+    expect(existsSync(cfgPath)).toBe(true);
+    expect(JSON.parse(await Bun.file(cfgPath).text())).toEqual({
+      database: { url: "postgres://must-not-win/legacy" },
+    });
   });
 });
 

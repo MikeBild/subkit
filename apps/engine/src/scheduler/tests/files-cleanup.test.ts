@@ -43,7 +43,7 @@ afterAll(async () => {
 }, 30_000);
 
 describe("runFilesCleanup — sweep 1: pending orphans", () => {
-  test("pending row with expired presign URL is hard-deleted + audit written", async () => {
+  test("pending row with expired upload slot is hard-deleted + audit written", async () => {
     const file_uuid = uuid();
     // 2 hours ago — well past the 1-hour PENDING_EXPIRY_GRACE
     const expiredAt = new Date(getTestNow() - 2 * 60 * 60 * 1000);
@@ -79,7 +79,7 @@ describe("runFilesCleanup — sweep 1: pending orphans", () => {
     expect(meta.reason).toBe("pending_expired");
   });
 
-  test("pending row with future presign URL is NOT reaped", async () => {
+  test("pending row with future upload slot is NOT reaped", async () => {
     const file_uuid = uuid();
     const futureAt = new Date(getTestNow() + 60 * 60 * 1000);
     await srv.db.insert(files).values({

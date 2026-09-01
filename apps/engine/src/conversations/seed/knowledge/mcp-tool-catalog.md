@@ -48,7 +48,7 @@ Every tool below carries the **lowest MCP mode that can call it**:
 - **[admin]** — `mcp:admin` only, and suppressed entirely when the deployment
   sets `mcp.read_only`.
 
-The tag is about *callability*, which is the only thing that matters to you.
+The tag is about _callability_, which is the only thing that matters to you.
 `tools/list` advertises the full catalog for your mode; if your client preloads
 only part of it, its native tool-search fetches the rest on demand, and you can
 always name a tool from here directly. The reverse never happens. A tool tagged
@@ -69,7 +69,7 @@ Run saved workflows and read their executions.
 - `wf_<slug>` **[product]** — run the saved workflow by slug (one materialized
   tool per workflow; inputSchema is the workflow's declared input schema). Fast
   runs return inline; a slow run (>~50s) returns `{ status: "running",
-  execution_id, poll_with: "get_execution" }`.
+execution_id, poll_with: "get_execution" }`.
 - `run_workflow` **[product]** — generic run by `slug` (the search-first fallback
   when a `wf_<slug>` tool was trimmed from the palette).
 - `find_workflow` **[product]** — search the tenant's workflow library by intent.
@@ -327,8 +327,8 @@ identifier), the result is wrapped:
 ```
 
 A clean run returns the raw payload unwrapped. Oversize results (>20 KB inline
-cap) are offloaded and returned as an MCP `resource_link` (`fixture://<id>`) with
-a text summary; warnings travel in the summary.
+cap) are offloaded to the configured S3-compatible object store and returned as
+an MCP `resource_link` with a text summary; warnings travel in the summary.
 
 # OAuth Scopes & MCP Modes
 
@@ -374,7 +374,8 @@ MCP resources expose tenant state for `resources/read` and live
 - `connector://<id>` — connector metadata (never credentials).
 - `knowledge://<id>` — Knowledge Source metadata + chunk count.
 - `skill-candidate://<id>` — a proposed skill improvement.
-- `fixture://<id>` — an offloaded/oversize execution payload (read-only).
+- `fixture://<id>` — a historical offloaded execution payload (read-only;
+  new offloads use immutable S3 objects).
 - `file://<id>` — an execution-produced attachment.
 
 Subscribable (emit `notifications/resources/updated`): `workflow://`,

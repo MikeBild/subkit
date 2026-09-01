@@ -772,25 +772,40 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
     });
     expect(append.isError).toBe(false);
 
-    // Deadline-based poll: the staged answer resumes through a pg-boss
-    // worker whose pickup latency stretches under the full-suite parallel
-    // load, so a fixed attempt count flakes where a wall-clock budget
-    // (well under the test timeout) does not.
-    let terminalStatus: string | null = null;
-    const pollDeadline = Date.now() + 40_000; // allow-wall-clock
-    while (Date.now() < pollDeadline) {
-      // allow-wall-clock
-      const poll = await approvalClient.callTool({
-        name: "conversation_get",
-        arguments: { conversation_id: conversation.id },
-      });
-      const body = parseEnvelope(poll) as { status?: string };
-      if (body.status === "completed" || body.status === "failed") {
-        terminalStatus = body.status;
-        break;
-      }
-      await Bun.sleep(50);
-    }
+    // Wait for the first worker to persist the pause, then make exactly one
+    // public poll: that poll delivers the native form and stages the accepted
+    // answer. Hammering conversation_get every 50 ms competes with the resume
+    // worker for the same DB pool and made this assertion depend on scheduler
+    // luck. The durable mcp_tasks result is the completion signal; after it is
+    // present, one final public read proves the client-facing projection.
+    await waitFor(
+      async () => {
+        const [row] = await suite.http.db
+          .select({ status: conversations.status })
+          .from(conversations)
+          .where(
+            and(
+              eq(conversations.tenant_id, suite.http.tenantId),
+              eq(conversations.id, conversation.id),
+            ),
+          );
+        return row?.status === "awaiting_input" ? row : null;
+      },
+      { tries: 500, sleepMs: 10, label: "native approval pause" },
+    );
+
+    const delivery = await approvalClient.callTool({
+      name: "conversation_get",
+      arguments: { conversation_id: conversation.id },
+    });
+    expect(parseEnvelope(delivery).status).toBe("input_required");
+    await waitForResumedTask(conversation.id);
+
+    const completed = await approvalClient.callTool({
+      name: "conversation_get",
+      arguments: { conversation_id: conversation.id },
+    });
+    const terminalStatus = parseEnvelope(completed).status;
 
     expect(approvalRequests).toBe(1);
     expect(terminalStatus).toBe("completed");

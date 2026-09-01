@@ -79,7 +79,7 @@ export const tenants = pgTable(
 );
 
 /** Internal engine state store — bootstrap sentinel + token envelope only.
- *  User-facing runtime configuration moved to `subkit.config.json` in v3.5
+ *  User-facing runtime configuration moved to immutable PostgreSQL revisions
  *  (see `apps/engine/src/config/schema.ts`). This table now persists
  *  exclusively system-level state that boot-path code mutates without
  *  going through the audit + tenant scope rules of the config loader.

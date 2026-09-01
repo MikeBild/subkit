@@ -302,6 +302,27 @@
       "when": 1788000360001,
       "tag": "0042_restore_queue_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1788264034529,
+      "tag": "0043_mute_paper_doll",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1788266029887,
+      "tag": "0044_wild_micromax",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1788268883384,
+      "tag": "0045_steady_smiling_tiger",
+      "breakpoints": true
     }
   ]
 }

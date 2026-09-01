@@ -1,10 +1,11 @@
 # CI-only compose for the Docker-image E2E track (tests/docker/*.docker.test.ts).
 #
-# Builds and runs the production image with a real external PostgreSQL service,
-# exactly as the supported topology requires — but
-# pinned for hermetic CI: a fixed MASTER_KEY, the mock LLM provider so no
-# model is ever called in the gate, and ndjson logs so the log-artifact is
-# machine-parseable on failure. The application has one loopback-published
+# Builds and runs the production image with real external PostgreSQL and S3
+# services and no application data volume, exactly as the supported stateless
+# topology requires — but
+# pinned for hermetic CI: a fixed MASTER_KEY and deterministic onboarding
+# key. Runtime settings, including the mock LLM provider, are written through
+# POST /v1/setup rather than injected as process environment. The application has one loopback-published
 # port. Its Compose healthcheck calls both /health and /ready, so
 # `docker compose up --wait` blocks on readiness without fixed sleeps.
 services:
@@ -20,27 +21,60 @@ services:
       timeout: 3s
       retries: 30
 
+  object-store:
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: subkit
+      MINIO_ROOT_PASSWORD: subkit-object-test
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  object-store-init:
+    image: minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    depends_on:
+      object-store:
+        condition: service_healthy
+    entrypoint:
+      [
+        "/bin/sh",
+        "-c",
+        "mc alias set local http://object-store:9000 subkit subkit-object-test && mc mb --ignore-existing local/subkit-test",
+      ]
+
   engine:
     build:
       context: .
       dockerfile: Dockerfile
-    image: subkit:cintest
+    image: ${SUBKIT_TEST_IMAGE:-subkit:cintest}
     environment:
       DATABASE_URL: postgres://subkit:subkit-test@postgres:5432/subkit
       NODE_ENV: production
-      # Mock provider: bootstrap (POST /v1/setup) accepts "mock", and no
-      # gating Docker test invokes an LLM endpoint.
-      LLM_PROVIDER: mock
       # Fixed 64-hex key so encrypted state is reproducible across runs and
       # the harness never has to scrape a generated key.
       MASTER_KEY: "00000000000000000000000000000000000000000000000000000000000000aa"
-      # Machine-parseable logs for the failure artifact + log assertions.
-      LOG_FORMAT: ndjson
+      # Deterministic only for this isolated test deployment.
+      SUBKIT_BOOTSTRAP_KEY: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      OBJECT_STORAGE_ENDPOINT: http://object-store:9000
+      OBJECT_STORAGE_REGION: us-east-1
+      OBJECT_STORAGE_BUCKET: subkit-test
+      OBJECT_STORAGE_ACCESS_KEY_ID: subkit
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: subkit-object-test
+      OBJECT_STORAGE_PATH_STYLE: "true"
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${SUBKIT_TEST_PORT:-3000}:3000"
     depends_on:
       postgres:
         condition: service_healthy
+      object-store-init:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [

@@ -7,12 +7,10 @@
 //   - `skill-candidate://<id>` — proposed skill improvement
 //   - `workflow://<id>`        — committed workflow definition
 //   - `file://<fid>`           — file metadata + content (text or base64)
-//   - `fixture://<fid>`        — offloaded execution payload (read-only;
-//                                emitted by `wf.*` tool results when the
-//                                serialized body exceeds MCP_OFFLOAD_CHAR_CAP).
-//                                Not enumerated in `ListResources` — the
-//                                URI is handed to the client inside the
-//                                tool envelope and read back on demand.
+//   - `s3://<bucket>/<key>`    — current offloaded execution payload
+//   - `fixture://<fid>`        — historical offloaded execution payload
+//                                (both read-only and not enumerated; the URI is
+//                                handed to the client and read on demand)
 //
 // `resources/subscribe` is wired to outbox pub/sub: events for
 // subscribed resources push `notifications/resources/updated`.
@@ -87,6 +85,7 @@ import * as skillCandidateSvc from "../../skill-candidates/service.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import * as workflowSvc from "../../workflows/service.ts";
 import { renderKnowledgeResourceText } from "./knowledge-resource.ts";
+import { readOffloadedExecutionResource } from "./offloaded-resource.ts";
 import { paginate } from "./pagination.ts";
 
 // MCP resources §Error Handling pins resource-not-found to JSON-RPC -32002.
@@ -518,7 +517,10 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     }
 
     const page = paginate("resources/list", resources, req.params?.cursor);
-    return { resources: page.page, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}) };
+    return {
+      resources: page.page,
+      ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+    };
   });
 
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async (req) => {
@@ -817,14 +819,32 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       };
     }
 
-    // Execution Fixtures (offloaded `wf.*` tool payloads).
+    // Current object-store offloads. A URI is readable only when PostgreSQL
+    // contains that exact pointer on an execution or step owned by this
+    // tenant; knowing or guessing a bucket/key never grants access.
+    if (uri.startsWith("s3://")) {
+      const { executionId, body } = await readOffloadedExecutionResource(db, principal, uri);
+      logger.debug({
+        module: "mcp",
+        action: "mcp.resource.read",
+        msg: "mcp read object-store offload",
+        execution_id: executionId,
+      });
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(body),
+          },
+        ],
+      };
+    }
+
+    // Historical execution fixtures remain readable during recovery.
     //
-    // When a workflow tool result exceeds MCP_OFFLOAD_CHAR_CAP the engine
-    // writes the body to `execution_fixtures` and returns an envelope
-    // with `uri: fixture://<id>` (apps/engine/src/mcp/capabilities/tools.ts
-    // and apps/engine/src/execution/offload.ts). That URI MUST be readable
-    // by the same MCP client — anything less is a protocol-level
-    // inconsistency where the engine advertises a URI it can't honour.
+    // New workflow results use the s3:// branch above; bridge-era
+    // fixture:// links still round-trip for rollback and old clients.
     //
     // Tenant isolation: the `execution_fixtures.tenant_id` column is the
     // chokepoint; cross-tenant ids return `fixture not found` so

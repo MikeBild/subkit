@@ -31,22 +31,10 @@ export function buildObjectKey(
   return `${tenant_id}/${yyyy}/${mm}/${dd}/${file_uuid}`;
 }
 
-/** Compose the storage URI for a backend-agnostic key. Mirrors the
- *  reverse of `storageKey(uri)` so a future test can round-trip a
- *  key through `composeStorageUri` → `storageKey` and recover the
- *  input. The backend (`s3` vs. `local`) is read from the per-
- *  process config snapshot; when the loader isn't bootstrapped the
- *  local-disk default applies — the same resilience convention
- *  `getObjectStore()` documents, so both seams agree on the backend
- *  in config-less test contexts. */
+/** Compose the S3 locator while keeping PostgreSQL as the active pointer. */
 export function composeStorageUri(key: string): string {
-  if (isConfigLoaded()) {
-    const cfg = getConfig().storage;
-    if (cfg.files.backend === "s3") {
-      return `s3://${cfg.files.bucket}/${key}`;
-    }
-  }
-  return `local://${key}`;
+  const bucket = isConfigLoaded() ? getConfig().storage.object_store.bucket : "test";
+  return `s3://${bucket || "test"}/${key}`;
 }
 
 /** Open an iterator over a fixed byte buffer for the synchronous scan
