@@ -25,7 +25,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type ServerType, serve } from "@hono/node-server";
 import type { PgBoss } from "pg-boss";
-import { getConfig, loadConfig } from "../../config/loader.ts";
+import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { apiKeys, systemAccounts, tenants, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -119,19 +119,25 @@ function generateApiKey(): { plaintext: string; prefix: string; hash: string } {
  *  Takes the resolved testcontainer DATABASE_URL so `getPool()`'s
  *  env-first resolution (see `db/client.ts:getPool`) lands on the real
  *  disposable db, not a placeholder. Must run AFTER `withTestEnv`
- *  pins `DATABASE_URL` for the journey. */
+ *  pins `DATABASE_URL` for the journey.
+ *
+ *  Journey tests exercise the complete public surface, including payload
+ *  offload. Seed the non-secret test bucket after config is available; the
+ *  object-store factory selects its in-memory implementation under
+ *  `NODE_ENV=test`, so no network service or production fallback is involved. */
 async function ensureConfigLoaded(databaseUrl: string): Promise<void> {
   try {
     getConfig();
-    return;
   } catch {
-    // not yet loaded — fall through.
+    const dir = mkdtempSync(join(tmpdir(), "sk-cfg-journey-"));
+    await loadConfig({
+      env: { DATABASE_URL: databaseUrl, NODE_ENV: "test" },
+      configPathOverride: join(dir, "subkit.config.json"),
+    });
   }
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-journey-"));
-  await loadConfig({
-    env: { DATABASE_URL: databaseUrl, NODE_ENV: "test" },
-    configPathOverride: join(dir, "subkit.config.json"),
-  });
+  if (!getConfig().storage.object_store.bucket) {
+    await setConfigKey("storage.object_store.bucket", "test", { force: true });
+  }
 }
 
 export async function createJourneyCtx(
