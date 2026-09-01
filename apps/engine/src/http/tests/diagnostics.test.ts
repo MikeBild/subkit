@@ -334,6 +334,7 @@ describe("/v1/diagnostics/setup", () => {
       bedrockSecretKey: getConfig().llm.providers.bedrock.secret_access_key,
       s3AccessKey: getConfig().storage.object_store.access_key_id,
       s3SecretKey: getConfig().storage.object_store.secret_access_key,
+      s3SessionToken: getConfig().storage.object_store.session_token,
     };
     // Distinct, recognizable fakes so a substring match below would
     // catch any of them on partial leak.
@@ -344,6 +345,7 @@ describe("/v1/diagnostics/setup", () => {
       bedrockSecretKey: "fake-bedrock-secret-leak-canary-9f8e7d6c5b4a3210",
       s3AccessKey: "AKIAFAKES3LEAKCANARY",
       s3SecretKey: "fake-s3-secret-leak-canary-9f8e7d6c5b4a3210abcd",
+      s3SessionToken: "fake-s3-session-token-leak-canary-9f8e7d6c5b4a3210abcd",
     };
     await setConfigKey("llm.providers.anthropic.api_key", fakes.anthropic, {
       force: true,
@@ -359,6 +361,9 @@ describe("/v1/diagnostics/setup", () => {
     });
     await setConfigKey("storage.object_store.access_key_id", fakes.s3AccessKey, { force: true });
     await setConfigKey("storage.object_store.secret_access_key", fakes.s3SecretKey, {
+      force: true,
+    });
+    await setConfigKey("storage.object_store.session_token", fakes.s3SessionToken, {
       force: true,
     });
     try {
@@ -411,6 +416,7 @@ describe("/v1/diagnostics/setup", () => {
         "llm.providers.bedrock.secret_access_key",
         "storage.object_store.access_key_id",
         "storage.object_store.secret_access_key",
+        "storage.object_store.session_token",
         "MASTER_KEY",
       ];
       for (const key of secretLeaves) {
@@ -435,6 +441,9 @@ describe("/v1/diagnostics/setup", () => {
       });
       await setConfigKey("storage.object_store.access_key_id", before.s3AccessKey, { force: true });
       await setConfigKey("storage.object_store.secret_access_key", before.s3SecretKey, {
+        force: true,
+      });
+      await setConfigKey("storage.object_store.session_token", before.s3SessionToken, {
         force: true,
       });
     }
