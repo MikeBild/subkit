@@ -86,6 +86,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "llm.critic.max_consecutive_rejections": "Critic max consecutive rejections",
 
   // ── Authentication ─────────────────────────────────────────────
+  "auth.providers": "Browser authentication providers",
   "auth.enable_signup": "SSO signup (JIT user provisioning)",
   "auth.session.secret": "Session signing secret",
   "auth.mcp_oauth.enabled": "MCP OAuth server enabled",

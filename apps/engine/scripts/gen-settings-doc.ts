@@ -41,6 +41,7 @@ function leafKindLabel(leaf: ConfigLeaf): string {
   }
   if (leaf.kind === "string-list") return "string[]";
   if (leaf.kind === "string-array") return "array";
+  if (leaf.kind === "json") return "json";
   return leaf.kind;
 }
 
@@ -112,9 +113,11 @@ function main(): void {
   }
 
   lines.push(
-    "## Structural settings",
+    "## Authentication providers",
     "",
-    "`auth.providers` is the single SubKit-local auth list and is edited in `subkit.config.json`, not through the scalar settings API. Records use `protocol: api_key` or `oidc`; one API-key adapter and multiple named direct OIDC adapters may coexist. Provider ids must be unique, and every OIDC callback is `/v1/identity/login/callback` on `server.public_base_url`. Each OIDC client, optional secret, callback, session and tenant mapping belongs to this SubKit deployment.",
+    "`auth.providers` is one atomic, validated runtime setting available through Cockpit, HTTP, MCP, `sk settings`, and the canonical config file. Records use `protocol: api_key` or `oidc`; one API-key adapter and multiple named direct OIDC adapters may coexist. Provider ids must be unique, and every OIDC callback is `/v1/identity/login/callback` on `server.public_base_url`. A successful write is active for subsequent browser-login requests without an engine restart.",
+    "",
+    "OIDC records are public clients using Authorization Code with PKCE. Runtime configuration intentionally has no `client_secret` field and rejects one if supplied; use an issuer that supports public clients with `token_endpoint_auth_method=none`. The environment is not an operational auth-provider source: legacy `SK_OVERRIDE_AUTH_PROVIDERS` may only seed a missing canonical value once, like other compatibility imports.",
     "",
     "Configured labels are diagnostic metadata only. The common `mcp-auth` surface derives its two user actions from protocol and always presents `Continue with SSO` before `Continue with API key`. Discovery exposes the canonical labels `SSO` and `API key`; no provider-specific route or parallel configuration tree is accepted.",
     "",

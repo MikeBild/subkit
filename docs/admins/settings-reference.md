@@ -96,6 +96,7 @@ Authentication
 | `auth.mcp_oauth.enabled` | boolean | `true` | global | no | yes | Enable the MCP OAuth 2.1 authorization server (ChatGPT / Claude.ai / Cursor). |
 | `auth.mcp_oauth.refresh_token_ttl_seconds` | number | `2592000` | global | no | no | Lifetime in seconds for MCP OAuth refresh tokens (30 days). |
 | `auth.mcp_oauth.scopes_supported` | string[] | `["mcp:read","mcp:authoring","mcp:admin"]` | global | no | no | OAuth scopes advertised in the authorization server metadata. |
+| `auth.providers` | json | `[{"protocol":"api_key","id":"api-key","label":"SubKit API key"}]` | global | no | no | Provider-neutral browser authentication adapters. OIDC records are public clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration. |
 | `auth.session.secret` | string | `""` | global | yes | yes | Session signing secret (auto-generated to a 32-byte hex value on first boot if empty); operator-supplied values must be at least 32 chars |
 
 ## platform
@@ -278,8 +279,10 @@ Per-connector tunables. Each sub-section is owned by one connector template.
 | `connectors.web_scraper.runtime.respect_robots` | boolean | `true` | tenant | no | no | Skip URLs that robots.txt disallows for the configured User-Agent. |
 | `connectors.web_scraper.runtime.user_agent` | string | `"sk-web-scraper/1.0 (+https://subkit.io/bot)"` | tenant | no | no | User-Agent header on every fetch; passed to robots-parser matching. |
 
-## Structural settings
+## Authentication providers
 
-`auth.providers` is the single SubKit-local auth list and is edited in `subkit.config.json`, not through the scalar settings API. Records use `protocol: api_key` or `oidc`; one API-key adapter and multiple named direct OIDC adapters may coexist. Provider ids must be unique, and every OIDC callback is `/v1/identity/login/callback` on `server.public_base_url`. Each OIDC client, optional secret, callback, session and tenant mapping belongs to this SubKit deployment.
+`auth.providers` is one atomic, validated runtime setting available through Cockpit, HTTP, MCP, `sk settings`, and the canonical config file. Records use `protocol: api_key` or `oidc`; one API-key adapter and multiple named direct OIDC adapters may coexist. Provider ids must be unique, and every OIDC callback is `/v1/identity/login/callback` on `server.public_base_url`. A successful write is active for subsequent browser-login requests without an engine restart.
+
+OIDC records are public clients using Authorization Code with PKCE. Runtime configuration intentionally has no `client_secret` field and rejects one if supplied; use an issuer that supports public clients with `token_endpoint_auth_method=none`. The environment is not an operational auth-provider source: legacy `SK_OVERRIDE_AUTH_PROVIDERS` may only seed a missing canonical value once, like other compatibility imports.
 
 Configured labels are diagnostic metadata only. The common `mcp-auth` surface derives its two user actions from protocol and always presents `Continue with SSO` before `Continue with API key`. Discovery exposes the canonical labels `SSO` and `API key`; no provider-specific route or parallel configuration tree is accepted.

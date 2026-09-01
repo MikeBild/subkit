@@ -1,7 +1,14 @@
 import type { z } from "zod";
 import { ConfigSchema, type FieldMeta } from "./schema.ts";
 
-export type LeafKind = "string" | "number" | "boolean" | "enum" | "string-list" | "string-array";
+export type LeafKind =
+  | "string"
+  | "number"
+  | "boolean"
+  | "enum"
+  | "string-list"
+  | "string-array"
+  | "json";
 
 export interface ConfigLeaf {
   path: string[];
@@ -151,7 +158,23 @@ function classify(inner: z.ZodTypeAny): { kind: LeafKind; enumValues?: string[] 
 
 function walk(schema: z.ZodTypeAny, prefix: string[], out: ConfigLeaf[]): void {
   const { inner, nullable, meta, description } = unwrap(schema);
-  if (meta.structural) return;
+  if (meta.structural) {
+    // Structural records remain excluded by default. A schema may opt one
+    // complete value into the validated runtime settings surface explicitly;
+    // this keeps arrays such as auth.providers atomic and prevents partial,
+    // invalid records from being persisted field-by-field.
+    if (!meta.runtimeEditable) return;
+    const leaf: ConfigLeaf = {
+      path: prefix,
+      schema,
+      kind: "json",
+      meta,
+      nullable,
+    };
+    if (description !== undefined) leaf.description = description;
+    out.push(leaf);
+    return;
+  }
   const def = (inner as { def?: { type?: string; shape?: Record<string, z.ZodTypeAny> } }).def;
 
   if (def?.type === "object" && def.shape) {

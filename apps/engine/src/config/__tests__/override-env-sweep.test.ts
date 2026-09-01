@@ -120,6 +120,19 @@ function pickOverrideValue(leaf: ConfigLeaf, salt: number): string {
       return tag;
     case "string-array":
       return tag;
+    case "json":
+      return JSON.stringify([
+        { protocol: "api_key", id: "api-key", label: "SubKit API key" },
+        {
+          protocol: "oidc",
+          id: `oidc-${salt}`,
+          label: "Public OIDC",
+          issuer_url: "https://identity.example.test",
+          client_id: `client-${salt}`,
+          scopes: "openid profile email",
+          tenant_slug: "default",
+        },
+      ]);
     default:
       return tag;
   }
@@ -182,7 +195,14 @@ describe(`legacy SK_OVERRIDE_<KEY> seed sweep — ${LEAVES.length} leaves`, () =
         continue;
       }
       const live = readDeep(getConfig(), leaf.path);
-      const expected = leaf.kind === "number" ? Number(v) : leaf.kind === "boolean" ? true : v;
+      const expected =
+        leaf.kind === "number"
+          ? Number(v)
+          : leaf.kind === "boolean"
+            ? true
+            : leaf.kind === "json"
+              ? JSON.parse(v)
+              : v;
       if (JSON.stringify(live) !== JSON.stringify(expected)) {
         failures.push(
           `${dotted}: live=${JSON.stringify(live)} expected=${JSON.stringify(expected)}`,

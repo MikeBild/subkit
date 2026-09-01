@@ -41,8 +41,14 @@ describe("listConfigLeaves", () => {
     }
   });
 
-  test("structural auth providers are not exposed as a scalar setting", () => {
-    expect(findLeafByPath("auth.providers")).toBeUndefined();
+  test("auth providers are exposed atomically as validated runtime JSON", () => {
+    const leaf = findLeafByPath("auth.providers");
+    expect(leaf).toBeDefined();
+    expect(leaf!.kind).toBe("json");
+    expect(leaf!.meta.structural).toBe(true);
+    expect(leaf!.meta.runtimeEditable).toBe(true);
+    expect(leaf!.meta.secret).toBeUndefined();
+    expect(leaf!.meta.requiresRestart).toBeUndefined();
   });
 
   test("tenant-scoped leaves match the documented set", () => {

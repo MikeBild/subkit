@@ -112,6 +112,19 @@ function valueFor(leaf: ConfigLeaf, salt: number): unknown {
       return [tag, `${tag}-2`];
     case "string-array":
       return [tag];
+    case "json":
+      return [
+        { protocol: "api_key", id: "api-key", label: "SubKit API key" },
+        {
+          protocol: "oidc",
+          id: `oidc-${salt}`,
+          label: "Public OIDC",
+          issuer_url: "https://identity.example.test",
+          client_id: `client-${salt}`,
+          scopes: "openid profile email",
+          tenant_slug: "default",
+        },
+      ];
     default:
       return tag;
   }
