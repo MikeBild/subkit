@@ -2,13 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { createBoss, disposeBoss } from "../../queue/boss.ts";
 import { runMigrations } from "../migrate.ts";
+import { EMBEDDED_MIGRATIONS } from "../migrations/embedded.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "./setup.ts";
 
 describe("queue schema isolation migration", () => {
   test(
     "preserves existing queue state and remains restartable",
     async () => {
-      const ctx = await createTestDb("migrate_queue_schema", { upToIdx: 40 });
+      const upToIdx = 40;
+      const ctx = await createTestDb("migrate_queue_schema", { upToIdx });
       try {
         const before = await createBoss({ connectionString: ctx.url });
         const jobId = await before.send("execution.run", { migration_probe: true });
@@ -16,7 +18,7 @@ describe("queue schema isolation migration", () => {
         await disposeBoss(before);
 
         const report = await runMigrations(ctx.db);
-        expect(report.applied).toBe(2);
+        expect(report.applied).toBe(EMBEDDED_MIGRATIONS.length - (upToIdx + 1));
 
         const schemas = (await ctx.db.execute(sql`
           SELECT to_regnamespace('pgboss') IS NOT NULL AS canonical,
