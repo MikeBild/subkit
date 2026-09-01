@@ -335,6 +335,7 @@ function buildStorageSection(snapshot: ReturnType<typeof getConfig>): SetupSecti
   const bucket = present(s3.bucket);
   const accessKey = present(s3.access_key_id);
   const secretKey = present(s3.secret_access_key);
+  const sessionToken = present(s3.session_token);
   const partial =
     [endpoint, bucket, accessKey, secretKey].some(Boolean) &&
     ![endpoint, bucket, accessKey, secretKey].every(Boolean);
@@ -376,6 +377,11 @@ function buildStorageSection(snapshot: ReturnType<typeof getConfig>): SetupSecti
         key: "storage.object_store.secret_access_key",
         value: setPresence(secretKey),
         status_hint: secretKey ? null : "Missing",
+      },
+      {
+        key: "storage.object_store.session_token",
+        value: setPresence(sessionToken),
+        status_hint: sessionToken ? null : "Optional",
       },
     ],
     issues,
