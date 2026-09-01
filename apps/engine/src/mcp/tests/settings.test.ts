@@ -90,6 +90,45 @@ describe("mcp settings tools", () => {
     expect(rows[0]?.metadata).toMatchObject({ request_source: "mcp" });
   });
 
+  test("MCP and REST share the hot public OIDC provider setting", async () => {
+    const { plaintext } = await suite.issueApiKey(["mcp:admin", "settings:read", "settings:write"]);
+    const client = await suite.connectWithApiKey(plaintext);
+    const providers = [
+      { protocol: "api_key", id: "api-key", label: "SubKit API key" },
+      {
+        protocol: "oidc",
+        id: "upraft",
+        label: "Upraft Auth",
+        issuer_url: "https://auth.mikebild.info",
+        client_id: "capp_subkit",
+        scopes: "openid profile email",
+        tenant_slug: "default",
+      },
+    ];
+    const updated = await client.callTool({
+      name: "subkit_update_setting",
+      arguments: { path: "auth.providers", value: providers },
+    });
+    expect(updated.isError).toBeFalsy();
+    expect(textBody(updated)).toMatchObject({
+      path: "auth.providers",
+      value: providers,
+      activation: "active",
+      applied_immediately: true,
+      requires_restart: false,
+    });
+
+    const rest = await fetch(`${suite.http.baseUrl}/v1/settings/auth.providers`, {
+      headers: { authorization: `Bearer ${suite.http.apiKey}` },
+    });
+    expect(rest.status).toBe(200);
+    expect((await rest.json()) as Record<string, unknown>).toMatchObject({
+      path: "auth.providers",
+      value: providers,
+      meta: { kind: "json", sensitive: false, requiresRestart: false },
+    });
+  });
+
   test("read tool reports restart semantics without changing the setting", async () => {
     const { plaintext } = await suite.issueApiKey(["mcp:admin", "settings:read"]);
     const client = await suite.connectWithApiKey(plaintext);

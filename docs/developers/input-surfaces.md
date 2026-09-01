@@ -276,7 +276,7 @@ Every issued MCP access token is RFC 8707-bound to this deployment's canonical
 missing or different resource audience is rejected; there is no audience-less
 compatibility path.
 
-**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named direct `oidc` adapters. Each OIDC client, secret, callback and tenant mapping belongs to this sk deployment. Provider ids and labels are deployment-owned values, never engine modes.
+**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through the atomic runtime setting `auth.providers` in Cockpit, HTTP/MCP, `sk settings`, or the canonical config file. It accepts one `api_key` plus multiple named direct `oidc` adapters. Every OIDC adapter is a public PKCE client; callback and tenant mapping belong to this sk deployment, while no client secret is stored. Provider ids and labels are deployment-owned values, never engine modes.
 
 The visible state machine is the common `mcp-auth` contract. Authorize
 redirects to `/v1/identity/login/start?login_state=<opaque>`; the chooser
@@ -300,7 +300,8 @@ ContentKit while retaining sk branding and RBAC.
           "label": "Workforce OIDC",
           "issuer_url": "https://identity.example.com",
           "client_id": "<client-id>",
-          "client_secret": "<secret>"
+          "scopes": "openid profile email",
+          "tenant_slug": "default"
         }
       ]
   }
@@ -309,7 +310,9 @@ ContentKit while retaining sk branding and RBAC.
 
 Register `${server.public_base_url}/v1/identity/login/callback` as every OIDC
 adapter's redirect URI. Every adapter uses only the generic `login/start`,
-`login/callback`, and `logout` routes.
+`login/callback`, and `logout` routes. The issuer must accept public clients
+with `token_endpoint_auth_method=none`; confidential-only clients are not
+representable in `auth.providers`.
 
 The CLI discovers the same list through `GET /v1/identity/providers`. An OIDC
 device-flow result is exchanged at `POST /v1/identity/sessions`

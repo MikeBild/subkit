@@ -9115,7 +9115,7 @@ Every issued MCP access token is RFC 8707-bound to this deployment's canonical
 missing or different resource audience is rejected; there is no audience-less
 compatibility path.
 
-**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named direct `oidc` adapters. Each OIDC client, secret, callback and tenant mapping belongs to this sk deployment. Provider ids and labels are deployment-owned values, never engine modes.
+**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through the atomic runtime setting `auth.providers` in Cockpit, HTTP/MCP, `sk settings`, or the canonical config file. It accepts one `api_key` plus multiple named direct `oidc` adapters. Every OIDC adapter is a public PKCE client; callback and tenant mapping belong to this sk deployment, while no client secret is stored. Provider ids and labels are deployment-owned values, never engine modes.
 
 The visible state machine is the common `mcp-auth` contract. Authorize
 redirects to `/v1/identity/login/start?login_state=<opaque>`; the chooser
@@ -9139,7 +9139,8 @@ ContentKit while retaining sk branding and RBAC.
           "label": "Workforce OIDC",
           "issuer_url": "https://identity.example.com",
           "client_id": "<client-id>",
-          "client_secret": "<secret>"
+          "scopes": "openid profile email",
+          "tenant_slug": "default"
         }
       ]
   }
@@ -9148,7 +9149,9 @@ ContentKit while retaining sk branding and RBAC.
 
 Register `${server.public_base_url}/v1/identity/login/callback` as every OIDC
 adapter's redirect URI. Every adapter uses only the generic `login/start`,
-`login/callback`, and `logout` routes.
+`login/callback`, and `logout` routes. The issuer must accept public clients
+with `token_endpoint_auth_method=none`; confidential-only clients are not
+representable in `auth.providers`.
 
 The CLI discovers the same list through `GET /v1/identity/providers`. An OIDC
 device-flow result is exchanged at `POST /v1/identity/sessions`
@@ -9977,9 +9980,10 @@ docker compose exec engine sk init \
 
 > **Authentication defaults to the `api_key` adapter** — people are added by
 > admin invite and authenticate with engine-issued API keys. Configure direct
-> OIDC by adding named `oidc` records to
-> `auth.providers` in `subkit.config.json`, then restart. No provider-specific
-> setting or route is required.
+> OIDC in Cockpit's Authentication settings, through HTTP/MCP settings, with
+> `sk settings set auth.providers`, or directly in canonical
+> `subkit.config.json`. Runtime writes are active for subsequent logins without
+> a restart. No provider-specific setting or route is required.
 
 For example, an sk-owned direct OIDC client is one configuration record:
 
@@ -9994,7 +9998,6 @@ For example, an sk-owned direct OIDC client is one configuration record:
         "label": "Workforce OIDC",
         "issuer_url": "https://identity.example.com",
         "client_id": "<subkit-client-id>",
-        "client_secret": "<subkit-client-secret>",
         "scopes": "openid profile email",
         "tenant_slug": "default"
       }
@@ -10002,6 +10005,12 @@ For example, an sk-owned direct OIDC client is one configuration record:
   }
 }
 ```
+
+Direct OIDC adapters are public clients using Authorization Code with PKCE.
+Register the callback below and configure the issuer for
+`token_endpoint_auth_method=none`. SubKit deliberately does not store a client
+secret in `auth.providers`; confidential-only issuers are not supported by this
+runtime setting.
 
 The only browser endpoints remain `/v1/identity/login/start`,
 `/v1/identity/login/callback`, and `/v1/identity/logout` regardless of adapter
@@ -11634,9 +11643,9 @@ also fails after rotation**. There is no key-rotation envelope today.
    — every Slack/Teams/Google Chat workspace must be re-installed and
    re-onboarded through the platform's add-app flow.
 
-9. **Re-enter identity-provider secrets and tenant LLM API keys.** Update the
-   affected OIDC record in the structural `auth.providers` list inside
-   `subkit.config.json`; tenant LLM keys remain scalar `llm.api_key` settings.
+9. **Re-enter tenant LLM API keys.** Tenant LLM keys remain scalar
+   `llm.api_key` settings. The active `auth.providers` model uses public PKCE
+   clients and contains no identity-provider secret to rotate.
 
 10. **Verify.** Hit `${ENGINE_URL}/health` and run the tenant-scoped
     integration smoke; expect zero `decrypt_failed` `CryptoError` entries in the
@@ -12358,6 +12367,7 @@ Authentication
 | `auth.mcp_oauth.enabled` | boolean | `true` | global | no | yes | Enable the MCP OAuth 2.1 authorization server (ChatGPT / Claude.ai / Cursor). |
 | `auth.mcp_oauth.refresh_token_ttl_seconds` | number | `2592000` | global | no | no | Lifetime in seconds for MCP OAuth refresh tokens (30 days). |
 | `auth.mcp_oauth.scopes_supported` | string[] | `["mcp:read","mcp:authoring","mcp:admin"]` | global | no | no | OAuth scopes advertised in the authorization server metadata. |
+| `auth.providers` | json | `[{"protocol":"api_key","id":"api-key","label":"SubKit API key"}]` | global | no | no | Provider-neutral browser authentication adapters. OIDC records are public clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration. |
 | `auth.session.secret` | string | `""` | global | yes | yes | Session signing secret (auto-generated to a 32-byte hex value on first boot if empty); operator-supplied values must be at least 32 chars |
 
 ## platform
@@ -12540,8 +12550,10 @@ Per-connector tunables. Each sub-section is owned by one connector template.
 | `connectors.web_scraper.runtime.respect_robots` | boolean | `true` | tenant | no | no | Skip URLs that robots.txt disallows for the configured User-Agent. |
 | `connectors.web_scraper.runtime.user_agent` | string | `"sk-web-scraper/1.0 (+https://subkit.io/bot)"` | tenant | no | no | User-Agent header on every fetch; passed to robots-parser matching. |
 
-## Structural settings
+## Authentication providers
 
-`auth.providers` is the single SubKit-local auth list and is edited in `subkit.config.json`, not through the scalar settings API. Records use `protocol: api_key` or `oidc`; one API-key adapter and multiple named direct OIDC adapters may coexist. Provider ids must be unique, and every OIDC callback is `/v1/identity/login/callback` on `server.public_base_url`. Each OIDC client, optional secret, callback, session and tenant mapping belongs to this SubKit deployment.
+`auth.providers` is one atomic, validated runtime setting available through Cockpit, HTTP, MCP, `sk settings`, and the canonical config file. Records use `protocol: api_key` or `oidc`; one API-key adapter and multiple named direct OIDC adapters may coexist. Provider ids must be unique, and every OIDC callback is `/v1/identity/login/callback` on `server.public_base_url`. A successful write is active for subsequent browser-login requests without an engine restart.
+
+OIDC records are public clients using Authorization Code with PKCE. Runtime configuration intentionally has no `client_secret` field and rejects one if supplied; use an issuer that supports public clients with `token_endpoint_auth_method=none`. The environment is not an operational auth-provider source: legacy `SK_OVERRIDE_AUTH_PROVIDERS` may only seed a missing canonical value once, like other compatibility imports.
 
 Configured labels are diagnostic metadata only. The common `mcp-auth` surface derives its two user actions from protocol and always presents `Continue with SSO` before `Continue with API key`. Discovery exposes the canonical labels `SSO` and `API key`; no provider-specific route or parallel configuration tree is accepted.

@@ -112,7 +112,6 @@ describe("journey: sk-cli audit provenance", () => {
           label: "Journey identity",
           issuer_url: idpUrl,
           client_id: "subkit-cli",
-          client_secret: "",
           scopes: "openid profile email",
           tenant_slug: "default",
         },

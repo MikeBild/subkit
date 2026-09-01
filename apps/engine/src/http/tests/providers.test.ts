@@ -34,7 +34,6 @@ describe("GET /v1/identity/providers", () => {
           label: "Partner",
           issuer_url: "https://partner.example.com",
           client_id: "subkit",
-          client_secret: "",
           scopes: "openid profile email",
           tenant_slug: "default",
         },

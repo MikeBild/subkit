@@ -165,7 +165,6 @@ export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProvide
           providerId: provider.id,
           issuerUrl: provider.issuer_url,
           clientId: provider.client_id,
-          clientSecret: provider.client_secret,
           scopes: provider.scopes,
           tenantSlug: provider.tenant_slug,
           ...(db ? { db } : {}),

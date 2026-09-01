@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 6.22.44 — 2026-09-01
+
+### Added
+
+- Manage an ordered set of public OIDC Authorization Code + PKCE providers
+  through the canonical revisioned configuration, Cockpit, HTTP API, and MCP.
+- Render provider-specific Cockpit cards with callback URLs, scopes, tenant
+  settings, and add, remove, and reorder controls without client secrets.
+
+### Changed
+
+- Resolve browser login providers from hot configuration so Upraft Auth can be
+  activated at runtime while the API-key fallback remains available.
+
 ## 6.22.43 — 2026-08-31
 
 ### Changed

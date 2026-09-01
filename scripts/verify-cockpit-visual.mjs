@@ -888,6 +888,39 @@ async function mockApi(route) {
     return json(route, {
       items: [
         {
+          path: "auth.providers",
+          value: [
+            { protocol: "api_key", id: "api-key", label: "SubKit API key" },
+            {
+              protocol: "oidc",
+              id: "upraft",
+              label: "Upraft Auth",
+              issuer_url: "https://auth.mikebild.info",
+              client_id: "oidc_subkit_public_client",
+              scopes: "openid profile email",
+              tenant_slug: "default",
+            },
+          ],
+          meta: {
+            source: "global",
+            scope: "global",
+            sensitive: false,
+            requiresRestart: false,
+            kind: "json",
+          },
+        },
+        {
+          path: "server.public_base_url",
+          value: "https://subkit.mikebild.info",
+          meta: {
+            source: "global",
+            scope: "global",
+            sensitive: false,
+            requiresRestart: false,
+            kind: "string",
+          },
+        },
+        {
           path: "execution.default_timeout_ms",
           value: 30000,
           meta: {
@@ -1274,6 +1307,32 @@ async function assertTables(page, label) {
   if (unsafeOverflows.length) throw new Error(`${label} has uncontained table overflow`);
 }
 
+async function assertAuthProviderSettings(page, label) {
+  const cards = page.locator('[data-testid^="settings-auth-provider-"]').filter({
+    has: page.locator('input[data-testid$="-label"]'),
+  });
+  if ((await cards.count()) !== 2) {
+    throw new Error(`${label} does not render both configured authentication provider cards`);
+  }
+  const callback = await page.locator('[data-testid="settings-auth-providers"] code').innerText();
+  if (callback !== "https://subkit.mikebild.info/v1/identity/login/callback") {
+    throw new Error(`${label} renders the wrong OIDC callback URL: ${callback}`);
+  }
+  for (const testId of [
+    "settings-auth-provider-1-issuer-url",
+    "settings-auth-provider-1-client-id",
+    "settings-auth-provider-1-scopes",
+    "settings-auth-provider-1-tenant-slug",
+  ]) {
+    if ((await page.locator(`[data-testid="${testId}"]`).count()) !== 1) {
+      throw new Error(`${label} misses ${testId}`);
+    }
+  }
+  if ((await page.locator('[data-testid*="client-secret"]').count()) !== 0) {
+    throw new Error(`${label} exposes a client-secret control for a public PKCE provider`);
+  }
+}
+
 /**
  * A list of blank values is not a list.
  *
@@ -1518,6 +1577,8 @@ for (const locale of variants) {
       await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertBlankLists(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "chat") await assertChat(page, `${locale.artifact}/${viewport.name}/${route}`);
+      if (route === "settings")
+        await assertAuthProviderSettings(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "access") {
         const localizedRoles =
           locale.name === "de"

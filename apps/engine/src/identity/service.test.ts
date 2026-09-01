@@ -440,7 +440,6 @@ async function configureOidc(issuerUrl: string): Promise<void> {
         label: "Test identity",
         issuer_url: issuerUrl,
         client_id: issuerUrl === mockOidc.url ? "mock-client" : "subkit-cli",
-        client_secret: "",
         scopes: "openid profile email",
         tenant_slug: "default",
       },
