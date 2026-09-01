@@ -886,6 +886,10 @@ async function mockApi(route) {
     });
   if (path === "/v1/settings")
     return json(route, {
+      saved_revision: 7,
+      active_revision: 7,
+      activation_status: "active",
+      pending_restart_fields: [],
       items: [
         {
           path: "auth.providers",
@@ -905,7 +909,7 @@ async function mockApi(route) {
             source: "global",
             scope: "global",
             sensitive: false,
-            requiresRestart: false,
+            requiresRestart: true,
             kind: "json",
           },
         },
