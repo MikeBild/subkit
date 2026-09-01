@@ -678,6 +678,15 @@ describe("gate and workflows", () => {
     }
   });
 
+  test("release Docker smoke supplies the required stateless bootstrap key", () => {
+    const smoke = job(release, "docker-build").steps?.find(
+      (step) => step.name === "Smoke image with external PostgreSQL, health and readiness",
+    );
+    expect(smoke, "release Docker smoke step exists").toBeDefined();
+    expect(smoke?.run).toContain("docker compose");
+    expect(smoke?.env?.MASTER_KEY).toMatch(/^[0-9a-f]{64}$/);
+  });
+
   // The seam is real: the gate invokes package.json script NAMES, and so do the
   // workflows — but they are two hand-maintained lists. A renamed or deleted
   // script fails CI with "Script not found" while the local gate stays green.

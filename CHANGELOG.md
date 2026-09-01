@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 6.22.47 — 2026-09-01
+
+### Fixed
+
+- Supply explicit test-only master-key bootstrap material to both native
+  release-image smoke jobs. Stateless production images intentionally refuse
+  to generate this key, so the release gate must provide it just like an
+  operator deployment does.
+
 ## 6.22.46 — 2026-09-01
 
 ### Added
