@@ -1,4 +1,4 @@
-// Per-leaf HTTP sweep — every leaf in ConfigSchema goes through:
+// Per-leaf HTTP sweep — every runtime-editable leaf in ConfigSchema goes through:
 //
 //   1. PUT /v1/settings/{path}                      → 200
 //   2. GET /v1/settings/{path}                      → masked or live value
@@ -6,10 +6,10 @@
 //   4. setting.applied structured log line          → exactly one
 //   5. resource_id matches the dotted leaf path     → exact equality
 //
-// Tests every wire-shape contract in one pass against testcontainers
-// Postgres + the real Hono app. A leaf that 422s on a valid value, or
-// silently skips audit emission, or emits the log without the row,
-// fails this test loudly.
+// Bootstrap-only process bindings are asserted separately to reject writes.
+// Tests every wire-shape contract in one pass against testcontainers Postgres
+// + the real Hono app. An editable leaf that 422s on a valid value, silently
+// skips audit emission, or emits the log without the row fails loudly.
 //
 // Drift is keyed on listConfigLeaves() — a new leaf in the schema
 // automatically extends the sweep on the next bun test run.
@@ -163,8 +163,11 @@ function pickValue(leaf: ConfigLeaf, salt: number): unknown {
 }
 
 const LEAVES = listConfigLeaves();
+const BOOTSTRAP_ONLY_PATHS = new Set(["database.url"]);
+const EDITABLE_LEAVES = LEAVES.filter((leaf) => !BOOTSTRAP_ONLY_PATHS.has(dottedPath(leaf)));
+const SWEPT_LEAVES = EDITABLE_LEAVES.filter((leaf) => leaf.path[0] !== "log");
 
-describe(`per-leaf HTTP sweep — ${LEAVES.length} leaves`, () => {
+describe(`per-leaf HTTP sweep — ${EDITABLE_LEAVES.length}/${LEAVES.length} editable leaves`, () => {
   test("every leaf round-trips PUT + GET + audit row + setting.applied log with matching resource_id", async () => {
     const failures: string[] = [];
     let salt = 0;
@@ -172,7 +175,7 @@ describe(`per-leaf HTTP sweep — ${LEAVES.length} leaves`, () => {
     // limiter (default 100 req / 60s) for ~85 leaves. The
     // setting.applied / audit assertions are the value; we removed
     // the per-leaf round-trip GET that would have doubled the budget.
-    for (const leaf of LEAVES) {
+    for (const leaf of EDITABLE_LEAVES) {
       const dotted = dottedPath(leaf);
       // log.* hot-reloads the live logger — flipping format to a non-
       // ndjson value would break our capture. Reset between iterations
@@ -281,11 +284,23 @@ describe(`per-leaf HTTP sweep — ${LEAVES.length} leaves`, () => {
     const { getDiagnostics } = await import("../../../config/loader.ts");
     const map = getDiagnostics().source_map;
     let countGlobal = 0;
-    for (const leaf of LEAVES) {
-      if (leaf.path[0] === "log") continue;
+    for (const leaf of SWEPT_LEAVES) {
       if (map[dottedPath(leaf)] === "global") countGlobal += 1;
     }
-    expect(countGlobal).toBeGreaterThan(LEAVES.length - 5);
+    expect(countGlobal).toBe(SWEPT_LEAVES.length);
+  });
+
+  test("bootstrap-only leaves reject runtime writes without an audit row", async () => {
+    for (const path of BOOTSTRAP_ONLY_PATHS) {
+      await server.db.delete(auditLog);
+      const res = await authedFetch(`/v1/settings/${path}`, {
+        method: "PUT",
+        body: JSON.stringify({ value: "postgres://replacement/subkit", force: true }),
+      });
+      expect(res.status).toBe(422);
+      expect(await res.json()).toMatchObject({ code: "validation_failed" });
+      expect(await server.db.select().from(auditLog)).toHaveLength(0);
+    }
   });
 
   test("PUT /v1/settings/<unknown.path> returns 404, no audit row", async () => {
