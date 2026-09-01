@@ -76,7 +76,7 @@
     "test": "bun test",
     "test:contract": "bun test tests/contract/",
     "test:determinism": "bun run scripts/check-determinism.ts",
-    "test:docker": "bun test tests/docker/",
+    "test:docker": "bun run scripts/test-docker-isolated.ts",
     "test:e2e": "bun run build:sk && bun run scripts/test-e2e-isolated.ts",
     "test:flake": "for s in 1 2 3 4 5; do echo \"--- seed=$s ---\"; SUBKIT_DETERMINISTIC_SEED=$s bun run test:unit || exit 1; done",
     "test:integration": "bun run scripts/test-files-isolated.ts apps/engine/src/db apps/engine/src/queue apps/engine/src/http apps/engine/src/webhooks apps/engine/src/credentials/oauth2 apps/engine/src/auth/oauth/server-provider.test.ts apps/engine/src/auth/oauth/mcp-oauth-discovery.test.ts apps/engine/src/auth/oauth/mcp-oauth-flow.test.ts apps/engine/src/auth/oauth/mcp-oauth-scope-audit.test.ts apps/engine/src/auth/providers/mcp-oauth.test.ts apps/engine/src/auth/providers/tests/oidc-safe-redirect.test.ts apps/engine/src/scheduler/tests/mcp-oauth-cleanup.test.ts apps/engine/src/scheduler/tests/oauth2-keepalive.test.ts apps/engine/src/skills/tests/seed.test.ts apps/engine/src/conversations/recipe-flow.integration.test.ts apps/engine/src/conversations/destructive-banner.integration.test.ts apps/engine/src/conversations/skill-autoload-tenant.integration.test.ts apps/engine/src/conversations/tools/tests/load-skill-audit.integration.test.ts apps/engine/src/tests/self-update.test.ts apps/engine/src/mcp/client/registry.int.test.ts apps/engine/src/mcp/client/oauth-provider.test.ts apps/engine/src/mcp/client/pool-needs-auth.test.ts apps/engine/src/operator/health-digest-risk.int.test.ts apps/engine/src/mcp/tests",
