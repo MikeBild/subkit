@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { executionFixtures, executionSteps, executions, tenants } from "../../db/schema/index.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { bodyEnvelopeForLoopAccumulator } from "../engine/envelope.ts";
 import { runExecution } from "../engine.ts";
 import {
@@ -24,6 +25,7 @@ import {
 
 let ctx: EngineTestCtx;
 let mock: MockServer;
+const uuid = createDeterministicUuidFactory(0x0ff10ad);
 
 beforeAll(async () => {
   ctx = await createEngineCtx("offload");
@@ -198,7 +200,7 @@ describe("OffloadRef round-trip + resolveOffloaded", () => {
   });
 
   test("resolveOffloaded fails closed when application SHA-256 metadata mismatches", async () => {
-    const key = `offload/integrity/${randomUUID()}.json`;
+    const key = `offload/integrity/${uuid()}.json`;
     const body = Buffer.from('{"integrity":"expected"}', "utf8");
     await getObjectStore().put(key, body);
     const ref: OffloadRef = {

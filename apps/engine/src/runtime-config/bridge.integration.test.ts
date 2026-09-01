@@ -17,6 +17,7 @@ import {
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { MemoryObjectStore } from "../storage/object-store.ts";
+import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import {
   bridgeLegacyObjects,
   hasConfigBridgeMarker,
@@ -26,6 +27,7 @@ import {
 
 let tdb: TestDb;
 let legacyRoot: string;
+const uuid = createDeterministicUuidFactory(0xb21d6e);
 
 beforeAll(async () => {
   tdb = await createTestDb("stateless-bridge");
@@ -82,7 +84,7 @@ describe("stateless bridge", () => {
       .returning();
     if (!tenant) throw new Error("tenant seed failed");
 
-    const fileId = crypto.randomUUID();
+    const fileId = uuid();
     const legacyKey = `${tenant.id}/2026/09/01/${fileId}`;
     const legacyPath = join(legacyRoot, legacyKey);
     await mkdir(join(legacyRoot, tenant.id, "2026", "09", "01"), {
