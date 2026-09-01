@@ -60,6 +60,10 @@ import {
   type SeededRoleIds,
   seedBuiltinRolesAndPermissions,
 } from "../../apps/engine/src/rbac/seed.ts";
+import {
+  MemoryObjectStore,
+  setObjectStoreForTesting,
+} from "../../apps/engine/src/storage/object-store.ts";
 
 // v3.5: route handlers and conversation services read getConfig() at
 // request time, which throws if loadConfig() never ran. The e2e
@@ -334,6 +338,14 @@ const PERSONA_DEFS: PersonaDef[] = [
 
 export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> {
   await ensureEngineConfigLoaded();
+  const priorObjectStoreBucket = getEngineConfig().storage.object_store.bucket;
+  if (!priorObjectStoreBucket) {
+    await setConfigKey("storage.object_store.bucket", "test", { force: true });
+  }
+  // The CLI E2E tier validates the complete file lifecycle through REST while
+  // the dedicated S3 conformance tier validates the real S3 driver. Keep this
+  // harness hermetic with the canonical in-memory ObjectStore test double.
+  setObjectStoreForTesting(new MemoryObjectStore());
   if (opts.llm === "mock") {
     process.env.LLM_PROVIDER = "mock";
     await setConfigKey("llm.provider", "mock", { force: true });
@@ -474,6 +486,15 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
       await closeHttpServer(server, sockets);
       // 2. Stop this suite's pg-boss and close all its Postgres connections.
       await bestEffortTeardown("suite pg-boss dispose", () => disposeBoss(boss), 8_000);
+      setObjectStoreForTesting(null);
+      if (!priorObjectStoreBucket) {
+        await bestEffortTeardown(
+          "object-store bucket config restore",
+          () =>
+            setConfigKey("storage.object_store.bucket", priorObjectStoreBucket, { force: true }),
+          3_000,
+        );
+      }
       // 3. Give pg-boss connections time to fully close before dropping DB.
       // allow-wall-clock: socket teardown requires real I/O time.
       await new Promise((r) => setTimeout(r, 200));

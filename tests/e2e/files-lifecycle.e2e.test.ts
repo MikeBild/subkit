@@ -1,7 +1,7 @@
 // Wave F.4 — Files lifecycle E2E scenarios.
 //
 // Boots a real engine with the mock LLM (no real Anthropic call),
-// a disposable Postgres DB, and local-disk storage. Runs the sk
+// a disposable Postgres DB, and an in-memory object store. Runs the sk
 // binary as a subprocess via the standard `cli()` harness.
 //
 // Scenarios in this file all run in CI. The wave originally enumerated
