@@ -392,7 +392,10 @@ export class S3ObjectStore implements ObjectStore {
         bucketName: this.bucket,
         objectName: "",
         query: "delete",
-        headers: new Headers({ "Content-MD5": contentMd5 }),
+        headers: new Headers({
+          "Content-MD5": contentMd5,
+          "Content-Type": "application/xml",
+        }),
         payload: xml,
         returnBody: true,
         statusCode: 200,
