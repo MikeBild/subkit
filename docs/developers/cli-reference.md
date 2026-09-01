@@ -706,7 +706,7 @@ Aggregate file counters for this tenant
 
 #### `sk files upload`
 
-Upload a file (inline ≤5 MB, presigned-PUT above)
+Upload a file (inline ≤5 MB, authenticated streaming above)
 
 - `<path>` (positional, required) — Path to file
 - `--content-type` (string) — Override detected MIME type

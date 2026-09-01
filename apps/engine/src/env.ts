@@ -1,34 +1,44 @@
 import { z } from "zod";
 
-// Bootstrap-only env vars. Everything else lives in subkit.config.json
-// (see apps/engine/src/config/schema.ts) and is read via getConfig()
-// after loadConfig() resolves at boot.
+// Minimal process-bootstrap env vars. Runtime settings and versioned secrets
+// live in PostgreSQL; OBJECT_STORAGE_* and PORT are revision-1 seed bindings
+// only and never override an existing database revision.
 //
 // MASTER_KEY stays in env so it can be injected from a secret manager
 // into the container without ever touching a plaintext file.
 //
-// NODE_ENV is read before any module code (Bun + several libraries
-// branch on it), and SUBKIT_CONFIG steers the loader to a non-default
-// config path.
+// NODE_ENV and ENGINE_LISTEN_HOST are process bindings read before the
+// runtime snapshot can be activated.
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   MASTER_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, "MASTER_KEY must be 64 hex chars (32 bytes)"),
-  SUBKIT_CONFIG: z.string().optional(),
+  DATABASE_URL: z.string().min(1).optional(),
+  ENGINE_LISTEN_HOST: z.string().min(1).optional(),
+  PORT: z.coerce.number().int().min(1).max(65_535).optional(),
+  SUBKIT_BOOTSTRAP_KEY: z.string().min(64).max(128).optional(),
+  OBJECT_STORAGE_ENDPOINT: z.string().url().optional(),
+  OBJECT_STORAGE_REGION: z.string().min(1).optional(),
+  OBJECT_STORAGE_BUCKET: z.string().min(1).optional(),
+  OBJECT_STORAGE_ACCESS_KEY_ID: z.string().min(1).optional(),
+  OBJECT_STORAGE_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  OBJECT_STORAGE_SESSION_TOKEN: z.string().min(1).optional(),
+  OBJECT_STORAGE_PATH_STYLE: z.enum(["true", "false", "1", "0"]).optional(),
+  // Compatibility alias for self-hosted deployments created before the
+  // Upraft `files` binding standardized OBJECT_STORAGE_PATH_STYLE.
+  OBJECT_STORAGE_FORCE_PATH_STYLE: z.enum(["true", "false", "1", "0"]).optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
 
-// Stale-env-var detection. v3.4.x operators may still have a populated
-// .env from before the v3.5 config-file migration. Surface the keys
-// that have moved so the operator can copy them into subkit.config.json
-// instead of silently relying on env.
+// Stale-env-var detection. Surface old runtime bindings so operators can
+// import them once through the settings API instead of silently depending on
+// process environment after revision 1.
 const RETIRED_ENV_KEYS = new Set([
   // Server / logging — moved to log.* and server.*
   "LOG_LEVEL",
   "LOG_FORMAT",
-  "PORT",
+  // PORT and DATABASE_URL remain bootstrap bindings.
   "PUBLIC_BASE_URL",
-  "DATABASE_URL", // bridge: still consulted as a fallback when database.url is absent
   // LLM — moved to llm.* and llm.providers.*
   "LLM_PROVIDER",
   "LLM_FALLBACK_PROVIDER",
@@ -67,7 +77,7 @@ const RETIRED_ENV_KEYS = new Set([
   "VERTEX_PRIVATE_KEY",
   "GOOGLE_APPLICATION_CREDENTIALS",
   "LLM_OUTPUT_GUARD",
-  // Storage — moved to storage.s3.* / storage.files.* / storage.offload.*
+  // Retired pre-object_store storage bindings.
   "S3_ENDPOINT",
   "S3_ACCESS_KEY",
   "S3_SECRET_KEY",
@@ -121,9 +131,8 @@ function parseEnv(): Env {
   if (retired.length > 0 && process.env.NODE_ENV !== "test") {
     process.stderr.write(
       `[env] retired env vars detected: ${retired.join(", ")}. ` +
-        `Move these into subkit.config.json (\`sk settings configure\`) — ` +
-        `they are ignored by v3.5+ except DATABASE_URL which is still ` +
-        `consulted as a fallback when database.url is unset.\n`,
+        `Move these into the PostgreSQL-backed settings API (Cockpit, HTTP, MCP, or \`sk settings configure\`) — ` +
+        `they are ignored after the initial runtime revision.\n`,
     );
   }
 
@@ -137,7 +146,7 @@ function resolveEnv(): Env {
 }
 
 // Lazy facade — same shape as v3.4 so existing call sites keep
-// working. Only MASTER_KEY / NODE_ENV / SUBKIT_CONFIG are exposed.
+// working. Only the bootstrap allowlist above is exposed.
 export const env: Env = new Proxy({} as Env, {
   get(_target, prop) {
     return resolveEnv()[prop as keyof Env];

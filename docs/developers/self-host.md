@@ -1,7 +1,7 @@
 # Self-Host sk — Zero to Running
 
 sk runs inside your own infrastructure, so your data stays where it already is. One
-container, one stateful dependency (PostgreSQL), and nothing leaves your network except the
+container, PostgreSQL, a private S3-compatible bucket, and nothing leaves your network except the
 outbound calls to your LLM provider. Start from nothing and finish this page with a running
 engine, an authenticated `sk` CLI, a working connector, a workflow you can run, and an
 indexed knowledge article — all from the released Docker image.
@@ -10,16 +10,18 @@ indexed knowledge article — all from the released Docker image.
 flowchart LR
     Op["docker compose"] --> Engine["engine container<br/>(engine + sk + Cockpit + Chromium)"]
     Op --> PG
+    Op --> S3
     Engine --> PG[("PostgreSQL<br/>your data, your volume")]
+    Engine --> S3[("Private object storage<br/>files + large results")]
     Engine -. outbound only .-> LLM[("LLM provider")]
 ```
 
-| What | Detail |
-|---|---|
-| **Time** | ~15 minutes |
+| What         | Detail                                                               |
+| ------------ | -------------------------------------------------------------------- |
+| **Time**     | ~15 minutes                                                          |
 | **You need** | Docker + one free [Anthropic API key](https://console.anthropic.com) |
-| **Cost** | The weather API used here (open-meteo) is free and keyless |
-| **Outcome** | A governed engine you own, end-to-end |
+| **Cost**     | The weather API used here (open-meteo) is free and keyless           |
+| **Outcome**  | A governed engine you own, end-to-end                                |
 
 > **The primary interface is the conversational `sk` REPL.** You describe what you
 > want in plain language; the AI proposes a connector or workflow, you review and
@@ -31,13 +33,13 @@ flowchart LR
 
 ## Concepts in 60 seconds
 
-| Term | One line |
-|---|---|
-| **Tenant** | Your isolated workspace — every connector, workflow, and user lives in one tenant. |
-| **Connector** | An authenticated link to an external API (here: open-meteo). |
-| **Workflow** | A versioned sequence of steps (call an API, transform the result). |
-| **Execution** | One immutable run of a workflow. |
-| **Knowledge source** | A document (runbook, PDF) indexed for semantic search. |
+| Term                 | One line                                                                           |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| **Tenant**           | Your isolated workspace — every connector, workflow, and user lives in one tenant. |
+| **Connector**        | An authenticated link to an external API (here: open-meteo).                       |
+| **Workflow**         | A versioned sequence of steps (call an API, transform the result).                 |
+| **Execution**        | One immutable run of a workflow.                                                   |
+| **Knowledge source** | A document (runbook, PDF) indexed for semantic search.                             |
 
 Full glossary: [`docs/concepts/glossary.md`](../concepts/glossary.md).
 
@@ -47,8 +49,9 @@ Full glossary: [`docs/concepts/glossary.md`](../concepts/glossary.md).
 
 The application-complete image bundles the engine, Cockpit, migrations,
 Chromium, **and** the `sk` CLI plus every supported client-platform artifact.
-PostgreSQL remains a separate, mandatory service. The repository Compose file
-starts the pinned application and database images together.
+PostgreSQL and S3-compatible object storage remain separate, mandatory services.
+The repository Compose file starts the pinned application, PostgreSQL, MinIO,
+and a one-shot private-bucket initializer together.
 
 ```bash
 docker compose up -d
@@ -64,45 +67,45 @@ curl -s http://localhost:3000/ready
 # {"status":"ready","service":"subkit","version":"<version>","checks":{"lifecycle":"pass","database":"pass"}}
 ```
 
-The `subkit_data` volume holds application state — config, encryption key,
-uploaded files, and the in-container CLI profile. PostgreSQL data lives in the
-separate `subkit_pgdata` volume. Restarts preserve both.
+The engine container has no application-state volume. PostgreSQL stores runtime
+configuration, encrypted secret versions, metadata, and object pointers; MinIO
+stores file bodies and oversized results. The only engine filesystem writes are
+disposable scratch files under `/tmp`.
 
 ---
 
 ## Step 2 — First-run bootstrap (tenant + admin key + LLM)
 
-A fresh engine has no tenants. Complete setup with `sk init` — on the all-in-one
-image the bundled CLI **auto-detects the one-time bootstrap token** the engine
-dropped on the `/data` volume, so you don't copy anything:
+A fresh engine has no tenants. Read the one-time bootstrap key from the engine
+log (or inject `SUBKIT_BOOTSTRAP_KEY`) and complete setup with `sk init`:
 
 ```bash
 docker compose exec engine sk init \
+  --token <one-time-bootstrap-key> \
   --admin-email you@example.com \
   --tenant-name "My Org" \
   --llm-provider anthropic \
   --llm-api-key sk-ant-YOUR-KEY
-# sk init: using bootstrap token from /data/config/bootstrap.token
 # sk init: bootstrap complete — tenant 6c82c719-…
-#   profile 'default' saved to /data/home/.sk/config.json
 ```
 
 > **No API key handy?** Use `--llm-provider mock` to walk the mechanics with zero
-> external accounts. Or set `ANTHROPIC_API_KEY` in the engine service
-> environment and drop `--llm-api-key`.
+> external accounts.
 >
 > **Manual token (non-bundled deploys):** copy it from the logs and pass
 > `--token` (valid 15 min; the engine reprints a fresh one on the next attempt):
+>
 > ```bash
 > docker compose logs engine 2>&1 | grep -oE 'sk init --token [a-f0-9]{64}' | tail -1
 > ```
 
 > **Authentication defaults to the `api_key` adapter** — people are added by
 > admin invite and authenticate with engine-issued API keys. Configure direct
-> OIDC in Cockpit's Authentication settings, through HTTP/MCP settings, with
-> `sk settings set auth.providers`, or directly in canonical
-> `subkit.config.json`. Runtime writes are active for subsequent logins without
-> a restart. No provider-specific setting or route is required.
+> OIDC in Cockpit's Authentication settings, through HTTP/MCP settings, or with
+> `sk settings set auth.providers`. No provider-specific setting or route is
+> required. Provider-registry changes are stored as an immutable,
+> restart-required PostgreSQL revision so the authentication middleware
+> switches the complete registry atomically on the coordinated restart.
 
 For example, an sk-owned direct OIDC client is one configuration record:
 
@@ -191,21 +194,21 @@ run.** You never hand-write JSON or look up an API shape.
 The ones you'll reach for, grouped by what they do (verified against the shipped
 build):
 
-| Command | Does |
-|---|---|
-| `/approve` · `/reject` | commit the AI's current proposal, or reject it (with a reason) |
-| `/preview` · `/probe` | dry-run the workflow draft / test the connector draft now |
-| `/draft` · `/connector` · `/workflow` | inspect the current authoring state |
-| `/templates` | browse connector templates suggested for the draft |
-| `/onboard` | guided wizard: pick a template, enter credentials, probe, save |
-| `/versions` · `/restore <n>` | list committed workflow versions / roll back |
-| `/skills` · `/knowledge` | list reusable context / knowledge sources in scope |
-| `/clear` (`/new`) · `/compact` · `/resume` | new conversation · shrink history · reattach |
-| `/setup` · `/status` · `/cost` · `/usage` | readiness · session+persona · token budget |
-| `/config` · `/settings` | open the searchable settings UI (every engine setting) |
-| `/model` · `/tenant` · `/login` · `/logout` | switch model · switch/list tenants · auth |
-| `/attach` · `/upload` · `/files` | attach a file to the message · upload · list files |
-| `/help` · `/exit` (`/quit`) | cheat sheet · leave |
+| Command                                     | Does                                                           |
+| ------------------------------------------- | -------------------------------------------------------------- |
+| `/approve` · `/reject`                      | commit the AI's current proposal, or reject it (with a reason) |
+| `/preview` · `/probe`                       | dry-run the workflow draft / test the connector draft now      |
+| `/draft` · `/connector` · `/workflow`       | inspect the current authoring state                            |
+| `/templates`                                | browse connector templates suggested for the draft             |
+| `/onboard`                                  | guided wizard: pick a template, enter credentials, probe, save |
+| `/versions` · `/restore <n>`                | list committed workflow versions / roll back                   |
+| `/skills` · `/knowledge`                    | list reusable context / knowledge sources in scope             |
+| `/clear` (`/new`) · `/compact` · `/resume`  | new conversation · shrink history · reattach                   |
+| `/setup` · `/status` · `/cost` · `/usage`   | readiness · session+persona · token budget                     |
+| `/config` · `/settings`                     | open the searchable settings UI (every engine setting)         |
+| `/model` · `/tenant` · `/login` · `/logout` | switch model · switch/list tenants · auth                      |
+| `/attach` · `/upload` · `/files`            | attach a file to the message · upload · list files             |
+| `/help` · `/exit` (`/quit`)                 | cheat sheet · leave                                            |
 
 Mentions: `@file:<id>` attaches an uploaded file; `@skill:<name>` pulls a Skill
 into context. Full walkthrough: [`repl-tour.md`](../authors/repl-tour.md).
@@ -232,8 +235,8 @@ docker compose exec engine sk executions result <EXECUTION_ID>  # the value it p
 
 ## Step 5 — Add a knowledge article
 
-In the REPL you can just say *“add this file as a knowledge source tagged
-weather, runbook”*. The scriptable form:
+In the REPL you can just say _“add this file as a knowledge source tagged
+weather, runbook”_. The scriptable form:
 
 ```bash
 docker compose cp note.md engine:/tmp/note.md
@@ -264,6 +267,7 @@ Settings → MCP Servers) — Codex auto-detects the transport from `url`, and
 url = "http://localhost:3000/mcp"
 bearer_token_env_var = "SK_API_KEY"
 ```
+
 ```bash
 export SK_API_KEY=wf_live_…   # the key from `engine --issue-admin-key`
 ```
@@ -271,11 +275,15 @@ export SK_API_KEY=wf_live_…   # the key from `engine --issue-admin-key`
 Inline-header JSON shape (Claude Desktop / Cursor):
 
 ```json
-{ "mcpServers": { "sk": {
-  "url": "http://localhost:3000/mcp",
-  "transport": "streamable-http",
-  "headers": { "Authorization": "Bearer wf_live_…" }
-} } }
+{
+  "mcpServers": {
+    "sk": {
+      "url": "http://localhost:3000/mcp",
+      "transport": "streamable-http",
+      "headers": { "Authorization": "Bearer wf_live_…" }
+    }
+  }
+}
 ```
 
 For **Claude Code**, register from the shell instead — and see
@@ -392,9 +400,10 @@ docker compose exec engine sk settings configure                  # interactive 
 ```
 
 A few values are **not** `sk settings` on purpose: `MASTER_KEY`, `DATABASE_URL`,
-and `ENGINE_LISTEN_HOST` are bootstrap env vars (needed before the engine/API
-exist), and `engine --issue-admin-key` mints the *first* key (after that,
-`sk apikeys create`). See [Operator configuration reference](#operator-configuration-reference) below.
+and `ENGINE_LISTEN_HOST` are process bootstrap bindings; `PORT` and
+`OBJECT_STORAGE_*` seed an empty database only. `engine --issue-admin-key`
+mints an emergency administrator key (after that, `sk apikeys create`). See
+[Operator configuration reference](#operator-configuration-reference) below.
 
 ---
 
@@ -421,14 +430,30 @@ connector works. Save `weather.json` (use your connector id from
   "name": "Berlin Current Temperature",
   "slug": "berlin-current-temperature",
   "steps": [
-    { "id": "fetch_weather", "kind": "request", "method": "GET", "path": "/v1/forecast",
-      "query": { "latitude": "52.52", "longitude": "13.41", "current": "temperature_2m" },
-      "on_error": "fail", "connector_id": "<CONNECTOR_ID>" },
-    { "id": "extract_temperature", "kind": "transform", "language": "javascript", "on_error": "fail",
-      "expression": "const c = input.scope.fetch_weather.data.current; return { city: 'Berlin', time: c.time, temperature_c: c.temperature_2m };" }
+    {
+      "id": "fetch_weather",
+      "kind": "request",
+      "method": "GET",
+      "path": "/v1/forecast",
+      "query": {
+        "latitude": "52.52",
+        "longitude": "13.41",
+        "current": "temperature_2m"
+      },
+      "on_error": "fail",
+      "connector_id": "<CONNECTOR_ID>"
+    },
+    {
+      "id": "extract_temperature",
+      "kind": "transform",
+      "language": "javascript",
+      "on_error": "fail",
+      "expression": "const c = input.scope.fetch_weather.data.current; return { city: 'Berlin', time: c.time, temperature_c: c.temperature_2m };"
+    }
   ]
 }
 ```
+
 ```bash
 docker cp weather.json subkit:/tmp/weather.json
 docker compose exec engine sk workflows create --file /tmp/weather.json   # validate→preview→save
@@ -449,13 +474,13 @@ docker compose exec engine sk credentials list <CONNECTOR_ID>
 
 ## Troubleshooting
 
-| Symptom | Cause / fix |
-|---|---|
-| `llm_provider_misconfigured` on an AI command | Provider key missing/wrong: `sk settings set llm.providers.anthropic.api_key '"sk-ant-…"'` (or re-run `sk init`), then `sk -p "ping"`. |
-| `bootstrap token expired` | Re-run `sk init` (it auto-detects a fresh token) or re-grep the logs (Step 2). |
-| Connector `probe failed` | Wrong base URL / endpoint — tell the REPL the correct values and `/probe`. |
-| `validation failed` on `workflows create` | Check the JSON against the Scripting section; `connector_id` must be a real id from `sk connectors list`. |
-| Interactive prompt hangs under `docker compose exec` | Run it from an interactive terminal; Compose allocates a TTY by default. |
+| Symptom                                              | Cause / fix                                                                                                                            |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `llm_provider_misconfigured` on an AI command        | Provider key missing/wrong: `sk settings set llm.providers.anthropic.api_key '"sk-ant-…"'` (or re-run `sk init`), then `sk -p "ping"`. |
+| `bootstrap token expired`                            | Re-run `sk init` (it auto-detects a fresh token) or re-grep the logs (Step 2).                                                         |
+| Connector `probe failed`                             | Wrong base URL / endpoint — tell the REPL the correct values and `/probe`.                                                             |
+| `validation failed` on `workflows create`            | Check the JSON against the Scripting section; `connector_id` must be a real id from `sk connectors list`.                              |
+| Interactive prompt hangs under `docker compose exec` | Run it from an interactive terminal; Compose allocates a TTY by default.                                                               |
 
 ---
 
@@ -467,11 +492,10 @@ with managed PostgreSQL and put the engine behind your TLS ingress.
 
 ### Deployment Topology
 
-sk compiles to a single binary whose only stateful dependency is PostgreSQL. The
-job queue, cron scheduler, and pub/sub event bus all run **inside** the engine
-process, backed by PostgreSQL. No message broker, no distributed queue, no
-coordination service — one dependency, and an entire class of distributed-systems
-failure modes designed away.
+sk compiles to a single stateless binary. PostgreSQL backs configuration,
+secrets, metadata, the job queue, scheduler, and pub/sub event bus; a private
+S3-compatible service stores binary payloads. No message broker, distributed
+queue, or local persistent application volume is required.
 
 ```mermaid
 flowchart TB
@@ -480,7 +504,7 @@ flowchart TB
     Engine["engine container<br/>mikebild/subkit"]
     PG[("PostgreSQL")]
     LLM[("LLM Provider<br/>Anthropic / OpenAI / Google")]
-    S3[("S3 (optional)<br/>step-result spillover")]
+    S3[("Private S3-compatible bucket<br/>files + large results")]
 
     Internet -- :443 --> Proxy
     Proxy -- :3000 --> Engine
@@ -489,45 +513,49 @@ flowchart TB
     Engine -. outbound .-> S3
 ```
 
-| Concern | How sk handles it |
-|---|---|
-| **Queue / scheduler / events** | pg-boss + outbox in PostgreSQL — nothing extra to run |
-| **Standard model** | one engine service + one PostgreSQL instance |
-| **High availability** | run multiple engine containers behind a load balancer (no coordination overhead) |
-| **Production database** | point at [external PostgreSQL](#external-database); engine auto-migrates on boot |
-| **Release-image rehearsal** | `docker-compose.yml` runs the released engine image and a separate PostgreSQL service |
+| Concern                        | How sk handles it                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------- |
+| **Queue / scheduler / events** | pg-boss + outbox in PostgreSQL — nothing extra to run                                 |
+| **Standard model**             | one stateless engine service + PostgreSQL + private S3-compatible storage             |
+| **High availability**          | run multiple engine containers behind a load balancer (no coordination overhead)      |
+| **Production database**        | point at [external PostgreSQL](#external-database); engine auto-migrates on boot      |
+| **Release-image rehearsal**    | `docker-compose.yml` runs the released engine image and a separate PostgreSQL service |
 
 ### Installation
 
-| Channel | Detail |
-|---|---|
-| **Binaries** | macOS (Intel + Apple Silicon), Linux (x64 + ARM64), Windows (x64) |
-| **Primary binaries** | `sk` (CLI) and the engine — docs and examples use `sk` |
-| **Install script** | one-liner for bash and PowerShell |
-| **Container** | published image for Kubernetes / cloud-native deployments |
-| **Auto-update** | binaries check on startup and update in place, gated by a signed `SHA256SUMS` — see [`../admins/credentials-and-keys.md`](../admins/credentials-and-keys.md) |
+| Channel              | Detail                                                                                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Binaries**         | macOS (Intel + Apple Silicon), Linux (x64 + ARM64), Windows (x64)                                                                                            |
+| **Primary binaries** | `sk` (CLI) and the engine — docs and examples use `sk`                                                                                                       |
+| **Install script**   | one-liner for bash and PowerShell                                                                                                                            |
+| **Container**        | published image for Kubernetes / cloud-native deployments                                                                                                    |
+| **Auto-update**      | binaries check on startup and update in place, gated by a signed `SHA256SUMS` — see [`../admins/credentials-and-keys.md`](../admins/credentials-and-keys.md) |
 
 ---
 
 ## Operator configuration reference
 
-Every **runtime setting** is managed with `sk settings` (get / set / list / `configure`) — that is the one surface you need. The env vars below are deliberately *not* `sk settings`, and for a reason worth knowing:
+Every **runtime setting** is managed with `sk settings` (get / set / list / `configure`) — that is the one surface you need. The env vars below are deliberately _not_ `sk settings`, and for a reason worth knowing:
 
-- **`MASTER_KEY` / `DATABASE_URL` / `ENGINE_LISTEN_HOST` are bootstrap-only.** They're needed *before* the engine, its database, or its HTTP API exist — `MASTER_KEY` decrypts the credential vault, `DATABASE_URL` is *how* the engine reaches the database where settings are stored, and `ENGINE_LISTEN_HOST` is where the server binds. `sk settings` talks to a *running* engine, so it cannot set them (chicken-and-egg). `MASTER_KEY` isn't even a config leaf.
-- **`engine --issue-admin-key` is the operator escape hatch for the *first* key.** `sk` authenticates with an API key, so it can't mint its own first one; that runs directly against the database on the `engine` binary. Once you have a key, `sk apikeys create` mints more through the API.
-- **Legacy `SK_OVERRIDE_*` values are migration inputs only.** A value seeds a
-  missing canonical leaf once and is persisted; it never overrides a value set
-  through Cockpit, HTTP, MCP, or `sk settings`. Remove it after the first boot.
+- **`MASTER_KEY` / `DATABASE_URL` / `ENGINE_LISTEN_HOST` are process bootstrap.** They're needed _before_ the engine, its database, or its HTTP API exist. `MASTER_KEY` decrypts product secrets, `DATABASE_URL` locates the canonical revision, and `ENGINE_LISTEN_HOST` selects the bind interface.
+- **`PORT` and `OBJECT_STORAGE_*` seed revision 1 only.** Once the database contains runtime state, those bindings never override it.
+- **`engine --issue-admin-key` is the operator escape hatch for the _first_ key.** `sk` authenticates with an API key, so it can't mint its own first one; that runs directly against the database on the `engine` binary. Once you have a key, `sk apikeys create` mints more through the API.
+- **Legacy config is imported explicitly.** Use `engine --bridge-stateless --legacy-config=…`; production startup ignores `SUBKIT_CONFIG`, config files, and `SK_OVERRIDE_*`.
 
-Everything else lives in `subkit.config.json` on the volume. Full leaf reference: [`../admins/settings-reference.md`](../admins/settings-reference.md); the surrounding configuration model is [`../admins/configuration.md`](../admins/configuration.md).
+Everything else lives in immutable PostgreSQL revisions. Full leaf reference:
+[`../admins/settings-reference.md`](../admins/settings-reference.md); the
+surrounding configuration model is
+[`../admins/configuration.md`](../admins/configuration.md).
 
-| Env var | Default | Purpose |
-|---|---|---|
-| `MASTER_KEY` | auto-generated + persisted to `/data/config/master.key` | 64-hex AES-256 key for at-rest credential encryption. **Set your own in production** — losing it makes stored credentials unrecoverable. |
-| `DATABASE_URL` | **required** | PostgreSQL connection URL. The image does not contain a database server. `DATABASE_URL_FILE` is also supported. |
-| `ENGINE_LISTEN_HOST` | `0.0.0.0` | Bind interface. The image defaults to all-interfaces so `-p` works; leave it. |
-| `SK_OVERRIDE_*` | — | Legacy one-time import for a missing leaf; ignored when canonical config already contains the path. |
-| `NODE_ENV` | `production` | — |
+| Env var                | Default                           | Purpose                                                                                                          |
+| ---------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `MASTER_KEY`           | **required**                      | Product-isolated 64-hex AES-256 key for encrypted secret versions. Losing it makes stored secrets unrecoverable. |
+| `DATABASE_URL`         | **required**                      | PostgreSQL connection URL. The image does not contain a database server. `DATABASE_URL_FILE` is also supported.  |
+| `ENGINE_LISTEN_HOST`   | `0.0.0.0`                         | Bind interface. The image defaults to all-interfaces so `-p` works; leave it.                                    |
+| `PORT`                 | `3000`                            | Revision-1 seed for the server port.                                                                             |
+| `OBJECT_STORAGE_*`     | **required on an empty database** | Revision-1 private S3 binding: endpoint, region, bucket, credentials, optional session token, and path style.    |
+| `SUBKIT_BOOTSTRAP_KEY` | generated if absent               | Optional fixed one-time onboarding key; invalid after completion.                                                |
+| `NODE_ENV`             | `production`                      | —                                                                                                                |
 
 ### Bring your own MASTER_KEY
 
@@ -543,18 +571,24 @@ Connect the image to PostgreSQL (managed RDS, a separate container, etc.). The
 database is mandatory and the engine auto-migrates on boot:
 
 ```bash
-docker run -d --name subkit -p 3000:3000 -v subkit-data:/data \
+docker run -d --name subkit -p 3000:3000 \
   -e DATABASE_URL="postgres://user:pass@db-host:5432/subkit" \
   -e MASTER_KEY="<your-64-hex-key>" \
-  mikebild/subkit:6.22.38
+  -e OBJECT_STORAGE_ENDPOINT="https://objects.example.com" \
+  -e OBJECT_STORAGE_REGION="garage" \
+  -e OBJECT_STORAGE_BUCKET="private-subkit" \
+  -e OBJECT_STORAGE_ACCESS_KEY_ID="<access-key-id>" \
+  -e OBJECT_STORAGE_SECRET_ACCESS_KEY="<secret-access-key>" \
+  -e OBJECT_STORAGE_PATH_STYLE="true" \
+  mikebild/subkit:<version>
 ```
 
 ### Persistence & upgrades
 
-Application state lives in `/data`; durable relational state lives in
-PostgreSQL. Back up both. To upgrade the Compose deployment, change the pinned
-`SUBKIT_IMAGE_TAG`, pull, and recreate the engine. Migrations apply
-automatically on boot:
+The engine is stateless. Back up PostgreSQL and the matching private object
+bucket; no engine filesystem or `/data` volume participates in recovery. To
+upgrade the Compose deployment, change the pinned `SUBKIT_IMAGE_TAG`, pull, and
+recreate the engine. Migrations apply automatically on boot:
 
 ```bash
 SUBKIT_IMAGE_TAG=<new-version> docker compose pull engine
@@ -567,7 +601,7 @@ curl -fsS http://127.0.0.1:3000/ready
 
 - **Web-scraping connector**: the image includes the Playwright-matched Chromium build and its operating-system libraries.
 - **File scanning**: uploads are not virus-scanned by default — see [`../admins/production-hardening.md`](../admins/production-hardening.md) before accepting untrusted uploads.
-- **Horizontal scaling**: run multiple engine containers against the same external PostgreSQL database and blob-storage strategy, behind a load balancer.
+- **Horizontal scaling**: run multiple engine containers against the same external PostgreSQL database and private object bucket, behind a load balancer. Settings activate only after every healthy replica ACKs the revision digest.
 
 ---
 

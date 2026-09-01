@@ -1,18 +1,18 @@
 # Concepts & Domain Model
 
-One vocabulary, defined once. When every team means the same thing by *Workflow*, *Credential*, or *Audit Log*, reviews move faster, handoffs stop leaking, and compliance gaps close before they reach an auditor.
+One vocabulary, defined once. When every team means the same thing by _Workflow_, _Credential_, or _Audit Log_, reviews move faster, handoffs stop leaking, and compliance gaps close before they reach an auditor.
 
 This is the authoritative glossary for sk: each term is defined exactly once, and every other doc uses the meaning given here — not an approximation.
 
-| Group | Covers | Key terms |
-|---|---|---|
-| [0 — Naming & Acronyms](#group-0-naming--acronyms) | Shared names and expansions | Contextual learning loop, AEAD, DAG, MCP, RBAC |
-| [1 — Platform Core](#group-1-platform-core) | Isolation and identity | Tenant, User, API Key, Portal Token |
-| [2 — Authoring](#group-2-authoring) | How workflows get built | Conversation, Draft, Skill, Knowledge Source, Discovery |
-| [3 — Integration](#group-3-integration) | Reaching external integrations | Connector, Template, Driver, Credential |
-| [4 — Execution](#group-4-execution) | What runs, and what it records | Workflow, Step, Execution, Schedule |
-| [5 — Governance](#group-5-governance) | Control and proof | Audit Log, RBAC, Before-Request Hook, Self-Healing |
-| [6 — Surfaces](#group-6-surfaces) | How callers reach sk | sk CLI, MCP Server, Chat Adapter, Notifications |
+| Group                                              | Covers                         | Key terms                                               |
+| -------------------------------------------------- | ------------------------------ | ------------------------------------------------------- |
+| [0 — Naming & Acronyms](#group-0-naming--acronyms) | Shared names and expansions    | Contextual learning loop, AEAD, DAG, MCP, RBAC          |
+| [1 — Platform Core](#group-1-platform-core)        | Isolation and identity         | Tenant, User, API Key, Portal Token                     |
+| [2 — Authoring](#group-2-authoring)                | How workflows get built        | Conversation, Draft, Skill, Knowledge Source, Discovery |
+| [3 — Integration](#group-3-integration)            | Reaching external integrations | Connector, Template, Driver, Credential                 |
+| [4 — Execution](#group-4-execution)                | What runs, and what it records | Workflow, Step, Execution, Schedule                     |
+| [5 — Governance](#group-5-governance)              | Control and proof              | Audit Log, RBAC, Before-Request Hook, Self-Healing      |
+| [6 — Surfaces](#group-6-surfaces)                  | How callers reach sk           | sk CLI, MCP Server, Chat Adapter, Notifications         |
 
 Read top to bottom for a full mental model, or jump to a group.
 
@@ -30,7 +30,7 @@ flowchart LR
   SC --> Author[Better authoring] --> Run
 ```
 
-**Drift-assisted repair suggestion** — the prose phrasing for the codebase's *self-healing* subsystem (also called *operator-reviewed remediation* in governance contexts). Same concept, different audience.
+**Drift-assisted repair suggestion** — the prose phrasing for the codebase's _self-healing_ subsystem (also called _operator-reviewed remediation_ in governance contexts). Same concept, different audience.
 
 > **Naming note.** The prose docs say "drift-assisted repair"; the codebase keeps stable technical identifiers (`apps/engine/src/self-healing/`, `rbac/`, `credentials/`, etc.). These names must not be renamed for vocabulary alignment — they are referenced by modules, logs, and tests.
 
@@ -38,26 +38,26 @@ flowchart LR
 
 Collected so every reader has the same expansion at hand.
 
-| Acronym | Expansion | One-line definition |
-|---|---|---|
-| AEAD | Authenticated Encryption with Associated Data | Encryption that also detects tampering of the ciphertext and the metadata it is bound to. |
-| BPMN | Business Process Model and Notation | Classical visual workflow language; cited as a contrast to AI-assisted authoring. |
-| DAG | Directed Acyclic Graph | The shape of a Workflow: steps flow forward, never loop back to themselves. |
-| DCR | Dynamic Client Registration | OAuth 2.1 mechanism that lets a new external client self-register with the server (RFC 7591). |
-| DLP | Data Loss Prevention | Policy layer that recognises sensitive fields (PII, secrets) and blocks them at the boundary. |
-| MCP | Model Context Protocol | The standard by which AI clients (IDE assistants, coding agents, chat clients) connect to external integrations (Connectors). |
-| OAuth 2.1 | — | The current consolidated OAuth standard (PKCE-by-default, refresh-token rotation, no implicit grant). |
-| OIDC | OpenID Connect | Identity layer on top of OAuth 2.x; how sk verifies who a user is. |
-| PII | Personally Identifiable Information | Data that identifies a natural person; subject to GDPR / SOC2 controls. |
-| PKCE | Proof Key for Code Exchange | OAuth extension that protects the authorization-code flow on public clients. |
-| RAG | Retrieval-Augmented Generation | LLM pattern: ground generation in retrieved tenant-specific context (Lewis et al. 2020). |
-| RBAC | Role-Based Access Control | Permission model that grants actions through roles rather than per-user grants. |
-| ReAct | Reasoning + Acting | Agent pattern that interleaves model reasoning and tool calls (Yao et al. 2023). |
-| RLS | Row-Level Security | PostgreSQL feature that enforces tenant boundaries at the database, not the application. |
-| RTO/RPO | Recovery Time / Point Objective | Disaster-recovery targets: how fast you recover, and how much data you may lose. |
-| SAML | Security Assertion Markup Language | Enterprise SSO standard, alternative to OIDC. |
-| SCIM | System for Cross-domain Identity Management | Standard for automated user provisioning and deprovisioning. |
-| SSO | Single Sign-On | One login session unlocks multiple applications. |
+| Acronym   | Expansion                                     | One-line definition                                                                                                           |
+| --------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| AEAD      | Authenticated Encryption with Associated Data | Encryption that also detects tampering of the ciphertext and the metadata it is bound to.                                     |
+| BPMN      | Business Process Model and Notation           | Classical visual workflow language; cited as a contrast to AI-assisted authoring.                                             |
+| DAG       | Directed Acyclic Graph                        | The shape of a Workflow: steps flow forward, never loop back to themselves.                                                   |
+| DCR       | Dynamic Client Registration                   | OAuth 2.1 mechanism that lets a new external client self-register with the server (RFC 7591).                                 |
+| DLP       | Data Loss Prevention                          | Policy layer that recognises sensitive fields (PII, secrets) and blocks them at the boundary.                                 |
+| MCP       | Model Context Protocol                        | The standard by which AI clients (IDE assistants, coding agents, chat clients) connect to external integrations (Connectors). |
+| OAuth 2.1 | —                                             | The current consolidated OAuth standard (PKCE-by-default, refresh-token rotation, no implicit grant).                         |
+| OIDC      | OpenID Connect                                | Identity layer on top of OAuth 2.x; how sk verifies who a user is.                                                            |
+| PII       | Personally Identifiable Information           | Data that identifies a natural person; subject to GDPR / SOC2 controls.                                                       |
+| PKCE      | Proof Key for Code Exchange                   | OAuth extension that protects the authorization-code flow on public clients.                                                  |
+| RAG       | Retrieval-Augmented Generation                | LLM pattern: ground generation in retrieved tenant-specific context (Lewis et al. 2020).                                      |
+| RBAC      | Role-Based Access Control                     | Permission model that grants actions through roles rather than per-user grants.                                               |
+| ReAct     | Reasoning + Acting                            | Agent pattern that interleaves model reasoning and tool calls (Yao et al. 2023).                                              |
+| RLS       | Row-Level Security                            | PostgreSQL feature that enforces tenant boundaries at the database, not the application.                                      |
+| RTO/RPO   | Recovery Time / Point Objective               | Disaster-recovery targets: how fast you recover, and how much data you may lose.                                              |
+| SAML      | Security Assertion Markup Language            | Enterprise SSO standard, alternative to OIDC.                                                                                 |
+| SCIM      | System for Cross-domain Identity Management   | Standard for automated user provisioning and deprovisioning.                                                                  |
+| SSO       | Single Sign-On                                | One login session unlocks multiple applications.                                                                              |
 
 ---
 
@@ -77,7 +77,7 @@ Collected so every reader has the same expansion at hand.
 
 **Conversation** — the primary authoring session in sk. A User and the AI exchange messages; the AI uses structured authoring actions internally to propose, validate, and assemble a workflow. Conversations are persistent and resumable — a session can be paused and continued without losing context. The Conversation is where Drafts are created, refined, and committed.
 
-**Draft** — a workflow under construction within a Conversation. A Draft exists only in the context of the Conversation until it is committed. Committing a Draft creates a versioned, immutable Workflow. A Draft *is* executable — that is what a dry run does — but only with writes held back, so a Draft run has no side effects outside sk; the unheld path runs committed Workflows.
+**Draft** — a workflow under construction within a Conversation. A Draft exists only in the context of the Conversation until it is committed. Committing a Draft creates a versioned, immutable Workflow. A Draft _is_ executable — that is what a dry run does — but only with writes held back, so a Draft run has no side effects outside sk; the unheld path runs committed Workflows.
 
 **Skill** — a reusable, curated piece of context loaded into the AI during Conversations and other AI-assisted authoring flows such as discovery, diagnosis, and bounded repair. Skills encode best practices, integration patterns, domain-specific knowledge, and known failure modes. They are authored or promoted by operators with explicit human approval. Skills are never auto-generated or auto-promoted from execution history, and committed deterministic workflow execution does not load them. See [Model a Domain](../authors/model-a-domain.md) for a Skill and a Knowledge Source configured together for one domain.
 
@@ -103,7 +103,7 @@ Collected so every reader has the same expansion at hand.
 
 ## Group 4: Execution
 
-**Workflow** — a versioned, directed acyclic graph (DAG) of Steps with a deterministic control flow: which Steps run, in what order, on what condition is fixed at approval time and never re-decided at runtime. Step *results* can still vary — a Step calls the outside world. Workflows are authored through Conversations, approved by a human, and then committed as immutable versions. Each version is a complete snapshot of the workflow at the time of approval. Workflows are tenant-scoped and support a lifecycle of draft, active, and archived.
+**Workflow** — a versioned, directed acyclic graph (DAG) of Steps with a deterministic control flow: which Steps run, in what order, on what condition is fixed at approval time and never re-decided at runtime. Step _results_ can still vary — a Step calls the outside world. Workflows are authored through Conversations, approved by a human, and then committed as immutable versions. Each version is a complete snapshot of the workflow at the time of approval. Workflows are tenant-scoped and support a lifecycle of draft, active, and archived.
 
 **Step** — a single unit of work within a Workflow DAG. Step types are: request (call a Connector), transform (reshape data), branch (conditional routing), loop (iterate over a collection), parallel (run Steps concurrently), wait (introduce a delay), wait_for_event (pause until an inbound signal), and call (invoke another Workflow). Each Step declares retry policy, timeout, error handling behaviour, and optional field masking for sensitive data.
 
@@ -117,7 +117,7 @@ Collected so every reader has the same expansion at hand.
 
 ## Group 5: Governance
 
-**Audit Log** — the append-only record of every state change in the platform. Every entry carries: what changed, who initiated it, from which surface (API, CLI, MCP, chat, scheduler, webhook), and when. sk exposes no path that modifies or deletes an audit entry — no route, no tool, no job, and `audit:read` is the only audit permission — so nothing reaching the platform through its own surfaces can rewrite history. That is an application-layer guarantee: it does not extend to a party with direct database access, and entries are not hash-chained, so it provides no tamper *evidence* against one. It is the authoritative record for compliance, debugging, and incident review.
+**Audit Log** — the append-only record of every state change in the platform. Every entry carries: what changed, who initiated it, from which surface (API, CLI, MCP, chat, scheduler, webhook), and when. sk exposes no path that modifies or deletes an audit entry — no route, no tool, no job, and `audit:read` is the only audit permission — so nothing reaching the platform through its own surfaces can rewrite history. That is an application-layer guarantee: it does not extend to a party with direct database access, and entries are not hash-chained, so it provides no tamper _evidence_ against one. It is the authoritative record for compliance, debugging, and incident review.
 
 **RBAC** — role-based access control enforced at every platform boundary. Every API route, MCP call, webhook trigger, and execution path checks the caller's role and permissions before proceeding. sk ships five built-in roles: the three user-facing roles (admin, member, enduser) plus the metrics_scraper and portal_token_user system roles. Custom roles and resource-level grants are supported for more granular control. RBAC decisions are recorded in the Audit Log.
 
@@ -143,7 +143,7 @@ Collected so every reader has the same expansion at hand.
 
 **Service Metadata** — the identity envelope every engine code path carries: `{ trace_id, tenant_id, actor_id, actor_email, request_source }`. Constructed at every entry point (HTTP middleware, MCP server, scheduler, CLI bin, conversation tool-chain recursion) and threaded through every log line, audit row, and telemetry event. Defined in `apps/engine/src/observability/service-metadata.ts`. The trace_id is what an operator follows across surfaces during incident triage.
 
-**Result Storage URI** — the pointer in `executions.result_storage_uri` (and per-step rows) that resolves a spilled payload back to its full content. Inline payloads up to `STEP_RESULT_DB_BYTES` (10 KB) live in the row; larger payloads spill to S3 (`s3://<bucket>/<key>`) or the `execution_fixtures` table (`fixture://<uuid>`). A 512-byte text preview always lands inline.
+**Result Storage URI** — the pointer in `executions.result_storage_uri` (and per-step rows) that resolves a spilled payload back to its full content. Inline payloads up to `STEP_RESULT_DB_BYTES` (10 KB) live in the row; larger payloads spill to the configured S3-compatible private bucket as an immutable `s3://<bucket>/<key>` object with application SHA-256 metadata. A 512-byte text preview always lands inline. `fixture://<uuid>` is a read-only legacy recovery format, never a destination for new writes.
 
 **LLM Judge** — an opt-in scoring layer invoked by the eval runner only when (a) `SUBKIT_EVAL_LLM_JUDGE=1` is set AND (b) the deterministic validator returns `pass=false` with `function_passed=true` (structurally fine, semantically dubious). The judge emits a `passes`/`partial`/`failed` verdict that enriches the report; it never overrides the deterministic gate.
 

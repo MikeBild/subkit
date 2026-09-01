@@ -1396,19 +1396,19 @@ in your documents. The worked walkthrough is [Model a Domain](../authors/model-a
 
 # Concepts & Domain Model
 
-One vocabulary, defined once. When every team means the same thing by *Workflow*, *Credential*, or *Audit Log*, reviews move faster, handoffs stop leaking, and compliance gaps close before they reach an auditor.
+One vocabulary, defined once. When every team means the same thing by _Workflow_, _Credential_, or _Audit Log_, reviews move faster, handoffs stop leaking, and compliance gaps close before they reach an auditor.
 
 This is the authoritative glossary for sk: each term is defined exactly once, and every other doc uses the meaning given here — not an approximation.
 
-| Group | Covers | Key terms |
-|---|---|---|
-| [0 — Naming & Acronyms](#group-0-naming--acronyms) | Shared names and expansions | Contextual learning loop, AEAD, DAG, MCP, RBAC |
-| [1 — Platform Core](#group-1-platform-core) | Isolation and identity | Tenant, User, API Key, Portal Token |
-| [2 — Authoring](#group-2-authoring) | How workflows get built | Conversation, Draft, Skill, Knowledge Source, Discovery |
-| [3 — Integration](#group-3-integration) | Reaching external integrations | Connector, Template, Driver, Credential |
-| [4 — Execution](#group-4-execution) | What runs, and what it records | Workflow, Step, Execution, Schedule |
-| [5 — Governance](#group-5-governance) | Control and proof | Audit Log, RBAC, Before-Request Hook, Self-Healing |
-| [6 — Surfaces](#group-6-surfaces) | How callers reach sk | sk CLI, MCP Server, Chat Adapter, Notifications |
+| Group                                              | Covers                         | Key terms                                               |
+| -------------------------------------------------- | ------------------------------ | ------------------------------------------------------- |
+| [0 — Naming & Acronyms](#group-0-naming--acronyms) | Shared names and expansions    | Contextual learning loop, AEAD, DAG, MCP, RBAC          |
+| [1 — Platform Core](#group-1-platform-core)        | Isolation and identity         | Tenant, User, API Key, Portal Token                     |
+| [2 — Authoring](#group-2-authoring)                | How workflows get built        | Conversation, Draft, Skill, Knowledge Source, Discovery |
+| [3 — Integration](#group-3-integration)            | Reaching external integrations | Connector, Template, Driver, Credential                 |
+| [4 — Execution](#group-4-execution)                | What runs, and what it records | Workflow, Step, Execution, Schedule                     |
+| [5 — Governance](#group-5-governance)              | Control and proof              | Audit Log, RBAC, Before-Request Hook, Self-Healing      |
+| [6 — Surfaces](#group-6-surfaces)                  | How callers reach sk           | sk CLI, MCP Server, Chat Adapter, Notifications         |
 
 Read top to bottom for a full mental model, or jump to a group.
 
@@ -1426,7 +1426,7 @@ flowchart LR
   SC --> Author[Better authoring] --> Run
 ```
 
-**Drift-assisted repair suggestion** — the prose phrasing for the codebase's *self-healing* subsystem (also called *operator-reviewed remediation* in governance contexts). Same concept, different audience.
+**Drift-assisted repair suggestion** — the prose phrasing for the codebase's _self-healing_ subsystem (also called _operator-reviewed remediation_ in governance contexts). Same concept, different audience.
 
 > **Naming note.** The prose docs say "drift-assisted repair"; the codebase keeps stable technical identifiers (`apps/engine/src/self-healing/`, `rbac/`, `credentials/`, etc.). These names must not be renamed for vocabulary alignment — they are referenced by modules, logs, and tests.
 
@@ -1434,26 +1434,26 @@ flowchart LR
 
 Collected so every reader has the same expansion at hand.
 
-| Acronym | Expansion | One-line definition |
-|---|---|---|
-| AEAD | Authenticated Encryption with Associated Data | Encryption that also detects tampering of the ciphertext and the metadata it is bound to. |
-| BPMN | Business Process Model and Notation | Classical visual workflow language; cited as a contrast to AI-assisted authoring. |
-| DAG | Directed Acyclic Graph | The shape of a Workflow: steps flow forward, never loop back to themselves. |
-| DCR | Dynamic Client Registration | OAuth 2.1 mechanism that lets a new external client self-register with the server (RFC 7591). |
-| DLP | Data Loss Prevention | Policy layer that recognises sensitive fields (PII, secrets) and blocks them at the boundary. |
-| MCP | Model Context Protocol | The standard by which AI clients (IDE assistants, coding agents, chat clients) connect to external integrations (Connectors). |
-| OAuth 2.1 | — | The current consolidated OAuth standard (PKCE-by-default, refresh-token rotation, no implicit grant). |
-| OIDC | OpenID Connect | Identity layer on top of OAuth 2.x; how sk verifies who a user is. |
-| PII | Personally Identifiable Information | Data that identifies a natural person; subject to GDPR / SOC2 controls. |
-| PKCE | Proof Key for Code Exchange | OAuth extension that protects the authorization-code flow on public clients. |
-| RAG | Retrieval-Augmented Generation | LLM pattern: ground generation in retrieved tenant-specific context (Lewis et al. 2020). |
-| RBAC | Role-Based Access Control | Permission model that grants actions through roles rather than per-user grants. |
-| ReAct | Reasoning + Acting | Agent pattern that interleaves model reasoning and tool calls (Yao et al. 2023). |
-| RLS | Row-Level Security | PostgreSQL feature that enforces tenant boundaries at the database, not the application. |
-| RTO/RPO | Recovery Time / Point Objective | Disaster-recovery targets: how fast you recover, and how much data you may lose. |
-| SAML | Security Assertion Markup Language | Enterprise SSO standard, alternative to OIDC. |
-| SCIM | System for Cross-domain Identity Management | Standard for automated user provisioning and deprovisioning. |
-| SSO | Single Sign-On | One login session unlocks multiple applications. |
+| Acronym   | Expansion                                     | One-line definition                                                                                                           |
+| --------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| AEAD      | Authenticated Encryption with Associated Data | Encryption that also detects tampering of the ciphertext and the metadata it is bound to.                                     |
+| BPMN      | Business Process Model and Notation           | Classical visual workflow language; cited as a contrast to AI-assisted authoring.                                             |
+| DAG       | Directed Acyclic Graph                        | The shape of a Workflow: steps flow forward, never loop back to themselves.                                                   |
+| DCR       | Dynamic Client Registration                   | OAuth 2.1 mechanism that lets a new external client self-register with the server (RFC 7591).                                 |
+| DLP       | Data Loss Prevention                          | Policy layer that recognises sensitive fields (PII, secrets) and blocks them at the boundary.                                 |
+| MCP       | Model Context Protocol                        | The standard by which AI clients (IDE assistants, coding agents, chat clients) connect to external integrations (Connectors). |
+| OAuth 2.1 | —                                             | The current consolidated OAuth standard (PKCE-by-default, refresh-token rotation, no implicit grant).                         |
+| OIDC      | OpenID Connect                                | Identity layer on top of OAuth 2.x; how sk verifies who a user is.                                                            |
+| PII       | Personally Identifiable Information           | Data that identifies a natural person; subject to GDPR / SOC2 controls.                                                       |
+| PKCE      | Proof Key for Code Exchange                   | OAuth extension that protects the authorization-code flow on public clients.                                                  |
+| RAG       | Retrieval-Augmented Generation                | LLM pattern: ground generation in retrieved tenant-specific context (Lewis et al. 2020).                                      |
+| RBAC      | Role-Based Access Control                     | Permission model that grants actions through roles rather than per-user grants.                                               |
+| ReAct     | Reasoning + Acting                            | Agent pattern that interleaves model reasoning and tool calls (Yao et al. 2023).                                              |
+| RLS       | Row-Level Security                            | PostgreSQL feature that enforces tenant boundaries at the database, not the application.                                      |
+| RTO/RPO   | Recovery Time / Point Objective               | Disaster-recovery targets: how fast you recover, and how much data you may lose.                                              |
+| SAML      | Security Assertion Markup Language            | Enterprise SSO standard, alternative to OIDC.                                                                                 |
+| SCIM      | System for Cross-domain Identity Management   | Standard for automated user provisioning and deprovisioning.                                                                  |
+| SSO       | Single Sign-On                                | One login session unlocks multiple applications.                                                                              |
 
 ---
 
@@ -1473,7 +1473,7 @@ Collected so every reader has the same expansion at hand.
 
 **Conversation** — the primary authoring session in sk. A User and the AI exchange messages; the AI uses structured authoring actions internally to propose, validate, and assemble a workflow. Conversations are persistent and resumable — a session can be paused and continued without losing context. The Conversation is where Drafts are created, refined, and committed.
 
-**Draft** — a workflow under construction within a Conversation. A Draft exists only in the context of the Conversation until it is committed. Committing a Draft creates a versioned, immutable Workflow. A Draft *is* executable — that is what a dry run does — but only with writes held back, so a Draft run has no side effects outside sk; the unheld path runs committed Workflows.
+**Draft** — a workflow under construction within a Conversation. A Draft exists only in the context of the Conversation until it is committed. Committing a Draft creates a versioned, immutable Workflow. A Draft _is_ executable — that is what a dry run does — but only with writes held back, so a Draft run has no side effects outside sk; the unheld path runs committed Workflows.
 
 **Skill** — a reusable, curated piece of context loaded into the AI during Conversations and other AI-assisted authoring flows such as discovery, diagnosis, and bounded repair. Skills encode best practices, integration patterns, domain-specific knowledge, and known failure modes. They are authored or promoted by operators with explicit human approval. Skills are never auto-generated or auto-promoted from execution history, and committed deterministic workflow execution does not load them. See [Model a Domain](../authors/model-a-domain.md) for a Skill and a Knowledge Source configured together for one domain.
 
@@ -1499,7 +1499,7 @@ Collected so every reader has the same expansion at hand.
 
 ## Group 4: Execution
 
-**Workflow** — a versioned, directed acyclic graph (DAG) of Steps with a deterministic control flow: which Steps run, in what order, on what condition is fixed at approval time and never re-decided at runtime. Step *results* can still vary — a Step calls the outside world. Workflows are authored through Conversations, approved by a human, and then committed as immutable versions. Each version is a complete snapshot of the workflow at the time of approval. Workflows are tenant-scoped and support a lifecycle of draft, active, and archived.
+**Workflow** — a versioned, directed acyclic graph (DAG) of Steps with a deterministic control flow: which Steps run, in what order, on what condition is fixed at approval time and never re-decided at runtime. Step _results_ can still vary — a Step calls the outside world. Workflows are authored through Conversations, approved by a human, and then committed as immutable versions. Each version is a complete snapshot of the workflow at the time of approval. Workflows are tenant-scoped and support a lifecycle of draft, active, and archived.
 
 **Step** — a single unit of work within a Workflow DAG. Step types are: request (call a Connector), transform (reshape data), branch (conditional routing), loop (iterate over a collection), parallel (run Steps concurrently), wait (introduce a delay), wait_for_event (pause until an inbound signal), and call (invoke another Workflow). Each Step declares retry policy, timeout, error handling behaviour, and optional field masking for sensitive data.
 
@@ -1513,7 +1513,7 @@ Collected so every reader has the same expansion at hand.
 
 ## Group 5: Governance
 
-**Audit Log** — the append-only record of every state change in the platform. Every entry carries: what changed, who initiated it, from which surface (API, CLI, MCP, chat, scheduler, webhook), and when. sk exposes no path that modifies or deletes an audit entry — no route, no tool, no job, and `audit:read` is the only audit permission — so nothing reaching the platform through its own surfaces can rewrite history. That is an application-layer guarantee: it does not extend to a party with direct database access, and entries are not hash-chained, so it provides no tamper *evidence* against one. It is the authoritative record for compliance, debugging, and incident review.
+**Audit Log** — the append-only record of every state change in the platform. Every entry carries: what changed, who initiated it, from which surface (API, CLI, MCP, chat, scheduler, webhook), and when. sk exposes no path that modifies or deletes an audit entry — no route, no tool, no job, and `audit:read` is the only audit permission — so nothing reaching the platform through its own surfaces can rewrite history. That is an application-layer guarantee: it does not extend to a party with direct database access, and entries are not hash-chained, so it provides no tamper _evidence_ against one. It is the authoritative record for compliance, debugging, and incident review.
 
 **RBAC** — role-based access control enforced at every platform boundary. Every API route, MCP call, webhook trigger, and execution path checks the caller's role and permissions before proceeding. sk ships five built-in roles: the three user-facing roles (admin, member, enduser) plus the metrics_scraper and portal_token_user system roles. Custom roles and resource-level grants are supported for more granular control. RBAC decisions are recorded in the Audit Log.
 
@@ -1539,7 +1539,7 @@ Collected so every reader has the same expansion at hand.
 
 **Service Metadata** — the identity envelope every engine code path carries: `{ trace_id, tenant_id, actor_id, actor_email, request_source }`. Constructed at every entry point (HTTP middleware, MCP server, scheduler, CLI bin, conversation tool-chain recursion) and threaded through every log line, audit row, and telemetry event. Defined in `apps/engine/src/observability/service-metadata.ts`. The trace_id is what an operator follows across surfaces during incident triage.
 
-**Result Storage URI** — the pointer in `executions.result_storage_uri` (and per-step rows) that resolves a spilled payload back to its full content. Inline payloads up to `STEP_RESULT_DB_BYTES` (10 KB) live in the row; larger payloads spill to S3 (`s3://<bucket>/<key>`) or the `execution_fixtures` table (`fixture://<uuid>`). A 512-byte text preview always lands inline.
+**Result Storage URI** — the pointer in `executions.result_storage_uri` (and per-step rows) that resolves a spilled payload back to its full content. Inline payloads up to `STEP_RESULT_DB_BYTES` (10 KB) live in the row; larger payloads spill to the configured S3-compatible private bucket as an immutable `s3://<bucket>/<key>` object with application SHA-256 metadata. A 512-byte text preview always lands inline. `fixture://<uuid>` is a read-only legacy recovery format, never a destination for new writes.
 
 **LLM Judge** — an opt-in scoring layer invoked by the eval runner only when (a) `SUBKIT_EVAL_LLM_JUDGE=1` is set AND (b) the deterministic validator returns `pass=false` with `function_passed=true` (structurally fine, semantically dubious). The judge emits a `passes`/`partial`/`failed` verdict that enriches the report; it never overrides the deterministic gate.
 
@@ -2078,11 +2078,11 @@ stateDiagram-v2
     archived --> [*]
 ```
 
-*Draft → active → archived. Every transition lands in the Audit Log with the actor, the version, and the timestamp.*
+_Draft → active → archived. Every transition lands in the Audit Log with the actor, the version, and the timestamp._
 
 ### The authoring critic
 
-Static validation catches what a schema can prove: unknown step kinds, malformed placeholders, a scope reference that can't resolve. It cannot catch a draft that is *structurally valid but semantically wrong* — a workflow that parses cleanly yet quietly drifts from what the author actually asked for (the wrong endpoint, an inverted condition, a dropped field).
+Static validation catches what a schema can prove: unknown step kinds, malformed placeholders, a scope reference that can't resolve. It cannot catch a draft that is _structurally valid but semantically wrong_ — a workflow that parses cleanly yet quietly drifts from what the author actually asked for (the wrong endpoint, an inverted condition, a dropped field).
 
 The authoring critic closes that gap. It is an LLM gate that runs **after** static validation in the authoring pipeline and reads the draft against the stated intent, flagging semantic drift a parser can't see. When it finds a problem, the finding is fed back into the same bounded-repair loop the engine uses everywhere else, so the fix is proposed and re-validated rather than silently applied.
 
@@ -2094,7 +2094,7 @@ The critic is **off by default** and enabled through the `llm.critic.*` settings
 
 The **control flow** of an Execution is deterministic. A Workflow is a DAG of Steps; the execution engine walks that DAG in order, following branching and parallel directives exactly as defined. The engine does not re-interpret, adapt, or infer at runtime: it never calls a model to decide what runs next, and committed execution never queries Skills or Knowledge Sources.
 
-What a Step *returns* is a different matter — a `request` Step calls the outside world, and the outside world is not deterministic. That includes a Step an author points at a model provider: sk supports this deliberately (see [Calling a model from a Step](#calling-a-model-from-a-step)), and such a Workflow does not produce identical output on every run. The guarantee is that no model decides what the Workflow *does*.
+What a Step _returns_ is a different matter — a `request` Step calls the outside world, and the outside world is not deterministic. That includes a Step an author points at a model provider: sk supports this deliberately (see [Calling a model from a Step](#calling-a-model-from-a-step)), and such a Workflow does not produce identical output on every run. The guarantee is that no model decides what the Workflow _does_.
 
 There is a single runtime entry point for manual execution: `POST /v1/executions`. Persisted workflows, inline draft definitions, and single-step previews all flow through this same route and the same execution engine. Inline runs complete synchronously by default. Queued background execution is explicit and reserved for persisted workflows, scheduler fires, webhook fan-out, and other detached cases.
 
@@ -2102,7 +2102,7 @@ All execution surfaces normalize workflow input through the same boundary before
 
 Provider failures on the authoring side do not leak through as generic internal errors anymore. Usage-limit and rate-limit failures are surfaced as typed provider-limited responses, context-window failures are surfaced as context-too-large responses, and temporary provider outages are surfaced as typed provider-unavailable responses. The execution engine remains deterministic; these envelopes only describe authoring-time model failures.
 
-This is a deliberate architectural decision, not a limitation. AI is for authoring — exploring, proposing, and revising. Once a Workflow is approved and committed, the enterprise needs to know which steps will run, in which order, against which systems. The moment the *engine* infers that, the audit trail becomes "the AI decided" rather than "the workflow ran as specified."
+This is a deliberate architectural decision, not a limitation. AI is for authoring — exploring, proposing, and revising. Once a Workflow is approved and committed, the enterprise needs to know which steps will run, in which order, against which systems. The moment the _engine_ infers that, the audit trail becomes "the AI decided" rather than "the workflow ran as specified."
 
 An Execution is a permanent record. It captures the specific Workflow version that ran, who or what triggered it, the inputs and outputs of every Step, timing at every boundary, and the final status. sk never modifies it after it completes. If something goes wrong, the complete record of what happened is preserved exactly as it occurred.
 
@@ -2140,22 +2140,22 @@ flowchart LR
     Time --> wait_for_event["wait_for_event<br/>HITL signal pause"]
 ```
 
-| `kind` | What it carries |
-|---|---|
-| `request` | Calls a system through a connector — HTTP, GraphQL, SQL, S3, or a remote MCP server. One step kind, five drivers, so retry, backoff, and the audit envelope behave identically whichever system is on the other end. |
-| `transform` | Reshapes data between steps in a sandboxed JavaScript expression — no network access, bounded time and memory. |
-| `branch` | Deterministic conditional routing — the engine evaluates the condition and dispatches the matching branch, no inference, no fallthrough. |
-| `loop` | Iterates a collection, running its body once per item. Expensive or side-effecting loops can set `fail_fast: true` to stop after the first non-tolerated body failure; the default collects every iteration result. |
-| `parallel` | Fans out independent step sequences concurrently and merges their results. |
-| `wait` | A deliberate delay (up to 24 h) — polling, rate-limit pacing, human-paced flows. |
+| `kind`           | What it carries                                                                                                                                                                                                                                                                                      |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `request`        | Calls a system through a connector — HTTP, GraphQL, SQL, S3, or a remote MCP server. One step kind, five drivers, so retry, backoff, and the audit envelope behave identically whichever system is on the other end.                                                                                 |
+| `transform`      | Reshapes data between steps in a sandboxed JavaScript expression — no network access, bounded time and memory.                                                                                                                                                                                       |
+| `branch`         | Deterministic conditional routing — the engine evaluates the condition and dispatches the matching branch, no inference, no fallthrough.                                                                                                                                                             |
+| `loop`           | Iterates a collection, running its body once per item. Expensive or side-effecting loops can set `fail_fast: true` to stop after the first non-tolerated body failure; the default collects every iteration result.                                                                                  |
+| `parallel`       | Fans out independent step sequences concurrently and merges their results.                                                                                                                                                                                                                           |
+| `wait`           | A deliberate delay (up to 24 h) — polling, rate-limit pacing, human-paced flows.                                                                                                                                                                                                                     |
 | `wait_for_event` | Pauses the run for an external signal — the human-in-the-loop gate. The run resumes when the signal arrives, or takes an explicit timeout path the author defines. The shipped `merge-pr-after-approval` recipe is the canonical example: open a PR, wait up to 24 h for approval, merge or abandon. |
-| `call` | Invokes another saved workflow — sub-processes compose into pipelines. |
+| `call`           | Invokes another saved workflow — sub-processes compose into pipelines.                                                                                                                                                                                                                               |
 
 Two contracts sit on top and matter to everyone, not just contributors:
 
 **Every request is classified read or write.** The driver classifies at dispatch time (a GET is a read, a mutation is a write; an external MCP tool call is a write until someone inside the tenant says otherwise), and the author can override either way.
 
-**Previews hold writes.** A dry run executes read steps live but fully resolves and *holds* every write — URL, headers, the materialized body are recorded, nothing is dispatched. You see exactly what would have been sent before anything is sent; executing writes during a preview takes an explicit confirmation.
+**Previews hold writes.** A dry run executes read steps live but fully resolves and _holds_ every write — URL, headers, the materialized body are recorded, nothing is dispatched. You see exactly what would have been sent before anything is sent; executing writes during a preview takes an explicit confirmation.
 
 The exact field contract of every step kind — schemas, sandbox limits, timeout interplay — is the [step-kinds field reference](../developers/step-kinds-reference.md).
 
@@ -2177,17 +2177,17 @@ flowchart LR
     Core --> Exec
 ```
 
-*Three trigger kinds, one execution core. The trigger lands in the immutable Execution and Audit Log alongside the actor identity envelope, so an operator can answer "who/what triggered this and from where" without joining tables.*
+_Three trigger kinds, one execution core. The trigger lands in the immutable Execution and Audit Log alongside the actor identity envelope, so an operator can answer "who/what triggered this and from where" without joining tables._
 
 `WorkflowDef.trigger` is a discriminated union over `kind`. Omitting the block is equivalent to `{ kind: "request" }`, so every workflow authored before this field existed keeps its behaviour. Setting `webhook` or `schedule` reverse-binds an inbound binding or cron schedule keyed on `(tenant_id, workflow_id)` at save time and removes the binding on delete or version rotate. The schema source of truth is [`apps/engine/src/workflows/types.ts`](../../apps/engine/src/workflows/types.ts) (`RequestTriggerSchema`, `WebhookTriggerSchema`, `ScheduleTriggerSchema`).
 
 The trigger is recorded in every Execution and every Audit Log entry alongside the actor identity envelope.
 
-| `kind` | Fields | Behaviour |
-|---|---|---|
-| `request` | (none) | Default. Run is initiated on demand by a caller — chat `run_workflow`, MCP, the CLI, or `POST /v1/executions`. Inline runs complete on the request path; `async: true` is honoured only for `source=saved`. |
-| `webhook` | `source` (string slug per integration — a provider label stored in `native_verifier_config.source`, **not** the ingress URL path), `events[]` (provider event names; empty means "any"), `verify` (`stripe-signature` \| `github-hmac` \| `none`) | Reverse-bound to a `webhooks_inbound` row. Inbound posts are signature-verified before any processing begins; replay-id deduplication suppresses retried deliveries. Executor lives in `apps/engine/src/webhooks/inbound/service.ts`. |
-| `schedule` | `cron` (5-field `m h dom mon dow` or `every:N` shorthand), `tz` (IANA, default `UTC`); optional `execution_mode` (`dev` \| `prod`, default `prod`), `business_days_only`, `skip_dates[]` (ISO `YYYY-MM-DD`) | Reverse-bound to a `workflows_schedules` row. The scheduler reconciler validates the cron expression at bind time, persists the connector environment, and uses `tz` so firings land at the operator's local wall-clock time. Unattended runs target production connectors by default; dev schedules are explicit. `business_days_only` skips weekends; `skip_dates` declares holidays / freezes explicitly (no holiday calendar is inferred). Catch-up semantics: a missed firing fires on the next reconciler pass rather than being silently skipped. Executor lives in `apps/engine/src/scheduler/reconciler.ts`. |
+| `kind`     | Fields                                                                                                                                                                                                                                            | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `request`  | (none)                                                                                                                                                                                                                                            | Default. Run is initiated on demand by a caller — chat `run_workflow`, MCP, the CLI, or `POST /v1/executions`. Inline runs complete on the request path; `async: true` is honoured only for `source=saved`.                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `webhook`  | `source` (string slug per integration — a provider label stored in `native_verifier_config.source`, **not** the ingress URL path), `events[]` (provider event names; empty means "any"), `verify` (`stripe-signature` \| `github-hmac` \| `none`) | Reverse-bound to a `webhooks_inbound` row. Inbound posts are signature-verified before any processing begins; replay-id deduplication suppresses retried deliveries. Executor lives in `apps/engine/src/webhooks/inbound/service.ts`.                                                                                                                                                                                                                                                                                                                                                                                 |
+| `schedule` | `cron` (5-field `m h dom mon dow` or `every:N` shorthand), `tz` (IANA, default `UTC`); optional `execution_mode` (`dev` \| `prod`, default `prod`), `business_days_only`, `skip_dates[]` (ISO `YYYY-MM-DD`)                                       | Reverse-bound to a `workflows_schedules` row. The scheduler reconciler validates the cron expression at bind time, persists the connector environment, and uses `tz` so firings land at the operator's local wall-clock time. Unattended runs target production connectors by default; dev schedules are explicit. `business_days_only` skips weekends; `skip_dates` declares holidays / freezes explicitly (no holiday calendar is inferred). Catch-up semantics: a missed firing fires on the next reconciler pass rather than being silently skipped. Executor lives in `apps/engine/src/scheduler/reconciler.ts`. |
 
 All three variants land at the same `runExecution()` core through the same execution contract; only the way the run is initiated differs.
 
@@ -2198,7 +2198,7 @@ All three variants land at the same `runExecution()` core through the same execu
 - **`verify` is not the stored verifier.** `stripe-signature` → stored `verifier = "stripe"`; `github-hmac` → `"github"`; `none` → `"standard"` with `native_verifier_config.skip = true`. The stored `verifier` column is always one of `standard` / `github` / `stripe` — never `none`. A row whose `verifier` is set to `none` (or anything unrecognized) is denied at ingress with `unknown_verifier` / 401.
 - **The public ingress is `POST /v1/hooks/{slug}`, and `{slug}` is the derived `wf-<workflow-slug>`, not the trigger's `source`.** The default (`standard`) verifier requires the Standard Webhooks headers `webhook-id`, `webhook-timestamp`, `webhook-signature`; the event type is read from the `webhook-type` header and must match one of `events[]` (non-empty) or the delivery is denied with `event_not_subscribed` / 401.
 
-**Reverse-bind is a mirror, not an add.** Saving a workflow *with* a `webhook` trigger upserts the inbound hook; saving it *without* one (an edit that drops the `trigger` block, or switches it to `request` / `schedule`) **deletes** the hook and its stored signing secret. Re-adding the trigger recreates the row with a fresh placeholder secret that must be re-provisioned. See [Scheduling & Hooks](../operators/scheduling-and-hooks.md#verify--stored-verifier-mapping-read-this-before-touching-the-crud-api) for the full mapping table, ingress request contract, and end-to-end wiring recipe.
+**Reverse-bind is a mirror, not an add.** Saving a workflow _with_ a `webhook` trigger upserts the inbound hook; saving it _without_ one (an edit that drops the `trigger` block, or switches it to `request` / `schedule`) **deletes** the hook and its stored signing secret. Re-adding the trigger recreates the row with a fresh placeholder secret that must be re-provisioned. See [Scheduling & Hooks](../operators/scheduling-and-hooks.md#verify--stored-verifier-mapping-read-this-before-touching-the-crud-api) for the full mapping table, ingress request contract, and end-to-end wiring recipe.
 
 ---
 
@@ -2208,12 +2208,12 @@ A catalog grows into the dozens quickly, and a flat list stops being useful long
 
 A category is **derived, never maintained**. There is no folder to create, no tag to apply, no field to keep current: sk reads the naming your team already uses. Workflows that share a leading slug segment form a block, so `notion-search-pages`, `notion-append-markdown`, and `notion-page-to-markdown` present together as **notion**. A prefix only becomes a block once at least three workflows share it — otherwise every one-off would become a heading of its own, which reads worse than no grouping at all. Everything without a qualifying family collects under **other**.
 
-Because the category comes from the whole catalog rather than from a stored attribute, the blocks *emerge* as the catalog grows: the third sibling of a would-be family promotes all three out of **other** into a block of their own. Nothing is migrated and nothing is edited.
+Because the category comes from the whole catalog rather than from a stored attribute, the blocks _emerge_ as the catalog grows: the third sibling of a would-be family promotes all three out of **other** into a block of their own. Nothing is migrated and nothing is edited.
 
 Two filters follow from this, and they are the same on every surface — CLI, HTTP API, MCP, and chat:
 
 - **by category** — show one block instead of the whole catalog.
-- **by connector** — show every workflow that touches a given external system. This answers the operational question directly: *before I rotate these credentials, what depends on them?* It counts both ways a step can bind a connector, so a workflow referencing it only through a `${connector.<slug>.base_url}` URL is not missed.
+- **by connector** — show every workflow that touches a given external system. This answers the operational question directly: _before I rotate these credentials, what depends on them?_ It counts both ways a step can bind a connector, so a workflow referencing it only through a `${connector.<slug>.base_url}` URL is not missed.
 
 Each listed workflow reports its `category` and the `connectors` it uses, so the same answer is available to an operator reading a terminal, a dashboard rendering the API, and an agent calling the tools.
 
@@ -2268,7 +2268,7 @@ flowchart LR
     NewVer -. next run .-> Run
 ```
 
-*No autonomous repair in production. The loop runs through a human gate. The compounding effect — each run improving the next — comes from operator-reviewed drift repair feeding back into authoring.*
+_No autonomous repair in production. The loop runs through a human gate. The compounding effect — each run improving the next — comes from operator-reviewed drift repair feeding back into authoring._
 
 The engine monitors active Connectors for schema drift from real execution results. Successful response evidence is accumulated per endpoint, Workflow, and Step; optional field absence is compatible, while incompatible type changes are proactive drift. Missing paths, validation failures, and endpoint removals remain reactive signals from the affected run. Detection is passive: no vendor polling, just observation of what actually executes plus the scheduled comparison of recorded evidence.
 
@@ -2330,21 +2330,21 @@ LLM tool-result truncation, repair attempts — live in
 so operators have one place to look and reviewers have one place to
 gate. The current values:
 
-| Constant | Default | What bites first |
-|---|---|---|
-| `WORKFLOW_TIMEOUT_DEFAULT_MS` | 6 h | Workflow status flips to `timed_out`; in-flight steps abort. |
-| `STEP_TIMEOUT_DEFAULT_MS` | 1 h | Per-step safety net when the step does not declare its own. |
-| `TRANSFORM_TIMEOUT_DEFAULT_MS` | 60 s | QuickJS wall-clock and abort signal. |
-| `MAX_CALL_DEPTH` | 5 | `call` step refuses to recurse further. |
-| `MAX_CALL_RETRIES` | 5 | Transient `request` retries. pg-boss handles backoff. |
-| `MAX_PAGINATION_REQUESTS` | 1 000 | Safeguard against missing termination conditions. |
-| `MAX_REPAIR_ATTEMPTS` | 2 | Self-healing LLM revision budget per drift signal. |
-| `STEP_RESULT_DB_BYTES` | 10 KB | Payload spillover threshold (see below). |
-| `STEP_RESULT_PREVIEW_BYTES` | 512 | Inline operator-facing preview when spilled. |
-| `LLM_TOOL_RESULT_SUCCESS_BYTES` | 80 KB | Tool-result truncation budget for successful results. |
-| `LLM_TOOL_RESULT_ERROR_BYTES` | 50 KB | Same for error results. |
-| `SANDBOX_MEMORY_LIMIT_BYTES` | 128 MB | QuickJS heap cap. |
-| `SANDBOX_WALL_MS_DEFAULT` | 30 s | Default sandbox wall-clock. |
+| Constant                        | Default | What bites first                                             |
+| ------------------------------- | ------- | ------------------------------------------------------------ |
+| `WORKFLOW_TIMEOUT_DEFAULT_MS`   | 6 h     | Workflow status flips to `timed_out`; in-flight steps abort. |
+| `STEP_TIMEOUT_DEFAULT_MS`       | 1 h     | Per-step safety net when the step does not declare its own.  |
+| `TRANSFORM_TIMEOUT_DEFAULT_MS`  | 60 s    | QuickJS wall-clock and abort signal.                         |
+| `MAX_CALL_DEPTH`                | 5       | `call` step refuses to recurse further.                      |
+| `MAX_CALL_RETRIES`              | 5       | Transient `request` retries. pg-boss handles backoff.        |
+| `MAX_PAGINATION_REQUESTS`       | 1 000   | Safeguard against missing termination conditions.            |
+| `MAX_REPAIR_ATTEMPTS`           | 2       | Self-healing LLM revision budget per drift signal.           |
+| `STEP_RESULT_DB_BYTES`          | 10 KB   | Payload spillover threshold (see below).                     |
+| `STEP_RESULT_PREVIEW_BYTES`     | 512     | Inline operator-facing preview when spilled.                 |
+| `LLM_TOOL_RESULT_SUCCESS_BYTES` | 80 KB   | Tool-result truncation budget for successful results.        |
+| `LLM_TOOL_RESULT_ERROR_BYTES`   | 50 KB   | Same for error results.                                      |
+| `SANDBOX_MEMORY_LIMIT_BYTES`    | 128 MB  | QuickJS heap cap.                                            |
+| `SANDBOX_WALL_MS_DEFAULT`       | 30 s    | Default sandbox wall-clock.                                  |
 
 These constants are not env-overridable except where explicitly noted.
 The intent is that an operator should be able to read this table once
@@ -2371,12 +2371,12 @@ durable cross-replica path and queued-start race are exercised in
 ### Result Persistence
 
 Step results are written inline when serialized payload size is
-≤ `STEP_RESULT_DB_BYTES`. Larger payloads are spilled to either S3
-(when `storage.offload.bucket` and credentials are configured) or the
-`execution_fixtures` table, and the original row records a
-`storage_uri` of the form `s3://...` or `fixture://<uuid>`. A 512-byte
-text preview always lands inline so an operator can see at a glance
-what the payload looked like without resolving it.
+≤ `STEP_RESULT_DB_BYTES`. Larger payloads always spill to the configured
+S3-compatible object store, and the original row records an immutable
+`s3://<bucket>/<key>` pointer plus application SHA-256 metadata. A 512-byte text
+preview always lands inline so an operator can see at a glance what the payload
+looked like without resolving it. Historical `fixture://` rows remain readable
+for recovery, but new writes never use PostgreSQL as a blob fallback.
 
 The `GET /v1/executions/:id` route hydrates from the storage URI when
 present; consumers never read the URI directly.
@@ -6492,7 +6492,7 @@ Subsystem map inside `apps/engine/src/` (46 directories + 5 loose root files):
 | Encrypted secret storage + OAuth2 refresh + credential rotation | `credentials/` (incl. `credentials/oauth2/`) | `docs/admins/credentials-and-keys.md` |
 | AES-256-GCM + redaction | `crypto/` | `docs/concepts/governance-and-audit.md` |
 | Drizzle schema + migrations + seed + transactional outbox events | `db/` | `docs/concepts/governance-and-audit.md` |
-| Unified file resource (chat attachments, workflow inputs/outputs, LLM context, MCP); `{$file: fid_uuid}` wire shape; `requireFileForTenant` chokepoint, `files` table + `file_links` polymorphic join, inline (≤5MB) vs presigned upload, scanner interface, soft-delete + cleanup cron with in-flight grace | `files/` | `docs/concepts/workflows.md` |
+| Unified file resource (chat attachments, workflow inputs/outputs, LLM context, MCP); `{$file: fid_uuid}` wire shape; `requireFileForTenant` chokepoint, `files` table + `file_links` polymorphic join, inline (≤5MB) vs authenticated streamed upload, scanner interface, soft-delete + cleanup cron with in-flight grace | `files/` | `docs/concepts/workflows.md` |
 | File → connector/skill proposals | `discovery/` | `docs/authors/authoring-workflows.md` |
 | OpenAPI / GraphQL / HTML → searchable context | `docs-ingestion/` | `docs/authors/authoring-workflows.md` |
 | Local multilingual embeddings + hybrid vector rerank (no API key, degrades to FTS) | `embeddings/` | `docs/authors/authoring-workflows.md` |
@@ -7349,7 +7349,7 @@ Aggregate file counters for this tenant
 
 #### `sk files upload`
 
-Upload a file (inline ≤5 MB, presigned-PUT above)
+Upload a file (inline ≤5 MB, authenticated streaming above)
 
 - `<path>` (positional, required) — Path to file
 - `--content-type` (string) — Override detected MIME type
@@ -9115,7 +9115,7 @@ Every issued MCP access token is RFC 8707-bound to this deployment's canonical
 missing or different resource audience is rejected; there is no audience-less
 compatibility path.
 
-**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through the atomic runtime setting `auth.providers` in Cockpit, HTTP/MCP, `sk settings`, or the canonical config file. It accepts one `api_key` plus multiple named direct `oidc` adapters. Every OIDC adapter is a public PKCE client; callback and tenant mapping belong to this sk deployment, while no client secret is stored. Provider ids and labels are deployment-owned values, never engine modes.
+**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL through Cockpit, HTTP/MCP, or `sk settings set server.public_base_url '"https://your-engine.example.com"'`. The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through the atomic runtime setting `auth.providers`; every write becomes an immutable PostgreSQL revision. It accepts one `api_key` plus multiple named direct `oidc` adapters. Every OIDC adapter is a public PKCE client; callback and tenant mapping belong to this sk deployment, while no client secret is stored. Provider ids and labels are deployment-owned values, never engine modes.
 
 The visible state machine is the common `mcp-auth` contract. Authorize
 redirects to `/v1/identity/login/start?login_state=<opaque>`; the chooser
@@ -9882,7 +9882,7 @@ Before opening a PR:
 # Self-Host sk — Zero to Running
 
 sk runs inside your own infrastructure, so your data stays where it already is. One
-container, one stateful dependency (PostgreSQL), and nothing leaves your network except the
+container, PostgreSQL, a private S3-compatible bucket, and nothing leaves your network except the
 outbound calls to your LLM provider. Start from nothing and finish this page with a running
 engine, an authenticated `sk` CLI, a working connector, a workflow you can run, and an
 indexed knowledge article — all from the released Docker image.
@@ -9891,16 +9891,18 @@ indexed knowledge article — all from the released Docker image.
 flowchart LR
     Op["docker compose"] --> Engine["engine container<br/>(engine + sk + Cockpit + Chromium)"]
     Op --> PG
+    Op --> S3
     Engine --> PG[("PostgreSQL<br/>your data, your volume")]
+    Engine --> S3[("Private object storage<br/>files + large results")]
     Engine -. outbound only .-> LLM[("LLM provider")]
 ```
 
-| What | Detail |
-|---|---|
-| **Time** | ~15 minutes |
+| What         | Detail                                                               |
+| ------------ | -------------------------------------------------------------------- |
+| **Time**     | ~15 minutes                                                          |
 | **You need** | Docker + one free [Anthropic API key](https://console.anthropic.com) |
-| **Cost** | The weather API used here (open-meteo) is free and keyless |
-| **Outcome** | A governed engine you own, end-to-end |
+| **Cost**     | The weather API used here (open-meteo) is free and keyless           |
+| **Outcome**  | A governed engine you own, end-to-end                                |
 
 > **The primary interface is the conversational `sk` REPL.** You describe what you
 > want in plain language; the AI proposes a connector or workflow, you review and
@@ -9912,13 +9914,13 @@ flowchart LR
 
 ## Concepts in 60 seconds
 
-| Term | One line |
-|---|---|
-| **Tenant** | Your isolated workspace — every connector, workflow, and user lives in one tenant. |
-| **Connector** | An authenticated link to an external API (here: open-meteo). |
-| **Workflow** | A versioned sequence of steps (call an API, transform the result). |
-| **Execution** | One immutable run of a workflow. |
-| **Knowledge source** | A document (runbook, PDF) indexed for semantic search. |
+| Term                 | One line                                                                           |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| **Tenant**           | Your isolated workspace — every connector, workflow, and user lives in one tenant. |
+| **Connector**        | An authenticated link to an external API (here: open-meteo).                       |
+| **Workflow**         | A versioned sequence of steps (call an API, transform the result).                 |
+| **Execution**        | One immutable run of a workflow.                                                   |
+| **Knowledge source** | A document (runbook, PDF) indexed for semantic search.                             |
 
 Full glossary: [`docs/concepts/glossary.md`](../concepts/glossary.md).
 
@@ -9928,8 +9930,9 @@ Full glossary: [`docs/concepts/glossary.md`](../concepts/glossary.md).
 
 The application-complete image bundles the engine, Cockpit, migrations,
 Chromium, **and** the `sk` CLI plus every supported client-platform artifact.
-PostgreSQL remains a separate, mandatory service. The repository Compose file
-starts the pinned application and database images together.
+PostgreSQL and S3-compatible object storage remain separate, mandatory services.
+The repository Compose file starts the pinned application, PostgreSQL, MinIO,
+and a one-shot private-bucket initializer together.
 
 ```bash
 docker compose up -d
@@ -9945,45 +9948,45 @@ curl -s http://localhost:3000/ready
 # {"status":"ready","service":"subkit","version":"<version>","checks":{"lifecycle":"pass","database":"pass"}}
 ```
 
-The `subkit_data` volume holds application state — config, encryption key,
-uploaded files, and the in-container CLI profile. PostgreSQL data lives in the
-separate `subkit_pgdata` volume. Restarts preserve both.
+The engine container has no application-state volume. PostgreSQL stores runtime
+configuration, encrypted secret versions, metadata, and object pointers; MinIO
+stores file bodies and oversized results. The only engine filesystem writes are
+disposable scratch files under `/tmp`.
 
 ---
 
 ## Step 2 — First-run bootstrap (tenant + admin key + LLM)
 
-A fresh engine has no tenants. Complete setup with `sk init` — on the all-in-one
-image the bundled CLI **auto-detects the one-time bootstrap token** the engine
-dropped on the `/data` volume, so you don't copy anything:
+A fresh engine has no tenants. Read the one-time bootstrap key from the engine
+log (or inject `SUBKIT_BOOTSTRAP_KEY`) and complete setup with `sk init`:
 
 ```bash
 docker compose exec engine sk init \
+  --token <one-time-bootstrap-key> \
   --admin-email you@example.com \
   --tenant-name "My Org" \
   --llm-provider anthropic \
   --llm-api-key sk-ant-YOUR-KEY
-# sk init: using bootstrap token from /data/config/bootstrap.token
 # sk init: bootstrap complete — tenant 6c82c719-…
-#   profile 'default' saved to /data/home/.sk/config.json
 ```
 
 > **No API key handy?** Use `--llm-provider mock` to walk the mechanics with zero
-> external accounts. Or set `ANTHROPIC_API_KEY` in the engine service
-> environment and drop `--llm-api-key`.
+> external accounts.
 >
 > **Manual token (non-bundled deploys):** copy it from the logs and pass
 > `--token` (valid 15 min; the engine reprints a fresh one on the next attempt):
+>
 > ```bash
 > docker compose logs engine 2>&1 | grep -oE 'sk init --token [a-f0-9]{64}' | tail -1
 > ```
 
 > **Authentication defaults to the `api_key` adapter** — people are added by
 > admin invite and authenticate with engine-issued API keys. Configure direct
-> OIDC in Cockpit's Authentication settings, through HTTP/MCP settings, with
-> `sk settings set auth.providers`, or directly in canonical
-> `subkit.config.json`. Runtime writes are active for subsequent logins without
-> a restart. No provider-specific setting or route is required.
+> OIDC in Cockpit's Authentication settings, through HTTP/MCP settings, or with
+> `sk settings set auth.providers`. No provider-specific setting or route is
+> required. Provider-registry changes are stored as an immutable,
+> restart-required PostgreSQL revision so the authentication middleware
+> switches the complete registry atomically on the coordinated restart.
 
 For example, an sk-owned direct OIDC client is one configuration record:
 
@@ -10072,21 +10075,21 @@ run.** You never hand-write JSON or look up an API shape.
 The ones you'll reach for, grouped by what they do (verified against the shipped
 build):
 
-| Command | Does |
-|---|---|
-| `/approve` · `/reject` | commit the AI's current proposal, or reject it (with a reason) |
-| `/preview` · `/probe` | dry-run the workflow draft / test the connector draft now |
-| `/draft` · `/connector` · `/workflow` | inspect the current authoring state |
-| `/templates` | browse connector templates suggested for the draft |
-| `/onboard` | guided wizard: pick a template, enter credentials, probe, save |
-| `/versions` · `/restore <n>` | list committed workflow versions / roll back |
-| `/skills` · `/knowledge` | list reusable context / knowledge sources in scope |
-| `/clear` (`/new`) · `/compact` · `/resume` | new conversation · shrink history · reattach |
-| `/setup` · `/status` · `/cost` · `/usage` | readiness · session+persona · token budget |
-| `/config` · `/settings` | open the searchable settings UI (every engine setting) |
-| `/model` · `/tenant` · `/login` · `/logout` | switch model · switch/list tenants · auth |
-| `/attach` · `/upload` · `/files` | attach a file to the message · upload · list files |
-| `/help` · `/exit` (`/quit`) | cheat sheet · leave |
+| Command                                     | Does                                                           |
+| ------------------------------------------- | -------------------------------------------------------------- |
+| `/approve` · `/reject`                      | commit the AI's current proposal, or reject it (with a reason) |
+| `/preview` · `/probe`                       | dry-run the workflow draft / test the connector draft now      |
+| `/draft` · `/connector` · `/workflow`       | inspect the current authoring state                            |
+| `/templates`                                | browse connector templates suggested for the draft             |
+| `/onboard`                                  | guided wizard: pick a template, enter credentials, probe, save |
+| `/versions` · `/restore <n>`                | list committed workflow versions / roll back                   |
+| `/skills` · `/knowledge`                    | list reusable context / knowledge sources in scope             |
+| `/clear` (`/new`) · `/compact` · `/resume`  | new conversation · shrink history · reattach                   |
+| `/setup` · `/status` · `/cost` · `/usage`   | readiness · session+persona · token budget                     |
+| `/config` · `/settings`                     | open the searchable settings UI (every engine setting)         |
+| `/model` · `/tenant` · `/login` · `/logout` | switch model · switch/list tenants · auth                      |
+| `/attach` · `/upload` · `/files`            | attach a file to the message · upload · list files             |
+| `/help` · `/exit` (`/quit`)                 | cheat sheet · leave                                            |
 
 Mentions: `@file:<id>` attaches an uploaded file; `@skill:<name>` pulls a Skill
 into context. Full walkthrough: [`repl-tour.md`](../authors/repl-tour.md).
@@ -10113,8 +10116,8 @@ docker compose exec engine sk executions result <EXECUTION_ID>  # the value it p
 
 ## Step 5 — Add a knowledge article
 
-In the REPL you can just say *“add this file as a knowledge source tagged
-weather, runbook”*. The scriptable form:
+In the REPL you can just say _“add this file as a knowledge source tagged
+weather, runbook”_. The scriptable form:
 
 ```bash
 docker compose cp note.md engine:/tmp/note.md
@@ -10145,6 +10148,7 @@ Settings → MCP Servers) — Codex auto-detects the transport from `url`, and
 url = "http://localhost:3000/mcp"
 bearer_token_env_var = "SK_API_KEY"
 ```
+
 ```bash
 export SK_API_KEY=wf_live_…   # the key from `engine --issue-admin-key`
 ```
@@ -10152,11 +10156,15 @@ export SK_API_KEY=wf_live_…   # the key from `engine --issue-admin-key`
 Inline-header JSON shape (Claude Desktop / Cursor):
 
 ```json
-{ "mcpServers": { "sk": {
-  "url": "http://localhost:3000/mcp",
-  "transport": "streamable-http",
-  "headers": { "Authorization": "Bearer wf_live_…" }
-} } }
+{
+  "mcpServers": {
+    "sk": {
+      "url": "http://localhost:3000/mcp",
+      "transport": "streamable-http",
+      "headers": { "Authorization": "Bearer wf_live_…" }
+    }
+  }
+}
 ```
 
 For **Claude Code**, register from the shell instead — and see
@@ -10273,9 +10281,10 @@ docker compose exec engine sk settings configure                  # interactive 
 ```
 
 A few values are **not** `sk settings` on purpose: `MASTER_KEY`, `DATABASE_URL`,
-and `ENGINE_LISTEN_HOST` are bootstrap env vars (needed before the engine/API
-exist), and `engine --issue-admin-key` mints the *first* key (after that,
-`sk apikeys create`). See [Operator configuration reference](#operator-configuration-reference) below.
+and `ENGINE_LISTEN_HOST` are process bootstrap bindings; `PORT` and
+`OBJECT_STORAGE_*` seed an empty database only. `engine --issue-admin-key`
+mints an emergency administrator key (after that, `sk apikeys create`). See
+[Operator configuration reference](#operator-configuration-reference) below.
 
 ---
 
@@ -10302,14 +10311,30 @@ connector works. Save `weather.json` (use your connector id from
   "name": "Berlin Current Temperature",
   "slug": "berlin-current-temperature",
   "steps": [
-    { "id": "fetch_weather", "kind": "request", "method": "GET", "path": "/v1/forecast",
-      "query": { "latitude": "52.52", "longitude": "13.41", "current": "temperature_2m" },
-      "on_error": "fail", "connector_id": "<CONNECTOR_ID>" },
-    { "id": "extract_temperature", "kind": "transform", "language": "javascript", "on_error": "fail",
-      "expression": "const c = input.scope.fetch_weather.data.current; return { city: 'Berlin', time: c.time, temperature_c: c.temperature_2m };" }
+    {
+      "id": "fetch_weather",
+      "kind": "request",
+      "method": "GET",
+      "path": "/v1/forecast",
+      "query": {
+        "latitude": "52.52",
+        "longitude": "13.41",
+        "current": "temperature_2m"
+      },
+      "on_error": "fail",
+      "connector_id": "<CONNECTOR_ID>"
+    },
+    {
+      "id": "extract_temperature",
+      "kind": "transform",
+      "language": "javascript",
+      "on_error": "fail",
+      "expression": "const c = input.scope.fetch_weather.data.current; return { city: 'Berlin', time: c.time, temperature_c: c.temperature_2m };"
+    }
   ]
 }
 ```
+
 ```bash
 docker cp weather.json subkit:/tmp/weather.json
 docker compose exec engine sk workflows create --file /tmp/weather.json   # validate→preview→save
@@ -10330,13 +10355,13 @@ docker compose exec engine sk credentials list <CONNECTOR_ID>
 
 ## Troubleshooting
 
-| Symptom | Cause / fix |
-|---|---|
-| `llm_provider_misconfigured` on an AI command | Provider key missing/wrong: `sk settings set llm.providers.anthropic.api_key '"sk-ant-…"'` (or re-run `sk init`), then `sk -p "ping"`. |
-| `bootstrap token expired` | Re-run `sk init` (it auto-detects a fresh token) or re-grep the logs (Step 2). |
-| Connector `probe failed` | Wrong base URL / endpoint — tell the REPL the correct values and `/probe`. |
-| `validation failed` on `workflows create` | Check the JSON against the Scripting section; `connector_id` must be a real id from `sk connectors list`. |
-| Interactive prompt hangs under `docker compose exec` | Run it from an interactive terminal; Compose allocates a TTY by default. |
+| Symptom                                              | Cause / fix                                                                                                                            |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `llm_provider_misconfigured` on an AI command        | Provider key missing/wrong: `sk settings set llm.providers.anthropic.api_key '"sk-ant-…"'` (or re-run `sk init`), then `sk -p "ping"`. |
+| `bootstrap token expired`                            | Re-run `sk init` (it auto-detects a fresh token) or re-grep the logs (Step 2).                                                         |
+| Connector `probe failed`                             | Wrong base URL / endpoint — tell the REPL the correct values and `/probe`.                                                             |
+| `validation failed` on `workflows create`            | Check the JSON against the Scripting section; `connector_id` must be a real id from `sk connectors list`.                              |
+| Interactive prompt hangs under `docker compose exec` | Run it from an interactive terminal; Compose allocates a TTY by default.                                                               |
 
 ---
 
@@ -10348,11 +10373,10 @@ with managed PostgreSQL and put the engine behind your TLS ingress.
 
 ### Deployment Topology
 
-sk compiles to a single binary whose only stateful dependency is PostgreSQL. The
-job queue, cron scheduler, and pub/sub event bus all run **inside** the engine
-process, backed by PostgreSQL. No message broker, no distributed queue, no
-coordination service — one dependency, and an entire class of distributed-systems
-failure modes designed away.
+sk compiles to a single stateless binary. PostgreSQL backs configuration,
+secrets, metadata, the job queue, scheduler, and pub/sub event bus; a private
+S3-compatible service stores binary payloads. No message broker, distributed
+queue, or local persistent application volume is required.
 
 ```mermaid
 flowchart TB
@@ -10361,7 +10385,7 @@ flowchart TB
     Engine["engine container<br/>mikebild/subkit"]
     PG[("PostgreSQL")]
     LLM[("LLM Provider<br/>Anthropic / OpenAI / Google")]
-    S3[("S3 (optional)<br/>step-result spillover")]
+    S3[("Private S3-compatible bucket<br/>files + large results")]
 
     Internet -- :443 --> Proxy
     Proxy -- :3000 --> Engine
@@ -10370,45 +10394,49 @@ flowchart TB
     Engine -. outbound .-> S3
 ```
 
-| Concern | How sk handles it |
-|---|---|
-| **Queue / scheduler / events** | pg-boss + outbox in PostgreSQL — nothing extra to run |
-| **Standard model** | one engine service + one PostgreSQL instance |
-| **High availability** | run multiple engine containers behind a load balancer (no coordination overhead) |
-| **Production database** | point at [external PostgreSQL](#external-database); engine auto-migrates on boot |
-| **Release-image rehearsal** | `docker-compose.yml` runs the released engine image and a separate PostgreSQL service |
+| Concern                        | How sk handles it                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------- |
+| **Queue / scheduler / events** | pg-boss + outbox in PostgreSQL — nothing extra to run                                 |
+| **Standard model**             | one stateless engine service + PostgreSQL + private S3-compatible storage             |
+| **High availability**          | run multiple engine containers behind a load balancer (no coordination overhead)      |
+| **Production database**        | point at [external PostgreSQL](#external-database); engine auto-migrates on boot      |
+| **Release-image rehearsal**    | `docker-compose.yml` runs the released engine image and a separate PostgreSQL service |
 
 ### Installation
 
-| Channel | Detail |
-|---|---|
-| **Binaries** | macOS (Intel + Apple Silicon), Linux (x64 + ARM64), Windows (x64) |
-| **Primary binaries** | `sk` (CLI) and the engine — docs and examples use `sk` |
-| **Install script** | one-liner for bash and PowerShell |
-| **Container** | published image for Kubernetes / cloud-native deployments |
-| **Auto-update** | binaries check on startup and update in place, gated by a signed `SHA256SUMS` — see [`../admins/credentials-and-keys.md`](../admins/credentials-and-keys.md) |
+| Channel              | Detail                                                                                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Binaries**         | macOS (Intel + Apple Silicon), Linux (x64 + ARM64), Windows (x64)                                                                                            |
+| **Primary binaries** | `sk` (CLI) and the engine — docs and examples use `sk`                                                                                                       |
+| **Install script**   | one-liner for bash and PowerShell                                                                                                                            |
+| **Container**        | published image for Kubernetes / cloud-native deployments                                                                                                    |
+| **Auto-update**      | binaries check on startup and update in place, gated by a signed `SHA256SUMS` — see [`../admins/credentials-and-keys.md`](../admins/credentials-and-keys.md) |
 
 ---
 
 ## Operator configuration reference
 
-Every **runtime setting** is managed with `sk settings` (get / set / list / `configure`) — that is the one surface you need. The env vars below are deliberately *not* `sk settings`, and for a reason worth knowing:
+Every **runtime setting** is managed with `sk settings` (get / set / list / `configure`) — that is the one surface you need. The env vars below are deliberately _not_ `sk settings`, and for a reason worth knowing:
 
-- **`MASTER_KEY` / `DATABASE_URL` / `ENGINE_LISTEN_HOST` are bootstrap-only.** They're needed *before* the engine, its database, or its HTTP API exist — `MASTER_KEY` decrypts the credential vault, `DATABASE_URL` is *how* the engine reaches the database where settings are stored, and `ENGINE_LISTEN_HOST` is where the server binds. `sk settings` talks to a *running* engine, so it cannot set them (chicken-and-egg). `MASTER_KEY` isn't even a config leaf.
-- **`engine --issue-admin-key` is the operator escape hatch for the *first* key.** `sk` authenticates with an API key, so it can't mint its own first one; that runs directly against the database on the `engine` binary. Once you have a key, `sk apikeys create` mints more through the API.
-- **Legacy `SK_OVERRIDE_*` values are migration inputs only.** A value seeds a
-  missing canonical leaf once and is persisted; it never overrides a value set
-  through Cockpit, HTTP, MCP, or `sk settings`. Remove it after the first boot.
+- **`MASTER_KEY` / `DATABASE_URL` / `ENGINE_LISTEN_HOST` are process bootstrap.** They're needed _before_ the engine, its database, or its HTTP API exist. `MASTER_KEY` decrypts product secrets, `DATABASE_URL` locates the canonical revision, and `ENGINE_LISTEN_HOST` selects the bind interface.
+- **`PORT` and `OBJECT_STORAGE_*` seed revision 1 only.** Once the database contains runtime state, those bindings never override it.
+- **`engine --issue-admin-key` is the operator escape hatch for the _first_ key.** `sk` authenticates with an API key, so it can't mint its own first one; that runs directly against the database on the `engine` binary. Once you have a key, `sk apikeys create` mints more through the API.
+- **Legacy config is imported explicitly.** Use `engine --bridge-stateless --legacy-config=…`; production startup ignores `SUBKIT_CONFIG`, config files, and `SK_OVERRIDE_*`.
 
-Everything else lives in `subkit.config.json` on the volume. Full leaf reference: [`../admins/settings-reference.md`](../admins/settings-reference.md); the surrounding configuration model is [`../admins/configuration.md`](../admins/configuration.md).
+Everything else lives in immutable PostgreSQL revisions. Full leaf reference:
+[`../admins/settings-reference.md`](../admins/settings-reference.md); the
+surrounding configuration model is
+[`../admins/configuration.md`](../admins/configuration.md).
 
-| Env var | Default | Purpose |
-|---|---|---|
-| `MASTER_KEY` | auto-generated + persisted to `/data/config/master.key` | 64-hex AES-256 key for at-rest credential encryption. **Set your own in production** — losing it makes stored credentials unrecoverable. |
-| `DATABASE_URL` | **required** | PostgreSQL connection URL. The image does not contain a database server. `DATABASE_URL_FILE` is also supported. |
-| `ENGINE_LISTEN_HOST` | `0.0.0.0` | Bind interface. The image defaults to all-interfaces so `-p` works; leave it. |
-| `SK_OVERRIDE_*` | — | Legacy one-time import for a missing leaf; ignored when canonical config already contains the path. |
-| `NODE_ENV` | `production` | — |
+| Env var                | Default                           | Purpose                                                                                                          |
+| ---------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `MASTER_KEY`           | **required**                      | Product-isolated 64-hex AES-256 key for encrypted secret versions. Losing it makes stored secrets unrecoverable. |
+| `DATABASE_URL`         | **required**                      | PostgreSQL connection URL. The image does not contain a database server. `DATABASE_URL_FILE` is also supported.  |
+| `ENGINE_LISTEN_HOST`   | `0.0.0.0`                         | Bind interface. The image defaults to all-interfaces so `-p` works; leave it.                                    |
+| `PORT`                 | `3000`                            | Revision-1 seed for the server port.                                                                             |
+| `OBJECT_STORAGE_*`     | **required on an empty database** | Revision-1 private S3 binding: endpoint, region, bucket, credentials, optional session token, and path style.    |
+| `SUBKIT_BOOTSTRAP_KEY` | generated if absent               | Optional fixed one-time onboarding key; invalid after completion.                                                |
+| `NODE_ENV`             | `production`                      | —                                                                                                                |
 
 ### Bring your own MASTER_KEY
 
@@ -10424,18 +10452,24 @@ Connect the image to PostgreSQL (managed RDS, a separate container, etc.). The
 database is mandatory and the engine auto-migrates on boot:
 
 ```bash
-docker run -d --name subkit -p 3000:3000 -v subkit-data:/data \
+docker run -d --name subkit -p 3000:3000 \
   -e DATABASE_URL="postgres://user:pass@db-host:5432/subkit" \
   -e MASTER_KEY="<your-64-hex-key>" \
-  mikebild/subkit:6.22.38
+  -e OBJECT_STORAGE_ENDPOINT="https://objects.example.com" \
+  -e OBJECT_STORAGE_REGION="garage" \
+  -e OBJECT_STORAGE_BUCKET="private-subkit" \
+  -e OBJECT_STORAGE_ACCESS_KEY_ID="<access-key-id>" \
+  -e OBJECT_STORAGE_SECRET_ACCESS_KEY="<secret-access-key>" \
+  -e OBJECT_STORAGE_PATH_STYLE="true" \
+  mikebild/subkit:<version>
 ```
 
 ### Persistence & upgrades
 
-Application state lives in `/data`; durable relational state lives in
-PostgreSQL. Back up both. To upgrade the Compose deployment, change the pinned
-`SUBKIT_IMAGE_TAG`, pull, and recreate the engine. Migrations apply
-automatically on boot:
+The engine is stateless. Back up PostgreSQL and the matching private object
+bucket; no engine filesystem or `/data` volume participates in recovery. To
+upgrade the Compose deployment, change the pinned `SUBKIT_IMAGE_TAG`, pull, and
+recreate the engine. Migrations apply automatically on boot:
 
 ```bash
 SUBKIT_IMAGE_TAG=<new-version> docker compose pull engine
@@ -10448,7 +10482,7 @@ curl -fsS http://127.0.0.1:3000/ready
 
 - **Web-scraping connector**: the image includes the Playwright-matched Chromium build and its operating-system libraries.
 - **File scanning**: uploads are not virus-scanned by default — see [`../admins/production-hardening.md`](../admins/production-hardening.md) before accepting untrusted uploads.
-- **Horizontal scaling**: run multiple engine containers against the same external PostgreSQL database and blob-storage strategy, behind a load balancer.
+- **Horizontal scaling**: run multiple engine containers against the same external PostgreSQL database and private object bucket, behind a load balancer. Settings activate only after every healthy replica ACKs the revision digest.
 
 ---
 
@@ -11152,304 +11186,220 @@ Start at **quickstart.md** to wire configuration, roles, and keys in one pass. F
 
 # Configuring the engine
 
-Either the configuration is valid or the engine does not start — there is no half-working
-middle state to debug later. Every runtime setting lives in one JSON file that is checked
-against a schema at boot, and a mistake fails immediately, naming the exact setting that is
-wrong. A broken deploy never reaches live traffic.
+SubKit keeps its canonical non-fundamental runtime configuration in PostgreSQL. Every change
+creates an immutable revision; the database always wins on later boots. `DATABASE_URL`,
+`MASTER_KEY`, and the listen-host binding remain process bootstrap because they are needed
+before the database snapshot can be reached. Cockpit, HTTP, MCP, and the `sk` CLI expose the
+same saved revision, active revision, activation state, and audit history.
 
-| You want | Surface |
-| --- | --- |
-| Browser administration | Cockpit → **Settings** (`/cockpit/settings`) |
-| Interactive terminal form | `sk settings configure` |
-| Scriptable HTTP | `GET /v1/settings`, `PUT /v1/settings/{path}` (OpenAPI at `/openapi.json`) |
-| AI/agent administration | MCP `subkit_settings`, `subkit_update_setting` |
-| CLI automation | `sk settings list / get / set` |
-| Hand edit | `vim subkit.config.json`, then restart |
+| You want                        | Surface                                                 |
+| ------------------------------- | ------------------------------------------------------- |
+| Browser administration          | Cockpit → **Settings** (`/cockpit/settings`)            |
+| Interactive terminal form       | `sk settings configure`                                 |
+| Scriptable HTTP                 | `GET /v1/settings`, `PATCH /v1/settings`                |
+| Revision history and activation | `/v1/settings/revisions*`, `/v1/settings/activations/*` |
+| Secret versions                 | `/v1/secrets*`                                          |
+| AI/agent administration         | MCP `subkit_settings`, `subkit_update_setting`          |
+| CLI automation                  | `sk settings list / get / set`                          |
 
-The per-leaf reference (type, default, scope, sensitivity, restart flag) is
-auto-generated in
-[`settings-reference.md`](./settings-reference.md). **This page covers the
-model around it** — where values live, how they resolve, what stays in env, and
-how activation is reported.
+The generated [settings reference](./settings-reference.md) lists every leaf's type, default,
+scope, sensitivity, and restart requirement.
 
-### The database role must carry the search path
+## The database role must carry the search path
 
-The engine stores its tables in its own `subkit` schema (plus pg-boss's `pgboss`) and no longer
-sends `-c search_path=subkit,pg_catalog,public` as a connection startup option. Set it on the
-role the engine connects as, once, before the first boot:
+The engine owns the `subkit` schema and pg-boss owns `pgboss`. Configure the database role
+before the first boot:
 
 ```sql
 ALTER ROLE <subkit_role> SET search_path = subkit, pg_catalog, public;
 ```
 
-PostgreSQL applies role defaults at connection time, server-side. The startup option was
-dropped because a connection pooler in transaction mode rejects startup parameters outright —
-PgBouncer answers `unsupported startup parameter in options: search_path` (SQLSTATE 08P01) and
-the engine cannot boot behind one.
+This role-level setting works through transaction-mode poolers. `public` remains in the path
+because migrations use pgcrypto. The engine verifies the resolved schema and refuses to start
+against an unsafe search path.
 
-Three operational consequences:
+## Bootstrap, then database authority
 
-- A pooler picks the role default up only on **new** server connections.
-- `public` must stay in the path: pgcrypto lives there and migrations call its functions
-  unqualified.
-- Without the role default the search path falls back to `"$user", public`, where an
-  unqualified table name resolves against pre-isolation objects and returns the wrong rows
-  instead of failing. The engine verifies the resolved schema at boot and refuses to start if
-  it is not `subkit`.
+Only process-start values live in environment variables:
 
-Migrations are the exception and deliberately run with `public` first — all 100 historical
-`CREATE TABLE` statements are unqualified and must reproduce their original lineage before
-`0041` moves the owned set into `subkit`. That path is applied per migration transaction with
-`SET LOCAL`, which is transaction scoped and therefore correct behind any pooler.
+| Variable                           | Required                 | Purpose                                                                                                                                          |
+| ---------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MASTER_KEY`                       | yes                      | Product-isolated, 64-character hex AES-256-GCM key used to encrypt versioned secrets in PostgreSQL. Losing it makes those secrets unrecoverable. |
+| `DATABASE_URL`                     | every process start      | Fundamental PostgreSQL connection used to find the canonical runtime revision; never runtime-editable.                                          |
+| `NODE_ENV`                         | no                       | `development`, `test`, or `production`.                                                                                                          |
+| `ENGINE_LISTEN_HOST`               | no                       | Process bind address.                                                                                                                            |
+| `PORT`                             | revision 1 only          | Seeds `server.port` in an empty database.                                                                                                        |
+| `SUBKIT_BOOTSTRAP_KEY`             | no                       | Optional one-time onboarding key. Once bootstrap completes it is invalid even if the binding remains present.                                    |
+| `OBJECT_STORAGE_ENDPOINT`          | revision 1 only          | S3-compatible endpoint.                                                                                                                          |
+| `OBJECT_STORAGE_REGION`            | revision 1 only          | SigV4 region.                                                                                                                                    |
+| `OBJECT_STORAGE_BUCKET`            | revision 1 only          | Private product bucket.                                                                                                                          |
+| `OBJECT_STORAGE_ACCESS_KEY_ID`     | revision 1 only          | S3 access-key id.                                                                                                                                |
+| `OBJECT_STORAGE_SECRET_ACCESS_KEY` | revision 1 only          | S3 secret access key.                                                                                                                            |
+| `OBJECT_STORAGE_SESSION_TOKEN`     | revision 1 only          | Optional temporary credential token.                                                                                                             |
+| `OBJECT_STORAGE_PATH_STYLE`        | revision 1 only          | `true` for path-style endpoints such as Garage/Upraft.                                                                                           |
 
-## How a value resolves
+On an empty database, bootstrap bindings and schema defaults become revision 1. Secret-valued
+runtime leaves are immediately encrypted as immutable secret versions and the revision stores
+only `secret://<name>/<version>` references. `DATABASE_URL` is the deliberate exception: the
+revision contains only the non-secret `bootstrap://DATABASE_URL` sentinel and the real DSN
+remains the active process binding, so a DSN rotation cannot split the request pool from
+queue/listener connections. On every later boot, revision-1 seed variables cannot override
+saved PostgreSQL state. Rotate the DSN in the workload secret and restart replicas; settings
+writes to `database.url` fail closed.
 
-```mermaid
-flowchart TB
-    boot([Engine boot]) --> env{Bootstrap env\nMASTER_KEY, NODE_ENV,\nSUBKIT_CONFIG, DATABASE_URL}
-    env --> load[Load canonical config\nmissing file = schema defaults]
-    load --> legacy{Legacy SK_OVERRIDE value\nfor a missing leaf?}
-    legacy -- yes --> import[Import once and persist]
-    legacy -- no --> validate
-    import --> validate
-    validate -- invalid --> fail[Exit non-zero\nwith exact leaf path]
-    validate -- valid --> ready([Engine ready])
+`OBJECT_STORAGE_FORCE_PATH_STYLE` remains accepted as a compatibility alias. Do not set both
+path-style aliases to different values.
 
-    read([Every settings read]) --> t{Tenant overlay?}
-    t -- yes --> uset[Use tenant value]
-    t -- no --> g{Global value set?}
-    g -- yes --> useg[Use global value]
-    g -- no --> d[Use schema default]
+Historical runtime variables and `SK_OVERRIDE_*` are development/import compatibility only.
+Production startup does not read `subkit.config.json` or `SUBKIT_CONFIG`. Use the one-shot
+bridge for an existing file-based installation:
+
+```bash
+engine --bridge-stateless \
+  --legacy-config=/etc/subkit/subkit.config.json \
+  --legacy-files-dir=/var/lib/subkit/blobs
 ```
 
-Precedence, highest to lowest: **tenant overlay → global value → schema
-default.** An old `SK_OVERRIDE_<KEY>` can only initialize a missing leaf once;
-it is persisted and never wins over a Cockpit/API value.
+The bridge is rerunnable. It imports supported settings, creates the initial database revision
+only when safe, streams legacy files and offloads into the configured object store, verifies
+size and application SHA-256, switches PostgreSQL pointers transactionally, and writes audit
+markers. It refuses to overwrite a different pre-existing runtime configuration.
 
----
+## First-run lifecycle
 
-## Bootstrap env
+`GET /v1/bootstrap/status` reports `pending`, `completed`, and `token_expired`. Complete the
+one-time setup through Cockpit, `sk init`, or `POST /v1/bootstrap/complete`. The completion call
+creates the first tenant and administrator and returns the administrator API key exactly once.
+Subsequent completion attempts return `410 Gone`.
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `MASTER_KEY` | yes | 64-char hex AES-256-GCM key. Used to encrypt connector credentials at rest. Generate once with `openssl rand -hex 32`. Must be injected from a secret manager — keep it out of the config file. |
-| `NODE_ENV` | no | `development` (default in dev) / `test` / `production`. Controls the `requiresRestart` guard and other defaults. |
-| `SUBKIT_CONFIG` | no | Override the config-file path. Defaults to `./subkit.config.json` in dev or `/etc/subkit/subkit.config.json` under `NODE_ENV=production`. |
-| `CONFIGURATION_DIRECTORY` | platform-provided | systemd directory hint used to locate `subkit.config.json` before the loader is available. |
-| `DATABASE_URL` | fallback | Consulted only when `database.url` is absent from the config file. Once the operator runs `sk settings set database.url '"…"'` the file value wins; if both are set and they differ the engine emits a warn line at boot and the **config-file value wins**. |
+The legacy `/v1/setup` aliases remain available for compatible clients.
 
-Every other historical env var (`LLM_PROVIDER`, `ANTHROPIC_API_KEY`,
-`OIDC_*`, `SLACK_*`, `LANGFUSE_*`, …) has moved to
-`subkit.config.json`. Setting any of them at runtime emits a one-line
-stderr warning at boot pointing at `sk settings configure`.
+## Saved and active revisions
 
-## The config file
+`GET /v1/settings` provides the human-oriented settings view. The canonical state endpoint is
+`GET /v1/settings/runtime`; it reports:
 
-`subkit.config.json` (or whatever `SUBKIT_CONFIG` points at). On a
-fresh install the engine treats a missing file as "use schema
-defaults" — the operator never has to hand-write the file.
-
-- **Mode:** `0600`. Parent directory: `0700`. Both created
-  automatically on first write.
-- **Format:** JSON. Hand-edits are valid; the engine validates
-  against the Zod schema at boot and exits non-zero with the
-  precise leaf path when something is malformed.
-- **Atomicity:** writes go through a same-directory temp file +
-  `fsync(file)` + `fsync(parentDir)` + `rename`. A crashed write
-  leaves the prior file intact.
-
-### Sections
-
-The schema groups leaves by section. Defaults live in the schema, so
-the file only needs to carry overrides:
-
-```jsonc
+```json
 {
-  "log":     { "level": "info", "format": "ndjson" },
-  "server":  { "port": 3000, "public_base_url": "https://api.example.com" },
-  "database":{ "url": "postgresql://..." },
-  "llm":     { "provider": "anthropic",
-               "api_key":  "…",                 // sensitive, masked everywhere
-               "providers": { "anthropic": { "model": "claude-sonnet-4-6" } } },
-  "auth":    { "providers": [
-                 { "protocol": "api_key", "id": "api-key", "label": "SubKit API key" },
-                 { "protocol": "oidc", "id": "workforce", "label": "Work account",
-                   "issuer_url": "https://identity.example.com", "client_id": "…",
-                   "tenant_slug": "default" }
-               ],
-               "session": { "secret": "auto-generated" } },
-  "platform":      { "slack": { … }, "teams": { … }, "googlechat": { … } },
-  "storage":       { "s3": { … }, "knowledge": { "backend": "local" } },
-  "observability": { "langfuse": { "secret_key": "…" },
-                     "otlp": { "endpoint": "…" },
-                     "usage": { "enabled": false,
-                                "hmac_secret": "…at least 32 chars…",
-                                "retention_days": 90 } },
-  "egress":        { "mode": "permissive", "provider_hosts_extra": [] },
-  "mcp":     { "read_only": false },
-  "errors":  { "ring_size": 100 },
-  "spec":    { "allow_private_fetch": false },
-  "queue":   { "concurrency": 8 },
-  "tokens":  { "monthly_budget": 0 },
-
-  "tenants": {
-    "<tenant_id>": {
-      // Only `scope: "tenant"` leaves are honored here. The schema
-      // ships llm.* + queue.concurrency + tokens.monthly_budget as
-      // tenant-overridable; everything else is global.
-      "llm": { "api_key": "tenant-specific" }
-    }
-  }
+  "saved_revision": 12,
+  "active_revision": 11,
+  "activation_status": "saved",
+  "pending_restart_fields": [],
+  "settings": {}
 }
 ```
 
-`observability.usage` is the local, content-free product measurement surface. Set its
-dedicated HMAC secret first, then enable it; changing either leaf is hot-applied. Raw events
-stay in the engine Postgres for `retention_days` (31–365, default 90) and are exposed only as
-tenant-scoped aggregates behind `stats:read`. This is separate from
-`observability.analytics`, which optionally forwards a smaller HTTP event to an external
-endpoint. Usage rows have no fields for prompts, messages, tool arguments/results, raw
-paths/query strings, IP addresses, user agents, OAuth material, or plaintext dynamic IDs.
+Save a compare-and-swap revision with:
 
-### Resolution order (every read)
+```http
+PATCH /v1/settings
+Content-Type: application/json
 
-Tenant overlay → global value → schema default (see the boot/read flowchart above).
-
-| Layer | Scope | Set by |
-| --- | --- | --- |
-| Tenant overlay | One tenant, `scope: tenant` leaves only | `sk settings set … --tenant <id>` |
-| Global value | All tenants | `sk settings set …` |
-| Schema default | All tenants | Shipped in the schema |
-
-## `sk settings configure` — interactive form
-
-```bash
-sk settings configure                      # open the form
-sk settings configure --tab llm            # land on the llm section
-sk settings configure --tenant <id>        # show only scope:tenant leaves
-sk settings configure --non-interactive    # print JSON for piping / CI
+{
+  "expected_revision": 11,
+  "changes": {
+    "log.level": "debug",
+    "llm.model": "claude-sonnet-4-6"
+  },
+  "scope": "global"
+}
 ```
 
-The form is auto-detected as headless when stdin or stdout is not a
-TTY, or when `--non-interactive` is passed; in that mode it prints
-the `GET /v1/settings` response unchanged.
+Use `scope: "tenant"` plus `tenant_id` for a tenant override. `scope: "global"` changes the
+product-wide default, including the default inherited by tenant-scoped leaves. A stale
+`expected_revision` returns `409 revision_conflict`; invalid paths, values, or scope return
+`422 validation_failed`. Every successful save creates a new immutable revision and an audit
+entry containing paths, never secret values.
 
-Keyboard model:
+Inspect history with:
 
-| Key | Action |
-| --- | --- |
-| `Tab` / `Shift-Tab` | Next / previous section |
-| `↑` / `↓` | Move row cursor |
-| `Enter` | Edit the selected leaf |
-| `/` | Filter by path or description |
-| `Esc` (in search) | Clear the query and exit search |
-| `Esc` / `q` | Exit the form |
-| `Ctrl-R` (in editor) | Reveal a masked secret |
-| `Y` / `N` | Restart-required prompt: retry with `force=true` / cancel |
+- `GET /v1/settings/revisions`
+- `GET /v1/settings/revisions/{revision}`
 
-Every successful write emits a `settings.changed` audit row carrying
-the actor's principal, the target tenant (if any), and a masked
-diff. Raw secrets never appear in audit rows.
+## Hot activation and restart-required changes
 
-## Headless: `sk settings list / get / set`
+Activate a saved hot-capable revision with:
 
-```bash
-sk settings list                                    # tree + diagnostics
-sk settings get llm.api_key                          # one leaf
-sk settings set llm.api_key '"sk-…"'                 # JSON value
-sk settings set server.port 3001 --force             # bypass the
-                                                     # requiresRestart guard
-sk settings set llm.api_key '"…"' --tenant <id>      # tenant overlay
+```http
+POST /v1/settings/revisions/{revision}/activate
 ```
 
-`set` accepts JSON for the value (`'"abc"'`, `42`, `true`, `null`).
-`--force` is required in production for any leaf marked
-`requiresRestart: true` — the engine writes the value but tells you
-to restart for the change to take full effect.
+Each engine replica heartbeats every 10 seconds. A lease is healthy for 30 seconds. During
+activation every healthy replica validates and resolves the exact revision digest and writes
+an ACK or NACK. The active pointer advances only after all healthy replicas ACK; activation
+times out after 60 seconds and remains observable as failed otherwise.
 
-`log.level` and `log.format` are explicitly **hot-reloaded** at the
-moment of write — `requiresRestart: false`. The setting.applied log
-line documenting the change is emitted *before* the live logger is
-reconfigured, so an operator who flips `log.level=error` still sees
-the entry that flipped the threshold.
+`GET /v1/settings/activations/{revision}` lists replica health, ACK/NACK state, digest, reason,
+and last heartbeat. Cockpit shows the same information.
 
-## Legacy `SK_OVERRIDE_<KEY>` — one-time migration only
+Changes to restart-required leaves are saved but not hot-applied. Their status is
+`restart_required`; `saved_revision` and `active_revision` remain different and
+`pending_restart_fields` names the exact leaves. After a coordinated restart—and only after old
+replica leases expire—the new process promotes that revision during boot.
 
-Old deployments may still inject values such as:
+## Immutable secret versions
 
-```bash
-SK_OVERRIDE_LLM_API_KEY=sk-new-key engine
+Create a secret version without putting plaintext into a settings document:
+
+```http
+POST /v1/secrets/llm.primary/versions
+Content-Type: application/json
+
+{ "value": "the-plaintext-is-write-only" }
 ```
 
-- If the canonical leaf is absent, the value is parsed, validated, persisted
-  atomically, and logged as `legacy_env.seeded` (path only, never value).
-- If the leaf already exists, the env value is ignored and logged as
-  `legacy_env.ignored`. Cockpit, HTTP, MCP, CLI, and file values always win.
-- `diagnostics.override_keys` remains empty and the deprecated
-  `settings_override_active` metric has no active samples.
-- New automation must use HTTP, MCP, or `sk settings`; this compatibility
-  importer exists only to make old deployments migrate safely.
+The response contains a reference such as `secret://llm.primary/3`. Use that reference in a
+settings patch. `GET /v1/secrets` returns metadata and references only—never plaintext or
+ciphertext. Revoke an unreferenced version with
+`POST /v1/secrets/{name}/versions/{version}/revoke`; referenced versions fail closed with 409.
 
-## Activation contract
+## Object storage contract
 
-All write surfaces return the same activation truth. A hot leaf reports
-`activation: "active"`, `applied_immediately: true`, and can be observed by the
-next runtime read without a restart. A restart-sensitive leaf reports
-`activation: "restart_required"`, `applied_immediately: false`,
-`requires_restart: true`, and its path in `pending_restart_keys`.
+All new file bodies and oversized execution payloads use the configured S3-compatible private
+bucket. There is no durable local-storage mode and no PostgreSQL blob fallback for new writes.
+The adapter uses SigV4, path style where configured, known Content-Length, 64 MiB multipart
+parts, and only the common Head/Put/Multipart/Get-Range/List/Delete operations. Object keys are
+immutable, application SHA-256 is authoritative, and ETags are opaque.
 
-In production, restart-sensitive writes are rejected until the caller confirms
-with `force=true`. Confirmation persists the value; it does **not** restart the
-process. The Cockpit presents this as a neutral-blue pending state and directs
-the operator to restart through the deployment platform.
+The runtime deliberately does not depend on bucket versioning, CopyObject, presigned URLs,
+SSE-C, checksum headers, ACLs, tagging, lifecycle policies, or object lock.
 
-## `engine_settings` table
+Before adopting a new S3-compatible service, run the one-time destructive probe against a
+dedicated empty test bucket:
 
-The `engine_settings` table is internal-only — only the bootstrap
-probe reads/writes it for sentinel state. Two keys:
+```bash
+OBJECT_STORAGE_ENDPOINT=https://objects.example.com \
+OBJECT_STORAGE_REGION=garage \
+OBJECT_STORAGE_BUCKET=temporary-subkit-conformance \
+OBJECT_STORAGE_ACCESS_KEY_ID=... \
+OBJECT_STORAGE_SECRET_ACCESS_KEY=... \
+OBJECT_STORAGE_PATH_STYLE=true \
+bun run storage:conformance
+```
 
-| key | shape | purpose |
-| --- | --- | --- |
-| `bootstrap.completed` | `boolean` | Sentinel flipped after the first-run setup wizard succeeds. Prevents `sk init` from re-arming on a populated engine. |
-| `bootstrap.token` | `{ token_sha256, expires_at_ms }` | Hashed one-time token + 15-minute TTL printed in the boot banner. Consumed by `POST /v1/setup`; deleted on success. |
-
-## Quality gates wired into `bun run verify`
-
-- `check:settings-doc-drift` — regenerates
-  `docs/admins/settings-reference.md` and fails if it differs.
-- `check:config-example-drift` — regenerates
-  `subkit.config.example.json` and fails if it differs.
-- The route's wire shape is locked down by the
-  `apps/engine/src/http/routes/__tests__/settings.integration.test.ts`
-  testcontainers test (audit identity, three response envelopes,
-  scope rules).
-- The Streamable HTTP MCP integration test writes a hot value through
-  `subkit_update_setting`, reads it through REST, and verifies the audit source.
-- The Ink form's bridge is locked down by the schema-walk test in
-  `apps/sk/src/settings-ui/__tests__/schema-walk.test.ts` — a new
-  Zod kind in the schema fails the test until a corresponding
-  `FormFieldKind` lands.
+It covers small and multipart uploads, Head, bounded and open-ended Range reads,
+ListObjectsV2, DeleteObject/DeleteObjects, application hash rejection, multipart abort, and a
+retry using the aborted key. To verify credential rotation in the same run, also provide
+`OBJECT_STORAGE_ROTATED_ACCESS_KEY_ID` and
+`OBJECT_STORAGE_ROTATED_SECRET_ACCESS_KEY` (plus the optional rotated session token). The probe
+prints no credentials and removes its UUID-scoped objects. It is an implementation/adoption
+check, not a permanent release gate.
 
 ## Operational guarantees
 
-- **Fail-fast boot.** Missing or invalid required settings exit non-zero with
-  a descriptive, leaf-pathed error. No silent degraded mode.
-- **Secrets stay out of source control and logs.** `MASTER_KEY` remains in a
-  secret manager. Other secret leaves are written through masked, audited
-  Cockpit/API/CLI surfaces into the mode-`0600` canonical config — never into a
-  committed repository file or an audit value.
-- **OpenAI-compatible endpoints.** To point the `openai` provider at a
-  self-hosted or third-party endpoint (custom `base_url`), see
-  [AI-Assisted Authoring → OpenAI-compatible endpoints](../authors/authoring-workflows.md#openai-compatible-endpoints).
-- **Resource-limit tunables** (timeouts, token budgets, ingestion/knowledge byte
-  caps, circuit breakers) are kept cohesive in
-  [Observability & Resource Limits](../operators/observability.md#resource-limits-and-operational-safety).
+- Invalid bootstrap input, an unreadable active revision, an unresolved secret, or an
+  unreachable object bucket fails startup before readiness.
+- PostgreSQL is the source of truth for non-fundamental runtime configuration, revision state, secret metadata,
+  object pointers, and audits.
+- Cockpit, HTTP, MCP, CLI, OpenAPI, and generated `llm*.txt` describe the same activation model.
+- Scratch files may use the container's ephemeral filesystem, but no product state requires a
+  persistent `/data` mount.
 
 ## See also
 
-- [`settings-reference.md`](./settings-reference.md) — auto-generated
-  per-leaf reference (path, type, default, scope, sensitive,
-  requiresRestart).
+- [Settings reference](./settings-reference.md)
+- [Production hardening](./production-hardening.md)
+- [Self-hosting](../developers/self-host.md)
 
 <!-- Source: docs/admins/credentials-and-keys.md -->
 
@@ -11576,8 +11526,8 @@ also fails after rotation**. There is no key-rotation envelope today.
    ```
    Update the secret store (Doppler / 1Password / DigitalOcean app-level env /
    `.env` for self-hosters) — never commit to git, never write to the config
-   file. `MASTER_KEY` is the one bootstrap env that stays outside
-   `subkit.config.json` (see [Configuration](configuration.md)).
+   file. `MASTER_KEY` is the root process binding that stays outside the
+   PostgreSQL runtime revisions (see [Configuration](configuration.md)).
 
 4. **Invalidate every ciphertext keyed by the old `MASTER_KEY`.** Run as a
    single transaction so a partial failure doesn't leave half-rotated state.
@@ -11852,7 +11802,7 @@ permission-checked and recorded, someone can answer an auditor's questions from 
 written down, and you could rebuild the entire setup from a database backup alone.
 
 This page lists the **deliberate defaults** the engine ships with. Each surfaces
-as a loud `warn` line at boot — *not* a bug. For every item: what it is, the
+as a loud `warn` line at boot — _not_ a bug. For every item: what it is, the
 risk, how to close it, and the future TODO.
 
 ## Hardening layers at a glance
@@ -11879,13 +11829,13 @@ flowchart TB
     pg -. pg_dump / WAL .-> backup[(Backups)]
 ```
 
-| Layer | Production-ready when | Section |
-|---|---|---|
+| Layer        | Production-ready when                       | Section                                                               |
+| ------------ | ------------------------------------------- | --------------------------------------------------------------------- |
 | File AV scan | a real scanner (clamd) answers under budget | [§1](#1-file-uploads-are-not-virus-scanned-scannernoop_in_production) |
-| File storage | points at a persistent, backed-up path | [§2](#2-store-uploads-on-a-persistent-directory) |
-| Secrets | `MASTER_KEY` set + rotated | [credentials-and-keys.md](./credentials-and-keys.md) |
-| Database | external managed PostgreSQL | [self-host.md](../developers/self-host.md) |
-| Recovery | versioned workflows + PG backups | [Backup and Recovery](#backup-and-recovery) |
+| Object store | private, backed up, and restore-tested      | [§2](#2-use-a-private-backed-up-s3-compatible-bucket)                 |
+| Secrets      | `MASTER_KEY` set + rotated                  | [credentials-and-keys.md](./credentials-and-keys.md)                  |
+| Database     | external managed PostgreSQL                 | [self-host.md](../developers/self-host.md)                            |
+| Recovery     | versioned workflows + PG backups            | [Backup and Recovery](#backup-and-recovery)                           |
 
 ### Grep the boot warnings
 
@@ -11903,9 +11853,9 @@ docker logs subkit 2>&1 | grep -E '"action":"(scanner.noop_in_production|require
 ### What it is
 
 Every file uploaded into the engine (workflow attachments, inline uploads,
-presigned uploads) passes through `getScanner().scan(stream, meta)` before the
+authenticated streamed uploads) passes through `getScanner().scan(stream, meta)` before the
 file row flips to `status='ready'`. The **default scanner is a no-op**
-(`NoopScanner`) — it returns `{ verdict: "clean", engine: "noop" }` for *every*
+(`NoopScanner`) — it returns `{ verdict: "clean", engine: "noop" }` for _every_
 input without inspecting the bytes.
 
 Boot log when `NODE_ENV=production`:
@@ -11919,10 +11869,10 @@ warn  files  scanner.noop_in_production
 
 ### Risk
 
-| Install shape | Risk | Why |
-|---|---|---|
-| Single trust boundary (you control every uploader) | **Low** | No untrusted bytes enter the system. |
-| Untrusted / multi-tenant uploads | **Real** | A malicious file is accepted and stored unscanned; any later download/processing serves it as-is. Compliance/security hole (no AV gate). |
+| Install shape                                      | Risk     | Why                                                                                                                                      |
+| -------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Single trust boundary (you control every uploader) | **Low**  | No untrusted bytes enter the system.                                                                                                     |
+| Untrusted / multi-tenant uploads                   | **Real** | A malicious file is accepted and stored unscanned; any later download/processing serves it as-is. Compliance/security hole (no AV gate). |
 
 ### Current behavior (by design)
 
@@ -11930,11 +11880,11 @@ warn  files  scanner.noop_in_production
   backend needs **no route changes**, only the resolver.
 - Verdicts:
 
-  | Verdict | File row | Side effect |
-  |---|---|---|
-  | `clean` | `ready` | — |
-  | `infected` | `failed` | `FILE_SCAN_COMPLETED` audit event (verdict + signature) |
-  | `timeout` (route wrapper only) | parked in `scanning` | reaped by the cleanup cron |
+  | Verdict                        | File row             | Side effect                                             |
+  | ------------------------------ | -------------------- | ------------------------------------------------------- |
+  | `clean`                        | `ready`              | —                                                       |
+  | `infected`                     | `failed`             | `FILE_SCAN_COMPLETED` audit event (verdict + signature) |
+  | `timeout` (route wrapper only) | parked in `scanning` | reaped by the cleanup cron                              |
 
 - Per-call ceiling: `SCANNER_TIMEOUT_SECONDS = 10` (in `files/scanner.ts`) — a
   real scanner must answer within this budget or the row is parked.
@@ -11951,7 +11901,10 @@ warn  files  scanner.noop_in_production
    in `apps/engine/src/files/scanner.ts`. The contract to satisfy:
    ```ts
    export interface FileScanner {
-     scan(stream: AsyncIterable<Uint8Array>, meta: ScanMeta): Promise<ScanResult>;
+     scan(
+       stream: AsyncIterable<Uint8Array>,
+       meta: ScanMeta,
+     ): Promise<ScanResult>;
    }
    // ScanResult = { verdict: "clean" | "infected" | "timeout"; engine: string; signature?: string }
    ```
@@ -11979,52 +11932,51 @@ warn  files  scanner.noop_in_production
 
 ---
 
-## 2. Store uploads on a persistent directory
+## 2. Use a private, backed-up S3-compatible bucket
 
 ### What it is
 
-In production, set the canonical `storage.files.dir` leaf to a persistent path
-(for example the all-in-one image's `/data` volume):
+All uploaded bytes and oversized execution results are stored in the canonical
+`storage.object_store` binding. Seed it on a fresh database with the
+`OBJECT_STORAGE_*` bootstrap variables, then rotate credentials through
+immutable secret versions and a settings revision.
 
-```
-sk settings set storage.files.dir '"/data/files"' --force
-```
-
-The same change is available in Cockpit → Settings, through
-`PUT /v1/settings/storage.files.dir`, or MCP `subkit_update_setting`. Because
-the object store is constructed at boot, this leaf reports
-`restart_required`; restart the deployment after persisting it.
-
-```
-activation=restart_required pending_restart_keys=["storage.files.dir"]
+```json
+{
+  "endpoint": "https://objects.example.com",
+  "region": "garage",
+  "bucket": "private-subkit",
+  "access_key_id": "secret://object-storage.access-key/1",
+  "secret_access_key": "secret://object-storage.secret-key/1",
+  "force_path_style": true
+}
 ```
 
 ### Why this matters
 
-- `storage.files.dir` is **where uploaded files are written on disk**.
-- If left **empty** with the `local` backend, `LocalDiskObjectStore` falls back
-  to `os.tmpdir()/sk-files` and the engine emits a *different*, more serious
-  warning — `ephemeral_dir_warning` — because **tmpdir is wiped on reboot and
-  every customer file is lost**.
-- Setting it to a **persistent path** (`/var/lib/subkit/files`) makes files
-  survive reboots and redeploys.
+- The engine has no durable local-storage mode or persistent `/data` volume.
+- Startup performs `HeadBucket` and fails readiness if the private bucket or
+  credentials are unavailable.
+- Application SHA-256, rather than ETag, is the integrity authority.
+- A single-node S3 service is still a single point of data loss. Back up or
+  replicate the bucket independently of PostgreSQL.
 
 ### Action required
 
-Keep the directory:
+Keep the bucket:
 
-- on persistent storage (not tmpfs),
-- backed up if uploads matter,
-- owned/writable by the engine's system user.
+- private and dedicated to this product,
+- restricted to the minimum Head/Get/Put/Multipart/List/Delete operations,
+- backed up with a restore procedure that is tested together with PostgreSQL.
 
 ## Quick production readiness checklist
 
-| Item | Default | Production-ready? | Where |
-|---|---|---|---|
-| File AV scan | `NoopScanner` (always clean) | ❌ wire clamd before untrusted uploads | `files/scanner.ts` |
-| `storage.files.dir` | empty → ephemeral tmpdir | ✅ set through Cockpit/API/CLI and restart | `config/loader.ts`, `index.ts` |
-| `MASTER_KEY` | required | ✅ set; rotate per `credentials-and-keys.md` | `docs/admins/credentials-and-keys.md` |
-| PostgreSQL | external service is mandatory | ✅ use a backed-up, supported PostgreSQL deployment | `docs/developers/self-host.md` |
+| Item                  | Default                            | Production-ready?                                       | Where                                 |
+| --------------------- | ---------------------------------- | ------------------------------------------------------- | ------------------------------------- |
+| File AV scan          | `NoopScanner` (always clean)       | ❌ wire clamd before untrusted uploads                  | `files/scanner.ts`                    |
+| Private object bucket | required; startup fails without it | ✅ bind S3 credentials, back up objects, verify restore | `storage/object-store.ts`             |
+| `MASTER_KEY`          | required                           | ✅ set; rotate per `credentials-and-keys.md`            | `docs/admins/credentials-and-keys.md` |
+| PostgreSQL            | external service is mandatory      | ✅ use a backed-up, supported PostgreSQL deployment     | `docs/developers/self-host.md`        |
 
 See also: [`self-host.md`](../developers/self-host.md) · [`configuration.md`](./configuration.md) ·
 [`settings-reference.md`](./settings-reference.md) · [`credentials-and-keys.md`](./credentials-and-keys.md).
@@ -12033,31 +11985,35 @@ See also: [`self-host.md`](../developers/self-host.md) · [`configuration.md`](.
 
 ## Backup and Recovery
 
-**Outcome:** any clean host can rebuild the entire estate from one backup —
-workflows, connectors, credentials, executions, audit log, skills, and knowledge
-sources all live in PostgreSQL.
+**Outcome:** any clean host can rebuild the estate from a coordinated
+PostgreSQL backup plus the matching object-store backup.
 
 ```mermaid
 flowchart LR
     subgraph Source["sk in production"]
         engine[Engine — stateless]
-        pg[(PostgreSQL — single source of truth)]
+        pg[(PostgreSQL — config, metadata, pointers)]
+        s3[(Private object bucket — binary payloads)]
     end
     engine -. durable queue .-> pg
+    engine --> s3
     pg -->|pg_dump / WAL archive / managed backup| backup[(Backup store)]
+    s3 -->|provider snapshot / replication| backup
     backup -->|restore| pg2[(PostgreSQL)]
+    backup -->|restore| s32[(Private object bucket)]
     pg2 -->|start| engine2[New engine]
+    s32 --> engine2
     engine2 -->|in-flight jobs resume| ready[Estate live]
     badversion[Bad deploy] -.->|roll back to version| ready
 ```
 
-| Property | Guarantee |
-|---|---|
-| State of record | **PostgreSQL** — back it up and you have backed up sk. |
-| Backup method | Standard `pg_dump`, WAL archiving, or managed cloud-database backup. |
-| Engine state | **Stateless** — stop, replace, restart with no data loss. |
-| In-flight jobs | Durably queued in PostgreSQL; resume automatically on restart. |
-| In-memory state | None that must survive a restart. |
+| Property           | Guarantee                                                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| State of record    | **PostgreSQL plus object storage** — database rows hold config and pointers; the bucket holds binary bodies.                                   |
+| Backup method      | Standard PostgreSQL backup plus a provider snapshot, replication, or verified object export from the same recovery point.                      |
+| Engine state       | **Stateless** — stop, replace, restart with no data loss.                                                                                      |
+| In-flight jobs     | Durably queued in PostgreSQL; resume automatically on restart.                                                                                 |
+| In-memory state    | None that must survive a restart.                                                                                                              |
 | App-level rollback | Every workflow change creates a new **immutable version**; roll back to a known-good version in a single command. History is always available. |
 
 <!-- Source: docs/admins/quickstart.md -->
@@ -12303,7 +12259,7 @@ Database connection
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `database.url` | string | `—` | global | yes | yes | Postgres connection string |
+| `database.url` | string | `—` | global | yes | yes | Bootstrap-only Postgres connection string. Rotate DATABASE_URL and restart replicas; runtime revisions cannot change this binding. |
 
 ## llm
 LLM configuration
@@ -12367,7 +12323,7 @@ Authentication
 | `auth.mcp_oauth.enabled` | boolean | `true` | global | no | yes | Enable the MCP OAuth 2.1 authorization server (ChatGPT / Claude.ai / Cursor). |
 | `auth.mcp_oauth.refresh_token_ttl_seconds` | number | `2592000` | global | no | no | Lifetime in seconds for MCP OAuth refresh tokens (30 days). |
 | `auth.mcp_oauth.scopes_supported` | string[] | `["mcp:read","mcp:authoring","mcp:admin"]` | global | no | no | OAuth scopes advertised in the authorization server metadata. |
-| `auth.providers` | json | `[{"protocol":"api_key","id":"api-key","label":"SubKit API key"}]` | global | no | no | Provider-neutral browser authentication adapters. OIDC records are public clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration. |
+| `auth.providers` | json | `[{"protocol":"api_key","id":"api-key","label":"SubKit API key"}]` | global | no | yes | Provider-neutral browser authentication adapters. OIDC records are public clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration. |
 | `auth.session.secret` | string | `""` | global | yes | yes | Session signing secret (auto-generated to a 32-byte hex value on first boot if empty); operator-supplied values must be at least 32 chars |
 
 ## platform
@@ -12387,22 +12343,17 @@ Chat platform integrations
 | `platform.teams.app_password` | string | `""` | global | yes | yes |  |
 
 ## storage
-Storage backends
+Object storage
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `storage.files.backend` | enum("local" \| "s3") | `"local"` | global | no | yes |  |
-| `storage.files.bucket` | string | `""` | global | no | yes | S3 bucket name when backend=s3. Ignored when backend=local. |
-| `storage.files.dir` | string | `""` | global | no | yes | Local-disk root when backend=local. Ignored when backend=s3. |
-| `storage.offload.access_key` | string | `""` | global | yes | no |  |
-| `storage.offload.bucket` | string | `""` | global | no | no | S3 bucket for execution-payload offload; empty disables offload |
-| `storage.offload.endpoint` | string | `""` | global | no | no | Optional S3 endpoint override (MinIO, R2, etc.) |
-| `storage.offload.key_prefix` | string | `"offload"` | global | no | no |  |
-| `storage.offload.region` | string | `""` | global | no | no |  |
-| `storage.offload.secret_key` | string | `""` | global | yes | no |  |
-| `storage.s3.access_key` | string | `""` | global | yes | yes |  |
-| `storage.s3.endpoint` | string | `""` | global | no | yes |  |
-| `storage.s3.secret_key` | string | `""` | global | yes | yes |  |
+| `storage.object_store.access_key_id` | string | `""` | global | yes | no |  |
+| `storage.object_store.bucket` | string | `""` | global | no | no |  |
+| `storage.object_store.endpoint` | string | `""` | global | no | no |  |
+| `storage.object_store.force_path_style` | boolean | `true` | global | no | no |  |
+| `storage.object_store.region` | string | `"us-east-1"` | global | no | no |  |
+| `storage.object_store.secret_access_key` | string | `""` | global | yes | no |  |
+| `storage.object_store.session_token` | string | `""` | global | yes | no |  |
 
 ## observability
 Observability

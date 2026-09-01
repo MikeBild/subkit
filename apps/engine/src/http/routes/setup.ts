@@ -111,6 +111,36 @@ const postRoute = createRoute({
   },
 });
 
+const bootstrapStatusRoute = createRoute({
+  method: "get",
+  path: "/v1/bootstrap/status",
+  tags: ["bootstrap"],
+  summary: "Read the common first-run bootstrap state",
+  responses: {
+    200: {
+      description: "Bootstrap state",
+      content: {
+        "application/json": {
+          schema: SetupStatusResponse.extend({
+            completed: z.boolean(),
+          }).openapi("BootstrapStatusResponse"),
+        },
+      },
+    },
+  },
+});
+
+const bootstrapCompleteRoute = createRoute({
+  method: "post",
+  path: "/v1/bootstrap/complete",
+  tags: ["bootstrap"],
+  summary: "Complete first-run bootstrap using the one-time bootstrap key",
+  request: {
+    body: { content: { "application/json": { schema: SetupRequestBody } } },
+  },
+  responses: postRoute.responses,
+});
+
 // -------- handler --------
 
 function clientIp(headers: Headers): string {
@@ -161,6 +191,63 @@ export function registerSetupRoute(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
+    switch (outcome.code) {
+      case "gone":
+        return c.json({ code: "gone", message: outcome.message }, 410);
+      case "rate_limited":
+        return c.json({ code: "rate_limit_exceeded", message: outcome.message }, 429);
+      case "invalid_token":
+      case "token_expired":
+        return c.json(
+          {
+            code: outcome.code,
+            message: outcome.message,
+            ...(outcome.hint ? { hint: outcome.hint } : {}),
+          },
+          401,
+        );
+      case "validation_failed":
+        return c.json({ code: "validation_failed", message: outcome.message }, 400);
+    }
+  });
+
+  app.openapi(bootstrapStatusRoute, async (c) => {
+    const db = c.get("db") ?? getDb();
+    const pending = await isBootstrapPending(db);
+    const token_expired = pending ? await isBootstrapTokenExpired(db) : false;
+    return c.json({ pending, completed: !pending, token_expired }, 200);
+  });
+
+  app.openapi(bootstrapCompleteRoute, async (c) => {
+    const db = c.get("db") ?? getDb();
+    const body = c.req.valid("json");
+    const rbacIds = await seedBuiltinRolesAndPermissions(db);
+    const outcome = await consume(
+      db,
+      rbacIds,
+      {
+        admin_email: body.admin_email,
+        tenant_name: body.tenant_name,
+        llm_provider: body.llm_provider,
+        llm_api_key: body.llm_api_key,
+      },
+      {
+        token: body.token,
+        ip: clientIp(c.req.raw.headers),
+        user_agent: c.req.raw.headers.get("user-agent"),
+      },
+    );
+    if (outcome.status === "ok") {
+      return c.json(
+        {
+          tenant_id: outcome.tenant_id,
+          user_id: outcome.user_id,
+          api_key: outcome.api_key_plaintext,
+          api_key_prefix: outcome.api_key_prefix,
+        },
+        200,
+      );
+    }
     switch (outcome.code) {
       case "gone":
         return c.json({ code: "gone", message: outcome.message }, 410);

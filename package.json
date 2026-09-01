@@ -1,6 +1,6 @@
 {
   "name": "subkit",
-  "version": "6.22.45",
+  "version": "6.22.46",
   "private": true,
   "workspaces": [
     "apps/cockpit"
@@ -72,6 +72,7 @@
     "postinstall": "sh scripts/setup-hooks.sh",
     "release:tag": "bun run scripts/tag-release.ts",
     "smoke:surfaces": "bun run tests/e2e/onboarding-surfaces.smoke.ts",
+    "storage:conformance": "bun run scripts/check-object-storage-contract.ts",
     "test": "bun test",
     "test:contract": "bun test tests/contract/",
     "test:determinism": "bun run scripts/check-determinism.ts",

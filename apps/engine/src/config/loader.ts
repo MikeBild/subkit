@@ -2,6 +2,12 @@ import { randomBytes } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { z } from "zod";
+import {
+  ConfigLoaderError,
+  RestartRequiredError,
+  ScopeViolationError,
+  ValidationError,
+} from "./errors.ts";
 import { inspectRetiredMcpSections, retiredSectionMessage } from "./retired-sections.ts";
 import { type Config, ConfigSchema } from "./schema.ts";
 import { type ConfigLeaf, dottedPath, findLeafByPath, listConfigLeaves } from "./walk.ts";
@@ -21,6 +27,7 @@ export interface Diagnostics {
 interface LoaderState {
   config: Config;
   configPath: string;
+  statelessRuntime: boolean;
   pendingRestartKeys: Set<string>;
   overrideKeys: Set<string>;
   // Effective source per dotted leaf (global view; tenant overrides are computed on demand).
@@ -32,37 +39,12 @@ let _writeLock: Promise<void> = Promise.resolve();
 
 const OVERRIDE_PREFIX = "SK_OVERRIDE_";
 
-export class ConfigLoaderError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ConfigLoaderError";
-  }
-}
-
-export class ScopeViolationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ScopeViolationError";
-  }
-}
-
-export class ValidationError extends Error {
-  constructor(
-    message: string,
-    public readonly path: string[],
-    public readonly expected: string,
-  ) {
-    super(message);
-    this.name = "ValidationError";
-  }
-}
-
-export class RestartRequiredError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "RestartRequiredError";
-  }
-}
+export {
+  ConfigLoaderError,
+  RestartRequiredError,
+  ScopeViolationError,
+  ValidationError,
+} from "./errors.ts";
 
 function envKeyForLeaf(leafPath: string[]): string {
   return OVERRIDE_PREFIX + leafPath.join("_").toUpperCase();
@@ -145,6 +127,53 @@ function collectLegacyEnvSeeds(
   }
 
   return { seeds, seededKeys, ignoredKeys };
+}
+
+/** Process bindings that seed revision 1 and never override later revisions. */
+function collectBootstrapEnvSeeds(
+  env: Record<string, string | undefined>,
+): Record<string, unknown> {
+  const seeds: Record<string, unknown> = {};
+  if (env.DATABASE_URL) setDeep(seeds, ["database", "url"], env.DATABASE_URL);
+  if (env.PORT) {
+    const port = Number(env.PORT);
+    if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+      throw new ConfigLoaderError(`PORT must be an integer in [1, 65535]; got "${env.PORT}"`);
+    }
+    setDeep(seeds, ["server", "port"], port);
+  }
+
+  const objectStoreBindings: Array<[string, string]> = [
+    ["OBJECT_STORAGE_ENDPOINT", "endpoint"],
+    ["OBJECT_STORAGE_REGION", "region"],
+    ["OBJECT_STORAGE_BUCKET", "bucket"],
+    ["OBJECT_STORAGE_ACCESS_KEY_ID", "access_key_id"],
+    ["OBJECT_STORAGE_SECRET_ACCESS_KEY", "secret_access_key"],
+    ["OBJECT_STORAGE_SESSION_TOKEN", "session_token"],
+  ];
+  for (const [envKey, leaf] of objectStoreBindings) {
+    if (env[envKey]) setDeep(seeds, ["storage", "object_store", leaf], env[envKey]);
+  }
+  const pathStyle = env.OBJECT_STORAGE_PATH_STYLE ?? env.OBJECT_STORAGE_FORCE_PATH_STYLE;
+  if (
+    env.OBJECT_STORAGE_PATH_STYLE !== undefined &&
+    env.OBJECT_STORAGE_FORCE_PATH_STYLE !== undefined &&
+    env.OBJECT_STORAGE_PATH_STYLE !== env.OBJECT_STORAGE_FORCE_PATH_STYLE
+  ) {
+    throw new ConfigLoaderError(
+      "OBJECT_STORAGE_PATH_STYLE and OBJECT_STORAGE_FORCE_PATH_STYLE disagree",
+    );
+  }
+  if (pathStyle !== undefined) {
+    const raw = pathStyle.toLowerCase();
+    if (!["true", "false", "1", "0"].includes(raw)) {
+      throw new ConfigLoaderError(
+        `OBJECT_STORAGE_PATH_STYLE must be true/false/1/0; got "${pathStyle}"`,
+      );
+    }
+    setDeep(seeds, ["storage", "object_store", "force_path_style"], raw === "true" || raw === "1");
+  }
+  return seeds;
 }
 
 // Exported for unit tests that need to assert path resolution without
@@ -290,13 +319,26 @@ export async function loadConfig(
   opts: { env?: Record<string, string | undefined>; configPathOverride?: string } = {},
 ): Promise<Config> {
   const env = opts.env ?? (process.env as Record<string, string | undefined>);
-  const configPath = opts.configPathOverride ?? defaultConfigPath(env);
+  const statelessRuntime = env.NODE_ENV === "production" && opts.configPathOverride === undefined;
+  const configPath = statelessRuntime
+    ? "<postgresql-runtime-config>"
+    : (opts.configPathOverride ?? defaultConfigPath(env));
 
-  const fileRaw = await readConfigFile(configPath);
+  const fileRaw = statelessRuntime ? {} : await readConfigFile(configPath);
   const fileObj =
     typeof fileRaw === "object" && fileRaw !== null ? (fileRaw as Record<string, unknown>) : {};
 
-  const { seeds, seededKeys, ignoredKeys } = collectLegacyEnvSeeds(env, fileObj);
+  const {
+    seeds: legacySeeds,
+    seededKeys,
+    ignoredKeys,
+  } = statelessRuntime
+    ? { seeds: {}, seededKeys: [], ignoredKeys: [] }
+    : collectLegacyEnvSeeds(env, fileObj);
+  const seeds = deepMergeReplaceArrays(legacySeeds, collectBootstrapEnvSeeds(env)) as Record<
+    string,
+    unknown
+  >;
 
   // SK_OVERRIDE_* is a compatibility import only: a legacy value may seed
   // a leaf that is absent from the canonical file, but can never override a
@@ -321,7 +363,10 @@ export async function loadConfig(
   const databaseUrlInConfig = (mergedObj.database as Record<string, unknown> | undefined)?.url;
   const databaseUrlInEnv = env.DATABASE_URL;
   if ((databaseUrlInConfig === undefined || databaseUrlInConfig === "") && databaseUrlInEnv) {
-    mergedObj.database = { ...((mergedObj.database as object) ?? {}), url: databaseUrlInEnv };
+    mergedObj.database = {
+      ...((mergedObj.database as object) ?? {}),
+      url: databaseUrlInEnv,
+    };
   } else if (
     typeof databaseUrlInConfig === "string" &&
     databaseUrlInConfig !== "" &&
@@ -381,7 +426,7 @@ export async function loadConfig(
     generatedSessionSecret = true;
   }
 
-  if (needsPersist) {
+  if (needsPersist && !statelessRuntime) {
     await atomicWrite(configPath, serialize(parsed));
     const { logger } = await import("../logging/logger.ts");
     if (generatedSessionSecret) {
@@ -392,7 +437,7 @@ export async function loadConfig(
     }
   }
 
-  if (seededKeys.length > 0) {
+  if (seededKeys.length > 0 && !statelessRuntime) {
     const { logger } = await import("../logging/logger.ts");
     logger.warn({
       module: "config",
@@ -430,8 +475,11 @@ export async function loadConfig(
     logger.info({
       module: "config",
       action: "loaded",
-      msg: "config resolved",
+      msg: statelessRuntime
+        ? "bootstrap seed resolved; PostgreSQL runtime configuration will become authoritative"
+        : "config resolved",
       config_path: configPath,
+      stateless_runtime: statelessRuntime,
       tenant_overlay_count: Object.keys(parsed.tenants ?? {}).length,
       ...tally,
     });
@@ -442,6 +490,7 @@ export async function loadConfig(
   _state = {
     config: parsed,
     configPath,
+    statelessRuntime,
     pendingRestartKeys: new Set(),
     // Kept in the diagnostics wire shape for compatibility. Runtime env
     // overrides no longer exist; canonical configuration always wins.
@@ -587,6 +636,19 @@ export function getDiagnostics(): Diagnostics {
     pending_restart_keys: [..._state.pendingRestartKeys],
     override_keys: [..._state.overrideKeys],
   };
+}
+
+/** Install a validated DB revision without touching the filesystem. */
+export function installRuntimeConfig(document: unknown): Config {
+  if (_state === null) {
+    throw new ConfigLoaderError("installRuntimeConfig() called before loadConfig()");
+  }
+  const parsed = ConfigSchema.parse(document);
+  mirrorGenericLlmKey(parsed);
+  _state.config = parsed;
+  _state.globalSourceMap = buildSourceMap(parsed as unknown as Record<string, unknown>);
+  _state.pendingRestartKeys.clear();
+  return parsed;
 }
 
 /**
@@ -764,7 +826,9 @@ export async function setConfigKey(
         !opts.tenantId && leafPath.length === 2 && leafPath[0] === "llm" && leafPath[1] === "model",
     });
 
-    await atomicWrite(state.configPath, serialize(fullParse.data));
+    if (!state.statelessRuntime) {
+      await atomicWrite(state.configPath, serialize(fullParse.data));
+    }
 
     state.config = fullParse.data;
     if (!opts.tenantId) state.globalSourceMap[dottedPath(leaf)] = "global";

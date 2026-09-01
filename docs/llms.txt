@@ -62,7 +62,7 @@
 ## Admins
 
 - [Admins — govern access](admins/README.md): Hand a team the keys without handing over the building.
-- [Configuring the engine](admins/configuration.md): Either the configuration is valid or the engine does not start — there is no half-working middle state to debug later.
+- [Configuring the engine](admins/configuration.md): SubKit keeps its canonical non-fundamental runtime configuration in PostgreSQL.
 - [Credentials & Keys](admins/credentials-and-keys.md): Every integration secret is encrypted at rest, rotated on demand, and never logged, returned in an API response, or shown to the AI.
 - [Production hardening — known caveats & TODOs](admins/production-hardening.md): Work through this page and you can go live knowing three things: every run is permission-checked and recorded, someone can answer an auditor's questions from what was written down, and you could rebuild the entire setup from a database backup alone.
 - [Admin Quickstart](admins/quickstart.md): In about ten minutes your team can work on their own — signing in with the identity provider you already have, using credentials they never see, doing only what their role allows.

@@ -32,7 +32,11 @@ async function startServer(
 ): Promise<{ baseUrl: string; close: () => Promise<void> }> {
   const registry = buildDefaultRegistry(testDb.db);
   const app = createApp({ db: testDb.db, registry });
-  const server: ServerType = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
+  const server: ServerType = serve({
+    fetch: app.fetch,
+    port: 0,
+    hostname: "127.0.0.1",
+  });
   const addr = (server as unknown as { address: () => { port: number } | null }).address();
   if (!addr || typeof addr !== "object") throw new Error("no port");
   return {
@@ -70,7 +74,9 @@ beforeEach(async () => {
 });
 
 async function mintToken(): Promise<string> {
-  const result = await bootstrap.run(ctx.testDb.db, { stdout: { write: () => undefined } });
+  const result = await bootstrap.run(ctx.testDb.db, {
+    stdout: { write: () => undefined },
+  });
   if (result.status !== "minted" || !result.plaintext_token) {
     throw new Error("failed to mint token in test setup");
   }
@@ -101,6 +107,44 @@ describe("GET /v1/setup", () => {
     const res = await fetch(`${ctx.baseUrl}/v1/setup`);
     const body = (await res.json()) as { pending: boolean };
     expect(body.pending).toBe(false);
+  });
+});
+
+describe("common bootstrap aliases", () => {
+  test("GET /v1/bootstrap/status reports pending and completed explicitly", async () => {
+    const pending = await fetch(`${ctx.baseUrl}/v1/bootstrap/status`);
+    expect(pending.status).toBe(200);
+    expect(await pending.json()).toMatchObject({
+      pending: true,
+      completed: false,
+      token_expired: false,
+    });
+  });
+
+  test("POST /v1/bootstrap/complete consumes the same one-time bootstrap key", async () => {
+    const token = await mintToken();
+    const complete = await fetch(`${ctx.baseUrl}/v1/bootstrap/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        token,
+        admin_email: "bootstrap@example.com",
+        tenant_name: "Bootstrap Alias",
+        llm_provider: "mock",
+        llm_api_key: "mock",
+      }),
+    });
+    expect(complete.status).toBe(200);
+    expect(await complete.json()).toMatchObject({
+      api_key: expect.stringMatching(/^wf_live_/),
+    });
+
+    const status = await fetch(`${ctx.baseUrl}/v1/bootstrap/status`);
+    expect(status.status).toBe(200);
+    expect(await status.json()).toMatchObject({
+      pending: false,
+      completed: true,
+    });
   });
 });
 

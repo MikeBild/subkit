@@ -1,4 +1,4 @@
-// Byte-counter wrapper for presigned-PUT uploads.
+// Byte-counter wrapper for authenticated streamed uploads.
 //
 // Two surfaces:
 //   - TTY (human): a single status line that overwrites in place,

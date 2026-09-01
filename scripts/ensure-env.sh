@@ -35,4 +35,4 @@ rm -f "$ENV_FILE.bak"
 stamp_version
 
 echo "[subkit] created .env with auto-generated MASTER_KEY (engine v$PKG_VERSION)"
-echo "[subkit] edit .env to set AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL or LLM_PROVIDER + matching provider secrets"
+echo "[subkit] complete POST /v1/setup, then manage runtime settings and versioned secrets through the API, CLI, MCP, or Cockpit"

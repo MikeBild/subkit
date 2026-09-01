@@ -36,11 +36,46 @@ async function loadFresh(env: Record<string, string | undefined>): Promise<void>
 
 describe("loadConfig", () => {
   test("missing file + DATABASE_URL fallback yields defaults", async () => {
-    await loadFresh({ DATABASE_URL: "postgres://localhost/test", NODE_ENV: "test" });
+    await loadFresh({
+      DATABASE_URL: "postgres://localhost/test",
+      NODE_ENV: "test",
+    });
     const cfg = getConfig();
     expect(cfg.database.url).toBe("postgres://localhost/test");
     expect(cfg.log.level).toBe("info");
     expect(cfg.server.port).toBe(3000);
+  });
+
+  test("Upraft object-storage bootstrap aliases seed revision-one values", async () => {
+    await loadFresh({
+      DATABASE_URL: "postgres://localhost/test",
+      NODE_ENV: "test",
+      OBJECT_STORAGE_ENDPOINT: "https://objects.example.test",
+      OBJECT_STORAGE_REGION: "garage",
+      OBJECT_STORAGE_BUCKET: "private-product",
+      OBJECT_STORAGE_ACCESS_KEY_ID: "access",
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+      OBJECT_STORAGE_PATH_STYLE: "true",
+    });
+    expect(getConfig().storage.object_store).toMatchObject({
+      endpoint: "https://objects.example.test",
+      region: "garage",
+      bucket: "private-product",
+      access_key_id: "access",
+      secret_access_key: "secret",
+      force_path_style: true,
+    });
+  });
+
+  test("conflicting path-style bootstrap aliases fail closed", async () => {
+    await expect(
+      loadFresh({
+        DATABASE_URL: "postgres://localhost/test",
+        NODE_ENV: "test",
+        OBJECT_STORAGE_PATH_STYLE: "true",
+        OBJECT_STORAGE_FORCE_PATH_STYLE: "false",
+      }),
+    ).rejects.toThrow(/disagree/);
   });
 
   test("auto-generates auth.session.secret on first boot and writes the file 0600", async () => {

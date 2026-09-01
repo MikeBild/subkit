@@ -18,7 +18,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
-import { S3ObjectStore } from "./object-store.ts";
+import { MULTIPART_PART_BYTES, S3ObjectStore } from "./object-store.ts";
 
 interface MinioHandle {
   endpoint: string;
@@ -26,6 +26,9 @@ interface MinioHandle {
   secretKey: string;
   stop: () => Promise<void>;
 }
+
+const MINIO_IMAGE =
+  "minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e";
 
 async function dockerAvailable(): Promise<boolean> {
   if (process.env.SKIP_DOCKER === "1") return false;
@@ -58,7 +61,7 @@ async function startMinio(): Promise<MinioHandle> {
       `MINIO_ROOT_USER=${accessKey}`,
       "-e",
       `MINIO_ROOT_PASSWORD=${secretKey}`,
-      "minio/minio:latest",
+      MINIO_IMAGE,
       "server",
       "/data",
     ],
@@ -127,10 +130,11 @@ beforeAll(async () => {
   }
   store = new S3ObjectStore({
     endpoint: minio.endpoint,
-    accessKey: minio.accessKey,
-    secretKey: minio.secretKey,
+    region: "us-east-1",
     bucket: BUCKET,
-    pathStyle: true,
+    access_key_id: minio.accessKey,
+    secret_access_key: minio.secretKey,
+    force_path_style: true,
   });
 });
 
@@ -152,6 +156,11 @@ async function drainStream(stream: AsyncIterable<Uint8Array>): Promise<Buffer> {
 }
 
 describe.skipIf(!DOCKER)("S3ObjectStore (MinIO)", () => {
+  test("HeadBucket validates the configured bucket", async () => {
+    if (!store) throw new Error("MinIO bootstrap did not produce a store");
+    await expect(store.headBucket()).resolves.toBeUndefined();
+  });
+
   test("put then get round-trips bytes", async () => {
     if (!store) throw new Error("MinIO bootstrap did not produce a store");
     const payload = Buffer.from("hello s3");
@@ -188,13 +197,12 @@ describe.skipIf(!DOCKER)("S3ObjectStore (MinIO)", () => {
     expect(await store.exists("unit/del.bin")).toBe(false);
   });
 
-  test("copy replicates bytes to dst key", async () => {
+  test("object keys are immutable", async () => {
     if (!store) throw new Error("MinIO bootstrap did not produce a store");
-    await store.put("unit/src.bin", Buffer.from("copy me"));
-    await store.copy("unit/src.bin", "unit/dst.bin");
-    const got = await store.get("unit/dst.bin");
-    expect(got.toString()).toBe("copy me");
-    expect(await store.exists("unit/src.bin")).toBe(true);
+    await store.put("unit/immutable.bin", Buffer.from("first"));
+    await expect(store.put("unit/immutable.bin", Buffer.from("second"))).rejects.toThrow(
+      /immutable/,
+    );
   });
 
   test("openRead streams the same bytes as get()", async () => {
@@ -206,12 +214,72 @@ describe.skipIf(!DOCKER)("S3ObjectStore (MinIO)", () => {
     expect(got.equals(payload)).toBe(true);
   });
 
-  test("presignPut returns a real URL (not local:// sentinel)", async () => {
+  test("range read, ListObjectsV2 and DeleteObjects use the common surface", async () => {
     if (!store) throw new Error("MinIO bootstrap did not produce a store");
-    const p = await store.presignPut("unit/presign.bin", 300);
-    expect(p.url.startsWith("http")).toBe(true);
-    expect(p.expires_in).toBeGreaterThanOrEqual(60);
+    await store.put("contract/a.bin", Buffer.from("abcdef"));
+    await store.put("contract/b.bin", Buffer.from("second"));
+    expect(
+      (
+        await drainStream(await store.openReadRange("contract/a.bin", { start: 1, end: 3 }))
+      ).toString(),
+    ).toBe("bcd");
+    expect(
+      (await drainStream(await store.openReadRange("contract/a.bin", { start: 3 }))).toString(),
+    ).toBe("def");
+    expect((await store.list("contract/")).map((item) => item.key).sort()).toEqual([
+      "contract/a.bin",
+      "contract/b.bin",
+    ]);
+    await store.deleteMany(["contract/a.bin", "contract/b.bin"]);
+    expect(await store.exists("contract/a.bin")).toBe(false);
+    expect(await store.exists("contract/b.bin")).toBe(false);
   });
+
+  test("known-length streams larger than 64 MiB use explicit multipart upload", async () => {
+    if (!store) throw new Error("MinIO bootstrap did not produce a store");
+    const total = MULTIPART_PART_BYTES + 17;
+    async function* payload(): AsyncIterable<Uint8Array> {
+      const chunk = Buffer.alloc(8 * 1024 * 1024, 0x5a);
+      let remaining = total;
+      while (remaining > 0) {
+        const count = Math.min(remaining, chunk.byteLength);
+        yield chunk.subarray(0, count);
+        remaining -= count;
+      }
+    }
+    await store.putStream("contract/multipart.bin", payload(), total);
+    expect(await store.head("contract/multipart.bin")).toMatchObject({
+      size: total,
+    });
+    expect(
+      (
+        await drainStream(
+          await store.openReadRange("contract/multipart.bin", {
+            start: total - 17,
+          }),
+        )
+      ).byteLength,
+    ).toBe(17);
+  }, 60_000);
+
+  test("failed multipart uploads are aborted and the same immutable key can be retried", async () => {
+    if (!store) throw new Error("MinIO bootstrap did not produce a store");
+    const key = "contract/abort-retry.bin";
+    const total = MULTIPART_PART_BYTES + 1;
+    async function* interrupted(): AsyncIterable<Uint8Array> {
+      yield Buffer.alloc(MULTIPART_PART_BYTES, 0x61);
+      throw new Error("simulated source interruption");
+    }
+
+    await expect(store.putStream(key, interrupted(), total)).rejects.toThrow(
+      "simulated source interruption",
+    );
+    expect(await store.exists(key)).toBe(false);
+
+    const retry = Buffer.from("retry-after-abort", "utf8");
+    await store.put(key, retry);
+    expect((await store.get(key)).equals(retry)).toBe(true);
+  }, 60_000);
 
   test("uploaded bytes via put match after get (byte equality)", async () => {
     if (!store) throw new Error("MinIO bootstrap did not produce a store");

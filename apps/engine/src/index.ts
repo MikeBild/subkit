@@ -36,18 +36,18 @@ import { EVENT_FANOUT_QUEUE } from "./queue/handlers/event-fanout.ts";
 import { registerAllHandlers } from "./queue/handlers/index.ts";
 import { SchedulerReconciler } from "./scheduler/reconciler.ts";
 import { applySkillSeedsForAllTenants, loadEmbeddedSkillSeeds } from "./skills/seed.ts";
-import { setUpdateState } from "./update-state.ts";
+import { startEngineUpdateCheck } from "./update-state.ts";
 
 const SMOKE_FLAG = "--smoke";
 const SELF_UPDATE_FLAG = "--self-update";
 const ROLLBACK_FLAG = "--rollback";
 const CHECK_UPDATE_FLAG = "--check-update";
 const MIGRATE_FLAG = "--migrate";
+const BRIDGE_STATELESS_FLAG = "--bridge-stateless";
 const SEED_FLAG = "--seed";
 const ISSUE_ADMIN_KEY_FLAG = "--issue-admin-key";
 const VERSION_FLAG = "--version";
 const HELP_FLAG = "--help";
-
 async function runSmoke(): Promise<void> {
   // Read raw process.env. Importing `./env.ts` would trigger the lazy
   // EnvSchema parse on first property access — and the smoke binary
@@ -150,20 +150,6 @@ async function runServer(): Promise<void> {
     deployment_environment: cfg.observability.deployment_environment,
   });
   recordBootConsumer("logger");
-  // Storage sanity: when the local-disk backend is selected without an
-  // explicit `storage.files.dir`, `LocalDiskObjectStore` falls back to
-  // `os.tmpdir()/sk-files`. That works for tests + smoke runs but
-  // silently disappears on a host reboot, taking every customer-uploaded
-  // file with it. One log line at boot — escalation is the operator's
-  // call, not ours.
-  if (cfg.storage.files.backend === "local" && cfg.storage.files.dir === "") {
-    logger.warn({
-      module: "storage",
-      action: "ephemeral_dir_warning",
-      msg: "storage.files.dir unset — using ephemeral tmpdir; customer files lost on reboot. Set storage.files.dir to a persistent path.",
-    });
-  }
-
   // Scanner posture: `getScanner()` returns `NoopScanner` (reports every
   // upload as clean). this is a DOCUMENTED, accepted risk (see
   // "File scanning" under Architectural decisions in apps/engine/AGENTS.md):
@@ -187,33 +173,6 @@ async function runServer(): Promise<void> {
   await bootPhase("crypto_assert", () => assertCryptoKeyOrExit());
   const db = getDb();
 
-  // Non-blocking update check — fire and forget
-  if (cfg.operations.update_check_enabled)
-    checkForUpdate(defaultUpdaterConfig("engine", OPENAPI_INFO.version))
-      .then((info) => {
-        if (info) {
-          setUpdateState({
-            update_available: true,
-            latest_version: info.version,
-          });
-          logger.warn({
-            module: "engine",
-            action: "update.available",
-            msg: `update available: ${info.version}`,
-            current_version: OPENAPI_INFO.version,
-            latest_version: info.version,
-          });
-        } else {
-          setUpdateState({
-            update_available: false,
-            latest_version: OPENAPI_INFO.version,
-          });
-        }
-      })
-      .catch(() => {
-        /* silent — never block engine startup */
-      });
-
   // Shared chat adapter registry — both the HTTP routes and the
   // outbound fanout worker resolve chat adapters out of this single
   // instance so notification dispatch can find adapters that were
@@ -228,13 +187,6 @@ async function runServer(): Promise<void> {
   // `cli_notification_inbox` row scoped to that tenant. Distinct from the
   // chat_workspaces-driven hydration in `hydrate.ts`.
   chatRegistry.registerFallback("sk_cli", new SkCliAdapter(db));
-
-  // OpenTelemetry tracer — bootstrap before anything that might emit
-  // spans so the LLM `experimental_telemetry` calls, pg-boss handlers,
-  // and HTTP routes all land in the same trace context. No-op when no
-  // exporter env vars are set.
-  const stopTracing = await startTracing();
-  recordBootConsumer("tracing");
 
   // Apply embedded migrations BEFORE any subsystem touches a table.
   // The migration set is compiled into this binary, so the engine and its
@@ -257,6 +209,22 @@ async function runServer(): Promise<void> {
   // resolved before any subsystem queries.
   const { assertSearchPathOrAbort } = await import("./db/assert-search-path-or-abort.ts");
   await bootPhase("search_path", assertSearchPathOrAbort);
+
+  // PostgreSQL owns the canonical snapshot; process input only seeds revision 1.
+  const { initializeRuntimeConfig } = await import("./runtime-config/service.ts");
+  const { RuntimeConfigCoordinator } = await import("./runtime-config/coordinator.ts");
+  await bootPhase("runtime_config", () => initializeRuntimeConfig(db, cfg));
+  const runtimeConfigCoordinator = new RuntimeConfigCoordinator(db, OPENAPI_INFO.version);
+  await bootPhase("runtime_config_coordinator", () => runtimeConfigCoordinator.start());
+  recordBootConsumer("runtime-config");
+
+  // Non-fundamental consumers start only after the canonical snapshot lands.
+  const stopTracing = await startTracing();
+  recordBootConsumer("tracing");
+
+  // Non-blocking update check — use the canonical DB-backed snapshot, never
+  // the revision-1 environment seed that was needed to reach PostgreSQL.
+  if (getConfig().operations.update_check_enabled) startEngineUpdateCheck(OPENAPI_INFO.version);
 
   // Validate every external runtime dependency after self-migration has
   // installed the database capabilities a fresh deployment requires.
@@ -675,6 +643,7 @@ async function runServer(): Promise<void> {
       crashRecoveryMonitor.stop();
       abortMonitor.stop();
       await stopListener();
+      await runtimeConfigCoordinator.stop();
       // Every producer is now stopped, so the graceful queue drain converges
       // instead of racing fresh event.fanout jobs from the listener.
       await stopBoss(SHUTDOWN_DRAIN_TIMEOUT_MS);
@@ -793,6 +762,9 @@ async function main(): Promise<void> {
         "  --help             print this help and exit\n" +
         "  --smoke            validate logger/audit/redaction and exit\n" +
         "  --migrate          run pending database migrations and exit\n" +
+        "  --bridge-stateless import legacy config/blobs into PostgreSQL + S3 and exit\n" +
+        "    --legacy-config=<path>    required legacy subkit.config.json\n" +
+        "    --legacy-files-dir=<path> optional legacy blobs directory\n" +
         "  --seed             seed the database and exit\n" +
         "  --check-update     check for a newer binary and exit\n" +
         "  --self-update      download + install a newer binary and exit\n" +
@@ -890,6 +862,37 @@ async function main(): Promise<void> {
             msg: "engine --migrate failed",
             error: err instanceof Error ? err.message : String(err),
           });
+          process.exit(1);
+        }
+      },
+    );
+    return;
+  }
+
+  // One-shot, rerunnable recovery bridge. It deliberately runs only when
+  // requested and never participates in normal stateless process startup.
+  if (process.argv.includes(BRIDGE_STATELESS_FLAG)) {
+    await withContext(
+      {
+        trace_id: newTraceId(),
+        tenant_id: SYSTEM_TENANT_ID,
+        request_source: "cli",
+        actor_id: "stateless-bridge",
+      },
+      async () => {
+        try {
+          const { runStatelessBridgeCli } = await import("./runtime-config/bridge.ts");
+          const report = await runStatelessBridgeCli(process.argv);
+          process.stdout.write(`${JSON.stringify(report)}\n`);
+          process.exit(0);
+        } catch (err) {
+          logger.fatal({
+            module: "engine",
+            action: "stateless_bridge.cli_failed",
+            msg: "engine --bridge-stateless failed",
+            error: err instanceof Error ? err.message : String(err),
+          });
+          await closeDb().catch(() => {});
           process.exit(1);
         }
       },

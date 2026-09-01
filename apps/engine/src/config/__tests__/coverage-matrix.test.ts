@@ -91,8 +91,8 @@ function leafIsConsumed(corpus: string, dotted: string, envMap: Set<string>): bo
   if (new RegExp(`\\.${fullSuffix}\\b`).test(corpus)) return true;
   // Section destructure: any prefix dotted-access reachable in the
   // corpus implies the leaf is read through that destructure.
-  // Catches `cfg.storage.offload` followed elsewhere by `.bucket`,
-  // `.region`, `.access_key`, etc.
+  // Catches `cfg.storage.object_store` followed elsewhere by `.bucket`,
+  // `.region`, `.access_key_id`, etc.
   for (let i = segs.length - 1; i >= 1; i -= 1) {
     const prefix = segs.slice(0, i).join("\\.");
     if (new RegExp(`\\.${prefix}\\b`).test(corpus)) return true;

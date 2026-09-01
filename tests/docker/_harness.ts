@@ -8,20 +8,19 @@
 //
 // Bootstrap follows the real first-run operator flow:
 //   1. compose up --build --wait  (blocks on the image healthcheck)
-//   2. read the one-time bootstrap token the engine dropped on the volume
-//   3. POST /v1/setup → materialise the tenant + admin user + admin key
+//   2. POST /v1/bootstrap/complete with the test-only bootstrap key
+//   3. materialise the tenant + admin user + admin key
 // Provider is mock (POST /v1/setup accepts it) so no model is ever called.
 
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { pollUntil } from "../e2e/_helpers/poll.ts";
 import { BASE_URL, type CommandResult, waitForHealth } from "../e2e/_helpers.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..", "..");
 const SK_BIN = path.join(REPO_ROOT, "dist/sk");
 const COMPOSE_FILE = "docker-compose.test.yml";
 const SERVICE = "engine";
-const BOOTSTRAP_TOKEN_PATH = "/data/config/bootstrap.token";
+const TEST_BOOTSTRAP_KEY = "b".repeat(64);
 
 /**
  * Run a `docker compose -f docker-compose.test.yml …` subcommand.
@@ -62,32 +61,44 @@ export async function composeUp(): Promise<void> {
   await waitForHealth();
 }
 
-/** `down -v` — remove containers + the /data volume. Best-effort. */
+/** `down -v` — remove containers plus external-service test volumes. Best-effort. */
 export function composeDown(): void {
   compose(["down", "-v"]);
+}
+
+/** Replace only the stateless application container; PostgreSQL and object
+ * storage stay online so the test proves they are the complete state of
+ * record. */
+export async function replaceEngineContainer(): Promise<void> {
+  const replaced = compose(["up", "-d", "--force-recreate", "--no-deps", "--wait", SERVICE]);
+  if (replaced.status !== 0) {
+    throw new Error(
+      `engine replacement failed (${replaced.status}):\n${replaced.stdout}\n${replaced.stderr}`,
+    );
+  }
+  await waitForHealth();
+}
+
+export function engineMounts(): Array<{ Destination?: string; Type?: string }> {
+  const id = compose(["ps", "-q", SERVICE]).stdout.trim();
+  if (!id) throw new Error("engine container id is unavailable");
+  const inspected = spawnSync("docker", ["inspect", "--format", "{{json .Mounts}}", id], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
+  if (inspected.status !== 0) {
+    throw new Error(`docker inspect failed: ${inspected.stderr ?? "unknown error"}`);
+  }
+  return JSON.parse(inspected.stdout || "[]") as Array<{
+    Destination?: string;
+    Type?: string;
+  }>;
 }
 
 /** Dump the engine container's (ndjson) logs to a file for CI artifacts. */
 export function collectContainerLogs(dest: string): void {
   const logs = compose(["logs", "--no-color", SERVICE]);
   Bun.write(dest, `${logs.stdout}\n${logs.stderr}`);
-}
-
-/** Read the one-time bootstrap token the engine wrote to the volume. */
-function readBootstrapToken(): string | null {
-  // The token file is 0600 and owned by the application user. `compose exec`
-  // uses that same user, so the cat succeeds. Fall back to the startup banner.
-  const file = compose(["exec", "-T", SERVICE, "cat", BOOTSTRAP_TOKEN_PATH]);
-  const fromFile = file.stdout.match(/[a-f0-9]{64}/);
-  if (fromFile) return fromFile[0];
-  const logs = compose(["logs", "--no-color", SERVICE]);
-  const stripped = `${logs.stdout}\n${logs.stderr}`.replace(
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI.
-    /\[[0-9;]*m/g,
-    "",
-  );
-  const fromLog = stripped.match(/sk init --token ([a-f0-9]{64})/);
-  return fromLog?.[1] ?? null;
 }
 
 export interface BootstrapResult {
@@ -102,7 +113,7 @@ function parseIssuedKey(text: string): string | null {
 }
 
 /**
- * Materialise an admin key. The genuine first-run flow is POST /v1/setup
+ * Materialise an admin key. The genuine first-run flow is POST /v1/bootstrap/complete
  * (token redemption); that route is one-time, so on a second boot (or a
  * second test file sharing the container) it returns 410 Gone — we then
  * mint a fresh key via the operator `engine --issue-admin-key` path, which
@@ -114,20 +125,16 @@ export async function bootstrapAdminKey(): Promise<BootstrapResult> {
   const provided = process.env.SUBKIT_DOCKER_API_KEY;
   if (provided) return { adminKey: provided, tenantId: "", tenantSlug: "default" };
 
-  const status = await fetch(`${BASE_URL}/v1/setup`).then(
+  const status = await fetch(`${BASE_URL}/v1/bootstrap/status`).then(
     (r) => r.json() as Promise<{ pending: boolean }>,
   );
 
   if (status.pending) {
-    const token = await pollUntil(() => readBootstrapToken(), {
-      timeoutMs: 30_000,
-      label: "bootstrap token on the volume",
-    });
-    const res = await fetch(`${BASE_URL}/v1/setup`, {
+    const res = await fetch(`${BASE_URL}/v1/bootstrap/complete`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        token,
+        token: TEST_BOOTSTRAP_KEY,
         admin_email: "admin@docker-e2e.local",
         tenant_name: "default",
         llm_provider: "mock",
@@ -136,10 +143,14 @@ export async function bootstrapAdminKey(): Promise<BootstrapResult> {
     });
     if (res.status === 200) {
       const body = (await res.json()) as { api_key: string; tenant_id: string };
-      return { adminKey: body.api_key, tenantId: body.tenant_id, tenantSlug: "default" };
+      return {
+        adminKey: body.api_key,
+        tenantId: body.tenant_id,
+        tenantSlug: "default",
+      };
     }
     if (res.status !== 410) {
-      throw new Error(`POST /v1/setup failed: ${res.status} ${await res.text()}`);
+      throw new Error(`POST /v1/bootstrap/complete failed: ${res.status} ${await res.text()}`);
     }
     // 410 Gone — fall through to the operator key-issuance path.
   }

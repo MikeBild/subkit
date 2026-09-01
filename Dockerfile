@@ -95,7 +95,7 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 # Real compiled binaries land as *.bin; `engine` / `sk` on PATH are thin
-# wrappers that source the persisted bootstrap env so `docker exec` works.
+# wrappers that resolve optional secret-file bindings for `docker exec`.
 COPY --from=builder /out/engine /usr/local/bin/engine.bin
 COPY --from=builder /out/sk /usr/local/bin/sk.bin
 # All-platform `sk` binaries served by GET /install/{asset}. SUBKIT_BINARIES_DIR
@@ -107,22 +107,20 @@ RUN chmod +x /usr/local/bin/engine.bin /usr/local/bin/sk.bin \
         /usr/local/bin/subkit-wrap.sh /usr/local/bin/subkit-entrypoint.sh \
     && ln -s /usr/local/bin/subkit-wrap.sh /usr/local/bin/engine \
     && ln -s /usr/local/bin/subkit-wrap.sh /usr/local/bin/sk \
-    && mkdir -p /data/config /data/blobs /data/home \
-    && chown -R pwuser:pwuser /data
+    && mkdir -p /tmp/subkit-home /tmp/subkit-state \
+    && chown -R pwuser:pwuser /tmp/subkit-home /tmp/subkit-state
 
-# Single /data volume holds config (incl. the persisted MASTER_KEY), file blobs
-# and the sk CLI profile, so one volume mount preserves all application state
-# across restarts. HOME points the sk profile (~/.sk) onto the volume so an
-# in-container `docker exec … sk init`/login stays usable after restarts.
+# The application container owns no persistent filesystem state. PostgreSQL
+# and the configured S3-compatible object store are authoritative; /tmp is
+# scratch space only.
 ENV NODE_ENV=production \
     ENGINE_LISTEN_HOST=0.0.0.0 \
-    SUBKIT_CONFIG=/data/config/subkit.config.json \
-    SUBKIT_BOOTSTRAP_TOKEN_FILE=/data/config/bootstrap.token \
-    HOME=/data/home \
+    HOME=/tmp/subkit-home \
+    CONFIGURATION_DIRECTORY=/tmp/subkit-state \
+    STATE_DIRECTORY=/tmp/subkit-state \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 EXPOSE 3000
-VOLUME ["/data"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \
     CMD curl -fsS http://127.0.0.1:3000/health >/dev/null \

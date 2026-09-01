@@ -276,7 +276,7 @@ Every issued MCP access token is RFC 8707-bound to this deployment's canonical
 missing or different resource audience is rejected; there is no audience-less
 compatibility path.
 
-**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through the atomic runtime setting `auth.providers` in Cockpit, HTTP/MCP, `sk settings`, or the canonical config file. It accepts one `api_key` plus multiple named direct `oidc` adapters. Every OIDC adapter is a public PKCE client; callback and tenant mapping belong to this sk deployment, while no client secret is stored. Provider ids and labels are deployment-owned values, never engine modes.
+**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL through Cockpit, HTTP/MCP, or `sk settings set server.public_base_url '"https://your-engine.example.com"'`. The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through the atomic runtime setting `auth.providers`; every write becomes an immutable PostgreSQL revision. It accepts one `api_key` plus multiple named direct `oidc` adapters. Every OIDC adapter is a public PKCE client; callback and tenant mapping belong to this sk deployment, while no client secret is stored. Provider ids and labels are deployment-owned values, never engine modes.
 
 The visible state machine is the common `mcp-auth` contract. Authorize
 redirects to `/v1/identity/login/start?login_state=<opaque>`; the chooser

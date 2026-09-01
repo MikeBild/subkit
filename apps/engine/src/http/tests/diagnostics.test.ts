@@ -27,7 +27,11 @@ function sha256Hex(v: string): string {
 function newKey(): { plaintext: string; prefix: string; hash: string } {
   const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
   const plaintext = `wf_live_${rand}`;
-  return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
+  return {
+    plaintext,
+    prefix: plaintext.slice(0, 12),
+    hash: sha256Hex(plaintext),
+  };
 }
 
 beforeAll(async () => {
@@ -180,7 +184,11 @@ describe("/v1/diagnostics/setup", () => {
         sections: {
           llm: {
             status: "ok" | "warn" | "blocked";
-            values: Array<{ key: string; value: string | null; status_hint: string | null }>;
+            values: Array<{
+              key: string;
+              value: string | null;
+              status_hint: string | null;
+            }>;
           };
           public_urls: {
             status: "ok" | "warn" | "blocked";
@@ -213,7 +221,9 @@ describe("/v1/diagnostics/setup", () => {
       await setConfigKey("llm.providers.anthropic.api_key", before.anthropicKey, {
         force: true,
       });
-      await setConfigKey("server.public_base_url", before.publicBaseUrl, { force: true });
+      await setConfigKey("server.public_base_url", before.publicBaseUrl, {
+        force: true,
+      });
     }
   });
 
@@ -261,10 +271,6 @@ describe("/v1/diagnostics/setup", () => {
         "Per-platform credentials live in the chat-platform diagnostic, not the bootstrap setup view.",
       "platform.googlechat.private_key":
         "Per-platform credentials live in the chat-platform diagnostic, not the bootstrap setup view.",
-      "storage.offload.access_key":
-        "Offload-storage is an opt-in feature gate; surfaced from /v1/diagnostics/storage when that subsystem is enabled.",
-      "storage.offload.secret_key":
-        "Offload-storage is an opt-in feature gate; surfaced from /v1/diagnostics/storage when that subsystem is enabled.",
       "observability.langfuse.secret_key":
         "Observability secrets surface in /v1/diagnostics/observability (planned). Setup view is bootstrap-config-only.",
       "observability.analytics.api_key":
@@ -326,8 +332,8 @@ describe("/v1/diagnostics/setup", () => {
       openai: getConfig().llm.providers.openai.api_key,
       bedrockAccessKeyId: getConfig().llm.providers.bedrock.access_key_id,
       bedrockSecretKey: getConfig().llm.providers.bedrock.secret_access_key,
-      s3AccessKey: getConfig().storage.s3.access_key,
-      s3SecretKey: getConfig().storage.s3.secret_key,
+      s3AccessKey: getConfig().storage.object_store.access_key_id,
+      s3SecretKey: getConfig().storage.object_store.secret_access_key,
     };
     // Distinct, recognizable fakes so a substring match below would
     // catch any of them on partial leak.
@@ -339,16 +345,22 @@ describe("/v1/diagnostics/setup", () => {
       s3AccessKey: "AKIAFAKES3LEAKCANARY",
       s3SecretKey: "fake-s3-secret-leak-canary-9f8e7d6c5b4a3210abcd",
     };
-    await setConfigKey("llm.providers.anthropic.api_key", fakes.anthropic, { force: true });
-    await setConfigKey("llm.providers.openai.api_key", fakes.openai, { force: true });
+    await setConfigKey("llm.providers.anthropic.api_key", fakes.anthropic, {
+      force: true,
+    });
+    await setConfigKey("llm.providers.openai.api_key", fakes.openai, {
+      force: true,
+    });
     await setConfigKey("llm.providers.bedrock.access_key_id", fakes.bedrockAccessKeyId, {
       force: true,
     });
     await setConfigKey("llm.providers.bedrock.secret_access_key", fakes.bedrockSecretKey, {
       force: true,
     });
-    await setConfigKey("storage.s3.access_key", fakes.s3AccessKey, { force: true });
-    await setConfigKey("storage.s3.secret_key", fakes.s3SecretKey, { force: true });
+    await setConfigKey("storage.object_store.access_key_id", fakes.s3AccessKey, { force: true });
+    await setConfigKey("storage.object_store.secret_access_key", fakes.s3SecretKey, {
+      force: true,
+    });
     try {
       // identity:read principal (member). The route is gated by
       // identity:read OR audit:read; a non-admin must NOT see secret
@@ -397,8 +409,8 @@ describe("/v1/diagnostics/setup", () => {
         "llm.providers.openai.api_key",
         "llm.providers.bedrock.access_key_id",
         "llm.providers.bedrock.secret_access_key",
-        "storage.s3.access_key",
-        "storage.s3.secret_key",
+        "storage.object_store.access_key_id",
+        "storage.object_store.secret_access_key",
         "MASTER_KEY",
       ];
       for (const key of secretLeaves) {
@@ -409,16 +421,22 @@ describe("/v1/diagnostics/setup", () => {
         );
       }
     } finally {
-      await setConfigKey("llm.providers.anthropic.api_key", before.anthropic, { force: true });
-      await setConfigKey("llm.providers.openai.api_key", before.openai, { force: true });
+      await setConfigKey("llm.providers.anthropic.api_key", before.anthropic, {
+        force: true,
+      });
+      await setConfigKey("llm.providers.openai.api_key", before.openai, {
+        force: true,
+      });
       await setConfigKey("llm.providers.bedrock.access_key_id", before.bedrockAccessKeyId, {
         force: true,
       });
       await setConfigKey("llm.providers.bedrock.secret_access_key", before.bedrockSecretKey, {
         force: true,
       });
-      await setConfigKey("storage.s3.access_key", before.s3AccessKey, { force: true });
-      await setConfigKey("storage.s3.secret_key", before.s3SecretKey, { force: true });
+      await setConfigKey("storage.object_store.access_key_id", before.s3AccessKey, { force: true });
+      await setConfigKey("storage.object_store.secret_access_key", before.s3SecretKey, {
+        force: true,
+      });
     }
   });
 });

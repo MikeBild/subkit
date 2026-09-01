@@ -3,7 +3,7 @@
 //
 // Setup:
 //   - Real Postgres DB via createTestDb.
-//   - File attached via attachInlineForTest (writes bytes to LocalDiskObjectStore).
+//   - File attached via attachInlineForTest (writes bytes to the test object store).
 //   - Workflow step sends the file as a multipart/form-data POST to a local
 //     mock HTTP server (node:http).
 //   - The mock server captures the raw multipart body for assertions.

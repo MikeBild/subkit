@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createHash, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { executionFixtures, executionSteps, tenants } from "../../db/schema/index.ts";
+import { executionFixtures, executionSteps, executions, tenants } from "../../db/schema/index.ts";
+import { getObjectStore } from "../../storage/object-store.ts";
 import { bodyEnvelopeForLoopAccumulator } from "../engine/envelope.ts";
 import { runExecution } from "../engine.ts";
 import {
@@ -36,7 +38,7 @@ afterAll(async () => {
 });
 
 describe("offload threshold", () => {
-  test("large payload is offloaded into execution_fixtures", async () => {
+  test("large payload is offloaded into the common object store", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "big",
       steps: [
@@ -61,23 +63,41 @@ describe("offload threshold", () => {
       .from(executionSteps)
       .where(eq(executionSteps.execution_id, result.execution_id));
     expect(stepRows[0]?.result_storage_uri).not.toBeNull();
-    expect(stepRows[0]?.result_storage_uri?.startsWith("fixture://")).toBe(true);
+    expect(stepRows[0]?.result_storage_uri?.startsWith("s3://test/offload/")).toBe(true);
     expect(stepRows[0]?.result_preview?.length ?? 0).toBeGreaterThan(0);
     expect(stepRows[0]?.result_preview?.length ?? 0).toBeLessThanOrEqual(512);
+    expect(stepRows[0]?.result_sha256).toMatch(/^[0-9a-f]{64}$/);
+
+    const storageUri = stepRows[0]!.result_storage_uri!;
+    const objectKey = storageUri.replace(/^s3:\/\/test\//, "");
+    const objectBytes = await getObjectStore().get(objectKey);
+    expect(createHash("sha256").update(objectBytes).digest("hex")).toBe(
+      stepRows[0]!.result_sha256!,
+    );
+
+    const executionRows = await ctx.testDb.db
+      .select({ result_sha256: executions.result_sha256 })
+      .from(executions)
+      .where(eq(executions.id, result.execution_id));
+    expect(executionRows[0]?.result_sha256).toMatch(/^[0-9a-f]{64}$/);
 
     const fixturesRows = await ctx.testDb.db
       .select()
       .from(executionFixtures)
       .where(eq(executionFixtures.execution_id, result.execution_id));
-    expect(fixturesRows.length).toBeGreaterThan(0);
-    expect(fixturesRows[0]?.kind).toBe("offload");
+    expect(fixturesRows).toHaveLength(0);
   });
 });
 
 describe("OffloadRef round-trip + resolveOffloaded", () => {
   test("isOffloadRef narrows only genuine refs", () => {
     expect(
-      isOffloadRef({ $offloaded: true, storage_uri: "fixture://x", preview: "", size_bytes: 1 }),
+      isOffloadRef({
+        $offloaded: true,
+        storage_uri: "fixture://x",
+        preview: "",
+        size_bytes: 1,
+      }),
     ).toBe(true);
     expect(isOffloadRef({ $offloaded: false, storage_uri: "fixture://x" })).toBe(false);
     expect(isOffloadRef({ storage_uri: "fixture://x" })).toBe(false);
@@ -164,8 +184,8 @@ describe("OffloadRef round-trip + resolveOffloaded", () => {
   });
 
   test("resolveOffloaded THROWS on an s3:// ref when offload S3 is unconfigured", async () => {
-    // The engine test config does not set storage.offload.bucket, so an
-    // s3:// locator cannot be honoured — it must throw, not fall back.
+    // The locator names a different bucket and therefore cannot be
+    // honoured — it must throw, not fall back.
     const ref: OffloadRef = {
       $offloaded: true,
       storage_uri: "s3://some-bucket/offload/key.json",
@@ -177,14 +197,41 @@ describe("OffloadRef round-trip + resolveOffloaded", () => {
     );
   });
 
+  test("resolveOffloaded fails closed when application SHA-256 metadata mismatches", async () => {
+    const key = `offload/integrity/${randomUUID()}.json`;
+    const body = Buffer.from('{"integrity":"expected"}', "utf8");
+    await getObjectStore().put(key, body);
+    const ref: OffloadRef = {
+      $offloaded: true,
+      storage_uri: `s3://test/${key}`,
+      preview: body.toString("utf8"),
+      size_bytes: body.byteLength,
+      sha256: "0".repeat(64),
+    };
+
+    await expect(resolveOffloaded(ctx.testDb.db, ctx.tenantId, ref)).rejects.toThrow(
+      "application SHA-256 mismatch",
+    );
+  });
+
   test("deepResolveOffloadRefs re-hydrates refs nested in an array of objects", async () => {
     const payloadA = { a: 1 };
     const payloadB = { b: [9, 8, 7] };
     const rows = await ctx.testDb.db
       .insert(executionFixtures)
       .values([
-        { tenant_id: ctx.tenantId, kind: "offload", body: payloadA, byte_size: 8 },
-        { tenant_id: ctx.tenantId, kind: "offload", body: payloadB, byte_size: 16 },
+        {
+          tenant_id: ctx.tenantId,
+          kind: "offload",
+          body: payloadA,
+          byte_size: 8,
+        },
+        {
+          tenant_id: ctx.tenantId,
+          kind: "offload",
+          body: payloadB,
+          byte_size: 16,
+        },
       ])
       .returning({ id: executionFixtures.id });
     const mkRef = (id: string): OffloadRef => ({
@@ -299,7 +346,7 @@ describe("loop body offload — iterationResults hold references", () => {
     const bodyRows = stepRows.filter((r) => r.step_key.startsWith("fetch_blob["));
     expect(bodyRows.length).toBe(2);
     for (const r of bodyRows) {
-      expect(r.result_storage_uri?.startsWith("fixture://")).toBe(true);
+      expect(r.result_storage_uri?.startsWith("s3://test/offload/")).toBe(true);
     }
   });
 });

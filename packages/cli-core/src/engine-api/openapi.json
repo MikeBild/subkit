@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "6.22.45",
+    "version": "6.22.46",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -518,6 +518,24 @@
           "tenant_name",
           "llm_provider",
           "llm_api_key"
+        ]
+      },
+      "BootstrapStatusResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SetupStatusResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "completed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "completed"
+            ]
+          }
         ]
       },
       "StatusSummary": {
@@ -2028,9 +2046,180 @@
           "quality"
         ]
       },
+      "RuntimeConfigState": {
+        "type": "object",
+        "properties": {
+          "saved_revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "active_revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "activation_status": {
+            "type": "string",
+            "enum": [
+              "saved",
+              "preparing",
+              "active",
+              "failed",
+              "restart_required"
+            ]
+          },
+          "pending_restart_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "saved_revision",
+          "active_revision",
+          "activation_status",
+          "pending_restart_fields"
+        ]
+      },
+      "RuntimeConfigPatch": {
+        "type": "object",
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "changes": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "tenant"
+            ]
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "changes",
+          "scope"
+        ]
+      },
+      "RuntimeConfigRevision": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "document": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "saved",
+              "preparing",
+              "active",
+              "failed",
+              "restart_required"
+            ]
+          },
+          "pending_restart_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "failure_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "activated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "revision",
+          "document",
+          "digest",
+          "status",
+          "pending_restart_fields",
+          "failure_reason",
+          "created_at",
+          "activated_at"
+        ]
+      },
+      "SecretValue": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536
+          }
+        },
+        "required": [
+          "value"
+        ]
+      },
       "SettingsListResponse": {
         "type": "object",
         "properties": {
+          "saved_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "active_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "activation_status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "saved",
+              "preparing",
+              "active",
+              "failed",
+              "restart_required",
+              null
+            ]
+          },
+          "pending_restart_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "items": {
             "type": "array",
             "items": {
@@ -2060,6 +2249,10 @@
           }
         },
         "required": [
+          "saved_revision",
+          "active_revision",
+          "activation_status",
+          "pending_restart_fields",
           "items",
           "diagnostics"
         ]
@@ -5433,6 +5626,13 @@
               "null"
             ]
           },
+          "result_sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{64}$"
+          },
           "result_preview": {
             "type": [
               "string",
@@ -5464,6 +5664,7 @@
           "duration_ms",
           "retry_count",
           "result_storage_uri",
+          "result_sha256",
           "result_preview",
           "started_at",
           "finished_at"
@@ -12829,13 +13030,15 @@
             "$ref": "#/components/schemas/FileId"
           },
           "upload_url": {
-            "type": "string"
+            "type": "string",
+            "description": "Authenticated relative engine PUT endpoint; empty for dedup hits. Carry the normal Bearer credential only when the URL is relative."
           },
           "headers": {
             "type": "object",
             "additionalProperties": {
               "type": "string"
-            }
+            },
+            "description": "Required upload headers, including the known content-length."
           },
           "expires_in": {
             "type": "integer",
@@ -18032,6 +18235,95 @@
         }
       }
     },
+    "/v1/bootstrap/status": {
+      "get": {
+        "tags": [
+          "bootstrap"
+        ],
+        "summary": "Read the common first-run bootstrap state",
+        "responses": {
+          "200": {
+            "description": "Bootstrap state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BootstrapStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/bootstrap/complete": {
+      "post": {
+        "tags": [
+          "bootstrap"
+        ],
+        "summary": "Complete first-run bootstrap using the one-time bootstrap key",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupRequestBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bootstrap completed; admin API key returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Payload failed Zod validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token missing, expired, or did not match",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Bootstrap already completed; route is gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded for this client IP",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/status": {
       "get": {
         "tags": [
@@ -19609,7 +19901,140 @@
         }
       }
     },
+    "/v1/settings/runtime": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Read the canonical saved and active runtime configuration",
+        "responses": {
+          "200": {
+            "description": "Current runtime configuration state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeConfigState"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "settings": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "settings"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/settings": {
+      "patch": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Save an immutable runtime configuration revision",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeConfigPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Revision saved; activate it explicitly when restart is not required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeConfigState"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not initialized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid patch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": [
           "settings"
@@ -19649,6 +20074,682 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/settings/revisions": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "List immutable runtime configuration revisions",
+        "responses": {
+          "200": {
+            "description": "Revision history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RuntimeConfigRevision"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/settings/revisions/{revision}": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Read one immutable runtime configuration revision",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "revision",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeConfigRevision"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/settings/revisions/{revision}/activate": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Prepare and activate a revision after every healthy replica ACKs its digest",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "revision",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Activation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeConfigState"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "replicas": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "instance_id": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "preparing",
+                                  "ack",
+                                  "nack"
+                                ]
+                              },
+                              "digest": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "reason": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "instance_id",
+                              "status",
+                              "digest",
+                              "reason"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "replicas"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/settings/activations/{revision}": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Inspect replica leases and ACK/NACK state for a revision",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "revision",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Replica activation state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "revision": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "replicas": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "instance_id": {
+                            "type": "string"
+                          },
+                          "healthy": {
+                            "type": "boolean"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "digest": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "last_seen_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "instance_id",
+                          "healthy",
+                          "status",
+                          "digest",
+                          "reason",
+                          "last_seen_at"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "revision",
+                    "replicas"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/secrets": {
+      "get": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "List secret-version metadata; plaintext and ciphertext are never returned",
+        "responses": {
+          "200": {
+            "description": "Secret registry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "versions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "version": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0
+                                },
+                                "reference": {
+                                  "type": "string"
+                                },
+                                "created_at": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                },
+                                "revoked_at": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ],
+                                  "format": "date-time"
+                                }
+                              },
+                              "required": [
+                                "version",
+                                "reference",
+                                "created_at",
+                                "revoked_at"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "versions"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/secrets/{name}/versions": {
+      "post": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "Create an immutable encrypted secret version",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$"
+            },
+            "required": true,
+            "name": "name",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Secret version created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "reference": {
+                      "type": "string"
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "version",
+                    "reference",
+                    "created_at"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/secrets/{name}/versions/{version}/revoke": {
+      "post": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "Revoke an unreferenced secret version",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$"
+            },
+            "required": true,
+            "name": "name",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "version",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Secret version revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "revoked_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "version",
+                    "revoked_at"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Secret is referenced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid secret",
             "content": {
               "application/json": {
                 "schema": {
@@ -19825,7 +20926,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SettingRestartRequired"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SettingRestartRequired"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  ]
                 }
               }
             }
@@ -29719,7 +30827,11 @@
         "tags": [
           "Files"
         ],
-        "security": [],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
@@ -29728,24 +30840,6 @@
             "required": true,
             "name": "id",
             "in": "path"
-          },
-          {
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            },
-            "required": true,
-            "name": "token",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0
-            },
-            "required": true,
-            "name": "expires_at",
-            "in": "query"
           }
         ],
         "responses": {
@@ -29763,7 +30857,7 @@
             }
           },
           "401": {
-            "description": "invalid_token",
+            "description": "unauthorized",
             "content": {
               "application/json": {
                 "schema": {
@@ -29774,6 +30868,16 @@
           },
           "404": {
             "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict",
             "content": {
               "application/json": {
                 "schema": {

@@ -152,7 +152,9 @@ const DatabaseSection = z
     url: z
       .string()
       .min(1, "database.url is required")
-      .describe("Postgres connection string")
+      .describe(
+        "Bootstrap-only Postgres connection string. Rotate DATABASE_URL and restart replicas; runtime revisions cannot change this binding.",
+      )
       .meta(global({ requiresRestart: true, secret: true })),
   })
   .prefault({ url: "" })
@@ -311,7 +313,7 @@ const AuthProviders = z
   .describe(
     "Provider-neutral browser authentication adapters. OIDC records are public clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration.",
   )
-  .meta(global({ structural: true, runtimeEditable: true }));
+  .meta(global({ structural: true, runtimeEditable: true, requiresRestart: true }));
 
 const McpOAuthSection = z
   .object({
@@ -463,84 +465,32 @@ const PlatformSection = z
 
 const StorageSection = z
   .object({
-    s3: z
+    object_store: z
       .object({
-        endpoint: optionalUrl.default("").meta(global({ requiresRestart: true })),
-        access_key: z
+        endpoint: optionalUrl.default("").meta(global()),
+        region: z.string().default("us-east-1").meta(global()),
+        bucket: z.string().default("").meta(global()),
+        access_key_id: z
           .string()
           .default("")
-          .meta(global({ requiresRestart: true, secret: true })),
-        secret_key: z
+          .meta(global({ secret: true })),
+        secret_access_key: z
           .string()
           .default("")
-          .meta(global({ requiresRestart: true, secret: true })),
-      })
-      .prefault({})
-      .describe("S3-compatible object store"),
-    files: z
-      .object({
-        backend: z
-          .enum(["local", "s3"])
-          .default("local")
-          .meta(global({ requiresRestart: true })),
-        dir: z
+          .meta(global({ secret: true })),
+        session_token: z
           .string()
           .default("")
-          .describe("Local-disk root when backend=local. Ignored when backend=s3.")
-          .meta(global({ requiresRestart: true })),
-        bucket: z
-          .string()
-          .default("")
-          .describe("S3 bucket name when backend=s3. Ignored when backend=local.")
-          .meta(global({ requiresRestart: true })),
+          .meta(global({ secret: true })),
+        force_path_style: z.boolean().default(true).meta(global()),
       })
       .prefault({})
       .describe(
-        "Unified files storage (chat attachments, knowledge sources, workflow file inputs/outputs, discovery archives)",
+        "Provider-neutral S3-compatible object store shared by files and reconstructable execution artifacts",
       ),
-    offload: z
-      .object({
-        bucket: z
-          .string()
-          .default("")
-          .describe("S3 bucket for execution-payload offload; empty disables offload")
-          .meta(global()),
-        region: z.string().default("").meta(global()),
-        access_key: z
-          .string()
-          .default("")
-          .meta(global({ secret: true })),
-        secret_key: z
-          .string()
-          .default("")
-          .meta(global({ secret: true })),
-        endpoint: optionalUrl
-          .default("")
-          .describe("Optional S3 endpoint override (MinIO, R2, etc.)")
-          .meta(global()),
-        key_prefix: z.string().default("offload").meta(global()),
-      })
-      .prefault({})
-      .describe("Execution-payload offload to S3"),
   })
   .prefault({})
-  .describe("Storage backends")
-  // Cross-leaf invariant (#7): files.backend="s3" without
-  // storage.s3 credentials OR without storage.files.bucket is a
-  // half-configured engine. Reject at parse time so an operator who
-  // flips backend without setting keys/bucket gets a precise validation
-  // error instead of a runtime surprise on the first file ingest.
-  .refine(
-    (s) => {
-      if (s.files.backend !== "s3") return true;
-      return Boolean(s.s3.access_key && s.s3.secret_key && s.files.bucket);
-    },
-    {
-      message:
-        "storage.files.backend='s3' requires storage.s3.access_key, storage.s3.secret_key, and storage.files.bucket",
-      path: ["files", "backend"],
-    },
-  );
+  .describe("Object storage");
 
 const AnalyticsSection = z
   .object({

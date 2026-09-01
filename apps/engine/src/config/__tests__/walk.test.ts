@@ -30,7 +30,7 @@ describe("listConfigLeaves", () => {
       "llm.providers.anthropic.api_key",
       "auth.session.secret",
       "platform.slack.signing_secret",
-      "storage.s3.access_key",
+      "storage.object_store.access_key_id",
       "observability.langfuse.secret_key",
     ];
     const leaves = listConfigLeaves();
@@ -48,7 +48,7 @@ describe("listConfigLeaves", () => {
     expect(leaf!.meta.structural).toBe(true);
     expect(leaf!.meta.runtimeEditable).toBe(true);
     expect(leaf!.meta.secret).toBeUndefined();
-    expect(leaf!.meta.requiresRestart).toBeUndefined();
+    expect(leaf!.meta.requiresRestart).toBe(true);
   });
 
   test("tenant-scoped leaves match the documented set", () => {

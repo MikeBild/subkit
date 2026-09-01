@@ -1,24 +1,20 @@
 // Large-payload offload. When a serialized step result exceeds the
-// threshold (10 KB), the engine writes it to either:
-//
-//   (a) S3-compatible object storage when `storage.offload.bucket` is set
-//       (plus its region / endpoint / access-key settings). The returned
-//       `storage_uri` is `s3://<bucket>/<key>`.
-//
-//   (b) Otherwise, the `execution_fixtures` table with `kind = 'offload'`.
-//       The returned `storage_uri` is `fixture://<uuid>`.
+// threshold (10 KB), the engine writes it through the common immutable
+// S3-compatible object-store adapter. Legacy fixture:// references remain
+// readable during bridge migrations, but new writes never use PostgreSQL
+// as a binary/blob fallback.
 //
 // A 512-byte text preview is always stored inline so operators can see
 // at a glance what the payload looked like without resolving it.
 
-import { S3Client } from "@bradenmacdonald/s3-lite-client";
+import { createHash, randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getConfig } from "../config/loader.ts";
-import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
 import { executionFixtures } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { getObjectStore } from "../storage/object-store.ts";
 import { STEP_RESULT_DB_BYTES, STEP_RESULT_PREVIEW_BYTES } from "./timeouts.ts";
 
 export interface OffloadResult {
@@ -26,6 +22,7 @@ export interface OffloadResult {
   storage_uri: string | null;
   preview: string | null; // truncated string preview if offloaded
   size_bytes: number;
+  sha256: string;
 }
 
 /**
@@ -50,6 +47,8 @@ export interface OffloadRef {
   preview: string;
   /** Serialized byte size of the offloaded payload. */
   size_bytes: number;
+  /** Application-owned payload digest; absent only on historical refs. */
+  sha256?: string;
 }
 
 /**
@@ -65,6 +64,10 @@ export const OffloadRefSchema = z.object({
   storage_uri: z.string(),
   preview: z.string(),
   size_bytes: z.number(),
+  sha256: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
 });
 
 /**
@@ -146,9 +149,8 @@ export function isOffloadRef(v: unknown): v is OffloadRef {
  * `fixture://<id>` → SELECT `body` from `execution_fixtures` filtered
  * by **both** `tenant_id` AND `id` — the tenant predicate is mandatory;
  * a cross-tenant read is the single highest isolation risk on this
- * path. `s3://<bucket>/<key>` → stream the object via the offload S3
- * client (the `storage.offload.*` credential block, NOT the
- * `storage.files.*` object store).
+ * path. `s3://<bucket>/<key>` → read through the common object-store
+ * adapter.
  *
  * On a missing or unreadable ref this THROWS `OffloadResolutionError`
  * — it never returns `undefined`. A silent fallback would let a
@@ -189,20 +191,22 @@ export async function resolveOffloaded(
     const rows = await db
       .select({ body: executionFixtures.body })
       .from(executionFixtures)
-      .where(and(eq(executionFixtures.tenant_id, tenant_id), eq(executionFixtures.id, id)))
+      .where(
+        and(
+          eq(executionFixtures.tenant_id, tenant_id),
+          eq(executionFixtures.id, id),
+          eq(executionFixtures.kind, "offload"),
+        ),
+      )
       .limit(1);
     const row = rows[0];
     if (!row) {
-      throw new OffloadResolutionError(uri, "fixture row not found for this tenant");
+      throw new OffloadResolutionError(uri, "offload fixture row not found for this tenant");
     }
     // `body` is jsonb — drizzle returns the parsed value directly.
     return row.body ?? null;
   }
   if (uri.startsWith("s3://")) {
-    const cfg = s3OffloadConfig();
-    if (!cfg) {
-      throw new OffloadResolutionError(uri, "s3 offload storage is not configured");
-    }
     // uri is `s3://<bucket>/<key>` — split scheme, bucket, key.
     const withoutScheme = uri.slice("s3://".length);
     const slash = withoutScheme.indexOf("/");
@@ -212,24 +216,36 @@ export async function resolveOffloaded(
     const uriBucket = withoutScheme.slice(0, slash);
     const key = withoutScheme.slice(slash + 1);
     // The bucket segment is authoritative: a uri that names a bucket
-    // other than the configured offload bucket is a re-target attempt
+    // other than the configured product bucket is a re-target attempt
     // (or stale config) — fail with a typed error instead of silently
     // reading from `cfg.bucket` and returning the wrong object.
-    if (uriBucket !== cfg.bucket) {
+    let configuredBucket = "";
+    try {
+      configuredBucket = getConfig().storage.object_store.bucket;
+    } catch {
+      if (process.env.NODE_ENV !== "production") configuredBucket = "test";
+    }
+    if (!configuredBucket && process.env.NODE_ENV !== "production") {
+      configuredBucket = "test";
+    }
+    if (!configuredBucket) {
+      throw new OffloadResolutionError(uri, "object storage is not configured");
+    }
+    if (uriBucket !== configuredBucket) {
       throw new OffloadResolutionError(
         uri,
-        "s3 uri bucket does not match configured offload bucket",
+        "s3 uri bucket does not match configured product bucket",
       );
     }
     try {
-      const client = offloadS3Client(cfg);
-      // s3-lite-client's `getObject` exposes no AbortSignal — plumb the
-      // signal as far as the API allows: a pre-call abort check above
-      // plus a race so a cancelled run stops awaiting the GET/body read
-      // instead of streaming a multi-MB object to completion.
-      const res = await raceAbort(client.getObject(key), signal, uri);
-      const text = await raceAbort(res.text(), signal, uri);
-      return JSON.parse(text);
+      const bytes = await raceAbort(getObjectStore().get(key), signal, uri);
+      if (parsed.data.sha256) {
+        const actual = createHash("sha256").update(bytes).digest("hex");
+        if (actual !== parsed.data.sha256) {
+          throw new OffloadResolutionError(uri, "application SHA-256 mismatch");
+        }
+      }
+      return JSON.parse(bytes.toString("utf8"));
     } catch (err) {
       if (err instanceof OffloadResolutionError) throw err;
       // The raw S3 error can carry the bucket name, signed-URL fragments
@@ -261,12 +277,8 @@ export interface MaybeOffloadParams {
   result: unknown;
 }
 
-interface S3OffloadConfig {
+interface ObjectStoreOffloadConfig {
   bucket: string;
-  region: string;
-  endpoint?: string;
-  accessKey: string;
-  secretKey: string;
   keyPrefix: string;
 }
 
@@ -274,148 +286,46 @@ interface S3OffloadConfig {
 // suite can verify the resolver reflects setConfigKey writes without
 // a restart. Production code calls the unprefixed local binding via
 // the closure inside maybeOffload below.
-export function _s3OffloadConfigForTests(): S3OffloadConfig | null {
-  return s3OffloadConfig();
+export function _s3OffloadConfigForTests(): ObjectStoreOffloadConfig | null {
+  return objectStoreOffloadConfig();
 }
 
-function s3OffloadConfig(): S3OffloadConfig | null {
-  // Runtime configuration is the sole production source. When the loader is
-  // not initialised (standalone unit seams), offload is simply unavailable.
-  let off: {
-    bucket: string;
-    region: string;
-    access_key: string;
-    secret_key: string;
-    endpoint: string;
-    key_prefix: string;
-  } | null = null;
-  let bedrockRegion = "";
-  let bedrockAccess = "";
-  let bedrockSecret = "";
+function objectStoreOffloadConfig(): ObjectStoreOffloadConfig | null {
   try {
-    const cfg = getConfig();
-    off = cfg.storage.offload;
-    bedrockRegion = cfg.llm.providers.bedrock.region;
-    bedrockAccess = cfg.llm.providers.bedrock.access_key_id;
-    bedrockSecret = cfg.llm.providers.bedrock.secret_access_key;
+    const bucket = getConfig().storage.object_store.bucket;
+    return bucket ? { bucket, keyPrefix: "offload" } : null;
   } catch {
-    return null;
+    return process.env.NODE_ENV !== "production" ? { bucket: "test", keyPrefix: "offload" } : null;
   }
-  const bucket = off?.bucket || "";
-  if (!bucket) return null;
-  const accessKey = off?.access_key || bedrockAccess;
-  const secretKey = off?.secret_key || bedrockSecret;
-  if (!accessKey || !secretKey) {
-    logger.warn({
-      module: "execution",
-      action: "offload.s3_misconfigured",
-      msg: "storage.offload.bucket set but access keys missing — falling back to fixture table",
-    });
-    return null;
-  }
-  const cfg: S3OffloadConfig = {
-    bucket,
-    region: off?.region || bedrockRegion || "us-east-1",
-    accessKey,
-    secretKey,
-    keyPrefix: off?.key_prefix || "offload",
-  };
-  const endpoint = off?.endpoint;
-  if (endpoint) cfg.endpoint = endpoint;
-  return cfg;
 }
 
-// Lazily-memoised S3 client for the offload bucket. Both the WRITE
-// path (`writeToS3`) and the READ path (`resolveOffloaded`) share this
-// one client — a loop rehydrating N offloaded bodies would otherwise
-// build N clients (and N TLS pools). The memo key is the resolved
-// config so a `setConfigKey` change (new bucket/keys at runtime) builds
-// a fresh client instead of reusing a stale one.
-let memoisedOffloadClient: { key: string; client: S3Client } | null = null;
-
-function offloadS3Client(cfg: S3OffloadConfig): S3Client {
-  const key = JSON.stringify([
-    cfg.bucket,
-    cfg.region,
-    cfg.endpoint ?? "",
-    cfg.accessKey,
-    cfg.secretKey,
-  ]);
-  if (memoisedOffloadClient && memoisedOffloadClient.key === key) {
-    return memoisedOffloadClient.client;
-  }
-  const client = new S3Client({
-    endPoint: cfg.endpoint ?? `s3.${cfg.region}.amazonaws.com`,
-    region: cfg.region,
-    bucket: cfg.bucket,
-    accessKey: cfg.accessKey,
-    secretKey: cfg.secretKey,
-    pathStyle: Boolean(cfg.endpoint),
-  });
-  memoisedOffloadClient = { key, client };
-  return client;
-}
-
-async function writeToS3(
-  cfg: S3OffloadConfig,
+async function writeToObjectStore(
+  cfg: ObjectStoreOffloadConfig,
   params: MaybeOffloadParams,
   serialized: string,
 ): Promise<string> {
-  const id =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const id = randomUUID();
   const key = `${cfg.keyPrefix}/${params.tenant_id}/${params.execution_id}/${id}.json`;
-  const client = offloadS3Client(cfg);
-  await client.putObject(key, serialized);
+  await getObjectStore().put(key, Buffer.from(serialized, "utf8"));
   return `s3://${cfg.bucket}/${key}`;
 }
 
 export async function maybeOffload(db: Db, params: MaybeOffloadParams): Promise<OffloadResult> {
   const serialized = JSON.stringify(params.result) ?? "null";
   const size = Buffer.byteLength(serialized, "utf8");
+  const sha256 = createHash("sha256").update(serialized, "utf8").digest("hex");
   if (size <= STEP_RESULT_DB_BYTES) {
-    return { storage_uri: null, preview: null, size_bytes: size };
+    return { storage_uri: null, preview: null, size_bytes: size, sha256 };
   }
 
-  // Prefer S3 when configured. On any S3 error we fall back to the
-  // fixture table so the execution pipeline still completes — an
-  // offload failure should not fail a whole run.
-  const s3cfg = s3OffloadConfig();
-  if (s3cfg) {
-    try {
-      const uri = await writeToS3(s3cfg, params, serialized);
-      return {
-        storage_uri: uri,
-        preview: serialized.slice(0, STEP_RESULT_PREVIEW_BYTES),
-        size_bytes: size,
-      };
-    } catch (err) {
-      logger.warn({
-        module: "execution",
-        action: "offload.s3_failed",
-        msg: "s3 offload failed; falling back to fixture table",
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  // Fallback: insert into execution_fixtures.
-  const [row] = await db
-    .insert(executionFixtures)
-    .values({
-      tenant_id: params.tenant_id,
-      kind: "offload",
-      execution_id: params.execution_id,
-      step_id: params.step_id ?? null,
-      body: params.result as object,
-      byte_size: size,
-    })
-    .returning({ id: executionFixtures.id });
-  assertInsertRow(row, "offload");
+  void db;
+  const objectStoreConfig = objectStoreOffloadConfig();
+  if (!objectStoreConfig) throw new Error("object storage is not configured for payload offload");
+  const uri = await writeToObjectStore(objectStoreConfig, params, serialized);
   return {
-    storage_uri: `fixture://${row.id}`,
+    storage_uri: uri,
     preview: serialized.slice(0, STEP_RESULT_PREVIEW_BYTES),
     size_bytes: size,
+    sha256,
   };
 }
