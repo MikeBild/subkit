@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 6.22.45 — 2026-09-01
+
+### Fixed
+
+- Render OIDC configuration, tenant-resolution, and discovery failures with
+  the shared HTML sign-in page for browser requests while preserving the
+  existing JSON envelopes for explicit API clients.
+
 ## 6.22.44 — 2026-09-01
 
 ### Added

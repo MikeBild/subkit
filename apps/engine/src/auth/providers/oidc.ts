@@ -312,7 +312,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
 
     async startLogin(req: Request): Promise<Response> {
       if (!issuerUrl || !clientId || !redirectUri) {
-        return httpError(500, "oidc_not_configured", "oidc provider not configured");
+        return browserError(
+          req,
+          500,
+          "oidc_not_configured",
+          "oidc provider not configured",
+          "This sign-in provider is not configured. Contact the operator.",
+          LOGIN_START_PATH,
+        );
       }
       const url = new URL(req.url);
       const tenantSlug = url.searchParams.get("tenant") ?? configuredTenantSlug;
@@ -321,7 +328,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
 
       const tenantId = await resolveTenantId(exec, tenantSlug);
       if (!tenantId) {
-        return httpError(400, "unknown_tenant", "tenant not found");
+        return browserError(
+          req,
+          400,
+          "unknown_tenant",
+          "tenant not found",
+          "This sign-in provider is not available for this tenant. Please sign in again.",
+          LOGIN_START_PATH,
+        );
       }
 
       let configuration: oauth.Configuration;
@@ -334,7 +348,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           msg: "oidc discovery failed",
           error: err instanceof Error ? err.message : String(err),
         });
-        return httpError(502, "oidc_discovery_failed", "issuer discovery failed");
+        return browserError(
+          req,
+          502,
+          "oidc_discovery_failed",
+          "issuer discovery failed",
+          "The sign-in provider is temporarily unavailable. Please try again.",
+          LOGIN_START_PATH,
+        );
       }
 
       const code_verifier = oauth.randomPKCECodeVerifier();
@@ -365,7 +386,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
 
     async finishLogin(req: Request): Promise<Response> {
       if (!issuerUrl || !clientId || !redirectUri) {
-        return httpError(500, "oidc_not_configured", "oidc provider not configured");
+        return browserError(
+          req,
+          500,
+          "oidc_not_configured",
+          "oidc provider not configured",
+          "This sign-in provider is not configured. Contact the operator.",
+          LOGIN_START_PATH,
+        );
       }
       const reqUrl = new URL(req.url);
       const state = reqUrl.searchParams.get("state");
@@ -474,7 +502,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           msg: "oidc discovery failed",
           error: err instanceof Error ? err.message : String(err),
         });
-        return httpError(502, "oidc_discovery_failed", "issuer discovery failed");
+        return browserError(
+          req,
+          502,
+          "oidc_discovery_failed",
+          "issuer discovery failed",
+          "The sign-in provider is temporarily unavailable. Please try again.",
+          retryHref,
+        );
       }
 
       let tokens: oauth.TokenEndpointResponse & oauth.TokenEndpointResponseHelpers;
