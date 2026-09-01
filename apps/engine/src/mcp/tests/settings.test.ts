@@ -90,7 +90,7 @@ describe("mcp settings tools", () => {
     expect(rows[0]?.metadata).toMatchObject({ request_source: "mcp" });
   });
 
-  test("MCP and REST share the hot public OIDC provider setting", async () => {
+  test("MCP and REST share the saved OIDC provider setting and restart status", async () => {
     const { plaintext } = await suite.issueApiKey(["mcp:admin", "settings:read", "settings:write"]);
     const client = await suite.connectWithApiKey(plaintext);
     const providers = [
@@ -113,9 +113,10 @@ describe("mcp settings tools", () => {
     expect(textBody(updated)).toMatchObject({
       path: "auth.providers",
       value: providers,
-      activation: "active",
-      applied_immediately: true,
-      requires_restart: false,
+      activation: "restart_required",
+      applied_immediately: false,
+      requires_restart: true,
+      pending_restart_keys: ["auth.providers"],
     });
 
     const rest = await fetch(`${suite.http.baseUrl}/v1/settings/auth.providers`, {
@@ -125,7 +126,7 @@ describe("mcp settings tools", () => {
     expect((await rest.json()) as Record<string, unknown>).toMatchObject({
       path: "auth.providers",
       value: providers,
-      meta: { kind: "json", sensitive: false, requiresRestart: false },
+      meta: { kind: "json", sensitive: false, requiresRestart: true },
     });
   });
 
