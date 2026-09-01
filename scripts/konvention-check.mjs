@@ -940,6 +940,10 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
 
     if (path === "/v1/settings")
       return json(route, {
+        saved_revision: 7,
+        active_revision: 7,
+        activation_status: "active",
+        pending_restart_fields: [],
         items: [
           {
             path: "auth.providers",
@@ -959,7 +963,7 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
               source: "global",
               scope: "global",
               sensitive: false,
-              requiresRestart: false,
+              requiresRestart: true,
               kind: "json",
             },
           },
@@ -998,6 +1002,7 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
             },
           },
         ],
+        diagnostics: { pending_restart_keys: [], override_keys: [] },
       });
 
     if (path === "/v1/identity/users")
