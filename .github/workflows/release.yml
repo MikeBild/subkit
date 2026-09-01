@@ -573,6 +573,9 @@ jobs:
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
       - name: Smoke image with external PostgreSQL, health and readiness
         env:
+          # Test-only bootstrap material. The production image deliberately
+          # refuses to invent a MASTER_KEY in a stateless container.
+          MASTER_KEY: "00000000000000000000000000000000000000000000000000000000000000aa"
           SUBKIT_IMAGE: docker.io/mikebild/subkit:${{ steps.meta.outputs.version }}-${{ matrix.arch }}
         run: |
           docker compose -p "subkit-release-${{ matrix.arch }}" -f docker-compose.yml up --detach --wait --wait-timeout 360
