@@ -44,9 +44,10 @@ describe("zod-to-form-fields × live ConfigSchema", () => {
       // an operator review can decide whether the leaf deserves a
       // dedicated input.
       if (field.kind === "json") {
-        expect(["string-array"], `unexpected json fallback for ${leaf.path.join(".")}`).toContain(
-          leaf.kind,
-        );
+        expect(
+          ["string-array", "json"],
+          `unexpected json fallback for ${leaf.path.join(".")}`,
+        ).toContain(leaf.kind);
       }
     }
   });

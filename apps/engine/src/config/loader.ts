@@ -111,6 +111,8 @@ function coerceLegacySeedValue(raw: string, leaf: ConfigLeaf): unknown {
         .filter(Boolean);
     case "string-array":
       return JSON.parse(raw);
+    case "json":
+      return JSON.parse(raw);
     default:
       return raw;
   }

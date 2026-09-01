@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
+  ArrowDown,
+  ArrowUp,
   CheckCircle2,
   Copy,
   Plus,
@@ -158,6 +160,22 @@ interface SettingsResponse {
     override_keys: string[];
   };
 }
+
+type AuthProviderSetting =
+  | {
+      protocol: "api_key";
+      id: string;
+      label: string;
+    }
+  | {
+      protocol: "oidc";
+      id: string;
+      label: string;
+      issuer_url: string;
+      client_id: string;
+      scopes: string;
+      tenant_slug: string;
+    };
 
 interface HealthDigest {
   headline: string;
@@ -1694,6 +1712,219 @@ function settingMetaLabel(value: string, t: ReturnType<typeof useI18n>["t"]): st
   return labelKey ? t(labelKey) : t("common.unknown");
 }
 
+function authProvidersFrom(value: unknown): AuthProviderSetting[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (provider): provider is AuthProviderSetting =>
+      typeof provider === "object" &&
+      provider !== null &&
+      ((provider as { protocol?: unknown }).protocol === "api_key" ||
+        (provider as { protocol?: unknown }).protocol === "oidc"),
+  );
+}
+
+function authProvidersFromDraft(raw: string | undefined, fallback: unknown): AuthProviderSetting[] {
+  if (raw === undefined) return authProvidersFrom(fallback);
+  try {
+    return authProvidersFrom(JSON.parse(raw));
+  } catch {
+    return authProvidersFrom(fallback);
+  }
+}
+
+function AuthProviderInput({
+  label,
+  testId,
+  value,
+  type = "text",
+  disabled,
+  onChange,
+}: {
+  label: string;
+  testId: string;
+  value: string;
+  type?: "text" | "url";
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="grid gap-1 text-xs font-medium" htmlFor={testId}>
+      {label}
+      <Input
+        id={testId}
+        type={type}
+        value={value}
+        disabled={disabled}
+        data-testid={testId}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+function AuthProvidersEditor({
+  value,
+  publicBaseUrl,
+  disabled,
+  onChange,
+}: {
+  value: AuthProviderSetting[];
+  publicBaseUrl: string;
+  disabled: boolean;
+  onChange: (value: AuthProviderSetting[]) => void;
+}) {
+  const { t } = useI18n();
+  const callbackUrl = useMemo(() => {
+    try {
+      return new URL("/v1/identity/login/callback", publicBaseUrl).toString();
+    } catch {
+      return "/v1/identity/login/callback";
+    }
+  }, [publicBaseUrl]);
+
+  function update(index: number, provider: AuthProviderSetting) {
+    onChange(value.map((current, currentIndex) => (currentIndex === index ? provider : current)));
+  }
+
+  function move(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= value.length) return;
+    const next = [...value];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    onChange(next);
+  }
+
+  return (
+    <div className="grid gap-3" data-testid="settings-auth-providers">
+      <div className="rounded-xl border border-border bg-muted/30 px-3 py-2">
+        <p className="text-xs font-medium">{t("settings.auth.callbackUrl")}</p>
+        <code className="mt-1 block break-all text-xs text-muted-foreground">{callbackUrl}</code>
+        <p className="mt-2 text-xs text-muted-foreground">{t("settings.auth.publicClientHint")}</p>
+      </div>
+      {value.map((provider, index) => (
+        <div
+          key={`${provider.protocol}-${provider.id}-${index}`}
+          className="grid gap-3 rounded-xl border border-border p-4"
+          data-testid={`settings-auth-provider-${index}`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">
+                {provider.label || t("settings.auth.unnamedProvider")}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {provider.protocol === "oidc"
+                  ? t("settings.auth.oidcPublicClient")
+                  : t("settings.auth.apiKey")}
+              </p>
+            </div>
+            <div className="flex items-center gap-1">
+              <IconButton
+                label={t("settings.auth.moveUp")}
+                data-testid={`settings-auth-provider-${index}-move-up`}
+                disabled={disabled || index === 0}
+                onClick={() => move(index, -1)}
+              >
+                <ArrowUp />
+              </IconButton>
+              <IconButton
+                label={t("settings.auth.moveDown")}
+                data-testid={`settings-auth-provider-${index}-move-down`}
+                disabled={disabled || index === value.length - 1}
+                onClick={() => move(index, 1)}
+              >
+                <ArrowDown />
+              </IconButton>
+              <IconButton
+                label={t("settings.auth.remove")}
+                data-testid={`settings-auth-provider-${index}-remove`}
+                disabled={disabled || value.length === 1}
+                onClick={() => onChange(value.filter((_, currentIndex) => currentIndex !== index))}
+              >
+                <Trash2 />
+              </IconButton>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <AuthProviderInput
+              label={t("settings.auth.providerId")}
+              testId={`settings-auth-provider-${index}-id`}
+              value={provider.id}
+              disabled={disabled}
+              onChange={(id) => update(index, { ...provider, id })}
+            />
+            <AuthProviderInput
+              label={t("settings.auth.label")}
+              testId={`settings-auth-provider-${index}-label`}
+              value={provider.label}
+              disabled={disabled}
+              onChange={(label) => update(index, { ...provider, label })}
+            />
+            {provider.protocol === "oidc" && (
+              <>
+                <div className="sm:col-span-2">
+                  <AuthProviderInput
+                    label={t("settings.auth.issuerUrl")}
+                    testId={`settings-auth-provider-${index}-issuer-url`}
+                    type="url"
+                    value={provider.issuer_url}
+                    disabled={disabled}
+                    onChange={(issuer_url) => update(index, { ...provider, issuer_url })}
+                  />
+                </div>
+                <AuthProviderInput
+                  label={t("settings.auth.clientId")}
+                  testId={`settings-auth-provider-${index}-client-id`}
+                  value={provider.client_id}
+                  disabled={disabled}
+                  onChange={(client_id) => update(index, { ...provider, client_id })}
+                />
+                <AuthProviderInput
+                  label={t("settings.auth.scopes")}
+                  testId={`settings-auth-provider-${index}-scopes`}
+                  value={provider.scopes}
+                  disabled={disabled}
+                  onChange={(scopes) => update(index, { ...provider, scopes })}
+                />
+                <AuthProviderInput
+                  label={t("settings.auth.tenantSlug")}
+                  testId={`settings-auth-provider-${index}-tenant-slug`}
+                  value={provider.tenant_slug}
+                  disabled={disabled}
+                  onChange={(tenant_slug) => update(index, { ...provider, tenant_slug })}
+                />
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        className="justify-self-start"
+        disabled={disabled}
+        data-testid="settings-auth-provider-add"
+        onClick={() =>
+          onChange([
+            ...value,
+            {
+              protocol: "oidc",
+              id: `oidc-${value.length + 1}`,
+              label: "OIDC",
+              issuer_url: "https://",
+              client_id: "",
+              scopes: "openid profile email",
+              tenant_slug: "default",
+            },
+          ])
+        }
+      >
+        <Plus data-icon="inline-start" /> {t("settings.auth.addOidc")}
+      </Button>
+    </div>
+  );
+}
+
 export function SettingsPage() {
   const { t } = useI18n();
   const session = useSession();
@@ -1708,6 +1939,12 @@ export function SettingsPage() {
     queryFn: () => apiRequest<SettingsResponse>("/v1/settings"),
   });
   const allItems = query.data?.items ?? [];
+  const publicBaseUrlItem = allItems.find((item) => item.path === "server.public_base_url");
+  const publicBaseUrl =
+    drafts["server.public_base_url"] ??
+    (typeof publicBaseUrlItem?.value === "string"
+      ? publicBaseUrlItem.value
+      : (globalThis.location?.origin ?? ""));
   const items = useMemo(
     () =>
       allItems.filter((item) => {
@@ -1878,6 +2115,59 @@ export function SettingsPage() {
                     <FieldGroup>
                       {selectedItems.map((item) => {
                         const index = allItems.indexOf(item);
+                        if (item.path === "auth.providers") {
+                          const providers = authProvidersFromDraft(drafts[item.path], item.value);
+                          return (
+                            <Field
+                              key={item.path}
+                              orientation="responsive"
+                              data-disabled={!canWrite || undefined}
+                              className="border-t pt-5 first:border-t-0 first:pt-0"
+                              data-testid={`setting-item-${index}`}
+                            >
+                              <FieldLabel className="min-w-0 @md/field-group:max-w-sm">
+                                <span className="min-w-0">
+                                  <span className="block truncate">
+                                    {t("settings.auth.providers")}
+                                  </span>
+                                  <span className="mt-1 block truncate font-mono text-xs font-normal text-muted-foreground">
+                                    {item.path}
+                                  </span>
+                                </span>
+                                <ContextHelp
+                                  label={t("settings.about", {
+                                    setting: t("settings.auth.providers"),
+                                  })}
+                                  testId={`setting-help-${index}`}
+                                >
+                                  {t("settings.resolution", {
+                                    path: item.path,
+                                    source: settingMetaLabel(item.meta.source, t),
+                                    scope: settingMetaLabel(item.meta.scope, t),
+                                  })}
+                                </ContextHelp>
+                              </FieldLabel>
+                              <FieldContent className="min-w-0 @md/field-group:max-w-2xl">
+                                <AuthProvidersEditor
+                                  value={providers}
+                                  publicBaseUrl={publicBaseUrl}
+                                  disabled={!canWrite || save.isPending}
+                                  onChange={(next) =>
+                                    setDrafts((current) => ({
+                                      ...current,
+                                      [item.path]: JSON.stringify(next),
+                                    }))
+                                  }
+                                />
+                                <FieldDescription className="flex flex-wrap gap-1.5 pt-1.5">
+                                  <Badge variant="secondary">
+                                    {settingMetaLabel(item.meta.source, t)}
+                                  </Badge>
+                                </FieldDescription>
+                              </FieldContent>
+                            </Field>
+                          );
+                        }
                         const value =
                           drafts[item.path] ??
                           (item.meta.sensitive

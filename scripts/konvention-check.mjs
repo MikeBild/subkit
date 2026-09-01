@@ -942,6 +942,39 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
       return json(route, {
         items: [
           {
+            path: "auth.providers",
+            value: [
+              { protocol: "api_key", id: "api-key", label: "Local API key" },
+              {
+                protocol: "oidc",
+                id: "upraft",
+                label: "Upraft Auth",
+                issuer_url: "https://auth.mikebild.info",
+                client_id: "oidc_subkit_public_client",
+                scopes: "openid profile email",
+                tenant_slug: "default",
+              },
+            ],
+            meta: {
+              source: "global",
+              scope: "global",
+              sensitive: false,
+              requiresRestart: false,
+              kind: "json",
+            },
+          },
+          {
+            path: "server.public_base_url",
+            value: "https://subkit.mikebild.info",
+            meta: {
+              source: "global",
+              scope: "global",
+              sensitive: false,
+              requiresRestart: false,
+              kind: "string",
+            },
+          },
+          {
             path: "llm.default_model",
             value: "test-model",
             meta: {

@@ -39,7 +39,6 @@ type OidcConfig = {
   label: string;
   issuer_url: string;
   client_id: string;
-  client_secret: string;
   scopes: string;
   tenant_slug: string;
 };
@@ -83,7 +82,6 @@ function oidcProvider(config: OidcConfig, db: Db) {
     providerId: config.id,
     issuerUrl: config.issuer_url,
     clientId: config.client_id,
-    clientSecret: config.client_secret,
     scopes: config.scopes,
     redirectUri: `${getConfig().server.public_base_url}/v1/identity/login/callback`,
     tenantSlug: config.tenant_slug,

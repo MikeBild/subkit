@@ -97,6 +97,14 @@ describe("GET /v1/settings", () => {
     expect(llmKey).toBeDefined();
     expect(llmKey!.meta.sensitive).toBe(true);
     expect(llmKey!.meta.scope).toBe("tenant");
+    const authProviders = body.items.find((i) => i.path === "auth.providers");
+    expect(authProviders).toBeDefined();
+    expect(authProviders!.meta).toMatchObject({
+      kind: "json",
+      sensitive: false,
+      requiresRestart: false,
+      scope: "global",
+    });
   });
 
   test("tenant source metadata is scoped to the requested tenant", async () => {
@@ -228,6 +236,64 @@ describe("GET /v1/settings/{path}", () => {
 });
 
 describe("PUT /v1/settings/{path}", () => {
+  test("public OIDC providers hot-apply and are visible through discovery", async () => {
+    const providers = [
+      { protocol: "api_key", id: "api-key", label: "SubKit API key" },
+      {
+        protocol: "oidc",
+        id: "upraft",
+        label: "Upraft Auth",
+        issuer_url: "https://auth.mikebild.info",
+        client_id: "capp_subkit",
+        scopes: "openid profile email",
+        tenant_slug: "default",
+      },
+    ];
+    const res = await authedFetch("/v1/settings/auth.providers", {
+      method: "PUT",
+      body: JSON.stringify({ value: providers }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()) as PutResult).toEqual({
+      value: providers,
+      requiresRestart: false,
+    });
+
+    const discovery = await fetch(`${server.baseUrl}/v1/identity/providers`);
+    expect(discovery.status).toBe(200);
+    expect((await discovery.json()) as Record<string, unknown>).toEqual({
+      providers: [
+        {
+          protocol: "oidc",
+          id: "upraft",
+          label: "SSO",
+          issuer: "https://auth.mikebild.info",
+        },
+        { protocol: "api_key", id: "api-key", label: "API key" },
+      ],
+    });
+  });
+
+  test("confidential OIDC secrets are rejected instead of persisted", async () => {
+    const res = await authedFetch("/v1/settings/auth.providers", {
+      method: "PUT",
+      body: JSON.stringify({
+        value: [
+          {
+            protocol: "oidc",
+            id: "confidential",
+            label: "Confidential",
+            issuer_url: "https://identity.example.test",
+            client_id: "client",
+            client_secret: "must-not-be-stored",
+          },
+        ],
+      }),
+    });
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(await res.json())).not.toContain("must-not-be-stored");
+  });
+
   test("happy path returns 200 + audit row tagged with the actor", async () => {
     const res = await authedFetch("/v1/settings/llm.api_key", {
       method: "PUT",

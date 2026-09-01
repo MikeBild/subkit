@@ -125,6 +125,25 @@ describe("ConfigSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  test("auth rejects confidential client secrets in runtime provider configuration", () => {
+    const result = ConfigSchema.safeParse({
+      database: { url: "postgres://x" },
+      auth: {
+        providers: [
+          {
+            protocol: "oidc",
+            id: "public-oidc",
+            label: "Public OIDC",
+            issuer_url: "https://identity.example.test",
+            client_id: "client",
+            client_secret: "must-not-be-persisted",
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
   test("auth rejects removed provider-specific configuration", () => {
     const result = ConfigSchema.safeParse({
       database: { url: "postgres://x" },

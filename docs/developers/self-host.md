@@ -99,9 +99,10 @@ docker compose exec engine sk init \
 
 > **Authentication defaults to the `api_key` adapter** — people are added by
 > admin invite and authenticate with engine-issued API keys. Configure direct
-> OIDC by adding named `oidc` records to
-> `auth.providers` in `subkit.config.json`, then restart. No provider-specific
-> setting or route is required.
+> OIDC in Cockpit's Authentication settings, through HTTP/MCP settings, with
+> `sk settings set auth.providers`, or directly in canonical
+> `subkit.config.json`. Runtime writes are active for subsequent logins without
+> a restart. No provider-specific setting or route is required.
 
 For example, an sk-owned direct OIDC client is one configuration record:
 
@@ -116,7 +117,6 @@ For example, an sk-owned direct OIDC client is one configuration record:
         "label": "Workforce OIDC",
         "issuer_url": "https://identity.example.com",
         "client_id": "<subkit-client-id>",
-        "client_secret": "<subkit-client-secret>",
         "scopes": "openid profile email",
         "tenant_slug": "default"
       }
@@ -124,6 +124,12 @@ For example, an sk-owned direct OIDC client is one configuration record:
   }
 }
 ```
+
+Direct OIDC adapters are public clients using Authorization Code with PKCE.
+Register the callback below and configure the issuer for
+`token_endpoint_auth_method=none`. SubKit deliberately does not store a client
+secret in `auth.providers`; confidential-only issuers are not supported by this
+runtime setting.
 
 The only browser endpoints remain `/v1/identity/login/start`,
 `/v1/identity/login/callback`, and `/v1/identity/logout` regardless of adapter

@@ -263,7 +263,6 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         id: string;
         issuer_url: string;
         client_id: string;
-        client_secret: string;
         scopes: string;
         tenant_slug: string;
       }
@@ -278,7 +277,10 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
   }
   const issuerUrl = opts.issuerUrl ?? configured?.issuer_url ?? "";
   const clientId = opts.clientId ?? configured?.client_id ?? "";
-  const clientSecretInput = opts.clientSecret ?? configured?.client_secret ?? undefined;
+  // Runtime-configured OIDC adapters are public clients. Tests and direct
+  // embedding may still pass an explicit secret through opts, but the
+  // operator settings surface never stores or returns one.
+  const clientSecretInput = opts.clientSecret;
   const scopes = opts.scopes ?? configured?.scopes ?? "openid profile email";
   const redirectUri = opts.redirectUri ?? configuredRedirectUri;
   const configuredTenantSlug = opts.tenantSlug ?? configured?.tenant_slug ?? DEFAULT_TENANT_SLUG;

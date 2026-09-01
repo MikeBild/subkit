@@ -7,6 +7,7 @@ export interface FieldMeta {
   scope?: FieldScope;
   requiresRestart?: boolean;
   structural?: boolean;
+  runtimeEditable?: boolean;
   [extra: string]: unknown;
 }
 
@@ -253,32 +254,32 @@ const LlmSection = z
 const AuthProviders = z
   .array(
     z.discriminatedUnion("protocol", [
-      z.object({
-        protocol: z.literal("api_key"),
-        id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
-        label: z.string().min(1).max(120),
-      }),
-      z.object({
-        protocol: z.literal("oidc"),
-        id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
-        label: z.string().min(1).max(120),
-        issuer_url: z.url().refine(
-          (value) => {
-            const url = new URL(value);
-            return url.protocol === "https:" || ["127.0.0.1", "localhost"].includes(url.hostname);
-          },
-          {
-            message: "OIDC issuer_url must use HTTPS outside localhost",
-          },
-        ),
-        client_id: z.string().min(1),
-        client_secret: z
-          .string()
-          .default("")
-          .meta(global({ secret: true })),
-        scopes: z.string().default("openid profile email"),
-        tenant_slug: z.string().min(1).default("default"),
-      }),
+      z
+        .object({
+          protocol: z.literal("api_key"),
+          id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
+          label: z.string().min(1).max(120),
+        })
+        .strict(),
+      z
+        .object({
+          protocol: z.literal("oidc"),
+          id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
+          label: z.string().min(1).max(120),
+          issuer_url: z.url().refine(
+            (value) => {
+              const url = new URL(value);
+              return url.protocol === "https:" || ["127.0.0.1", "localhost"].includes(url.hostname);
+            },
+            {
+              message: "OIDC issuer_url must use HTTPS outside localhost",
+            },
+          ),
+          client_id: z.string().min(1),
+          scopes: z.string().default("openid profile email"),
+          tenant_slug: z.string().min(1).default("default"),
+        })
+        .strict(),
     ]),
   )
   .superRefine((providers, ctx) => {
@@ -307,8 +308,10 @@ const AuthProviders = z
   })
   .min(1)
   .default([{ protocol: "api_key", id: "api-key", label: "SubKit API key" }])
-  .describe("Provider-neutral browser and bearer authentication adapters.")
-  .meta(global({ requiresRestart: true, secret: true, structural: true }));
+  .describe(
+    "Provider-neutral browser authentication adapters. OIDC records are public clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration.",
+  )
+  .meta(global({ structural: true, runtimeEditable: true }));
 
 const McpOAuthSection = z
   .object({
