@@ -420,6 +420,55 @@ describe("oidc provider — browser error pages", () => {
     return state;
   }
 
+  test("unknown tenant renders HTML while explicit JSON clients keep the error envelope", async () => {
+    const provider = buildProvider();
+    const url = "http://127.0.0.1:0/v1/identity/login/start?tenant=does-not-exist";
+
+    const browserRes = await provider.startLogin!(new Request(url));
+    expect(browserRes.status).toBe(400);
+    expect(browserRes.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await browserRes.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain("This sign-in provider is not available for this tenant.");
+    expect(html).not.toStartWith("{");
+
+    const jsonRes = await provider.startLogin!(
+      new Request(url, { headers: { accept: "application/json" } }),
+    );
+    expect(jsonRes.status).toBe(400);
+    expect(jsonRes.headers.get("content-type")).toBe("application/json");
+    expect(await jsonRes.json()).toEqual({ code: "unknown_tenant", message: "tenant not found" });
+  });
+
+  test("discovery failure renders HTML while explicit JSON clients keep the error envelope", async () => {
+    const provider = createOidcProvider({
+      db: testDb.db,
+      issuerUrl: "http://127.0.0.1:1",
+      clientId: CLIENT_ID,
+      redirectUri: REDIRECT_URI,
+      tenantSlug: "oidc-real",
+    });
+    const url = "http://127.0.0.1:0/v1/identity/login/start";
+
+    const browserRes = await provider.startLogin!(new Request(url));
+    expect(browserRes.status).toBe(502);
+    expect(browserRes.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await browserRes.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain("The sign-in provider is temporarily unavailable.");
+    expect(html).not.toStartWith("{");
+
+    const jsonRes = await provider.startLogin!(
+      new Request(url, { headers: { accept: "application/json" } }),
+    );
+    expect(jsonRes.status).toBe(502);
+    expect(jsonRes.headers.get("content-type")).toBe("application/json");
+    expect(await jsonRes.json()).toEqual({
+      code: "oidc_discovery_failed",
+      message: "issuer discovery failed",
+    });
+  });
+
   test("unknown state renders the shared HTML error page with a fresh entry point", async () => {
     const provider = buildProvider();
     const res = await provider.finishLogin!(
