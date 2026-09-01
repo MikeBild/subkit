@@ -19,7 +19,7 @@ describe("stateless application replacement", () => {
   test("PostgreSQL settings and S3 bytes survive a container replacement", async () => {
     expect(engineMounts()).toEqual([]);
 
-    const suffix = `${process.pid.toString(36)}-${Date.now().toString(36)}`;
+    const suffix = process.pid.toString(36);
     const workflow = await dockerApi<{ id: string }>(env, "POST", "/v1/workflows", {
       name: `Stateless replacement ${suffix}`,
       slug: `stateless-replacement-${suffix}`,
