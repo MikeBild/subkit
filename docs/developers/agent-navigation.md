@@ -171,7 +171,7 @@ layer, stop and move it.
 - **`packages/shared/`** — shared domain types & helpers. Pure, deterministic, no
   `apps/*` imports. See `packages/shared/AGENTS.md` for stricter rules.
 
-Subsystem map inside `apps/engine/src/` (46 directories + 5 loose root files):
+Subsystem map inside `apps/engine/src/` (47 directories + 5 loose root files):
 
 | Concern | Directory | Key docs |
 |---|---|---|
@@ -206,6 +206,7 @@ Subsystem map inside `apps/engine/src/` (46 directories + 5 loose root files):
 | PG LISTEN/NOTIFY streaming | `pubsub/` | `docs/concepts/workflows.md` |
 | pg-boss handler dispatch | `queue/` | `docs/concepts/workflows.md` |
 | RBAC (40+ permissions) + ABAC + policies | `rbac/` | `docs/admins/rbac-and-roles.md` |
+| Immutable DB-backed config revisions, encrypted secret versions, replica activation ACK/NACK, and restart promotion | `runtime-config/` | `docs/admins/configuration.md` |
 | 5-tier QuickJS-WASM isolation | `sandboxes/` | `docs/concepts/workflows.md` |
 | Cron reconciler + schedule fires | `scheduler/` | `docs/concepts/workflows.md` |
 | Connector endpoint schema tracking | `schema-versions/` | `docs/concepts/workflows.md` |
