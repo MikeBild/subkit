@@ -37,7 +37,9 @@ export const executions = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
-    workflow_id: uuid("workflow_id").references(() => workflows.id, { onDelete: "cascade" }),
+    workflow_id: uuid("workflow_id").references(() => workflows.id, {
+      onDelete: "cascade",
+    }),
     workflow_version_id: uuid("workflow_version_id").references(() => workflowVersions.id, {
       onDelete: "cascade",
     }),
@@ -52,6 +54,7 @@ export const executions = pgTable(
     execution_mode: executionModeEnum("execution_mode").notNull(),
     parent_execution_id: uuid("parent_execution_id"),
     result_storage_uri: text("result_storage_uri"),
+    result_sha256: text("result_sha256"),
     // Durable control-plane intent. The HTTP cancel request may land on a
     // different replica from the worker that owns the in-memory
     // AbortController, so the database is the cross-replica source of truth.
@@ -91,6 +94,7 @@ export const executionSteps = pgTable(
     input_preview: jsonb("input_preview"),
     output_preview: jsonb("output_preview"),
     result_storage_uri: text("result_storage_uri"),
+    result_sha256: text("result_sha256"),
     result_preview: text("result_preview"),
     request_meta: jsonb("request_meta"),
     duration_ms: integer("duration_ms"),
@@ -133,7 +137,9 @@ export const executionFixtures = pgTable(
     // `connector_id`, `endpoint_key`, `request`, `response` are populated
     // for self-healing dry-run fixtures (kind='fixture'). For
     // kind='offload' rows they are null and the payload lives on `body`.
-    connector_id: uuid("connector_id").references(() => connectors.id, { onDelete: "cascade" }),
+    connector_id: uuid("connector_id").references(() => connectors.id, {
+      onDelete: "cascade",
+    }),
     endpoint_key: text("endpoint_key"),
     request: jsonb("request"),
     response: jsonb("response"),
@@ -168,7 +174,9 @@ export const patchCandidates = pgTable(
     // of inserting a fresh row every hour — the patch_candidates flood
     // fix. Null for workflow-scoped signals (stdlib_version_drift,
     // validation_failed) which carry no endpoint anchor.
-    connector_id: uuid("connector_id").references(() => connectors.id, { onDelete: "cascade" }),
+    connector_id: uuid("connector_id").references(() => connectors.id, {
+      onDelete: "cascade",
+    }),
     endpoint_key: text("endpoint_key"),
     diff: jsonb("diff").notNull(),
     classification: patchClassificationEnum("classification").notNull(),
@@ -178,7 +186,9 @@ export const patchCandidates = pgTable(
     // counts the next N executions on this workflow and fills in the
     // outcome_{successes,failures}_after numbers so operators can see
     // whether the patch actually prevented recurrence.
-    outcome_window_ended_at: timestamp("outcome_window_ended_at", { withTimezone: true }),
+    outcome_window_ended_at: timestamp("outcome_window_ended_at", {
+      withTimezone: true,
+    }),
     outcome_successes_after: integer("outcome_successes_after").default(0).notNull(),
     outcome_failures_after: integer("outcome_failures_after").default(0).notNull(),
     ...timestamps,

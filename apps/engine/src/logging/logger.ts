@@ -16,7 +16,7 @@ const LEVEL_WEIGHT = LOG_LEVEL_WEIGHT;
 type RenderMode = "pretty" | "ndjson";
 
 // Phase 1 boot defaults: read only NODE_ENV + TTY. LOG_LEVEL / LOG_FORMAT
-// have moved into subkit.config.json (see apps/engine/src/config/schema.ts).
+// live in the active PostgreSQL runtime snapshot (see apps/engine/src/config/schema.ts).
 // `reconfigureLogger()` swaps these to the configured values right after
 // `loadConfig()` resolves; until then the logger is the only safe surface
 // for boot-time error reporting (no `console.*` anywhere).

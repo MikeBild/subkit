@@ -11,8 +11,8 @@
 //
 // Customer file bytes live exclusively in subkit's own object store —
 // there is deliberately no provider-side (Files API) storage of customer
-// files. The canonical shape is `{ "$file": "fid_<uuid>" }`;
-// `subkit-file://<fid>` is the public locator.
+// files. The canonical public shape is `{ "$file": "fid_<uuid>" }`;
+// internal storage locators are provider-neutral `s3://<bucket>/<key>` URIs.
 //
 // `file_links` is a thin polymorphic join. `resource_type` enumerates the
 // owning subsystems, `resource_id` is the row id in that subsystem, and
@@ -64,11 +64,13 @@ export const files = pgTable(
     filename: text("filename").notNull(),
     content_type: text("content_type"),
     size_bytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
-    // Backend-specific URI. Local disk uses `local://<key>`; S3 uses
-    // `s3://<bucket>/<key>`; legacy snapshots may carry `memory://`.
+    // Canonical rows use `s3://<bucket>/<key>`. Legacy snapshots may carry
+    // `local://` or `memory://` until the stateless bridge rewrites them.
     storage_uri: text("storage_uri").notNull(),
     sha256: text("sha256"),
-    upload_url_expires_at: timestamp("upload_url_expires_at", { withTimezone: true }),
+    upload_url_expires_at: timestamp("upload_url_expires_at", {
+      withTimezone: true,
+    }),
     scan_result: text("scan_result"),
     created_by: uuid("created_by"),
     ...timestamps,

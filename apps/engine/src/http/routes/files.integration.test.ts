@@ -1,14 +1,15 @@
 // Integration tests for the unified files HTTP surface.
 //
-// Covers: full inline cycle, presigned cycle, dedup, range requests,
+// Covers: full inline cycle, authenticated streaming cycle, dedup, range requests,
 // RBAC (401 / 403), tenant isolation (404 cross-tenant), and malformed
 // finalize rejection. Real Postgres via createHttpTestServer (includes
-// loadConfig); real local-disk object store.
+// loadConfig); in-memory provider-neutral object-store test double.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { apiKeys, auditLog, roles, tenants, users } from "../../db/schema/index.ts";
+import { parseFileIdOrThrow } from "../../api/files-schemas.ts";
+import { apiKeys, auditLog, files, roles, tenants, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 
@@ -240,14 +241,14 @@ describe("files HTTP integration", () => {
     expect(crHeader).toContain("bytes 4-7/16");
   });
 
-  test("presigned batch-create cycle: batch-create → PUT upload → finalize → GET content", async () => {
-    const content = "presigned-content-test";
+  test("batch-create cycle: batch-create → authenticated PUT → finalize → GET content", async () => {
+    const content = "authenticated-upload-content-test";
     const sha256 = sha256Hex(Buffer.from(content));
 
     const bcr = await post("/v1/files/batch-create", srv.apiKey, {
       files: [
         {
-          filename: "presigned.txt",
+          filename: "authenticated.txt",
           content_type: "text/plain",
           size_bytes: Buffer.from(content).byteLength,
           sha256,
@@ -260,13 +261,17 @@ describe("files HTTP integration", () => {
     const entry = bcBody.files[0]!;
     expect(entry.id).toMatch(/^fid_/);
 
-    // PUT to the local sink URL
+    // PUT to the authenticated engine upload endpoint.
     const putUrl = entry.upload_url.startsWith("http")
       ? entry.upload_url
       : `${srv.baseUrl}${entry.upload_url}`;
     const pr = await fetch(putUrl, {
       method: "PUT",
-      headers: { "content-length": String(Buffer.from(content).byteLength), connection: "close" },
+      headers: {
+        authorization: `Bearer ${srv.apiKey}`,
+        "content-length": String(Buffer.from(content).byteLength),
+        connection: "close",
+      },
       body: content,
     });
     expect(pr.status).toBe(200);
@@ -282,6 +287,33 @@ describe("files HTTP integration", () => {
     expect(gr.status).toBe(200);
     const text = await gr.text();
     expect(text).toBe(content);
+  });
+
+  test("expired upload slots fail closed before object-store I/O", async () => {
+    const content = "expired-slot-content";
+    const created = await post("/v1/files/batch-create", srv.apiKey, {
+      files: [
+        {
+          filename: "expired.txt",
+          content_type: "text/plain",
+          size_bytes: Buffer.byteLength(content),
+        },
+      ],
+    });
+    const entry = ((await created.json()) as { files: Array<{ id: string; upload_url: string }> })
+      .files[0]!;
+    await srv.db
+      .update(files)
+      .set({ upload_url_expires_at: new Date(0) })
+      .where(eq(files.id, parseFileIdOrThrow(entry.id)));
+
+    const response = await fetch(`${srv.baseUrl}${entry.upload_url}`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${srv.apiKey}` },
+      body: content,
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "conflict" });
   });
 
   test("finalize with wrong sha256 is rejected with 422", async () => {
@@ -304,7 +336,11 @@ describe("files HTTP integration", () => {
     const putUrl = entry.upload_url.startsWith("http")
       ? entry.upload_url
       : `${srv.baseUrl}${entry.upload_url}`;
-    await fetch(putUrl, { method: "PUT", body: content });
+    await fetch(putUrl, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${srv.apiKey}` },
+      body: content,
+    });
 
     const fr = await post(`/v1/files/${entry.id}/finalize`, srv.apiKey, { sha256: wrongSha });
     expect(fr.status).toBe(422);

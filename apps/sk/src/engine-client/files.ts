@@ -1,4 +1,4 @@
-// Files surfaces of the engine client — inline + presigned uploads,
+// Files surfaces of the engine client — inline + authenticated streamed uploads,
 // downloads, links, and stats. Method group merged into `EngineClient`
 // by `../engine-client.ts`.
 
@@ -70,7 +70,8 @@ export interface FileStatsWire {
 /** Inline-upload cap + link-resource-type enum — re-exported from the
  *  shared constants module so the CLI cannot drift from the engine's
  *  413 threshold or link-target whitelist. Above the inline cap the
- *  CLI must use `batchCreateFiles` + `putToPresignedUrl` +
+ *  CLI must use `batchCreateFiles` + the authenticated streamed upload helper
+ *  (`putToPresignedUrl` is retained as its legacy method name) +
  *  `finalizeFile`; the resource-type tuple is consumed by
  *  `parseResourceRef` to reject bad `--link-to` / `--linked-to`
  *  values locally. */
@@ -169,7 +170,7 @@ export const filesMethods = {
     return FileWireSchema.parse(raw);
   },
 
-  /** Batch-create — issue presigned PUT URLs for files >5 MB. */
+  /** Batch-create — issue authenticated engine PUT endpoints for files >5 MB. */
   async batchCreateFiles(
     this: EngineClient,
     req: BatchCreateRequest,
@@ -178,11 +179,9 @@ export const filesMethods = {
     return BatchCreateResponseSchema.parse(raw);
   },
 
-  /** PUT bytes to a presigned URL with progress callback. The URL is
-   *  treated as absolute when it carries a scheme, relative-to-engine
-   *  otherwise — the local-disk presign sink at
-   *  `/v1/files/{id}/upload` returns a relative path so the CLI can
-   *  swap engine bases between profiles without re-presigning. */
+  /** PUT bytes to an upload URL with progress callback. The legacy method
+   *  name remains wire-compatible. Relative URLs target the authenticated
+   *  engine endpoint; absolute URLs are supported for older engines. */
   async putToPresignedUrl(
     this: EngineClient,
     url: string,
@@ -195,9 +194,13 @@ export const filesMethods = {
     // Bun's fetch supports `ReadableStream` bodies with `duplex: "half"`.
     // The progress callback fires from the byte-counter wrapper around
     // the stream, not from the response itself.
+    // Relative upload endpoints are engine-authenticated and must carry the
+    // profile bearer token. Never forward that credential to an absolute
+    // third-party URL retained for compatibility with older engines.
+    const requestHeaders = isAbsolute ? headers : this.headers(headers);
     const init: RequestInit & { duplex?: "half" } = {
       method: "PUT",
-      headers,
+      headers: requestHeaders,
       body,
     };
     if (body instanceof ReadableStream) init.duplex = "half";
@@ -215,7 +218,7 @@ export const filesMethods = {
     if (onProgress) onProgress(0, 0);
   },
 
-  /** Finalize a presigned upload — server recomputes sha256 and
+  /** Finalize a streamed upload — server recomputes sha256 and
    *  rejects 422 on mismatch. */
   async finalizeFile(this: EngineClient, id: string, sha256: string): Promise<FileWire> {
     const raw = await this.request<unknown>(

@@ -60,9 +60,9 @@ export interface RunStepOutcome {
   raw_output?: unknown;
   /**
    * Durable locator of this step's offloaded result, when the step's
-   * payload exceeded `STEP_RESULT_DB_BYTES` and was spilled to S3 or
-   * the `execution_fixtures` table. `fixture://<uuid>` or
-   * `s3://<bucket>/<key>`; `null` when the result was small enough to
+   * payload exceeded `STEP_RESULT_DB_BYTES` and was spilled to S3.
+   * `s3://<bucket>/<key>` for new writes (`fixture://<uuid>` is legacy);
+   * `null` when the result was small enough to
    * persist inline. The loop runner reuses this locator to build an
    * `OffloadRef` without a second offload write.
    */
@@ -75,6 +75,8 @@ export interface RunStepOutcome {
   result_preview?: string | null;
   /** Serialized byte size of the step result (offloaded or inline). */
   result_size_bytes?: number;
+  /** Application SHA-256 of the serialized result. */
+  result_sha256?: string;
 }
 
 // Redact step output keys the recipe declared as
@@ -94,7 +96,9 @@ function applyDeclaredSecrets(step: StepDef, value: unknown): unknown {
   if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
     return value;
   }
-  const out: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+  const out: Record<string, unknown> = {
+    ...(value as Record<string, unknown>),
+  };
   for (const key of secretKeys) {
     if (key in out) out[key] = "***REDACTED:secret_output***";
   }
@@ -191,6 +195,7 @@ export async function runStep(
         output_preview: offload.storage_uri ? null : (scrubbedScope ?? null),
         result_preview: offload.preview ?? previewOf(scrubbedScope ?? null),
         result_storage_uri: offload.storage_uri,
+        result_sha256: offload.sha256,
       });
       log.execution.step.failed({
         step_id: step.id,
@@ -206,6 +211,7 @@ export async function runStep(
         result_storage_uri: offload.storage_uri,
         result_preview: offload.preview,
         result_size_bytes: offload.size_bytes,
+        result_sha256: offload.sha256,
       };
     }
   }
@@ -297,7 +303,12 @@ export async function runStep(
       break;
     }
     case "transform":
-      result = await runTransformStep({ ctx, step, scope, input: workflowInput });
+      result = await runTransformStep({
+        ctx,
+        step,
+        scope,
+        input: workflowInput,
+      });
       break;
     case "wait":
       result = await runWaitStep({ ctx, step });
@@ -471,6 +482,7 @@ export async function runStep(
     output_preview,
     result_preview: offload.preview ?? previewOf(scrubbedScope ?? null),
     result_storage_uri: offload.storage_uri,
+    result_sha256: offload.sha256,
   });
 
   logger.debug({
@@ -503,5 +515,6 @@ export async function runStep(
     result_storage_uri: offload.storage_uri,
     result_preview: offload.preview,
     result_size_bytes: offload.size_bytes,
+    result_sha256: offload.sha256,
   };
 }

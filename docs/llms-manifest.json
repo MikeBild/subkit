@@ -280,7 +280,7 @@
       "audience": "admins",
       "path": "docs/admins/configuration.md",
       "title": "Configuring the engine",
-      "summary": "Either the configuration is valid or the engine does not start — there is no half-working middle state to debug later."
+      "summary": "SubKit keeps its canonical non-fundamental runtime configuration in PostgreSQL."
     },
     {
       "audience": "admins",

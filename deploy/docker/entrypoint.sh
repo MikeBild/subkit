@@ -1,37 +1,19 @@
 #!/usr/bin/env bash
-# Application bootstrap for the subkit image. PostgreSQL is intentionally an
-# external service; this process only owns product state below /data.
+# Stateless application bootstrap. PostgreSQL and the product object-store
+# bucket are the only durable state owners; this container uses /tmp as scratch.
 set -euo pipefail
 
 log() { printf '[subkit] %s\n' "$*" >&2; }
 
-DATA_DIR=/data
-CONFIG_DIR="$DATA_DIR/config"
-BLOBS_DIR="$DATA_DIR/blobs"
-export SUBKIT_CONFIG="${SUBKIT_CONFIG:-$CONFIG_DIR/subkit.config.json}"
 export NODE_ENV="${NODE_ENV:-production}"
 # The container is the trust boundary; bind all interfaces so Docker's
 # published-port mapping can reach the engine (loopback-only is unreachable
 # through `-p`). resolveListenHostname() honours this override.
 export ENGINE_LISTEN_HOST="${ENGINE_LISTEN_HOST:-0.0.0.0}"
 
-# Default file storage to a persistent path inside the volume unless the
-# operator overrode it. These are the engine's standard config-leaf overrides.
-# NOTE: the loader maps SK_OVERRIDE_<PATH> with a SINGLE underscore between
-# path segments (envKeyForLeaf joins leaf.path with "_"), so the leaf
-# storage.files.dir is SK_OVERRIDE_STORAGE_FILES_DIR — NOT double underscores.
-export SK_OVERRIDE_STORAGE_FILES_BACKEND="${SK_OVERRIDE_STORAGE_FILES_BACKEND:-local}"
-export SK_OVERRIDE_STORAGE_FILES_DIR="${SK_OVERRIDE_STORAGE_FILES_DIR:-$BLOBS_DIR}"
-
-# Point the engine's boot-dependency fs-write probe at the real state dirs on
-# the volume. Without these (systemd convention) the probe falls back to
-# /etc/subkit + /var/lib/subkit — absent and unwritable in this image — and
-# emits alarming but meaningless EACCES warnings on every boot. SUBKIT_CONFIG
-# already pins the actual config path, so this only steers the probe.
-export CONFIGURATION_DIRECTORY="${CONFIGURATION_DIRECTORY:-$CONFIG_DIR}"
-export STATE_DIRECTORY="${STATE_DIRECTORY:-$DATA_DIR}"
-
-mkdir -p "$CONFIG_DIR" "$BLOBS_DIR" "${HOME:-/data/home}"
+export CONFIGURATION_DIRECTORY="${CONFIGURATION_DIRECTORY:-/tmp/subkit-state}"
+export STATE_DIRECTORY="${STATE_DIRECTORY:-/tmp/subkit-state}"
+mkdir -p "$CONFIGURATION_DIRECTORY" "$STATE_DIRECTORY" "${HOME:-/tmp/subkit-home}"
 
 read_secret_file() {
   name="$1"
@@ -68,12 +50,7 @@ fi
   exit 64
 }
 
-# --- MASTER_KEY: env > persisted > generated ------------------------------
-# Auto-generate on first boot for a frictionless trial, but PERSIST it so
-# restarts can still decrypt stored credentials. Production operators should
-# supply their own MASTER_KEY (lose it and every encrypted credential is
-# unrecoverable).
-KEY_FILE="${MASTER_KEY_PERSIST_FILE:-$CONFIG_DIR/master.key}"
+# --- MASTER_KEY: env or secret-file binding -------------------------------
 if [ -n "${MASTER_KEY_FILE:-}" ]; then
   file_master_key="$(read_secret_file MASTER_KEY "$MASTER_KEY_FILE")"
   if [ -n "${MASTER_KEY:-}" ] && [ "$MASTER_KEY" != "$file_master_key" ]; then
@@ -83,31 +60,11 @@ if [ -n "${MASTER_KEY_FILE:-}" ]; then
   MASTER_KEY="$file_master_key"
 fi
 if [ -z "${MASTER_KEY:-}" ]; then
-  if [ -s "$KEY_FILE" ]; then
-    MASTER_KEY="$(cat "$KEY_FILE")"
-    log "loaded persisted MASTER_KEY from $KEY_FILE"
-  else
-    MASTER_KEY="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
-    ( umask 077; printf '%s' "$MASTER_KEY" >"$KEY_FILE" )
-    log "generated a new MASTER_KEY and persisted it to $KEY_FILE"
-    log "WARNING: for production set MASTER_KEY yourself — losing this key makes stored credentials unrecoverable."
-  fi
+  log "MASTER_KEY or MASTER_KEY_FILE is required; stateless containers never generate or persist it"
+  exit 64
 fi
 export MASTER_KEY
 log "using external PostgreSQL"
-
-# Persist the resolved bootstrap env so the engine/sk wrappers can make
-# one-off `docker exec` invocations (e.g. `engine --issue-admin-key`) work
-# without the operator re-supplying DATABASE_URL/MASTER_KEY. The static
-# vars (NODE_ENV, SUBKIT_CONFIG, …) are already in the image ENV and thus
-# inherited by docker exec; only the dynamic ones need persisting.
-RUNTIME_ENV="$CONFIG_DIR/runtime.env"
-( umask 077; {
-  printf 'DATABASE_URL=%q\n' "$DATABASE_URL"
-  printf 'MASTER_KEY=%q\n' "$MASTER_KEY"
-  printf 'SK_OVERRIDE_STORAGE_FILES_BACKEND=%q\n' "$SK_OVERRIDE_STORAGE_FILES_BACKEND"
-  printf 'SK_OVERRIDE_STORAGE_FILES_DIR=%q\n' "$SK_OVERRIDE_STORAGE_FILES_DIR"
-} >"$RUNTIME_ENV" )
 
 cat >&2 <<'BANNER'
 ──────────────────────────────────────────────────────────────────────

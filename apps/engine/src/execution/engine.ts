@@ -224,7 +224,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   const ctrl = registerAbort(execution_id, tenant_id);
   if (opts.signal) {
     if (opts.signal.aborted) ctrl.abort("aborted");
-    else opts.signal.addEventListener("abort", () => ctrl.abort("aborted"), { once: true });
+    else
+      opts.signal.addEventListener("abort", () => ctrl.abort("aborted"), {
+        once: true,
+      });
   }
   const totalTimeoutCtrl = new AbortController();
   const totalTimer = setTimeout(
@@ -293,7 +296,11 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   // when it returns a falsy verdict or throws. Used to surface a
   // typed `validation_failed` error on the run result so the
   // self-healing flow can act on it.
-  let validationError: { code: string; message: string; details?: unknown } | null = null;
+  let validationError: {
+    code: string;
+    message: string;
+    details?: unknown;
+  } | null = null;
   const skippedStepIds = new Set<string>();
   // Hold-writes bookkeeping: ids of steps whose response data is
   // missing — either held (write materialized but never dispatched) or
@@ -505,7 +512,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         // Deterministic clock/id for `sk.now()`/`sk.uuid()` in the
         // selector — the execution's fixed instant + a per-step seed, same
         // wiring as steps/transform.ts.
-        { now_ms: ctx.started_at.getTime(), seed: `${execution_id}:${step.id}` },
+        {
+          now_ms: ctx.started_at.getTime(),
+          seed: `${execution_id}:${step.id}`,
+        },
       );
       // Circuit-breaker preflight (audit H1): when the target connector's
       // breaker is already open, every iteration would fail fast with
@@ -568,7 +578,11 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             retry_count: failedResult.retry_count ?? 0,
             error: failedResult.error ?? null,
           },
-          { output_preview: null, result_preview: null, result_storage_uri: null },
+          {
+            output_preview: null,
+            result_preview: null,
+            result_storage_uri: null,
+          },
         );
         stepSummaries.push({
           step_key: step.id,
@@ -601,7 +615,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                 status: "skipped",
                 duration_ms: 0,
                 retry_count: 0,
-                error: { code: "skipped", message: "skipped due to upstream failure" },
+                error: {
+                  code: "skipped",
+                  message: "skipped due to upstream failure",
+                },
                 request_meta: null,
               });
             }
@@ -643,7 +660,11 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             duration_ms: warnResult.duration_ms ?? 0,
             retry_count: 0,
           },
-          { output_preview: [], result_preview: null, result_storage_uri: null },
+          {
+            output_preview: [],
+            result_preview: null,
+            result_storage_uri: null,
+          },
         );
         stepSummaries.push({
           step_key: step.id,
@@ -718,7 +739,11 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           action: "step",
           level: "debug",
           thresholdMs: 1000,
-          fields: { step_id: step.id, step_kind: step.kind, for_each_index: itemIdx },
+          fields: {
+            step_id: step.id,
+            step_kind: step.kind,
+            for_each_index: itemIdx,
+          },
           fn: () =>
             runStep(
               iterCtx,
@@ -733,7 +758,9 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         // already has them; the parent scope's step.id key carries the
         // aggregate after all iterations complete.
         childScope[step.id] = envelopeFor(iterOutcome);
-        slots[itemIdx] = { [step.id]: bodyEnvelopeForLoopAccumulator(iterOutcome) };
+        slots[itemIdx] = {
+          [step.id]: bodyEnvelopeForLoopAccumulator(iterOutcome),
+        };
         if (
           forEachFailure === null &&
           (iterOutcome.result.status === "failed" ||
@@ -820,7 +847,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           return iterProductive;
         }).length;
         if (offloadedIterations > 0) {
-          recordLoopIterationsOffloaded({ tenant_id, count: offloadedIterations });
+          recordLoopIterationsOffloaded({
+            tenant_id,
+            count: offloadedIterations,
+          });
         }
         if (productiveIterations === 0) {
           warningsAccum.push({
@@ -850,7 +880,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         ? (failedOutcome.result.status as "failed" | "aborted" | "timed_out")
         : "succeeded";
       const forEachError = failedOutcome
-        ? (failedOutcome.result.error ?? { code: "loop_body_failed", message: "loop body failed" })
+        ? (failedOutcome.result.error ?? {
+            code: "loop_body_failed",
+            message: "loop body failed",
+          })
         : null;
       await finalizeStepRow(
         db,
@@ -881,7 +914,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       });
       if (forEachStatus !== "succeeded") {
         const onError = step.on_error ?? "fail";
-        const stepError = forEachError ?? { code: "step_failed", message: "step failed" };
+        const stepError = forEachError ?? {
+          code: "step_failed",
+          message: "step failed",
+        };
         if (onError === "fail") {
           lastError = stepError;
           failedStepId = step.id;
@@ -901,7 +937,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               status: "skipped",
               duration_ms: 0,
               retry_count: 0,
-              error: { code: "skipped", message: "skipped due to upstream failure" },
+              error: {
+                code: "skipped",
+                message: "skipped due to upstream failure",
+              },
               request_meta: null,
             });
           }
@@ -1000,8 +1039,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         // operator saw `succeeded` over silently lost writes. A body step that
         // sets on_error:"continue" opts out of this, exactly as in the linear
         // walk.
-        let loopBodyFailure: { step_id: string; result: import("./types.ts").StepResult } | null =
-          null;
+        let loopBodyFailure: {
+          step_id: string;
+          result: import("./types.ts").StepResult;
+        } | null = null;
         for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
           const item = items[itemIdx];
           const childScope = buildLoopChildScope(loopStep, scope, item, itemIdx);
@@ -1122,7 +1163,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               bodyOutcome.result.status === "timed_out";
             if (bodyFailed && (bodyStep.on_error ?? "fail") === "fail") {
               if (loopBodyFailure === null) {
-                loopBodyFailure = { step_id: bodyStep.id, result: bodyOutcome.result };
+                loopBodyFailure = {
+                  step_id: bodyStep.id,
+                  result: bodyOutcome.result,
+                };
               }
               if (loopStep.fail_fast === true) break;
             } else if (bodyFailed) {
@@ -1271,7 +1315,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         module: "execution",
         action: "parallel",
         memory: true,
-        fields: { step_id: step.id, branch_count: parallelStep.branches.length },
+        fields: {
+          step_id: step.id,
+          branch_count: parallelStep.branches.length,
+        },
         fn: () =>
           Promise.all(
             parallelStep.branches.map(async (branchStepIds) => {
@@ -1342,7 +1389,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                   action: "step",
                   level: "debug",
                   thresholdMs: 1000,
-                  fields: { step_id: branchStepDef.id, step_kind: branchStepDef.kind },
+                  fields: {
+                    step_id: branchStepDef.id,
+                    step_kind: branchStepDef.kind,
+                  },
                   fn: () =>
                     runStep(
                       branchCtx,
@@ -1407,7 +1457,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     });
     if (outcome.result.status !== "succeeded") {
       const onError = step.on_error ?? "fail";
-      const stepError = outcome.result.error ?? { code: "step_failed", message: "step failed" };
+      const stepError = outcome.result.error ?? {
+        code: "step_failed",
+        message: "step failed",
+      };
       if (onError === "fail") {
         lastError = stepError;
         failedStepId = step.id;
@@ -1430,7 +1483,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             status: "skipped",
             duration_ms: 0,
             retry_count: 0,
-            error: { code: "skipped", message: "skipped due to upstream failure" },
+            error: {
+              code: "skipped",
+              message: "skipped due to upstream failure",
+            },
             request_meta: null,
           });
         }
@@ -1443,7 +1499,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         code: "step_failed_continued",
         step_key: step.id,
         message: `step "${step.id}" ${outcome.result.status} (${stepError.code}: ${stepError.message}) but declares on_error:"continue" — the run continued`,
-        details: { step_status: outcome.result.status, error_code: stepError.code },
+        details: {
+          step_status: outcome.result.status,
+          error_code: stepError.code,
+        },
       });
     }
   }
@@ -1524,7 +1583,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         const result = await runJs<unknown>({
           code: def.output_transform_function,
           input: lastOutput,
-          clock: { now_ms: execution_started_at, seed: `${execution_id}:output_transform` },
+          clock: {
+            now_ms: execution_started_at,
+            seed: `${execution_id}:output_transform`,
+          },
         });
         if (result.output !== undefined) lastOutput = result.output;
       } catch (err) {
@@ -1741,7 +1803,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       const result = await runJs<unknown>({
         code: def.validation_function,
         input: lastOutput,
-        clock: { now_ms: execution_started_at, seed: `${execution_id}:validation` },
+        clock: {
+          now_ms: execution_started_at,
+          seed: `${execution_id}:validation`,
+        },
       });
       const verdict = result.output;
       if (verdict === false) {
@@ -1817,6 +1882,8 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           error_message: failureDetail.message,
         }
       : null,
+    undefined,
+    offload.sha256,
   );
   // Closed-loop patch-candidate outcome tracking: every finalised
   // execution updates any open outcome window for this workflow so
@@ -1965,7 +2032,10 @@ async function runCallStep(
       status: "failed",
       retry_count: 0,
       duration_ms: Date.now() - start,
-      error: { code: "call_depth_exceeded", message: `max call depth ${MAX_CALL_DEPTH}` },
+      error: {
+        code: "call_depth_exceeded",
+        message: `max call depth ${MAX_CALL_DEPTH}`,
+      },
     };
   }
   // Resolve target workflow id by id or slug.
@@ -2069,13 +2139,20 @@ async function runCallStep(
     });
     return {
       status: child.status === "succeeded" ? "succeeded" : "failed",
-      output: { execution_id: child.execution_id, status: child.status, output: child.output },
+      output: {
+        execution_id: child.execution_id,
+        status: child.status,
+        output: child.output,
+      },
       retry_count: 0,
       duration_ms: Date.now() - start,
       error:
         child.status === "succeeded"
           ? null
-          : (child.error ?? { code: "child_failed", message: `child status ${child.status}` }),
+          : (child.error ?? {
+              code: "child_failed",
+              message: `child status ${child.status}`,
+            }),
     };
   } catch (err) {
     return {

@@ -50,6 +50,16 @@ import {
   listConfigLeaves,
 } from "../../config/walk.ts";
 import { logger } from "../../logging/index.ts";
+import {
+  activateRuntimeRevision,
+  createSecretVersion,
+  getRuntimeConfigState,
+  parseSecretReference,
+  RuntimeConfigConflictError,
+  RuntimeConfigNotFoundError,
+  RuntimeConfigValidationError,
+  saveRuntimeConfigPatch,
+} from "../../runtime-config/service.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -93,6 +103,12 @@ const LeafEntrySchema = z
 
 const SettingsListResponse = z
   .object({
+    saved_revision: z.number().int().positive().nullable(),
+    active_revision: z.number().int().positive().nullable(),
+    activation_status: z
+      .enum(["saved", "preparing", "active", "failed", "restart_required"])
+      .nullable(),
+    pending_restart_fields: z.array(z.string()),
     items: z.array(LeafEntrySchema),
     diagnostics: z.object({
       pending_restart_keys: z.array(z.string()),
@@ -233,8 +249,14 @@ const listRoute = createRoute({
       description: "All leaves (secrets masked)",
       content: { "application/json": { schema: SettingsListResponse } },
     },
-    401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    403: {
+      description: "Forbidden",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -253,8 +275,14 @@ const getRoute = createRoute({
       description: "Unknown leaf path",
       content: { "application/json": { schema: ErrorSchema } },
     },
-    401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    403: {
+      description: "Forbidden",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -280,7 +308,9 @@ const putRoute = createRoute({
     },
     409: {
       description: "Setting requires a restart in production; pass force=true to apply",
-      content: { "application/json": { schema: RestartRequiredSchema } },
+      content: {
+        "application/json": { schema: z.union([RestartRequiredSchema, ErrorSchema]) },
+      },
     },
     403: {
       description: "Scope violation or insufficient permissions",
@@ -290,7 +320,10 @@ const putRoute = createRoute({
       description: "Unknown leaf path",
       content: { "application/json": { schema: ErrorSchema } },
     },
-    401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -318,8 +351,19 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     }
     const items = buildLeafEntries(targetTenant);
     const diagnostics = getDiagnostics();
+    let runtimeState: Awaited<ReturnType<typeof getRuntimeConfigState>> | null = null;
+    try {
+      runtimeState = await getRuntimeConfigState(c.get("db"));
+    } catch (error) {
+      if (!(error instanceof RuntimeConfigNotFoundError)) throw error;
+    }
     return c.json(
       {
+        saved_revision: runtimeState?.saved_revision ?? null,
+        active_revision: runtimeState?.active_revision ?? null,
+        activation_status: runtimeState?.activation_status ?? null,
+        pending_restart_fields:
+          runtimeState?.pending_restart_fields ?? diagnostics.pending_restart_keys,
         items,
         diagnostics: {
           pending_restart_keys: diagnostics.pending_restart_keys,
@@ -376,6 +420,18 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     const leaf = findLeafByPath(path);
     if (!leaf) {
       return c.json({ code: "not_found", message: `unknown setting path: ${path}` }, 404);
+    }
+    if (path === "database.url") {
+      return c.json(
+        {
+          code: "validation_failed" as const,
+          message:
+            "database.url is bootstrap-only; rotate DATABASE_URL and restart replicas instead",
+          path: leaf.path,
+          expected: "DATABASE_URL process binding",
+        },
+        422,
+      );
     }
 
     // Scope guard: when ?tenant is set, the leaf must be scope:tenant.
@@ -436,7 +492,120 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     try {
-      const result = await setConfigKey(leaf.path, body.value, setOpts);
+      let result: Awaited<ReturnType<typeof setConfigKey>>;
+      let usedRevisionService = false;
+      if (process.env.NODE_ENV === "production") {
+        const db = c.get("db");
+        try {
+          const state = await getRuntimeConfigState(db);
+          const before = readDeep(getConfig(tenant), leaf.path);
+          let storedValue = body.value;
+          if (
+            leaf.meta.secret &&
+            typeof body.value === "string" &&
+            body.value.length > 0 &&
+            !parseSecretReference(body.value)
+          ) {
+            const secretName = tenant
+              ? `tenants.${tenant}.settings.${leaf.path.join(".")}`
+              : `settings.${leaf.path.join(".")}`;
+            const secret = await createSecretVersion(db, {
+              name: secretName,
+              value: body.value,
+              created_by: principal.id,
+            });
+            storedValue = secret.reference;
+            await auditAwait(
+              {
+                tenant_id: tenant ?? principal.tenant_id,
+                actor_type: principal.kind === "system_account" ? "system_account" : "user",
+                actor_id: principal.id,
+                action: AuditAction.SECRET_VERSION_CREATED,
+                resource_type: "runtime_secret",
+                resource_id: secret.reference,
+                metadata: {
+                  name: secret.name,
+                  version: secret.version,
+                  source: "legacy_leaf_adapter",
+                },
+              },
+              db,
+            );
+          }
+          const saved = await saveRuntimeConfigPatch(db, {
+            expected_revision: state.saved_revision,
+            changes: { [leaf.path.join(".")]: storedValue },
+            scope: tenant ? "tenant" : "global",
+            created_by: principal.id,
+            ...(tenant ? { tenant_id: tenant } : {}),
+          });
+          await auditAwait(
+            {
+              tenant_id: tenant ?? principal.tenant_id,
+              actor_type: principal.kind === "system_account" ? "system_account" : "user",
+              actor_id: principal.id,
+              action: AuditAction.SETTINGS_REVISION_SAVED,
+              resource_type: "runtime_config_revision",
+              resource_id: String(saved.saved_revision),
+              metadata: {
+                scope: tenant ? "tenant" : "global",
+                changed_paths: [leaf.path.join(".")],
+                active_revision: saved.active_revision,
+                pending_restart_fields: saved.pending_restart_fields,
+                source: "legacy_leaf_adapter",
+              },
+            },
+            db,
+          );
+          const restartRequired = saved.pending_restart_fields.length > 0;
+          const activated = await activateRuntimeRevision(db, saved.saved_revision);
+          await auditAwait(
+            {
+              tenant_id: tenant ?? principal.tenant_id,
+              actor_type: principal.kind === "system_account" ? "system_account" : "user",
+              actor_id: principal.id,
+              action:
+                activated.activation_status === "restart_required"
+                  ? AuditAction.SETTINGS_REVISION_RESTART_REQUIRED
+                  : activated.activation_status === "active"
+                    ? AuditAction.SETTINGS_REVISION_ACTIVATED
+                    : AuditAction.SETTINGS_REVISION_ACTIVATION_FAILED,
+              resource_type: "runtime_config_revision",
+              resource_id: String(saved.saved_revision),
+              metadata: {
+                activation_status: activated.activation_status,
+                source: "legacy_leaf_adapter",
+              },
+            },
+            db,
+          );
+          if (restartRequired && !body.force) {
+            throw new RestartRequiredError(
+              `${leaf.path.join(".")} was saved as revision ${saved.saved_revision} and requires a process restart before activation.`,
+            );
+          }
+          if (!restartRequired) {
+            if (activated.activation_status !== "active") {
+              throw new Error(
+                `runtime config revision ${saved.saved_revision} activation failed: ${activated.activation_status}`,
+              );
+            }
+          }
+          result = {
+            before,
+            after: body.value,
+            requiresRestart: restartRequired,
+            scope: tenant ? `tenant:${tenant}` : "global",
+            leafPath: leaf.path.join("."),
+          };
+          usedRevisionService = true;
+        } catch (error) {
+          if (!(error instanceof RuntimeConfigNotFoundError)) throw error;
+          result = await setConfigKey(leaf.path, body.value, setOpts);
+        }
+      } else {
+        result = await setConfigKey(leaf.path, body.value, setOpts);
+      }
 
       // Audit the change against the request-bound db so test setups
       // that point Hono at a testcontainer (and not the engine's own
@@ -461,6 +630,7 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
               scope: result.scope,
               requires_restart: result.requiresRestart,
               force_applied: !!body.force,
+              revision_service: usedRevisionService,
               ...(result.reconfigureFailed ? { reconfigure_failed: true } : {}),
               ...(auditSource ? { audit_source: auditSource } : {}),
               ...(deployVersion ? { deploy_version: deployVersion } : {}),
@@ -512,6 +682,20 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
           },
           422,
         );
+      }
+      if (err instanceof RuntimeConfigValidationError) {
+        return c.json(
+          {
+            code: "validation_failed" as const,
+            message: err.message,
+            path: leaf.path,
+            expected: leaf.kind,
+          },
+          422,
+        );
+      }
+      if (err instanceof RuntimeConfigConflictError) {
+        return c.json({ code: err.code, message: err.message }, 409);
       }
       if (err instanceof RestartRequiredError) {
         return c.json(

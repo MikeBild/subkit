@@ -31,7 +31,7 @@ function getSecret(): string {
   const s = process.env.WAIT_FOR_EVENT_HMAC_SECRET;
   if (!s || s.length < 16) {
     throw new Error(
-      "WAIT_FOR_EVENT_HMAC_SECRET is unset or too short (>= 16 chars). Set it in subkit.config.json or the engine env.",
+      "WAIT_FOR_EVENT_HMAC_SECRET is unset or too short (>= 16 chars). Set it through the runtime settings API.",
     );
   }
   return s;

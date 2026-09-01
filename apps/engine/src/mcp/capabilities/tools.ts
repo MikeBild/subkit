@@ -10,8 +10,8 @@
 // - `tools/call` resolves the `wf.<slug>` tool name back to a workflow id,
 //   runs the execution inline via the P3 `runExecution` entry point (so
 //   tests + tool calls don't need a live pg-boss), and returns the final
-//   output. Results larger than the 20k char cap are offloaded to
-//   `execution_fixtures` via `maybeOffload`.
+//   output. Results larger than the 20k char cap reuse the execution's
+//   canonical immutable S3 offload pointer.
 //
 // - While the execution is running, a poller watches `execution_steps`
 //   for new rows and emits `notifications/progress` frames keyed by the
@@ -36,7 +36,7 @@ import type { Db } from "../../db/client.ts";
 import { executions, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { cancel } from "../../execution/abort.ts";
 import { runExecution } from "../../execution/engine.ts";
-import { maybeOffload } from "../../execution/offload.ts";
+import { previewOf } from "../../execution/offload.ts";
 import { logger } from "../../logging/logger.ts";
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
@@ -239,7 +239,10 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     // do not follow the pagination cursor; a larger-than-MAX catalog still
     // paginates, with the conversation cluster + named tools ordered first.
     const page = paginate("tools/list", tools, request.params?.cursor, tools.length);
-    return { tools: page.page, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}) };
+    return {
+      tools: page.page,
+      ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+    };
   });
 
   server.setRequestHandler(
@@ -393,7 +396,12 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           });
           return {
             isError: true,
-            content: [{ type: "text" as const, text: CONVERSATION_TOOL_MCP_UNAVAILABLE_REASON }],
+            content: [
+              {
+                type: "text" as const,
+                text: CONVERSATION_TOOL_MCP_UNAVAILABLE_REASON,
+              },
+            ],
           };
         }
         // Accept `_meta.sk_permission_mode` on MCP calls so the sk REPL
@@ -508,7 +516,10 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         }
         return {
           isError: result.isError,
-          content: result.content.map((c) => ({ type: "text" as const, text: c.text })),
+          content: result.content.map((c) => ({
+            type: "text" as const,
+            text: c.text,
+          })),
         };
       }
 
@@ -843,19 +854,29 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     // Offload if oversize. Warnings travel with the envelope.
     const serialized = JSON.stringify(rawBody);
     if (serialized.length > MCP_OFFLOAD_CHAR_CAP) {
-      const off = await maybeOffload(db, {
-        tenant_id: principal.tenant_id,
-        execution_id: result.execution_id,
-        step_id: null,
-        result: result.output,
-      });
+      const [persisted] = await db
+        .select({ result_storage_uri: executions.result_storage_uri })
+        .from(executions)
+        .where(
+          and(
+            eq(executions.tenant_id, principal.tenant_id),
+            eq(executions.id, result.execution_id),
+          ),
+        )
+        .limit(1);
+      const outputSerialized = JSON.stringify(result.output) ?? "null";
+      const off = {
+        storage_uri: persisted?.result_storage_uri ?? null,
+        preview: previewOf(result.output),
+        size_bytes: Buffer.byteLength(outputSerialized, "utf8"),
+      };
       // MCP `resource_link` content block. The previous
       // text-encoded JSON envelope forced clients to parse a string
-      // field to discover the fixture URI; LLM agents rarely follow
+      // field to discover the object URI; LLM agents rarely follow
       // such pointers without explicit instruction.
       // `resource_link` is the native protocol affordance: compliant
       // clients can auto-fetch, surface to the user, or expose the
-      // URI as a follow-up call. Pairs with the `fixture://` reader
+      // URI as a follow-up call. Pairs with the `s3://` reader
       // in apps/engine/src/mcp/capabilities/resources.ts.
       const summaryLines: string[] = [
         `Execution ${result.execution_id} ${result.status}; result is ${off.size_bytes} bytes (offloaded — inline cap is ${MCP_OFFLOAD_CHAR_CAP} bytes).`,
@@ -866,11 +887,9 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       }
       const storageUri = off.storage_uri;
       if (!storageUri) {
-        // Shouldn't happen: maybeOffload always returns a uri when
-        // size > STEP_RESULT_DB_BYTES (10 KB), and we are here
-        // because serialized > MCP_OFFLOAD_CHAR_CAP (20 KB). Belt
-        // and braces — if it ever does, fall back to inline text
-        // so the client still gets the payload.
+        // A >20 KB result should already have crossed the execution's 10 KB
+        // offload threshold. If persistence did not materialize a pointer,
+        // return inline rather than creating an unowned/orphan object.
         return {
           isError: result.status !== "succeeded",
           content: [{ type: "text" as const, text: serialized }],

@@ -151,11 +151,11 @@ describe("E2: dedup hit", () => {
 });
 
 // ---------------------------------------------------------------------------
-// E3 — Presigned upload (>5 MB)
+// E3 — Authenticated streamed upload (>5 MB)
 // ---------------------------------------------------------------------------
 
-describe("E3: presigned upload (large file)", () => {
-  test("file >5 MB goes through batch-create + presign path", async () => {
+describe("E3: authenticated streamed upload (large file)", () => {
+  test("file >5 MB goes through batch-create + streamed PUT path", async () => {
     const largePath = join(fixtureDir, "large.bin");
     // 6 MB — above the 5 MB inline threshold.
     writeFileSync(largePath, Buffer.alloc(6 * 1024 * 1024, 0xcc));

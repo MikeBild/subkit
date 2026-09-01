@@ -138,10 +138,9 @@ describe(`secret-mask leak audit — ${SECRET_LEAVES.length} secret leaves`, () 
     const dotted = SECRET_LEAVES.map((l) => dottedPath(l));
     expect(dotted).toContain("llm.api_key");
     expect(dotted).toContain("auth.session.secret");
-    expect(dotted).toContain("storage.s3.access_key");
-    expect(dotted).toContain("storage.s3.secret_key");
-    expect(dotted).toContain("storage.offload.access_key");
-    expect(dotted).toContain("storage.offload.secret_key");
+    expect(dotted).toContain("storage.object_store.access_key_id");
+    expect(dotted).toContain("storage.object_store.secret_access_key");
+    expect(dotted).toContain("storage.object_store.session_token");
     expect(dotted).toContain("mcp.api_key");
     expect(dotted).toContain("observability.langfuse.secret_key");
   });

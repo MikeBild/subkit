@@ -46,7 +46,7 @@ export interface ErrorRing {
   clear(): void;
 }
 
-// errors.ring_size lives in subkit.config.json but the process-wide ring is a
+// errors.ring_size lives in the active runtime revision but the process-wide ring is a
 // singleton, so settings writes require restart before the capacity changes.
 
 function truncateStack(stack: string | null | undefined): string | null {

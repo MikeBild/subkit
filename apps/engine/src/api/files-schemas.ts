@@ -107,27 +107,29 @@ export const InlineUploadSchema = z
 
 const SHA256_REGEX = /^[0-9a-f]{64}$/;
 
-/** Hard ceiling on any presign-issued upload. A client may declare an
+/** Hard ceiling on any authenticated streamed upload. A client may declare an
  *  oversize `size_bytes` at batch-create time; we reject the entry at
- *  the schema layer before minting a token. The finalize verifier
+ *  the schema layer before creating a slot. The finalize verifier
  *  re-enforces this against the row before doing the digest read so a
  *  pre-cap-rollout token in flight cannot drive the engine into a
- *  multi-GB disk read. 5 GB matches the per-object S3 single-PUT limit;
- *  multipart uploads against larger objects land in a future wave. */
-export const MAX_PRESIGN_BYTES = 5 * 1024 * 1024 * 1024;
+ *  multi-GB verification read. The shared object-store adapter selects
+ *  single PUT or 64 MiB multipart parts underneath this endpoint. */
+export const MAX_STREAM_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024;
+/** Compatibility alias for SDKs compiled against the former presign path. */
+export const MAX_PRESIGN_BYTES = MAX_STREAM_UPLOAD_BYTES;
 
 /** Same ceiling, surfaced as a finalize-side guard name so the call
  *  sites read symmetrically. They are intentionally one constant; if a
- *  future wave splits the two (e.g. multipart raising the presign ceiling
+ *  future wave splits the two (e.g. multipart raising the upload ceiling
  *  while finalize keeps a smaller streamed-digest budget) the names give
  *  the right knob to turn. */
-export const MAX_FINALIZE_VERIFY_BYTES = MAX_PRESIGN_BYTES;
+export const MAX_FINALIZE_VERIFY_BYTES = MAX_STREAM_UPLOAD_BYTES;
 
 /** Per-file entry in a batch-create request. The client supplies known
- *  metadata up front; the engine returns either a presigned PUT URL (new
+ *  metadata up front; the engine returns either an authenticated PUT endpoint (new
  *  upload) or a dedup hit pointing at an existing file id. The
- *  `MAX_PRESIGN_BYTES` cap on `size_bytes` is the engine-side defence
- *  against a rogue client minting a 100 GB token. */
+ *  `MAX_STREAM_UPLOAD_BYTES` cap on `size_bytes` is the engine-side defence
+ *  against a rogue client reserving a 100 GB slot. */
 export const BatchCreateEntrySchema = z
   .object({
     filename: z.string().min(1).max(255),
@@ -136,8 +138,8 @@ export const BatchCreateEntrySchema = z
       .number()
       .int()
       .nonnegative()
-      .max(MAX_PRESIGN_BYTES, {
-        message: `size_bytes exceeds presign ceiling of ${MAX_PRESIGN_BYTES} bytes`,
+      .max(MAX_STREAM_UPLOAD_BYTES, {
+        message: `size_bytes exceeds upload ceiling of ${MAX_STREAM_UPLOAD_BYTES} bytes`,
       }),
     /** Optional client-supplied sha256 (hex). When present, enables the
      *  dedup-probe fast path; the server still verifies on finalize. */
@@ -149,12 +151,20 @@ export const BatchCreateRequestSchema = z
   .object({ files: z.array(BatchCreateEntrySchema).min(1).max(100) })
   .openapi("BatchCreateRequest");
 
-/** Per-file response. `upload_url` is empty for dedup hits. */
+/** Per-file response. `upload_url` is an authenticated, relative engine PUT
+ *  endpoint and is empty for dedup hits. Clients carry their normal Bearer
+ *  credential to this relative URL; they must never forward it to an absolute
+ *  legacy/provider URL. */
 export const BatchCreateResponseEntrySchema = z
   .object({
     id: FileIdSchema,
-    upload_url: z.string(),
-    headers: z.record(z.string(), z.string()),
+    upload_url: z.string().openapi({
+      description:
+        "Authenticated relative engine PUT endpoint; empty for dedup hits. Carry the normal Bearer credential only when the URL is relative.",
+    }),
+    headers: z.record(z.string(), z.string()).openapi({
+      description: "Required upload headers, including the known content-length.",
+    }),
     expires_in: z.number().int().nonnegative(),
     dedup: z.boolean(),
   })
@@ -270,7 +280,7 @@ export const FileListResponseSchema = z
 
 // Inline-upload cap — single source of truth lives in
 // `packages/shared/src/files-constants.ts` so the CLI and the engine
-// can never drift on the size that splits inline from presigned
+// can never drift on the size that splits inline from streamed
 // uploads.
 export { MAX_INLINE_BYTES } from "@shared/index.ts";
 

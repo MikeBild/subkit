@@ -39,7 +39,10 @@ beforeAll(async () => {
   cfgDir = mkdtempSync(join(tmpdir(), "sk-cfg-route-"));
   _resetConfigForTests();
   await loadConfig({
-    env: { DATABASE_URL: "postgres://placeholder/route-test", NODE_ENV: "test" },
+    env: {
+      DATABASE_URL: "postgres://placeholder/route-test",
+      NODE_ENV: "test",
+    },
     configPathOverride: join(cfgDir, "subkit.config.json"),
   });
   server = await createHttpTestServer("settings-route");
@@ -88,7 +91,11 @@ describe("GET /v1/settings", () => {
     const res = await authedFetch("/v1/settings");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      items: Array<{ path: string; value: unknown; meta: Record<string, unknown> }>;
+      items: Array<{
+        path: string;
+        value: unknown;
+        meta: Record<string, unknown>;
+      }>;
       diagnostics: { pending_restart_keys: string[]; override_keys: string[] };
     };
     expect(body.items.length).toBeGreaterThan(50);
@@ -102,7 +109,7 @@ describe("GET /v1/settings", () => {
     expect(authProviders!.meta).toMatchObject({
       kind: "json",
       sensitive: false,
-      requiresRestart: false,
+      requiresRestart: true,
       scope: "global",
     });
   });
@@ -189,20 +196,20 @@ describe("GET /v1/settings/{path}", () => {
     expect(res.status).toBe(404);
   });
 
-  test("storage.offload.access_key + secret_key render masked when set", async () => {
+  test("object-store credentials render masked when set", async () => {
     // Pre-condition: write secret values, then read them back via GET
     // to confirm the route's mask layer redacts every secret leaf in
     // the offload section (not just llm.api_key).
-    await authedFetch("/v1/settings/storage.offload.access_key", {
+    await authedFetch("/v1/settings/storage.object_store.access_key_id", {
       method: "PUT",
       body: JSON.stringify({ value: "actual-access-key" }),
     });
-    await authedFetch("/v1/settings/storage.offload.secret_key", {
+    await authedFetch("/v1/settings/storage.object_store.secret_access_key", {
       method: "PUT",
       body: JSON.stringify({ value: "actual-secret-key" }),
     });
 
-    const ak = await authedFetch("/v1/settings/storage.offload.access_key");
+    const ak = await authedFetch("/v1/settings/storage.object_store.access_key_id");
     const akBody = (await ak.json()) as {
       value: unknown;
       meta: { sensitive: boolean };
@@ -210,7 +217,7 @@ describe("GET /v1/settings/{path}", () => {
     expect(akBody.value).toBe("***");
     expect(akBody.meta.sensitive).toBe(true);
 
-    const sk = await authedFetch("/v1/settings/storage.offload.secret_key");
+    const sk = await authedFetch("/v1/settings/storage.object_store.secret_access_key");
     const skBody = (await sk.json()) as {
       value: unknown;
       meta: { sensitive: boolean };
@@ -221,10 +228,14 @@ describe("GET /v1/settings/{path}", () => {
     // The list endpoint must also mask both leaves.
     const listRes = await authedFetch("/v1/settings");
     const list = (await listRes.json()) as {
-      items: Array<{ path: string; value: unknown; meta: { sensitive: boolean } }>;
+      items: Array<{
+        path: string;
+        value: unknown;
+        meta: { sensitive: boolean };
+      }>;
     };
-    const akEntry = list.items.find((i) => i.path === "storage.offload.access_key");
-    const skEntry = list.items.find((i) => i.path === "storage.offload.secret_key");
+    const akEntry = list.items.find((i) => i.path === "storage.object_store.access_key_id");
+    const skEntry = list.items.find((i) => i.path === "storage.object_store.secret_access_key");
     expect(akEntry!.value).toBe("***");
     expect(skEntry!.value).toBe("***");
     // Final defence: the literal raw value never appears anywhere
@@ -236,7 +247,7 @@ describe("GET /v1/settings/{path}", () => {
 });
 
 describe("PUT /v1/settings/{path}", () => {
-  test("public OIDC providers hot-apply and are visible through discovery", async () => {
+  test("public OIDC providers are marked restart-required", async () => {
     const providers = [
       { protocol: "api_key", id: "api-key", label: "SubKit API key" },
       {
@@ -256,7 +267,7 @@ describe("PUT /v1/settings/{path}", () => {
     expect(res.status).toBe(200);
     expect((await res.json()) as PutResult).toEqual({
       value: providers,
-      requiresRestart: false,
+      requiresRestart: true,
     });
 
     const discovery = await fetch(`${server.baseUrl}/v1/identity/providers`);
@@ -404,7 +415,10 @@ describe("PUT /v1/settings/{path}", () => {
         body: JSON.stringify({ value: 4001, force: true }),
       });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { value: unknown; requiresRestart: boolean };
+      const body = (await res.json()) as {
+        value: unknown;
+        requiresRestart: boolean;
+      };
       expect(body.requiresRestart).toBe(true);
       const rows = await server.db
         .select()
@@ -497,7 +511,10 @@ describe("PUT /v1/settings/{path}", () => {
 
     const res = await fetch(`${server.baseUrl}/v1/settings/llm.api_key?tenant=${server.tenantId}`, {
       method: "PUT",
-      headers: { "content-type": "application/json", authorization: `Bearer ${plaintext}` },
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${plaintext}`,
+      },
       body: JSON.stringify({ value: "stolen-by-tenant-admin" }),
     });
     expect(res.status).toBe(403);
@@ -512,7 +529,11 @@ describe("PUT /v1/settings/{path}", () => {
     const seqTag = nextSeq();
     await server.db
       .insert(tenants)
-      .values({ id: SYSTEM_TENANT_ID, slug: `system-${seqTag}`, display_name: "System" })
+      .values({
+        id: SYSTEM_TENANT_ID,
+        slug: `system-${seqTag}`,
+        display_name: "System",
+      })
       .onConflictDoNothing();
     const [sysAdmin] = await server.db
       .insert(users)
@@ -533,7 +554,10 @@ describe("PUT /v1/settings/{path}", () => {
 
     const res = await fetch(`${server.baseUrl}/v1/settings/llm.api_key?tenant=${server.tenantId}`, {
       method: "PUT",
-      headers: { "content-type": "application/json", authorization: `Bearer ${plaintext}` },
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${plaintext}`,
+      },
       body: JSON.stringify({ value: "set-by-system-operator" }),
     });
     expect(res.status).toBe(200);
@@ -600,7 +624,10 @@ describe("PUT /v1/settings/{path}", () => {
     // 1. Default — fresh boot, no overrides, no writes. ring_size
     //    starts at the schema default (100).
     let res = await authedFetch("/v1/settings/errors.ring_size");
-    let body = (await res.json()) as { value: unknown; meta: { source: string } };
+    let body = (await res.json()) as {
+      value: unknown;
+      meta: { source: string };
+    };
     expect(body.value).toBe(100);
     expect(body.meta.source).toBe("default");
 

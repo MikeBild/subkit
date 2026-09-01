@@ -186,7 +186,7 @@ Subsystem map inside `apps/engine/src/` (46 directories + 5 loose root files):
 | Encrypted secret storage + OAuth2 refresh + credential rotation | `credentials/` (incl. `credentials/oauth2/`) | `docs/admins/credentials-and-keys.md` |
 | AES-256-GCM + redaction | `crypto/` | `docs/concepts/governance-and-audit.md` |
 | Drizzle schema + migrations + seed + transactional outbox events | `db/` | `docs/concepts/governance-and-audit.md` |
-| Unified file resource (chat attachments, workflow inputs/outputs, LLM context, MCP); `{$file: fid_uuid}` wire shape; `requireFileForTenant` chokepoint, `files` table + `file_links` polymorphic join, inline (≤5MB) vs presigned upload, scanner interface, soft-delete + cleanup cron with in-flight grace | `files/` | `docs/concepts/workflows.md` |
+| Unified file resource (chat attachments, workflow inputs/outputs, LLM context, MCP); `{$file: fid_uuid}` wire shape; `requireFileForTenant` chokepoint, `files` table + `file_links` polymorphic join, inline (≤5MB) vs authenticated streamed upload, scanner interface, soft-delete + cleanup cron with in-flight grace | `files/` | `docs/concepts/workflows.md` |
 | File → connector/skill proposals | `discovery/` | `docs/authors/authoring-workflows.md` |
 | OpenAPI / GraphQL / HTML → searchable context | `docs-ingestion/` | `docs/authors/authoring-workflows.md` |
 | Local multilingual embeddings + hybrid vector rerank (no API key, degrades to FTS) | `embeddings/` | `docs/authors/authoring-workflows.md` |

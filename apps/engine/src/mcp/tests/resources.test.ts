@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { eq } from "drizzle-orm";
 import { apiKeys, executionFixtures, executions, users } from "../../db/schema/index.ts";
+import { getObjectStore } from "../../storage/object-store.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 function sha256Hex(s: string): string {
@@ -15,7 +17,11 @@ function mintKey(): { plaintext: string; prefix: string; hash: string } {
   // determinism gate. One member key per file, inserted into this file's own
   // isolated test DB, so a fixed value is unique where it matters.
   const plaintext = "wf_live_negres_member_0001";
-  return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
+  return {
+    plaintext,
+    prefix: plaintext.slice(0, 12),
+    hash: sha256Hex(plaintext),
+  };
 }
 
 let suite: McpTestSuite;
@@ -147,6 +153,38 @@ describe("mcp resources", () => {
     expect(body.excerpt.length).toBe(payload.excerpt.length);
   });
 
+  test("read S3 resource only through a tenant-owned execution pointer", async () => {
+    const payload = { large: "object-backed", excerpt: "x".repeat(20_000) };
+    const [exec] = await suite.http.db
+      .insert(executions)
+      .values({
+        tenant_id: suite.http.tenantId,
+        status: "succeeded",
+        request_source: "mcp",
+        execution_mode: "dev",
+        source_kind: "draft",
+      })
+      .returning();
+    if (!exec) throw new Error("seed execution failed");
+    const key = `offload/${suite.http.tenantId}/${exec.id}/mcp-resource.json`;
+    const uri = `s3://test/${key}`;
+    await getObjectStore().put(key, Buffer.from(JSON.stringify(payload)));
+    await suite.http.db
+      .update(executions)
+      .set({ result_storage_uri: uri })
+      .where(eq(executions.id, exec.id));
+
+    const client = await suite.connect();
+    const read = await client.readResource({ uri });
+    const content = read.contents[0] as { mimeType?: string; text?: string };
+    expect(content.mimeType).toBe("application/json");
+    expect(JSON.parse(content.text!)).toEqual(payload);
+
+    await expect(client.readResource({ uri: "s3://test/offload/unowned.json" })).rejects.toThrow(
+      /object resource not found/i,
+    );
+  });
+
   test("read fixture rejects malformed id", async () => {
     const client = await suite.connect();
     await expect(client.readResource({ uri: "fixture://not-a-uuid" })).rejects.toThrow(
@@ -157,7 +195,9 @@ describe("mcp resources", () => {
   test("read fixture returns not_found for unknown id", async () => {
     const client = await suite.connect();
     await expect(
-      client.readResource({ uri: "fixture://00000000-0000-0000-0000-000000000000" }),
+      client.readResource({
+        uri: "fixture://00000000-0000-0000-0000-000000000000",
+      }),
     ).rejects.toThrow(/fixture not found/i);
   });
 
@@ -189,7 +229,10 @@ describe("mcp resources", () => {
         headers: { authorization: `Bearer ${memberKey.plaintext}` },
       },
     });
-    const memberClient = new Client({ name: "subkit-mcp-tests-member-res", version: "0.0.0" });
+    const memberClient = new Client({
+      name: "subkit-mcp-tests-member-res",
+      version: "0.0.0",
+    });
     await memberClient.connect(transport as unknown as Transport);
 
     try {
@@ -230,7 +273,9 @@ describe("mcp resources", () => {
     );
 
     const client = await suite.connect();
-    const read = await client.readResource({ uri: `knowledge://${knowledge_source.id}` });
+    const read = await client.readResource({
+      uri: `knowledge://${knowledge_source.id}`,
+    });
     expect(read.contents.length).toBe(1);
     const content = read.contents[0] as { mimeType?: string; text?: string };
     expect(content.mimeType).toBe("text/markdown");
@@ -261,7 +306,9 @@ describe("mcp resources", () => {
     );
 
     const client = await suite.connect();
-    const read = await client.readResource({ uri: `knowledge://${knowledge_source.id}` });
+    const read = await client.readResource({
+      uri: `knowledge://${knowledge_source.id}`,
+    });
     const content = read.contents[0] as { text?: string };
     expect(content.text).toContain("note 0:");
     expect(content.text).toContain("note 249:");
@@ -293,7 +340,9 @@ describe("mcp resources", () => {
     );
 
     const client = await suite.connect();
-    const read = await client.readResource({ uri: `knowledge://${knowledge_source.id}` });
+    const read = await client.readResource({
+      uri: `knowledge://${knowledge_source.id}`,
+    });
     const content = read.contents[0] as { text?: string };
     expect(Buffer.byteLength(content.text!, "utf8")).toBeLessThanOrEqual(1024 * 1024 + 256);
     expect(content.text).toContain("truncated at");

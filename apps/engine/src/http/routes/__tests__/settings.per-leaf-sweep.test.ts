@@ -164,36 +164,6 @@ function pickValue(leaf: ConfigLeaf, salt: number): unknown {
 
 const LEAVES = listConfigLeaves();
 
-// Cross-leaf invariants the per-leaf walker can't satisfy on its own.
-// `storage.files.backend = "s3"` requires storage.s3.access_key,
-// storage.s3.secret_key, and storage.files.bucket all non-empty
-// (schema refine in `config/schema.ts`). force=true bypasses the
-// leaf's own schema but NOT cross-leaf refinements, so we prime the
-// dependencies over the HTTP surface before flipping backend. The
-// per-leaf-applied sibling test uses the same shape (770bd43c) —
-// inlined here because it's a 3-line map and a shared util would be
-// thinner than the HTTP-vs-setConfigKey divergence.
-const PRIME_BEFORE_WRITE: Record<
-  string,
-  (
-    authedFetch: (path: string, init?: RequestInit) => Promise<Response>,
-    salt: number,
-  ) => Promise<void>
-> = {
-  "storage.files.backend": async (authedFetch, salt) => {
-    for (const [primeDotted, primeValue] of [
-      ["storage.s3.access_key", `ak-${salt}`],
-      ["storage.s3.secret_key", `sk-${salt}`],
-      ["storage.files.bucket", `bucket-${salt}`],
-    ] as const) {
-      await authedFetch(`/v1/settings/${primeDotted}`, {
-        method: "PUT",
-        body: JSON.stringify({ value: primeValue, force: true }),
-      });
-    }
-  },
-};
-
 describe(`per-leaf HTTP sweep — ${LEAVES.length} leaves`, () => {
   test("every leaf round-trips PUT + GET + audit row + setting.applied log with matching resource_id", async () => {
     const failures: string[] = [];
@@ -219,20 +189,6 @@ describe(`per-leaf HTTP sweep — ${LEAVES.length} leaves`, () => {
       const value = pickValue(leaf, salt++);
       captured.length = 0;
       await server.db.delete(auditLog);
-
-      // Prime any cross-leaf dependencies before the write so refines
-      // that span sibling leaves (e.g. storage.files.backend='s3'
-      // requires storage.s3 creds + bucket) don't fire. The prime
-      // PUTs are intentionally not asserted on — they show up in the
-      // audit log but we cleared it above; we also clear it again
-      // after priming so the per-leaf audit assertion still sees
-      // exactly one row.
-      const prime = PRIME_BEFORE_WRITE[dotted];
-      if (prime) {
-        await prime(authedFetch, salt);
-        captured.length = 0;
-        await server.db.delete(auditLog);
-      }
 
       // 1) PUT
       const putRes = await authedFetch(`/v1/settings/${dotted}`, {

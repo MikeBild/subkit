@@ -198,6 +198,7 @@ export async function finalizeExecution(
   // first-writer-wins instead of last-write-clobbers. Callers that must
   // only act on a specific prior state (e.g. queued-cancel) narrow it.
   expectedStatuses: ExecutionStatus[] = NON_TERMINAL_STATUSES,
+  result_sha256: string | null = null,
 ): Promise<void> {
   // workflow_id is NULL for draft and step runs; observability code must
   // handle the null case (e.g. report duration without workflow breakdown).
@@ -212,6 +213,7 @@ export async function finalizeExecution(
         status,
         finished_at: new Date(),
         result_storage_uri,
+        result_sha256,
       })
       .where(and(eq(executions.id, execution_id), inArray(executions.status, expectedStatuses)))
       .returning({
@@ -327,6 +329,7 @@ export async function finalizeStepRow(
     output_preview: unknown | null;
     result_preview: string | null;
     result_storage_uri: string | null;
+    result_sha256?: string | null;
   },
 ): Promise<void> {
   await db.transaction(async (tx) => {
@@ -340,6 +343,7 @@ export async function finalizeStepRow(
         output_preview: options.output_preview ?? null,
         result_preview: options.result_preview,
         result_storage_uri: options.result_storage_uri,
+        result_sha256: options.result_sha256 ?? null,
         request_meta: result.request_meta ?? null,
         error: result.error ?? null,
       })

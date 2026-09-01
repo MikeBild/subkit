@@ -109,18 +109,13 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "platform.googlechat.sync_turn_timeout_ms": "Google Chat synchronous-reply timeout (ms)",
 
   // ── Storage ────────────────────────────────────────────────────
-  "storage.s3.endpoint": "S3 endpoint",
-  "storage.s3.access_key": "S3 access key",
-  "storage.s3.secret_key": "S3 secret key",
-  "storage.files.backend": "Files storage backend",
-  "storage.files.dir": "Files local directory",
-  "storage.files.bucket": "Files S3 bucket",
-  "storage.offload.bucket": "Offload bucket",
-  "storage.offload.region": "Offload region",
-  "storage.offload.access_key": "Offload access key",
-  "storage.offload.secret_key": "Offload secret key",
-  "storage.offload.endpoint": "Offload endpoint",
-  "storage.offload.key_prefix": "Offload key prefix",
+  "storage.object_store.endpoint": "Object-store endpoint",
+  "storage.object_store.region": "Object-store region",
+  "storage.object_store.bucket": "Object-store bucket",
+  "storage.object_store.access_key_id": "Object-store access key ID",
+  "storage.object_store.secret_access_key": "Object-store secret access key",
+  "storage.object_store.session_token": "Object-store session token",
+  "storage.object_store.force_path_style": "Force path-style S3 requests",
 
   // ── Observability ──────────────────────────────────────────────
   "observability.langfuse.host": "Langfuse host",

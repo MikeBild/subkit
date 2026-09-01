@@ -1,7 +1,7 @@
 // analyzeConversationAttachments — bridges conversation attachments
 // (via the unified `files` + `file_links` resource) to
 // runDocumentAnalysisFlow. Real DB; bytes flow through the
-// production LocalDiskObjectStore so the read path matches what the
+// in-process test object store so the read path matches what the
 // engine sees at runtime.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";

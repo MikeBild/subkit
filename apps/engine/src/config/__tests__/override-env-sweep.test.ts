@@ -162,14 +162,6 @@ describe(`legacy SK_OVERRIDE_<KEY> seed sweep — ${LEAVES.length} leaves`, () =
         salt += 1;
         continue;
       }
-      // Cross-leaf invariant: storage.files.backend="s3" requires
-      // storage.s3.access_key + secret_key. The single-leaf override
-      // sweep can't satisfy that pair-wise refinement; the override
-      // path is exercised at the section level by the integration suite.
-      if (dotted === "storage.files.backend") {
-        salt += 1;
-        continue;
-      }
       // string-list leaves expect comma-separated semantics; the
       // override-env mapper does not currently split arrays — skip.
       if (leaf.kind === "string-list" || leaf.kind === "string-array") {

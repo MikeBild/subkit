@@ -4,6 +4,40 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 6.22.46 — 2026-09-01
+
+### Added
+
+- Store immutable runtime-configuration revisions, replica ACK/NACK activation
+  state, encrypted secret versions, and audit history in PostgreSQL, exposed
+  consistently through Cockpit, HTTP, MCP, OpenAPI, and the CLI.
+- Add a rerunnable one-shot bridge for legacy file-backed configuration,
+  uploaded files, and execution offloads, with transactional pointer changes
+  and application SHA-256 verification.
+- Add a provider-neutral S3 compatibility probe covering multipart, Range,
+  List/Delete, abort/retry, integrity rejection, and credential rotation.
+
+### Changed
+
+- Make the engine process stateless: all file bodies and large execution
+  payloads use one private S3-compatible object store with immutable keys;
+  PostgreSQL remains authoritative for metadata and pointers. Persistent local
+  storage and new PostgreSQL blob fallbacks are no longer supported.
+- Limit production environment variables to process/bootstrap bindings. An
+  empty database is seeded once; later database revisions always win, hot
+  changes activate only after all healthy replicas ACK, and restart-only
+  changes remain explicitly pending.
+- Require an external PostgreSQL database, a product-isolated `MASTER_KEY`, and
+  a reachable private object bucket before readiness.
+
+### Fixed
+
+- Reuse the canonical execution offload object for MCP results and require
+  same-tenant ownership plus execution-read permission before resolving an S3
+  resource.
+- Persist and verify application SHA-256 metadata for execution and step
+  payloads so corrupted object bytes fail closed.
+
 ## 6.22.45 — 2026-09-01
 
 ### Fixed

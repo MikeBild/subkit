@@ -114,23 +114,14 @@
     }
   },
   "storage": {
-    "s3": {
+    "object_store": {
       "endpoint": "",
-      "access_key": "",
-      "secret_key": ""
-    },
-    "files": {
-      "backend": "local",
-      "dir": "",
-      "bucket": ""
-    },
-    "offload": {
+      "region": "us-east-1",
       "bucket": "",
-      "region": "",
-      "access_key": "",
-      "secret_key": "",
-      "endpoint": "",
-      "key_prefix": "offload"
+      "access_key_id": "",
+      "secret_access_key": "",
+      "session_token": "",
+      "force_path_style": true
     }
   },
   "observability": {

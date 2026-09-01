@@ -154,6 +154,10 @@ interface SettingItem {
 }
 
 interface SettingsResponse {
+  saved_revision: number | null;
+  active_revision: number | null;
+  activation_status: "saved" | "preparing" | "active" | "failed" | "restart_required" | null;
+  pending_restart_fields: string[];
   items: SettingItem[];
   diagnostics: {
     pending_restart_keys: string[];
@@ -181,8 +185,16 @@ interface HealthDigest {
   headline: string;
   all_clear: boolean;
   generated_at: string;
-  failure_groups: Array<{ cause: string; count: number; workflow_name: string | null }>;
-  risk: Array<{ headline: string; detail: string; severity: "warn" | "critical" }>;
+  failure_groups: Array<{
+    cause: string;
+    count: number;
+    workflow_name: string | null;
+  }>;
+  risk: Array<{
+    headline: string;
+    detail: string;
+    severity: "warn" | "critical";
+  }>;
   patch_candidates: { pending: number };
 }
 
@@ -315,7 +327,10 @@ function permissionLabel(permission: string, t: ReturnType<typeof useI18n>["t"])
   const resourceKey = resource ? PERMISSION_RESOURCE_KEYS[resource] : undefined;
   const actionKey = action ? PERMISSION_ACTION_KEYS[action] : undefined;
   if (!resourceKey || !actionKey) return t("common.unknown");
-  return t("permission.label", { resource: t(resourceKey), action: t(actionKey) });
+  return t("permission.label", {
+    resource: t(resourceKey),
+    action: t(actionKey),
+  });
 }
 
 export function PeoplePage() {
@@ -359,7 +374,9 @@ export function PeoplePage() {
   });
   const remove = useMutation({
     mutationFn: (id: string) =>
-      apiRequest<void>(`/v1/identity/users/${encodeURIComponent(id)}`, { method: "DELETE" }),
+      apiRequest<void>(`/v1/identity/users/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }),
     onSuccess: async () => {
       setDeactivate(null);
       await refresh();
@@ -419,7 +436,10 @@ export function PeoplePage() {
                     <Select
                       value={user.effective_role}
                       onValueChange={(value) =>
-                        update.mutate({ id: user.id, nextRole: value as RoleName })
+                        update.mutate({
+                          id: user.id,
+                          nextRole: value as RoleName,
+                        })
                       }
                     >
                       <SelectTrigger
@@ -527,7 +547,9 @@ export function PeoplePage() {
           <AlertDialogHeader>
             <AlertDialogTitle>{t("people.deactivate")}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t("people.deactivateDescription", { email: deactivate?.email ?? "" })}
+              {t("people.deactivateDescription", {
+                email: deactivate?.email ?? "",
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -642,7 +664,9 @@ export function ApiAccessPage() {
   });
   const remove = useMutation({
     mutationFn: (id: string) =>
-      apiRequest<void>(`/v1/identity/api-keys/${encodeURIComponent(id)}`, { method: "DELETE" }),
+      apiRequest<void>(`/v1/identity/api-keys/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }),
     onSuccess: async () => {
       setRevoke(null);
       await refresh();
@@ -860,20 +884,27 @@ export function AccessPage() {
     mutationFn: () =>
       apiRequest(createKind === "role" ? "/v1/rbac/roles" : "/v1/rbac/groups", {
         method: "POST",
-        body: JSON.stringify({ name: name.trim(), description: description.trim() || undefined }),
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description.trim() || undefined,
+        }),
       }),
     onSuccess: async () => {
       const kind = createKind;
       setCreateKind(null);
       setName("");
       setDescription("");
-      await client.invalidateQueries({ queryKey: ["admin", kind === "role" ? "roles" : "groups"] });
+      await client.invalidateQueries({
+        queryKey: ["admin", kind === "role" ? "roles" : "groups"],
+      });
       toast.success(t("access.created"));
     },
   });
   const revokeGrant = useMutation({
     mutationFn: (id: string) =>
-      apiRequest<void>(`/v1/rbac/grants/${encodeURIComponent(id)}`, { method: "DELETE" }),
+      apiRequest<void>(`/v1/rbac/grants/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }),
     onSuccess: () => client.invalidateQueries({ queryKey: ["admin", "grants"] }),
   });
   const createGrant = useMutation({
@@ -903,7 +934,10 @@ export function AccessPage() {
           ...(enabled ? { body: JSON.stringify({ permission }) } : {}),
         },
       ),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["admin", "role", managedRole?.id] }),
+    onSuccess: () =>
+      client.invalidateQueries({
+        queryKey: ["admin", "role", managedRole?.id],
+      }),
   });
   const subjectItems =
     grantSubjectType === "user" ? (people.data?.items ?? []) : (groups.data?.items ?? []);
@@ -1386,7 +1420,9 @@ export function OperationsPage() {
             {query.data && (
               <CardContent>
                 <p className="text-sm text-muted-foreground" data-testid="operations-generated">
-                  {t("operations.generated", { date: dateTime(query.data.generated_at) })}
+                  {t("operations.generated", {
+                    date: dateTime(query.data.generated_at),
+                  })}
                 </p>
               </CardContent>
             )}
@@ -1973,8 +2009,7 @@ export function SettingsPage() {
     ? activeSection
     : (sections[0]?.[0] ?? "");
   const selectedItems = sections.find(([section]) => section === selectedSection)?.[1] ?? [];
-  const pendingRestartCount = query.data?.diagnostics?.pending_restart_keys.length ?? 0;
-  const overrideCount = query.data?.diagnostics?.override_keys.length ?? 0;
+  const pendingRestartCount = query.data?.pending_restart_fields.length ?? 0;
   const save = useMutation({
     mutationFn: async ({
       items: pending,
@@ -2037,7 +2072,7 @@ export function SettingsPage() {
             aria-label={t("settings.status.title")}
             data-testid="settings-activation-status"
           >
-            <dl className="grid divide-y md:grid-cols-3 md:divide-x md:divide-y-0">
+            <dl className="grid divide-y sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
               <div className="grid gap-1 p-4">
                 <dt className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                   <SlidersHorizontal className="size-3.5 text-foreground/70" aria-hidden="true" />
@@ -2050,11 +2085,24 @@ export function SettingsPage() {
               </div>
               <div className="grid gap-1 p-4">
                 <dt className="text-xs font-medium text-muted-foreground">
-                  {t("settings.status.overrides")}
+                  {t("settings.status.savedRevision")}
                 </dt>
-                <dd className="text-lg font-semibold tabular-nums">{overrideCount}</dd>
+                <dd className="text-lg font-semibold tabular-nums">
+                  {query.data?.saved_revision ?? "—"}
+                </dd>
                 <p className="text-xs text-muted-foreground">
-                  {t("settings.status.overridesDescription")}
+                  {t("settings.status.savedRevisionDescription")}
+                </p>
+              </div>
+              <div className="grid gap-1 p-4">
+                <dt className="text-xs font-medium text-muted-foreground">
+                  {t("settings.status.activeRevision")}
+                </dt>
+                <dd className="text-lg font-semibold tabular-nums">
+                  {query.data?.active_revision ?? "—"}
+                </dd>
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.status.activeRevisionDescription")}
                 </p>
               </div>
               <div className="grid gap-1 p-4">
@@ -2069,8 +2117,13 @@ export function SettingsPage() {
                     }
                   >
                     {pendingRestartCount > 0
-                      ? t("settings.status.pending", { count: pendingRestartCount })
-                      : t("settings.status.active")}
+                      ? t("settings.status.pending", {
+                          count: pendingRestartCount,
+                        })
+                      : (query.data?.activation_status ?? t("settings.status.active")).replaceAll(
+                          "_",
+                          " ",
+                        )}
                   </Badge>
                 </dd>
                 <p className="text-xs text-muted-foreground">

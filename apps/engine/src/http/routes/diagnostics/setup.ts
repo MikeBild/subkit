@@ -9,12 +9,10 @@
 // "is the engine production-ready?" without ssh-ing in.
 //
 // 4.2.0: this file used to read 33 env vars directly via envString().
-// That made `sk settings set …` (which writes to subkit.config.json)
-// silently invisible — the diagnostic kept reporting "Missing" even
-// after the operator flipped the leaf via the CLI. Everything reads
-// `getConfig()` now. The single exception is `MASTER_KEY`: it stays
-// in env because it's a bootstrap-only value the engine consumes
-// before the config loader runs.
+// That made settings writes silently invisible. Everything now reads the
+// active PostgreSQL-backed snapshot through `getConfig()`. `MASTER_KEY` stays
+// in env because it is a process bootstrap value consumed before the runtime
+// revision can be decrypted.
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
@@ -330,38 +328,44 @@ function buildDatastoreSection(snapshot: ReturnType<typeof getConfig>): SetupSec
 }
 
 function buildStorageSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
-  const s3 = snapshot.storage.s3;
+  const s3 = snapshot.storage.object_store;
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
   const endpoint = present(s3.endpoint);
-  const accessKey = present(s3.access_key);
-  const secretKey = present(s3.secret_key);
+  const bucket = present(s3.bucket);
+  const accessKey = present(s3.access_key_id);
+  const secretKey = present(s3.secret_access_key);
   const partial =
-    [endpoint, accessKey, secretKey].some(Boolean) &&
-    ![endpoint, accessKey, secretKey].every(Boolean);
+    [endpoint, bucket, accessKey, secretKey].some(Boolean) &&
+    ![endpoint, bucket, accessKey, secretKey].every(Boolean);
   if (partial) {
     issues.push(
       buildIssue(
         "s3-partial",
         "warning",
         "Object storage",
-        "S3 configuration is partial. Set storage.s3.{endpoint,access_key,secret_key} together or remove the partial values.",
+        "S3 configuration is partial. Set storage.object_store endpoint, bucket, access_key_id and secret_access_key together.",
       ),
     );
-    recommendations.push("Complete the storage.s3 triplet or unset it before the next deploy.");
+    recommendations.push("Complete the provider-neutral storage.object_store settings.");
   }
   return buildSection(
     "Object storage",
     [
       {
-        key: "storage.s3.endpoint",
+        key: "storage.object_store.endpoint",
         value: endpoint ?? null,
         status_hint: endpoint ? null : "Not configured",
       },
       {
-        key: "storage.s3.access_key",
+        key: "storage.object_store.bucket",
+        value: bucket ?? null,
+        status_hint: bucket ? null : "Missing",
+      },
+      {
+        key: "storage.object_store.access_key_id",
         // Standardize on setPresence across the section (matches
-        // storage.s3.secret_key below). The S3 access key half of the
+        // storage.object_store.secret_access_key below). The access-key half of the
         // pair is also a credential — the previous masked-prefix
         // exposure leaked the AWS account-recognizable prefix to any
         // identity:read principal.
@@ -369,7 +373,7 @@ function buildStorageSection(snapshot: ReturnType<typeof getConfig>): SetupSecti
         status_hint: accessKey ? null : "Missing",
       },
       {
-        key: "storage.s3.secret_key",
+        key: "storage.object_store.secret_access_key",
         value: setPresence(secretKey),
         status_hint: secretKey ? null : "Missing",
       },
@@ -514,9 +518,18 @@ const setupRoute = createRoute({
     "can validate the engine's bootstrap configuration without a tenant context.",
   security: [{ bearerAuth: [] }],
   responses: {
-    200: { description: "OK", content: { "application/json": { schema: SetupResponseSchema } } },
-    401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: SetupResponseSchema } },
+    },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    403: {
+      description: "Forbidden",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 

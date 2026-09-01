@@ -32,7 +32,7 @@ Database connection
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `database.url` | string | `—` | global | yes | yes | Postgres connection string |
+| `database.url` | string | `—` | global | yes | yes | Bootstrap-only Postgres connection string. Rotate DATABASE_URL and restart replicas; runtime revisions cannot change this binding. |
 
 ## llm
 LLM configuration
@@ -96,7 +96,7 @@ Authentication
 | `auth.mcp_oauth.enabled` | boolean | `true` | global | no | yes | Enable the MCP OAuth 2.1 authorization server (ChatGPT / Claude.ai / Cursor). |
 | `auth.mcp_oauth.refresh_token_ttl_seconds` | number | `2592000` | global | no | no | Lifetime in seconds for MCP OAuth refresh tokens (30 days). |
 | `auth.mcp_oauth.scopes_supported` | string[] | `["mcp:read","mcp:authoring","mcp:admin"]` | global | no | no | OAuth scopes advertised in the authorization server metadata. |
-| `auth.providers` | json | `[{"protocol":"api_key","id":"api-key","label":"SubKit API key"}]` | global | no | no | Provider-neutral browser authentication adapters. OIDC records are public clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration. |
+| `auth.providers` | json | `[{"protocol":"api_key","id":"api-key","label":"SubKit API key"}]` | global | no | yes | Provider-neutral browser authentication adapters. OIDC records are public clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration. |
 | `auth.session.secret` | string | `""` | global | yes | yes | Session signing secret (auto-generated to a 32-byte hex value on first boot if empty); operator-supplied values must be at least 32 chars |
 
 ## platform
@@ -116,22 +116,17 @@ Chat platform integrations
 | `platform.teams.app_password` | string | `""` | global | yes | yes |  |
 
 ## storage
-Storage backends
+Object storage
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `storage.files.backend` | enum("local" \| "s3") | `"local"` | global | no | yes |  |
-| `storage.files.bucket` | string | `""` | global | no | yes | S3 bucket name when backend=s3. Ignored when backend=local. |
-| `storage.files.dir` | string | `""` | global | no | yes | Local-disk root when backend=local. Ignored when backend=s3. |
-| `storage.offload.access_key` | string | `""` | global | yes | no |  |
-| `storage.offload.bucket` | string | `""` | global | no | no | S3 bucket for execution-payload offload; empty disables offload |
-| `storage.offload.endpoint` | string | `""` | global | no | no | Optional S3 endpoint override (MinIO, R2, etc.) |
-| `storage.offload.key_prefix` | string | `"offload"` | global | no | no |  |
-| `storage.offload.region` | string | `""` | global | no | no |  |
-| `storage.offload.secret_key` | string | `""` | global | yes | no |  |
-| `storage.s3.access_key` | string | `""` | global | yes | yes |  |
-| `storage.s3.endpoint` | string | `""` | global | no | yes |  |
-| `storage.s3.secret_key` | string | `""` | global | yes | yes |  |
+| `storage.object_store.access_key_id` | string | `""` | global | yes | no |  |
+| `storage.object_store.bucket` | string | `""` | global | no | no |  |
+| `storage.object_store.endpoint` | string | `""` | global | no | no |  |
+| `storage.object_store.force_path_style` | boolean | `true` | global | no | no |  |
+| `storage.object_store.region` | string | `"us-east-1"` | global | no | no |  |
+| `storage.object_store.secret_access_key` | string | `""` | global | yes | no |  |
+| `storage.object_store.session_token` | string | `""` | global | yes | no |  |
 
 ## observability
 Observability

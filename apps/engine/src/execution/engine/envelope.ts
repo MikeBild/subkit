@@ -183,6 +183,7 @@ export function bodyEnvelopeForLoopAccumulator(outcome: RunStepOutcome): ScopeEn
       storage_uri: storageUri,
       preview: outcome.result_preview ?? previewOf(outcome.scope_value),
       size_bytes: outcome.result_size_bytes,
+      ...(outcome.result_sha256 ? { sha256: outcome.result_sha256 } : {}),
     };
     env.data = ref;
   }

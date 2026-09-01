@@ -1,8 +1,8 @@
 // Unified files HTTP surface.
 //
 //   POST   /v1/files/inline              — inline base64 upload (≤5 MB)
-//   POST   /v1/files/batch-create        — presigned-PUT issuance
-//   PUT    /v1/files/{id}/upload         — local-disk presign sink (HMAC)
+//   POST   /v1/files/batch-create        — create authenticated upload slots
+//   PUT    /v1/files/{id}/upload         — authenticated streaming upload
 //   POST   /v1/files/{id}/finalize       — verify sha256 + scan
 //   GET    /v1/files                     — list (with cursor + filters)
 //   GET    /v1/files/{id}                — metadata
@@ -17,12 +17,6 @@
 // ambiguity with the param syntax used elsewhere. The convention here
 // is `/finalize` and `/batch-create` (plain slash, no colon).
 //
-// The local-disk presign sink (`PUT /v1/files/{id}/upload`) bypasses
-// bearer auth by design — it verifies an HMAC token from the
-// presign URL and short-circuits inside the handler before
-// `requireAnyPermission` would run. The token is bound to
-// `(tenant_id, key, expires_at)`, so the bypass is scoped.
-
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, count, desc, eq, ilike, isNull, lt, or, sql } from "drizzle-orm";
@@ -63,7 +57,6 @@ import {
   FileUploadReceivedMetadataSchema,
   readRequestSource,
 } from "../../audit/index.ts";
-import { getConfig } from "../../config/loader.ts";
 import { writeEvent } from "../../db/events.ts";
 import { fileLinks, files, filesDedupSeen } from "../../db/schema/index.ts";
 import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
@@ -77,12 +70,7 @@ import {
   recordFileDedupHit,
   recordFileScanResult,
 } from "../../observability/index.ts";
-import {
-  composeLocalPresignUrl,
-  getObjectStore,
-  mintLocalPresignToken,
-  parseLocalPresignClaims,
-} from "../../storage/object-store.ts";
+import { getObjectStore } from "../../storage/object-store.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -171,174 +159,106 @@ async function digestObject(key: string): Promise<{ sha256: string; size: number
 // ---------------------------------------------------------------------------
 
 export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
-  // ---------------------------------------------------------------------
-  // Local-disk presign sink — registered BEFORE the bearer-auth gate so
-  // the HMAC-only auth path inside the handler can short-circuit.
-  // ---------------------------------------------------------------------
+  app.use("/v1/files/:id/upload", requireAnyPermission(["file:write"]));
 
-  const localUploadRoute = createRoute({
+  const uploadRoute = createRoute({
     method: "put",
     path: "/v1/files/{id}/upload",
     tags: [TAG],
-    // `security: []` is the explicit "no bearer required" marker that
-    // mirrors documented intent. Without it, OpenAPI tooling inherits
-    // the document's top-level security entry; an empty array overrides
-    // that, making the HMAC-token-as-auth surface visible in the
-    // generated spec.
-    security: [],
-    request: {
-      params: FileIdParam,
-      query: z.object({
-        token: z.string().min(1),
-        expires_at: z.coerce.number().int().positive(),
-      }),
-    },
+    security: [{ bearerAuth: [] }],
+    request: { params: FileIdParam },
     responses: {
       200: { description: "Stored" },
-      400: { description: "bad_input", content: { "application/json": { schema: ErrorSchema } } },
-      401: {
-        description: "invalid_token",
+      400: {
+        description: "bad_input",
         content: { "application/json": { schema: ErrorSchema } },
       },
-      404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
-      413: { description: "too_large", content: { "application/json": { schema: ErrorSchema } } },
+      401: {
+        description: "unauthorized",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
+      404: {
+        description: "not_found",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
+      409: {
+        description: "conflict",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
+      413: {
+        description: "too_large",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
     },
   });
 
-  app.openapi(localUploadRoute, async (c) => {
+  app.openapi(uploadRoute, async (c) => {
     const { id } = c.req.valid("param");
-    const { token } = c.req.valid("query");
     const fid_uuid = parseFileIdOrThrow(id);
     const db = c.get("db");
-    // Parse + MAC-verify the token FIRST so we can use the embedded
-    // `claims.tenant_id` as the SCOPE for the row lookup instead of
-    // querying without a tenant filter and asserting after the fact.
-    // Defense-in-depth: a cross-tenant query is never issued —
-    // `audit-invariants.ts` naturally passes here without a
-    // `tenant-filter:exempt` annotation.
-    const parsed = parseLocalPresignClaims(token);
-    if (!parsed.ok) {
-      return c.json(
-        { code: "unauthorized", message: `presign token rejected: ${parsed.reason}` },
-        401,
-      );
-    }
-    const claims = parsed.claims;
+    const principal = requireAuth(c);
     const rows = await db
       .select()
       .from(files)
-      .where(and(eq(files.id, fid_uuid), eq(files.tenant_id, claims.tenant_id)))
+      .where(and(eq(files.id, fid_uuid), eq(files.tenant_id, principal.tenant_id)))
       .limit(1);
     const row = rows[0];
     if (!row) {
       return c.json({ code: "not_found", message: "file not found" }, 404);
     }
+    if (row.status !== "pending") {
+      return c.json({ code: "conflict", message: `cannot upload: status=${row.status}` }, 409);
+    }
+    if (row.upload_url_expires_at && row.upload_url_expires_at.getTime() <= Date.now()) {
+      return c.json({ code: "conflict", message: "upload slot expired" }, 409);
+    }
     const key = storageKey(row.storage_uri);
-    // Final bind: the claim's `key` must match the row's storage key.
-    // The MAC has already proved the claim was issued by us; this
-    // assertion proves the caller is uploading to the slot the token
-    // was minted for. Tenant_id is already enforced by the scoped
-    // SELECT above.
-    if (claims.key !== key) {
+    const boundSize = row.size_bytes;
+
+    // The common S3 contract requires a known Content-Length. The row's
+    // declared size is the immutable upper bound and must match exactly.
+    const contentLengthHeader = c.req.header("content-length");
+    if (!contentLengthHeader) {
+      return c.json({ code: "bad_input", message: "Content-Length is required" }, 400);
+    }
+    const contentLength = Number(contentLengthHeader);
+    if (!Number.isSafeInteger(contentLength) || contentLength < 0) {
+      return c.json({ code: "bad_input", message: "Content-Length is invalid" }, 400);
+    }
+    if (contentLength > boundSize) {
       return c.json(
-        { code: "unauthorized", message: "presign token rejected: signature_mismatch" },
-        401,
+        {
+          code: "too_large",
+          message: `body length ${contentLength} exceeds size_bytes=${boundSize}`,
+        },
+        413,
       );
     }
-    const boundSize = claims.size_bytes;
-
-    // Pre-flight Content-Length check. When the client sends a
-    // Content-Length header we cheaply reject 413 before reading bytes.
-    // Chunked / HTTP/2 / streamed clients send no Content-Length; we do
-    // NOT reject those — the streaming-overflow guard below is the
-    // authoritative check and aborts the producer the moment the
-    // running total crosses the bound. The previous chunked-reject
-    // branch broke curl `-T pipe`, fetch `body: ReadableStream`, and
-    // any HTTP/2 client.
-    const contentLengthHeader = c.req.header("content-length");
-    if (contentLengthHeader) {
-      const cl = Number(contentLengthHeader);
-      if (Number.isFinite(cl) && cl > boundSize) {
-        return c.json(
-          {
-            code: "too_large",
-            message: `body length ${cl} exceeds presign-bound size_bytes=${boundSize}`,
-          },
-          413,
-        );
-      }
+    if (contentLength !== boundSize) {
+      return c.json(
+        {
+          code: "bad_input",
+          message: `body length ${contentLength} must equal size_bytes=${boundSize}`,
+        },
+        400,
+      );
     }
 
     // Stream the body straight through to the object store. `c.req.raw.body`
     // is a `ReadableStream<Uint8Array>` per the fetch API; we wrap it in
-    // an async generator that tracks cumulative bytes against `boundSize`
-    // and throws on overflow. The generator is consumed by
-    // `objectStore.putStream`, which pipes to disk (local) or to the
-    // S3 PUT body without buffering the full payload in memory.
+    // an async generator consumed by `objectStore.putStream`, which sends
+    // the bytes to the configured S3-compatible object store without
+    // buffering the full payload in memory.
     const raw = c.req.raw.body;
     if (!raw) {
       return c.json({ code: "bad_input", message: "missing body" }, 400);
     }
 
-    class StreamedOverflowError extends Error {
-      constructor() {
-        super(`streamed body exceeds presign-bound size_bytes=${boundSize}`);
-        this.name = "StreamedOverflowError";
-      }
-    }
-
-    async function* boundedBody(): AsyncIterable<Uint8Array> {
-      const reader = raw!.getReader();
-      let total = 0;
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) return;
-          if (!value) continue;
-          total += value.byteLength;
-          if (total > boundSize) {
-            // Cancel upstream so the client side of the socket gets EOF
-            // promptly; the StreamedOverflowError surfaces to the caller
-            // and translates to a 413 below.
-            try {
-              await reader.cancel();
-            } catch {
-              /* best-effort */
-            }
-            throw new StreamedOverflowError();
-          }
-          yield value;
-        }
-      } finally {
-        try {
-          reader.releaseLock();
-        } catch {
-          /* best-effort */
-        }
-      }
-    }
-
-    try {
-      await getObjectStore().putStream(key, boundedBody());
-    } catch (err) {
-      if (err instanceof StreamedOverflowError) {
-        // Best-effort: drop any partial object we may have started
-        // writing. Idempotent — delete() no-ops if the key is absent.
-        try {
-          await getObjectStore().delete(key);
-        } catch {
-          /* best-effort */
-        }
-        return c.json(
-          {
-            code: "too_large",
-            message: err.message,
-          },
-          413,
-        );
-      }
-      throw err;
-    }
+    await getObjectStore().putStream(
+      key,
+      raw as unknown as AsyncIterable<Uint8Array>,
+      contentLength,
+    );
     // Audit byte-receipt so a client that uploads and then abandons
     // the session before finalize still has a paper trail. Without
     // this row the only evidence is the cleanup cron's pending-orphan
@@ -349,8 +269,8 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     await auditAwait(
       {
         tenant_id: row.tenant_id,
-        actor_type: "system",
-        actor_id: null,
+        actor_type: actorType(principal),
+        actor_id: principal.id,
         action: AuditAction.FILE_UPLOAD_RECEIVED,
         resource_type: "file",
         resource_id: row.id,
@@ -358,7 +278,8 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         metadata: FileUploadReceivedMetadataSchema.parse({
           file_id: row.id,
           size_bytes_bucket: bucketSize(boundSize),
-          source: "local_presign",
+          source: "authenticated_engine_upload",
+          request_source: readRequestSource(c),
         }),
       },
       db,
@@ -374,9 +295,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
   // silently inheriting from a verb-mapping switch (the previous gate
   // collapsed `else → file:write`, so a future POST that should be
   // read-flavoured — e.g. `:verify-sha256` — would inherit `file:write`
-  // without the author noticing). The local-disk presign sink is
-  // exempt by registration order: it sits above this comment and uses
-  // HMAC-as-auth, so no `app.use(...)` covers its path.
+  // without the author noticing).
   // ---------------------------------------------------------------------
 
   app.use("/v1/files", requireAnyPermission(["file:read"]));
@@ -412,10 +331,22 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       body: { content: { "application/json": { schema: InlineUploadSchema } } },
     },
     responses: {
-      201: { description: "Created", content: { "application/json": { schema: FileSchema } } },
-      200: { description: "Dedup hit", content: { "application/json": { schema: FileSchema } } },
-      400: { description: "bad_input", content: { "application/json": { schema: ErrorSchema } } },
-      413: { description: "too_large", content: { "application/json": { schema: ErrorSchema } } },
+      201: {
+        description: "Created",
+        content: { "application/json": { schema: FileSchema } },
+      },
+      200: {
+        description: "Dedup hit",
+        content: { "application/json": { schema: FileSchema } },
+      },
+      400: {
+        description: "bad_input",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
+      413: {
+        description: "too_large",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
     },
   });
 
@@ -444,7 +375,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     }
     if (bytes.byteLength > MAX_INLINE_BYTES) {
       return c.json(
-        { code: "too_large", message: `inline upload exceeds ${MAX_INLINE_BYTES} bytes cap` },
+        {
+          code: "too_large",
+          message: `inline upload exceeds ${MAX_INLINE_BYTES} bytes cap`,
+        },
         413,
       );
     }
@@ -603,6 +537,11 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         outcome: "error",
         duration_ms: Date.now() - uploadStartedAt,
       });
+      try {
+        await getObjectStore().delete(key);
+      } catch {
+        /* best-effort orphan cleanup; immutable keys make a rerun safe */
+      }
       throw err;
     }
     if (!row) {
@@ -692,14 +631,19 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     tags: [TAG],
     security: [{ bearerAuth: [] }],
     request: {
-      body: { content: { "application/json": { schema: BatchCreateRequestSchema } } },
+      body: {
+        content: { "application/json": { schema: BatchCreateRequestSchema } },
+      },
     },
     responses: {
       201: {
         description: "Created",
         content: { "application/json": { schema: BatchCreateResponseSchema } },
       },
-      400: { description: "bad_input", content: { "application/json": { schema: ErrorSchema } } },
+      400: {
+        description: "bad_input",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
     },
   });
 
@@ -708,10 +652,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const tenant_id = principal.tenant_id;
-    const store = getObjectStore();
-    const cfg = getConfig().storage;
-    const isLocal = cfg.files.backend !== "s3";
-
     const results: BatchCreateResponse["files"] = [];
     let dedup_hits = 0;
 
@@ -772,37 +712,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           principal.kind === "user" || principal.kind === "system_account" ? principal.id : null,
       });
 
-      // Build the presigned URL. The local backend's presignPut returns
-      // a sentinel that does NOT carry a tenant-scoped HMAC — we mint
-      // our own token here so the sink route can verify (tenant, key).
-      const presigned = await store.presignPut(key, ttlSec);
-      let upload_url = presigned.url;
-      const headers = { ...presigned.headers };
-      if (isLocal) {
-        // size_bytes is bound into the HMAC: the upload sink rejects
-        // 413 if the streamed body exceeds the client's claimed size.
-        // Without this binding a valid token could be replayed to PUT
-        // arbitrary bytes; finalize would still fail on sha256, but
-        // the disk-fill / S3-cost has already happened.
-        const token = mintLocalPresignToken({
-          tenant_id,
-          key,
-          expires_at: expires_at.getTime(),
-          size_bytes: entry.size_bytes,
-        });
-        // Public sink lives at the engine root path. The client
-        // composes a fully-qualified URL by prepending its engine base.
-        upload_url = composeLocalPresignUrl({
-          fid: toFileId(file_uuid),
-          token,
-          expires_at: expires_at.getTime(),
-        });
-      }
-
       results.push({
         id: toFileId(file_uuid),
-        upload_url,
-        headers,
+        upload_url: `/v1/files/${toFileId(file_uuid)}/upload`,
+        headers: { "content-length": String(entry.size_bytes) },
         expires_in: ttlSec,
         dedup: false,
       });
@@ -842,13 +755,27 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     security: [{ bearerAuth: [] }],
     request: {
       params: FileIdParam,
-      body: { content: { "application/json": { schema: FinalizeRequestSchema } } },
+      body: {
+        content: { "application/json": { schema: FinalizeRequestSchema } },
+      },
     },
     responses: {
-      200: { description: "Finalized", content: { "application/json": { schema: FileSchema } } },
-      404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
-      409: { description: "conflict", content: { "application/json": { schema: ErrorSchema } } },
-      413: { description: "too_large", content: { "application/json": { schema: ErrorSchema } } },
+      200: {
+        description: "Finalized",
+        content: { "application/json": { schema: FileSchema } },
+      },
+      404: {
+        description: "not_found",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
+      409: {
+        description: "conflict",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
+      413: {
+        description: "too_large",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
       422: {
         description: "sha256_mismatch",
         content: { "application/json": { schema: ErrorSchema } },
@@ -865,7 +792,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const fid_uuid = parseFileIdOrThrow(id);
     // Wall-clock for FILES_UPLOAD_DURATION_SECONDS — covers the
     // server-side finalize pass (digest + sibling-dedup + scan + row
-    // update). The presigned-PUT itself is client-side and not
+    // update). The preceding authenticated PUT is measured separately and not
     // measured here.
     const finalizeStartedAt = Date.now();
 
@@ -879,7 +806,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json({ code: "conflict", message: `cannot finalize: status=${row.status}` }, 409);
     }
 
-    // Pre-digest size guard. The presign sink already rejects oversize
+    // Pre-digest size guard. The upload sink already rejects oversize
     // bodies, and the schema bounds `size_bytes` at batch-create time,
     // but a row that landed before the cap rollout (or one mutated out
     // of band) could still drive the digest pass into a multi-GB read.
@@ -943,7 +870,11 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     if (digest.sha256 !== expectedClient || (expectedRow && expectedRow !== digest.sha256)) {
       await db
         .update(files)
-        .set({ status: "failed", sha256: digest.sha256, size_bytes: digest.size })
+        .set({
+          status: "failed",
+          sha256: digest.sha256,
+          size_bytes: digest.size,
+        })
         .where(eq(files.id, row.id));
       await auditAwait(
         {
@@ -971,7 +902,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         duration_ms: Date.now() - finalizeStartedAt,
       });
       return c.json(
-        { code: "sha256_mismatch", message: "uploaded bytes hash does not match asserted sha256" },
+        {
+          code: "sha256_mismatch",
+          message: "uploaded bytes hash does not match asserted sha256",
+        },
         422,
       );
     }
@@ -1235,7 +1169,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     tags: [TAG],
     security: [{ bearerAuth: [] }],
     responses: {
-      200: { description: "OK", content: { "application/json": { schema: FileStatsSchema } } },
+      200: {
+        description: "OK",
+        content: { "application/json": { schema: FileStatsSchema } },
+      },
     },
   });
 
@@ -1294,7 +1231,13 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       scan_verdicts[k] = Number(r.n);
     }
 
-    const out: FileStats = { total, by_status, by_size_bucket, dedup_hits, scan_verdicts };
+    const out: FileStats = {
+      total,
+      by_status,
+      by_size_bucket,
+      dedup_hits,
+      scan_verdicts,
+    };
     return c.json(out, 200);
   });
 
@@ -1309,8 +1252,14 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     security: [{ bearerAuth: [] }],
     request: { params: FileIdParam },
     responses: {
-      200: { description: "OK", content: { "application/json": { schema: FileSchema } } },
-      404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
+      200: {
+        description: "OK",
+        content: { "application/json": { schema: FileSchema } },
+      },
+      404: {
+        description: "not_found",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
     },
   });
 
@@ -1339,7 +1288,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     responses: {
       200: { description: "OK" },
       206: { description: "Partial Content" },
-      404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
+      404: {
+        description: "not_found",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
       416: {
         description: "range_not_satisfiable",
         content: { "application/json": { schema: ErrorSchema } },
@@ -1418,7 +1370,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     // Wrap the async iterable in a ReadableStream so Hono's `c.body`
     // accepts it directly (fetch-api `BodyInit` allows ReadableStream).
     const iterable = range
-      ? await getObjectStore().openReadRange(key, { start: range.start, end: range.end })
+      ? await getObjectStore().openReadRange(key, {
+          start: range.start,
+          end: range.end,
+        })
       : await getObjectStore().openRead(key);
     const iterator = iterable[Symbol.asyncIterator]();
     const stream = new ReadableStream<Uint8Array>({
@@ -1473,7 +1428,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     request: { params: FileIdParam },
     responses: {
       204: { description: "Deleted" },
-      404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
+      404: {
+        description: "not_found",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
     },
   });
 
@@ -1538,9 +1496,18 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       body: { content: { "application/json": { schema: LinkRequestSchema } } },
     },
     responses: {
-      201: { description: "Linked", content: { "application/json": { schema: FileLinkSchema } } },
-      404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
-      409: { description: "conflict", content: { "application/json": { schema: ErrorSchema } } },
+      201: {
+        description: "Linked",
+        content: { "application/json": { schema: FileLinkSchema } },
+      },
+      404: {
+        description: "not_found",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
+      409: {
+        description: "conflict",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
     },
   });
 

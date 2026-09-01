@@ -36,3 +36,9 @@ coverage/
 # Logs + staging.
 *.log
 docker/binaries/
+.tmp/
+.artifacts/
+.agent-prime.json
+.superdesign/
+.docker-*-home/
+apps/engine/.devtools/
