@@ -18,6 +18,11 @@ flowchart LR
 
 ## 1. Clone and install
 
+This page is for contributors: it assumes access to the source repository, which
+is private. If you are here to *run* sk rather than change it, you do not need a
+checkout at all — see [Self-Host sk](./self-host.md), which starts from a Compose
+file any running engine serves at `/docker-compose.yml`.
+
 ```bash
 git clone https://github.com/mikebild/subkit && cd subkit
 bun install

@@ -76,8 +76,23 @@ Full glossary: [`docs/concepts/glossary.md`](../concepts/glossary.md).
 The application-complete image bundles the engine, Cockpit, migrations,
 Chromium, **and** the `sk` CLI plus every supported client-platform artifact.
 PostgreSQL and S3-compatible object storage remain separate, mandatory services.
-The repository Compose file starts the pinned application, PostgreSQL, MinIO,
-and a one-shot private-bucket initializer together.
+The Compose file starts the pinned application, PostgreSQL, MinIO, and a one-shot
+private-bucket initializer together.
+
+You do not need a checkout to get that file. Every running engine serves it, and
+what it serves starts that engine's own release:
+
+```bash
+curl -O https://<engine-host>/docker-compose.yml
+MASTER_KEY=$(openssl rand -hex 32) docker compose up -d
+```
+
+`MASTER_KEY` is the one value with no default. It encrypts stored secret
+versions, so keep it — losing it loses the secrets it protects. Every other
+setting in the file carries a local-only default.
+
+From a checkout, `bun run compose:up` writes a `.env` with a generated key first,
+so `docker compose up -d` is enough:
 
 ```bash
 docker compose up -d

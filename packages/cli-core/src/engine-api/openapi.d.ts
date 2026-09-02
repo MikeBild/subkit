@@ -2014,6 +2014,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/docker-compose.yml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compose file that runs this engine's release
+         * @description The Docker Compose topology for a self-hosted sk: this engine's pinned image, PostgreSQL, a private S3-compatible object store, and a one-shot bucket initializer. Served verbatim from the running binary, so the image tag matches the engine you fetched it from. `MASTER_KEY` is the only value you must supply.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Compose file (text/yaml) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/yaml": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/identity/tenants": {
         parameters: {
             query?: never;
