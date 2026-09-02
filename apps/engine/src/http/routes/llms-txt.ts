@@ -29,6 +29,7 @@ import llmsFullTxt from "../../../../../docs/llms-full.txt" with { type: "text" 
 import manifest from "../../../../../docs/llms-manifest.json" with { type: "json" };
 import { getConfig } from "../../config/loader.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
+import { COMPOSE_YAML } from "./compose.ts";
 
 const RESPONSE_HEADERS = {
   "content-type": "text/markdown; charset=utf-8",
@@ -164,8 +165,24 @@ export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
           sha256: sha(llmsFullTxt),
           updated_at: null,
         },
+        // The topology that runs this release. Listed here so a consumer that
+        // only reads the descriptor can still install without a checkout.
+        compose: {
+          url: `${origin}/docker-compose.yml`,
+          sha256: sha(COMPOSE_YAML),
+          updated_at: null,
+        },
       },
-      capabilities: ["health", "ready", "metrics", "openapi", "llms-txt", "mcp", "descriptor"],
+      capabilities: [
+        "health",
+        "ready",
+        "metrics",
+        "openapi",
+        "llms-txt",
+        "mcp",
+        "descriptor",
+        "compose",
+      ],
     });
   });
 
