@@ -5,7 +5,7 @@
 // therefore uses docker-compose.test.yml to provide external PostgreSQL and S3
 // services and asserts that the engine itself has no mounts.
 //
-// Run: SMOKE_IMAGE=mikebild/subkit:6.22.47 bun run smoke:surfaces
+// Run: SMOKE_IMAGE=mikebild/subkit:6.23.0 bun run smoke:surfaces
 
 import { spawnSync } from "node:child_process";
 

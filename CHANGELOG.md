@@ -4,6 +4,59 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 6.23.0 — 2026-09-02
+
+### Added
+
+- Serve the artefacts a newcomer needs from the engine itself: `GET /` lists
+  what this engine hands out, and `GET /docker-compose.yml` returns the
+  topology that runs this exact release. The entry point answers HTML to a
+  browser and Markdown to everything else; both renderings come from one list.
+- Add two decision pages — when to use sk and when not to, and a capability
+  matrix whose every answer was read out of the code. They are what the binary
+  now carries.
+- Add `bun run start:local`: one command from nothing to a running engine with
+  a bootstrapped tenant, and `sk init --defaults`, which never prompts.
+- Seed the three credential-free starter workflows into a tenant when first-run
+  setup completes, so a fresh installation has something it can execute.
+
+### Changed
+
+- Carry the decision-and-install set in the binary rather than the whole
+  documentation: 45 KB instead of 705 KB. `/llms.txt`, `/llms/{path}` and
+  `/llms-full.txt` serve those pages and say so; a page outside the set now
+  answers 404. The complete documentation stays with the source.
+- Make `queue.concurrency` global and restart-required, and read it when
+  registering the execution worker. It was tenant-scoped, documented and
+  settable while nothing read it — the effective concurrency was a hard-coded
+  one. The default is 1 rather than the previous schema default of 8, so an
+  upgrade does not silently multiply parallel side effects.
+
+### Removed
+
+- `POST /v1/connectors/{id}/end-user-credentials`. It encrypted and stored a
+  per-end-user credential that no dispatch path ever read back, so an operator
+  received a 201 for a credential that silently never applied. The table
+  remains for rows written by earlier versions.
+- The GitHub Releases fallback in the install script. The source repository is
+  private, so those asset URLs answered 404 and the script ended in an opaque
+  curl failure. The engine-served binary stays the first source, an
+  operator-supplied `SK_INSTALL_BASE_URL` mirror is the second, and with
+  neither the script explains the three ways forward and installs nothing.
+
+### Fixed
+
+- Stop claiming that a wait survives a crash. The boot sweep re-enqueued
+  `execution.run` for orphaned wait checkpoints and recorded
+  `wait.completed { reason: "recovered" }`, but the job could never start —
+  `markExecutionRunning` transitions only from `queued` and a crashed execution
+  is still `running`. The sweep now records `wait.abandoned` and leaves
+  terminalization to the recovery sweep that owns it.
+- Read the clock seam rather than `Date.now()` in that sweep, which is what
+  made it testable at all; the path previously had no test.
+- Never throw from the origin resolver when configuration is not yet loaded.
+  These are the routes a probe hits first.
+
 ## 6.22.47 — 2026-09-01
 
 ### Fixed
