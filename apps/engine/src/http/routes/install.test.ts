@@ -40,24 +40,16 @@ describe("install script template", () => {
     expect(script).toContain("set -euo pipefail");
   });
 
-  test("interpolates the engine version into the asset URL", () => {
+  test("interpolates the engine version into the script", () => {
     const script = buildScript("3.3.0", "https://engine.example.com");
     expect(script).toContain('VERSION="3.3.0"');
-    // Release tags are `v<VERSION>` since v3.3.0 (the legacy
-    // `subkit-v<VERSION>` prefix was retired). Hardcoding the old
-    // scheme silently 404'd every operator install — the test pins
-    // the new scheme + a negative check on the old prefix so a
-    // future regression fails loudly.
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variable in generated install script
-    expect(script).toContain("releases/download/v${VERSION}");
-    expect(script).not.toContain("releases/download/subkit-v");
   });
 
-  test("probes the engine's bundled binary endpoint before GitHub", () => {
+  test("probes the engine's bundled binary endpoint first", () => {
     const script = buildScript("3.4.0", "https://engine.example.com");
-    // The bundled URL must be probed (HEAD via curl -I) so air-gapped
-    // operators succeed without a GitHub egress rule. The check is a
-    // 5-second probe that 404s cleanly on the slim engine image.
+    // The bundled URL must be probed (HEAD via curl -I) so operators with no
+    // outbound egress succeed. The check is a 5-second probe that 404s cleanly
+    // on the slim engine image.
     expect(script).toContain("BUNDLED_ASSET_URL=");
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variables in generated install script
     expect(script).toContain("/install/sk-${os}-${arch}");
@@ -65,14 +57,36 @@ describe("install script template", () => {
     expect(script).toMatch(/curl -fsSI[^\n]*BUNDLED_ASSET_URL/);
   });
 
-  test("falls back to GitHub Releases when the bundled probe 404s", () => {
+  test("never points at the private source repository", () => {
+    // The repository is private, so a GitHub Releases fallback answers 404 for
+    // everyone outside it. It used to be the else branch here, and a newcomer
+    // on a slim image got an opaque curl failure with nothing to act on.
     const script = buildScript("3.4.0", "https://engine.example.com");
-    expect(script).toContain("RELEASE_ASSET_URL=");
-    expect(script).toContain("RELEASE_SUMS_URL=");
-    // The else branch must wire ASSET_URL/SUMS_URL to the GitHub paths
-    // — without this the slim image breaks entirely.
-    expect(script).toMatch(/ASSET_URL="\$RELEASE_ASSET_URL"/);
-    expect(script).toMatch(/SUMS_URL="\$RELEASE_SUMS_URL"/);
+    expect(script).not.toContain("github.com");
+    expect(script).not.toContain("releases/download");
+  });
+
+  test("accepts an operator-supplied mirror as the second source", () => {
+    const script = buildScript("3.4.0", "https://engine.example.com");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variable in generated install script
+    expect(script).toContain('MIRROR_BASE="${SK_INSTALL_BASE_URL:-}"');
+    expect(script).toMatch(/elif \[ -n "\$MIRROR_BASE" \]; then/);
+    // A trailing slash on the operator's value must not produce a double slash.
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variables in generated install script
+    expect(script).toContain("${MIRROR_BASE%/}/${ASSET}");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variable in generated install script
+    expect(script).toContain("${MIRROR_BASE%/}/SHA256SUMS");
+  });
+
+  test("with no bundle and no mirror it explains itself and installs nothing", () => {
+    const script = buildScript("3.4.0", "https://engine.example.com");
+    // The failure a newcomer actually hits has to name the three ways forward,
+    // carry this engine's own URL, and say plainly that nothing was installed.
+    expect(script).toContain("This engine does not serve the sk binaries");
+    expect(script).toContain("https://engine.example.com/docker-compose.yml");
+    expect(script).toContain("SK_INSTALL_BASE_URL=");
+    expect(script).toContain("docker compose cp engine:/usr/local/bin/sk");
+    expect(script).toContain("Nothing was installed.");
   });
 
   test("interpolates the engine base URL into the next-step message", () => {
