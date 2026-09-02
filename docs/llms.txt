@@ -18,6 +18,7 @@
 - [Knowledge & Skills](concepts/knowledge-and-skills.md): The AI proposes work the way your team does it, not the way a generic API tutorial does — because your conventions are in front of it while it writes.
 - [Architecture Overview](concepts/overview.md): This page explains why sk's promise — describe it, approve it, it runs, and you can prove what it did — survives contact with production.
 - [Reversibility & Trust Domains](concepts/reversibility-and-trust-domains.md): Give each piece of work the level of control it actually needs — no ceremony where mistakes are cheap, no blind spots where they are not.
+- [When to use sk — and when not to](concepts/when-to-use.md): Most automation does not need sk, and saying so is the point of this page.
 - [Workflow Execution](concepts/workflows.md): Once you approve a workflow, it takes the same path every time — no model reconsiders it on the next run.
 
 ## Operators
@@ -50,6 +51,7 @@
 
 - [Developers](developers/README.md): Run sk on your own infrastructure and change it safely.
 - [Detailed Agent Navigation](developers/agent-navigation.md): This on-demand reference preserves the former root agent guide.
+- [Capability matrix](developers/capabilities.md): Every answer here was read out of the code, not out of a feature list.
 - [Coding-Agent Integration (Claude Code & Codex)](developers/coding-agent-integration.md): sk can act as the central knowledge and skill source for your coding agents.
 - [Evidence process — verifying a behavioral / LLM-path change](developers/evidence-process.md): Changes to LLM-driven paths ship proven rather than guessed.
 - [Input Surfaces](developers/input-surfaces.md): Meet your team where they already work—with one governed engine and one common MCP auth contract.

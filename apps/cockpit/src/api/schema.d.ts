@@ -1942,8 +1942,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Full sk documentation set in one fetch (llms-txt full-content variant)
-         * @description The complete sk docs concatenated into a single llms-txt document (https://llmstxt.org), each page preceded by a source marker — enough to ground a model on the whole surface in one fetch.
+         * Everything this engine carries, in one fetch
+         * @description The decision-and-install pages this binary embeds, concatenated into a single llms-txt document (https://llmstxt.org), each preceded by a source marker — enough for a model to judge whether sk fits and to run one. Not the complete documentation set.
          */
         get: {
             parameters: {
@@ -2041,6 +2041,46 @@ export interface paths {
                     };
                     content: {
                         "text/yaml": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What this engine hands out
+         * @description An entry point for someone holding only this URL: the artefacts this engine serves from its own binary — Compose file, installer, documentation, API surface, web interface and health. Returns HTML to a browser and Markdown to everything else.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Entry point (HTML for browsers, Markdown otherwise) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                        "text/markdown": string;
                     };
                 };
             };
