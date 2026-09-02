@@ -4,7 +4,12 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 6.23.0 — 2026-09-02
+## 6.23.1 — 2026-09-02
+
+6.23.0 was tagged but never published: its release gate found CI red on the
+same commit, because the worker registration below threw in test contexts that
+never load configuration. Nothing shipped under that number; this is the same
+change set plus that correction.
 
 ### Added
 
@@ -54,8 +59,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   terminalization to the recovery sweep that owns it.
 - Read the clock seam rather than `Date.now()` in that sweep, which is what
   made it testable at all; the path previously had no test.
-- Never throw from the origin resolver when configuration is not yet loaded.
-  These are the routes a probe hits first.
+- Never throw from the origin resolver, or from the execution worker's
+  concurrency read, when configuration is not yet loaded. The routes are what a
+  probe hits first; the worker is registered by contexts that never load
+  configuration at all, and a throw there took down four CI shards while a
+  gitignored local config file kept every local run green.
 
 ## 6.22.47 — 2026-09-01
 
