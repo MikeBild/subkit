@@ -69,6 +69,14 @@ services:
     environment:
       DATABASE_URL: postgres://subkit:${SUBKIT_DB_PASSWORD:-subkit-local-only}@postgres:5432/subkit
       MASTER_KEY: ${MASTER_KEY:-}
+      # Pass-through with no value: Compose forwards this only when it is set,
+      # in .env or in the shell, and omits it otherwise. That matters — the
+      # engine validates the key as 64..128 characters, so injecting an empty
+      # string would stop a plain `docker compose up` from booting at all.
+      # When it is set the engine adopts it as the one-time first-run token
+      # instead of minting a random one, which is what lets
+      # `bun run start:local` complete setup without scraping the startup banner.
+      SUBKIT_BOOTSTRAP_KEY:
       NODE_ENV: production
       OBJECT_STORAGE_ENDPOINT: http://object-store:9000
       OBJECT_STORAGE_REGION: us-east-1
