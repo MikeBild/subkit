@@ -18,17 +18,31 @@ import {
   BootstrapSetupPayloadSchema,
 } from "../../apps/engine/src/onboarding/bootstrap.ts";
 import { DEMO_WORKFLOWS } from "../../apps/engine/src/onboarding/demo-seed.ts";
+import {
+  LOCAL_DEFAULT_ADMIN_EMAIL,
+  LOCAL_DEFAULT_LLM_API_KEY,
+  LOCAL_DEFAULT_LLM_PROVIDER,
+  LOCAL_DEFAULT_TENANT_NAME,
+} from "../../apps/sk/src/commands/init.ts";
 import { COMPOSE_SERVICE, DEFAULT_HOST_PORT, DEMO_WORKFLOW } from "../start-local.ts";
 
 const ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const compose = readFileSync(join(ROOT, "docker-compose.yml"), "utf8");
 const initSource = readFileSync(join(ROOT, "apps/sk/src/commands/init.ts"), "utf8");
+const startLocalSource = readFileSync(join(ROOT, "scripts/start-local.ts"), "utf8");
 
 describe("start-local ↔ docker-compose.yml", () => {
   test("the service it execs into exists", () => {
     // Top-level service keys are indented by exactly two spaces.
     const services = [...compose.matchAll(/^ {2}([a-z0-9-]+):$/gm)].map((m) => m[1]);
     expect(services).toContain(COMPOSE_SERVICE);
+  });
+
+  test("the bootstrap key is passed through to the engine", () => {
+    // A pass-through with no value: Compose forwards it only when set. Without
+    // this line the engine mints its own random token and setup cannot be
+    // scripted at all.
+    expect(compose).toMatch(/^ {6}SUBKIT_BOOTSTRAP_KEY:\s*$/m);
   });
 
   test("the port it polls is the published default", () => {
@@ -64,47 +78,50 @@ describe("sk init --defaults ↔ the engine's setup contract", () => {
     expect(BOOTSTRAP_LLM_PROVIDERS as readonly string[]).toContain("mock");
   });
 
-  test("the fallback admin email satisfies the payload schema", () => {
-    // Caught a real defect on 2026-09-02: the first fallback was
+  test("the local defaults satisfy the engine's payload schema", () => {
+    // Caught a real defect on 2026-09-02: the first fallback address was
     // `admin@localhost`, which the engine's email check rejects. On a machine
     // with no git config that turned `--defaults` into an HTTP 400 whose text
-    // said nothing about git.
-    const fallback = initSource.match(/gitConfigEmail\(\) \?\? "([^"]+)"/)?.[1];
-    expect(fallback).toBeTruthy();
+    // said nothing about git. The placeholder key is load-bearing too — the
+    // engine requires a non-empty key for every provider, `mock` included.
     const parsed = BootstrapSetupPayloadSchema.safeParse({
-      admin_email: fallback,
-      tenant_name: "Local",
-      llm_provider: "mock",
-      llm_api_key: "placeholder",
-    });
-    expect(parsed.success).toBe(true);
-  });
-
-  test("the placeholder key satisfies the payload schema", () => {
-    // The engine requires a non-empty key for every provider, mock included.
-    // That is why --defaults supplies a placeholder instead of an empty string;
-    // if the contract ever loosens, this test should be the reason it changes.
-    const placeholder = initSource.match(
-      /partial\.llm_api_key \?\?=\s*[\s\S]{0,120}?"([^"]+)"/,
-    )?.[1];
-    expect(placeholder).toBeTruthy();
-    const parsed = BootstrapSetupPayloadSchema.safeParse({
-      admin_email: "admin@example.com",
-      tenant_name: "Local",
-      llm_provider: "mock",
-      llm_api_key: placeholder,
+      admin_email: LOCAL_DEFAULT_ADMIN_EMAIL,
+      tenant_name: LOCAL_DEFAULT_TENANT_NAME,
+      llm_provider: LOCAL_DEFAULT_LLM_PROVIDER,
+      llm_api_key: LOCAL_DEFAULT_LLM_API_KEY,
     });
     expect(parsed.success).toBe(true);
   });
 
   test("an empty key would be rejected — the placeholder is load-bearing", () => {
     const parsed = BootstrapSetupPayloadSchema.safeParse({
-      admin_email: "admin@example.com",
-      tenant_name: "Local",
-      llm_provider: "mock",
+      admin_email: LOCAL_DEFAULT_ADMIN_EMAIL,
+      tenant_name: LOCAL_DEFAULT_TENANT_NAME,
+      llm_provider: LOCAL_DEFAULT_LLM_PROVIDER,
       llm_api_key: "",
     });
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe("start-local drives the CLI that ships in the image", () => {
+  test("setup is fully flagged instead of relying on --defaults", () => {
+    // The `sk` inside the pinned engine image is at least one release behind
+    // this tree. A script that leaned on a newly added flag would fall into the
+    // interactive prompt there, which reads as a hang — the exact failure this
+    // whole package removes.
+    for (const flag of ["--admin-email", "--tenant-name", "--llm-provider", "--llm-api-key"]) {
+      expect(startLocalSource).toContain(`"${flag}"`);
+    }
+    expect(startLocalSource).not.toContain('"--defaults"');
+  });
+
+  test("the bootstrap key never lands in .env", () => {
+    // Bun loads .env into process.env for every test run in this repository. A
+    // fixed key there makes the engine mint the same token twice and breaks the
+    // re-mint test. Caught exactly that way on 2026-09-02.
+    expect(startLocalSource).not.toContain("appendFileSync");
+    expect(startLocalSource).toMatch(/env: \{ \.\.\.process\.env, SUBKIT_BOOTSTRAP_KEY/);
   });
 });
 

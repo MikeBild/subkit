@@ -22,9 +22,16 @@
 
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  gitConfigEmail,
+  LOCAL_DEFAULT_ADMIN_EMAIL,
+  LOCAL_DEFAULT_LLM_API_KEY,
+  LOCAL_DEFAULT_LLM_PROVIDER,
+  LOCAL_DEFAULT_TENANT_NAME,
+} from "../apps/sk/src/commands/init.ts";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const ENV_FILE = join(ROOT, ".env");
@@ -75,20 +82,19 @@ function requireDocker(): void {
  * The engine mints a one-time bootstrap token at first boot and prints it in a
  * banner. Scripting against a log banner is brittle, so pin the value up front:
  * SUBKIT_BOOTSTRAP_KEY makes the engine adopt this token instead of generating
- * one. Written once and reused, so a second run finds the same key.
+ * one, and docker-compose.yml passes it through when it is set.
+ *
+ * Deliberately NOT written to .env. Bun loads that file into process.env for
+ * every `bun test` run in this repository, and a fixed bootstrap key there
+ * makes the engine mint the same token twice — which fails the test that
+ * asserts a re-minted token differs from the expired one. A value that only
+ * this process and its compose child can see has no such reach.
+ *
+ * A fresh value per run is fine: the token matters only for a database that has
+ * never completed setup, and on a second run setup is already done.
  */
-function ensureBootstrapKey(): string {
-  const existing = envValue("SUBKIT_BOOTSTRAP_KEY");
-  if (existing.length >= 64) return existing;
-  const key = randomBytes(32).toString("hex");
-  appendFileSync(
-    ENV_FILE,
-    `\n# Fixed first-run bootstrap token, written by scripts/start-local.ts so setup\n` +
-      `# does not have to be scraped out of the engine's startup banner. It is\n` +
-      `# invalid the moment setup completes.\nSUBKIT_BOOTSTRAP_KEY=${key}\n`,
-  );
-  say("  wrote a fixed SUBKIT_BOOTSTRAP_KEY into .env");
-  return key;
+function newBootstrapKey(): string {
+  return randomBytes(32).toString("hex");
 }
 
 async function waitForReady(port: string): Promise<void> {
@@ -125,18 +131,46 @@ async function main(): Promise<void> {
   if (run("sh", ["scripts/ensure-env.sh"], { capture: true }).status !== 0) {
     fail("scripts/ensure-env.sh failed");
   }
-  const bootstrapKey = ensureBootstrapKey();
+  const bootstrapKey = newBootstrapKey();
   const port = envValue("SUBKIT_HOST_PORT") || DEFAULT_HOST_PORT;
 
   say("→ starting the stack (engine, PostgreSQL, object storage)");
-  if (run("docker", ["compose", "up", "-d"]).status !== 0) fail("docker compose up failed");
+  const up = spawnSync("docker", ["compose", "up", "-d"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "inherit", "inherit"],
+    env: { ...process.env, SUBKIT_BOOTSTRAP_KEY: bootstrapKey },
+  });
+  if (up.status !== 0) fail("docker compose up failed");
 
   say("→ waiting for the engine to report ready");
   await waitForReady(port);
 
   say("→ completing first-run setup");
+  // Every field is passed explicitly rather than via `sk init --defaults`.
+  // The `sk` this execs is the one baked into the pinned engine image, which is
+  // always at least one release behind this source tree — a script that depended
+  // on a flag added here would fail until the next image ships, and it would
+  // fail by dropping into an interactive prompt, which reads as a hang.
+  // `--defaults` is the ergonomic form for a human; these four flags are the
+  // form that works on every version. Both read the same constants.
   const init = composeExec(
-    ["sk", "init", "--defaults", "--token", bootstrapKey, "--engine-url", "http://127.0.0.1:3000"],
+    [
+      "sk",
+      "init",
+      "--token",
+      bootstrapKey,
+      "--engine-url",
+      "http://127.0.0.1:3000",
+      "--admin-email",
+      gitConfigEmail() ?? LOCAL_DEFAULT_ADMIN_EMAIL,
+      "--tenant-name",
+      LOCAL_DEFAULT_TENANT_NAME,
+      "--llm-provider",
+      LOCAL_DEFAULT_LLM_PROVIDER,
+      "--llm-api-key",
+      LOCAL_DEFAULT_LLM_API_KEY,
+    ],
     { capture: true },
   );
   const initOutput = `${init.stdout ?? ""}${init.stderr ?? ""}`;
@@ -145,26 +179,52 @@ async function main(): Promise<void> {
     process.stderr.write(initOutput);
     fail("sk init failed");
   }
+  // Print what setup said even on success. A step that works silently and a step
+  // that fails silently look identical, and this script exists precisely because
+  // that ambiguity cost a newcomer half an hour.
+  if (!QUIET && initOutput.trim().length > 0) {
+    process.stdout.write(
+      initOutput
+        .trimEnd()
+        .split("\n")
+        .map((line) => `  ${line}`)
+        .join("\n") + "\n",
+    );
+  }
   say(alreadyDone ? "  already bootstrapped — reusing the existing tenant" : "  tenant ready");
 
+  let ranDemo = false;
   if (!SKIP_RUN) {
     say(`→ running the seeded starter workflow '${DEMO_WORKFLOW}'`);
     const exec = composeExec(["sk", "workflows", "run", DEMO_WORKFLOW, "--follow"], {
       capture: true,
     });
-    if (exec.status !== 0) {
-      process.stderr.write(`${exec.stdout ?? ""}${exec.stderr ?? ""}`);
+    const execOutput = `${exec.stdout ?? ""}${exec.stderr ?? ""}`;
+    if (exec.status === 0) {
+      ranDemo = true;
+      say("  execution succeeded");
+    } else if (/no workflow found/i.test(execOutput)) {
+      // The starter workflows are seeded by the engine at setup. The image this
+      // stack runs is pinned and can predate that, in which case the tenant is
+      // simply empty — the stack itself is healthy and usable. Say so plainly
+      // instead of failing: a newcomer who sees a red error assumes the whole
+      // command failed, and it did not.
+      say(
+        `  this engine image has no starter workflows yet — the tenant is empty.\n` +
+          `  Everything else is up; author one, or pull a newer image.`,
+      );
+    } else {
+      process.stderr.write(execOutput);
       fail(
         `the starter workflow did not run. List what the tenant has:\n` +
           `  docker compose exec ${COMPOSE_SERVICE} sk workflows list`,
       );
     }
-    say("  execution succeeded");
   }
 
   const base = `http://127.0.0.1:${port}`;
   process.stdout.write(
-    `\nSubKit is running.\n\n` +
+    `\n${ranDemo ? "SubKit is running and has executed a workflow." : "SubKit is running."}\n\n` +
       `  Cockpit          ${base}/\n` +
       `  API reference    ${base}/docs\n` +
       `  Machine-readable ${base}/llms.txt\n\n` +

@@ -4,9 +4,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { eq } from "drizzle-orm";
 import { auditLog } from "../db/schema/audit.ts";
 import { engineSettings, tenants } from "../db/schema/identity.ts";
+import { workflows } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { type SeededRoleIds, seedBuiltinRolesAndPermissions } from "../rbac/seed.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
+import { DEMO_WORKFLOWS } from "./demo-seed.ts";
 
 // settings/clearCache removed in v3.5 — runtime config moved to subkit.config.json
 const clearCache = (): void => {};
@@ -102,6 +104,36 @@ describe("run() — banner + token mint", () => {
     const result = await run(tdb.db, { stdout: { write: (c) => captured.push(c) } });
     expect(result.status).toBe("already_completed");
     expect(captured).toEqual([]);
+  });
+});
+
+describe("consume() — starter workflows", () => {
+  test("a completed setup leaves the tenant with something it can actually run", async () => {
+    // Without this the only route to a first execution is the conversational
+    // authoring loop, which needs a real LLM provider. A newcomer using the
+    // mock provider reached setup and then faced an empty workspace.
+    const minted = await run(tdb.db, { stdout: { write: () => undefined } });
+    const outcome = await consume(
+      tdb.db,
+      rbacIds,
+      {
+        admin_email: "ops@example.com",
+        tenant_name: "Starter Org",
+        llm_provider: "mock",
+        llm_api_key: "mock-local-no-external-account",
+      },
+      { token: minted.plaintext_token! },
+    );
+
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+
+    const rows = await tdb.db
+      .select({ slug: workflows.slug })
+      .from(workflows)
+      .where(eq(workflows.tenant_id, outcome.tenant_id));
+    const slugs = rows.map((r) => r.slug);
+    for (const spec of DEMO_WORKFLOWS) expect(slugs).toContain(spec.slug);
   });
 });
 
