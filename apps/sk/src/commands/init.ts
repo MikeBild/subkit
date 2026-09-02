@@ -222,6 +222,23 @@ async function promptForMissing(
   };
 }
 
+/**
+ * The local-development defaults, in one place.
+ *
+ * `--defaults` applies them, and `scripts/start-local.ts` passes them as
+ * explicit flags — it has to, because it drives the `sk` that ships inside the
+ * pinned engine image, which is a release behind this source tree and does not
+ * know newer flags. Sharing the constants keeps the two from drifting apart;
+ * a contract test holds them together.
+ */
+export const LOCAL_DEFAULT_TENANT_NAME = "Local";
+export const LOCAL_DEFAULT_LLM_PROVIDER = "mock" as const;
+/** The engine's setup payload requires a non-empty key for every provider,
+ *  `mock` included, so a placeholder stands in for an account nobody has. */
+export const LOCAL_DEFAULT_LLM_API_KEY = "mock-local-no-external-account";
+/** RFC 2606 reserves example.com, so this can never reach a real inbox. */
+export const LOCAL_DEFAULT_ADMIN_EMAIL = "admin@example.com";
+
 /** Best-effort local identity for `--defaults`. A missing git config is not an
  *  error: the caller falls back to a placeholder address.
  *
@@ -231,7 +248,7 @@ async function promptForMissing(
  *  reason. A machine-local address like `admin@localhost` fails that check —
  *  which is exactly why the fallback below uses a reserved documentation
  *  domain instead. */
-function gitConfigEmail(): string | undefined {
+export function gitConfigEmail(): string | undefined {
   const res = spawnSync("git", ["config", "--get", "user.email"], { encoding: "utf8" });
   const value = res.status === 0 ? res.stdout.trim() : "";
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value) ? value : undefined;
@@ -327,12 +344,11 @@ export const initCommand = defineCommand({
     // including `mock`, so a placeholder is supplied here rather than loosening
     // the contract on the engine side.
     if (args.defaults) {
-      // RFC 2606 reserves example.com, so this can never reach a real inbox.
-      partial.admin_email ??= gitConfigEmail() ?? "admin@example.com";
-      partial.tenant_name ??= "Local";
-      partial.llm_provider ??= "mock";
+      partial.admin_email ??= gitConfigEmail() ?? LOCAL_DEFAULT_ADMIN_EMAIL;
+      partial.tenant_name ??= LOCAL_DEFAULT_TENANT_NAME;
+      partial.llm_provider ??= LOCAL_DEFAULT_LLM_PROVIDER;
       partial.llm_api_key ??=
-        partial.llm_provider === "mock" ? "mock-local-no-external-account" : "";
+        partial.llm_provider === LOCAL_DEFAULT_LLM_PROVIDER ? LOCAL_DEFAULT_LLM_API_KEY : "";
       if (!partial.llm_api_key) {
         process.stderr.write(
           `sk init: --defaults needs --llm-api-key when --llm-provider is ${partial.llm_provider}; only 'mock' has a usable placeholder\n`,

@@ -9924,6 +9924,10 @@ anything, runs one of the starter workflows that ship with a fresh tenant, and p
 the Cockpit URL. No API key, no account: the LLM provider is set to `mock`, so nothing
 leaves your machine. Re-running it is safe.
 
+The starter workflows are seeded by the engine during setup, so a Compose file pinned
+to an older image reaches a running stack with an empty tenant instead. The command
+says so and carries on rather than reporting a failure.
+
 The trade is real and worth naming. With the `mock` provider the conversational
 authoring loop in Step 3 does not do any authoring — it is inert. You get a running
 engine, a tenant, and workflows you can execute and inspect. To describe new work in
