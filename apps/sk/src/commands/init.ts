@@ -7,13 +7,19 @@
 // via flags), POSTs `/v1/setup`, and saves the returned admin API key
 // into the active profile so the very next `sk` command authenticates.
 //
-// Two paths:
+// Three paths:
 //   - Interactive (default): @clack/prompts walks the operator through
 //     four questions (email, tenant name, llm provider, llm api key).
 //   - Headless: `--admin-email --tenant-name --llm-provider --llm-api-key`
 //     all supplied alongside `--token`; no prompts shown.  This is the
 //     CI / scripted-bootstrap path.
+//   - `--defaults`: never prompts.  Fills whatever is missing with local
+//     defaults (mock provider, tenant "Local", git email).  This is what
+//     `scripts/start-local.ts` drives, and the reason it exists is that a
+//     partially-flagged invocation used to fall into the interactive path
+//     and look like a hang in a non-interactive shell.
 
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import * as prompts from "@clack/prompts";
 import { defineCommand } from "citty";
@@ -216,6 +222,21 @@ async function promptForMissing(
   };
 }
 
+/** Best-effort local identity for `--defaults`. A missing git config is not an
+ *  error: the caller falls back to a placeholder address.
+ *
+ *  The value is shape-checked here rather than at the engine, because the
+ *  engine's setup payload rejects anything that is not a valid address and the
+ *  resulting HTTP 400 gives an operator no clue that their git config is the
+ *  reason. A machine-local address like `admin@localhost` fails that check —
+ *  which is exactly why the fallback below uses a reserved documentation
+ *  domain instead. */
+function gitConfigEmail(): string | undefined {
+  const res = spawnSync("git", ["config", "--get", "user.email"], { encoding: "utf8" });
+  const value = res.status === 0 ? res.stdout.trim() : "";
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value) ? value : undefined;
+}
+
 export const initCommand = defineCommand({
   meta: {
     name: "init",
@@ -242,6 +263,11 @@ export const initCommand = defineCommand({
       description: `LLM provider: ${LLM_PROVIDERS.join("|")} (skip prompt)`,
     },
     "llm-api-key": { type: "string", description: "LLM API key (skip prompt)" },
+    defaults: {
+      type: "boolean",
+      description:
+        "Never prompt: fill anything still missing with local defaults (mock LLM provider, tenant 'Local', admin email from git config)",
+    },
   },
   async run({ args }) {
     let token = args.token as string | undefined;
@@ -292,6 +318,28 @@ export const initCommand = defineCommand({
       partial.llm_provider = llmProvider as LlmProvider;
     }
     if (llmApiKey) partial.llm_api_key = llmApiKey;
+
+    // `--defaults` is the scripted local path: it fills whatever is still
+    // missing instead of asking. Measured on 2026-09-02, the documented
+    // example `--llm-provider mock` without a key drops into an interactive
+    // prompt, which in a non-interactive shell looks exactly like a hang.
+    // The engine's setup payload requires a non-empty key for every provider,
+    // including `mock`, so a placeholder is supplied here rather than loosening
+    // the contract on the engine side.
+    if (args.defaults) {
+      // RFC 2606 reserves example.com, so this can never reach a real inbox.
+      partial.admin_email ??= gitConfigEmail() ?? "admin@example.com";
+      partial.tenant_name ??= "Local";
+      partial.llm_provider ??= "mock";
+      partial.llm_api_key ??=
+        partial.llm_provider === "mock" ? "mock-local-no-external-account" : "";
+      if (!partial.llm_api_key) {
+        process.stderr.write(
+          `sk init: --defaults needs --llm-api-key when --llm-provider is ${partial.llm_provider}; only 'mock' has a usable placeholder\n`,
+        );
+        process.exit(2);
+      }
+    }
 
     const fullyHeadless =
       partial.admin_email && partial.tenant_name && partial.llm_provider && partial.llm_api_key;
