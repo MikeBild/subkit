@@ -162,6 +162,9 @@ export const AuditAction = {
   // for engine-boot reaper resumes). Both pair with `metadata.step_id`.
   WAIT_STARTED: "wait.started",
   WAIT_COMPLETED: "wait.completed",
+  /** A wait checkpoint outlived the process that armed it. The wait did not
+   *  complete and the execution does not continue — see wait-reaper.ts. */
+  WAIT_ABANDONED: "wait.abandoned",
 
   SCHEDULE_CREATED: "schedule.created",
   SCHEDULE_UPDATED: "schedule.updated",

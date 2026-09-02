@@ -28,7 +28,10 @@ describe("ConfigSchema", () => {
     expect(result.data.egress.mode).toBeNull();
     expect(result.data.egress.provider_hosts_extra).toEqual([]);
     expect(result.data.errors.ring_size).toBe(100);
-    expect(result.data.queue.concurrency).toBe(8);
+    // One, not eight. The worker hard-coded a batch size of 1 for as long as
+    // this leaf went unread, so wiring it up with a higher default would have
+    // silently multiplied every deployment's parallel side effects on upgrade.
+    expect(result.data.queue.concurrency).toBe(1);
     expect(result.data.queue.abort_poll_interval_ms).toBe(500);
     expect(result.data.queue.crash_recovery_sweep_interval_ms).toBe(60_000);
     expect(result.data.tokens.monthly_budget).toBe(0);

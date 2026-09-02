@@ -6304,59 +6304,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/connectors/{id}/end-user-credentials": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Attach end-user-scoped credentials */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["EndUserCredentialBody"];
-                };
-            };
-            responses: {
-                /** @description Created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            id: string;
-                        };
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/connector-drafts/{id}/credentials/setup": {
         parameters: {
             query?: never;
@@ -16772,14 +16719,6 @@ export interface components {
         OAuthStartResponse: {
             authorization_url: string;
             state: string;
-        };
-        EndUserCredentialBody: {
-            enduser_ref: string;
-            /** @enum {string} */
-            combine_mode: "merge" | "replace";
-            payload: {
-                [key: string]: unknown;
-            };
         };
         ConnectorMcpInspectResponse: {
             connector_id: string;

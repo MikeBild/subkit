@@ -8556,30 +8556,6 @@
           "state"
         ]
       },
-      "EndUserCredentialBody": {
-        "type": "object",
-        "properties": {
-          "enduser_ref": {
-            "type": "string"
-          },
-          "combine_mode": {
-            "type": "string",
-            "enum": [
-              "merge",
-              "replace"
-            ]
-          },
-          "payload": {
-            "type": "object",
-            "additionalProperties": {}
-          }
-        },
-        "required": [
-          "enduser_ref",
-          "combine_mode",
-          "payload"
-        ]
-      },
       "ConnectorMcpInspectResponse": {
         "type": "object",
         "properties": {
@@ -26085,69 +26061,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/connectors/{id}/end-user-credentials": {
-      "post": {
-        "tags": [
-          "connectors"
-        ],
-        "summary": "Attach end-user-scoped credentials",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EndUserCredentialBody"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id"
-                  ]
                 }
               }
             }
