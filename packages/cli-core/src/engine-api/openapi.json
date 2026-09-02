@@ -20998,8 +20998,8 @@
         "tags": [
           "docs"
         ],
-        "summary": "Full sk documentation set in one fetch (llms-txt full-content variant)",
-        "description": "The complete sk docs concatenated into a single llms-txt document (https://llmstxt.org), each page preceded by a source marker — enough to ground a model on the whole surface in one fetch.",
+        "summary": "Everything this engine carries, in one fetch",
+        "description": "The decision-and-install pages this binary embeds, concatenated into a single llms-txt document (https://llmstxt.org), each preceded by a source marker — enough for a model to judge whether sk fits and to run one. Not the complete documentation set.",
         "responses": {
           "200": {
             "description": "Full llms-txt corpus",
@@ -21049,6 +21049,32 @@
             "description": "Compose file (text/yaml)",
             "content": {
               "text/yaml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "docs"
+        ],
+        "summary": "What this engine hands out",
+        "description": "An entry point for someone holding only this URL: the artefacts this engine serves from its own binary — Compose file, installer, documentation, API surface, web interface and health. Returns HTML to a browser and Markdown to everything else.",
+        "responses": {
+          "200": {
+            "description": "Entry point (HTML for browsers, Markdown otherwise)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/markdown": {
                 "schema": {
                   "type": "string"
                 }

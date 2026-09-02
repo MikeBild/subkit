@@ -20,6 +20,27 @@ export interface LlmsPage {
  * an `## Optional` section ("URLs that can be skipped if a shorter context is
  * needed") rather than in the primary audience sections.
  */
+/**
+ * The pages a SHIPPED BINARY carries, as opposed to the pages the repository
+ * documents. The engine embeds only these, and serves only these.
+ *
+ * The rule is purpose, not completeness: someone holding nothing but an engine
+ * URL has exactly two questions — *should I use this* and *how do I run it* —
+ * and a binary that answers both is self-contained for the decision. Everything
+ * else is documentation for people who already chose, and it lives in the
+ * repository rather than in every deployed artefact.
+ *
+ * Keeping this small is the point. Adding a page here adds it to every binary
+ * and to the context of every model that grounds itself on this engine, so a
+ * page earns its place by being load-bearing for the decision or the install,
+ * not by being good.
+ */
+export const ESSENTIAL_PATHS: ReadonlyArray<string> = [
+  "docs/concepts/when-to-use.md",
+  "docs/developers/capabilities.md",
+  "docs/developers/self-host.md",
+];
+
 export const OPTIONAL_PATHS: ReadonlySet<string> = new Set([
   "docs/admins/settings-reference.md",
   "docs/authors/settings.md",
@@ -44,6 +65,13 @@ const AUDIENCE_LABELS: ReadonlyArray<{ dir: string; label: string }> = [
 export interface RenderLlmsIndexOptions {
   /** Maps a page to the href used in its list entry. */
   linkFor: (page: LlmsPage) => string;
+  /** Heading and lede. The repository artefact documents the whole product; a
+   *  shipped binary carries only the decision-and-install set, and must say so
+   *  rather than inherit a promise it does not keep. */
+  heading?: string;
+  lede?: string;
+  /** Label in front of the full-text pointer. */
+  fullUrlLabel?: string;
   /** Absolute or relative URL of the full-text variant, surfaced in the lede. */
   fullUrl: string;
   /**
@@ -76,10 +104,10 @@ export function renderLlmsIndex(pages: LlmsPage[], opts: RenderLlmsIndexOptions)
   const isOptional = opts.optional ?? ((p: LlmsPage) => OPTIONAL_PATHS.has(p.path));
 
   const lines: string[] = [
-    "# sk Documentation",
+    opts.heading ?? "# sk Documentation",
     "",
-    "> The sk documentation set for LLMs: every public page grouped by audience, each with its title, link, and one-line summary.",
-    `> Full documentation in one file: ${opts.fullUrl}`,
+    `> ${opts.lede ?? "The sk documentation set for LLMs: every public page grouped by audience, each with its title, link, and one-line summary."}`,
+    `> ${opts.fullUrlLabel ?? "Full documentation in one file"}: ${opts.fullUrl}`,
   ];
 
   for (const { dir, label } of AUDIENCE_LABELS) {
