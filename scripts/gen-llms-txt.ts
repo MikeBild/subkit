@@ -39,12 +39,20 @@
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { type LlmsPage, OPTIONAL_PATHS, renderLlmsIndex } from "@shared/llms-index.ts";
+import {
+  ESSENTIAL_PATHS,
+  type LlmsPage,
+  OPTIONAL_PATHS,
+  renderLlmsIndex,
+} from "@shared/llms-index.ts";
 
 const DOCS_DIR = "docs";
 const OUTPUT = join(DOCS_DIR, "llms.txt");
 const OUTPUT_FULL = join(DOCS_DIR, "llms-full.txt");
 const OUTPUT_MANIFEST = join(DOCS_DIR, "llms-manifest.json");
+// The subset a shipped binary carries. See ESSENTIAL_PATHS for why it is small.
+const OUTPUT_ESSENTIAL = join(DOCS_DIR, "llms-essential.txt");
+const OUTPUT_ESSENTIAL_MANIFEST = join(DOCS_DIR, "llms-essential-manifest.json");
 const EXCLUDE_DIRS = new Set(["internal", "_tapes"]);
 
 // Audience folder -> section heading, in emission order.
@@ -235,7 +243,36 @@ function main(): void {
     }
   }
 
+  // The essential set: the pages the engine embeds and serves. Ordered by
+  // ESSENTIAL_PATHS rather than by audience, because the order is the reading
+  // order for the decision — should I use this, can it do the thing, how do I
+  // run it.
+  const essentialEntries = ESSENTIAL_PATHS.map((path) => {
+    const entry = entries.find((e) => e.path === path);
+    if (!entry) {
+      throw new Error(
+        `ESSENTIAL_PATHS names ${path}, which is not in the docs set — ` +
+          "rename it there or remove it here; a binary must never promise a page it does not carry",
+      );
+    }
+    return entry;
+  });
+  const essentialPages: LlmsPage[] = essentialEntries.map(({ content: _c, ...page }) => page);
+  const essentialLines: string[] = [
+    "# sk — the decision and install set",
+    "",
+    "> What a shipped engine carries in its own binary: enough to decide whether sk fits and to run one. Not the complete documentation — that lives with the source.",
+  ];
+  for (const e of essentialEntries) {
+    essentialLines.push("", `<!-- Source: ${e.path} -->`, "", e.content.trimEnd());
+  }
+
   writeFileSync(OUTPUT, `${index}\n`);
+  writeFileSync(OUTPUT_ESSENTIAL, `${essentialLines.join("\n")}\n`);
+  writeFileSync(
+    OUTPUT_ESSENTIAL_MANIFEST,
+    `${JSON.stringify({ pages: essentialPages }, null, 2)}\n`,
+  );
   writeFileSync(OUTPUT_FULL, `${fullLines.join("\n")}\n`);
   writeFileSync(OUTPUT_MANIFEST, `${JSON.stringify({ pages }, null, 2)}\n`);
 }

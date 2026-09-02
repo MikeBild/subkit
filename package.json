@@ -34,7 +34,7 @@
     "check:docs-refs": "bun run scripts/check-docs-refs.ts",
     "check:embedded-drift": "bun run db:gen-embedded && git diff --exit-code apps/engine/src/db/migrations/embedded.ts",
     "check:llms-drift": "bun run check:llms-txt-drift",
-    "check:llms-txt-drift": "bun run gen:llms-txt && git diff --exit-code docs/llms.txt docs/llms-full.txt docs/llms-manifest.json",
+    "check:llms-txt-drift": "bun run gen:llms-txt && git diff --exit-code docs/llms.txt docs/llms-full.txt docs/llms-manifest.json docs/llms-essential.txt docs/llms-essential-manifest.json",
     "check:openapi-drift": "bun run gen:openapi-client && git diff --exit-code packages/cli-core/src/engine-api apps/cockpit/src/api/schema.d.ts",
     "check:settings-doc-drift": "bun run gen:settings-doc && git diff --exit-code docs/admins/settings-reference.md",
     "check:sk-settings-doc-drift": "bun run gen:sk-settings-doc && git diff --exit-code docs/authors/settings.md",

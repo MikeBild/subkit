@@ -1,6 +1,6 @@
 # Concepts
 
-Read this section and you can predict what sk will do before you run it — and say why, in the same words as everyone else on your team. Six pages cover the whole model: how a system gets connected, how a process runs, where the AI helps and where it stops, and what gets written down along the way.
+Read this section and you can predict what sk will do before you run it — and say why, in the same words as everyone else on your team. Seven pages cover the whole model: how a system gets connected, how a process runs, where the AI helps and where it stops, and what gets written down along the way.
 
 ```mermaid
 flowchart TD
@@ -23,6 +23,7 @@ Start with the **Overview** for the big picture, then the **Glossary** to lock t
 
 | Page | What it covers |
 |---|---|
+| [When to use sk — and when not to](when-to-use.md) | The decision before every other one: whether this is the right tool at all, and what to reach for when it is not. |
 | [Architecture Overview](overview.md) | The first mental model of sk — the major pieces and how they connect. |
 | [Concepts & Domain Model](glossary.md) | One vocabulary, defined once: Workflow, Connector, Credential, Audit Log, and the rest. |
 | [Connectors & Integration](connectors.md) | Drivers, Connector Templates, and Credentials — authenticate a system once, reuse it everywhere. |
