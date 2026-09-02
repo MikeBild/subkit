@@ -769,6 +769,7 @@ Complete first-run engine bootstrap (consumes the token printed at engine boot)
 - `--tenant-name` (string) — Tenant display name (skip prompt)
 - `--llm-provider` (string) — LLM provider: mock|anthropic|openai|gemini|azure|bedrock|vertex (skip prompt)
 - `--llm-api-key` (string) — LLM API key (skip prompt)
+- `--defaults` — Never prompt: fill anything still missing with local defaults (mock LLM provider, tenant 'Local', admin email from git config)
 
 
 ### `sk install`
