@@ -28,6 +28,16 @@ describe("GET /docker-compose.yml", () => {
     }
   });
 
+  test("pins the version this binary actually is", () => {
+    // The file is served by a running engine, so a tag that lags behind hands a
+    // newcomer the previous release while claiming to describe this one.
+    // scripts/bump-version.ts keeps the two in step; this fails if it stops.
+    const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
+      version: string;
+    };
+    expect(COMPOSE_YAML).toContain(`\${SUBKIT_IMAGE_TAG:-${pkg.version}}`);
+  });
+
   test("pins the engine image rather than floating on latest", () => {
     // A published file that says `:latest` would start a different release than
     // the engine that served it.
