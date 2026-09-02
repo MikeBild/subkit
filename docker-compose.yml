@@ -1,3 +1,18 @@
+# SubKit — engine, PostgreSQL, private object storage, and a one-shot bucket
+# initializer. This file is served by every running engine at
+# GET /docker-compose.yml, so it has to stand on its own:
+#
+#   curl -O https://<engine-host>/docker-compose.yml
+#   MASTER_KEY=$(openssl rand -hex 32) docker compose up -d
+#
+# MASTER_KEY is the one value with no safe default. It encrypts stored secret
+# versions, so a generated-on-every-start key would make them unreadable after
+# the first restart. Keep it: losing it loses the secrets it protects.
+# Everything else below carries a local-only default.
+#
+# From a checkout, `bun run start:local` does this and the first-run setup in
+# one command; `sh scripts/ensure-env.sh` alone writes a .env with a generated
+# MASTER_KEY.
 name: subkit
 
 x-logging: &default-logging

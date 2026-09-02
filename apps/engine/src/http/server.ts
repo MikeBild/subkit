@@ -50,6 +50,7 @@ import { registerChatRoutes } from "./routes/chat.ts";
 import { registerChatIdentityRoutes } from "./routes/chat-identities.ts";
 import { registerChatSpaceRoutes } from "./routes/chat-spaces.ts";
 import { registerChatWorkspaceRoutes } from "./routes/chat-workspaces.ts";
+import { registerComposeRoute } from "./routes/compose.ts";
 import { registerConnectorDiscoveryRoutes } from "./routes/connector-discovery.ts";
 import { registerConnectorDocsRoutes } from "./routes/connector-docs.ts";
 import { registerConnectorTemplateRoutes } from "./routes/connector-templates/index.ts";
@@ -304,6 +305,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerSettingsRoutes(app);
   registerMetricsRoute(app);
   registerLlmsTxtRoutes(app);
+  registerComposeRoute(app);
   registerTenantRoutes(app);
   registerUserRoutes(app);
   registerInviteRoutes(app);
