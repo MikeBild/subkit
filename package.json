@@ -45,6 +45,7 @@
     "compose:test:down": "docker compose -f docker-compose.test.yml down -v",
     "compose:test:up": "docker compose -f docker-compose.test.yml up -d --build --wait",
     "compose:up": "sh scripts/ensure-env.sh && docker compose up -d",
+    "start:local": "bun run scripts/start-local.ts",
     "db:gen-embedded": "bun run scripts/gen-embedded-migrations.ts",
     "db:generate": "drizzle-kit generate && bun run db:gen-embedded",
     "db:issue-admin-key": "bun run apps/engine/src/db/issue-admin-key.ts",
