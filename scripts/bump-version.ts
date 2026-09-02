@@ -90,6 +90,30 @@ console.log(`bump: package.json ${current} → ${next}`);
 // Regenerate every artifact the version is copied into. Today that is the
 // OpenAPI contract; if another generator starts embedding the version, add it
 // here rather than to a release checklist a human has to remember.
+
+// docker-compose.yml pins the engine image, and since 6.23.0 every running
+// engine SERVES that file at GET /docker-compose.yml. A stale tag there is not
+// a cosmetic lag: it hands a newcomer the topology of the previous release
+// while claiming to describe this one. The bump owns it for the same reason it
+// owns the OpenAPI artifact — a release checklist is not a mechanism.
+{
+  const composePath = join(REPO, "docker-compose.yml");
+  const compose = readFileSync(composePath, "utf8");
+  const pinned = /\$\{SUBKIT_IMAGE_TAG:-(\d+\.\d+\.\d+)\}/.exec(compose);
+  if (!pinned) {
+    die("docker-compose.yml no longer pins ${SUBKIT_IMAGE_TAG:-<version>} — update this script");
+  }
+  if (pinned[1] !== next) {
+    writeFileSync(
+      composePath,
+      compose.replace(/\$\{SUBKIT_IMAGE_TAG:-\d+\.\d+\.\d+\}/, `\${SUBKIT_IMAGE_TAG:-${next}}`),
+    );
+    console.log(`bump: docker-compose.yml image tag ${pinned[1]} → ${next}`);
+  } else {
+    console.log("bump: docker-compose.yml image tag already matched");
+  }
+}
+
 console.log("bump: regenerating the OpenAPI client …");
 execFileSync("bun", ["run", "gen:openapi-client"], { cwd: REPO, stdio: "inherit" });
 
