@@ -10,19 +10,24 @@
 // optionally writes the engine URL into the resolved profile.
 //
 // Source resolution:
-//   - The script first probes the engine itself at
+//   - The script probes the engine itself at
 //     ${ENGINE_URL}/install/sk-${os}-${arch}. The `engine-with-cli`
 //     Docker image variant bundles the matching binaries and serves
-//     them from there; air-gapped or proxy-restricted operators get a
-//     working install without GitHub egress.
-//   - On 404 (slim image, no bundle), falls back to the public GitHub
-//     Release at github.com/MikeBild/subkit/releases/download/v<VERSION>/.
-//     A single install command therefore works for both image variants.
-//   - SHA-verification piggybacks on the matching SHA256SUMS — bundled
-//     at ${ENGINE_URL}/install/sha256sums for the with-cli variant,
-//     attached to every GitHub Release for the slim variant.
-//   - The `subkit-v…` tag prefix used through v3.2.0 was dropped at
-//     v3.3.0 in favour of plain `v<VERSION>`.
+//     them from there, so an operator with no outbound egress at all
+//     still gets a working install.
+//   - Otherwise the script needs a mirror: SK_INSTALL_BASE_URL, a
+//     location serving `sk_<os>_<arch>` next to a `SHA256SUMS` file.
+//     Absent that it stops and says which of the three ways forward to
+//     take, rather than failing on a download nobody can explain.
+//   - SHA-verification piggybacks on the matching SHA256SUMS —
+//     `${ENGINE_URL}/install/sha256sums` for the bundled path,
+//     `${SK_INSTALL_BASE_URL}/SHA256SUMS` for a mirror.
+//
+// There is deliberately no GitHub Releases fallback. The source
+// repository is private, so those asset URLs answer 404 for everyone
+// outside it — a promise the deployment cannot keep. Measured on
+// 2026-09-02: a newcomer following this script on a slim image got an
+// opaque curl failure with nothing to act on.
 //
 // The route is unauthenticated by design — the install script itself
 // contains no secrets, only public URLs. Operators who want auth-gated
@@ -50,8 +55,6 @@ const route = createRoute({
   },
 });
 
-const REPO = "MikeBild/subkit";
-
 function buildScript(version: string, engineBaseUrl: string): string {
   // Heredoc-style; escape only what bash would interpret. Single quotes
   // are intentional inside the script so $VARS are expanded by bash at
@@ -64,9 +67,11 @@ function buildScript(version: string, engineBaseUrl: string): string {
 set -euo pipefail
 
 VERSION="${version}"
-REPO="${REPO}"
 ENGINE_URL="${engineBaseUrl}"
 INSTALL_DIR="\${SK_INSTALL_DIR:-\${HOME}/.subkit/bin}"
+# Optional mirror for deployments whose engine image does not bundle the CLI.
+# Must serve sk_<os>_<arch> and a SHA256SUMS listing it.
+MIRROR_BASE="\${SK_INSTALL_BASE_URL:-}"
 
 # --- platform detection -----------------------------------------------------
 uname_s=$(uname -s)
@@ -85,23 +90,37 @@ esac
 ASSET="sk_\${os}_\${arch}"
 BUNDLED_ASSET_URL="\${ENGINE_URL}/install/sk-\${os}-\${arch}"
 BUNDLED_SUMS_URL="\${ENGINE_URL}/install/sha256sums"
-RELEASE_BASE="https://github.com/\${REPO}/releases/download/v\${VERSION}"
-RELEASE_ASSET_URL="\${RELEASE_BASE}/\${ASSET}"
-RELEASE_SUMS_URL="\${RELEASE_BASE}/SHA256SUMS"
 
 # --- pick source ------------------------------------------------------------
-# Probe the engine first. The engine-with-cli image variant serves the
-# matching binary directly; the slim image returns 404 and we fall back
-# to GitHub Releases. A 200 from the engine wins because air-gapped
-# operators may not have any github.com egress at all.
+# The engine first: the application-complete image serves the matching binary
+# itself, which is the only path that works with no outbound egress.
 if curl -fsSI --max-time 5 -o /dev/null "$BUNDLED_ASSET_URL" 2>/dev/null; then
   ASSET_URL="$BUNDLED_ASSET_URL"
   SUMS_URL="$BUNDLED_SUMS_URL"
   SOURCE="engine ($ENGINE_URL)"
+elif [ -n "$MIRROR_BASE" ]; then
+  ASSET_URL="\${MIRROR_BASE%/}/\${ASSET}"
+  SUMS_URL="\${MIRROR_BASE%/}/SHA256SUMS"
+  SOURCE="mirror ($MIRROR_BASE)"
 else
-  ASSET_URL="$RELEASE_ASSET_URL"
-  SUMS_URL="$RELEASE_SUMS_URL"
-  SOURCE="github.com release v$VERSION"
+  cat >&2 <<'NOSOURCE'
+This engine does not serve the sk binaries, and no mirror was given.
+
+That is the slim image: it runs the engine but carries no CLI to hand out.
+Three ways forward, cheapest first:
+
+  1. Use the application-complete image, which bundles sk and serves it here.
+     Its Compose file is one fetch away:
+       curl -O ${engineBaseUrl}/docker-compose.yml
+  2. Point this installer at a mirror that serves sk_<os>_<arch> next to a
+     SHA256SUMS file:
+       SK_INSTALL_BASE_URL=https://your-mirror.example.com curl -sSL ${engineBaseUrl}/install | bash
+  3. Copy the binary out of a running application-complete engine:
+       docker compose cp engine:/usr/local/bin/sk ./sk
+
+Nothing was installed.
+NOSOURCE
+  exit 1
 fi
 
 # --- download ---------------------------------------------------------------
