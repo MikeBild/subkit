@@ -506,6 +506,39 @@ async function finishBootstrap(
   // Flip the sentinel and revoke the token in the same logical step.
   await writeSetting(db, BOOTSTRAP_COMPLETED_KEY, true);
   await deleteSetting(db, BOOTSTRAP_TOKEN_KEY);
+  // Give the fresh tenant something that actually runs. Without this the only
+  // route to a first execution is the conversational authoring loop, which
+  // needs a real LLM provider — measured on 2026-09-02, a newcomer with the
+  // mock provider reaches setup and then has an empty workspace and no way
+  // forward. The three demo workflows are credential-free and idempotent per
+  // slug, so a re-bootstrap against an existing tenant is a no-op.
+  //
+  // Deliberately non-fatal: bootstrap has already minted the admin key and
+  // flipped the sentinel above. A seed failure must leave the operator with a
+  // usable installation, not a half-completed one they cannot retry.
+  try {
+    const { seedOnboardingDemo } = await import("./demo-seed.ts");
+    const seeded = await seedOnboardingDemo(
+      { tenant_id: result.tenant_id, actor_id: result.user_id },
+      db,
+    );
+    logger.info({
+      module: "onboarding.bootstrap",
+      action: "setup.demo_seeded",
+      msg: "seeded starter workflows for the new tenant",
+      tenant_id: result.tenant_id,
+      created: seeded.created,
+      skipped: seeded.skipped,
+    });
+  } catch (err) {
+    logger.warn({
+      module: "onboarding.bootstrap",
+      action: "setup.demo_seed_failed",
+      msg: "starter workflows could not be seeded; the tenant is usable but starts empty",
+      tenant_id: result.tenant_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   await auditAwait(
     {

@@ -29,6 +29,28 @@ flowchart LR
 > see [Scripting & CI](#scripting--ci-non-interactive). Every command and output
 > below is real, run end-to-end against the released image.
 
+## In one command, from a checkout
+
+If you have this repository, everything in Steps 1 and 2 below happens for you:
+
+```bash
+bun run start:local
+```
+
+It starts the stack, waits for readiness, completes first-run setup without asking
+anything, runs one of the starter workflows that ship with a fresh tenant, and prints
+the Cockpit URL. No API key, no account: the LLM provider is set to `mock`, so nothing
+leaves your machine. Re-running it is safe.
+
+The trade is real and worth naming. With the `mock` provider the conversational
+authoring loop in Step 3 does not do any authoring — it is inert. You get a running
+engine, a tenant, and workflows you can execute and inspect. To describe new work in
+plain language you need a real provider, which the command prints instructions for at
+the end.
+
+Prefer to make each choice yourself, or not running from a checkout? Continue with
+Step 1.
+
 ---
 
 ## Concepts in 60 seconds
