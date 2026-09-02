@@ -187,7 +187,16 @@ export async function registerExecutionRunHandler(
   // operator with parallel side effects. `queue.concurrency` raises it, and is
   // read here rather than per job because pg-boss fixes worker options at
   // registration — which is why the setting is restart-required.
-  const concurrency = getConfig().queue.concurrency;
+  // Tolerates an uninitialised loader: worker registration happens in contexts
+  // that never load configuration — the scheduler's own tests among them — and
+  // a throw here would take down the queue rather than fall back to the value
+  // this was hard-coded to before the setting was wired up.
+  let concurrency = 1;
+  try {
+    concurrency = getConfig().queue.concurrency;
+  } catch {
+    concurrency = 1;
+  }
   const workerId = await boss.work<ExecutionRunJob>(
     EXECUTION_RUN_QUEUE,
     { batchSize: concurrency, pollingIntervalSeconds: 1 },
