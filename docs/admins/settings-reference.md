@@ -190,7 +190,7 @@ Queue worker
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `queue.abort_poll_interval_ms` | number | `500` | global | no | no | Hot-reloadable interval for workers to observe durable cross-replica execution cancellation requests. |
-| `queue.concurrency` | number | `8` | tenant | no | no |  |
+| `queue.concurrency` | number | `1` | global | no | yes | Executions this replica runs at once. Raising it trades isolation for throughput. Restart required. |
 | `queue.crash_recovery_sweep_interval_ms` | number | `60000` | global | no | no | Hot-reloadable interval for reconciling executions orphaned by a worker or engine restart. |
 | `queue.crash_recovery_threshold_ms` | number | `0` | global | no | no | Hard age threshold for crash recovery. 0 uses each workflow timeout multiplied by its grace factor. |
 

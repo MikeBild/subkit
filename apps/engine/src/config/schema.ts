@@ -723,7 +723,21 @@ const SpecSection = z
 
 const QueueSection = z
   .object({
-    concurrency: z.number().int().positive().max(64).default(8).meta(tenant()),
+    // How many executions one replica runs at a time. Global and
+    // restart-required because it becomes a pg-boss worker option at boot: a
+    // per-tenant value could not be expressed against a single shared worker,
+    // and this leaf carried `tenant` scope for a long time while nothing read
+    // it at all — the effective concurrency was a hard-coded 1.
+    concurrency: z
+      .number()
+      .int()
+      .positive()
+      .max(64)
+      .default(1)
+      .describe(
+        "Executions this replica runs at once. Raising it trades isolation for throughput. Restart required.",
+      )
+      .meta(global({ requiresRestart: true })),
     abort_poll_interval_ms: z
       .number()
       .int()
