@@ -205,6 +205,10 @@ export async function promoteConnector(
     const auditLogIds: string[] = [];
 
     if (input.strategy === "copy") {
+      // Rows only exist here from versions that still had the write endpoint;
+      // the feature was never honoured on the execution path and the route is
+      // gone. The guard stays so an old row cannot be silently duplicated into
+      // a promoted connector and look effective there either.
       const endUserRows = await tx
         .select({ id: endUserCredentials.id })
         .from(endUserCredentials)

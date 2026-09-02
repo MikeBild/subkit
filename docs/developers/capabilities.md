@@ -17,10 +17,10 @@ Answers are `yes` · `partial` · `no`.
 | Backoff between retries | yes | Exponential from a per-step base, doubling, capped at 30 seconds, with jitter. A `Retry-After` header on a 429 is honoured. |
 | Time-box a run | yes | A workflow-level timeout aborts the whole run and records it as timed out. |
 | Time-box a single step | partial | Three step kinds honour `timeout_ms`: transform, request and wait-for-event. Branch, loop, parallel and call do not. On a request step the value bounds one attempt, so N retries can each use the full budget. |
-| Bound how many runs happen at once | no | One execution at a time per engine replica. There is a `queue.concurrency` setting in the schema, but no code reads it — changing it has no effect. Scale by running more replicas. |
+| Bound how many runs happen at once | yes | `queue.concurrency` sets how many executions one replica runs at once, and takes effect on restart. It defaults to 1, which is what the engine did before the setting was wired up, so raising it is a deliberate act rather than something an upgrade does to you. |
 | Schedule a workflow | yes | Five-field cron, plus an `every:<seconds>` form for sub-minute work. Cron resolution is one minute. |
 | Wait for hours or days | partial | A plain wait is capped at 24 hours. Longer pauses use a wait-for-event step, allowed out to 30 days. Both hold the replica's single execution slot for the whole duration, so a multi-day wait blocks other runs on that replica. |
-| Survive an engine crash mid-run | partial | A crashed run is not resumed. On restart the engine sweeps runs left in flight, marks them timed out or aborted, and writes a crash-recovery audit entry. There is no checkpointed resume: nothing continues from the step it reached. Design for it — make the trigger repeatable rather than assuming the run will pick itself up. |
+| Survive an engine crash mid-run | no | A crashed run does not continue. On restart the engine sweeps runs left in flight, terminalizes them and audits the recovery; a wait that died with the process is recorded as abandoned. There is no checkpointed resume, and a re-run would start from the first step and repeat side effects already performed. Design for it: make the trigger repeatable rather than assuming the run picks itself up. |
 | Prevent the same trigger running twice | partial | Inbound webhooks are deduplicated against a replay table, and chat events against their platform event id. The generic API and CLI trigger paths accept no idempotency key: two identical calls produce two runs. |
 
 ## Governance
@@ -31,7 +31,7 @@ Answers are `yes` · `partial` · `no`.
 | Audit what happened | partial | Every lifecycle change writes an audit entry through an append-only writer with no update or delete path, and entries survive tenant deletion. The immutability is a code convention: no database constraint, trigger or row-level security prevents an operator with database access from editing the table. |
 | Encrypt credentials at rest | yes | AES-256-GCM with a random per-record nonce and an authentication tag, bound to the record it belongs to. |
 | Separate credentials per tenant | yes | Every credential carries its tenant and is removed with it. |
-| Give each end user their own credential for a shared connector | no | The table exists and one route writes to it, but nothing reads it during execution. Promotion actively refuses to carry such records. Treat the feature as absent. |
+| Give each end user their own credential for a shared connector | no | Not offered. A table and a write endpoint existed while nothing on the execution path ever read a row back, so an attached credential silently never applied; the endpoint was removed rather than left accepting data the engine cannot honour. |
 | Isolate tenants | partial | Every tenant-owned table carries a tenant column and every query is expected to filter on it, enforced by a build-time analyser that fails the build on an unfiltered query. There is no row-level security in the database, so the isolation is as strong as that gate, not as strong as Postgres. |
 | Rotate the master key | no | One key for the whole deployment, read from the environment at boot. Rotating it makes every stored secret unreadable. Back it up before you need it. |
 

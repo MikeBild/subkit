@@ -196,14 +196,6 @@ export const CredentialBody = z
   })
   .openapi("CredentialBody");
 
-export const EndUserCredentialBody = z
-  .object({
-    enduser_ref: z.string(),
-    combine_mode: z.enum(["merge", "replace"]),
-    payload: z.record(z.string(), z.unknown()),
-  })
-  .openapi("EndUserCredentialBody");
-
 export const OAuthStartResponse = z
   .object({
     authorization_url: z.string(),

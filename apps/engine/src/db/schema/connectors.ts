@@ -360,6 +360,9 @@ export const credentials = pgTable(
 
 // ----- end_user_credentials -------------------------------------------------
 
+/** Per-end-user credentials. Retained for rows written by versions that had
+ *  the write endpoint; nothing reads them at execution time and no route
+ *  creates them any more. See http/routes/connectors/credentials.ts. */
 export const endUserCredentials = pgTable(
   "end_user_credentials",
   {

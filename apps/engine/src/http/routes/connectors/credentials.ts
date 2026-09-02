@@ -9,12 +9,11 @@ import * as connectorSvc from "../../../connectors/index.ts";
 import * as credsvc from "../../../credentials/index.ts";
 import { runClientCredentialsGrant } from "../../../credentials/index.ts";
 import { encryptSecret } from "../../../crypto/aes-gcm.ts";
-import { credentials, endUserCredentials } from "../../../db/schema/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { credentialBodyToValue } from "./credential-body.ts";
-import { CredentialBody, EndUserCredentialBody } from "./schemas.ts";
+import { CredentialBody } from "./schemas.ts";
 
 const credentialsRoute = createRoute({
   method: "post",
@@ -36,24 +35,19 @@ const credentialsRoute = createRoute({
   },
 });
 
-const endUserCredentialsRoute = createRoute({
-  method: "post",
-  path: "/v1/connectors/{id}/end-user-credentials",
-  tags: ["connectors"],
-  summary: "Attach end-user-scoped credentials",
-  security: [{ bearerAuth: [] }],
-  request: {
-    params: IdParam,
-    body: { content: { "application/json": { schema: EndUserCredentialBody } } },
-  },
-  responses: {
-    201: {
-      description: "Created",
-      content: { "application/json": { schema: z.object({ id: z.string() }) } },
-    },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
+// There is deliberately no end-user-credential endpoint here.
+//
+// The table, the encryption path and a promotion guard for per-end-user
+// credentials all existed, and one route wrote to them — but nothing on the
+// execution path ever read a row back. `combine_mode` was stored and never
+// consulted. An operator could attach a credential per end user, receive a
+// 201, and have it silently never apply.
+//
+// Accepting data the product cannot honour is worse than not offering the
+// feature, so the endpoint is gone. `end_user_credentials` remains in the
+// schema for rows written by older versions, and the promotion guard still
+// refuses to copy them. Reintroducing this needs a read path in the dispatch
+// layer first, not a route.
 
 export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(credentialsRoute, async (c) => {
@@ -89,71 +83,5 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
     return c.json({ id: row.id }, 201);
-  });
-
-  app.openapi(endUserCredentialsRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const body = c.req.valid("json");
-    const connector = await connectorSvc.getConnector(principal.tenant_id, id, db);
-    if (!connector) throw new NotFoundError("connector");
-    // End-user credentials are simple key/value blobs that the workflow
-    // can layer onto the base credential at run time. We encrypt the
-    // whole payload with AAD bound to the enduser_ref.
-    const aad = `enduser:${principal.tenant_id}:${id}:${body.enduser_ref}`;
-    const payload = encryptSecret(JSON.stringify(body.payload), aad);
-    const inserted = await db
-      .insert(endUserCredentials)
-      .values({
-        tenant_id: principal.tenant_id,
-        connector_id: id,
-        enduser_ref: body.enduser_ref,
-        combine_mode: body.combine_mode,
-        ciphertext: Buffer.from(payload.ciphertext),
-        iv: Buffer.from(payload.iv),
-        auth_tag: Buffer.from(payload.auth_tag),
-      })
-      .onConflictDoUpdate({
-        target: [
-          endUserCredentials.tenant_id,
-          endUserCredentials.connector_id,
-          endUserCredentials.enduser_ref,
-        ],
-        set: {
-          combine_mode: body.combine_mode,
-          ciphertext: Buffer.from(payload.ciphertext),
-          iv: Buffer.from(payload.iv),
-          auth_tag: Buffer.from(payload.auth_tag),
-          updated_at: new Date(),
-        },
-      })
-      .returning();
-    const insertedRow = inserted[0];
-    if (!insertedRow) {
-      // .onConflictDoUpdate guarantees a row in either branch — defensive
-      // throw so the route returns a clear 5xx instead of an opaque crash.
-      throw new Error("end_user_credential insert returned no rows");
-    }
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: "user",
-        actor_id: principal.id,
-        action: AuditAction.CREDENTIAL_CREATED,
-        resource_type: "end_user_credential",
-        resource_id: insertedRow.id,
-        result: "success",
-        metadata: { connector_id: id, enduser_ref: body.enduser_ref },
-      },
-      db,
-    );
-    // Touch `credentials` import so biome/unused-vars doesn't flag.
-    void credentials;
-    // Touch the client-credentials grant import — the closure above doesn't
-    // currently invoke it but we keep the import to mirror the legacy file's
-    // contract while a future client-credentials route lands inline.
-    void runClientCredentialsGrant;
-    return c.json({ id: insertedRow.id }, 201);
   });
 }

@@ -171,7 +171,7 @@
     "allow_private_fetch": false
   },
   "queue": {
-    "concurrency": 8,
+    "concurrency": 1,
     "abort_poll_interval_ms": 500,
     "crash_recovery_sweep_interval_ms": 60000,
     "crash_recovery_threshold_ms": 0

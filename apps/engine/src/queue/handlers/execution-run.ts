@@ -8,6 +8,7 @@
 
 import { and, asc, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
+import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { executionSteps } from "../../db/schema/index.ts";
 import { runExecution } from "../../execution/engine.ts";
@@ -181,9 +182,15 @@ export async function registerExecutionRunHandler(
   opts: RegisterExecutionRunOptions,
 ): Promise<string> {
   const { boss, db } = opts;
+  // One at a time by default: an execution can hold the slot for as long as
+  // its longest step, and the safe default is the one that cannot surprise an
+  // operator with parallel side effects. `queue.concurrency` raises it, and is
+  // read here rather than per job because pg-boss fixes worker options at
+  // registration — which is why the setting is restart-required.
+  const concurrency = getConfig().queue.concurrency;
   const workerId = await boss.work<ExecutionRunJob>(
     EXECUTION_RUN_QUEUE,
-    { batchSize: 1, pollingIntervalSeconds: 1 },
+    { batchSize: concurrency, pollingIntervalSeconds: 1 },
     async (jobs: Job<ExecutionRunJob>[]) => {
       for (const job of jobs) {
         // Bridge the enqueuing trace_id/tenant across the queue boundary so
