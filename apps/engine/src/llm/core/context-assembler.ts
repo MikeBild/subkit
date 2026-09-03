@@ -251,6 +251,9 @@ export async function assembleEnhancedPrompt(
   let failures = p.prior_failures ?? [];
   let userMemory = typeof p.user_memory === "string" ? p.user_memory.trim() : "";
   let authoringContext = typeof p.authoring_context === "string" ? p.authoring_context.trim() : "";
+  // User @-mentions for this turn. Volatile (changes every turn) and
+  // rendered last so it sits closest to the user message it annotates.
+  let referencedEntitiesBlock: string | null = p.referenced_entities?.block ?? null;
 
   // Interaction log — last N resolved elicitations for this
   // conversation. Only loaded for the converse flow (one-shot flows
@@ -570,6 +573,7 @@ export async function assembleEnhancedPrompt(
     // invalidate the stable prefix above.
     if (baseVolatile) vol(baseVolatile);
     if (authoringContext) vol(authoringContext);
+    if (referencedEntitiesBlock) vol(referencedEntitiesBlock);
     lastSections = sections.map((text) => ({ text, volatile: volatileTexts.has(text) }));
     return sections.join("\n\n");
   };
@@ -667,6 +671,16 @@ export async function assembleEnhancedPrompt(
     } else if (userMemory) {
       userMemory = "";
       trimmed.push("user_memory");
+    } else if (
+      referencedEntitiesBlock &&
+      p.referenced_entities &&
+      referencedEntitiesBlock !== p.referenced_entities.trim_ref
+    ) {
+      // The user pointed at these objects on purpose, so the section is
+      // never dropped outright: it shrinks to one line per object (id +
+      // the tool that reloads it), the same treatment as a trimmed skill.
+      referencedEntitiesBlock = p.referenced_entities.trim_ref;
+      trimmed.push("referenced_entities");
     } else if (authoringContext) {
       authoringContext = "";
       trimmed.push("authoring_context");
@@ -746,6 +760,11 @@ export async function assembleEnhancedPrompt(
       connectorSchemaBlock = null;
       probeShapeExamplesBlock = null;
       trimmed.push("authoring_evidence_refs");
+    } else if (referencedEntitiesBlock) {
+      // Last resort, same rule as the evidence refs: the one-line reference
+      // must never be the reason the base prompt cannot fit.
+      referencedEntitiesBlock = null;
+      trimmed.push("referenced_entities_ref");
     } else {
       logger.error({
         module: "llm",
@@ -823,6 +842,7 @@ export async function assembleEnhancedPrompt(
       recipe_bodies: recipeBodiesTokens,
       skill_candidates: skillCandidatesTokens,
       prior_workflows: priorWorkflowsTokens,
+      references: referencedEntitiesBlock ? countTokens(referencedEntitiesBlock) : 0,
     },
     included_skill_ids: includedSkills.map((s) => s.id),
     included_chunk_ids: chunks.map((c) => c.id),

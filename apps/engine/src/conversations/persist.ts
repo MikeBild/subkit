@@ -28,6 +28,7 @@ import {
   recordFileLlmCapDowngrade,
   recordFileLlmInlineBytes,
 } from "../observability/instrumentation.ts";
+import { scrubReferenceLabels } from "./references.ts";
 import { ensureConversationTitle } from "./title.ts";
 import {
   approxValueSize,
@@ -225,6 +226,7 @@ export async function appendMessage(
   if (role === "user" && content && typeof content === "object") {
     const c = content as Record<string, unknown>;
     if (typeof c.text === "string") content = { ...c, text: scrubString(c.text) };
+    content = scrubReferenceLabels(content);
   }
   const [row] = await db
     .insert(conversationMessages)

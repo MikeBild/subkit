@@ -17,6 +17,7 @@ import { findSecretSpans, scrubString } from "../../logging/scrub-secrets.ts";
 import { resolveAttachmentSlugsInText } from "../attachments.ts";
 import { appendMessage } from "../persist.ts";
 import { captureDraftCredentialFromChatText } from "../persistence/auto-persist/credential-cache.ts";
+import type { ConversationReference } from "../references.ts";
 import type { ConversationPermissionMode, ConversationRecord } from "../types.ts";
 import { getConversation } from "./get.ts";
 import {
@@ -31,6 +32,8 @@ export interface AppendMessageParams {
   conversation_id: string;
   actor_id: string | null;
   message: string;
+  /** Objects the person @-mentioned in this message (see `references.ts`). */
+  references?: ConversationReference[] | null;
   /** Optional user-supplied memory payload to attach to this turn. */
   memory?: string | null;
   /** Client-supplied permission mode for this turn. */
@@ -50,6 +53,8 @@ export interface AppendMessageResult {
    * appends concurrently.
    */
   message_id: string;
+  /** The @-mentions as sent, handed to the turn for resolution. */
+  references: ConversationReference[] | null;
   /** Memory payload effective for the turn. */
   user_memory: string | null;
 }
@@ -180,14 +185,17 @@ export async function appendUserMessage(
     }
   }
 
+  const references = p.references && p.references.length > 0 ? p.references : null;
   const messageId = await appendMessage(exec, p.tenant_id, p.conversation_id, "user", {
     text: persistedText,
+    ...(references ? { references } : {}),
   });
 
   return {
     conversation: conv.conversation,
     message: persistedText,
     message_id: messageId,
+    references,
     user_memory: effectiveMemory,
   };
 }

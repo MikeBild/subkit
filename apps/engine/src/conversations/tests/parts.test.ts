@@ -199,3 +199,34 @@ describe("buildMessagesV2", () => {
     expect(out[1]?.parts.filter((p) => p.type === "tool_call")).toHaveLength(0);
   });
 });
+
+describe("toMessageParts — @-mention references", () => {
+  test("hands references and the unresolved subset to the client on the text part", () => {
+    const references = [
+      {
+        type: "workflow" as const,
+        id: "11111111-1111-4111-8111-111111111111",
+        label: "customer-sync",
+      },
+    ];
+    const ui = toMessageParts(
+      msg({
+        id: "m1",
+        role: "user",
+        content: { text: "run @customer-sync", references, unresolved_references: references },
+      }),
+      [],
+    );
+    expect(ui.parts).toEqual([
+      { type: "text", text: "run @customer-sync", references, unresolved_references: references },
+    ]);
+  });
+
+  test("ignores a malformed references value instead of projecting it", () => {
+    const ui = toMessageParts(
+      msg({ id: "m1", role: "user", content: { text: "hi", references: [{ id: 1 }] } }),
+      [],
+    );
+    expect(ui.parts).toEqual([{ type: "text", text: "hi" }]);
+  });
+});

@@ -6,6 +6,7 @@ export type ConversationDetail = components["schemas"]["ConversationDetail"];
 export type ConversationList = components["schemas"]["ConversationListResponse"];
 export type ConversationRun = components["schemas"]["ConversationRunOutcome"];
 export type UiMessage = components["schemas"]["UIMessage"];
+export type ConversationReference = components["schemas"]["ConversationReference"];
 
 let csrfToken: string | null = null;
 
@@ -129,14 +130,25 @@ async function streamConversation(
   return outcome;
 }
 
+/** The `@`-mentions of a turn ride beside the prose; absent when none. */
+function withReferences(references?: readonly ConversationReference[]) {
+  return references && references.length > 0 ? { references } : {};
+}
+
 export function createConversation(
   initialMessage: string,
   onEvent?: (event: ConversationStreamEvent) => void,
   target: { workflow_id?: string; connector_id?: string } = {},
+  references?: readonly ConversationReference[],
 ): Promise<ConversationRun> {
   return streamConversation(
     "/v1/conversations",
-    { initial_message: initialMessage, permission_mode: "ask", ...target },
+    {
+      initial_message: initialMessage,
+      permission_mode: "ask",
+      ...target,
+      ...withReferences(references),
+    },
     onEvent,
   );
 }
@@ -145,10 +157,11 @@ export function appendConversationMessage(
   id: string,
   message: string,
   onEvent?: (event: ConversationStreamEvent) => void,
+  references?: readonly ConversationReference[],
 ): Promise<ConversationRun> {
   return streamConversation(
     `/v1/conversations/${encodeURIComponent(id)}/messages`,
-    { message },
+    { message, ...withReferences(references) },
     onEvent,
   );
 }

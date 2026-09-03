@@ -266,7 +266,11 @@ describe("runElicitationExpiry — dead approval cascade", () => {
     expect(await readConversationStatus(conversationId)).toBe("active");
 
     const [toolCall] = await srv.db
-      .select({ output: conversationToolCalls.output })
+      .select({
+        output: conversationToolCalls.output,
+        outcome: conversationToolCalls.outcome,
+        confirmation_state: conversationToolCalls.confirmation_state,
+      })
       .from(conversationToolCalls)
       .where(eq(conversationToolCalls.id, toolCallId))
       .limit(1);
@@ -275,6 +279,10 @@ describe("runElicitationExpiry — dead approval cascade", () => {
     expect(output.abandoned).toBe(true);
     expect(output.reason).toBe("approval_expired");
     expect(String(output.note)).toContain("nothing ran");
+    // The verdict is stated on the row. Without it a transcript rendered
+    // the call as completed with a green tick — for work that never ran.
+    expect(toolCall?.outcome).toBe("denied");
+    expect(toolCall?.confirmation_state).toBe("expired");
 
     const audits = await expiredAuditRowsFor(elicitationId);
     expect(audits).toHaveLength(1);
