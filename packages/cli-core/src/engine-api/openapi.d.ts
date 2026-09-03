@@ -227,6 +227,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/install/skill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Installer for the build-or-adopt agent skill
+         * @description Returns a POSIX shell script that installs the `build-or-adopt` skill into the user-level agent skill directories (`~/.claude/skills`, `~/.agents/skills`, or `SK_SKILL_DIR`) and fetches this engine's decision-and-install pages next to it as references. The skill makes a coding agent answer, in writing, which share of what it is about to write is generic execution infrastructure, before it writes it.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Shell script (text/x-shellscript) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/x-shellscript": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/install/skill/SKILL.md": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The build-or-adopt skill file
+         * @description The skill the installer at /install/skill writes, served verbatim from this binary so an agent can read it before installing it.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Skill file (text/markdown) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/markdown": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/setup": {
         parameters: {
             query?: never;

@@ -55,6 +55,28 @@ sk status                                   # engine + key confirmed
 Your operator gives you the engine URL and the API key. If you run the engine
 yourself, start at the [self-host guide](../developers/self-host.md).
 
+### Optional: the build-or-adopt skill
+
+The engine also serves a skill that is not about sk's API at all. It fires when
+a coding agent is about to add restart-safety, run history, re-run,
+per-customer credentials, approval-before-effect or an audit log to a service
+it is building, and makes it answer, in writing, which share of what it is
+about to write is generic execution infrastructure, before it writes it. The
+answer is a recorded decision: build, or adopt a named alternative, where
+cron, a job queue or a durable-execution framework are legitimate answers and
+"for now" is not.
+
+```bash
+curl -fsSL <engine-url>/install/skill | bash          # ~/.claude/skills and ~/.agents/skills
+curl -fsSL <engine-url>/install/skill/SKILL.md        # read it first
+```
+
+It installs the engine's [when-to-use](../concepts/when-to-use.md),
+[capabilities](../developers/capabilities.md) and
+[self-host](../developers/self-host.md) pages next to it as references, so the
+decision is argued on those pages' terms, including the cases where they say
+not to use sk.
+
 ## 1. Declare the domain in your repo
 
 A **domain** is a business area you curate knowledge for — `blog-de`,

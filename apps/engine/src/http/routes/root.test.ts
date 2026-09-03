@@ -10,6 +10,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { ESSENTIAL_PATHS } from "@shared/llms-index.ts";
 import type { AppEnv } from "../openapi.ts";
 import { COMPOSE_YAML, registerComposeRoute } from "./compose.ts";
+import { registerInstallSkillRoute } from "./install-skill.ts";
 import { registerLlmsTxtRoutes } from "./llms-txt.ts";
 import { ROOT_ENTRY_PATHS, registerRootRoute } from "./root.ts";
 
@@ -17,6 +18,7 @@ async function get(path: string, headers: Record<string, string> = {}): Promise<
   const app = new OpenAPIHono<AppEnv>();
   registerRootRoute(app);
   registerComposeRoute(app);
+  registerInstallSkillRoute(app);
   registerLlmsTxtRoutes(app);
   return app.request(`http://127.0.0.1${path}`, { headers });
 }
@@ -66,7 +68,7 @@ describe("what the entry point promises", () => {
     // (/openapi.json, /docs, /cockpit, /health, /ready) belong to other
     // registrars and are covered by their own tests. This checks the ones
     // that travel with the binary as documentation.
-    for (const path of ["/docker-compose.yml", "/llms.txt", "/llms-full.txt"]) {
+    for (const path of ["/docker-compose.yml", "/install/skill", "/llms.txt", "/llms-full.txt"]) {
       expect(ROOT_ENTRY_PATHS).toContain(path);
       const res = await get(path);
       expect(res.status).toBe(200);

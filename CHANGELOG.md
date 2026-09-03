@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- Serve an agent skill, `build-or-adopt`, from the engine: `GET /install/skill`
+  installs it into `~/.claude/skills` and `~/.agents/skills` with the engine's
+  own decision-and-install pages as references, `GET /install/skill/SKILL.md`
+  serves the file. It fires when a coding agent is about to add restart-safety,
+  run history, re-run, per-customer credentials, approval-before-effect or an
+  audit log, asks which share of the code that makes generic execution
+  infrastructure, and records a make-or-buy decision that may not be a
+  deferral. Built from the Track 0.1 measurement: two agents from two vendors
+  each named the replacing products in every stage and kept building, ending at
+  4 % and 7 % application code.
+
 ## 6.24.0 — 2026-09-03
 
 ### Added
