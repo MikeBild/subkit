@@ -69,8 +69,13 @@ export interface PreflightEnvironment {
    * The object store the release will actually use: the active revision's
    * block when a revision exists, otherwise the revision-1 environment
    * seed. Null when neither names a complete binding.
+   *
+   * Async because the stored block's credential leaves are `secret://`
+   * references that have to be decrypted before anything can be probed with
+   * them; it THROWS when one of those does not decrypt, and the caller
+   * reports that as `secret_unreadable`.
    */
-  objectStoreBinding(document: Record<string, unknown> | null): ObjectStoreBinding | null;
+  objectStoreBinding(document: Record<string, unknown> | null): Promise<ObjectStoreBinding | null>;
   /** Bucket reachable, and one probe object written then read back. */
   probeObjectStore(binding: ObjectStoreBinding): Promise<void>;
   /** Decrypt one stored version under the running MASTER_KEY. Throws when it cannot. */
@@ -336,7 +341,24 @@ export async function runPreflightChecks(env: PreflightEnvironment): Promise<Pre
   }
 
   // 3. The object store the release will use answers.
-  const binding = env.objectStoreBinding(document);
+  //
+  // Resolving the binding can itself fail on an unreadable secret — the
+  // credential leaves of a stored revision are `secret://` references. That
+  // is check 5's failure arriving early, so it carries check 5's code: the
+  // cause an operator has to act on is the key, not the bucket.
+  let binding: ObjectStoreBinding | null;
+  try {
+    binding = await env.objectStoreBinding(document);
+  } catch (error) {
+    push(
+      refuse(
+        "object_store",
+        "secret_unreadable",
+        `the object-store credentials bound at storage.object_store do not decrypt under the running MASTER_KEY: ${messageOf(error)}`,
+      ),
+    );
+    return done();
+  }
   if (binding === null) {
     push(
       refuse(

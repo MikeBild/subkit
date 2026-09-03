@@ -24,6 +24,9 @@ export function secretAad(name: string, version: number): string {
   return `runtime-secret:${name}:${version}`;
 }
 
+/** Mirrors `runtime-config/service.ts`; the preflight must not import its internals. */
+const SECRET_REF = /^secret:\/\/([A-Za-z0-9][A-Za-z0-9._-]{0,254})\/([1-9][0-9]*)$/;
+
 function truthy(value: string | undefined): boolean {
   return value === "true" || value === "1";
 }
@@ -58,31 +61,54 @@ export function objectStoreSeedFromEnv(
   };
 }
 
-/** The object-store block of a revision document, when it is complete. */
-export function objectStoreBindingFromDocument(
+/**
+ * The object-store block of a revision document, with its secret leaves
+ * resolved.
+ *
+ * The three credential leaves (`access_key_id`, `secret_access_key`,
+ * `session_token`) are `meta.secret` in `config/schema.ts`, so
+ * `externalizeSeedSecrets` replaces them with `secret://name/version` in
+ * every stored revision. A preflight that read them verbatim would probe
+ * with the literal string "secret://…" as an access key; one that treated
+ * them as "not a usable value" and fell through to the environment would
+ * probe a credential the engine does not use — and, on a stateless deploy
+ * that has stopped setting OBJECT_STORAGE_*, would refuse a healthy engine
+ * with `object_store_missing`. So they are decrypted here.
+ *
+ * `resolveSecret` throws when a version does not decrypt. That is
+ * deliberate: the caller reports it as `secret_unreadable` rather than as
+ * an object-store code, because the cause is the key, not the bucket.
+ */
+export async function objectStoreBindingFromDocument(
   document: Record<string, unknown> | null,
-): ObjectStoreBinding | null {
+  resolveSecret: (name: string, version: number) => Promise<string>,
+): Promise<ObjectStoreBinding | null> {
   if (document === null) return null;
   const storage = document.storage;
   if (storage === null || typeof storage !== "object") return null;
   const block = (storage as Record<string, unknown>).object_store;
   if (block === null || typeof block !== "object") return null;
   const b = block as Record<string, unknown>;
-  const str = (key: string): string | null => {
+
+  const plain = (key: string): string | null => {
     const value = b[key];
     return typeof value === "string" && value.trim() !== "" ? value : null;
   };
-  const endpoint = str("endpoint");
-  const region = str("region");
-  const bucket = str("bucket");
-  const access_key_id = str("access_key_id");
-  const secret_access_key = str("secret_access_key");
-  // A secret leaf in a stored revision is a `secret://` reference, not a
-  // usable value — the preflight cannot probe with it, so fall through to
-  // the environment seed rather than pretend the binding is complete.
+  const resolved = async (key: string): Promise<string | null> => {
+    const value = plain(key);
+    if (value === null) return null;
+    const ref = SECRET_REF.exec(value);
+    if (!ref) return value;
+    return resolveSecret(ref[1]!, Number(ref[2]));
+  };
+
+  const endpoint = plain("endpoint");
+  const region = plain("region");
+  const bucket = plain("bucket");
+  const access_key_id = await resolved("access_key_id");
+  const secret_access_key = await resolved("secret_access_key");
   if (!endpoint || !region || !bucket || !access_key_id || !secret_access_key) return null;
-  if (secret_access_key.startsWith("secret://")) return null;
-  const session_token = str("session_token");
+  const session_token = await resolved("session_token");
   return {
     endpoint,
     region,
@@ -151,6 +177,16 @@ export async function activeSettingsDocument(db: Db): Promise<Record<string, unk
 
 /** Decrypt one stored version under the running MASTER_KEY. Throws when it cannot. */
 export async function readSecretVersion(db: Db, name: string, version: number): Promise<void> {
+  await readSecretValue(db, name, version);
+}
+
+/**
+ * The plaintext of one stored version. Used only by check 3, which has to
+ * hold an object-store credential long enough to probe with it; check 5
+ * goes through `readSecretVersion`, which throws the value away, because it
+ * only needs to know that the decrypt succeeded.
+ */
+export async function readSecretValue(db: Db, name: string, version: number): Promise<string> {
   // tenant-filter:exempt — secret versions are product-global operator state.
   const [row] = await db
     .select()
@@ -164,7 +200,7 @@ export async function readSecretVersion(db: Db, name: string, version: number): 
     )
     .limit(1);
   if (!row) throw new Error("no such version, or it is revoked");
-  decryptSecret(
+  return decryptSecret(
     { ciphertext: row.ciphertext, iv: row.iv, auth_tag: row.auth_tag },
     secretAad(name, version),
   );
@@ -204,8 +240,10 @@ export function createPreflightEnvironment(db: Db, cfg: Config): PreflightEnviro
     },
     schemaAheadTags: () => schemaAheadTags(db),
     activeSettingsDocument: () => activeSettingsDocument(db),
-    objectStoreBinding: (document) =>
-      objectStoreBindingFromDocument(document) ?? objectStoreSeedFromEnv(),
+    objectStoreBinding: async (document) =>
+      (await objectStoreBindingFromDocument(document, (name, version) =>
+        readSecretValue(db, name, version),
+      )) ?? objectStoreSeedFromEnv(),
     probeObjectStore,
     readSecretVersion: (name, version) => readSecretVersion(db, name, version),
   };
