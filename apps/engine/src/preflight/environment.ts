@@ -130,6 +130,26 @@ export async function objectStoreBindingFromDocument(
  * same identity rules; that function is deliberately NOT used here because
  * it creates the schema, the extension and the journal table).
  */
+
+/**
+ * The driver wraps a failed statement ("Failed query: … params: …") and keeps
+ * the PostgreSQL error underneath as `cause`; the SQLSTATE and the "does not
+ * exist" wording live there, not on the wrapper. Measured 2026-09-03 on a
+ * fresh database: the wrapper alone read as `database_unreachable` and
+ * refused the compose smoke of 6.27.3.
+ */
+export function isUndefinedTable(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; current !== null && current !== undefined && depth < 8; depth += 1) {
+    const candidate = current as { code?: unknown; message?: unknown; cause?: unknown };
+    if (candidate.code === "42P01") return true;
+    if (typeof candidate.message === "string" && /does not exist/i.test(candidate.message))
+      return true;
+    current = candidate.cause;
+  }
+  return false;
+}
+
 export async function schemaAheadTags(db: Db): Promise<string[]> {
   let rows: Array<{ hash: string; tag: string | null }>;
   try {
@@ -138,8 +158,7 @@ export async function schemaAheadTags(db: Db): Promise<string[]> {
     )) as unknown as { rows?: Array<{ hash: string; tag: string | null }> };
     rows = result.rows ?? [];
   } catch (error) {
-    const code = (error as { code?: string }).code;
-    if (code === "42P01" || /does not exist/i.test(String((error as Error).message))) return [];
+    if (isUndefinedTable(error)) return [];
     throw error;
   }
   const embedded = listEmbeddedMigrations();
@@ -169,8 +188,7 @@ export async function activeSettingsDocument(db: Db): Promise<Record<string, unk
       .limit(1);
     return revision?.document ?? null;
   } catch (error) {
-    const code = (error as { code?: string }).code;
-    if (code === "42P01" || /does not exist/i.test(String((error as Error).message))) return null;
+    if (isUndefinedTable(error)) return null;
     throw error;
   }
 }
