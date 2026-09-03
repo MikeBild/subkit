@@ -40,3 +40,4 @@ Ordered by the job in front of you, not by mechanism:
 | **Ground your coding agent** — Claude Code / Codex briefed on your domain, with a review loop | [coding-agents.md](coding-agents.md) |
 | **Drive the `sk` REPL** — the approve-to-commit loop, headless `-p` | [repl-tour.md](repl-tour.md) |
 | **Look something up** — slash commands, configuration keys | [slash-commands.md](slash-commands.md) · [settings.md](settings.md) |
+| **Connect another system** from the Cockpit without pasting a key, and approve a prepared change to this installation | [connections.md](connections.md) |

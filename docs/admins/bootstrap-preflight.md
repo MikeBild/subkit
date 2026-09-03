@@ -53,6 +53,10 @@ Outside production the automatic run is a no-op — local development and the te
 
 The checks stop at the first refusal. Once the release cannot run on this bootstrap, a later probe's failure is noise — and a probe that ran anyway would have touched something.
 
+### Every check reads the previous release's schema
+
+The preflight runs **before this release's migrations** — that is its whole point — so every query it makes has to work on the schema the previous release left behind, and so do the host commands, which meet the same schema. A query that names a column this release added does not refuse; it crashes, and exit 1 where the contract promises 0 or 3 rolls a deploy back. 6.29 added three columns to `runtime_secret_versions` (`pending_since`, `prepared_by`, `pending_bindings`); the reads on this path therefore spell out the columns every release has had, and the newer ones are used only after `information_schema` has confirmed them, once per database handle (`runtime-config/secret-columns.ts`). `preflight-previous-schema.integration.test.ts` migrates a database only up to the previous release's last migration and requires `--preflight` to answer 0 on it, `--vault-check` and `--vault-set` to work, and `--pending` to refuse in words rather than fail on a column name.
+
 ### Check 2 — why it does not use the drift detector
 
 `detectDrift()` in `apps/engine/src/db/migrate.ts` answers the same question, but calls `ensureMigrationsTable` first, which creates the schema, installs `pgcrypto` and creates the journal table. That is a change, and the preflight's whole promise is that a refusal changed nothing. The preflight reads the journal directly and treats a missing table as a virgin database — a state this release migrates forward from, not one it refuses.
@@ -108,7 +112,7 @@ All four run on the host, where the caller already holds `MASTER_KEY`, `DATABASE
 ```sh
 engine --preflight
 engine --vault-check <name>
-engine --vault-set <name> --value-file <path> [--bind <path>,…] [--purpose "…"] [--if-unreadable]
+engine --vault-set <name> --value-file <path> [--bind <path>,…] [--purpose "…"] [--if-unreadable] [--pending]
 engine --rewrap-master-key --from-file <path-to-previous-key>
 ```
 
@@ -146,6 +150,19 @@ llm.providers.anthropic.api_key: pinned to settings.llm.providers.anthropic.api_
 ```
 
 The activation is the load-bearing half, and it is why `--bind` requires the engine to be stopped. A saved revision only moves `desired_revision`; the preflight and every boot read `active_revision`, so a re-pin that stopped at "saved" would print `pinned to …` and leave the engine refusing on exactly the version it was already refusing on. The normal activation path cannot help here — it either needs a live replica to prepare and acknowledge, or defers to the next boot — so this writes the pointer directly, under the same precondition that makes it safe and that `--rewrap-master-key` already uses: nothing is serving. With a live replica lease it refuses and says so, because a replica holding the old snapshot must be told to prepare, not overtaken. Minting the version itself (`--vault-set` without `--bind`) is safe at any time.
+
+### `--vault-set … --pending` — write now, let a person decide
+
+With `--pending` the version is written and encrypted like any other, but it does **not** become the current version and nothing is re-pinned. It waits in the Cockpit — **Einstellungen → Vorbereitete Änderungen** — with its name, its version, who prepared it and since when, and two buttons. **Freigeben** makes it current and re-points the paths named by `--bind`; **Ablehnen** revokes it. The value is shown to nobody, the approver included.
+
+```
+<name>: prepared version 5; waiting for approval in the Cockpit (Einstellungen → Vorbereitete Änderungen)
+on approval, re-pinned: llm.providers.anthropic.api_key
+```
+
+Use it when the engine is running and a person, not the deploy script, should decide when a new value takes effect — a rotated provider key handed over by another team, say. Until approval a prepared version is invisible to everything that looks for the current one: `--vault-check` does not count it, no settings revision can bind it, and the preflight never reads it. The audit trail carries `secret.version_prepared`, then `secret.version_approved` or `secret.version_rejected`.
+
+`--pending` needs the schema of 6.29 or later. Run against an older database — which is what the host commands meet before the new release has migrated — it refuses with one line saying so and exit 1, and nothing is written; write the version without `--pending`, or start the new release once first.
 
 Without `--bind` the command says so explicitly — `bindings keep their pinned version; re-run with --bind <binding> to re-pin them` — because a pinned revision does not follow a new version on its own. A binding that could not be re-pinned exits 1 even though the new version exists: the deploy this was meant to unblock will fail again on the version the revision still points at. Tenant overlays are out of scope for this flag; re-pin those through the settings API, where the tenant is named by someone who knows which one they mean.
 

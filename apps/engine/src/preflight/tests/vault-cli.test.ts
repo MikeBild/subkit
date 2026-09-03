@@ -31,6 +31,7 @@ interface FakeState {
   readable: boolean;
   absent: boolean;
   created: Array<{ name: string; value: string; purpose: string | null }>;
+  prepared: Array<{ name: string; value: string; purpose: string | null; bindings: string[] }>;
   rebound: string[];
   serving: string[];
   rewrapped: string[];
@@ -42,6 +43,7 @@ function stateWith(partial: Partial<FakeState> = {}): FakeState {
     readable: true,
     absent: false,
     created: [],
+    prepared: [],
     rebound: [],
     serving: [],
     rewrapped: [],
@@ -67,6 +69,11 @@ function opsFor(state: FakeState, overrides: Partial<VaultOps> = {}): VaultOps {
       state.absent = false;
       state.readable = true;
       return { version: next };
+    },
+    prepareVersion: async (name, value, purpose, bindings) => {
+      state.prepared.push({ name, value, purpose, bindings });
+      // Prepared, not current: the probe keeps answering with the old version.
+      return { version: (state.version ?? 0) + 1 };
     },
     rebind: async (path, name, version) => {
       state.rebound.push(path);
@@ -123,6 +130,9 @@ describe("the argument surface", () => {
     [["--vault-check", "token", "--value-file", VALUE_FILE], "check with a value file"],
     [["--vault-check", "token", "--bind", "a"], "check with a bind"],
     [["--vault-check", "token", "--if-unreadable"], "check with if-unreadable"],
+    [["--vault-check", "token", "--pending"], "check with pending"],
+    [["--preflight", "--pending"], "preflight with pending"],
+    [["--rewrap-master-key", "--from-file", KEY_FILE, "--pending"], "rewrap with pending"],
     [["--preflight", "--bind", "a"], "preflight with a bind"],
     [["--rewrap-master-key"], "rewrap without a from-file"],
     [["--rewrap-master-key", "--from-file", KEY_FILE, "--bind", "a"], "rewrap with a bind"],
@@ -354,6 +364,84 @@ describe("--vault-set", () => {
       ]),
       { ops: opsFor(stateWith()), readFile: readValueFile },
     );
+    expect(outcome.lines.join("\n")).not.toContain(VALUE);
+  });
+});
+
+describe("--vault-set --pending", () => {
+  test("writes a prepared version, re-pins nothing, and says where it waits", async () => {
+    const state = stateWith({ version: 2 });
+    const outcome = await runVaultCli(
+      command(["--vault-set", "tok", "--value-file", VALUE_FILE, "--pending"]),
+      { ops: opsFor(state), readFile: readValueFile },
+    );
+    expect(outcome.exitCode).toBe(0);
+    expect(outcome.lines[0]).toBe(
+      "tok: prepared version 3; waiting for approval in the Cockpit (Einstellungen → Vorbereitete Änderungen)",
+    );
+    expect(outcome.lines[1]).toContain("bindings keep their pinned version");
+    expect(state.prepared).toEqual([
+      { name: "tok", value: VALUE, purpose: expect.any(String), bindings: [] },
+    ]);
+    expect(state.created).toEqual([]);
+    expect(state.rebound).toEqual([]);
+    // The probe still answers with the version that IS current.
+    expect(await opsFor(state).probeCurrentVersion("tok")).toMatchObject({ version: 2 });
+  });
+
+  test("--bind with --pending is carried to the vault for approval, not applied now", async () => {
+    const state = stateWith({ version: 2 });
+    const outcome = await runVaultCli(
+      command([
+        "--vault-set",
+        "tok",
+        "--value-file",
+        VALUE_FILE,
+        "--pending",
+        "--bind",
+        "llm.providers.anthropic.api_key,storage.object_store.secret_access_key",
+      ]),
+      { ops: opsFor(state), readFile: readValueFile },
+    );
+    expect(outcome.exitCode).toBe(0);
+    expect(outcome.lines[1]).toBe(
+      "on approval, re-pinned: llm.providers.anthropic.api_key, storage.object_store.secret_access_key",
+    );
+    expect(state.prepared[0]?.bindings).toEqual([
+      "llm.providers.anthropic.api_key",
+      "storage.object_store.secret_access_key",
+    ]);
+    expect(state.rebound).toEqual([]);
+  });
+
+  test("--if-unreadable still short-circuits with --pending: a readable version needs no proposal", async () => {
+    const state = stateWith({ version: 2 });
+    const outcome = await runVaultCli(
+      command(["--vault-set", "tok", "--value-file", VALUE_FILE, "--pending", "--if-unreadable"]),
+      {
+        ops: opsFor(state),
+        readFile: () => {
+          throw new Error("the value file must not be read");
+        },
+      },
+    );
+    expect(outcome.exitCode).toBe(0);
+    expect(state.prepared).toEqual([]);
+  });
+
+  test("a vault that refuses to prepare exits 1 and names the secret, not the value", async () => {
+    const outcome = await runVaultCli(
+      command(["--vault-set", "tok", "--value-file", VALUE_FILE, "--pending"]),
+      {
+        ops: opsFor(stateWith(), {
+          prepareVersion: async () => {
+            throw new Error("database is read-only");
+          },
+        }),
+        readFile: readValueFile,
+      },
+    );
+    expect(outcome).toEqual({ exitCode: 1, lines: ["tok: database is read-only"] });
     expect(outcome.lines.join("\n")).not.toContain(VALUE);
   });
 });

@@ -147,6 +147,8 @@ export function renderApiKeyLogin(
 
 export function renderConsentPage(opts: {
   clientName: string;
+  /** The client's own base address from its registration (RFC 7591 `client_uri`), when it gave one. */
+  clientUri?: string | null;
   tenantName: string;
   userEmail: string;
   offeredScopes: string[];
@@ -156,12 +158,24 @@ export function renderConsentPage(opts: {
   clientId: string;
   redirectUri: string;
   resource: string;
+  locale?: AuthLocale;
 }): string {
-  const labels: Record<string, [string, string]> = {
-    "mcp:read": ["Read", "Read published content, resources and product statistics"],
-    "mcp:authoring": ["Authoring", "Create drafts, revisions and previews"],
-    "mcp:admin": ["Administration", "Publish releases and administer access"],
-  };
+  const locale = opts.locale ?? "en";
+  const de = locale === "de";
+  // What each scope lets the client do, in the person's language. The
+  // scope's machine name stays beside it: it is what the client asked for,
+  // and what the audit row will say.
+  const labels: Record<string, [string, string]> = de
+    ? {
+        "mcp:read": ["Lesen", "Veröffentlichte Inhalte, Ressourcen und Kennzahlen lesen"],
+        "mcp:authoring": ["Bearbeiten", "Entwürfe, Versionen und Vorschauen anlegen"],
+        "mcp:admin": ["Verwalten", "Freigaben erteilen und Zugriff verwalten"],
+      }
+    : {
+        "mcp:read": ["Read", "Read published content, resources and product statistics"],
+        "mcp:authoring": ["Authoring", "Create drafts, revisions and previews"],
+        "mcp:admin": ["Administration", "Publish releases and administer access"],
+      };
   const checked = new Set(opts.preChecked);
   const scopeItems = opts.offeredScopes
     .map((scope) => {
@@ -172,8 +186,21 @@ export function renderConsentPage(opts: {
     })
     .join("");
   const hidden = `<input type="hidden" name="csrf_token" value="${escapeHtml(opts.csrfToken)}"><input type="hidden" name="client_id" value="${escapeHtml(opts.clientId)}"><input type="hidden" name="redirect_uri" value="${escapeHtml(opts.redirectUri)}"><input type="hidden" name="resource" value="${escapeHtml(opts.resource)}"><input type="hidden" name="state" value="${escapeHtml(opts.state)}">`;
+  const clientUri = opts.clientUri
+    ? `<p class="muted" data-testid="auth-client-uri">${de ? "Adresse" : "Address"}: <span class="strong">${escapeHtml(opts.clientUri)}</span></p>`
+    : "";
+  const title = de ? "Zugriff freigeben" : "Authorize access";
+  const asks = de
+    ? `<span class="strong">${escapeHtml(opts.clientName)}</span> möchte auf <span class="strong">${escapeHtml(opts.tenantName)}</span> zugreifen.`
+    : `<span class="strong">${escapeHtml(opts.clientName)}</span> is requesting access to <span class="strong">${escapeHtml(opts.tenantName)}</span>.`;
+  const signedIn = de ? "Angemeldet als" : "Signed in as";
+  const can = de ? "Es darf dann:" : "It will be able to:";
+  const deny = de ? "Ablehnen" : "Deny";
+  const approve = de ? "Freigeben" : "Approve";
+  const switchAccount = de ? "Anderes Konto verwenden" : "Use another account";
   return page(
-    "Authorize access",
-    `<h1>Authorize access</h1><p><span class="strong">${escapeHtml(opts.clientName)}</span> is requesting access to <span class="strong">${escapeHtml(opts.tenantName)}</span>.</p><p class="muted">Signed in as ${escapeHtml(opts.userEmail)}</p><p class="muted">It will be able to:</p><form method="POST" action="/v1/oauth/authorize/decision"><ul class="scopes">${scopeItems}</ul>${hidden}<div class="actions"><button name="decision" value="deny" class="deny">Deny</button><button name="decision" value="approve" class="approve">Approve</button></div><button name="decision" value="switch_account" class="switch">Use another account</button></form>`,
+    title,
+    `<h1>${title}</h1><p>${asks}</p>${clientUri}<p class="muted">${signedIn} ${escapeHtml(opts.userEmail)}</p><p class="muted">${can}</p><form method="POST" action="/v1/oauth/authorize/decision"><ul class="scopes">${scopeItems}</ul>${hidden}<div class="actions"><button name="decision" value="deny" class="deny">${deny}</button><button name="decision" value="approve" class="approve">${approve}</button></div><button name="decision" value="switch_account" class="switch">${switchAccount}</button></form>`,
+    locale,
   );
 }

@@ -205,9 +205,16 @@ export async function readSecretVersion(db: Db, name: string, version: number): 
  * only needs to know that the decrypt succeeded.
  */
 export async function readSecretValue(db: Db, name: string, version: number): Promise<string> {
+  // Base columns only, by name: the preflight runs BEFORE this release's
+  // migrations, and a `select()` would name columns the previous schema
+  // lacks — a crash where the contract promises an answer.
   // tenant-filter:exempt — secret versions are product-global operator state.
   const [row] = await db
-    .select()
+    .select({
+      ciphertext: runtimeSecretVersions.ciphertext,
+      iv: runtimeSecretVersions.iv,
+      auth_tag: runtimeSecretVersions.auth_tag,
+    })
     .from(runtimeSecretVersions)
     .where(
       and(

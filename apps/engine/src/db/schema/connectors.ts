@@ -13,6 +13,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { bytea, tenantId, timestamps } from "./_common.ts";
+import { outboundConnections } from "./connections.ts";
 import { tenants } from "./identity.ts";
 
 export const environmentEnum = pgEnum("environment", ["dev", "prod"]);
@@ -347,6 +348,15 @@ export const credentials = pgTable(
     // time; when granted ⊊ requested, the credential is `partial_grant`
     // and probe / test surface the missing scopes to the LLM.
     granted_scopes: text("granted_scopes"),
+    // Points the credential at an outbound connection (Cockpit: "Verbindung
+    // wählen") instead of a pasted key. When set, the access token is read
+    // from the connection's current secret version at request time and the
+    // ciphertext columns hold an empty oauth2 payload. Disconnecting the
+    // connection leaves the credential behind with nothing to send, which the
+    // connector shows as "Zugangsdaten fehlen".
+    connection_id: uuid("connection_id").references(() => outboundConnections.id, {
+      onDelete: "set null",
+    }),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

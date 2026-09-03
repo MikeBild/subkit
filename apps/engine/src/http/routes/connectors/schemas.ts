@@ -179,7 +179,10 @@ export const ProbeResultSchema = z
 
 export const CredentialBody = z
   .object({
-    mode: z.enum(["none", "header", "query", "bearer", "basic", "aws_sigv4"]),
+    mode: z.enum(["none", "header", "query", "bearer", "basic", "aws_sigv4", "connection"]),
+    // `connection` mode — the credential points at an outbound connection
+    // (Cockpit "Verbindung wählen") and carries no pasted material at all.
+    connection_id: z.string().uuid().optional(),
     headers: z.record(z.string(), z.string()).optional(),
     query: z.record(z.string(), z.string()).optional(),
     token: z.string().optional(),

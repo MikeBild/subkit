@@ -14,9 +14,10 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { EncryptedPayload } from "../crypto/aes-gcm.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
-import { type Executor, getDb } from "../db/client.ts";
-import { connectors, credentials } from "../db/schema/index.ts";
+import { type Db, type Executor, getDb } from "../db/client.ts";
+import { connectors, credentials, outboundConnections } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { readAccessToken } from "./connections/service.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -237,6 +238,12 @@ export interface UpsertCredentialInput {
    * because non-oauth2 credentials and pre-G6 callers leave it null.
    */
   oauth2_granted_scopes?: string | null;
+  /**
+   * Point the credential at an outbound connection (Cockpit "Verbindung
+   * wählen"). The stored payload is then an empty `oauth2` value; the access
+   * token is read from the connection's current secret version at use time.
+   */
+  connection_id?: string | null;
   actor_id: string | null;
   /** Provenance tag stamped into the audit metadata so operators can
    *  distinguish callback-triggered writes (`oauth_callback`) from
@@ -356,6 +363,7 @@ export async function upsertCredential(
         // the OAuth bundle. Null for non-oauth2 modes (refresh-worker
         // and conversation-tool callers pass through).
         granted_scopes: input.oauth2_granted_scopes ?? null,
+        connection_id: input.connection_id ?? null,
         updated_at: new Date(),
       })
       .where(eq(credentials.id, id));
@@ -374,6 +382,7 @@ export async function upsertCredential(
           environment: input.environment,
           mode: input.mode,
           source: input.source ?? "unspecified",
+          ...(input.connection_id ? { connection_id: input.connection_id } : {}),
         },
       },
       tx,
@@ -501,6 +510,24 @@ export async function getCredentialForConnector(
     .limit(1);
   const row = rows[0];
   if (!row) return null;
+  // A credential that points at an outbound connection carries no token of
+  // its own: the connection's current version is the token, refreshed on
+  // the way if it is about to expire. An empty access token means the grant
+  // is gone, which the driver reports as a missing credential rather than
+  // sending nothing.
+  if (row.connection_id) {
+    const grant = await readAccessToken(db as Db, tenant_id, row.connection_id);
+    return {
+      row,
+      value: {
+        mode: "oauth2",
+        access_token: grant?.access_token ?? "",
+        token_type: "Bearer",
+        refresh_token: null,
+        expires_at: grant?.expires_at ?? null,
+      },
+    };
+  }
   const plain = decryptSecret(
     {
       ciphertext: row.ciphertext,
@@ -535,6 +562,56 @@ export async function getCredentialForConnector(
     value.expires_at = row.oauth2_expires_at;
   }
   return { row, value };
+}
+
+/**
+ * How a connector authenticates, for a page that must never see the material:
+ * the mode, the environment, and the outbound connection it points at.
+ */
+export async function describeCredentialForConnector(
+  tenant_id: string,
+  connector_id: string,
+  environment: "dev" | "prod",
+  exec?: Executor,
+): Promise<{
+  mode: string;
+  environment: "dev" | "prod";
+  connection: { id: string; name: string } | null;
+  updated_at: string;
+} | null> {
+  if (!UUID_RE.test(connector_id)) return null;
+  const db = exec ?? getDb();
+  const rows = await db
+    .select({
+      mode: credentials.mode,
+      environment: credentials.environment,
+      updated_at: credentials.updated_at,
+      connection_id: credentials.connection_id,
+      connection_name: outboundConnections.name,
+    })
+    .from(credentials)
+    .leftJoin(outboundConnections, eq(outboundConnections.id, credentials.connection_id))
+    .where(
+      and(
+        eq(credentials.tenant_id, tenant_id),
+        eq(credentials.connector_id, connector_id),
+        eq(credentials.environment, environment),
+        ne(credentials.mode, "oauth2_client"),
+      ),
+    )
+    .orderBy(desc(credentials.created_at), desc(credentials.id))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    mode: row.connection_id ? "connection" : row.mode,
+    environment: row.environment,
+    connection:
+      row.connection_id && row.connection_name
+        ? { id: row.connection_id, name: row.connection_name }
+        : null,
+    updated_at: row.updated_at.toISOString(),
+  };
 }
 
 /** Load the `oauth2_client` credential for a connector — i.e. the

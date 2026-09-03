@@ -36,6 +36,7 @@ import {
   authHtmlResponse,
   renderConsentPage,
   renderErrorPage,
+  resolveAuthLocale,
   SIGN_IN_FAILED_TITLE,
   STATE_ERROR_MESSAGE,
 } from "./ui.ts";
@@ -350,6 +351,8 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const html = renderConsentPage({
       clientName: client.client_name ?? clientId,
+      clientUri: client.client_uri ?? null,
+      locale: resolveAuthLocale(c.req.header("accept-language")),
       tenantName: tenantRow?.display_name ?? sessionPayload.tenant_id,
       userEmail: userRow.email,
       offeredScopes,

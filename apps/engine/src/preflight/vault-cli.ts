@@ -4,6 +4,7 @@
 //     engine --preflight
 //     engine --vault-check <name>
 //     engine --vault-set <name> --value-file <path> [--bind <b>,…] [--purpose "…"] [--if-unreadable]
+//                                [--pending]
 //     engine --rewrap-master-key --from-file <path-to-previous-key>
 //
 // WHY the way back in exists at all: a runtime secret version written under
@@ -37,6 +38,12 @@ export interface VaultSetCommand {
   bindings: string[];
   purpose: string | null;
   ifUnreadable: boolean;
+  /**
+   * Write the version but do not make it current and do not re-pin: it waits
+   * in the Cockpit as a prepared change until a person approves it. `--bind`
+   * then names what approval re-pins.
+   */
+  pending: boolean;
 }
 
 export interface RewrapCommand {
@@ -72,8 +79,10 @@ export const VAULT_CLI_USAGE: string = [
   "  engine --vault-check <name>",
   "      is this secret still readable? changes nothing",
   "  engine --vault-set <name> --value-file <path> [--bind <setting.path>[,…]]",
-  '                            [--purpose "<text>"] [--if-unreadable]',
+  '                            [--purpose "<text>"] [--if-unreadable] [--pending]',
   "      put a new value in; writes a new version of the secret",
+  "      --pending: write it, but let a person approve it in the Cockpit",
+  "      before it is used; --bind then says what approval re-pins",
   "  engine --rewrap-master-key --from-file <path-to-previous-key>",
   "      re-encrypt every stored secret under the new MASTER_KEY;",
   "      stop all engines first",
@@ -94,6 +103,7 @@ export function parseVaultCliArgs(argv: string[]): VaultCliParse {
   let fromFile: string | undefined;
   let purpose: string | null = null;
   let ifUnreadable = false;
+  let pending = false;
   const bindings: string[] = [];
 
   const takeValue = (index: number): string | undefined => {
@@ -171,6 +181,10 @@ export function parseVaultCliArgs(argv: string[]): VaultCliParse {
         ifUnreadable = true;
         break;
       }
+      case "--pending": {
+        pending = true;
+        break;
+      }
       default:
         return fail(`unknown argument: ${token}`);
     }
@@ -188,6 +202,7 @@ export function parseVaultCliArgs(argv: string[]): VaultCliParse {
     if (bindings.length) return "--bind";
     if (purpose !== null) return "--purpose";
     if (ifUnreadable) return "--if-unreadable";
+    if (pending) return "--pending";
     return null;
   };
 
@@ -203,10 +218,11 @@ export function parseVaultCliArgs(argv: string[]): VaultCliParse {
       fromFile !== undefined ||
       bindings.length ||
       purpose !== null ||
-      ifUnreadable
+      ifUnreadable ||
+      pending
     ) {
       return fail(
-        "--vault-check only reads; it takes no --value-file, --from-file, --bind, --purpose or --if-unreadable",
+        "--vault-check only reads; it takes no --value-file, --from-file, --bind, --purpose, --if-unreadable or --pending",
       );
     }
     return { ok: true, command: { mode: "check", name: name! } };
@@ -214,7 +230,7 @@ export function parseVaultCliArgs(argv: string[]): VaultCliParse {
 
   if (mode === "rewrap") {
     if (fromFile === undefined) return fail("--rewrap-master-key needs --from-file <path>");
-    if (valueFile !== undefined || bindings.length || purpose !== null || ifUnreadable) {
+    if (valueFile !== undefined || bindings.length || purpose !== null || ifUnreadable || pending) {
       return fail("--rewrap-master-key takes only --from-file");
     }
     return { ok: true, command: { mode: "rewrap", fromFile } };
@@ -225,7 +241,7 @@ export function parseVaultCliArgs(argv: string[]): VaultCliParse {
   if (valueFile === undefined) return fail("--vault-set needs --value-file <path>");
   return {
     ok: true,
-    command: { mode: "set", name: name!, valueFile, bindings, purpose, ifUnreadable },
+    command: { mode: "set", name: name!, valueFile, bindings, purpose, ifUnreadable, pending },
   };
 }
 
@@ -264,6 +280,16 @@ export interface VaultOps {
   probeCurrentVersion(name: string): Promise<VersionProbe>;
   /** Mint the next immutable version of `name`. `purpose` is audited, never stored beside the ciphertext. */
   createVersion(name: string, value: string, purpose: string | null): Promise<{ version: number }>;
+  /**
+   * Mint the next version as a PREPARED one: not current, not bound, waiting
+   * for a person in the Cockpit. `bindings` are re-pinned on approval.
+   */
+  prepareVersion(
+    name: string,
+    value: string,
+    purpose: string | null,
+    bindings: string[],
+  ): Promise<{ version: number }>;
   /** Re-point one dotted settings path at `secret://name/version` in a new revision. */
   rebind(path: string, name: string, version: number): Promise<Rebound>;
   /** Instance ids whose replica lease is still healthy. Non-empty means the process is serving. */
@@ -340,6 +366,30 @@ async function runSet(command: VaultSetCommand, deps: VaultCliDeps): Promise<Vau
     return { exitCode: 1, lines: [`${command.valueFile}: cannot be read — ${messageOf(error)}`] };
   }
   if (value.length === 0) return { exitCode: 1, lines: [`${command.valueFile}: holds no value`] };
+
+  if (command.pending) {
+    // A prepared version changes nothing yet, which is the whole point: the
+    // value is in, encrypted, and the decision about using it is a person's.
+    try {
+      const prepared = await ops.prepareVersion(
+        command.name,
+        value,
+        command.purpose || DEFAULT_PURPOSE,
+        command.bindings,
+      );
+      lines.push(
+        `${command.name}: prepared version ${prepared.version}; waiting for approval in the Cockpit (Einstellungen → Vorbereitete Änderungen)`,
+      );
+      lines.push(
+        command.bindings.length
+          ? `on approval, re-pinned: ${command.bindings.join(", ")}`
+          : "on approval, bindings keep their pinned version; add --bind <setting.path> to re-pin them then",
+      );
+      return { exitCode: 0, lines };
+    } catch (error) {
+      return { exitCode: 1, lines: [`${command.name}: ${messageOf(error)}`] };
+    }
+  }
 
   let version: number;
   try {

@@ -182,6 +182,12 @@
     },
     {
       "audience": "authors",
+      "path": "docs/authors/connections.md",
+      "title": "Anbindungen und Freigaben",
+      "summary": "Beides findest du im Cockpit unter Installation: die Anbindungen auf der Seite Anbindungen, die vorbereiteten Änderungen oben auf Einstellungen."
+    },
+    {
+      "audience": "authors",
       "path": "docs/authors/custom-skills.md",
       "title": "Custom Skills",
       "summary": "Write down a convention once and stop repeating it."

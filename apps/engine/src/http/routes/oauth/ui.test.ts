@@ -39,6 +39,47 @@ describe("common MCP auth UI contract", () => {
     expect(response.headers.get("x-frame-options")).toBe("DENY");
   });
 
+  test("the consent page speaks the browser's language and shows where the client lives", () => {
+    const html = renderConsentPage({
+      clientName: "Probe Service",
+      clientUri: "https://probe.example",
+      tenantName: "Example",
+      userEmail: "operator@example.com",
+      offeredScopes: ["mcp:read", "mcp:authoring"],
+      preChecked: ["mcp:read"],
+      csrfToken: "csrf",
+      state: "state",
+      clientId: "client",
+      redirectUri: "https://probe.example/callback",
+      resource: "",
+      locale: "de",
+    });
+    expect(html).toContain('<html lang="de">');
+    expect(html).toContain("Zugriff freigeben");
+    expect(html).toContain('möchte auf <span class="strong">Example</span> zugreifen');
+    expect(html).toContain('data-testid="auth-client-uri"');
+    expect(html).toContain("https://probe.example");
+    expect(html).toContain('value="approve" class="approve">Freigeben<');
+    expect(html).toContain('value="deny" class="deny">Ablehnen<');
+    expect(html).toContain("Bearbeiten · mcp:authoring");
+    expect(html).not.toContain("Approve");
+    // Without an address nothing pretends to be one.
+    const bare = renderConsentPage({
+      clientName: "Probe Service",
+      tenantName: "Example",
+      userEmail: "operator@example.com",
+      offeredScopes: ["mcp:read"],
+      preChecked: ["mcp:read"],
+      csrfToken: "csrf",
+      state: "state",
+      clientId: "client",
+      redirectUri: "https://probe.example/callback",
+      resource: "",
+    });
+    expect(bare).not.toContain("auth-client-uri");
+    expect(bare).toContain("Authorize access");
+  });
+
   test("provider chooser exposes the canonical SSO-first CTA contract", () => {
     const html = renderProviderChoice([
       { id: "workforce", protocol: "oidc", href: "/workforce" },

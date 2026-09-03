@@ -24,6 +24,7 @@ const routes = [
   "people",
   "access",
   "api-access",
+  "connections",
   "operations",
   "settings",
 ];

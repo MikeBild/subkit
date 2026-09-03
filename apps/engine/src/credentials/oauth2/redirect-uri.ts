@@ -53,6 +53,20 @@ export function buildOAuthRedirectUri(hints?: OAuthOriginHints): string | null {
   return `${origin}${OAUTH_CALLBACK_PATH}`;
 }
 
+/** Callback for outbound connections (Cockpit "Anbindungen"); same precedence as above. */
+export const CONNECTION_CALLBACK_PATH = "/v1/connections/callback";
+
+export function buildConnectionCallbackUri(hints?: OAuthOriginHints): string | null {
+  const origin = resolveOrigin(hints?.req);
+  if (!origin) return null;
+  return `${origin}${CONNECTION_CALLBACK_PATH}`;
+}
+
+/** The engine's public origin by the precedence above, or null when none resolves. */
+export function resolvePublicOrigin(hints?: OAuthOriginHints): string | null {
+  return resolveOrigin(hints?.req);
+}
+
 function resolveOrigin(req?: { url: string; headers?: Headers } | Request): string | null {
   // 1) Configured public_base_url — operator-canonical.
   try {

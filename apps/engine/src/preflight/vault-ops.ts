@@ -39,6 +39,10 @@ import {
 import { logger } from "../logging/logger.ts";
 import { CONFIG_STATE_KEY, REPLICA_LEASE_MS } from "../runtime-config/contracts.ts";
 import {
+  hasPendingSecretColumns,
+  secretVersionProjection,
+} from "../runtime-config/secret-columns.ts";
+import {
   createSecretVersion,
   getRuntimeConfigState,
   saveRuntimeConfigPatch,
@@ -53,20 +57,19 @@ function keyFingerprint(keyHex: string): string {
 }
 
 export async function probeCurrentVersion(db: Db, name: string): Promise<VersionProbe> {
+  // This runs on the host against a schema that may be one release old, so
+  // the prepared-version column is read only where it exists.
+  const projection = await secretVersionProjection(db);
   // tenant-filter:exempt — secret names and versions are product-global operator state.
-  const rows = await db
-    .select({
-      version: runtimeSecretVersions.version,
-      ciphertext: runtimeSecretVersions.ciphertext,
-      iv: runtimeSecretVersions.iv,
-      auth_tag: runtimeSecretVersions.auth_tag,
-      revoked_at: runtimeSecretVersions.revoked_at,
-    })
+  const found = await db
+    .select(projection.columns)
     .from(runtimeSecretVersions)
     .where(eq(runtimeSecretVersions.name, name))
     .orderBy(desc(runtimeSecretVersions.version));
+  const rows = found.map(projection.complete);
   if (rows.length === 0) return { version: null, readable: false, absent: true };
-  const current = rows.find((row) => row.revoked_at === null);
+  // A prepared version is not current until a person approves it.
+  const current = rows.find((row) => row.revoked_at === null && row.pending_since === null);
   if (!current) return { version: null, readable: false, absent: false };
   try {
     decryptSecret(
@@ -115,9 +118,18 @@ export async function rewrapMasterKey(
   }
 
   const report = await db.transaction(async (tx) => {
+    // Only what the rewrap needs, spelled out: this runs before this
+    // release's migrations, and a `select()` would name columns the
+    // previous schema does not have.
     // tenant-filter:exempt — the secret registry is product-global operator state.
     const rows = await tx
-      .select()
+      .select({
+        name: runtimeSecretVersions.name,
+        version: runtimeSecretVersions.version,
+        ciphertext: runtimeSecretVersions.ciphertext,
+        iv: runtimeSecretVersions.iv,
+        auth_tag: runtimeSecretVersions.auth_tag,
+      })
       .from(runtimeSecretVersions)
       .orderBy(asc(runtimeSecretVersions.name), asc(runtimeSecretVersions.version));
 
@@ -309,6 +321,43 @@ export function createVaultOps(
         module: "preflight",
         action: "vault.version_created",
         msg: "host-side rotation minted a runtime secret version",
+        name,
+        version: created.version,
+      });
+      return { version: created.version };
+    },
+    prepareVersion: async (name, value, purpose, bindings) => {
+      // A prepared version needs the columns 6.29 added. On the previous
+      // schema — the one this command meets when it runs before the new
+      // release has migrated — say so, rather than fail on a column name.
+      if (!(await hasPendingSecretColumns(db))) {
+        throw new Error(
+          "this database does not know prepared versions yet; start the new release once (it migrates), then re-run with --pending — or write the version now without --pending",
+        );
+      }
+      const created = await createSecretVersion(db, {
+        name,
+        value,
+        created_by: null,
+        pending: { prepared_by: "Host-Kommando (engine --vault-set --pending)", bindings },
+      });
+      await auditAwait(
+        {
+          tenant_id: SYSTEM_TENANT_ID,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.SECRET_VERSION_PREPARED,
+          resource_type: "runtime_secret",
+          resource_id: created.reference,
+          result: "success",
+          metadata: { name, version: created.version, purpose, bindings },
+        },
+        db,
+      );
+      logger.info({
+        module: "preflight",
+        action: "vault.version_prepared",
+        msg: "host-side rotation prepared a runtime secret version for approval",
         name,
         version: created.version,
       });

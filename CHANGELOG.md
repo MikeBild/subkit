@@ -6,6 +6,68 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.29.0 — 2026-09-03
+
+### Added
+
+- **Anbindungen → Verbinden.** The Cockpit's Installation section gains
+  "Anbindungen": every system SubKit may call on someone's behalf, with name,
+  address, state (gültig · läuft ab am … · abgelaufen · unlesbar), granted
+  rights, last use, and the actions Erneuern and Trennen. "Verbinden" takes a
+  base URL, reads `/.well-known/oauth-authorization-server` and
+  `/.well-known/service-descriptor.json` (both optional, both shown when
+  present), registers this engine there as a public client (RFC 7591), runs
+  Authorization Code with PKCE S256 for the scopes the person picked, exchanges
+  the code at the discovered token endpoint without a client secret, and stores
+  the access and refresh tokens as runtime secret versions
+  (`connection.<tenant>.<name>.access_token` / `…refresh_token`) — under the
+  same key, rewrap and audit as every other secret. The engine refreshes before
+  expiry (a scheduler sweep every minute and on use); a refused refresh flips
+  the state to "abgelaufen" and offers Erneuern, which repeats the flow for the
+  same row. Routes: `POST /v1/connections/discover`, `POST /v1/connections/start`,
+  `GET /v1/connections/callback`, `GET /v1/connections`, `GET|DELETE
+  /v1/connections/{id}`, `POST /v1/connections/{id}/renew`; permissions
+  `connection:read` / `connection:write`. The flow is proven against an
+  in-repo OAuth 2.1 server with discovery and dynamic registration that
+  verifies the client id, the redirect, the PKCE verifier, single-use codes and
+  its own refresh tokens.
+- **"Verbindung wählen" on a connector.** A connector's page carries a
+  Zugangsdaten card: pick a connection and the connector sends its access from
+  then on (`POST /v1/connectors/{id}/credentials` with `mode: "connection"`;
+  `GET /v1/connectors/{id}/credential` says how a connector authenticates
+  without the material). A pasted key stays available and says what it is for:
+  an external provider that cannot grant access itself, such as a model key.
+  Every secret field on Einstellungen says the same.
+- **Freigaben statt Eingaben.** `engine --vault-set <name> --value-file <path>
+  --pending` writes a secret version that waits: not current, not bindable,
+  invisible to `--vault-check`, listed on Einstellungen as "Vorbereitete
+  Änderung" with name, version, who prepared it and since when. Freigeben makes
+  it current and re-pins the paths given with `--bind`; Ablehnen revokes it.
+  `GET /v1/secret-approvals`, `POST /v1/secret-approvals/{name}/{version}/approve`
+  and `…/reject`, audited as `secret.version_prepared`, `secret.version_approved`,
+  `secret.version_rejected`. `engine --help` explains when to reach for it.
+- The consent page of SubKit's own OAuth 2.1 server speaks the browser's
+  language (German: "Zugriff freigeben", Freigeben / Ablehnen), and shows the
+  requesting client's address beside its name when the client registered a
+  `client_uri` (RFC 7591; https only). It names only what the client registered.
+
+### Changed
+
+- Every read of `runtime_secret_versions` on the pre-migration path — the
+  bootstrap preflight, `--vault-check`, `--vault-set`, `--rewrap-master-key` —
+  spells out the columns every release has had and uses the three columns 6.29
+  added only after `information_schema` confirmed them. A new integration test
+  migrates a database only up to 6.28's last migration and requires
+  `--preflight` to answer 0 on it; a crash where the contract promises an
+  answer rolls a deploy back.
+
+### Migration
+
+- `0048_anbindungen_und_freigaben`: tables `outbound_connections` and
+  `outbound_connection_starts`; columns `credentials.connection_id`,
+  `mcp_oauth_clients.client_uri`, `runtime_secret_versions.pending_since`,
+  `.prepared_by`, `.pending_bindings`.
+
 ## 6.28.0 — 2026-09-03
 
 ### Added

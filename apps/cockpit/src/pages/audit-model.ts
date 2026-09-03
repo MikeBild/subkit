@@ -117,6 +117,15 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "webhook.inbound.received": "audit.action.webhookReceived",
   "webhook.inbound.denied": "audit.action.webhookDenied",
   "webhook.inbound.created": "audit.action.webhookCreated",
+  "connection.created": "audit.action.connectionCreated",
+  "connection.renewed": "audit.action.connectionRenewed",
+  "connection.failed": "audit.action.connectionFailed",
+  "connection.refreshed": "audit.action.connectionRefreshed",
+  "connection.refresh_failed": "audit.action.connectionRefreshFailed",
+  "connection.disconnected": "audit.action.connectionDisconnected",
+  "secret.version_prepared": "audit.action.secretPrepared",
+  "secret.version_approved": "audit.action.secretApproved",
+  "secret.version_rejected": "audit.action.secretRejected",
 };
 
 export function auditActionKey(action: string): TranslationKey {
