@@ -115,15 +115,47 @@ export function registerRawMcpAuthOpenApi(app: OpenAPIHono<AppEnv>): void {
     { 302: { description: "OAuth redirect" }, ...errors },
     { body: form },
   );
-  register(
-    app,
-    "post",
-    "/v1/oauth/token",
-    "exchangeOAuthToken",
-    "Exchange or refresh OAuth tokens",
-    { 200: { description: "Tokens", content: json({ type: "object" }) }, ...errors },
-    { body: form },
-  );
+  app.openAPIRegistry.registerPath({
+    method: "post",
+    path: "/v1/oauth/token",
+    operationId: "exchangeOAuthToken",
+    tags: ["MCP authentication"],
+    summary: "Exchange an authorization code, a refresh token, or an API key for tokens",
+    description:
+      "Form-encoded OAuth 2.1 token endpoint. `grant_type=authorization_code` and " +
+      "`grant_type=refresh_token` serve MCP clients. " +
+      "`grant_type=urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693) turns an " +
+      "API key into a short-lived Bearer token: send " +
+      "`subject_token=<api key>` and " +
+      "`subject_token_type=urn:subkit:params:oauth:token-type:api-key`; no client_id or " +
+      "client secret. Optional `scope` narrows to a subset of the key's scopes " +
+      "(`workflow:<id>` entries narrow the workflows) — anything wider is refused with " +
+      "`invalid_scope`. Optional `ttl` (seconds) is capped at 3600; default 900. The " +
+      "response carries `access_token`, `token_type=Bearer`, " +
+      "`issued_token_type=urn:ietf:params:oauth:token-type:access_token`, `expires_in` " +
+      "and `scope`, and no refresh token. The token is accepted everywhere the key is " +
+      "(same principal, tenant, roles and allow-lists; audit rows carry " +
+      "`via: token_exchange`). Revoking, expiring or rotating the key refuses its tokens " +
+      "at once. A revoked or unknown key answers 401 `invalid_grant`.",
+    request: { body: form },
+    responses: {
+      200: {
+        description: "Tokens",
+        content: json({
+          type: "object",
+          properties: {
+            access_token: { type: "string" },
+            token_type: { type: "string", enum: ["Bearer"] },
+            issued_token_type: { type: "string" },
+            expires_in: { type: "integer" },
+            scope: { type: "string" },
+            refresh_token: { type: "string" },
+          },
+        }),
+      },
+      ...errors,
+    },
+  });
   register(
     app,
     "post",

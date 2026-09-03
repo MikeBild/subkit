@@ -62,6 +62,14 @@ let MODE: RenderMode = defaultMode();
 let THRESHOLD: number = LEVEL_WEIGHT.info;
 let SD_DAEMON: boolean = defaultSdDaemonPrefix();
 
+// Where NDJSON lines go. stdout by default (journald reads it). A CLI
+// command whose stdout IS its result (`engine --token-exchange` prints a
+// token for `$(…)`) moves the log stream to stderr so the result stays clean.
+let NDJSON_SINK: "stdout" | "stderr" = "stdout";
+export function routeLogsToStderr(): void {
+  NDJSON_SINK = "stderr";
+}
+
 export function reconfigureLogger(opts: {
   level?: LogLevel;
   format?: "dev" | "pretty" | "prod" | "ndjson" | "json";
@@ -214,7 +222,8 @@ function emitNdjson(level: LogLevel, fields: LogFields): void {
   // Under systemd the sd-daemon marker maps the record's level onto the
   // journald PRIORITY field; everywhere else the line stays bare JSON.
   const prefix = SD_DAEMON ? SD_DAEMON_PREFIX[level] : "";
-  process.stdout.write(`${prefix}${JSON.stringify(record)}\n`);
+  const sink = NDJSON_SINK === "stderr" ? process.stderr : process.stdout;
+  sink.write(`${prefix}${JSON.stringify(record)}\n`);
 }
 
 function shouldLog(level: LogLevel): boolean {

@@ -300,6 +300,8 @@ const EN = {
   "apiKeys.revokeDescription": "This key will stop working immediately.",
   "apiKeys.revoked": "API key revoked",
   "apiKeys.ready": "API key ready",
+  "apiKeys.exchangeHint":
+    "A key can be swapped for a short-lived Bearer token (15 minutes by default, at most one hour) that is accepted everywhere the key is — so the key itself stays on disk and never appears in a request.",
   "access.roles": "Roles",
   "access.groups": "Groups",
   "access.grants": "Grants",
@@ -1621,6 +1623,8 @@ const DE: Record<TranslationKey, string> = {
   "apiKeys.revokeDescription": "Dieser Schlüssel funktioniert danach sofort nicht mehr.",
   "apiKeys.revoked": "API-Schlüssel widerrufen",
   "apiKeys.ready": "API-Schlüssel bereit",
+  "apiKeys.exchangeHint":
+    "Ein Schlüssel lässt sich gegen ein kurzlebiges Bearer-Token tauschen (standardmäßig 15 Minuten, höchstens eine Stunde), das überall gilt, wo der Schlüssel gilt — der Schlüssel selbst bleibt auf der Platte und taucht in keiner Anfrage auf.",
   "access.roles": "Rollen",
   "access.groups": "Gruppen",
   "access.grants": "Zuweisungen",

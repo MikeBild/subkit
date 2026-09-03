@@ -296,6 +296,12 @@
     },
     {
       "audience": "developers",
+      "path": "docs/developers/token-exchange.md",
+      "title": "Machine tokens — swap an API key for a short-lived Bearer token",
+      "summary": "An API key is a long-lived secret."
+    },
+    {
+      "audience": "developers",
       "path": "docs/developers/tool-palette.md",
       "title": "Tool palette and dispatch",
       "summary": "Every action an LLM can take against sk is a named tool that goes through one registry, one policy gate, and one audit trail."

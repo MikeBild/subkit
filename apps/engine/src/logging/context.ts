@@ -22,6 +22,9 @@ export type LogContext = {
     | "chat"
     | "queue";
   actor_id?: string;
+  /** Credential path of the actor when it was not the primary credential —
+   *  `token_exchange` for a Bearer token minted from an API key. */
+  auth_via?: "token_exchange";
 };
 
 const storage = new AsyncLocalStorage<LogContext>();

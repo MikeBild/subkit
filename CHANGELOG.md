@@ -6,6 +6,33 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.30.0 — 2026-09-04
+
+### Added
+
+- **Machine tokens at SubKit's own edge (RFC 8693 token exchange).**
+  `POST /v1/oauth/token` accepts
+  `grant_type=urn:ietf:params:oauth:grant-type:token-exchange` with
+  `subject_token=<api key>` and
+  `subject_token_type=urn:subkit:params:oauth:token-type:api-key` — no client
+  secret, the key is the credential — and answers with a Bearer token
+  (`expires_in` 900 by default, at most 3600, no refresh token). Optional
+  `scope` narrows to a subset of the key's scopes (`workflow:<id>` narrows the
+  workflows); anything wider is `invalid_scope`. The token is accepted exactly
+  like the key on every route, `/metrics`, the operator-verify routes and MCP
+  (HTTP and stdio): same principal, tenant, roles and allow-lists, same audit
+  actor with `via: token_exchange` in the metadata; the exchange writes
+  `api_key.token_exchanged`. Tokens are stateless (signed, bound to the key id
+  and key version — no migration); revoking, expiring or rotating the key
+  refuses its tokens at once and a revoked key cannot be exchanged.
+  Advertised in `grant_types_supported` and described in the OpenAPI.
+- `engine --token-exchange --key-file <path> [--scope …] [--ttl <seconds>]`
+  prints such a token for scripts on the host; the key is read from a file,
+  never from an argument. Runbook entry in `engine --help`.
+- The Cockpit's API-keys page says in one sentence that a key can be swapped
+  for a short-lived token and shows the `curl` line;
+  `docs/developers/token-exchange.md` documents the grant.
+
 ## 6.29.1 — 2026-09-03
 
 ### Fixed

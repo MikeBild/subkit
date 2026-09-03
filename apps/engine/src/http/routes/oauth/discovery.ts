@@ -4,6 +4,7 @@
 // Precedent: the raw /mcp mount in mcp/transports/streamable-http.ts.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
+import { TOKEN_EXCHANGE_GRANT_TYPE } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import type { AppEnv } from "../../openapi.ts";
 
@@ -68,7 +69,7 @@ export function registerOAuthDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
       registration_endpoint: `${base}/v1/oauth/register`,
       revocation_endpoint: `${base}/v1/oauth/revoke`,
       response_types_supported: ["code"],
-      grant_types_supported: ["authorization_code", "refresh_token"],
+      grant_types_supported: ["authorization_code", "refresh_token", TOKEN_EXCHANGE_GRANT_TYPE],
       code_challenge_methods_supported: ["S256"],
       token_endpoint_auth_methods_supported: ["none"],
       scopes_supported: scopesSupported,

@@ -237,6 +237,12 @@ export const TokenRequestSchema = z.object({
   client_id: z.string().optional(),
   refresh_token: z.string().max(512).optional(),
   scope: z.string().optional(),
+  // RFC 8693 token exchange (API key → short-lived Bearer token).
+  subject_token: z.string().max(512).optional(),
+  subject_token_type: z.string().max(256).optional(),
+  requested_token_type: z.string().max(256).optional(),
+  // SubKit extension: requested lifetime in seconds (capped at 3600).
+  ttl: z.union([z.string().max(8), z.number()]).optional(),
 });
 
 export const RevokeRequestSchema = z.object({

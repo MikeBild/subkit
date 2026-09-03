@@ -65,6 +65,10 @@ export const AuditAction = {
   API_KEY_ROTATED: "api_key.rotated",
   API_KEY_REVOKED: "api_key.revoked",
   API_KEY_USED: "api_key.used",
+  // An API key was swapped for a short-lived Bearer token (RFC 8693 token
+  // exchange at /v1/oauth/token). Actor = the key's owner; metadata carries
+  // the granted scope and TTL, never the key or the token.
+  API_KEY_TOKEN_EXCHANGED: "api_key.token_exchanged",
 
   PORTAL_TOKEN_ISSUED: "portal_token.issued",
   PORTAL_TOKEN_REVOKED: "portal_token.revoked",
