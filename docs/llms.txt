@@ -5,6 +5,7 @@
 
 ## Start here
 
+- [Bootstrap Preflight](BOOTSTRAP-PREFLIGHT.md): Version 1.0 — this text is byte-identical in every product of the family.
 - [Start here](start-here.md): sk takes the work your team does the same way every week and runs it for you — reviewed before it goes live, permission-checked every time, and recorded so you can always show what happened.
 - [Use cases](use-cases.md): What people actually run on sk — as cases, not features.
 
@@ -65,6 +66,7 @@
 ## Admins
 
 - [Admins — govern access](admins/README.md): Hand a team the keys without handing over the building.
+- [Bootstrap Preflight](admins/bootstrap-preflight.md): Before a production engine migrates anything, it decides whether this release can run on the bootstrap it was given — and if it cannot, it exits 3 with one line and has changed nothing.
 - [Configuring the engine](admins/configuration.md): SubKit keeps its canonical non-fundamental runtime configuration in PostgreSQL.
 - [Credentials & Keys](admins/credentials-and-keys.md): Every integration secret is encrypted at rest, rotated on demand, and never logged, returned in an API response, or shown to the AI.
 - [Production hardening — known caveats & TODOs](admins/production-hardening.md): Work through this page and you can go live knowing three things: every run is permission-checked and recorded, someone can answer an auditor's questions from what was written down, and you could rebuild the entire setup from a database backup alone.

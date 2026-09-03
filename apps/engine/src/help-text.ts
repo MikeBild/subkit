@@ -1,0 +1,38 @@
+// `engine --help`.
+//
+// Extracted from `index.ts` because that file sits at its 1000-LOC
+// invariant ceiling (`file_size` in `apps/engine/scripts/audit-invariants.ts`)
+// and a help text is the part of an entrypoint that grows with every flag.
+// Keeping it here means adding a flag costs the entrypoint one import, not
+// five lines — and the text stays in one place instead of drifting into a
+// per-subsystem fragment nobody prints.
+//
+// The flag list is deliberately hand-maintained rather than derived: the
+// dispatch in `index.ts` is a sequence of `process.argv.includes()` checks
+// with no registry to read, and a generator over that would be more
+// machinery than the thing it generates.
+
+import { PREFLIGHT_HELP } from "./preflight/cli-entry.ts";
+
+export function engineHelp(version: string): string {
+  return (
+    `subkit engine ${version}\n\n` +
+    "Usage: engine [flags]\n\n" +
+    "Flags:\n" +
+    "  --version          print the engine version and exit\n" +
+    "  --help             print this help and exit\n" +
+    "  --smoke            validate logger/audit/redaction and exit\n" +
+    "  --migrate          run pending database migrations and exit\n" +
+    "  --bridge-stateless import legacy config/blobs into PostgreSQL + S3 and exit\n" +
+    "    --legacy-config=<path>    required legacy subkit.config.json\n" +
+    "    --legacy-files-dir=<path> optional legacy blobs directory\n" +
+    "  --seed             seed the database and exit\n" +
+    "  --check-update     check for a newer binary and exit\n" +
+    "  --self-update      download + install a newer binary and exit\n" +
+    "  --rollback         roll back to the previous binary and exit\n" +
+    "    --to=<version>            roll back to a specific retained version\n" +
+    "  --issue-admin-key  issue an admin API key and exit\n" +
+    "    --tenant <slug>           tenant to mint the key against\n" +
+    PREFLIGHT_HELP
+  );
+}

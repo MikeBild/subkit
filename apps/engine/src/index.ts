@@ -48,83 +48,6 @@ const SEED_FLAG = "--seed";
 const ISSUE_ADMIN_KEY_FLAG = "--issue-admin-key";
 const VERSION_FLAG = "--version";
 const HELP_FLAG = "--help";
-async function runSmoke(): Promise<void> {
-  // Read raw process.env. Importing `./env.ts` would trigger the lazy
-  // EnvSchema parse on first property access — and the smoke binary
-  // must run without DATABASE_URL/MASTER_KEY (matrix smoke step in
-  // release.yml only sets the bare minimum, and operators sanity-check
-  // a fresh download with `engine --smoke` before configuring anything).
-  const node_env = process.env.NODE_ENV ?? "development";
-  const port = Number(process.env.PORT ?? "3000");
-  logger.info({
-    module: "engine",
-    action: "smoke.started",
-    msg: "smoke mode: validating logger + audit + redaction",
-    node_env,
-    port,
-  });
-
-  // System-level startup: logger.info is the durable record.
-  // `audit_log.tenant_id` is a NOT NULL uuid FK, so a synthetic
-  // "system" value would fail the insert. If we ever need a real
-  // audit row for startup, a dedicated `system_audit_log` without
-  // a tenant column is the right shape — tracked separately.
-
-  logger.info({
-    module: "engine",
-    action: "redaction.test",
-    msg: "this line contains a secret that must be redacted",
-    headers: {
-      authorization: "Bearer sk-live-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-      cookie: "session=abc123",
-    },
-    body_preview: "token=wf_live_abcdef1234567890",
-    note: "Bearer should be stripped inside this free-form string too",
-  });
-
-  logger.info({
-    module: "engine",
-    action: "redaction.test.done",
-    msg: "redaction smoke line emitted",
-  });
-
-  // QuickJS WASM embed check — the load-bearing guard. JS transforms run
-  // in a QuickJS sandbox whose WASM must be INLINED into the compiled
-  // binary (single-file variant); the separate-.wasm variant silently
-  // survives `bun test` but throws ENOENT on the compiled binary,
-  // breaking every JS-authored workflow at runtime in prod. Exercising
-  // one JS transform here fails the release BEFORE deploy if the embed
-  // ever regresses.
-  const { runJs } = await import("./sandboxes/quickjs/runtime.ts");
-  const js = await runJs({
-    code: "return input.scope.v.data * 2;",
-    input: { scope: { v: { data: 21 } }, input: null },
-    limits: { wall_ms: 1000 },
-    // Smoke check with no execution context — intentionally-constant clock.
-    clock: null,
-  });
-  if (js.output !== 42) {
-    logger.error({
-      module: "engine",
-      action: "smoke.quickjs_failed",
-      msg: "QuickJS JS-transform sandbox did not execute in the compiled binary — WASM embed regressed",
-      output: js.output,
-    });
-    process.exit(1);
-  }
-  logger.info({
-    module: "engine",
-    action: "smoke.quickjs_ok",
-    msg: "QuickJS JS-transform sandbox executed in the compiled binary",
-  });
-
-  logger.info({
-    module: "engine",
-    action: "smoke.completed",
-    msg: "smoke mode: exit 0",
-  });
-}
-
 async function runServer(): Promise<void> {
   // Boot-phase heartbeat: emit elapsed + rss every 5s until `ready`. A boot
   // that stalls (binary page-fault-in under memory pressure, a hung await)
@@ -165,6 +88,15 @@ async function runServer(): Promise<void> {
       msg: "FileScanner is NoopScanner (accepted risk, see AGENTS.md). Uploads are reported clean without AV scanning; tenant uploads are not a primary attack surface today.",
     });
   }
+
+  // Bootstrap preflight — the first thing a production start does that
+  // touches its bootstrap, and the last point at which it can refuse for
+  // free: before crypto_assert, before migrations, before revision 1 is
+  // written, before the listener opens. A refusal prints one structured
+  // line and exits 3 having changed nothing, so a rollback stays possible.
+  // No-op outside production. See docs/admins/bootstrap-preflight.md.
+  const { runProductionPreflightOrExit } = await import("./preflight/runner.ts");
+  await bootPhase("preflight", () => runProductionPreflightOrExit(getDb(), cfg));
 
   // Surfaces a bad MASTER_KEY in the boot log, before any request can
   // reach an encrypt/decrypt path. Pre-fix this lived as a top-level
@@ -754,23 +686,8 @@ async function main(): Promise<void> {
     process.exit(0);
   }
   if (process.argv.includes(HELP_FLAG)) {
-    process.stdout.write(
-      `subkit engine ${OPENAPI_INFO.version}\n\n` +
-        "Usage: engine [flags]\n\n" +
-        "Flags:\n" +
-        "  --version          print the engine version and exit\n" +
-        "  --help             print this help and exit\n" +
-        "  --smoke            validate logger/audit/redaction and exit\n" +
-        "  --migrate          run pending database migrations and exit\n" +
-        "  --bridge-stateless import legacy config/blobs into PostgreSQL + S3 and exit\n" +
-        "    --legacy-config=<path>    required legacy subkit.config.json\n" +
-        "    --legacy-files-dir=<path> optional legacy blobs directory\n" +
-        "  --seed             seed the database and exit\n" +
-        "  --check-update     check for a newer binary and exit\n" +
-        "  --self-update      download + install a newer binary and exit\n" +
-        "  --rollback         roll back to the previous binary and exit\n" +
-        "  --issue-admin-key  issue an admin API key and exit\n",
-    );
+    const { engineHelp } = await import("./help-text.ts");
+    process.stdout.write(engineHelp(OPENAPI_INFO.version));
     process.exit(0);
   }
 
@@ -837,6 +754,17 @@ async function main(): Promise<void> {
       );
       process.exit(1);
     }
+  }
+
+  // The bootstrap-preflight operator commands (--preflight, --vault-check,
+  // --vault-set, --rewrap-master-key). Dispatched BEFORE --migrate so a
+  // preflight can never be the thing that applies a migration — the whole
+  // point of the contract is that a refusal has changed nothing. Wiring is
+  // in preflight/cli-entry.ts; the contract is docs/BOOTSTRAP-PREFLIGHT.md.
+  const preflightCli = await import("./preflight/cli-entry.ts");
+  if (preflightCli.isPreflightInvocation(process.argv)) {
+    await preflightCli.runPreflightCliOrExit(process.argv.slice(2), loadConfigAndReconfigureLogger);
+    return;
   }
 
   // --migrate: apply embedded migrations and exit. Useful for blue/green
@@ -979,6 +907,7 @@ async function main(): Promise<void> {
     },
     async () => {
       if (isSmoke) {
+        const { runSmoke } = await import("./smoke.ts");
         await runSmoke();
         process.exit(0);
       }

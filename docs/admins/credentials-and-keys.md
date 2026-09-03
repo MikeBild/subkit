@@ -40,7 +40,8 @@ flowchart LR
         Leak["key leaked / cadence / incident"] --> Freeze["freeze writes"]
         Freeze --> Snap["DB snapshot"]
         Snap --> NewKey["new key via secret manager"]
-        NewKey --> Invalidate["invalidate ciphertext<br/>(truncate / blank)"]
+        NewKey --> Rewrap["engine --rewrap-master-key<br/>(runtime_secret_versions only)"]
+        Rewrap --> Invalidate["invalidate the rest<br/>(truncate / blank)"]
         Invalidate --> Boot["boot on new key"]
         Boot --> Reissue["re-issue every credential"]
     end
@@ -54,9 +55,21 @@ flowchart LR
 ## Rotating MASTER_KEY
 
 > **Read first:** rotating `MASTER_KEY` invalidates every payload encrypted
-> under it. The engine uses AES-256-GCM with no key-id envelope — there is
-> no "old key" the engine can fall back to. This section describes what
-> breaks, what to recover, and the operator-facing downtime window.
+> under it, with **one exception**. The engine uses AES-256-GCM with no
+> key-id envelope, so there is no "old key" it can fall back to at request
+> time. This section describes what breaks, what to recover, and the
+> operator-facing downtime window.
+>
+> **The exception — runtime secret versions.** Since 6.27.2 the rows in
+> `runtime_secret_versions` (everything addressed as `secret://name/version`,
+> which is every secret settings leaf) can be re-encrypted under the new key
+> from the host, provided you still hold the previous one:
+> `engine --rewrap-master-key --from-file <previous-key>`. It refuses while
+> any replica is still serving, runs as one transaction, and preserves every
+> version number so the active revision keeps resolving. See
+> [bootstrap-preflight.md](bootstrap-preflight.md#--rewrap-master-key). The
+> tables listed under **Blast radius** below are *not* covered by it — those
+> still require the re-issue sequence on this page.
 
 ### When you must rotate
 
@@ -71,7 +84,10 @@ flowchart LR
 
 `apps/engine/src/crypto/aes-gcm.ts` loads `env.MASTER_KEY` once at boot. Every
 store below holds ciphertext keyed by that single key — rotation invalidates
-every row in every one of them.
+every row in every one of them. `runtime_secret_versions` is deliberately
+absent from this table: it is the one store `--rewrap-master-key` repairs in
+place, and listing it here as lost would send an operator to re-enter settings
+they can recover.
 
 Each row is a Drizzle `pgTable` with at least one `bytea` column written through
 `encryptSecret()` and read through `decryptSecret()`. The SQL name is the first
