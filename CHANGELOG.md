@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- `run_workflow` over MCP accepts `idempotency_key` with the same contract as
+  the API and CLI: a repeated key returns the first run's id and status with
+  `idempotent_replay: true` and starts nothing.
+- The build-or-adopt skill asks a second question after an adopt decision:
+  which components already in the tree does the adopted product now provide.
+  The isolated measurement run adopted a durable-execution framework and left
+  its own 199-line scheduler, retry and lock layer in place.
+
+### Fixed
+
+- The pub/sub listener's `stop()` now waits for an in-flight drain to persist
+  its cursor. A consumer stopped right after its events were dispatched could
+  leave the channel watermark behind, and a fresh consumer would replay those
+  events; seen as a CI flake in the catch-up test.
+
 ## 6.26.0 — 2026-09-03
 
 ### Added
