@@ -6,8 +6,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.27.0 — 2026-09-03
+
 ### Added
 
+- `@`-mentions in the Cockpit chat: typing `@` opens a picker over the
+  workflows and connectors the session may read. The prose keeps a readable
+  token; the structured reference travels beside it (`references[]` on both
+  conversation turn bodies). The engine resolves every mention on every turn
+  with tenant and RBAC scoping into a narrow projection under
+  `[REFERENCED ENTITIES]`, rendered in the volatile prompt tail and trimmed to
+  one line per object rather than dropped. A deleted or withdrawn object is
+  reported with one truthful sentence, and the transcript marks its chip.
 - `run_workflow` over MCP accepts `idempotency_key` with the same contract as
   the API and CLI: a repeated key returns the first run's id and status with
   `idempotent_replay: true` and starts nothing.
@@ -18,6 +28,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- An expired approval states its verdict on the tool-call row. The row used
+  to carry only an output payload, which the Cockpit rendered as completed
+  with a green tick; it now reads "not run · approval expired".
+- Chat turns record their context-budget report, so the conversation context
+  snapshot is no longer empty for them.
 - The pub/sub listener's `stop()` now waits for an in-flight drain to persist
   its cursor. A consumer stopped right after its events were dispatched could
   leave the channel watermark behind, and a fresh consumer would replay those
