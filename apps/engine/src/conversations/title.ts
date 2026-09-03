@@ -129,6 +129,28 @@ export async function refreshConversationTitle(
   conversation_id: string,
   exec: Db,
 ): Promise<string | null> {
+  // Runs off the response path (`void` at the call site), so nothing here may
+  // reject: a pool closed under it — the test harness tearing down right
+  // after a turn — must end as a log line, not an unhandled rejection.
+  try {
+    return await refreshConversationTitleInner(tenant_id, conversation_id, exec);
+  } catch (err) {
+    logger.warn({
+      module: "conversation",
+      action: "title.refresh_failed",
+      tenant_id,
+      conversation_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
+async function refreshConversationTitleInner(
+  tenant_id: string,
+  conversation_id: string,
+  exec: Db,
+): Promise<string | null> {
   const route = await resolveModelRoute(tenant_id, exec);
   if (route.provider === "mock") return null;
   const rows = await exec
@@ -147,30 +169,19 @@ export async function refreshConversationTitle(
     .map((r) => ({ role: r.role, text: stringifyConversationExcerpt(r.content) ?? "" }))
     .filter((t) => t.text.length > 0);
   if (turns.length < 2 || !turns.some((t) => t.role === "assistant")) return null;
-  try {
-    const result = await runSummarizeFlow({ tenant_id, prompt: buildTitlePrompt(turns) }, exec);
-    const title = titleFromSummary(result.summary);
-    if (!title) return null;
-    const [row] = await exec
-      .update(conversations)
-      .set({ title })
-      .where(
-        and(
-          eq(conversations.tenant_id, tenant_id),
-          eq(conversations.id, conversation_id),
-          eq(conversations.title_locked, false),
-        ),
-      )
-      .returning({ title: conversations.title });
-    return row?.title ?? null;
-  } catch (err) {
-    logger.warn({
-      module: "conversation",
-      action: "title.refresh_failed",
-      tenant_id,
-      conversation_id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return null;
-  }
+  const result = await runSummarizeFlow({ tenant_id, prompt: buildTitlePrompt(turns) }, exec);
+  const title = titleFromSummary(result.summary);
+  if (!title) return null;
+  const [row] = await exec
+    .update(conversations)
+    .set({ title })
+    .where(
+      and(
+        eq(conversations.tenant_id, tenant_id),
+        eq(conversations.id, conversation_id),
+        eq(conversations.title_locked, false),
+      ),
+    )
+    .returning({ title: conversations.title });
+  return row?.title ?? null;
 }
