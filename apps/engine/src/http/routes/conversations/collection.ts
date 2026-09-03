@@ -160,6 +160,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(body.title ? { title: body.title } : {}),
       ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
       ...(body.playground ? { playground: body.playground } : {}),
+      ...(body.references && body.references.length > 0 ? { references: body.references } : {}),
       origin_client: principalOrigin(principal),
     } as const;
     const runtimeContext = buildRuntimeContextFromRequest(c, principal);
@@ -185,6 +186,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
             actor_id: principal.id,
             principal,
             user_message: created.initial_message ?? "",
+            ...(created.references ? { user_references: created.references } : {}),
             answer_actor: humanChatAnswer(principal),
             user_memory: created.user_memory,
             turn_abort_ctrl: turnAbortCtrl,

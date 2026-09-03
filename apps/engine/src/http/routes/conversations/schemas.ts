@@ -151,6 +151,36 @@ export const ConversationDetailSchema = z
   })
   .openapi("ConversationDetail");
 
+/**
+ * One object the person @-mentioned in the composer. The prose carries a
+ * readable token (`@customer-sync`); this carries the id, so the model is
+ * handed an unambiguous target instead of a name to search for. `label` is
+ * display text from the catalogue, constrained to slug/name characters so
+ * the persisted row can never carry a pasted secret through it.
+ */
+const REFERENCE_LABEL = /^[\p{L}\p{N} _./-]{1,200}$/u;
+
+export const ConversationReferenceSchema = z
+  .object({
+    type: z.enum(["workflow", "connector"]),
+    id: z.string().uuid(),
+    // A refine, not `.regex()`: a Unicode-flagged pattern does not survive
+    // the OpenAPI export as a valid JSON-schema `pattern`.
+    label: z
+      .string()
+      .min(1)
+      .max(200)
+      .refine((v) => REFERENCE_LABEL.test(v), "label: slug or display-name characters only"),
+  })
+  .openapi("ConversationReference");
+
+/**
+ * Additive optional on both turn bodies, like `event`: an older engine
+ * strips the unknown key and still gets the prose; an older client
+ * simply never sends it.
+ */
+const ReferencesField = z.array(ConversationReferenceSchema).max(20).optional();
+
 export const CreateBody = z
   .object({
     connector_id: z.string().uuid().optional(),
@@ -165,6 +195,7 @@ export const CreateBody = z
     // authoring surface (scratch draft, workflow-authoring preloaded,
     // commit persists nothing). Durable on the draft row, never an env flag.
     playground: z.boolean().optional(),
+    references: ReferencesField,
   })
   .openapi("CreateConversationBody");
 
@@ -174,6 +205,7 @@ export const AppendMessageBody = z
     memory: z.string().optional(),
     permission_mode: PermissionModeSchema.optional(),
     step_budget: z.number().int().min(1).max(64).optional(),
+    references: ReferencesField,
     /**
      * Per-conversation opt-out for the next-message suggestion that
      * normally rides on the SSE response. Sk-cli sets this to `true`

@@ -176,6 +176,13 @@ export interface AssembleContextParams {
    */
   authoring_context?: string;
   /**
+   * Objects the user @-mentioned on this turn, already resolved by
+   * `conversations/references.ts`. `block` is the full rendering; the
+   * budget trimmer swaps in `trim_ref` (one line per object) instead of
+   * dropping the section — the user pointed at these on purpose.
+   */
+  referenced_entities?: { block: string; trim_ref: string };
+  /**
    * Small machine-readable authoring snapshot used to pick the
    * mode/stage-specific converse focus block.
    */
@@ -253,6 +260,8 @@ export interface EnhancedPrompt {
      * which fetches workflows on demand via the tenant snapshot + tools.
      */
     prior_workflows: number;
+    /** Tokens spent on the `[REFERENCED ENTITIES]` block (user @-mentions). */
+    references: number;
   };
   included_skill_ids: string[];
   included_chunk_ids: string[];
