@@ -994,15 +994,20 @@ export function ChatPage() {
                 {current?.title || t("chat.new")}
               </h1>
               <p className="truncate text-xs text-muted-foreground" data-testid="chat-summary">
-                {current
-                  ? originLine(t, locale, {
-                      surface: current.surface,
-                      owner: detail.data?.owner ?? null,
-                      viewerId: session.principal.id ?? null,
-                      at: activeRow?.last_activity_at ?? current.updated_at,
-                    })
-                  : resumeSummaryLine(resume, t)}
+                {resumeSummaryLine(resume, t)}
               </p>
+              {/* Where it came from, whose it is, when it last moved — beside
+                  the summary, not instead of it (§5 keeps the summary line). */}
+              {current && (
+                <p className="truncate text-xs text-muted-foreground" data-testid="chat-origin">
+                  {originLine(t, locale, {
+                    surface: current.surface,
+                    owner: detail.data?.owner ?? null,
+                    viewerId: session.principal.id ?? null,
+                    at: activeRow?.last_activity_at ?? current.updated_at,
+                  })}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
