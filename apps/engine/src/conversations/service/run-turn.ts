@@ -12,10 +12,12 @@
 // function owns ONLY the model loop + the terminal reload + the
 // `CONVERSATION_COMMITTED` audit on a committed turn.
 
+import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
+import { conversations } from "../../db/schema/index.ts";
 import { scrubString } from "../../logging/scrub-secrets.ts";
 import { recordConversationToolCall } from "../../observability/instrumentation.ts";
 import type { AnswerActor } from "../answer-actor.ts";
@@ -25,6 +27,7 @@ import { tryFastPath } from "../fast-path.ts";
 import { type RunLoopResult, runLoop } from "../loop.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
 import type { ConversationReference } from "../references.ts";
+import { refreshConversationTitle, shouldRefreshTitle } from "../title.ts";
 import type { ConversationPermissionMode, TurnEvent } from "../types.ts";
 import { getConversation } from "./get.ts";
 import { type ConversationTurnOutcome, getStoredPermissionMode } from "./shared.ts";
@@ -208,6 +211,17 @@ export async function runConversationTurn(
 
   const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!updated) throw new Error("conversation disappeared");
+
+  // Name the conversation from its opening exchange — after the answer is
+  // persisted, off the response path, and never over a title a person set.
+  const [turnRow] = await exec
+    .select({ turn_count: conversations.turn_count, title_locked: conversations.title_locked })
+    .from(conversations)
+    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
+    .limit(1);
+  if (turnRow && shouldRefreshTitle(turnRow.turn_count, turnRow.title_locked)) {
+    void refreshConversationTitle(p.tenant_id, p.conversation_id, exec);
+  }
 
   if (result.status === "committed" && result.committed_workflow_id) {
     await auditAwait(

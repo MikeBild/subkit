@@ -17,7 +17,6 @@
 export const PAGE_ROUTES = [
   "/",
   "/decisions",
-  "/inbox",
   "/runs",
   "/audit",
   "/usage",

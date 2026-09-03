@@ -13,7 +13,6 @@ import { CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
 import { DecisionsPage } from "@/pages/decisions";
-import { InboxPage } from "@/pages/inbox";
 import { OverviewPage } from "@/pages/overview";
 import { RunsPage } from "@/pages/runs";
 import { UsagePage } from "@/pages/usage";
@@ -45,7 +44,6 @@ const chatRoutes = [
 const PAGE_COMPONENTS: Record<PageRoute, () => React.ReactElement> = {
   "/": OverviewPage,
   "/decisions": DecisionsPage,
-  "/inbox": InboxPage,
   "/runs": RunsPage,
   "/audit": AuditPage,
   "/usage": UsagePage,

@@ -7,7 +7,8 @@
 // Covers:
 //   - send() inserts exactly ONE cli_notification_inbox row scoped to
 //     delivery.tenant_id, with the severity / event_type / event_payload
-//     carried from delivery.notification.
+//     carried from delivery.notification — for an ACTIONABLE event. A row is
+//     a task: an informational or unknown event is acknowledged and dropped.
 //   - Returns { platform_message_id } = the row's bigserial id (as string).
 //   - A second send() adds a second row; the cursor advances monotonically.
 //   - Cross-tenant isolation: a delivery for tenant A never appears in
@@ -101,7 +102,15 @@ describe("SkCliAdapter.send", () => {
 
   test("returns { platform_message_id } equal to the inserted row's id", async () => {
     const adapter = new SkCliAdapter(testDb.db);
-    const result = await adapter.send(makeDelivery(tenantAId, { event_type: "test.event" }));
+    const result = await adapter.send(
+      makeDelivery(tenantAId, {
+        event_type: "execution.failed",
+        event_payload: {
+          execution_id: "00000000-0000-4000-8000-0000000000e9",
+          workflow_id: "00000000-0000-4000-8000-0000000000f9",
+        },
+      }),
+    );
     expect(typeof result.platform_message_id).toBe("string");
     // The id should parse to a positive integer.
     const id = Number(result.platform_message_id);
@@ -110,8 +119,24 @@ describe("SkCliAdapter.send", () => {
 
   test("second send adds a second row and the cursor advances monotonically", async () => {
     const adapter = new SkCliAdapter(testDb.db);
-    const r1 = await adapter.send(makeDelivery(tenantAId, { event_type: "cursor.test.1" }));
-    const r2 = await adapter.send(makeDelivery(tenantAId, { event_type: "cursor.test.2" }));
+    const r1 = await adapter.send(
+      makeDelivery(tenantAId, {
+        event_type: "execution.failed",
+        event_payload: {
+          execution_id: "00000000-0000-4000-8000-0000000000e9",
+          workflow_id: "00000000-0000-4000-8000-0000000000f9",
+        },
+      }),
+    );
+    const r2 = await adapter.send(
+      makeDelivery(tenantAId, {
+        event_type: "execution.failed",
+        event_payload: {
+          execution_id: "00000000-0000-4000-8000-0000000000e9",
+          workflow_id: "00000000-0000-4000-8000-0000000000f9",
+        },
+      }),
+    );
 
     const id1 = Number(r1.platform_message_id);
     const id2 = Number(r2.platform_message_id);
@@ -121,7 +146,14 @@ describe("SkCliAdapter.send", () => {
   test("cross-tenant isolation: a delivery for tenant A does not appear in tenant B", async () => {
     const adapter = new SkCliAdapter(testDb.db);
     const r = await adapter.send(
-      makeDelivery(tenantAId, { event_type: "isolation.test", severity: "warn" }),
+      makeDelivery(tenantAId, {
+        event_type: "execution.failed",
+        severity: "warn",
+        event_payload: {
+          execution_id: "00000000-0000-4000-8000-0000000000e9",
+          workflow_id: "00000000-0000-4000-8000-0000000000f9",
+        },
+      }),
     );
 
     const inboxB = await testDb.db
@@ -154,7 +186,7 @@ describe("SkCliAdapter.send", () => {
     expect(row?.event_payload).toMatchObject(payload);
   });
 
-  test("delivery without notification fields uses defaults (severity=info, event_type=notification)", async () => {
+  test("delivery without notification fields is not a task: no row, acknowledged as skipped", async () => {
     const adapter = new SkCliAdapter(testDb.db);
     // Delivery with no .notification field at all.
     const bare: ChatDelivery = {
@@ -164,15 +196,17 @@ describe("SkCliAdapter.send", () => {
       kind: "message",
       text: "bare delivery",
     };
-    const result = await adapter.send(bare);
-
-    const rows = await testDb.db
+    const before = await testDb.db
       .select()
       .from(cliNotificationInbox)
       .where(eq(cliNotificationInbox.tenant_id, tenantAId));
-    const row = rows.find((r) => String(r.id) === result.platform_message_id);
-    expect(row?.severity).toBe("info");
-    expect(row?.event_type).toBe("notification");
+    const result = await adapter.send(bare);
+    const after = await testDb.db
+      .select()
+      .from(cliNotificationInbox)
+      .where(eq(cliNotificationInbox.tenant_id, tenantAId));
+    expect(result.platform_message_id).toBe("skipped:notification");
+    expect(after.length).toBe(before.length);
   });
 
   test("persists the classifier's verdict on insert", async () => {
@@ -201,22 +235,24 @@ describe("SkCliAdapter.send", () => {
     expect(row?.resource_id).toBe(expected.resource_id);
   });
 
-  test("an unclassifiable event type persists as not actionable, pointing at nothing", async () => {
+  test("an unclassifiable event type leaves no row: it is not a task", async () => {
     const adapter = new SkCliAdapter(testDb.db);
+    const before = await testDb.db
+      .select()
+      .from(cliNotificationInbox)
+      .where(eq(cliNotificationInbox.tenant_id, tenantAId));
     const result = await adapter.send(
       makeDelivery(tenantAId, {
         event_type: "not.a.catalog.event",
         event_payload: { connector_id: "00000000-0000-4000-8000-00000000ca12" },
       }),
     );
-
-    const rows = await testDb.db
+    const after = await testDb.db
       .select()
       .from(cliNotificationInbox)
       .where(eq(cliNotificationInbox.tenant_id, tenantAId));
-    const row = rows.find((r) => String(r.id) === result.platform_message_id);
-    expect(row?.actionable).toBe(false);
-    expect(row?.resource_type).toBeNull();
-    expect(row?.resource_id).toBeNull();
+    expect(result.platform_message_id).toBe("skipped:not.a.catalog.event");
+    expect(after.length).toBe(before.length);
+    expect(after.every((row) => row.actionable)).toBe(true);
   });
 });

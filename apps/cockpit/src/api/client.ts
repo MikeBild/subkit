@@ -61,15 +61,47 @@ export async function bootstrap(): Promise<Bootstrap> {
   return result;
 }
 
-export function listConversations(q = ""): Promise<ConversationList> {
+/**
+ * The person's own conversations, newest activity first. Hidden ones stay
+ * out unless asked for; machine-account conversations never appear here —
+ * they are a record, not a place to go back to.
+ */
+export function listConversations(
+  q = "",
+  options: { hidden?: "only" } = {},
+): Promise<ConversationList> {
   const params = new URLSearchParams({
     owner: "me",
+    owner_kind: "user",
     limit: "100",
     sort: "updated_at",
     order: "desc",
   });
+  if (options.hidden) params.set("hidden", options.hidden);
   if (q) params.set("q", q);
   return apiRequest(`/v1/conversations?${params}`);
+}
+
+/** Conversations that were started about one workflow or connector. */
+export function listConversationsAbout(
+  target: { workflow_id?: string; connector_id?: string },
+  limit = 8,
+): Promise<ConversationList> {
+  const params = new URLSearchParams({
+    owner_kind: "user",
+    limit: String(limit),
+    sort: "updated_at",
+    order: "desc",
+  });
+  if (target.workflow_id) params.set("target_workflow_id", target.workflow_id);
+  if (target.connector_id) params.set("target_connector_id", target.connector_id);
+  return apiRequest(`/v1/conversations?${params}`);
+}
+
+export function setConversationHidden(id: string, hidden: boolean): Promise<Conversation> {
+  return apiRequest(`/v1/conversations/${encodeURIComponent(id)}/${hidden ? "hide" : "unhide"}`, {
+    method: "POST",
+  });
 }
 
 export function getConversation(id: string): Promise<ConversationDetail> {

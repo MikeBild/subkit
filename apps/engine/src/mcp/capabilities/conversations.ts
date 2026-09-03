@@ -531,6 +531,7 @@ export async function handleConversationTool(
           ...(permission_mode ? { permission_mode } : {}),
           ...(playground ? { playground } : {}),
           origin_client: principalOrigin(principal),
+          surface: "mcp",
         },
         db,
       );

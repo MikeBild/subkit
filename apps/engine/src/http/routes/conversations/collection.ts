@@ -20,6 +20,7 @@ import {
   humanChatAnswer,
   registerConversationAbort,
   serializeEvent,
+  surfaceFromClientHeader,
   unregisterConversationAbort,
 } from "../../../conversations/index.ts";
 import { NotFoundError } from "../../errors.ts";
@@ -55,6 +56,10 @@ const listRoute = createRoute({
          * reserved and rejected.
          */
         owner: z.literal("me").optional(),
+        /** `exclude` (default) keeps conversations the caller hid out of the list. */
+        hidden: z.enum(["exclude", "only", "all"]).optional(),
+        /** Only conversations owned by people, or only by machine accounts. */
+        owner_kind: z.enum(["user", "system_account"]).optional(),
         target_workflow_id: z.string().uuid().optional(),
         target_connector_id: z.string().uuid().optional(),
         q: z.string().min(1).max(200).optional(),
@@ -130,6 +135,10 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       tenant_id: principal.tenant_id,
       ...(q.status ? { status: q.status as ConversationStatus } : {}),
       ...(q.owner === "me" ? { owner_id: principal.id } : {}),
+      // The hide mark is the caller's own: only a person's list has one.
+      ...(principal.kind === "user" ? { viewer_user_id: principal.id } : {}),
+      ...(q.hidden ? { hidden: q.hidden } : {}),
+      ...(q.owner_kind ? { owner_kind: q.owner_kind } : {}),
       ...(q.target_workflow_id ? { target_workflow_id: q.target_workflow_id } : {}),
       ...(q.target_connector_id ? { target_connector_id: q.target_connector_id } : {}),
       ...(q.q ? { q: q.q } : {}),
@@ -162,6 +171,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(body.playground ? { playground: body.playground } : {}),
       ...(body.references && body.references.length > 0 ? { references: body.references } : {}),
       origin_client: principalOrigin(principal),
+      surface: surfaceFromClientHeader(c.req.header("x-subkit-client")),
     } as const;
     const runtimeContext = buildRuntimeContextFromRequest(c, principal);
 
@@ -268,6 +278,8 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json(
       {
         conversation: detail.conversation,
+        owner: detail.owner,
+        created_resources: detail.created_resources,
         messages,
         tool_calls: detail.tool_calls,
         draft: detail.draft,

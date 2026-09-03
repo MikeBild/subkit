@@ -3,50 +3,70 @@ import { clipTitle, conversationRow, TITLE_MAX } from "./chat-list-model";
 
 const labels = (excerpt: string | null) => ({
   untitled: "Unbenannte Unterhaltung",
-  status: "Aktiv",
   excerpt,
 });
 
 describe("conversationRow", () => {
   test("a real title wins, and the excerpt moves to the second line", () => {
+    const row = conversationRow({ title: "Monatsreport reparieren" }, labels("…"));
+    expect(row).toEqual({
+      title: "Monatsreport reparieren",
+      secondary: "…",
+      named: true,
+      waiting: false,
+    });
+  });
+
+  test("the object the conversation is about beats the last thing said", () => {
     const row = conversationRow(
-      { title: "Monatsreport reparieren", status: "active" },
-      labels("…"),
+      {
+        title: "Report prüfen",
+        target_workflow: { name: "Monatsreport", slug: "monatsreport" },
+      },
+      labels("Ich habe die Transformation eingegrenzt."),
     );
-    expect(row).toEqual({ title: "Monatsreport reparieren", secondary: "…", named: true });
+    expect(row.secondary).toBe("Monatsreport");
+  });
+
+  test("a target without a display name falls back to its slug, never an id", () => {
+    const row = conversationRow(
+      { title: "Report prüfen", target_connector: { name: null, slug: "reporting-api" } },
+      labels(null),
+    );
+    expect(row.secondary).toBe("reporting-api");
   });
 
   test("without a title the last message becomes the title rather than a placeholder", () => {
-    // A row that says only "untitled" while an excerpt sits unused is the
-    // complaint this model exists to answer.
-    const row = conversationRow(
-      { title: null, status: "active" },
-      labels("Warum schlägt der GA4-Report fehl?"),
-    );
+    const row = conversationRow({ title: null }, labels("Warum schlägt der GA4-Report fehl?"));
     expect(row.title).toBe("Warum schlägt der GA4-Report fehl?");
     expect(row.named).toBe(false);
   });
 
-  test("a borrowed title is never repeated on the second line", () => {
-    const row = conversationRow({ title: null, status: "active" }, labels("Etwas kurzes"));
-    expect(row.secondary).toBe("Aktiv");
+  test("the status word never appears: a borrowed title has no second line", () => {
+    const row = conversationRow({ title: null, outcome: "answered" }, labels("Etwas kurzes"));
+    expect(row.secondary).toBeNull();
   });
 
   test("a title identical to the excerpt does not print twice", () => {
-    const row = conversationRow(
-      { title: "Gleicher Text", status: "active" },
-      labels("Gleicher Text"),
+    const row = conversationRow({ title: "Gleicher Text" }, labels("Gleicher Text"));
+    expect(row.secondary).toBeNull();
+  });
+
+  test("a waiting conversation is flagged so the row can mark it", () => {
+    expect(conversationRow({ title: "x", outcome: "awaiting_you" }, labels(null)).waiting).toBe(
+      true,
     );
-    expect(row.secondary).toBe("Aktiv");
+    expect(conversationRow({ title: "x", outcome: "answered" }, labels(null)).waiting).toBe(false);
   });
 
   test("the placeholder is reached only when there is genuinely nothing to show", () => {
-    const row = conversationRow({ title: null, status: "active" }, labels(null));
+    const row = conversationRow({ title: null }, labels(null));
     expect(row.title).toBe("Unbenannte Unterhaltung");
+    expect(row.secondary).toBeNull();
   });
 
   test("whitespace-only values count as absent", () => {
-    const row = conversationRow({ title: "   ", status: "active" }, labels("  "));
+    const row = conversationRow({ title: "   " }, labels("  "));
     expect(row.title).toBe("Unbenannte Unterhaltung");
   });
 });

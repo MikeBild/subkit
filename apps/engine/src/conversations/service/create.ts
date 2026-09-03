@@ -17,6 +17,7 @@ import { getMockProvider } from "../../llm/mock-provider.ts";
 import { log } from "../../logging/logger.ts";
 import { resolveAttachmentSlugsInText } from "../attachments.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
+import type { ConversationSurface } from "../lifecycle-view.ts";
 import { appendMessage } from "../persist.ts";
 import type { ConversationReference } from "../references.ts";
 import { listBaselineSlugs, loadActivationCatalog } from "../skill-autoload.ts";
@@ -47,6 +48,8 @@ export interface CreateConversationParams {
    * test paths); a missing value is recorded as null, never guessed.
    */
   origin_client?: string | null;
+  /** Surface the conversation is opened from — see `lifecycle-view.ts`. */
+  surface?: ConversationSurface | null;
   /**
    * Start this conversation as a playground/sandbox authoring surface.
    * Durable (persisted on `draft.session.playground`, not an env flag):
@@ -136,6 +139,9 @@ export async function createConversation(
       draft: initialDraft,
       owner_id: p.actor_id ?? null,
       origin_client: p.origin_client ?? null,
+      surface: p.surface ?? null,
+      // A title handed in at create is a person's choice; the titler keeps off it.
+      title_locked: typeof p.title === "string" && p.title.trim().length > 0,
       // Seed at last_turn 0 (turn_count defaults to 0; the first turn
       // becomes 1, so baseline skills satisfy the K-turn full-body window
       // immediately).
