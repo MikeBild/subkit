@@ -36,6 +36,7 @@ import {
 
 export interface RegisterClientInput {
   client_name?: string | undefined;
+  client_uri?: string | undefined;
   redirect_uris: string[];
   grant_types?: string[] | undefined;
   token_endpoint_auth_method?: string | undefined;
@@ -51,6 +52,7 @@ export interface RegisterClientResult {
   token_endpoint_auth_method: string;
   scope: string;
   client_name?: string;
+  client_uri?: string;
 }
 
 export interface IssueAuthCodeInput {
@@ -126,6 +128,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       token_endpoint_auth_method: "none",
       scope,
       client_name: input.client_name ?? null,
+      client_uri: input.client_uri ?? null,
       software_id: input.software_id ?? null,
       registration_source: "dcr",
     });
@@ -162,6 +165,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       token_endpoint_auth_method: "none",
       scope,
       ...(input.client_name ? { client_name: input.client_name } : {}),
+      ...(input.client_uri ? { client_uri: input.client_uri } : {}),
     };
   }
 
@@ -184,6 +188,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       token_endpoint_auth_method: row.token_endpoint_auth_method as "none",
       scope: row.scope,
       ...(row.client_name ? { client_name: row.client_name } : {}),
+      ...(row.client_uri ? { client_uri: row.client_uri } : {}),
     } satisfies OAuthClientInformationFull;
   }
 

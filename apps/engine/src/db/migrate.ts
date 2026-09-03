@@ -31,6 +31,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import type pg from "pg";
 import { z } from "zod";
 import { errorFields, logger } from "../logging/logger.ts";
+import { resetSecretColumnDetection } from "../runtime-config/secret-columns.ts";
 import {
   createMigrationDbFromUrl,
   type Db,
@@ -187,7 +188,9 @@ export async function runMigrations(
   if (!pool || typeof pool.connect !== "function") {
     // No reachable pool (e.g. a mock/tx handle in a unit test) — fall back
     // to running without the cross-process lock.
-    return applyMigrations(db, migrations, replayLegacyLineage);
+    const report = await applyMigrations(db, migrations, replayLegacyLineage);
+    resetSecretColumnDetection();
+    return report;
   }
   const lockClient = await pool.connect();
   try {
@@ -197,7 +200,11 @@ export async function runMigrations(
     // this keeps the post-migration search_path switch session-local and lets a
     // one-connection migration pool remain genuinely bounded.
     const lockedDb = drizzle(lockClient, { schema }) as Db;
-    return await applyMigrations(lockedDb, migrations, replayLegacyLineage);
+    const report = await applyMigrations(lockedDb, migrations, replayLegacyLineage);
+    // The preflight asked about the schema before this ran; whoever asks
+    // next in this process must be answered from the schema that is now.
+    resetSecretColumnDetection();
+    return report;
   } finally {
     try {
       await lockClient.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]);

@@ -1,0 +1,83 @@
+# Anbindungen und Freigaben
+
+> Wie du SubKit mit einem anderen System verbindest, ohne einen Schlüssel einzutippen — und wie eine vorbereitete Änderung an dieser Installation auf deine Freigabe wartet.
+
+Beides findest du im Cockpit unter **Installation**: die Anbindungen auf der Seite
+**Anbindungen**, die vorbereiteten Änderungen oben auf **Einstellungen**.
+
+---
+
+## Ein System anbinden
+
+Ein System, das selbst Zugriff freigeben kann, brauchst du nicht mit einem Schlüssel zu
+füttern. Der Weg hat drei Schritte, und der letzte passiert auf der anderen Seite.
+
+1. **Adresse.** Klicke auf **Verbinden** und gib die Basis-Adresse des Systems ein
+   (`https://…`). **Prüfen** liest, was das System über sich sagt: seinen Namen, wenn es
+   einen veröffentlicht, und welche Rechte es kennt. Steht dort, dass das System den
+   Zugriff nicht auf diesem Weg freigibt, sagt die Seite das in einem Satz — dann gehört
+   der Schlüssel auf die Konnektor-Seite (siehe unten).
+2. **Name und Rechte.** Die Anbindung bekommt einen kurzen Namen (vorgeschlagen aus dem
+   Namen des Systems) und du wählst die Rechte, die SubKit dort haben soll. Nur was du
+   hier wählst, wird auf der anderen Seite erbeten.
+3. **Freigabe.** **Weiter zur Freigabe** schickt dich zum anderen System. Dort siehst du,
+   wer anfragt (SubKit, mit seiner Adresse) und wofür, und klickst auf **Freigeben** —
+   oder auf **Ablehnen**. Danach bist du wieder im Cockpit, und die Anbindung steht in der
+   Liste.
+
+Was dabei im Hintergrund passiert, musst du nicht wissen; für die Neugierigen: SubKit
+meldet sich beim anderen System als öffentlicher Client an (Dynamic Client Registration),
+startet einen Authorization-Code-Ablauf mit PKCE und tauscht den Code gegen Zugriffs- und
+Erneuerungs-Token. Beide liegen als Versionen im Secret-Speicher dieser Installation —
+verschlüsselt wie jedes andere Secret, und kein Schlüssel wurde je eingetippt.
+
+## Was die Liste zeigt
+
+Jede Zeile nennt den Namen, die Adresse, die gewährten Rechte, wann die Anbindung zuletzt
+verwendet wurde, und ein Zustandswort:
+
+| Wort | Bedeutung | Was zu tun ist |
+|---|---|---|
+| **gültig** | Der Zugriff funktioniert und erneuert sich selbst. | Nichts. |
+| **läuft ab am …** | Der Zugriff funktioniert, kann sich aber nicht selbst erneuern und endet an diesem Tag. | Vor dem Datum **Erneuern**. |
+| **abgelaufen** | Die Erneuerung ist fehlgeschlagen oder der Zugriff ist zu Ende. Die Zeile nennt den Grund. | **Erneuern** — wiederholt die Freigabe. |
+| **unlesbar** | Der gespeicherte Zugriff lässt sich mit dem Schlüssel dieser Installation nicht lesen. | **Erneuern**. |
+
+**Erneuern** wiederholt den Weg von oben für dieselbe Anbindung: gleicher Name, gleiche
+Rechte, neue Freigabe. **Trennen** (im ⋯-Menü, mit Rückfrage) widerruft den gespeicherten
+Zugriff und vergisst die Anbindung. Ein Konnektor, der sie benutzt hat, steht danach ohne
+Zugangsdaten da und sagt das auf seiner Seite.
+
+## Eine Anbindung in einem Konnektor verwenden
+
+Auf der Seite eines Konnektors gibt es die Karte **Zugangsdaten**. Dort wählst du unter
+**Verbindung wählen** eine Anbindung und klickst auf **Übernehmen**. Der Konnektor sendet
+von da an den Zugriff der Anbindung — und weil sich der Zugriff selbst erneuert, ist damit
+auch dieses Thema erledigt.
+
+**Stattdessen einen Schlüssel eingeben** gibt es weiterhin, aber nur für den Fall, für den
+es gemeint ist: einen externen Anbieter, der den Zugriff nicht selbst freigeben kann — ein
+Modell-Schlüssel etwa. Das Feld sagt das dazu. Ein System, das Freigaben kennt, verbindest
+du über Anbindungen.
+
+---
+
+## Vorbereitete Änderungen
+
+Manchmal legt jemand einen neuen Wert für diese Installation an, ohne ihn gleich zu
+verwenden — ein Administrator von der Kommandozeile des Servers etwa, mit
+`engine --vault-set <name> --value-file <pfad> --pending`. Dieser Wert ist dann gespeichert
+und verschlüsselt, aber noch nicht in Gebrauch. Er erscheint oben auf **Einstellungen**
+als **Vorbereitete Änderung**: mit dem Namen der Einstellung, der neuen Versionsnummer, wer
+sie vorbereitet hat und seit wann.
+
+- **Freigeben** macht die Version zur aktuellen und hängt die genannten Einstellungen auf
+  sie um. Ab jetzt wird sie verwendet.
+- **Ablehnen** widerruft die Version. Sie wird nie verwendet.
+
+Den Wert selbst zeigt das Cockpit nirgends — auch nicht dem, der ihn freigibt. Bis zur
+Freigabe zählt eine vorbereitete Version nicht als aktuelle Version: keine Einstellung
+kann sie verwenden, und `engine --vault-check` sieht sie nicht.
+
+Beide Entscheidungen brauchen das Recht, Einstellungen zu ändern (Administrator), und
+beide stehen im Audit-Trail.

@@ -4729,6 +4729,7 @@ Ordered by the job in front of you, not by mechanism:
 | **Ground your coding agent** — Claude Code / Codex briefed on your domain, with a review loop | [coding-agents.md](coding-agents.md) |
 | **Drive the `sk` REPL** — the approve-to-commit loop, headless `-p` | [repl-tour.md](repl-tour.md) |
 | **Look something up** — slash commands, configuration keys | [slash-commands.md](slash-commands.md) · [settings.md](settings.md) |
+| **Connect another system** from the Cockpit without pasting a key, and approve a prepared change to this installation | [connections.md](connections.md) |
 
 <!-- Source: docs/authors/asking-your-knowledge.md -->
 
@@ -5747,6 +5748,92 @@ sk skills sync
   why the loop compounds.
 - [Model a Domain](./model-a-domain.md) — connector + skills + knowledge for a
   whole domain.
+
+<!-- Source: docs/authors/connections.md -->
+
+# Anbindungen und Freigaben
+
+> Wie du SubKit mit einem anderen System verbindest, ohne einen Schlüssel einzutippen — und wie eine vorbereitete Änderung an dieser Installation auf deine Freigabe wartet.
+
+Beides findest du im Cockpit unter **Installation**: die Anbindungen auf der Seite
+**Anbindungen**, die vorbereiteten Änderungen oben auf **Einstellungen**.
+
+---
+
+## Ein System anbinden
+
+Ein System, das selbst Zugriff freigeben kann, brauchst du nicht mit einem Schlüssel zu
+füttern. Der Weg hat drei Schritte, und der letzte passiert auf der anderen Seite.
+
+1. **Adresse.** Klicke auf **Verbinden** und gib die Basis-Adresse des Systems ein
+   (`https://…`). **Prüfen** liest, was das System über sich sagt: seinen Namen, wenn es
+   einen veröffentlicht, und welche Rechte es kennt. Steht dort, dass das System den
+   Zugriff nicht auf diesem Weg freigibt, sagt die Seite das in einem Satz — dann gehört
+   der Schlüssel auf die Konnektor-Seite (siehe unten).
+2. **Name und Rechte.** Die Anbindung bekommt einen kurzen Namen (vorgeschlagen aus dem
+   Namen des Systems) und du wählst die Rechte, die SubKit dort haben soll. Nur was du
+   hier wählst, wird auf der anderen Seite erbeten.
+3. **Freigabe.** **Weiter zur Freigabe** schickt dich zum anderen System. Dort siehst du,
+   wer anfragt (SubKit, mit seiner Adresse) und wofür, und klickst auf **Freigeben** —
+   oder auf **Ablehnen**. Danach bist du wieder im Cockpit, und die Anbindung steht in der
+   Liste.
+
+Was dabei im Hintergrund passiert, musst du nicht wissen; für die Neugierigen: SubKit
+meldet sich beim anderen System als öffentlicher Client an (Dynamic Client Registration),
+startet einen Authorization-Code-Ablauf mit PKCE und tauscht den Code gegen Zugriffs- und
+Erneuerungs-Token. Beide liegen als Versionen im Secret-Speicher dieser Installation —
+verschlüsselt wie jedes andere Secret, und kein Schlüssel wurde je eingetippt.
+
+## Was die Liste zeigt
+
+Jede Zeile nennt den Namen, die Adresse, die gewährten Rechte, wann die Anbindung zuletzt
+verwendet wurde, und ein Zustandswort:
+
+| Wort | Bedeutung | Was zu tun ist |
+|---|---|---|
+| **gültig** | Der Zugriff funktioniert und erneuert sich selbst. | Nichts. |
+| **läuft ab am …** | Der Zugriff funktioniert, kann sich aber nicht selbst erneuern und endet an diesem Tag. | Vor dem Datum **Erneuern**. |
+| **abgelaufen** | Die Erneuerung ist fehlgeschlagen oder der Zugriff ist zu Ende. Die Zeile nennt den Grund. | **Erneuern** — wiederholt die Freigabe. |
+| **unlesbar** | Der gespeicherte Zugriff lässt sich mit dem Schlüssel dieser Installation nicht lesen. | **Erneuern**. |
+
+**Erneuern** wiederholt den Weg von oben für dieselbe Anbindung: gleicher Name, gleiche
+Rechte, neue Freigabe. **Trennen** (im ⋯-Menü, mit Rückfrage) widerruft den gespeicherten
+Zugriff und vergisst die Anbindung. Ein Konnektor, der sie benutzt hat, steht danach ohne
+Zugangsdaten da und sagt das auf seiner Seite.
+
+## Eine Anbindung in einem Konnektor verwenden
+
+Auf der Seite eines Konnektors gibt es die Karte **Zugangsdaten**. Dort wählst du unter
+**Verbindung wählen** eine Anbindung und klickst auf **Übernehmen**. Der Konnektor sendet
+von da an den Zugriff der Anbindung — und weil sich der Zugriff selbst erneuert, ist damit
+auch dieses Thema erledigt.
+
+**Stattdessen einen Schlüssel eingeben** gibt es weiterhin, aber nur für den Fall, für den
+es gemeint ist: einen externen Anbieter, der den Zugriff nicht selbst freigeben kann — ein
+Modell-Schlüssel etwa. Das Feld sagt das dazu. Ein System, das Freigaben kennt, verbindest
+du über Anbindungen.
+
+---
+
+## Vorbereitete Änderungen
+
+Manchmal legt jemand einen neuen Wert für diese Installation an, ohne ihn gleich zu
+verwenden — ein Administrator von der Kommandozeile des Servers etwa, mit
+`engine --vault-set <name> --value-file <pfad> --pending`. Dieser Wert ist dann gespeichert
+und verschlüsselt, aber noch nicht in Gebrauch. Er erscheint oben auf **Einstellungen**
+als **Vorbereitete Änderung**: mit dem Namen der Einstellung, der neuen Versionsnummer, wer
+sie vorbereitet hat und seit wann.
+
+- **Freigeben** macht die Version zur aktuellen und hängt die genannten Einstellungen auf
+  sie um. Ab jetzt wird sie verwendet.
+- **Ablehnen** widerruft die Version. Sie wird nie verwendet.
+
+Den Wert selbst zeigt das Cockpit nirgends — auch nicht dem, der ihn freigibt. Bis zur
+Freigabe zählt eine vorbereitete Version nicht als aktuelle Version: keine Einstellung
+kann sie verwenden, und `engine --vault-check` sieht sie nicht.
+
+Beide Entscheidungen brauchen das Recht, Einstellungen zu ändern (Administrator), und
+beide stehen im Audit-Trail.
 
 <!-- Source: docs/authors/custom-skills.md -->
 
@@ -11754,6 +11841,10 @@ Outside production the automatic run is a no-op — local development and the te
 
 The checks stop at the first refusal. Once the release cannot run on this bootstrap, a later probe's failure is noise — and a probe that ran anyway would have touched something.
 
+### Every check reads the previous release's schema
+
+The preflight runs **before this release's migrations** — that is its whole point — so every query it makes has to work on the schema the previous release left behind, and so do the host commands, which meet the same schema. A query that names a column this release added does not refuse; it crashes, and exit 1 where the contract promises 0 or 3 rolls a deploy back. 6.29 added three columns to `runtime_secret_versions` (`pending_since`, `prepared_by`, `pending_bindings`); the reads on this path therefore spell out the columns every release has had, and the newer ones are used only after `information_schema` has confirmed them, once per database handle (`runtime-config/secret-columns.ts`). `preflight-previous-schema.integration.test.ts` migrates a database only up to the previous release's last migration and requires `--preflight` to answer 0 on it, `--vault-check` and `--vault-set` to work, and `--pending` to refuse in words rather than fail on a column name.
+
 ### Check 2 — why it does not use the drift detector
 
 `detectDrift()` in `apps/engine/src/db/migrate.ts` answers the same question, but calls `ensureMigrationsTable` first, which creates the schema, installs `pgcrypto` and creates the journal table. That is a change, and the preflight's whole promise is that a refusal changed nothing. The preflight reads the journal directly and treats a missing table as a virgin database — a state this release migrates forward from, not one it refuses.
@@ -11809,7 +11900,7 @@ All four run on the host, where the caller already holds `MASTER_KEY`, `DATABASE
 ```sh
 engine --preflight
 engine --vault-check <name>
-engine --vault-set <name> --value-file <path> [--bind <path>,…] [--purpose "…"] [--if-unreadable]
+engine --vault-set <name> --value-file <path> [--bind <path>,…] [--purpose "…"] [--if-unreadable] [--pending]
 engine --rewrap-master-key --from-file <path-to-previous-key>
 ```
 
@@ -11847,6 +11938,19 @@ llm.providers.anthropic.api_key: pinned to settings.llm.providers.anthropic.api_
 ```
 
 The activation is the load-bearing half, and it is why `--bind` requires the engine to be stopped. A saved revision only moves `desired_revision`; the preflight and every boot read `active_revision`, so a re-pin that stopped at "saved" would print `pinned to …` and leave the engine refusing on exactly the version it was already refusing on. The normal activation path cannot help here — it either needs a live replica to prepare and acknowledge, or defers to the next boot — so this writes the pointer directly, under the same precondition that makes it safe and that `--rewrap-master-key` already uses: nothing is serving. With a live replica lease it refuses and says so, because a replica holding the old snapshot must be told to prepare, not overtaken. Minting the version itself (`--vault-set` without `--bind`) is safe at any time.
+
+### `--vault-set … --pending` — write now, let a person decide
+
+With `--pending` the version is written and encrypted like any other, but it does **not** become the current version and nothing is re-pinned. It waits in the Cockpit — **Einstellungen → Vorbereitete Änderungen** — with its name, its version, who prepared it and since when, and two buttons. **Freigeben** makes it current and re-points the paths named by `--bind`; **Ablehnen** revokes it. The value is shown to nobody, the approver included.
+
+```
+<name>: prepared version 5; waiting for approval in the Cockpit (Einstellungen → Vorbereitete Änderungen)
+on approval, re-pinned: llm.providers.anthropic.api_key
+```
+
+Use it when the engine is running and a person, not the deploy script, should decide when a new value takes effect — a rotated provider key handed over by another team, say. Until approval a prepared version is invisible to everything that looks for the current one: `--vault-check` does not count it, no settings revision can bind it, and the preflight never reads it. The audit trail carries `secret.version_prepared`, then `secret.version_approved` or `secret.version_rejected`.
+
+`--pending` needs the schema of 6.29 or later. Run against an older database — which is what the host commands meet before the new release has migrated — it refuses with one line saying so and exit 1, and nothing is written; write the version without `--pending`, or start the new release once first.
 
 Without `--bind` the command says so explicitly — `bindings keep their pinned version; re-run with --bind <binding> to re-pin them` — because a pinned revision does not follow a new version on its own. A binding that could not be re-pinned exits 1 even though the new version exists: the deploy this was meant to unblock will fail again on the version the revision still points at. Tenant overlays are out of scope for this flag; re-pin those through the settings API, where the tenant is named by someone who knows which one they mean.
 

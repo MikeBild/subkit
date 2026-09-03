@@ -90,6 +90,16 @@ export const runtimeSecretVersions = pgTable(
     created_by: uuid("created_by"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     revoked_at: timestamp("revoked_at", { withTimezone: true }),
+    // A PREPARED version: written (by `engine --vault-set --pending` or by a
+    // connection) but not yet approved by a person in the Cockpit. While set,
+    // the version is not the current one, cannot be bound, and `--vault-check`
+    // does not see it. Approval clears it and re-pins `pending_bindings`;
+    // rejection revokes it.
+    pending_since: timestamp("pending_since", { withTimezone: true }),
+    /** Who or what prepared it, in words the Cockpit shows ("Host-Kommando", "Verbindung wiki"). */
+    prepared_by: text("prepared_by"),
+    /** Dotted settings paths to re-point at this version on approval. */
+    pending_bindings: jsonb("pending_bindings").$type<string[] | null>(),
   },
   (t) => [
     primaryKey({ columns: [t.name, t.version] }),

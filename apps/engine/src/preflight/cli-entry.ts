@@ -46,7 +46,14 @@ export const PREFLIGHT_HELP: string =
   "                                 version (without this they keep the old)\n" +
   '        --purpose "<text>"       why you did it; goes in the audit log\n' +
   "        --if-unreadable          do nothing if the secret still reads,\n" +
-  "                                 so the same line is safe on every deploy\n\n" +
+  "                                 so the same line is safe on every deploy\n" +
+  "        --pending                write the value, but do not use it yet:\n" +
+  "                                 it waits in the Cockpit (Einstellungen →\n" +
+  "                                 Vorbereitete Änderungen) until someone\n" +
+  "                                 clicks Freigeben; --bind then says what\n" +
+  "                                 that approval re-pins. Use it when the\n" +
+  "                                 engine is running and a person should\n" +
+  "                                 decide, not the deploy script\n\n" +
   "  --rewrap-master-key --from-file <path-to-previous-key>\n" +
   "      You changed MASTER_KEY and still have the old one: re-encrypt every\n" +
   "      stored secret under the new key. Stop all engines first — it refuses\n" +

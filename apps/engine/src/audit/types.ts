@@ -518,6 +518,24 @@ export const AuditAction = {
   SETTINGS_REVISION_ACTIVATION_FAILED: "settings.revision_activation_failed",
   SECRET_VERSION_CREATED: "secret.version_created",
   SECRET_VERSION_REVOKED: "secret.version_revoked",
+  // "Freigaben statt Eingaben": a version written by `engine --vault-set
+  // --pending` (or by anything else holding a value a person has not seen)
+  // waits in the Cockpit. Approving makes it current and re-pins the
+  // bindings it was prepared for; rejecting revokes it. The value itself
+  // appears in none of the three rows.
+  SECRET_VERSION_PREPARED: "secret.version_prepared",
+  SECRET_VERSION_APPROVED: "secret.version_approved",
+  SECRET_VERSION_REJECTED: "secret.version_rejected",
+
+  // ── Outbound connections (SubKit as OAuth 2.1 client, Cockpit "Anbindungen") ──
+  // Tokens live as runtime secret versions and never appear in metadata;
+  // the rows carry the connection name, the issuer host and the scopes.
+  CONNECTION_CREATED: "connection.created",
+  CONNECTION_RENEWED: "connection.renewed",
+  CONNECTION_FAILED: "connection.failed",
+  CONNECTION_REFRESHED: "connection.refreshed",
+  CONNECTION_REFRESH_FAILED: "connection.refresh_failed",
+  CONNECTION_DISCONNECTED: "connection.disconnected",
   // `engine --rewrap-master-key --from-file <previous>` re-encrypted every
   // runtime secret version under the running MASTER_KEY. Written once per
   // sweep, by a host-side operator with no session — actor_type `system`,

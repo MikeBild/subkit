@@ -359,6 +359,17 @@
   },
 
   {
+    "name": "connection:read",
+    "description": "List outbound connections (Cockpit: Anbindungen) and their state",
+    "resource_type": "connection"
+  },
+  {
+    "name": "connection:write",
+    "description": "Connect to, renew and disconnect outbound connections",
+    "resource_type": "connection"
+  },
+
+  {
     "name": "mcp_oauth_client:read",
     "description": "List registered MCP OAuth clients",
     "resource_type": "mcp_oauth_client"

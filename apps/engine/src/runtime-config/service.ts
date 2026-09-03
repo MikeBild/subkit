@@ -24,6 +24,7 @@ import {
   type RuntimeRevision,
   RuntimeSecretInUseError,
 } from "./contracts.ts";
+import { hasPendingSecretColumns, secretVersionProjection } from "./secret-columns.ts";
 
 export {
   ACTIVATION_TIMEOUT_MS,
@@ -103,11 +104,23 @@ function assertSecretName(name: string): void {
   }
 }
 
+/**
+ * A version written but not yet approved by a person (T5 "Freigaben statt
+ * Eingaben"). Until approval it is not the current version, cannot be bound
+ * and is invisible to `--vault-check`; `pending_bindings` are the settings
+ * paths approval re-points at it.
+ */
+export interface PendingSecretVersionInput {
+  prepared_by: string;
+  bindings: string[];
+}
+
 async function createSecretVersionInTransaction(
   tx: Executor,
   name: string,
   plaintext: string,
   createdBy: string | null,
+  pending: PendingSecretVersionInput | null = null,
 ): Promise<{
   name: string;
   version: number;
@@ -127,17 +140,42 @@ async function createSecretVersionInTransaction(
   const version = (latest?.version ?? 0) + 1;
   const aad = `runtime-secret:${name}:${version}`;
   const encrypted = encryptSecret(plaintext, aad);
-  const [created] = await tx
-    .insert(runtimeSecretVersions)
-    .values({
-      name,
-      version,
-      ciphertext: encrypted.ciphertext,
-      iv: encrypted.iv,
-      auth_tag: encrypted.auth_tag,
-      created_by: createdBy,
-    })
-    .returning({ created_at: runtimeSecretVersions.created_at });
+  // `engine --vault-set` runs on the host BEFORE this release's migrations,
+  // and drizzle's insert names every schema column — including the three
+  // 6.29 added — so on the previous schema it is written by hand with the
+  // columns every release has had. See secret-columns.ts.
+  let created: { created_at: Date } | undefined;
+  if (await hasPendingSecretColumns(tx)) {
+    [created] = await tx
+      .insert(runtimeSecretVersions)
+      .values({
+        name,
+        version,
+        ciphertext: encrypted.ciphertext,
+        iv: encrypted.iv,
+        auth_tag: encrypted.auth_tag,
+        created_by: createdBy,
+        ...(pending
+          ? {
+              pending_since: new Date(),
+              prepared_by: pending.prepared_by,
+              pending_bindings: pending.bindings,
+            }
+          : {}),
+      })
+      .returning({ created_at: runtimeSecretVersions.created_at });
+  } else {
+    if (pending) {
+      throw new RuntimeConfigValidationError(
+        "this database does not know prepared versions yet; migrate first",
+      );
+    }
+    const inserted = await tx.execute(
+      sql`insert into ${runtimeSecretVersions} ("name", "version", "ciphertext", "iv", "auth_tag", "created_by") values (${name}, ${version}, ${Buffer.from(encrypted.ciphertext)}, ${Buffer.from(encrypted.iv)}, ${Buffer.from(encrypted.auth_tag)}, ${createdBy}) returning "created_at"`,
+    );
+    const row = (inserted.rows as Array<{ created_at: Date | string }>)[0];
+    created = row ? { created_at: new Date(row.created_at) } : undefined;
+  }
   if (!created) throw new Error("runtime secret insert returned no row");
   return {
     name,
@@ -149,7 +187,13 @@ async function createSecretVersionInTransaction(
 
 export async function createSecretVersion(
   db: Db,
-  args: { name: string; value: string; created_by: string | null },
+  args: {
+    name: string;
+    value: string;
+    created_by: string | null;
+    /** Write it as a prepared version that waits for approval in the Cockpit. */
+    pending?: PendingSecretVersionInput;
+  },
 ): Promise<{
   name: string;
   version: number;
@@ -157,7 +201,13 @@ export async function createSecretVersion(
   created_at: Date;
 }> {
   return db.transaction((tx) =>
-    createSecretVersionInTransaction(tx, args.name, args.value, args.created_by),
+    createSecretVersionInTransaction(
+      tx,
+      args.name,
+      args.value,
+      args.created_by,
+      args.pending ?? null,
+    ),
   );
 }
 
@@ -172,6 +222,10 @@ export async function listSecretVersions(db: Executor): Promise<
     }>;
   }>
 > {
+  // A prepared version is not a version yet as far as bindings are
+  // concerned; it is listed by `listPendingSecretVersions` instead. The
+  // predicate is only spelled where the column exists (secret-columns.ts).
+  const withPending = await hasPendingSecretColumns(db);
   // tenant-filter:exempt — the registry is product-global operator state;
   // routes require settings:read and never return ciphertext.
   const rows = await db
@@ -182,6 +236,7 @@ export async function listSecretVersions(db: Executor): Promise<
       revoked_at: runtimeSecretVersions.revoked_at,
     })
     .from(runtimeSecretVersions)
+    .where(withPending ? isNull(runtimeSecretVersions.pending_since) : undefined)
     .orderBy(runtimeSecretVersions.name, desc(runtimeSecretVersions.version));
   const grouped = new Map<
     string,
@@ -206,9 +261,14 @@ export async function listSecretVersions(db: Executor): Promise<
 }
 
 async function readSecret(db: Executor, name: string, version: number): Promise<string> {
+  // Read with the schema-tolerant projection: this path runs on the host
+  // BEFORE this release's migrations (`--vault-set --bind`, the preflight's
+  // object-store credential), where the prepared-version columns may not
+  // exist yet. See secret-columns.ts.
+  const projection = await secretVersionProjection(db);
   // tenant-filter:exempt — references address the product-global secret registry.
-  const [row] = await db
-    .select()
+  const [found] = await db
+    .select(projection.columns)
     .from(runtimeSecretVersions)
     .where(
       and(
@@ -218,15 +278,30 @@ async function readSecret(db: Executor, name: string, version: number): Promise<
       ),
     )
     .limit(1);
+  const row = found ? projection.complete(found) : null;
   if (!row) {
     throw new RuntimeConfigValidationError(
       `secret version is missing or revoked: ${name}/${version}`,
+    );
+  }
+  if (row.pending_since) {
+    throw new RuntimeConfigValidationError(
+      `secret version is prepared but not yet approved: ${name}/${version}`,
     );
   }
   return decryptSecret(
     { ciphertext: row.ciphertext, iv: row.iv, auth_tag: row.auth_tag },
     `runtime-secret:${name}:${version}`,
   );
+}
+
+/** Decrypt one current (non-revoked, approved) version. The only public read of a value. */
+export async function readSecretVersion(
+  db: Executor,
+  name: string,
+  version: number,
+): Promise<string> {
+  return readSecret(db, name, version);
 }
 
 async function resolveSecretReferences(db: Executor, value: unknown): Promise<unknown> {

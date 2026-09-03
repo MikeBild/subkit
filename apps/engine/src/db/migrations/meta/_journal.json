@@ -337,6 +337,13 @@
       "when": 1788453635191,
       "tag": "0047_boring_captain_midlands",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1788466601600,
+      "tag": "0048_anbindungen_und_freigaben",
+      "breakpoints": true
     }
   ]
 }

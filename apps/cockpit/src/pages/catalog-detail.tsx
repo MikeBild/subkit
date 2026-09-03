@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { apiRequest, apiText, listConversationsAbout } from "@/api/client";
 import type { components } from "@/api/schema";
 import { AgentPanel } from "@/components/cockpit/agent-panel";
+import { ConnectorCredentials } from "@/components/cockpit/connector-credentials";
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { bytes, MISSING } from "@/components/cockpit/table-columns";
@@ -646,6 +647,9 @@ export function CatalogDetailPage({
         {resource === "knowledge" ? <KnowledgeBody id={id} canWrite={canWrite} /> : null}
         {resource === "files" ? <FileBody id={id} record={record} /> : null}
         {resource === "connectors" ? <Overview record={record} /> : null}
+        {resource === "connectors" ? (
+          <ConnectorCredentials connectorId={id} canWrite={canWrite} />
+        ) : null}
         {(resource === "workflows" || resource === "connectors") &&
         permissions.includes("conversation:read") ? (
           <ConversationsAbout

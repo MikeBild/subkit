@@ -140,6 +140,27 @@ export function registerOAuthDcrRoutes(app: OpenAPIHono<AppEnv>): void {
       .object({
         redirect_uris: z.array(safeRedirectUri).min(1).max(5),
         client_name: z.string().max(255).optional(),
+        // The client's own base address (RFC 7591). Shown on the consent
+        // page beside the name, so the person sees WHERE the request comes
+        // from and not only what it calls itself. https only, like a
+        // redirect: a plaintext address on a consent screen is a lie about
+        // the connection it describes.
+        client_uri: z
+          .string()
+          .max(2048)
+          .url()
+          .refine(
+            (uri) => {
+              const u = new URL(uri);
+              return (
+                u.protocol === "https:" ||
+                (u.protocol === "http:" &&
+                  (u.hostname === "localhost" || u.hostname === "127.0.0.1"))
+              );
+            },
+            { message: "client_uri must be https or http://localhost" },
+          )
+          .optional(),
         grant_types: z.array(z.string()).optional(),
         token_endpoint_auth_method: z.string().optional(),
         scope: z.string().optional(),
