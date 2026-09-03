@@ -2,13 +2,15 @@
 // every per-operation module under `service/`. Each per-operation file
 // imports from here.
 
-import type { Executor } from "../../db/client.ts";
-import type { conversations } from "../../db/schema/index.ts";
+import { and, eq, inArray } from "drizzle-orm";
+import type { Db, Executor } from "../../db/client.ts";
+import { type conversations, systemAccounts, users } from "../../db/schema/index.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import { appendSnapshot } from "../draft.ts";
 import type { RunLoopResult } from "../loop.ts";
 import { elicitationInputForClient } from "../tools/ask-user/commit-intent.ts";
 import type {
+  ConversationOwner,
   ConversationPermissionMode,
   ConversationRecord,
   ConversationStatus,
@@ -64,6 +66,9 @@ export function rowToRecord(row: typeof conversations.$inferSelect): Conversatio
     owner_id: row.owner_id ?? null,
     model: row.model ?? null,
     title: row.title ?? null,
+    title_locked: row.title_locked ?? false,
+    origin_client: row.origin_client ?? null,
+    surface: row.surface ?? null,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -147,4 +152,28 @@ export class ElicitationAlreadyResolvedError extends Error {
     this.previous_output = p.previous_output;
     this.previous_decision_reason = p.previous_decision_reason;
   }
+}
+
+/** Owner names for a page of rows: people by e-mail, machine accounts by name. */
+export async function loadOwners(
+  tenant_id: string,
+  ownerIds: Array<string | null>,
+  exec: Db,
+): Promise<Map<string, ConversationOwner>> {
+  const ids = [...new Set(ownerIds.filter((id): id is string => typeof id === "string"))];
+  const out = new Map<string, ConversationOwner>();
+  if (ids.length === 0) return out;
+  const [people, machines] = await Promise.all([
+    exec
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(and(eq(users.tenant_id, tenant_id), inArray(users.id, ids))),
+    exec
+      .select({ id: systemAccounts.id, name: systemAccounts.name })
+      .from(systemAccounts)
+      .where(and(eq(systemAccounts.tenant_id, tenant_id), inArray(systemAccounts.id, ids))),
+  ]);
+  for (const u of people) out.set(u.id, { id: u.id, kind: "user", name: u.email });
+  for (const m of machines) out.set(m.id, { id: m.id, kind: "system_account", name: m.name });
+  return out;
 }

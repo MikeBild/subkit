@@ -906,6 +906,7 @@ async function handleChatEventImpl(
         actor_id: user_id,
         initial_message: prompt,
         origin_client: principalOrigin(chatPrincipal),
+        surface: "chat",
       },
       db,
     );

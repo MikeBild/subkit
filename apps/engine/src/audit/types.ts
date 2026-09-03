@@ -266,6 +266,10 @@ export const AuditAction = {
   CONVERSATION_UPDATED: "conversation.updated",
   CONVERSATION_MEMORY_INJECTED: "conversation.memory_injected",
   CONVERSATION_RESUMED: "conversation.resumed",
+  // A person took a conversation out of their own list, or put it back. Per
+  // user and reversible; the row and its history stay.
+  CONVERSATION_HIDDEN: "conversation.hidden",
+  CONVERSATION_UNHIDDEN: "conversation.unhidden",
   // An explicit `load_skill` tool call mutated the conversation's persisted
   // `loaded_skills` palette (tenant-visible state that survives session
   // resumption). Metadata carries skill_slug / skill_id / already_loaded so
@@ -514,6 +518,12 @@ export const AuditAction = {
   SETTINGS_REVISION_ACTIVATION_FAILED: "settings.revision_activation_failed",
   SECRET_VERSION_CREATED: "secret.version_created",
   SECRET_VERSION_REVOKED: "secret.version_revoked",
+  // `engine --rewrap-master-key --from-file <previous>` re-encrypted every
+  // runtime secret version under the running MASTER_KEY. Written once per
+  // sweep, by a host-side operator with no session — actor_type `system`,
+  // actor_id null. The metadata carries the counts and the fingerprints of
+  // both keys, never key material.
+  MASTER_KEY_REWRAPPED: "secret.master_key_rewrapped",
   STATELESS_BRIDGE_CONFIG_IMPORTED: "stateless_bridge.config_imported",
   STATELESS_BRIDGE_OBJECT_MIGRATED: "stateless_bridge.object_migrated",
   STATELESS_BRIDGE_COMPLETED: "stateless_bridge.completed",

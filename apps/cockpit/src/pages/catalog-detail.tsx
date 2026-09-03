@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Bot, CheckCircle2, Pencil, RefreshCw, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest, apiText } from "@/api/client";
+import { apiRequest, apiText, listConversationsAbout } from "@/api/client";
 import type { components } from "@/api/schema";
 import { AgentPanel } from "@/components/cockpit/agent-panel";
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { type DetailEntry, detailEntries, SCOPE_KEYS, SIDE_EFFECT_KEYS } from "@/lib/detail-fields";
+import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 
@@ -104,6 +105,55 @@ function renderDetailValue(
     default:
       return String(value);
   }
+}
+
+/**
+ * The conversations people had about this object. Provenance is structural
+ * here, as in the reference model: you see them where the object is, and the
+ * global chat list stays a way back into your own work.
+ */
+function ConversationsAbout({
+  target,
+}: {
+  target: { workflow_id?: string; connector_id?: string };
+}) {
+  const { t, locale } = useI18n();
+  const query = useQuery({
+    queryKey: ["conversations", "about", target.workflow_id, target.connector_id],
+    queryFn: () => listConversationsAbout(target),
+  });
+  const items = query.data?.items ?? [];
+  return (
+    <section className="grid gap-2" data-testid="detail-conversations">
+      <h2 className="text-sm font-semibold">{t("catalog.conversations.title")}</h2>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground" data-testid="detail-conversations-empty">
+          {t("catalog.conversations.empty")}
+        </p>
+      ) : (
+        <ul className="grid gap-1">
+          {items.map((conversation, index) => (
+            <li key={conversation.id}>
+              <a
+                className="flex items-baseline justify-between gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+                href={`/cockpit/chat/${encodeURIComponent(conversation.id)}`}
+                aria-label={t("catalog.conversations.open")}
+                data-testid={`detail-conversation-${index}`}
+              >
+                <span className="min-w-0 truncate">{conversation.title || t("chat.untitled")}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {formatRelativeTime(
+                    locale,
+                    conversation.last_activity_at ?? conversation.updated_at,
+                  )}
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 function GovernanceBar({ record, canWrite }: { record: RecordValue; canWrite: boolean }) {
@@ -596,6 +646,12 @@ export function CatalogDetailPage({
         {resource === "knowledge" ? <KnowledgeBody id={id} canWrite={canWrite} /> : null}
         {resource === "files" ? <FileBody id={id} record={record} /> : null}
         {resource === "connectors" ? <Overview record={record} /> : null}
+        {(resource === "workflows" || resource === "connectors") &&
+        permissions.includes("conversation:read") ? (
+          <ConversationsAbout
+            target={resource === "workflows" ? { workflow_id: id } : { connector_id: id }}
+          />
+        ) : null}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <CheckCircle2 className="size-4" />
           {t("detail.workspaceScoped")}

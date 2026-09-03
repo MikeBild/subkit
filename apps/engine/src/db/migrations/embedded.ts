@@ -64,6 +64,7 @@ import sql0043MutePaperDoll from "./0043_mute_paper_doll.sql" with { type: "text
 import sql0044WildMicromax from "./0044_wild_micromax.sql" with { type: "text" };
 import sql0045SteadySmilingTiger from "./0045_steady_smiling_tiger.sql" with { type: "text" };
 import sql0046PurpleGroot from "./0046_purple_groot.sql" with { type: "text" };
+import sql0047BoringCaptainMidlands from "./0047_boring_captain_midlands.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -135,6 +136,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0044_wild_micromax": sql0044WildMicromax,
   "0045_steady_smiling_tiger": sql0045SteadySmilingTiger,
   "0046_purple_groot": sql0046PurpleGroot,
+  "0047_boring_captain_midlands": sql0047BoringCaptainMidlands,
 };
 
 const journal = journalMeta as unknown as Journal;

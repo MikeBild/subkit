@@ -29,6 +29,19 @@ export class SkCliAdapter implements NotificationAdapter {
     // list route has to be a SQL predicate underneath the cursor, or
     // paging returns short and empty pages.
     const classification = classifyEvent(event_type, event_payload);
+    // A row is a task, not a log line. Everything the `*` default rule
+    // matches still arrives here, but only an event a person has to act on
+    // becomes a row; a step start or a routine success is acknowledged and
+    // dropped. Before this, production held 614k unread step events.
+    if (!classification.actionable) {
+      logger.debug({
+        module: "notifications",
+        action: "sk_cli.skipped_non_actionable",
+        tenant_id: delivery.tenant_id,
+        event_type,
+      });
+      return { platform_message_id: `skipped:${event_type}` };
+    }
 
     const inserted = await this.db
       .insert(cliNotificationInbox)

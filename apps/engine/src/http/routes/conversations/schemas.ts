@@ -45,6 +45,28 @@ export const RespondElicitationBody = z
   })
   .openapi("RespondElicitationBody");
 
+export const ConversationOwnerSchema = z
+  .object({
+    id: z.string(),
+    kind: z.enum(["user", "system_account"]),
+    name: z.string(),
+  })
+  .openapi("ConversationOwner");
+
+export const ConversationTargetRefSchema = z
+  .object({ id: z.string(), slug: z.string().nullable(), name: z.string().nullable() })
+  .openapi("ConversationTargetRef");
+
+export const ConversationCreatedResourceSchema = z
+  .object({
+    kind: z.enum(["workflow", "connector", "execution"]),
+    id: z.string(),
+    slug: z.string().nullable(),
+    name: z.string().nullable(),
+    at: z.string(),
+  })
+  .openapi("ConversationCreatedResource");
+
 export const ConversationSchema = z
   .object({
     id: z.string(),
@@ -55,8 +77,26 @@ export const ConversationSchema = z
     owner_id: z.string().nullable(),
     model: z.string().nullable(),
     title: z.string().nullable(),
+    /** True once a person named it; the automatic titler leaves it alone. */
+    title_locked: z.boolean().optional(),
+    /** `<provider>:<credential-id>` of the channel that opened it; null for a browser session. */
+    origin_client: z.string().nullable().optional(),
+    /** Surface it was opened from: web, sk_interactive, sk_headless, mcp, chat, api. */
+    surface: z.string().nullable().optional(),
     created_at: z.string(),
     updated_at: z.string(),
+    /** List path only — what the conversation has come to, as a reader would say it. */
+    outcome: z
+      .enum(["answered", "in_progress", "awaiting_you", "committed", "abandoned", "stale"])
+      .optional(),
+    /** Newest message time; the activity clock (updated_at also moves on bookkeeping). */
+    last_activity_at: z.string().nullable().optional(),
+    message_count: z.number().int().optional(),
+    owner: ConversationOwnerSchema.nullable().optional(),
+    target_workflow: ConversationTargetRefSchema.nullable().optional(),
+    target_connector: ConversationTargetRefSchema.nullable().optional(),
+    /** Hidden by the calling person (see POST /hide). */
+    hidden: z.boolean().optional(),
     last_message_role: z.string().nullable().optional(),
     last_message_excerpt: z.string().nullable().optional(),
     // The pending prompt: when it lapses, what it asks, and which tool raised
@@ -112,6 +152,9 @@ export const ConversationToolCallSchema = z
 export const ConversationDetailSchema = z
   .object({
     conversation: ConversationSchema,
+    owner: ConversationOwnerSchema.nullable(),
+    /** What this conversation brought into being, newest first. */
+    created_resources: z.array(ConversationCreatedResourceSchema),
     /**
      * Parts-based `UIMessage` array — mirrors Vercel AI SDK UI's message
      * shape. Built by `buildMessagesV2` over the persisted message +

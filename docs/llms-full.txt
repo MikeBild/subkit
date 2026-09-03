@@ -4960,6 +4960,12 @@ In the Cockpit chat, typing `@` opens a picker over the workflows and connectors
 
 A mention whose object was deleted or withdrawn since is not guessed around: the block says plainly that it no longer exists or is not accessible, the model is told not to substitute a similarly named object, and the transcript marks the chip. The block sits in the volatile tail of the prompt (it never disturbs the cached prefix) and, under budget pressure, shrinks to one line per object rather than being dropped — the `/context` snapshot lists that as `referenced_entities`.
 
+### Finding your way back: the conversation list
+
+The Cockpit's conversation list is a way back into your own work, not a queue. Each row names the goal (the engine titles a conversation from its opening exchange — an imperative 4–6 word title after the first answer, refreshed every fifth exchange, never over a title you set), says what the conversation is about, and shows when it last moved. A question that waits for you is marked; the engine's authoring status is not shown on rows, because "active" describes the draft state machine, not whether a conversation is over.
+
+What a conversation has come to is a read-time projection (`outcome`: answered, in progress, waiting for you, committed, stopped, idle), and where it came from is stored with it (`surface`: Cockpit, sk, MCP client, chat channel, API; plus the owner and the target workflow or connector). The header shows both, and the working context lists what the conversation created, with links. Conversations you are done with can be hidden from your own list and shown again — a per-person mark with an audit entry, never a delete, so the governed history stays intact for everyone else. Workflow and connector pages list the conversations about them.
+
 ### Self-healing retry
 
 When drift is detected, the repair flow proposes a patch, classifies it, and dry-runs it against the most recent `execution_fixtures` row. If either gate rejects, the loop re-prompts the LLM with the structured rejection folded into `prior_failures`, up to `MAX_REPAIR_ATTEMPTS = 2` total. The final patch candidate carries a `metadata.rejection_chain` array recording every prior rejection, so reviewers see what was tried. Rate-limit-class drift (HTTP 429 / 503 with a template `rate_limits` hint) produces a distinct `kind: "rate_limited"` candidate — same retry loop, but the patch only adjusts backoff metadata.

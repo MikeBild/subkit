@@ -8911,6 +8911,8 @@ export interface paths {
                 query?: {
                     status?: "active" | "awaiting_input" | "committed" | "abandoned";
                     owner?: "me";
+                    hidden?: "exclude" | "only" | "all";
+                    owner_kind?: "user" | "system_account";
                     target_workflow_id?: string;
                     target_connector_id?: string;
                     q?: string;
@@ -9665,6 +9667,100 @@ export interface paths {
         get?: never;
         put?: never;
         /** Cancel a conversation */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Conversation"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{id}/hide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hide a conversation from the caller's own list (reversible, never a delete) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Conversation"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{id}/unhide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Put a hidden conversation back into the caller's list */
         post: {
             parameters: {
                 query?: never;
@@ -17488,14 +17584,36 @@ export interface components {
             owner_id: string | null;
             model: string | null;
             title: string | null;
+            title_locked?: boolean;
+            origin_client?: string | null;
+            surface?: string | null;
             created_at: string;
             updated_at: string;
+            /** @enum {string} */
+            outcome?: "answered" | "in_progress" | "awaiting_you" | "committed" | "abandoned" | "stale";
+            last_activity_at?: string | null;
+            message_count?: number;
+            owner?: components["schemas"]["ConversationOwner"];
+            target_workflow?: components["schemas"]["ConversationTargetRef"];
+            target_connector?: components["schemas"]["ConversationTargetRef"];
+            hidden?: boolean;
             last_message_role?: string | null;
             last_message_excerpt?: string | null;
             pending_elicitation_expires_at?: string | null;
             pending_elicitation_summary?: string | null;
             pending_elicitation_tool?: string | null;
         };
+        ConversationOwner: {
+            id: string;
+            /** @enum {string} */
+            kind: "user" | "system_account";
+            name: string;
+        } | null;
+        ConversationTargetRef: {
+            id: string;
+            slug: string | null;
+            name: string | null;
+        } | null;
         ConversationRunOutcome: {
             conversation: components["schemas"]["Conversation"];
             events: unknown[];
@@ -17527,6 +17645,8 @@ export interface components {
         };
         ConversationDetail: {
             conversation: components["schemas"]["Conversation"];
+            owner: components["schemas"]["ConversationOwner"];
+            created_resources: components["schemas"]["ConversationCreatedResource"][];
             messages: components["schemas"]["UIMessage"][];
             tool_calls: components["schemas"]["ConversationToolCall"][];
             draft?: unknown;
@@ -17552,6 +17672,14 @@ export interface components {
                 next_action: string;
                 one_sentence: string;
             } | null;
+        };
+        ConversationCreatedResource: {
+            /** @enum {string} */
+            kind: "workflow" | "connector" | "execution";
+            id: string;
+            slug: string | null;
+            name: string | null;
+            at: string;
         };
         UIMessage: {
             id: string;

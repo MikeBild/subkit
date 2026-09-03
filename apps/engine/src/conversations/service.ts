@@ -59,6 +59,7 @@ export {
   listConversations,
   type PatchConversationParams,
   patchConversation,
+  setConversationHidden,
 } from "./service/lifecycle.ts";
 export {
   type RunConversationTurnParams,
