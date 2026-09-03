@@ -125,7 +125,12 @@ export async function runInit(opts: RunInitOptions): Promise<RunInitResult> {
       `sk init: bootstrap complete — tenant ${body.tenant_id}\n` +
         `  admin_api_key prefix: ${body.api_key_prefix}\n` +
         `  profile '${opts.profile}' saved to ${configPath()}\n` +
-        `  next: sk doctor\n`,
+        // The engine seeds three credential-free starter workflows into a fresh
+        // tenant. A comparison run on 2026-09-03 had them and never noticed,
+        // because nothing said so — it hand-built a workflow instead. Name one.
+        `  starter workflows are ready; run one now:\n` +
+        `    sk workflows run demo-httpbin-echo --follow\n` +
+        `  then: sk doctor\n`,
     );
     return { status: "ok", exitCode: 0, setup: body };
   }

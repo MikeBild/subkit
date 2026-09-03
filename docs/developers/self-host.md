@@ -130,8 +130,11 @@ docker compose exec engine sk init \
 # sk init: bootstrap complete — tenant 6c82c719-…
 ```
 
-> **No API key handy?** Use `--llm-provider mock` to walk the mechanics with zero
-> external accounts.
+> **No API key handy?** Use `--llm-provider mock --llm-api-key mock` to walk the
+> mechanics with zero external accounts. The key must be non-empty for every
+> provider, `mock` included — leave it out and `sk init` prompts for it, which under
+> `docker compose exec` with no terminal looks like a hang. `sk init --defaults`
+> fills every missing field the same way and never prompts.
 >
 > **Manual token (non-bundled deploys):** copy it from the logs and pass
 > `--token` (valid 15 min; the engine reprints a fresh one on the next attempt):
@@ -195,6 +198,19 @@ docker compose exec engine sk doctor
 # ✔ profile / reachability / authn / setup / version_match … (exit 0)
 docker compose exec engine sk -p "Say only the word: pong" --output text
 # pong            ← confirms the LLM is wired correctly
+# (with --llm-provider mock this prints "Acknowledged: … (mock)" instead — that is
+#  the mock answering, not a failure)
+```
+
+Your tenant is not empty. Setup seeds three starter workflows that need no
+credentials, so a first execution is one command away — before any connector, and
+before any LLM key:
+
+```bash
+docker compose exec engine sk workflows list                          # three demo-… workflows
+docker compose exec engine sk workflows run demo-httpbin-echo --follow
+# execution.queued → started → step succeeded → execution.succeeded
+docker compose exec engine sk executions list --limit 1
 ```
 
 ---
@@ -505,6 +521,23 @@ docker compose exec engine sk workflows run berlin-current-temperature --follow
 credential without a conversation:
 
 ```bash
+# A keyless HTTP connector from a file — the shape the workflow example below
+# expects, and the one that needs no template and no credential.
+cat > /tmp/open-meteo.json <<'JSON'
+{
+  "name": "open-meteo",
+  "driver": "http",
+  "environment": "dev",
+  "base_url": "https://api.open-meteo.com",
+  "auth_type": "none"
+}
+JSON
+docker compose cp /tmp/open-meteo.json engine:/tmp/open-meteo.json
+docker compose exec engine sk connectors validate --file /tmp/open-meteo.json   # ok
+docker compose exec engine sk connectors create --file /tmp/open-meteo.json     # Created connector "open-meteo" · probe: ok
+# Every field the body accepts is in /openapi.json under CreateConnectorBody.
+
+# A template-based connector that carries a credential:
 docker compose exec engine sk connectors create --template stripe --name stripe-prod --skip-checks
 docker compose exec engine sk credentials set <CONNECTOR_ID> --mode bearer --token sk_live_…
 #   modes: bearer | header | query | basic | aws_sigv4 | none  (probes after, unless --skip-checks)
