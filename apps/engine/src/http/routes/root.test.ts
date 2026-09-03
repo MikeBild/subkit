@@ -92,6 +92,24 @@ describe("the decision-and-install set", () => {
     }
   });
 
+  test("no served page links to a page the binary does not carry", async () => {
+    // A comparison run on 2026-09-03 found twelve such links and read them as
+    // breakage. Links to carried pages must still resolve; the rest are text.
+    for (const path of ESSENTIAL_PATHS) {
+      const rel = path.replace(/^docs\//, "");
+      const body = await (await get(`/llms/${rel}`)).text();
+      const links = [
+        ...body.matchAll(/\]\(((?:\.\.\/|\.\/)?[A-Za-z0-9_./-]+\.md)(?:#[^)]*)?\)/g),
+      ].map((m) => m[1] as string);
+      for (const target of links) {
+        const dir = rel.split("/").slice(0, -1).join("/");
+        const resolved = new URL(target, `http://x/${dir}/`).pathname.replace(/^\//, "");
+        const res = await get(`/llms/${resolved}`);
+        expect(`${rel} -> ${target}: ${res.status}`).toBe(`${rel} -> ${target}: 200`);
+      }
+    }
+  });
+
   test("a page outside the set is not carried", async () => {
     // The point of the set is that it is small. If everything resolved, the
     // binary would be carrying the whole documentation again.
