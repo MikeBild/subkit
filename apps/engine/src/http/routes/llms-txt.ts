@@ -41,6 +41,7 @@ import manifest from "../../../../../docs/llms-essential-manifest.json" with { t
 import { getConfig } from "../../config/loader.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
 import { COMPOSE_YAML } from "./compose.ts";
+import { SKILL_MD } from "./install-skill.ts";
 
 const RESPONSE_HEADERS = {
   "content-type": "text/markdown; charset=utf-8",
@@ -230,6 +231,13 @@ export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
           sha256: sha(COMPOSE_YAML),
           updated_at: null,
         },
+        // The agent skill that asks the make-or-buy question mid-build; the
+        // installer lives at /install/skill, this is the file it writes.
+        skill: {
+          url: `${origin}/install/skill/SKILL.md`,
+          sha256: sha(SKILL_MD),
+          updated_at: null,
+        },
       },
       capabilities: [
         "health",
@@ -240,6 +248,7 @@ export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
         "mcp",
         "descriptor",
         "compose",
+        "skill",
       ],
     });
   });

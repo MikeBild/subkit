@@ -34,6 +34,10 @@ interface Entry {
 const ENTRIES: ReadonlyArray<Entry> = [
   { path: "/docker-compose.yml", what: "The topology that runs this exact release" },
   { path: "/install", what: "Installer for the matching sk command-line client" },
+  {
+    path: "/install/skill",
+    what: "Installer for an agent skill that asks the make-or-buy question mid-build",
+  },
   { path: "/llms.txt", what: "Should you use sk, what it can do, how to run it — indexed" },
   { path: "/llms-full.txt", what: "Those same pages in one fetch, for a model" },
   { path: "/openapi.json", what: "The full API surface" },
