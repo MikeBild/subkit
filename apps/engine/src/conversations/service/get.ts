@@ -15,11 +15,13 @@ import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
 import { loadDraft } from "../draft.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
 import type {
+  ConversationCreatedResource,
   ConversationDetail,
   ConversationMessageRecord,
   ConversationToolCallRecord,
+  DraftDocument,
 } from "../types.ts";
-import { rowToRecord } from "./shared.ts";
+import { loadOwners, rowToRecord } from "./shared.ts";
 
 /**
  * Strip every `[file:fid_<uuid>]` sentinel out of a stored message
@@ -108,8 +110,11 @@ export async function getConversation(
         pendingElicitation,
       })
     : null;
+  const owners = await loadOwners(tenant_id, [conversationRecord.owner_id], exec);
   return {
     conversation: conversationRecord,
+    owner: (conversationRecord.owner_id && owners.get(conversationRecord.owner_id)) || null,
+    created_resources: collectCreatedResources(draft, calls),
     messages: msgs.map(
       (m): ConversationMessageRecord => ({
         id: m.id,
@@ -143,4 +148,43 @@ export async function getConversation(
     draft,
     resume_summary: resumeSummary,
   };
+}
+
+/**
+ * What a conversation brought into being: the workflows and connectors its
+ * draft persisted, and the executions its tool calls started. Newest first,
+ * so a header can list them next to the transcript.
+ */
+function collectCreatedResources(
+  draft: DraftDocument | null,
+  calls: Array<{ tool: string; output: unknown; created_at: Date }>,
+): ConversationCreatedResource[] {
+  const out: ConversationCreatedResource[] = [];
+  for (const ref of draft?.summary?.persisted_resources ?? []) {
+    out.push({ kind: ref.kind, id: ref.id, slug: ref.slug, name: ref.name, at: ref.saved_at });
+  }
+  const seen = new Set<string>();
+  for (const call of calls) {
+    if (call.tool !== "run_workflow" && !call.tool.startsWith("wf_")) continue;
+    const output = call.output as {
+      execution_id?: unknown;
+      data?: { execution_id?: unknown };
+    } | null;
+    const id =
+      typeof output?.execution_id === "string"
+        ? output.execution_id
+        : typeof output?.data?.execution_id === "string"
+          ? output.data.execution_id
+          : null;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push({
+      kind: "execution",
+      id,
+      slug: call.tool.startsWith("wf_") ? call.tool.slice(3) : null,
+      name: null,
+      at: call.created_at.toISOString(),
+    });
+  }
+  return out.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 }

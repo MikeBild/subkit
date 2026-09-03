@@ -1,5 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleStop, List, MessageSquarePlus, PanelRight, Pencil, Search } from "lucide-react";
+import {
+  CircleStop,
+  Eye,
+  EyeOff,
+  List,
+  MessageSquarePlus,
+  PanelRight,
+  Pencil,
+  Search,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   apiRequest,
@@ -12,6 +21,7 @@ import {
   listConversations,
   renameConversation,
   respondToToolCall,
+  setConversationHidden,
   type UiMessage,
 } from "@/api/client";
 import { dryRunPatchCandidate, getPatchCandidatePreview } from "@/api/decisions";
@@ -35,7 +45,6 @@ import {
   PromptInputTools,
   usePromptInputController,
 } from "@/components/ai-elements/prompt-input";
-import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import {
   Tool,
   ToolContent,
@@ -58,7 +67,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Message, MessageContent } from "@/components/ui/message";
@@ -79,8 +88,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Textarea } from "@/components/ui/textarea";
-import type { TranslationKey } from "@/lib/i18n";
+import { formatRelativeTime, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import type { DiffLine } from "@/lib/line-diff";
 import { reconcileReferences } from "@/lib/mentions";
@@ -96,18 +104,75 @@ import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "./chat-re
 import { activeConversationId, type ConversationSelection } from "./chat-selection";
 import { dedupeBackground, groupMessageParts } from "./chat-transcript";
 
-const QUICK_START: readonly TranslationKey[] = [
-  "chat.quick.workflow",
-  "chat.quick.list",
-  "chat.quick.failure",
-  "chat.quick.connector",
-];
-
 type Translate = ReturnType<typeof useI18n>["t"];
 
 function localizedTarget(value: string | null | undefined, t: Translate): string {
   if (!value || value.toLowerCase() === "none") return t("chat.context.noTarget");
   return hideTechnicalIdentifiers(value, t("tool.referenceHiddenInline"));
+}
+
+/** The word for what a conversation has come to — never the engine's status. */
+function outcomeLabel(t: Translate, outcome: string | null | undefined): string | null {
+  switch (outcome) {
+    case "answered":
+      return t("chat.outcome.answered");
+    case "in_progress":
+      return t("chat.outcome.in_progress");
+    case "awaiting_you":
+      return t("chat.outcome.awaiting_you");
+    case "committed":
+      return t("chat.outcome.committed");
+    case "abandoned":
+      return t("chat.outcome.abandoned");
+    case "stale":
+      return t("chat.outcome.stale");
+    default:
+      return null;
+  }
+}
+
+function surfaceLabel(t: Translate, surface: string | null | undefined): string {
+  switch (surface) {
+    case "web":
+      return t("chat.origin.web");
+    case "sk_interactive":
+      return t("chat.origin.sk_interactive");
+    case "sk_headless":
+      return t("chat.origin.sk_headless");
+    case "mcp":
+      return t("chat.origin.mcp");
+    case "chat":
+      return t("chat.origin.chat");
+    case "api":
+      return t("chat.origin.api");
+    default:
+      return t("chat.origin.unknown");
+  }
+}
+
+/** "Cockpit · you · 2 h ago" — where it came from, whose it is, when it last moved. */
+export function originLine(
+  t: Translate,
+  locale: Parameters<typeof formatRelativeTime>[0],
+  input: {
+    surface?: string | null;
+    owner?: { id: string; name: string } | null;
+    viewerId: string | null;
+    at?: string | null;
+  },
+): string {
+  const who = input.owner
+    ? input.owner.id === input.viewerId
+      ? t("chat.origin.you")
+      : input.owner.name
+    : null;
+  return [
+    surfaceLabel(t, input.surface),
+    who,
+    input.at ? formatRelativeTime(locale, input.at) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 export interface StreamedDiff {
@@ -554,16 +619,22 @@ function ConversationList({
   search,
   onSearchChange,
   onRename,
+  showHidden,
+  onToggleHidden,
+  onHide,
 }: {
   conversations: readonly Conversation[];
   activeId: string | null;
   onSelect(id: string): void;
   onNew(): void;
+  showHidden: boolean;
+  onToggleHidden(): void;
+  onHide(conversation: Conversation, hidden: boolean): void;
   search: string;
   onSearchChange(value: string): void;
   onRename(conversation: Conversation): void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="conversation-list">
       <div className="flex items-center justify-between p-3">
@@ -599,7 +670,6 @@ function ConversationList({
               },
               {
                 untitled: t("chat.untitled"),
-                status: statusLabel(t, conversation.status),
                 excerpt:
                   conversationExcerpt(
                     conversation.last_message_excerpt,
@@ -622,18 +692,33 @@ function ConversationList({
                   )}
                 >
                   <span className="block min-w-0 flex-1">
-                    <span
-                      className="block truncate text-sm font-medium"
-                      data-testid={`conversation-item-${index}-title`}
-                    >
-                      {row.title}
-                    </span>
-                    {row.secondary && (
+                    <span className="flex items-baseline gap-2">
                       <span
-                        className="block truncate text-xs font-normal text-muted-foreground"
+                        className="min-w-0 flex-1 truncate text-sm font-medium"
+                        data-testid={`conversation-item-${index}-title`}
+                      >
+                        {row.title}
+                      </span>
+                      {/* When it last moved — the one fact every row carries. */}
+                      <span
+                        className="shrink-0 text-xs font-normal text-muted-foreground"
+                        data-testid={`conversation-item-${index}-time`}
+                      >
+                        {formatRelativeTime(
+                          locale,
+                          conversation.last_activity_at ?? conversation.updated_at,
+                        )}
+                      </span>
+                    </span>
+                    {(row.secondary || row.waiting) && (
+                      <span
+                        className={cn(
+                          "block truncate text-xs font-normal text-muted-foreground",
+                          row.waiting && "text-warning",
+                        )}
                         data-testid={`conversation-item-${index}-secondary`}
                       >
-                        {row.secondary}
+                        {row.waiting ? t("chat.outcome.awaiting_you") : row.secondary}
                       </span>
                     )}
                   </span>
@@ -647,11 +732,42 @@ function ConversationList({
                 >
                   <Pencil />
                 </IconButton>
+                {/* The open conversation cannot be hidden from under the reader. */}
+                {activeId !== conversation.id && (
+                  <IconButton
+                    label={t(showHidden ? "chat.unhide" : "chat.hide")}
+                    variant="ghost"
+                    className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
+                    data-testid={`conversation-hide-${index}`}
+                    onClick={() => onHide(conversation, !showHidden)}
+                  >
+                    {showHidden ? <Eye /> : <EyeOff />}
+                  </IconButton>
+                )}
               </div>
             );
           })}
+          {showHidden && conversations.length === 0 && (
+            <p
+              className="px-3 py-2 text-xs text-muted-foreground"
+              data-testid="conversation-hidden-empty"
+            >
+              {t("chat.hidden.empty")}
+            </p>
+          )}
         </div>
       </ScrollArea>
+      <Separator />
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="m-2 justify-start text-xs text-muted-foreground"
+        data-testid="conversation-toggle-hidden"
+        onClick={onToggleHidden}
+      >
+        {t(showHidden ? "chat.hidden.back" : "chat.hidden.show")}
+      </Button>
     </div>
   );
 }
@@ -670,16 +786,13 @@ function setChatPath(id: string | null, replace = false): void {
 }
 
 export function ChatPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const initialPrompt = new URLSearchParams(window.location.search).get("prompt") ?? "";
   const [selection, setSelection] = useState<ConversationSelection>(() =>
     selectionFromPath(initialPrompt),
   );
-  const [createOpen, setCreateOpen] = useState(
-    Boolean(initialPrompt) || window.location.pathname.endsWith("/chat/new"),
-  );
-  const [createPrompt, setCreatePrompt] = useState(initialPrompt);
+  const [showHidden, setShowHidden] = useState(false);
   const [conversationSearch, setConversationSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [streamedText, setStreamedText] = useState("");
@@ -703,10 +816,7 @@ export function ChatPage() {
   useEffect(() => {
     const onPopState = () => {
       const prompt = new URLSearchParams(window.location.search).get("prompt") ?? "";
-      const next = selectionFromPath(prompt);
-      setSelection(next);
-      setCreateOpen(next.kind === "new");
-      setCreatePrompt(prompt);
+      setSelection(selectionFromPath(prompt));
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -716,8 +826,8 @@ export function ChatPage() {
     return () => window.clearTimeout(timer);
   }, [conversationSearch]);
   const conversations = useQuery({
-    queryKey: ["conversations", debouncedSearch],
-    queryFn: () => listConversations(debouncedSearch),
+    queryKey: ["conversations", debouncedSearch, showHidden ? "hidden" : "visible"],
+    queryFn: () => listConversations(debouncedSearch, showHidden ? { hidden: "only" } : {}),
   });
   const activeId = activeConversationId(selection, conversations.data?.items[0]?.id);
   useEffect(() => {
@@ -771,8 +881,6 @@ export function ChatPage() {
     onSuccess: async (result) => {
       setSelection({ kind: "existing", id: result.conversation.id });
       setChatPath(result.conversation.id, true);
-      setCreateOpen(false);
-      setCreatePrompt("");
       setStreamedText("");
       setStreamedDiffs([]);
       setLiveCalls([]);
@@ -796,6 +904,13 @@ export function ChatPage() {
       ]);
     },
   });
+  const hide = useMutation({
+    mutationFn: ({ id, hidden }: { id: string; hidden: boolean }) =>
+      setConversationHidden(id, hidden),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
   const rename = useMutation({
     mutationFn: () => renameConversation(renameTarget?.id ?? "", renameTitle.trim()),
     onSuccess: async () => {
@@ -806,6 +921,8 @@ export function ChatPage() {
   const current = detail.data?.conversation;
   const messages = detail.data?.messages ?? [];
   const resume = detail.data?.resume_summary;
+  const createdResources = detail.data?.created_resources ?? [];
+  const session = useSession();
   const status = send.isPending ? "submitted" : send.isError ? "error" : "ready";
   const ordered = useMemo(
     () =>
@@ -814,15 +931,21 @@ export function ChatPage() {
       ),
     [conversations.data],
   );
+  // The row the header reads outcome and activity from: the list carries the
+  // read-time projection, the detail does not.
+  const activeRow = ordered.find((conversation) => conversation.id === activeId) ?? null;
   const list = (
     <ConversationList
       conversations={ordered}
       activeId={activeId}
+      showHidden={showHidden}
+      onToggleHidden={() => setShowHidden((value) => !value)}
+      onHide={(conversation, hidden) => hide.mutate({ id: conversation.id, hidden })}
       onNew={() => {
+        // "New" is a reset to the empty state, not a form: the composer and
+        // the starter cards are the way in.
         setSelection({ kind: "new" });
         setChatPath(null);
-        setCreatePrompt("");
-        setCreateOpen(true);
         setMobileListOpen(false);
       }}
       onSelect={(id) => {
@@ -871,14 +994,24 @@ export function ChatPage() {
                 {current?.title || t("chat.new")}
               </h1>
               <p className="truncate text-xs text-muted-foreground" data-testid="chat-summary">
-                {resumeSummaryLine(resume, t)}
+                {current
+                  ? originLine(t, locale, {
+                      surface: current.surface,
+                      owner: detail.data?.owner ?? null,
+                      viewerId: session.principal.id ?? null,
+                      at: activeRow?.last_activity_at ?? current.updated_at,
+                    })
+                  : resumeSummaryLine(resume, t)}
               </p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {current && (
-              <Badge variant="outline" data-testid="chat-status">
-                {statusLabel(t, current.status)}
+              <Badge
+                variant={activeRow?.outcome === "awaiting_you" ? "destructive" : "outline"}
+                data-testid="chat-status"
+              >
+                {outcomeLabel(t, activeRow?.outcome) ?? statusLabel(t, current.status)}
               </Badge>
             )}
             {send.isPending && activeId && (
@@ -1028,19 +1161,10 @@ export function ChatPage() {
           data-testid="chat-composer-area"
         >
           <div className="mx-auto w-full max-w-3xl">
-            {messages.length === 0 && (
-              <Suggestions className="mb-2" data-testid="chat-suggestions">
-                {QUICK_START.map((key, index) => (
-                  <Suggestion
-                    key={key}
-                    suggestion={t(key)}
-                    data-testid={`chat-suggestion-${index}`}
-                    onClick={(suggestion) => send.mutate({ message: suggestion })}
-                  />
-                ))}
-              </Suggestions>
-            )}
-            <PromptInputProvider key={activeId ?? "new"} initialInput="">
+            <PromptInputProvider
+              key={activeId ?? "new"}
+              initialInput={selection.kind === "new" ? initialPrompt : ""}
+            >
               <ChatComposer
                 disabled={send.isPending}
                 status={status}
@@ -1084,6 +1208,37 @@ export function ChatPage() {
                 <dt className="text-xs text-muted-foreground">{t("chat.context.checkpoint")}</dt>
                 <dd className="mt-1">
                   {t(resume?.unsaved ? "chat.context.unsaved" : "chat.context.saved")}
+                </dd>
+              </div>
+              <div data-testid="chat-context-created">
+                <dt className="text-xs text-muted-foreground">{t("chat.created.title")}</dt>
+                <dd className="mt-1">
+                  {createdResources.length === 0 ? (
+                    <span className="text-muted-foreground">{t("chat.created.empty")}</span>
+                  ) : (
+                    <ul className="grid gap-1">
+                      {createdResources.map((resource, index) => (
+                        <li
+                          key={`${resource.kind}-${resource.id}`}
+                          className="flex items-baseline gap-2"
+                        >
+                          <a
+                            className="truncate underline-offset-4 hover:underline"
+                            href={`/cockpit/${resource.kind === "execution" ? "runs" : resource.kind === "workflow" ? "workflows" : "connectors"}/${encodeURIComponent(resource.id)}`}
+                            data-testid={`chat-context-created-${index}`}
+                          >
+                            {resource.name ||
+                              resource.slug ||
+                              t(`chat.created.kind.${resource.kind}`)}
+                          </a>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {t(`chat.created.kind.${resource.kind}`)} ·{" "}
+                            {formatRelativeTime(locale, resource.at)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </dd>
               </div>
               {resume?.pending_approval && (
@@ -1132,69 +1287,6 @@ export function ChatPage() {
           {list}
         </SheetContent>
       </Sheet>
-
-      <Dialog
-        open={createOpen}
-        onOpenChange={(open) => {
-          setCreateOpen(open);
-          if (!open && selection.kind === "new") {
-            setSelection({ kind: "automatic" });
-            window.history.replaceState({}, "", "/cockpit/chat");
-          }
-        }}
-      >
-        <DialogContent
-          className="sm:max-w-lg"
-          showCloseButton={false}
-          data-testid="conversation-create-dialog"
-          aria-describedby="conversation-create-description"
-        >
-          <DialogHeader>
-            <DialogTitle>{t("chat.create.title")}</DialogTitle>
-            <DialogDescription id="conversation-create-description">
-              {t("chat.create.description")}
-            </DialogDescription>
-          </DialogHeader>
-          <FieldGroup>
-            <Field data-invalid={send.isError || undefined}>
-              <FieldLabel htmlFor="conversation-create-prompt">
-                {t("chat.create.prompt")}
-              </FieldLabel>
-              <Textarea
-                id="conversation-create-prompt"
-                value={createPrompt}
-                onChange={(event) => setCreatePrompt(event.target.value)}
-                placeholder={t("chat.composer.placeholder")}
-                rows={6}
-                autoFocus
-                data-testid="conversation-create-prompt"
-              />
-            </Field>
-          </FieldGroup>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              data-testid="conversation-create-cancel"
-              onClick={() => {
-                setCreateOpen(false);
-                setSelection({ kind: "automatic" });
-                window.history.replaceState({}, "", "/cockpit/chat");
-              }}
-            >
-              {t("common.cancel")}
-            </Button>
-            <Button
-              type="button"
-              disabled={!createPrompt.trim() || send.isPending}
-              data-testid="conversation-create-submit"
-              onClick={() => send.mutate({ message: createPrompt.trim() })}
-            >
-              {t(send.isPending ? "chat.create.starting" : "chat.create.submit")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={Boolean(renameTarget)} onOpenChange={(open) => !open && setRenameTarget(null)}>
         <DialogContent data-testid="conversation-rename-dialog">

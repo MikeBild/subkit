@@ -5,6 +5,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   real,
   text,
   timestamp,
@@ -84,6 +85,14 @@ export const conversations = pgTable(
     // `conversation_id`, which is what turns "0 of 29 fulfilled" from one number
     // into a per-client matrix. Read-only signal; nothing gates on it.
     origin_client: text("origin_client"),
+    // Which surface opened this conversation: `web` (Cockpit), `sk_interactive`,
+    // `sk_headless`, `mcp`, `chat` (Slack/Teams/Google Chat) or `api`. The turn
+    // loop already knows its surface per turn and used to forget it; the row
+    // keeps the opening one so a list can say where a conversation came from.
+    surface: text("surface"),
+    // True once a person named the conversation (create with title, PATCH,
+    // Cockpit rename). The automatic titler never overwrites a locked title.
+    title_locked: boolean("title_locked").notNull().default(false),
     ...timestamps,
   },
   (t) => [
@@ -157,5 +166,27 @@ export const conversationToolCalls = pgTable(
   (t) => [
     index("conversation_tool_calls_conv_created_idx").on(t.conversation_id, t.created_at),
     index("conversation_tool_calls_parent_msg_idx").on(t.parent_message_id),
+  ],
+);
+
+/**
+ * A person's decision to keep a conversation out of their list. Per user,
+ * reversible, never a delete: the conversation stays an audit artefact and
+ * every other reader still sees it. Mirrors the reference model's "past
+ * chats" trash action without discarding governed history.
+ */
+export const conversationHidden = pgTable(
+  "conversation_hidden",
+  {
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    conversation_id: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    user_id: uuid("user_id").notNull(),
+    hidden_at: timestamp("hidden_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.conversation_id, t.user_id] }),
+    index("conversation_hidden_tenant_user_idx").on(t.tenant_id, t.user_id),
   ],
 );

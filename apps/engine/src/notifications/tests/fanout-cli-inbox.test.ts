@@ -119,9 +119,15 @@ describe("notifications: fanout → _cli/_inbox end-to-end", () => {
       db: ctx.db,
       boss: fakeBoss,
       tenant_id: ctx.tenant_id,
-      event_type: "workflow.updated",
+      event_type: "execution.failed",
       event_row_id: 2,
-      payload: { request_source: "api" },
+      payload: {
+        request_source: "api",
+        ...{
+          execution_id: "00000000-0000-4000-8000-0000000000e9",
+          workflow_id: "00000000-0000-4000-8000-0000000000f9",
+        },
+      },
       notificationAdapterResolver: resolver,
     });
 
@@ -245,7 +251,7 @@ describe("notifications: fanout → _cli/_inbox end-to-end", () => {
     expect(inbox[0]?.resource_id).toBe(connectorId);
   });
 
-  test("a purely informational event lands with actionable=false", async () => {
+  test("a purely informational event leaves no inbox row: a row is a task", async () => {
     await wipe();
     await seedDefaultCliRule();
     const resolver = makeAdapterResolver(ctx.db);
@@ -268,12 +274,10 @@ describe("notifications: fanout → _cli/_inbox end-to-end", () => {
       .select()
       .from(cliNotificationInbox)
       .where(eq(cliNotificationInbox.tenant_id, ctx.tenant_id));
-    expect(inbox.length).toBe(1);
-    expect(inbox[0]?.event_type).toBe("execution.succeeded");
-    expect(inbox[0]?.actionable).toBe(false);
+    expect(inbox.length).toBe(0);
   });
 
-  test("an unknown event type lands all-null/false without throwing", async () => {
+  test("an unknown event type leaves no row and does not throw", async () => {
     await wipe();
     await seedDefaultCliRule();
     const resolver = makeAdapterResolver(ctx.db);
@@ -292,9 +296,6 @@ describe("notifications: fanout → _cli/_inbox end-to-end", () => {
       .select()
       .from(cliNotificationInbox)
       .where(eq(cliNotificationInbox.tenant_id, ctx.tenant_id));
-    expect(inbox.length).toBe(1);
-    expect(inbox[0]?.actionable).toBe(false);
-    expect(inbox[0]?.resource_type).toBeNull();
-    expect(inbox[0]?.resource_id).toBeNull();
+    expect(inbox.length).toBe(0);
   });
 });

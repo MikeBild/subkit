@@ -11328,11 +11328,58 @@
               "null"
             ]
           },
+          "title_locked": {
+            "type": "boolean"
+          },
+          "origin_client": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "surface": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
             "type": "string"
           },
           "updated_at": {
             "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "answered",
+              "in_progress",
+              "awaiting_you",
+              "committed",
+              "abandoned",
+              "stale"
+            ]
+          },
+          "last_activity_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_count": {
+            "type": "integer"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/ConversationOwner"
+          },
+          "target_workflow": {
+            "$ref": "#/components/schemas/ConversationTargetRef"
+          },
+          "target_connector": {
+            "$ref": "#/components/schemas/ConversationTargetRef"
+          },
+          "hidden": {
+            "type": "boolean"
           },
           "last_message_role": {
             "type": [
@@ -11376,6 +11423,60 @@
           "title",
           "created_at",
           "updated_at"
+        ]
+      },
+      "ConversationOwner": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "system_account"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name"
+        ]
+      },
+      "ConversationTargetRef": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name"
         ]
       },
       "ConversationRunOutcome": {
@@ -11484,6 +11585,15 @@
         "properties": {
           "conversation": {
             "$ref": "#/components/schemas/Conversation"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/ConversationOwner"
+          },
+          "created_resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationCreatedResource"
+            }
           },
           "messages": {
             "type": "array",
@@ -11613,8 +11723,48 @@
         },
         "required": [
           "conversation",
+          "owner",
+          "created_resources",
           "messages",
           "tool_calls"
+        ]
+      },
+      "ConversationCreatedResource": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "workflow",
+              "connector",
+              "execution"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "slug",
+          "name",
+          "at"
         ]
       },
       "UIMessage": {
@@ -29382,6 +29532,31 @@
           {
             "schema": {
               "type": "string",
+              "enum": [
+                "exclude",
+                "only",
+                "all"
+              ]
+            },
+            "required": false,
+            "name": "hidden",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "user",
+                "system_account"
+              ]
+            },
+            "required": false,
+            "name": "owner_kind",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
               "format": "uuid"
             },
             "required": false,
@@ -30309,6 +30484,98 @@
           "conversations"
         ],
         "summary": "Cancel a conversation",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/hide": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Hide a conversation from the caller's own list (reversible, never a delete)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/unhide": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Put a hidden conversation back into the caller's list",
         "security": [
           {
             "bearerAuth": []

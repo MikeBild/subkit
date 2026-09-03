@@ -6,6 +6,91 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Added
+
+- The Cockpit chat list is a way back, not a queue: every row shows when the
+  conversation last moved and what it is about; a waiting question is marked;
+  the status word is gone from rows. A conversation can be hidden from one's
+  own list and shown again (`POST /v1/conversations/{id}/hide` and `/unhide`,
+  audited, never a delete); the hidden view lives at the bottom of the rail.
+- The conversation list and detail carry provenance: `surface` (Cockpit, sk,
+  MCP, chat channel, API), `origin_client`, the owner as a name, the target
+  workflow or connector as a name, `last_activity_at`, `message_count` and a
+  read-time `outcome` (answered, in progress, waiting for you, committed,
+  stopped, idle). The chat header says where a conversation came from and what
+  it has come to; the working context lists what it created, with links.
+- Workflow and connector pages list the conversations about them.
+- Conversations name themselves from their opening exchange: an imperative
+  4–6 word title after the first answer, refreshed every fifth exchange, never
+  over a title a person set.
+- "New conversation" in the Cockpit resets to the empty state with starter
+  cards and the composer; the start dialog is gone.
+
+### Changed
+
+- The notification inbox holds tasks only: the sk CLI inbox adapter no longer
+  persists informational events (step starts, routine successes), and a
+  one-shot boot migration removes the rows that were never tasks. The Cockpit's
+  Inbox page is gone; failed runs and proposed fixes remain on Runs and
+  Decisions.
+
+## 6.27.2 — 2026-09-03
+
+### Added
+
+- **Bootstrap preflight.** A production engine now decides whether this
+  release can run on the bootstrap it was given *before* it migrates
+  anything: `MASTER_KEY` present and 64 hex, PostgreSQL reachable and its
+  schema not ahead of this binary, the object store answering a written and
+  read-back probe object, the active settings revision parsing, every
+  `secret://name/version` it binds decrypting under the running key, and the
+  identity provider well-formed. A refusal exits 3 with one line —
+  `{"event":"preflight.refused","code":"…","detail":"…"}` — having applied no
+  migration, written no revision and touched no secret, so a rollback to the
+  previous release stays possible. The contract text is
+  `docs/BOOTSTRAP-PREFLIGHT.md`, carried byte-identically across the product
+  family and pinned by its sha256 in a test; the SubKit mapping is
+  `docs/admins/bootstrap-preflight.md`. Runs automatically on production
+  starts only, and on demand anywhere as `engine --preflight`.
+- **Host-side vault commands.** `engine --vault-check <name>` reports whether
+  a secret's current version decrypts (0 readable, 3 unreadable or absent).
+  `engine --vault-set <name> --value-file <path>` mints the next immutable
+  version, with `--bind <dotted.setting.path>,…` to re-point bindings at it,
+  `--purpose` recorded in the audit row, and `--if-unreadable` making the
+  command idempotent enough to run on every deploy. The value is read from a
+  file only — `--value` and friends are refused by name — and no output line
+  ever contains it.
+- **`engine --rewrap-master-key --from-file <previous-key>`.** Re-encrypts
+  every row in `runtime_secret_versions` under the running `MASTER_KEY`,
+  in place and in one transaction, preserving each version's AAD so the
+  active revision keeps resolving. It refuses while any replica lease is
+  still healthy, skips versions already under the running key so an
+  interrupted sweep is simply re-runnable, includes revoked versions, and
+  writes one `secret.master_key_rewrapped` audit row carrying both key
+  fingerprints. Scope is runtime secret versions; credential-vault
+  ciphertexts still need the re-issue sequence, and
+  `docs/admins/credentials-and-keys.md` now says so rather than claiming
+  rotation invalidates everything.
+
+### Fixed
+
+- `docs/admins/credentials-and-keys.md` stated that rotating `MASTER_KEY`
+  invalidates every payload with no way back. That is no longer true for
+  runtime secret versions, and the page said nothing about which stores the
+  new rewrap covers. Both the prose and the rotation-lifecycle diagram now
+  name the boundary.
+
+### Notes
+
+- Tranche A's T2 — moving a `MASTER_KEY`-derived API-key pepper into a stored
+  secret — **does not apply to SubKit**, and this release proves it rather
+  than asserting it. An API key is a plain, unsalted, unpeppered SHA-256 of
+  the token (`identity/api-key.ts`), the same helper backs portal tokens,
+  invites, OAuth tokens and browser sessions, and a repository-wide search
+  for `pepper`, `hkdf` or `deriveKey` returns nothing. Two tests pin it: one
+  computes the digest independently and requires `hashKey()` to equal it, the
+  other changes `MASTER_KEY` and requires the hash not to move.
+
 ## 6.27.1 — 2026-09-03
 
 ### Added
