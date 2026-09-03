@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 6.25.1 — 2026-09-03
+
+### Fixed
+
+- `GET /install/skill` answered 404 on a deployed engine: the binary route that
+  owns `/install/{asset}` was registered first and rejected `skill` as an
+  unknown asset, while the unit test registered the skill route alone and stayed
+  green. The skill route now registers before the asset route, and the test
+  goes through the real route table.
+
 ## 6.25.0 — 2026-09-03
 
 ### Added
