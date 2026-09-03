@@ -46,6 +46,7 @@ const MIGRATE_FLAG = "--migrate";
 const BRIDGE_STATELESS_FLAG = "--bridge-stateless";
 const SEED_FLAG = "--seed";
 const ISSUE_ADMIN_KEY_FLAG = "--issue-admin-key";
+const TOKEN_EXCHANGE_FLAG = "--token-exchange";
 const VERSION_FLAG = "--version";
 const HELP_FLAG = "--help";
 async function runServer(): Promise<void> {
@@ -864,6 +865,16 @@ async function main(): Promise<void> {
         }
       },
     );
+    return;
+  }
+
+  // --token-exchange --key-file <path> [--scope …] [--ttl <s>]: swap an
+  // API key read from a file for a short-lived Bearer token (RFC 8693) and
+  // print it. Host-side twin of POST /v1/oauth/token for scripts that hold
+  // the key on disk. Does NOT run migrations or seed.
+  if (process.argv.includes(TOKEN_EXCHANGE_FLAG)) {
+    const { runTokenExchangeCli } = await import("./auth/oauth/token-exchange-cli.ts");
+    await runTokenExchangeCli(process.argv.slice(2), loadConfigAndReconfigureLogger);
     return;
   }
 

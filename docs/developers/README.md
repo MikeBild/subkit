@@ -9,6 +9,7 @@ flowchart TD
     IS --> TP[tool-palette.md]
     IS --> CLI[cli-reference.md]
     IS --> CA[coding-agent-integration.md]
+    IS --> TX[token-exchange.md]
     TP --> EP[evidence-process.md]
 ```
 
@@ -25,5 +26,6 @@ Start with **quickstart** for a green gate locally, then **self-host** to stand 
 | Input Surfaces | The doors into the engine — CLI, REST, MCP, webhooks — over one RBAC and Audit model. | [input-surfaces.md](input-surfaces.md) |
 | sk CLI reference | Non-interactive `sk` commands for scripting and CI. | [cli-reference.md](cli-reference.md) |
 | Tool palette and dispatch | Every LLM action as a named, governed, audited tool. | [tool-palette.md](tool-palette.md) |
+| Machine tokens — token exchange | Swap an API key for a short-lived Bearer token (RFC 8693) at the engine's own token endpoint; `engine --token-exchange` on the host. | [token-exchange.md](token-exchange.md) |
 | Coding-agent integration | sk as the knowledge/skill source for Claude Code and Codex — briefing, capture, review, skills sync. | [coding-agent-integration.md](coding-agent-integration.md) |
 | Evidence process | Verifying a behavioral / LLM-path change with proof, not guesses. | [evidence-process.md](evidence-process.md) |

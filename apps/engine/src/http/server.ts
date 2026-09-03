@@ -11,6 +11,7 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { PgBoss } from "pg-boss";
+import { createTokenExchangeProvider } from "../auth/oauth/token-exchange.ts";
 import { createApiKeyProvider } from "../auth/providers/api-key.ts";
 import { createBrowserSessionProvider } from "../auth/providers/browser-session.ts";
 import { createMcpOAuthAuthProvider } from "../auth/providers/mcp-oauth.ts";
@@ -162,6 +163,10 @@ export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProvide
   }
   reg.register(createPortalTokenProvider(db ? { db } : {}));
   registered.push("portal_token");
+  // The exchanged token (RFC 8693, minted from an API key) sits right before
+  // the key: it is a JWT with its own `typ`, so the check is a header decode.
+  reg.register(createTokenExchangeProvider(db ? { db } : {}));
+  registered.push("token_exchange");
   reg.register(createApiKeyProvider(db ? { db } : {}));
   registered.push("api_key");
   for (const provider of providerConfigs) {

@@ -31,6 +31,13 @@ function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
     );
   }
   const traceId = entry.trace_id ?? ctx.trace_id ?? "";
+  // An actor that authenticated with an exchanged token (RFC 8693, minted
+  // from an API key) is the SAME actor as the key — same actor_type and
+  // actor_id — so the only trace of the credential path is `via` in the
+  // metadata. Emitters that already use `via` for their own meaning (the
+  // tool dispatcher's surface) keep it; the credential path then lands in
+  // `auth_via` so neither field is overwritten.
+  const metadata = withAuthVia(entry.metadata ?? {}, ctx.auth_via);
 
   // Audit rows are append-only and immutable. A leaked secret in
   // `metadata` / `before` / `after` / `reason` survives forever, so
@@ -58,8 +65,18 @@ function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
     before: (entry.before ?? null) as AuditEntry["before"],
     after: (entry.after ?? null) as AuditEntry["after"],
     reason: entry.reason ?? null,
-    metadata: entry.metadata ?? {},
+    metadata,
   });
+}
+
+function withAuthVia(
+  metadata: AuditEntry["metadata"],
+  via: string | undefined,
+): AuditEntry["metadata"] {
+  if (!via) return metadata;
+  if (!("via" in metadata)) return { ...metadata, via };
+  if (metadata.via === via || "auth_via" in metadata) return metadata;
+  return { ...metadata, auth_via: via };
 }
 
 function logEntry(filled: AuditEntry): void {

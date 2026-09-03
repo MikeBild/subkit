@@ -23,6 +23,10 @@ export interface ResolvedPrincipal {
   allowed_workflows?: AllowList;
   allowed_connectors?: AllowList;
   email?: string;
+  /** Set when the credential was a short-lived token minted from an API key
+   *  by the RFC 8693 exchange (`auth/oauth/token-exchange.ts`). The principal
+   *  is otherwise identical to the key's; audit rows carry `via` in metadata. */
+  via?: "token_exchange";
 }
 
 export interface AuthProviderCapabilities {

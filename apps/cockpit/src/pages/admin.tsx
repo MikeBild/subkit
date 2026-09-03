@@ -126,6 +126,15 @@ interface PermissionItem {
   resource_type: string;
 }
 
+// RFC 8693 token exchange at the engine's own token endpoint — one line a
+// script can paste. The key never leaves the file it is read from.
+const TOKEN_EXCHANGE_CURL = [
+  "curl -sS -X POST $SUBKIT_URL/v1/oauth/token \\",
+  '  --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \\',
+  '  --data-urlencode "subject_token=$(cat /etc/subkit/api-key)" \\',
+  '  --data-urlencode "subject_token_type=urn:subkit:params:oauth:token-type:api-key"',
+].join("\n");
+
 interface ApiKeyItem {
   id: string;
   name: string | null;
@@ -692,6 +701,14 @@ export function ApiAccessPage() {
         ) : undefined
       }
     >
+      <Card size="sm" data-testid="api-keys-token-exchange">
+        <CardContent className="flex flex-col gap-2 p-4">
+          <p className="text-sm text-muted-foreground">{t("apiKeys.exchangeHint")}</p>
+          <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
+            <code>{TOKEN_EXCHANGE_CURL}</code>
+          </pre>
+        </CardContent>
+      </Card>
       {query.isPending ? (
         <LoadingCards testId="api-keys-loading" />
       ) : !query.data?.items.length ? (
