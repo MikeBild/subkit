@@ -28,6 +28,7 @@
 // middleware is non-blocking and these handlers never call requireAuth.
 
 import { createHash } from "node:crypto";
+import { posix } from "node:path";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { type LlmsPage, OPTIONAL_PATHS, renderLlmsIndex } from "@shared/llms-index.ts";
 import type { Context } from "hono";
@@ -70,7 +71,38 @@ function buildSectionMap(full: string): Map<string, string> {
   return map;
 }
 
-const sections = buildSectionMap(llmsFullTxt);
+/**
+ * Cross-links inside a served page point at repository paths, and most of the
+ * repository is not in the binary. Left alone they become 404s that read as
+ * breakage: a comparison run on 2026-09-03 counted twelve of them across the
+ * three pages and called it "an accidental broken-link set, not an
+ * intentional gate". So a link to a page this engine does not carry is
+ * demoted to its text — the sentence still reads, and nothing promises a
+ * page that is not there. Links to carried pages are left intact and resolve
+ * relative to the page, exactly as before.
+ */
+export function demoteDanglingLinks(
+  pagePath: string,
+  markdown: string,
+  carried: ReadonlySet<string>,
+): string {
+  const base = posix.dirname(pagePath);
+  return markdown.replace(
+    /\[([^\]]+)\]\(((?:\.\.\/|\.\/)?[A-Za-z0-9_./-]+\.md)(#[^)]*)?\)/g,
+    (whole, text: string, target: string) => {
+      const resolved = posix.normalize(posix.join(base, target));
+      return carried.has(resolved) ? whole : text;
+    },
+  );
+}
+
+const rawSections = buildSectionMap(llmsFullTxt);
+const sections = new Map(
+  [...rawSections].map(([path, body]) => [
+    path,
+    demoteDanglingLinks(path, body, new Set(rawSections.keys())),
+  ]),
+);
 
 // Origin the engine is reached at: the configured public base URL (proxy- and
 // OAuth-issuer-correct), else the forwarded proto/host, else the request URL
