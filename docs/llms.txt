@@ -62,6 +62,7 @@
 - [Recipe authoring](developers/recipes.md): Common automations start from a vetted blueprint, not a blank page.
 - [Self-Host sk — Zero to Running](developers/self-host.md): sk runs inside your own infrastructure, so your data stays where it already is.
 - [Step kinds — field reference](developers/step-kinds-reference.md): A Workflow is composed of Steps.
+- [Machine tokens — swap an API key for a short-lived Bearer token](developers/token-exchange.md): An API key is a long-lived secret.
 - [Tool palette and dispatch](developers/tool-palette.md): Every action an LLM can take against sk is a named tool that goes through one registry, one policy gate, and one audit trail.
 
 ## Admins

@@ -25,7 +25,9 @@ describe("resolveEffectiveUserRole", () => {
     for (const path of [
       "apps/engine/src/auth/providers/oidc.ts",
       "apps/engine/src/auth/providers/browser-session.ts",
-      "apps/engine/src/auth/providers/api-key.ts",
+      // The api_key provider resolves its owner in api-key-row.ts, shared with
+      // the RFC 8693 exchanged token so both credentials take the same path.
+      "apps/engine/src/auth/providers/api-key-row.ts",
       "apps/engine/src/auth/providers/mcp-oauth.ts",
     ]) {
       expect(readFileSync(path, "utf8")).toContain("resolveEffectiveUserRole(");

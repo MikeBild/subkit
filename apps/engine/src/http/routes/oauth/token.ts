@@ -6,7 +6,13 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { readRequestSource } from "../../../audit/index.ts";
-import { createMcpOAuthProvider } from "../../../auth/index.ts";
+import {
+  ACCESS_TOKEN_TYPE,
+  createMcpOAuthProvider,
+  exchangeApiKeyForToken,
+  TOKEN_EXCHANGE_GRANT_TYPE,
+  TokenExchangeError,
+} from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import { logger } from "../../../logging/index.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -88,6 +94,52 @@ export function registerOAuthTokenRoutes(app: OpenAPIHono<AppEnv>): void {
           error: err instanceof Error ? err.message : String(err),
         });
         return c.json({ error: oauthError }, 400, { "Cache-Control": "no-store" });
+      }
+    }
+
+    // ── RFC 8693 token exchange: API key → short-lived Bearer token ──────
+    // No client secret and no client_id — the API key is the credential.
+    if (body.grant_type === TOKEN_EXCHANGE_GRANT_TYPE) {
+      const { subject_token: subjectToken, subject_token_type: subjectTokenType } = body;
+      if (!subjectToken || !subjectTokenType) {
+        return c.json(
+          { error: "invalid_request", error_description: "missing required parameters" },
+          400,
+        );
+      }
+      if (body.requested_token_type && body.requested_token_type !== ACCESS_TOKEN_TYPE) {
+        return c.json(
+          { error: "invalid_request", error_description: "unsupported requested_token_type" },
+          400,
+          { "Cache-Control": "no-store" },
+        );
+      }
+      try {
+        const tokens = await exchangeApiKeyForToken({
+          db,
+          subjectToken,
+          subjectTokenType,
+          scope: body.scope,
+          ttl: body.ttl,
+          requestSource: readRequestSource(c) ?? "api",
+          req: c.req.raw,
+        });
+        return c.json(tokens, 200, { "Cache-Control": "no-store" });
+      } catch (err) {
+        const oauthError = err instanceof TokenExchangeError ? err.oauth_error : "invalid_grant";
+        const description = err instanceof TokenExchangeError ? err.message : undefined;
+        logger.warn({
+          module: "mcp_oauth",
+          action: "token.exchange_refused",
+          msg: "api key token exchange refused",
+          oauth_error: oauthError,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return c.json(
+          { error: oauthError, ...(description ? { error_description: description } : {}) },
+          oauthError === "invalid_grant" ? 401 : 400,
+          { "Cache-Control": "no-store" },
+        );
       }
     }
 

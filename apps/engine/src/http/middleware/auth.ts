@@ -42,6 +42,7 @@ export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandle
           tenant_id: principal.tenant_id,
           actor_id: principal.id,
           request_source: cockpitRequest ? "ui" : (c.get("request_source") ?? "api"),
+          ...(principal.via ? { auth_via: principal.via } : {}),
         },
         async () => {
           await next();

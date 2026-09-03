@@ -9,6 +9,7 @@
 // The stdio transport re-resolves the principal from an env-sourced api
 // key once at boot, then reuses it for the life of the process.
 
+import { createTokenExchangeProvider } from "../auth/oauth/token-exchange.ts";
 import { createApiKeyProvider } from "../auth/providers/api-key.ts";
 import { AuthProviderRegistry } from "../auth/registry.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
@@ -19,6 +20,9 @@ export async function resolveStdioPrincipal(
   apiKey: string,
 ): Promise<ResolvedPrincipal | null> {
   const registry = new AuthProviderRegistry();
+  // stdio accepts the same two machine credentials as HTTP: an exchanged
+  // token or the key itself.
+  registry.register(createTokenExchangeProvider({ db }));
   registry.register(createApiKeyProvider({ db }));
   // Build a synthetic Request so the api-key provider sees the token.
   const req = new Request("http://stdio.local/", {
