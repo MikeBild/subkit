@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.28.0 — 2026-09-03
+
 ### Added
 
 - The Cockpit chat list is a way back, not a queue: every row shows when the
