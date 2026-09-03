@@ -27,7 +27,7 @@ Read touched code, the nearest AGENTS.md, and the smallest relevant docs. Use:
 - packages/shared/AGENTS.md for shared contracts
 - docs/developers/agent-navigation.md for the detailed former root guide
 
-The engine currently contains 47 directories under `apps/engine/src/`; the
+The engine currently contains 48 directories under `apps/engine/src/`; the
 subsystem-count contract keeps this navigation summary aligned with the tree.
 
 Prefer focused changes, existing abstractions, and generated-source workflows. Never discard unrelated dirty-worktree state.

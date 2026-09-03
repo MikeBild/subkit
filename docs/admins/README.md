@@ -10,10 +10,12 @@ flowchart TD
     Q --> K[credentials-and-keys.md]
     C --> H[production-hardening.md]
     R --> H
+    K --> B[bootstrap-preflight.md]
     K --> H
+    B --> H
 ```
 
-Start at **quickstart.md** to wire configuration, roles, and keys in one pass. From there, **configuration.md** (with the generated **settings-reference.md**) governs the engine, **rbac-and-roles.md** governs who can do what, **credentials-and-keys.md** governs secrets, and **production-hardening.md** is the final checklist before you go live.
+Start at **quickstart.md** to wire configuration, roles, and keys in one pass. From there, **configuration.md** (with the generated **settings-reference.md**) governs the engine, **rbac-and-roles.md** governs who can do what, **credentials-and-keys.md** governs secrets, **bootstrap-preflight.md** governs what a production release checks before it migrates anything, and **production-hardening.md** is the final checklist before you go live.
 
 | Page | What it covers |
 |---|---|
@@ -22,4 +24,5 @@ Start at **quickstart.md** to wire configuration, roles, and keys in one pass. F
 | [settings-reference.md](settings-reference.md) | Generated per-leaf reference: path, type, default, scope, sensitive, requiresRestart. |
 | [rbac-and-roles.md](rbac-and-roles.md) | Identity (OIDC/SSO, API keys, portal tokens), RBAC/ABAC roles, and Before-Request Hooks. |
 | [credentials-and-keys.md](credentials-and-keys.md) | The credential vault, master-key rotation, and release signing — secrets encrypted at rest and rotated on demand. |
+| [bootstrap-preflight.md](bootstrap-preflight.md) | The six checks a production start runs before any migration, the refusal codes, and the host-side vault and rewrap commands. |
 | [production-hardening.md](production-hardening.md) | The readiness checklist plus backup and recovery to ship production-ready, audit-ready, and recoverable. |

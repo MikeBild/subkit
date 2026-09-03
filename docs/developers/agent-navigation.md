@@ -171,7 +171,7 @@ layer, stop and move it.
 - **`packages/shared/`** — shared domain types & helpers. Pure, deterministic, no
   `apps/*` imports. See `packages/shared/AGENTS.md` for stricter rules.
 
-Subsystem map inside `apps/engine/src/` (47 directories + 5 loose root files):
+Subsystem map inside `apps/engine/src/` (48 directories + 5 loose root files):
 
 | Concern | Directory | Key docs |
 |---|---|---|
@@ -203,6 +203,7 @@ Subsystem map inside `apps/engine/src/` (47 directories + 5 loose root files):
 | Prometheus metrics + tracing | `observability/` | `docs/operators/observability.md` |
 | First-run bootstrap + demo seed | `onboarding/` | `docs/operators/observability.md` |
 | Operator health digest (drift/repair/queue summary) | `operator/` | `docs/operators/observability.md` |
+| Bootstrap preflight + host-side vault commands | `preflight/` | `docs/admins/bootstrap-preflight.md` |
 | PG LISTEN/NOTIFY streaming | `pubsub/` | `docs/concepts/workflows.md` |
 | pg-boss handler dispatch | `queue/` | `docs/concepts/workflows.md` |
 | RBAC (40+ permissions) + ABAC + policies | `rbac/` | `docs/admins/rbac-and-roles.md` |

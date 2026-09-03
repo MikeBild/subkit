@@ -43,6 +43,17 @@ export class CryptoError extends Error {
   }
 }
 
+/**
+ * Decode a 64-hex master key into its 32 raw bytes. Exported so the
+ * host-side rewrap path (`engine --rewrap-master-key --from-file`) can
+ * hold a PREVIOUS key without it becoming the process-wide cached key —
+ * a rewrap decrypts under one key and re-encrypts under another, so it
+ * is the one caller that legitimately needs two.
+ */
+export function parseMasterKeyHex(hex: string): Buffer {
+  return parseKey(hex);
+}
+
 function parseKey(hex: string): Buffer {
   if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
     throw new CryptoError("MASTER_KEY must be exactly 64 hex characters (32 bytes)", "key_length");
@@ -93,7 +104,19 @@ export interface EncryptedPayload {
  * be lifted and replayed under a different identity.
  */
 export function encryptSecret(plaintext: string, aad?: string): EncryptedPayload {
-  const key = getKey();
+  return encryptSecretWithKey(getKey(), plaintext, aad);
+}
+
+/**
+ * Same as `encryptSecret` but with an explicitly supplied key. Only the
+ * rewrap path uses this; every request path goes through `encryptSecret`
+ * so there is exactly one place the running key is read.
+ */
+export function encryptSecretWithKey(
+  key: Buffer,
+  plaintext: string,
+  aad?: string,
+): EncryptedPayload {
   const iv = randomBytes(AES_IV_BYTES);
   const cipher = createCipheriv(AES_ALGORITHM, key, iv, {
     authTagLength: AES_AUTH_TAG_BYTES,
@@ -121,7 +144,15 @@ export function encryptSecret(plaintext: string, aad?: string): EncryptedPayload
  * or wrong key all throw `CryptoError("decrypt_failed")`.
  */
 export function decryptSecret(payload: EncryptedPayload, aad?: string): string {
-  const key = getKey();
+  return decryptSecretWithKey(getKey(), payload, aad);
+}
+
+/**
+ * Same as `decryptSecret` but with an explicitly supplied key — the
+ * rewrap path reads every stored version under the PREVIOUS key before
+ * writing it back under the running one.
+ */
+export function decryptSecretWithKey(key: Buffer, payload: EncryptedPayload, aad?: string): string {
   if (payload.iv.length !== AES_IV_BYTES) {
     throw new CryptoError(`iv length ${payload.iv.length}, expected ${AES_IV_BYTES}`, "iv_length");
   }
