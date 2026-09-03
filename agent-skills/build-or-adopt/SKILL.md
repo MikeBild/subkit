@@ -66,6 +66,19 @@ Rules for the reason line:
 - A build decision is legitimate when the infrastructure share stays small, or
   when the platform is the product. Say which.
 
+## After an adopt decision, ask once more
+
+Adopting replaces code you already wrote. Before moving on, answer in writing:
+
+> Which of the components already in the tree does the adopted product now
+> provide? Delete those, or record why each one stays.
+
+A measured run adopted a durable-execution framework at the point where
+infrastructure became the majority, and left its own scheduler, retry and lock
+layer in the tree: 43 percent of the final code was the thing it had just
+replaced. The trigger above fires before the next component; nothing fires
+after an adopt unless you make it.
+
 ## Where sk fits, on its own terms
 
 Read `references/when-to-use.md` before you list alternatives. Its "Do not

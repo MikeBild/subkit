@@ -10,6 +10,7 @@ import {
   workflowVersions,
 } from "../../../../db/schema/index.ts";
 import { runExecution } from "../../../../execution/engine.ts";
+import { findExecutionByIdempotencyKey } from "../../../../execution/state.ts";
 import { logger } from "../../../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../../../observability/instrumentation.ts";
 import { resolveWorkflowInputContract } from "../../../../workflows/input-schema-synth.ts";
@@ -109,6 +110,10 @@ const Input = z
     workflow: z.string().min(1).max(256).optional(),
     input: workflowInputSlot.optional(),
     environment: z.enum(["dev", "prod"]).default("dev"),
+    /** Makes this run safe to repeat: a second call with the same key in this
+     *  tenant starts nothing and returns the first run with
+     *  `idempotent_replay: true`. Same contract as POST /v1/executions. */
+    idempotency_key: z.string().min(1).max(200).optional(),
     /**
      * When true, the result envelope always includes a `step_trace`
      * array (one entry per step: status, kind, duration_ms,
@@ -482,6 +487,27 @@ export const runWorkflowTool: ConversationTool = {
       // would-be request) but does not dispatch them, so an authoring-time
       // verification of a saved workflow cannot fire a real send.
       const holdWrites = args.execute_writes !== true;
+      if (args.idempotency_key) {
+        const existing = await findExecutionByIdempotencyKey(
+          ctx.db,
+          ctx.tenant_id,
+          args.idempotency_key,
+        );
+        if (existing) {
+          return {
+            ok: true,
+            data: withStatus(
+              {
+                execution_id: existing.id,
+                execution_status: existing.status,
+                idempotent_replay: true,
+                message: `nothing new was started — execution ${existing.id} already ran under idempotency key '${args.idempotency_key}' (status: ${existing.status}); inspect it with get_execution`,
+              },
+              existing.status === "succeeded" ? "succeeded" : "failed",
+            ),
+          };
+        }
+      }
       const result = await runExecution({
         db: ctx.db,
         tenant_id: ctx.tenant_id,
@@ -492,6 +518,7 @@ export const runWorkflowTool: ConversationTool = {
           trace_id: null,
           principal: ctx.principal,
           execution_mode: args.environment,
+          ...(args.idempotency_key ? { idempotency_key: args.idempotency_key } : {}),
           ...(holdWrites ? { hold_writes: true } : {}),
         },
       });

@@ -59,6 +59,13 @@ export class PubSubListener {
   /** Events that arrived via NOTIFY during catch-up. Flushed after. */
   private pendingDuringCatchup: Map<OutboxChannel, number[]> = new Map();
   private catchingUp = false;
+  /** The notification currently being drained, so `stop()` can wait for its
+   *  cursor write. Without this a consumer stopped right after its events
+   *  were dispatched could leave `outbox_cursors` behind the events it had
+   *  already delivered, and a fresh consumer seeding from the channel's
+   *  high-water mark would replay them. Seen as a CI flake in
+   *  catchup.test.ts on 2026-09-03. */
+  private inflight = new Set<Promise<void>>();
   private readonly channels: readonly OutboxChannel[];
   private readonly emitter: PubSubEmitter;
   private readonly listenerId: string;
@@ -91,6 +98,13 @@ export class PubSubListener {
   /** Cleanly disconnect and stop reconnecting. Safe to call multiple times. */
   async stop(): Promise<void> {
     this.stopped = true;
+    // Let drains that already dispatched finish persisting their cursors.
+    // Notifications are handled fire-and-forget (see `void this.onNotification`),
+    // so more than one can be in flight.
+    if (this.inflight.size > 0) {
+      await Promise.allSettled([...this.inflight]);
+      this.inflight.clear();
+    }
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -246,7 +260,13 @@ export class PubSubListener {
     // Drain anything strictly newer than the cursor up through (and
     // including) this id. That way, if an earlier event slipped through
     // without being observed, we pick it up here.
-    await this.catchUpChannel(channel, id);
+    const drain = this.catchUpChannel(channel, id);
+    this.inflight.add(drain);
+    try {
+      await drain;
+    } finally {
+      this.inflight.delete(drain);
+    }
   }
 
   /** Catch up a single channel from its stored cursor up to at least `untilId`. */
