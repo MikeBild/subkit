@@ -57,6 +57,38 @@ const cancelRoute = createRoute({
   },
 });
 
+const hideRoute = createRoute({
+  method: "post",
+  path: "/v1/conversations/{id}/hide",
+  tags: ["conversations"],
+  summary: "Hide a conversation from the caller's own list (reversible, never a delete)",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: ConversationSchema } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+const unhideRoute = createRoute({
+  method: "post",
+  path: "/v1/conversations/{id}/unhide",
+  tags: ["conversations"],
+  summary: "Put a hidden conversation back into the caller's list",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: ConversationSchema } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
 const contextSnapshotRoute = createRoute({
   method: "get",
   path: "/v1/conversations/{id}/context-snapshot",
@@ -143,6 +175,23 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!row) throw new NotFoundError("conversation");
     return c.json(row, 200);
   });
+
+  for (const [route, hidden] of [
+    [hideRoute, true],
+    [unhideRoute, false],
+  ] as const) {
+    app.openapi(route, async (c) => {
+      const principal = requireAuth(c);
+      const db = c.get("db");
+      const { id } = c.req.valid("param");
+      const row = await svc.setConversationHidden(
+        { tenant_id: principal.tenant_id, conversation_id: id, user_id: principal.id, hidden },
+        db,
+      );
+      if (!row) throw new NotFoundError("conversation");
+      return c.json(row, 200);
+    });
+  }
 
   app.openapi(contextSnapshotRoute, async (c) => {
     const principal = requireAuth(c);

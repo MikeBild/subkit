@@ -13,7 +13,6 @@ const routes = [
   "",
   "decisions",
   "chat",
-  "inbox",
   "workflows",
   "runs",
   "connectors",
@@ -121,7 +120,24 @@ const conversations = Array.from({ length: 32 }, (_, index) => {
       index % 4 === 0
         ? `{"tool":"run_workflow","output":{"execution_id":"${uuid}"}}`
         : "Eine lange, aber verständliche Zusammenfassung des letzten Arbeitsschritts.",
-    ...(index % 6 === 1 ? { target_workflow_id: uuid } : {}),
+    ...(index % 6 === 1
+      ? {
+          target_workflow_id: uuid,
+          target_workflow: { id: uuid, slug: "monatsreport", name: "Monatsreport" },
+        }
+      : {}),
+    // What the row has come to, where it came from and whose it is — the
+    // list reads these, never the status word.
+    outcome: waiting
+      ? "awaiting_you"
+      : index % 5 === 0
+        ? "in_progress"
+        : index % 7 === 0
+          ? "stale"
+          : "answered",
+    last_activity_at: new Date(Date.parse(conversation.updated_at) - index * 60_000).toISOString(),
+    owner: { id: uuid, kind: "user", name: "operator@example.com" },
+    surface: ["web", "sk_interactive", "mcp", "api"][index % 4],
     ...(waiting
       ? {
           pending_elicitation_expires_at: new Date(
@@ -446,15 +462,39 @@ async function mockApi(route) {
     // `total: 32`, and photographed 32 positions waiting on an answer where the
     // fixture had built 11. Every frame of that surface overstated it, and the
     // number a person quoted from the screenshot was the fixture's length.
-    const status = new URL(request.url()).searchParams.get("status");
+    const search = new URL(request.url()).searchParams;
+    const status = search.get("status");
+    // Nothing in this fixture is hidden, so the hidden view is empty — the
+    // state that shows the empty line rather than a copy of the list.
+    if (search.get("hidden") === "only") return json(route, { items: [], total: 0 });
     const items = status ? conversations.filter((entry) => entry.status === status) : conversations;
     return json(route, { items, total: items.length });
   }
   if (path === "/v1/conversations" && request.method() === "POST")
     return sse(route, { conversation, status: "active" });
+  if (path === `/v1/conversations/${uuid}/hide` || path === `/v1/conversations/${uuid}/unhide`)
+    return json(route, conversation);
   if (path === `/v1/conversations/${uuid}`) {
     return json(route, {
-      conversation,
+      conversation: { ...conversation, surface: "web" },
+      owner: { id: uuid, kind: "user", name: "operator@example.com" },
+      // One thing built and one thing run: the header lists both with links.
+      created_resources: [
+        {
+          kind: "execution",
+          id: uuid,
+          slug: "monatsreport",
+          name: null,
+          at: conversation.updated_at,
+        },
+        {
+          kind: "workflow",
+          id: uuid,
+          slug: "monatsreport",
+          name: "Monatsreport",
+          at: new Date(Date.parse(conversation.updated_at) - 3_600_000).toISOString(),
+        },
+      ],
       messages,
       tool_calls: [],
       resume_summary: {
@@ -1682,15 +1722,22 @@ for (const locale of variants) {
       });
 
       await stand.visit(page, "chat");
+      // "New" resets to the empty state — starter cards and the composer,
+      // no dialog in between.
       await page.locator('[data-testid="conversation-new"]').click();
-      await page
-        .locator('[data-testid="conversation-create-dialog"]')
-        .waitFor({ state: "visible" });
+      await page.locator('[data-testid="chat-empty"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-chat-create`, {
+      await shoot(page, `${locale.artifact}-desktop-chat-new`, {
         fullPage: false,
       });
-      await page.locator('[data-testid="conversation-create-cancel"]').click();
+      // The hidden view: empty here, because this fixture hides nothing.
+      await page.locator('[data-testid="conversation-toggle-hidden"]').click();
+      await page.locator('[data-testid="conversation-hidden-empty"]').waitFor({ state: "visible" });
+      await shoot(page, `${locale.artifact}-desktop-chat-hidden`, {
+        fullPage: false,
+      });
+      await page.locator('[data-testid="conversation-toggle-hidden"]').click();
+      await page.locator('[data-testid="conversation-item-0"]').click();
       const tool = page.locator('[data-testid="chat-message-3-tool-0"]');
       await tool.scrollIntoViewIfNeeded();
       await page.locator('[data-testid="chat-message-3-tool-0-toggle"]').click();

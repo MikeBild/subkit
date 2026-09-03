@@ -134,6 +134,8 @@ export async function forkConversation(
       target_connector_id: source.target_connector_id,
       target_workflow_id: source.target_workflow_id,
       status: "active",
+      origin_client: source.origin_client ?? null,
+      surface: source.surface ?? null,
       draft: source.draft,
       owner_id: p.actor_id ?? source.owner_id ?? null,
       loaded_skills: source.loaded_skills,

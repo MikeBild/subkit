@@ -35,6 +35,7 @@ export {
   mintDraftCredentialSetupUrl,
   validateDraftCredentialSetup,
 } from "./draft-credential-setup.ts";
+export * from "./lifecycle-view.ts";
 export {
   claimDraftCredentialNativeUrlElicitation,
   completeDraftCredentialNativeUrlElicitation,

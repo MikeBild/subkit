@@ -5,15 +5,25 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import {
+  connectors,
   conversationElicitations,
+  conversationHidden,
   conversationMessages,
   conversations,
+  workflows,
 } from "../../db/schema/index.ts";
 import { now } from "../../utils/clock.ts";
 import { cancelConversationAbort } from "../abort.ts";
 import { stringifyConversationExcerpt, truncateExcerpt } from "../excerpt.ts";
-import type { ConversationRecord, ConversationStatus } from "../types.ts";
-import { rowToRecord } from "./shared.ts";
+import type { ConversationOutcome } from "../lifecycle-view.ts";
+import { deriveConversationOutcome } from "../lifecycle-view.ts";
+import type {
+  ConversationOwner,
+  ConversationRecord,
+  ConversationStatus,
+  ConversationTargetRef,
+} from "../types.ts";
+import { loadOwners, rowToRecord } from "./shared.ts";
 
 export async function cancelConversation(
   tenant_id: string,
@@ -61,6 +71,12 @@ export interface ListConversationsParams {
   target_workflow_id?: string;
   target_connector_id?: string;
   q?: string;
+  /** The person reading the list — needed for `hidden` and the `hidden` flag. */
+  viewer_user_id?: string;
+  /** Default `exclude` when a viewer is known: a hidden conversation stays out of the way. */
+  hidden?: "exclude" | "only" | "all";
+  /** Restrict to conversations owned by people or by machine accounts. */
+  owner_kind?: "user" | "system_account";
   sort?: "title" | "status" | "created_at" | "updated_at";
   order?: "asc" | "desc";
   limit?: number;
@@ -81,6 +97,17 @@ export interface ConversationListItem extends ConversationRecord {
   /** Which `ask_user_*` raised it — a confirmation reads differently from a
    *  free-text question, and the queue can say so without opening anything. */
   pending_elicitation_tool: string | null;
+  /** Newest message time — the activity clock the list sorts and ages by;
+   *  `updated_at` also moves on bookkeeping writes and is not that. */
+  last_activity_at: string | null;
+  message_count: number;
+  /** Read-time projection of status + last message — see `lifecycle-view.ts`. */
+  outcome: ConversationOutcome;
+  owner: ConversationOwner | null;
+  target_workflow: ConversationTargetRef | null;
+  target_connector: ConversationTargetRef | null;
+  /** Hidden by the calling person. Only meaningful when the list ran with a viewer. */
+  hidden: boolean;
 }
 
 function conversationListConds(p: ListConversationsParams) {
@@ -92,6 +119,24 @@ function conversationListConds(p: ListConversationsParams) {
   }
   if (p.target_connector_id) {
     tenantConds.push(eq(conversations.target_connector_id, p.target_connector_id));
+  }
+  if (p.viewer_user_id && p.hidden !== "all") {
+    const hiddenForViewer = sql<boolean>`exists (
+      select 1 from conversation_hidden ch
+      where ch.tenant_id = ${p.tenant_id}
+        and ch.conversation_id = ${conversations.id}
+        and ch.user_id = ${p.viewer_user_id}
+    )`;
+    tenantConds.push(p.hidden === "only" ? hiddenForViewer : sql`not ${hiddenForViewer}`);
+  }
+  if (p.owner_kind === "user") {
+    tenantConds.push(
+      sql`exists (select 1 from users u where u.tenant_id = ${p.tenant_id} and u.id = ${conversations.owner_id})`,
+    );
+  } else if (p.owner_kind === "system_account") {
+    tenantConds.push(
+      sql`exists (select 1 from system_accounts sa where sa.tenant_id = ${p.tenant_id} and sa.id = ${conversations.owner_id})`,
+    );
   }
   if (p.q) {
     const needle = `%${p.q}%`;
@@ -150,7 +195,19 @@ export async function listConversations(
     .orderBy(desc(conversationMessages.created_at));
 
   const latestByConversation = new Map<string, { role: string | null; excerpt: string | null }>();
+  // Activity clock and size, from the same rows: the newest message of any
+  // role (tool rows count — a turn that died mid-way is still activity) and
+  // how many there are.
+  const activity = new Map<string, { last_role: string; last_at: Date; count: number }>();
   for (const message of messages) {
+    const seen = activity.get(message.conversation_id);
+    if (seen) seen.count += 1;
+    else
+      activity.set(message.conversation_id, {
+        last_role: message.role,
+        last_at: message.created_at,
+        count: 1,
+      });
     if (latestByConversation.has(message.conversation_id)) continue;
     const excerpt = stringifyConversationExcerpt(message.content);
     if (!excerpt) continue;
@@ -159,6 +216,38 @@ export async function listConversations(
       excerpt: truncateExcerpt(excerpt),
     });
   }
+
+  const [owners, targetWorkflows, targetConnectors, hiddenRows] = await Promise.all([
+    loadOwners(
+      p.tenant_id,
+      rows.map((row) => row.owner_id),
+      exec,
+    ),
+    loadTargetWorkflows(
+      p.tenant_id,
+      rows.map((row) => row.target_workflow_id),
+      exec,
+    ),
+    loadTargetConnectors(
+      p.tenant_id,
+      rows.map((row) => row.target_connector_id),
+      exec,
+    ),
+    p.viewer_user_id
+      ? exec
+          .select({ conversation_id: conversationHidden.conversation_id })
+          .from(conversationHidden)
+          .where(
+            and(
+              eq(conversationHidden.tenant_id, p.tenant_id),
+              eq(conversationHidden.user_id, p.viewer_user_id),
+              inArray(conversationHidden.conversation_id, conversationIds),
+            ),
+          )
+      : Promise.resolve([] as Array<{ conversation_id: string }>),
+  ]);
+  const hiddenIds = new Set(hiddenRows.map((row) => row.conversation_id));
+  const nowMs = now();
 
   // The pending prompt a waiting conversation is running out of, AND what it
   // asks. One query for the whole page, served by the existing
@@ -191,10 +280,26 @@ export async function listConversations(
   return rows.map((row) => {
     const latest = latestByConversation.get(row.id);
     const pending = pendingByConversation.get(row.id);
+    const act = activity.get(row.id);
+    const lastActivityAt = act ? act.last_at.toISOString() : null;
     return {
       ...rowToRecord(row),
       last_message_role: latest?.role ?? null,
       last_message_excerpt: latest?.excerpt ?? null,
+      last_activity_at: lastActivityAt,
+      message_count: act?.count ?? 0,
+      outcome: deriveConversationOutcome({
+        status: row.status,
+        last_message_role: act?.last_role ?? null,
+        last_activity_at: lastActivityAt,
+        now: nowMs,
+      }),
+      owner: (row.owner_id && owners.get(row.owner_id)) || null,
+      target_workflow:
+        (row.target_workflow_id && targetWorkflows.get(row.target_workflow_id)) || null,
+      target_connector:
+        (row.target_connector_id && targetConnectors.get(row.target_connector_id)) || null,
+      hidden: hiddenIds.has(row.id),
       pending_elicitation_expires_at: pending ? pending.expires_at.toISOString() : null,
       // The whole question, not an excerpt of it. Clipping at 140 here made the
       // decision queue's expanded panel show the reader exactly what its
@@ -212,6 +317,85 @@ export async function listConversations(
       pending_elicitation_tool: pending?.tool_name ?? null,
     };
   });
+}
+
+async function loadTargetWorkflows(
+  tenant_id: string,
+  ids: Array<string | null>,
+  exec: Db,
+): Promise<Map<string, ConversationTargetRef>> {
+  const wanted = [...new Set(ids.filter((id): id is string => typeof id === "string"))];
+  const out = new Map<string, ConversationTargetRef>();
+  if (wanted.length === 0) return out;
+  const rows = await exec
+    .select({ id: workflows.id, slug: workflows.slug, name: workflows.name })
+    .from(workflows)
+    .where(and(eq(workflows.tenant_id, tenant_id), inArray(workflows.id, wanted)));
+  for (const r of rows) out.set(r.id, { id: r.id, slug: r.slug, name: r.name });
+  return out;
+}
+
+async function loadTargetConnectors(
+  tenant_id: string,
+  ids: Array<string | null>,
+  exec: Db,
+): Promise<Map<string, ConversationTargetRef>> {
+  const wanted = [...new Set(ids.filter((id): id is string => typeof id === "string"))];
+  const out = new Map<string, ConversationTargetRef>();
+  if (wanted.length === 0) return out;
+  const rows = await exec
+    .select({ id: connectors.id, slug: connectors.slug, name: connectors.display_name })
+    .from(connectors)
+    .where(and(eq(connectors.tenant_id, tenant_id), inArray(connectors.id, wanted)));
+  for (const r of rows) out.set(r.id, { id: r.id, slug: r.slug, name: r.name });
+  return out;
+}
+
+/**
+ * Take a conversation out of one person's list, or put it back. Never a
+ * delete: the row, its messages, tool calls and audit trail stay, and every
+ * other reader still sees it. Returns null when the conversation is not in
+ * the tenant.
+ */
+export async function setConversationHidden(
+  p: { tenant_id: string; conversation_id: string; user_id: string; hidden: boolean },
+  exec: Db,
+): Promise<ConversationRecord | null> {
+  const [row] = await exec
+    .select()
+    .from(conversations)
+    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
+    .limit(1);
+  if (!row) return null;
+  if (p.hidden) {
+    await exec
+      .insert(conversationHidden)
+      .values({ tenant_id: p.tenant_id, conversation_id: p.conversation_id, user_id: p.user_id })
+      .onConflictDoNothing();
+  } else {
+    await exec
+      .delete(conversationHidden)
+      .where(
+        and(
+          eq(conversationHidden.tenant_id, p.tenant_id),
+          eq(conversationHidden.conversation_id, p.conversation_id),
+          eq(conversationHidden.user_id, p.user_id),
+        ),
+      );
+  }
+  await auditAwait(
+    {
+      tenant_id: p.tenant_id,
+      actor_type: "user",
+      actor_id: p.user_id,
+      action: p.hidden ? AuditAction.CONVERSATION_HIDDEN : AuditAction.CONVERSATION_UNHIDDEN,
+      resource_type: "conversation",
+      resource_id: p.conversation_id,
+      result: "success",
+    },
+    exec,
+  );
+  return rowToRecord(row);
 }
 
 export async function countConversations(p: ListConversationsParams, exec: Db): Promise<number> {
@@ -241,7 +425,11 @@ export async function patchConversation(
 ): Promise<ConversationRecord | null> {
   const updates: Partial<typeof conversations.$inferInsert> = { updated_at: new Date(now()) };
   if (p.model !== undefined) updates.model = p.model;
-  if (p.title !== undefined) updates.title = p.title;
+  if (p.title !== undefined) {
+    updates.title = p.title;
+    // A name a person set is theirs; the automatic titler stays off it.
+    updates.title_locked = typeof p.title === "string" && p.title.trim().length > 0;
+  }
   const [row] = await exec
     .update(conversations)
     .set(updates)

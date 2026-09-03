@@ -917,6 +917,33 @@ const EN = {
   "chat.create.submit": "Start conversation",
   "chat.create.starting": "Starting…",
   "chat.untitled": "Untitled conversation",
+  "chat.outcome.answered": "Answered",
+  "chat.outcome.in_progress": "In progress",
+  "chat.outcome.awaiting_you": "Waiting for you",
+  "chat.outcome.committed": "Committed",
+  "chat.outcome.abandoned": "Stopped",
+  "chat.outcome.stale": "Idle",
+  "chat.hide": "Hide conversation",
+  "chat.unhide": "Show again",
+  "chat.hidden.show": "Show hidden",
+  "chat.hidden.back": "Back to conversations",
+  "chat.hidden.empty": "Nothing hidden",
+  "chat.origin.web": "Cockpit",
+  "chat.origin.sk_interactive": "sk",
+  "chat.origin.sk_headless": "sk headless",
+  "chat.origin.mcp": "MCP client",
+  "chat.origin.chat": "Chat channel",
+  "chat.origin.api": "API",
+  "chat.origin.unknown": "Unknown source",
+  "chat.origin.you": "you",
+  "chat.created.title": "Created in this conversation",
+  "chat.created.empty": "Nothing yet",
+  "chat.created.kind.workflow": "Workflow",
+  "chat.created.kind.connector": "Connector",
+  "chat.created.kind.execution": "Run",
+  "catalog.conversations.title": "Conversations about this",
+  "catalog.conversations.empty": "No conversations yet",
+  "catalog.conversations.open": "Open conversation",
   "chat.summary": "Work with SubKit through governed actions.",
   "chat.summary.inProgress": "An active conversation is ready to continue.",
   "chat.resume.awaitingApproval": "You were setting up {target} and left an approval pending.",
@@ -2109,6 +2136,33 @@ const DE: Record<TranslationKey, string> = {
   "chat.create.submit": "Unterhaltung starten",
   "chat.create.starting": "Wird gestartet…",
   "chat.untitled": "Unbenannte Unterhaltung",
+  "chat.outcome.answered": "Beantwortet",
+  "chat.outcome.in_progress": "In Arbeit",
+  "chat.outcome.awaiting_you": "Wartet auf dich",
+  "chat.outcome.committed": "Übernommen",
+  "chat.outcome.abandoned": "Abgebrochen",
+  "chat.outcome.stale": "Ruht",
+  "chat.hide": "Unterhaltung ausblenden",
+  "chat.unhide": "Wieder anzeigen",
+  "chat.hidden.show": "Ausgeblendete anzeigen",
+  "chat.hidden.back": "Zurück zu den Unterhaltungen",
+  "chat.hidden.empty": "Nichts ausgeblendet",
+  "chat.origin.web": "Cockpit",
+  "chat.origin.sk_interactive": "sk",
+  "chat.origin.sk_headless": "sk headless",
+  "chat.origin.mcp": "MCP-Client",
+  "chat.origin.chat": "Chat-Kanal",
+  "chat.origin.api": "API",
+  "chat.origin.unknown": "Unbekannte Quelle",
+  "chat.origin.you": "dir",
+  "chat.created.title": "In dieser Unterhaltung entstanden",
+  "chat.created.empty": "Noch nichts",
+  "chat.created.kind.workflow": "Workflow",
+  "chat.created.kind.connector": "Konnektor",
+  "chat.created.kind.execution": "Lauf",
+  "catalog.conversations.title": "Unterhaltungen dazu",
+  "catalog.conversations.empty": "Noch keine Unterhaltungen",
+  "catalog.conversations.open": "Unterhaltung öffnen",
   "chat.summary": "Mit SubKit über gesteuerte Aktionen arbeiten.",
   "chat.summary.inProgress": "Eine aktive Unterhaltung kann fortgesetzt werden.",
   "chat.resume.awaitingApproval": "Du hast {target} eingerichtet und eine Freigabe offen gelassen.",
@@ -2410,4 +2464,28 @@ export function formatDateTime(locale: Locale, value: string | Date): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+/**
+ * A time as distance from now — "vor 5 Min.", "3 h ago" — for lists where the
+ * question is "when did this last move", not "on which date". The narrow
+ * style keeps it inside a rail column; anything older than a month falls
+ * back to the date, because "vor 3 Monaten" hides more than it tells.
+ */
+export function formatRelativeTime(locale: Locale, value: string, now = Date.now()): string {
+  const at = Date.parse(value);
+  if (Number.isNaN(at)) return "";
+  const seconds = Math.round((at - now) / 1000);
+  const abs = Math.abs(seconds);
+  const rtf = new Intl.RelativeTimeFormat(LOCALE_TAGS[locale], {
+    numeric: "auto",
+    style: "narrow",
+  });
+  if (abs < 60)
+    return rtf.format(0, "second").replace(/^in 0 s$|^jetzt$/i, locale === "de" ? "jetzt" : "now");
+  if (abs < 3600) return rtf.format(Math.round(seconds / 60), "minute");
+  if (abs < 86_400) return rtf.format(Math.round(seconds / 3600), "hour");
+  if (abs < 7 * 86_400) return rtf.format(Math.round(seconds / 86_400), "day");
+  if (abs < 31 * 86_400) return rtf.format(Math.round(seconds / (7 * 86_400)), "week");
+  return new Intl.DateTimeFormat(LOCALE_TAGS[locale], { dateStyle: "medium" }).format(new Date(at));
 }

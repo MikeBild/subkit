@@ -39,8 +39,36 @@ export interface ConversationRecord {
   owner_id: string | null;
   model: string | null;
   title: string | null;
+  /** True once a person named it; the automatic titler leaves it alone. */
+  title_locked: boolean;
+  /** `<provider>:<credential-id>` of the channel that opened it, or null for a browser session. */
+  origin_client: string | null;
+  /** Surface it was opened from — see `lifecycle-view.ts`. Null on rows older than the column. */
+  surface: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Who a conversation belongs to, as a name a person recognises. */
+export interface ConversationOwner {
+  id: string;
+  kind: "user" | "system_account";
+  name: string;
+}
+
+export interface ConversationTargetRef {
+  id: string;
+  slug: string | null;
+  name: string | null;
+}
+
+/** Something a conversation brought into being — what a header lists as "created here". */
+export interface ConversationCreatedResource {
+  kind: "workflow" | "connector" | "execution";
+  id: string;
+  slug: string | null;
+  name: string | null;
+  at: string;
 }
 
 export interface TurnUsage {
@@ -833,6 +861,9 @@ export interface ConversationDetail {
   messages: ConversationMessageRecord[];
   tool_calls: ConversationToolCallRecord[];
   draft: DraftDocument | null;
+  owner: ConversationOwner | null;
+  /** What this conversation brought into being, newest first. */
+  created_resources: ConversationCreatedResource[];
   /**
    * Surfaced when reattaching carries forward prior authoring work — a
    * one-sentence "where were we / what next" banner plus structured
