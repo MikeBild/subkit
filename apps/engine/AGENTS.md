@@ -10,7 +10,7 @@ pub/sub, connector drivers, AI flows, self-healing, audit log, RBAC. It's the on
 surface with domain logic. `sk` (`apps/sk/`) is a thin wrapper on top of it.
 
 See the subsystem table in `../../docs/developers/agent-navigation.md` for the
-47 directories and their responsibilities.
+48 directories and their responsibilities.
 
 ## Non-negotiables
 
@@ -79,7 +79,7 @@ See the subsystem table in `../../docs/developers/agent-navigation.md` for the
 
 ## When adding a new subsystem
 
-Ask first. 47 directories already cover the concerns subkit owns. If you think
+Ask first. 48 directories already cover the concerns subkit owns. If you think
 you need a new one:
 
 1. Confirm it doesn't fit in an existing directory.

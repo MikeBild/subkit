@@ -2,6 +2,12 @@
   "pages": [
     {
       "audience": "start",
+      "path": "docs/BOOTSTRAP-PREFLIGHT.md",
+      "title": "Bootstrap Preflight",
+      "summary": "Version 1.0 — this text is byte-identical in every product of the family."
+    },
+    {
+      "audience": "start",
       "path": "docs/catalog.md",
       "title": "Connector & recipe catalog",
       "summary": "What ships in the box: 58 connector templates across 16 categories, carrying 240 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page."
@@ -293,6 +299,12 @@
       "path": "docs/admins/README.md",
       "title": "Admins — govern access",
       "summary": "Hand a team the keys without handing over the building."
+    },
+    {
+      "audience": "admins",
+      "path": "docs/admins/bootstrap-preflight.md",
+      "title": "Bootstrap Preflight",
+      "summary": "Before a production engine migrates anything, it decides whether this release can run on the bootstrap it was given — and if it cannot, it exits 3 with one line and has changed nothing."
     },
     {
       "audience": "admins",
