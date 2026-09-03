@@ -62,6 +62,14 @@ describe("the skill file", () => {
     expect(new Set(named)).toEqual(new Set(SKILL_REFERENCES.map((r) => r.file)));
   });
 
+  test("asks the second question after an adopt", () => {
+    // Measured 2026-09-03: a builder adopted Temporal at stage 4 and left its
+    // own 199-line file engine in the tree. The trigger fires before the next
+    // component; this section is what fires after an adopt.
+    expect(SKILL_MD).toContain("## After an adopt decision, ask once more");
+    expect(SKILL_MD).toContain("Delete those, or record why each one stays.");
+  });
+
   test("points at the do-not-use column, not only at sk", () => {
     expect(SKILL_MD).toContain('"Do not\nuse sk when" table is binding');
   });
