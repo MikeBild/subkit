@@ -34,6 +34,36 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Inbox page is gone; failed runs and proposed fixes remain on Runs and
   Decisions.
 
+## 6.27.3 — 2026-09-03
+
+### Fixed
+
+- `engine --vault-set --bind <setting.path>` printed `pinned to … version N`
+  without changing what the next boot reads. It saved a revision, which moves
+  `desired_revision` only; the preflight and every boot read
+  `active_revision`, and a `saved` revision is never promoted (only a
+  `restart_required` one is). So the documented recovery — re-pin, re-run
+  `--preflight`, start — still refused on the version it was already refusing
+  on, with a success line on top of it. `--bind` now activates the revision it
+  saves, writing the pointer directly under the precondition that makes it
+  safe and that `--rewrap-master-key` already required: nothing is serving.
+  With a live replica lease it refuses and says so, because a replica holding
+  the old snapshot must be told to prepare, not overtaken. Minting a version
+  without `--bind` is still safe at any time. An integration test against a
+  real database asserts the active pointer moved; the CLI's fake-backed tests
+  could not have caught this.
+- Preflight check 3 probed the wrong object-store credentials. All three
+  credential leaves of `storage.object_store` are `secret: true`, so a stored
+  revision holds `secret://name/version` there; the check treated that as an
+  incomplete binding and fell through to the `OBJECT_STORAGE_*` seed. On a
+  stateless deployment that has moved its settings into PostgreSQL and no
+  longer sets those variables, that refused a healthy engine with
+  `object_store_missing`; where the variables were still set but stale, it
+  probed a credential the engine does not use and passed — the exact failure
+  the check exists to prevent. The references are now decrypted before the
+  probe, and one that does not decrypt refuses as `secret_unreadable`, since
+  the cause is the key rather than the bucket.
+
 ## 6.27.2 — 2026-09-03
 
 ### Added
