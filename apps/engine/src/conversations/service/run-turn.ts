@@ -24,6 +24,7 @@ import { createElicitation } from "../elicitations.ts";
 import { tryFastPath } from "../fast-path.ts";
 import { type RunLoopResult, runLoop } from "../loop.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
+import type { ConversationReference } from "../references.ts";
 import type { ConversationPermissionMode, TurnEvent } from "../types.ts";
 import { getConversation } from "./get.ts";
 import { type ConversationTurnOutcome, getStoredPermissionMode } from "./shared.ts";
@@ -65,6 +66,8 @@ export interface RunConversationTurnParams {
    * approval portal. See `conversations/answer-actor.ts`.
    */
   answer_actor: AnswerActor;
+  /** Objects the person @-mentioned in this turn's message. */
+  user_references?: ConversationReference[] | null;
   /** Memory payload persisted on the conversation row, if any. */
   user_memory?: string | null;
   /** Permission mode resolved by the caller; falls back to the stored one. */
@@ -187,6 +190,9 @@ export async function runConversationTurn(
     workflow_id: conv.conversation.target_workflow_id,
     user_message: p.user_message,
     user_message_persisted: true,
+    ...(p.user_references && p.user_references.length > 0
+      ? { user_references: p.user_references }
+      : {}),
     user_memory: p.user_memory ?? null,
     model_override: conv.conversation.model,
     turn_abort_ctrl: p.turn_abort_ctrl,

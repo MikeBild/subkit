@@ -873,6 +873,9 @@ export async function expireElicitationAndReactivate(
       );
     const toolCallId = resolution.record.tool_call_id;
     if (toolCallId) {
+      // `outcome` and `confirmation_state` are stated, not left for a reader
+      // to infer from the payload: a row with an output and no verdict was
+      // rendered as "completed" with a green tick — for a call that never ran.
       await tx
         .update(conversationToolCalls)
         .set({
@@ -882,6 +885,8 @@ export async function expireElicitationAndReactivate(
             reason,
             note: EXPIRY_NOTES[reason],
           } as Record<string, unknown>,
+          outcome: "denied",
+          confirmation_state: "expired",
         })
         .where(eq(conversationToolCalls.id, toolCallId));
     }

@@ -17,6 +17,7 @@ function makePrompt(system: string): EnhancedPrompt {
       recipe_bodies: 0,
       skill_candidates: 0,
       prior_workflows: 0,
+      references: 0,
     },
     included_skill_ids: [],
     included_chunk_ids: [],

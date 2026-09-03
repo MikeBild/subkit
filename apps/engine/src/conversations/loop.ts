@@ -39,6 +39,7 @@ import {
   countSkillTokens,
   detectIntentSkills,
 } from "../llm/core/context-assembler.ts";
+import { recordConversationBudgetReport } from "../llm/core/conversation-budget-report.ts";
 import { resolveModelRoute } from "../llm/core/invoke.ts";
 import { anthropicWebSearchApplies, buildAnthropicWebSearchTool } from "../llm/core/model-init.ts";
 import { repairToolCall as repairToolCallHandler } from "../llm/core/repair-tool-call.ts";
@@ -107,6 +108,11 @@ import {
   updateMessageContent,
 } from "./persist.ts";
 import { closingProseQuestion } from "./prose-question.ts";
+import {
+  type ConversationReference,
+  markLatestUserMessageUnresolvedReferences,
+  resolveReferences,
+} from "./references.ts";
 import { resolveScopeFactsForConversation } from "./scope-facts.ts";
 import { compactConversation } from "./service/compact.ts";
 import {
@@ -145,6 +151,12 @@ export interface RunLoopParams {
   connector_id: string | null;
   workflow_id: string | null;
   user_message: string | null;
+  /**
+   * Objects the user @-mentioned in this turn's message. Resolved here on
+   * every turn (tenant + RBAC) and rendered as the `[REFERENCED ENTITIES]`
+   * block; never cached on the message. See `references.ts`.
+   */
+  user_references?: ConversationReference[] | null;
   step_budget?: number;
   /** Optional user-supplied memory payload to thread into context assembly. */
   user_memory?: string | null;
@@ -317,9 +329,30 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     if (!p.user_message_persisted) {
       await appendMessage(p.db, p.tenant_id, p.conversation_id, "user", {
         text: ingestedUserMessage,
+        ...(p.user_references && p.user_references.length > 0
+          ? { references: p.user_references }
+          : {}),
       });
     }
     events.push({ type: "message", role: "user", content: { text: ingestedUserMessage } });
+  }
+
+  // Resolve the turn's @-mentions now, with the acting principal, so a
+  // deleted or withdrawn object is reported as such in THIS turn's prompt
+  // and flagged on the persisted row for the transcript.
+  const referenced = await resolveReferences(p.user_references, {
+    db: p.db,
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    principal: p.principal,
+  });
+  if (referenced.unresolved.length > 0) {
+    await markLatestUserMessageUnresolvedReferences(
+      p.db,
+      p.tenant_id,
+      p.conversation_id,
+      referenced.unresolved,
+    );
   }
 
   const detectedIntent = detectUserIntent(ingestedUserMessage);
@@ -794,6 +827,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           ? { authoring_connector_ids: authoringConnectorIds }
           : {}),
         ...(combinedPriorFailures.length > 0 ? { prior_failures: combinedPriorFailures } : {}),
+        ...(referenced.block && referenced.trim_ref
+          ? { referenced_entities: { block: referenced.block, trim_ref: referenced.trim_ref } }
+          : {}),
         conversation_id: p.conversation_id,
         // Runtime context (engine_url / tenant / actor / surface). engine_url
         // falls back to config.server.public_base_url when the caller didn't
@@ -839,6 +875,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // try /compact"). The cap is the assembler's usable window, which
   // already accounts for completion headroom (see `contextCapFor`).
   const contextCap = contextCapFor(seedModel);
+  // The `/context` snapshot reads the last budget report. The converse loop
+  // assembles the prompt directly (not through `assembleContext`, which is
+  // what records it for the one-shot flows), so without this line a chat
+  // turn's trims were visible in logs only and the snapshot said nothing.
+  recordConversationBudgetReport(p.tenant_id, p.conversation_id, {
+    cap_tokens: Math.min(route.context_cap, contextCap),
+    total_tokens: prompt.token_counts.total,
+    dropped_sections: prompt.dropped_sections,
+    assembled_at: new Date().toISOString(),
+  });
   if (estimatedPromptTokens > contextCap) {
     // Auto-compact ONCE before giving up. A full authoring conversation should
     // degrade to a summary + recent turns, not strand mid-build behind a hard
@@ -2593,6 +2639,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         recipe_bodies: prompt.token_counts.recipe_bodies,
         skill_candidates: prompt.token_counts.skill_candidates,
         prior_workflows: prompt.token_counts.prior_workflows,
+        references: prompt.token_counts.references,
         total: prompt.token_counts.total,
       }
     : undefined;
@@ -2732,6 +2779,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     final_status: status,
     turn_tokens: turnTokens,
     remaining_monthly_budget_tokens: remaining,
+    references_resolved: referenced.resolved.length,
+    references_unresolved: referenced.unresolved.length,
     ...(breakdown
       ? {
           breakdown_system: breakdown.system,
@@ -2742,6 +2791,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           breakdown_messages: breakdown.messages,
           breakdown_recipe_bodies: breakdown.recipe_bodies,
           breakdown_skill_candidates: breakdown.skill_candidates,
+          breakdown_references: breakdown.references,
           breakdown_total: breakdown.total,
         }
       : {}),

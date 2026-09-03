@@ -18,6 +18,7 @@ import { log } from "../../logging/logger.ts";
 import { resolveAttachmentSlugsInText } from "../attachments.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import { appendMessage } from "../persist.ts";
+import type { ConversationReference } from "../references.ts";
 import { listBaselineSlugs, loadActivationCatalog } from "../skill-autoload.ts";
 import { deriveConversationTitle } from "../title.ts";
 import type { ConversationRecord } from "../types.ts";
@@ -29,6 +30,8 @@ export interface CreateConversationParams {
   connector_id?: string | null;
   workflow_id?: string | null;
   initial_message?: string;
+  /** Objects the person @-mentioned in the first message (see `references.ts`). */
+  references?: ConversationReference[] | null;
   /** Optional user-supplied memory payload (client-side SUBKIT.md). */
   memory?: string | null;
   /** Optional initial model override (sets conversations.model). */
@@ -83,6 +86,8 @@ export interface CreateConversationResult {
    * later concurrently-appended one. `null` when no opening message.
    */
   initial_message_id: string | null;
+  /** The @-mentions as sent, handed to the turn for resolution. */
+  references: ConversationReference[] | null;
   /** Memory payload persisted on the row, if any. */
   user_memory: string | null;
 }
@@ -256,8 +261,10 @@ export async function createConversation(
       conversation_id: row.id,
     });
     initialMessage = rewrite.text;
+    const references = p.references && p.references.length > 0 ? p.references : null;
     initialMessageId = await appendMessage(exec, p.tenant_id, row.id, "user", {
       text: initialMessage,
+      ...(references ? { references } : {}),
     });
     // `appendMessage` just titled the row, but `row` was read before that
     // update. Without carrying the title over, the one response that CREATED
@@ -272,6 +279,7 @@ export async function createConversation(
     conversation: rowToRecord(row),
     initial_message: initialMessage,
     initial_message_id: initialMessageId,
+    references: p.references && p.references.length > 0 ? p.references : null,
     user_memory: memory,
   };
 }

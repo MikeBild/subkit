@@ -169,7 +169,21 @@ const baseMessages = [
     id: "message-3",
     role: "user",
     created_at: "2026-08-10T08:02:00.000Z",
-    parts: [{ type: "text", text: "Zeige mir zuerst die geplanten Änderungen." }],
+    // Two @-mentions, one of which the engine could not resolve: the chip
+    // for a workflow that exists and the struck-through warning chip for a
+    // connector that is gone. A fixture where every mention resolves would
+    // photograph the warning state never.
+    parts: [
+      {
+        type: "text",
+        text: "Zeige mir zuerst die geplanten Änderungen an @monatsreport und @legacy-crm.",
+        references: [
+          { type: "workflow", id: uuid, label: "monatsreport" },
+          { type: "connector", id: "catalog-record-3", label: "legacy-crm" },
+        ],
+        unresolved_references: [{ type: "connector", id: "catalog-record-3", label: "legacy-crm" }],
+      },
+    ],
   },
   {
     id: "message-4",
@@ -1690,6 +1704,28 @@ for (const locale of variants) {
         fullPage: false,
       });
       await page.locator('[data-testid="chat-context-close"]').click();
+      // The sheet leaves with an animation; the picker shot must not catch its tail.
+      await page.locator('[data-testid="chat-context"]').waitFor({ state: "hidden" });
+      // The @-picker, open with candidates from both catalogues.
+      await page.locator('[data-testid="chat-composer-input"]').fill("Prüfe @mon");
+      await page.locator('[data-testid="chat-mention-popover"]').waitFor({ state: "visible" });
+      await page.locator('[data-testid="chat-mention-item-0"]').waitFor({ state: "visible" });
+      await shoot(page, `${locale.artifact}-desktop-chat-mention`, {
+        fullPage: false,
+      });
+      await page.keyboard.press("Escape");
+      // A sent message with one resolved chip and one struck-through warning
+      // chip: the transcript side of the same feature.
+      const chips = page.locator('[data-testid="chat-message-2-text-0-mentions"]');
+      await chips.scrollIntoViewIfNeeded();
+      await page
+        .locator('[data-testid="chat-message-2-text-0-chip-1"]')
+        .waitFor({ state: "visible" });
+      // The scroller renders lazily after a jump; give the frame its paint.
+      await page.waitForTimeout(300);
+      await shoot(page, `${locale.artifact}-desktop-chat-mention-chips`, {
+        fullPage: false,
+      });
       await page
         .locator('[data-testid="chat-composer-input"]')
         .fill("Prüfe den Workflow, ohne ihn auszuführen.");
