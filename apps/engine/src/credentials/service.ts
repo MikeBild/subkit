@@ -9,7 +9,7 @@
 //
 // Every mutation writes an audit row.
 
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { EncryptedPayload } from "../crypto/aes-gcm.ts";
@@ -17,6 +17,7 @@ import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import { connectors, credentials, outboundConnections } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { hasCredentialConnectionColumn } from "../runtime-config/secret-columns.ts";
 import { readAccessToken } from "./connections/service.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -303,8 +304,13 @@ export async function upsertCredential(
     const slotPredicate = isClientSlot
       ? eq(credentials.mode, "oauth2_client")
       : ne(credentials.mode, "oauth2_client");
+    // This function runs inside data migrations (and their proofs) against
+    // the schema that preceded 0048, so it names only the columns every
+    // release has had: the select projects `id`, the insert is written by
+    // hand there, and `connection_id` is set only where it exists.
+    const withConnectionColumn = await hasCredentialConnectionColumn(tx);
     const existing = await tx
-      .select()
+      .select({ id: credentials.id })
       .from(credentials)
       .where(
         and(
@@ -319,24 +325,32 @@ export async function upsertCredential(
 
     // Allocate a placeholder row first to get the id for AAD binding.
     const placeholder = encryptSecret("__placeholder__");
-    const inserted = priorId
-      ? existing[0]!
-      : (
-          await tx
-            .insert(credentials)
-            .values({
-              tenant_id: input.tenant_id,
-              connector_id: input.connector_id,
-              environment: input.environment,
-              mode: input.mode,
-              ciphertext: toBuf(placeholder.ciphertext),
-              iv: toBuf(placeholder.iv),
-              auth_tag: toBuf(placeholder.auth_tag),
-            })
-            .returning()
-        )[0]!;
-
-    const id = inserted.id;
+    let id: string;
+    if (priorId) {
+      id = priorId;
+    } else if (withConnectionColumn) {
+      const [row] = await tx
+        .insert(credentials)
+        .values({
+          tenant_id: input.tenant_id,
+          connector_id: input.connector_id,
+          environment: input.environment,
+          mode: input.mode,
+          ciphertext: toBuf(placeholder.ciphertext),
+          iv: toBuf(placeholder.iv),
+          auth_tag: toBuf(placeholder.auth_tag),
+        })
+        .returning({ id: credentials.id });
+      if (!row) throw new Error("credential insert returned no row");
+      id = row.id;
+    } else {
+      const inserted = await tx.execute(
+        sql`insert into ${credentials} ("tenant_id", "connector_id", "environment", "mode", "ciphertext", "iv", "auth_tag") values (${input.tenant_id}, ${input.connector_id}, ${input.environment}, ${input.mode}, ${toBuf(placeholder.ciphertext)}, ${toBuf(placeholder.iv)}, ${toBuf(placeholder.auth_tag)}) returning "id"`,
+      );
+      const row = (inserted.rows as Array<{ id: string }>)[0];
+      if (!row) throw new Error("credential insert returned no row");
+      id = row.id;
+    }
     const plain = serializePlain(input.value);
     const payload = encryptSecret(plain, aadFor(input.tenant_id, id));
     let refreshPayload: EncryptedPayload | null = null;
@@ -363,7 +377,7 @@ export async function upsertCredential(
         // the OAuth bundle. Null for non-oauth2 modes (refresh-worker
         // and conversation-tool callers pass through).
         granted_scopes: input.oauth2_granted_scopes ?? null,
-        connection_id: input.connection_id ?? null,
+        ...(withConnectionColumn ? { connection_id: input.connection_id ?? null } : {}),
         updated_at: new Date(),
       })
       .where(eq(credentials.id, id));
