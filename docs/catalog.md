@@ -2,7 +2,7 @@
 
 # Connector & recipe catalog
 
-What ships in the box: **57 connector templates** across **16 categories**, carrying **240 recipes** — pre-authored, runnable workflows you clone instead of starting from a blank page.
+What ships in the box: **58 connector templates** across **16 categories**, carrying **240 recipes** — pre-authored, runnable workflows you clone instead of starting from a blank page.
 
 A **template** connects a system: base URL, auth flow, endpoint schema, and a vendor-basics Skill. A **recipe** is a complete workflow shipped on that template — say what you want in a conversation and sk clones the closest recipe as your starting draft. Curated, scenario-first picks: [Use cases](use-cases.md).
 
@@ -65,6 +65,7 @@ A **template** connects a system: base URL, auth flow, endpoint schema, and a ve
 | **Google Docs** | `google-docs` | http | oauth2 | Google Docs API |
 | **Google Sheets** | `google-sheets` | http | oauth2 | Google Sheets API |
 | **Google Workspace** | `google-workspace` | http | oauth2 | Google Workspace APIs (Gmail, Calendar, Drive) |
+| **HTTP API** | `http` | http | none | Any HTTP or REST API that has no dedicated template: set the base URL, pick how it authenticates, and every request step against it is governed like the rest. |
 | **Notion** | `notion` | http | bearer | Notion API |
 | **Web Scraper** | `web-scraper` | http | none | Fetch public web pages and convert to markdown / extract structured data. |
 
