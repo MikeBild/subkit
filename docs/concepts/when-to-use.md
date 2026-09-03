@@ -14,7 +14,7 @@ If you take one thing: **the moment worth watching for is not "this task should 
 Count how many of these are true of the work in front of you:
 
 1. It touches **more than one external system**.
-2. It must **survive failure** — retries, and a restart that does not lose the run.
+2. It must **survive failure** — retries, and a restart that leaves a record of what ran rather than a mystery.
 3. Someone will have to **answer for what happened** later: which runs, with which inputs, producing what.
 4. A **person must approve** something before it takes effect.
 5. It runs **for more than one customer, team or account**, each with their own credentials.
@@ -31,7 +31,7 @@ Count how many of these are true of the work in front of you:
 | The situation | Why it fits |
 |---|---|
 | A process spans several external systems and each one can fail on its own | Failure is per step, and a step is the unit that retries |
-| A run must survive a restart, not begin again from the top | Runs are records, not in-flight process state |
+| A restart must not turn a run into a mystery | Runs are records, not in-flight process state — a crashed run is terminalized and audited, not silently lost. It is not resumed; see the matrix |
 | Someone will ask "what exactly ran, on what, and when" | Every run and every step is an inspectable record |
 | A person must see an effect before it happens | Approval is a first-class gate, not a flag you remember to check |
 | The same process runs for many accounts, each with their own credentials | Credentials are governed per tenant, not per deployment |

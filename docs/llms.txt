@@ -19,6 +19,7 @@
 - [Architecture Overview](concepts/overview.md): This page explains why sk's promise — describe it, approve it, it runs, and you can prove what it did — survives contact with production.
 - [Reversibility & Trust Domains](concepts/reversibility-and-trust-domains.md): Give each piece of work the level of control it actually needs — no ceremony where mistakes are cheap, no blind spots where they are not.
 - [When to use sk — and when not to](concepts/when-to-use.md): Most automation does not need sk, and saying so is the point of this page.
+- [Why these primitives](concepts/why-these-primitives.md): A feature list says what a primitive does.
 - [Workflow Execution](concepts/workflows.md): Once you approve a workflow, it takes the same path every time — no model reconsiders it on the next run.
 
 ## Operators
@@ -75,5 +76,5 @@
 - [subkit runtime settings](admins/settings-reference.md): Every value below lives in canonical runtime configuration and is editable via the Cockpit, HTTP/MCP settings APIs, sk settings configure, or sk settings set.
 - [sk settings](authors/settings.md): Settings for the sk CLI itself — separate from the engine's runtime settings (see settings-reference).
 - [Slash commands](authors/slash-commands.md): Slash commands run from the sk REPL.
-- [Connector & recipe catalog](catalog.md): What ships in the box: 57 connector templates across 16 categories, carrying 240 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page.
+- [Connector & recipe catalog](catalog.md): What ships in the box: 58 connector templates across 16 categories, carrying 240 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page.
 - [sk CLI reference](developers/cli-reference.md): Every sk command and argument — and the surface authoring runs through: creating or changing a workflow, connector, knowledge source or skill is a definition edit, and definition edits belong here, where the change is a file you can read and a command you can re-run.

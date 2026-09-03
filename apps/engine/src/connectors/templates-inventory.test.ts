@@ -12,7 +12,7 @@ import { loadBuiltinTemplates, type TemplateCapabilities } from "./templates.ts"
 const templates = loadBuiltinTemplates();
 
 // Derived from the real apps/engine/src/connectors/templates.json content
-// (57 templates) as of this pin — slug -> { version, capabilities }, sorted
+// (58 templates) as of this pin — slug -> { version, capabilities }, sorted
 // by slug for determinism. Update deliberately when a template is added,
 // removed, or its version/capabilities intentionally change.
 const EXPECTED_INVENTORY = {
@@ -157,6 +157,10 @@ const EXPECTED_INVENTORY = {
     capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
   },
   "google-workspace": {
+    version: 1,
+    capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
+  },
+  http: {
     version: 1,
     capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
   },

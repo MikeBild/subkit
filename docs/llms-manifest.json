@@ -4,7 +4,7 @@
       "audience": "start",
       "path": "docs/catalog.md",
       "title": "Connector & recipe catalog",
-      "summary": "What ships in the box: 57 connector templates across 16 categories, carrying 240 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page."
+      "summary": "What ships in the box: 58 connector templates across 16 categories, carrying 240 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page."
     },
     {
       "audience": "start",
@@ -71,6 +71,12 @@
       "path": "docs/concepts/when-to-use.md",
       "title": "When to use sk — and when not to",
       "summary": "Most automation does not need sk, and saying so is the point of this page."
+    },
+    {
+      "audience": "concepts",
+      "path": "docs/concepts/why-these-primitives.md",
+      "title": "Why these primitives",
+      "summary": "A feature list says what a primitive does."
     },
     {
       "audience": "concepts",

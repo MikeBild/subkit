@@ -616,7 +616,28 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       // SILENTLY while the data sat in toolCalls[].result). Render the
       // last succeeded execution payload so text mode always answers.
       const exec = lastExecutionResult(streamState);
-      if (exec) writeLine(stdout, renderExecutionOutput(exec));
+      if (exec) {
+        writeLine(stdout, renderExecutionOutput(exec));
+      } else {
+        // Neither prose nor an execution. Two baseline runs on 2026-09-02/03
+        // hit exactly this with the mock provider: the canned authoring plan
+        // stopped at a confirmation gate, and text mode printed nothing and
+        // exited 0 — a failure in the costume of success. Say what happened.
+        const calls = streamState.toolCalls;
+        if (calls.length === 0) {
+          writeLine(
+            stdout,
+            `sk: the turn produced no answer and made no tool call (status: ${streamState.status})`,
+          );
+        } else {
+          const names = calls.map((c) => c.name).join(", ");
+          const tail =
+            streamState.status === "awaiting_input"
+              ? "it is waiting for a confirmation that text mode cannot give — continue in the REPL (sk) or approve it in the Cockpit"
+              : `status: ${streamState.status}`;
+          writeLine(stdout, `sk: no answer text; ${calls.length} tool call(s): ${names} — ${tail}`);
+        }
+      }
     }
     // Surface mention warnings for the operator.
     if (!opts.quiet) {
