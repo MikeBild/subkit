@@ -22,7 +22,7 @@ describe("connector-template catalog — structural", () => {
     // canonical drift guard is `loadBuiltinTemplates()` at startup —
     // every entry must pass `ConnectorTemplateSchema`. This test pins
     // the catalog size so a stray add/remove surfaces explicitly.
-    expect(templates.length).toBe(57);
+    expect(templates.length).toBe(58);
   });
 
   test("supabase-graphql url_pattern matches a real host, not the literal [^/]+", () => {

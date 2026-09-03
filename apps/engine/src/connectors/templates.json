@@ -7580,6 +7580,54 @@
   },
   {
     "version": 1,
+    "slug": "http",
+    "name": "HTTP API",
+    "driver": "http",
+    "base_url": null,
+    "auth_type": "none",
+    "respects_robots": false,
+    "oauth": null,
+    "default_skill": null,
+    "ingestion_source": null,
+    "ingestion_url": null,
+    "icon": "http.svg",
+    "description": "Any HTTP or REST API that has no dedicated template: set the base URL, pick how it authenticates, and every request step against it is governed like the rest. Two baseline onboarding runs found no way to say 'just an HTTP API' without hand-authoring the connector body; this is that way.",
+    "category": "productivity",
+    "tags": ["http", "rest", "api", "generic", "json"],
+    "setup_instructions": "Choose the base URL of the API (for example https://api.open-meteo.com). Pick 'none' for a public API, or a bearer token / API-key header for one that needs a credential. Then probe it once.",
+    "auth_options": [
+      {
+        "auth_type": "none",
+        "label": "No authentication",
+        "description": "Public API; requests carry no credential."
+      },
+      {
+        "auth_type": "bearer",
+        "label": "Bearer token",
+        "description": "Authenticate with a bearer token sent in the Authorization header."
+      },
+      {
+        "auth_type": "header",
+        "label": "API key header",
+        "description": "Authenticate with an API key sent in a request header."
+      }
+    ],
+    "url_pattern": null,
+    "keywords": ["http", "rest", "api", "generic", "json", "endpoint", "webhook"],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    },
+    "recipes": []
+  },
+  {
+    "version": 1,
     "slug": "hubspot",
     "name": "HubSpot",
     "driver": "http",
