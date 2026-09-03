@@ -1866,6 +1866,7 @@ Run a saved workflow, an inline draft definition, or a single step
 - `--name` (string) — Optional label for --draft runs (goes to executions.source_ref)
 - `--slug` (string) — Optional workflow_slug for --step runs (cosmetic)
 - `--follow` — Queue the run and stream its progress live (step-by-step JSON lines). Saved workflows only.
+- `--idempotency-key` (string) — Make this trigger safe to repeat: a second run with the same key is not started, the first run's id comes back instead. Saved workflows only.
 
 #### `sk workflows update`
 
