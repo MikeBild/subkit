@@ -129,7 +129,7 @@ Answers are `yes` · `partial` · `no`.
 | Schedule a workflow | yes | Five-field cron, plus an `every:<seconds>` form for sub-minute work. Cron resolution is one minute. |
 | Wait for hours or days | partial | A plain wait is capped at 24 hours. Longer pauses use a wait-for-event step, allowed out to 30 days. Both hold the replica's single execution slot for the whole duration, so a multi-day wait blocks other runs on that replica. |
 | Survive an engine crash mid-run | no | A crashed run does not continue. On restart the engine sweeps runs left in flight, terminalizes them and audits the recovery; a wait that died with the process is recorded as abandoned. There is no checkpointed resume, and a re-run would start from the first step and repeat side effects already performed. Design for it: make the trigger repeatable rather than assuming the run picks itself up. |
-| Prevent the same trigger running twice | partial | Inbound webhooks are deduplicated against a replay table, and chat events against their platform event id. The generic API and CLI trigger paths accept no idempotency key: two identical calls produce two runs. |
+| Prevent the same trigger running twice | yes | Inbound webhooks are deduplicated against a replay table, chat events against their platform event id, and a saved-workflow run over the API or CLI can carry an idempotency key (`idempotency_key` in the body, the `Idempotency-Key` header, `sk workflows run --idempotency-key`): a second call with the same key in the same tenant starts nothing and answers with the first run's id and `idempotent_replay: true`. The key is the caller's to choose and never expires. Runs without a key are not deduplicated. |
 
 ## Governance
 

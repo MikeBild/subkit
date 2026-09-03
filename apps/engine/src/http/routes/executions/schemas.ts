@@ -67,6 +67,17 @@ export const StepRowSchema = z
 
 export const StepListResponse = paginatedResponse(StepRowSchema, "ExecutionStepListResponse");
 
+/** A caller-chosen key that makes a saved-workflow trigger safe to repeat.
+ *  Two POSTs with the same key in one tenant produce one run; the second
+ *  answers with the first run's id and `idempotent_replay: true`. Scoped to
+ *  the tenant, never expires, and is the caller's to choose — a request id,
+ *  an event id, a `<workflow>:<hour>` slot. */
+export const IdempotencyKeySchema = z.string().min(1).max(200).openapi({
+  description:
+    "Caller-chosen key that makes this trigger safe to repeat: a second run with the same key in this tenant is not started; the response carries the first run's id and idempotent_replay: true. Choose a request id, an event id or a time slot.",
+  example: "orders-sync:2026-09-03T07",
+});
+
 // Runtime-only schema (used by the handler — full StepSchema /
 // WorkflowDefSchema are too rich for the public OpenAPI catalog).
 export const RuntimeRunBodySchema = z.discriminatedUnion("source", [
@@ -76,6 +87,7 @@ export const RuntimeRunBodySchema = z.discriminatedUnion("source", [
     version_id: z.string().uuid().optional(),
     input: z.unknown().optional(),
     async: z.boolean().optional(),
+    idempotency_key: IdempotencyKeySchema.optional(),
     request_source: z
       .enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"])
       .optional(),
@@ -127,6 +139,7 @@ export const RunBodySchema = z.discriminatedUnion("source", [
       version_id: z.string().uuid().optional(),
       input: z.unknown().optional(),
       async: z.boolean().optional(),
+      idempotency_key: IdempotencyKeySchema.optional(),
       request_source: z
         .enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"])
         .optional(),
@@ -210,6 +223,10 @@ export const RunResponseSchema = z
     steps: z.array(RunStepSummarySchema).optional(),
     connector_resolutions: z.array(ConnectorResolutionSummarySchema).optional(),
     warnings: z.array(z.unknown()).optional(),
+    /** Present and true when the request carried an idempotency_key that an
+     *  earlier run already used: no new run was started, execution_id and
+     *  status are that run's. */
+    idempotent_replay: z.boolean().optional(),
   })
   .openapi("ExecutionRunResponse");
 

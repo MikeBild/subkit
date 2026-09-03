@@ -15786,6 +15786,7 @@ export interface components {
             steps?: components["schemas"]["ExecutionRunStepSummary"][];
             connector_resolutions?: components["schemas"]["ConnectorResolutionSummary"][];
             warnings?: unknown[];
+            idempotent_replay?: boolean;
         };
         ExecutionRunStepSummary: {
             step_key: string;
@@ -15928,6 +15929,11 @@ export interface components {
             version_id?: string;
             input?: unknown;
             async?: boolean;
+            /**
+             * @description Caller-chosen key that makes this trigger safe to repeat: a second run with the same key in this tenant is not started; the response carries the first run's id and idempotent_replay: true. Choose a request id, an event id or a time slot.
+             * @example orders-sync:2026-09-03T07
+             */
+            idempotency_key?: string;
             /** @enum {string} */
             request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler" | "chat";
         };

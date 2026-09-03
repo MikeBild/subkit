@@ -13,10 +13,13 @@ import type { ExecutionMode } from "../../../execution/index.ts";
 import {
   createExecution,
   finalizeExecution,
+  findExecutionByIdempotencyKey,
+  isIdempotencyConflict,
   type RunExecutionSource,
   resolveDefinition,
   runExecution,
 } from "../../../execution/index.ts";
+import { logger } from "../../../logging/index.ts";
 import type { ExecutionRunJob } from "../../../queue/index.ts";
 import { EXECUTION_RUN_QUEUE, getBoss } from "../../../queue/index.ts";
 import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
@@ -141,6 +144,44 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
     const body = runtimeBody.data;
     await enforceWorkflowAllowlist(principal, body, db);
 
+    // Idempotency: a saved-workflow trigger may carry a key (body field, or
+    // the conventional `Idempotency-Key` header). If this tenant already
+    // started a run under that key, answer with that run and start nothing.
+    // The check-then-insert race is closed by the partial unique index on
+    // executions(tenant_id, idempotency_key): the loser's insert raises
+    // 23505 and is mapped to the same replay answer below.
+    const idempotencyKey =
+      body.source === "saved"
+        ? (body.idempotency_key ?? c.req.header("idempotency-key")?.trim() ?? null)
+        : null;
+    if (idempotencyKey !== null && idempotencyKey.length > 200) {
+      throw new BadRequestError("idempotency_key must be 1..200 characters", {
+        code: "bad_request",
+      });
+    }
+    const replay = async () => {
+      const existing = idempotencyKey
+        ? await findExecutionByIdempotencyKey(db, principal.tenant_id, idempotencyKey)
+        : null;
+      if (!existing) return null;
+      logger.info({
+        module: "http.executions",
+        action: "execution.idempotent_replay",
+        msg: "trigger repeated under a known idempotency key; no new run started",
+        execution_id: existing.id,
+        tenant_id: principal.tenant_id,
+      });
+      const httpStatus = existing.status === "queued" || existing.status === "running" ? 202 : 200;
+      return c.json(
+        { execution_id: existing.id, status: existing.status, idempotent_replay: true },
+        httpStatus,
+      );
+    };
+    if (idempotencyKey) {
+      const replayed = await replay();
+      if (replayed) return replayed;
+    }
+
     // Resolve execution_mode from the `x-subkit-environment` header.
     const envHeader = c.req.header("x-subkit-environment");
     let execution_mode: ExecutionMode = "dev";
@@ -169,17 +210,27 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
 
     if (body.source === "saved" && body.async) {
       const resolved = await resolveDefinition(db, principal.tenant_id, source);
-      const execution_id = await createExecution(db, {
-        tenant_id: principal.tenant_id,
-        workflow_id: resolved.workflow_id,
-        workflow_version_id: resolved.workflow_version_id,
-        source_kind: "saved",
-        source_ref: null,
-        request_source: body.request_source ?? "api",
-        parent_execution_id: null,
-        execution_mode,
-        input: body.input ?? null,
-      });
+      let execution_id: string;
+      try {
+        execution_id = await createExecution(db, {
+          tenant_id: principal.tenant_id,
+          workflow_id: resolved.workflow_id,
+          workflow_version_id: resolved.workflow_version_id,
+          source_kind: "saved",
+          source_ref: null,
+          request_source: body.request_source ?? "api",
+          parent_execution_id: null,
+          execution_mode,
+          input: body.input ?? null,
+          idempotency_key: idempotencyKey,
+        });
+      } catch (err) {
+        if (isIdempotencyConflict(err)) {
+          const replayed = await replay();
+          if (replayed) return replayed;
+        }
+        throw err;
+      }
       const trace_id = c.get("trace_id") ?? null;
       const job: ExecutionRunJob = {
         tenant_id: principal.tenant_id,
@@ -217,6 +268,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           request_source: body.request_source ?? "api",
           principal,
           execution_mode,
+          idempotency_key: idempotencyKey,
         },
       });
       return c.json(
@@ -234,6 +286,10 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
         200,
       );
     } catch (err) {
+      if (isIdempotencyConflict(err)) {
+        const replayed = await replay();
+        if (replayed) return replayed;
+      }
       const code = (err as { code?: string }).code;
       const details = (err as { details?: unknown }).details;
       if (

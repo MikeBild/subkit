@@ -451,6 +451,12 @@ export interface RunOptions {
    */
   existing_execution_id?: string;
   /**
+   * Caller-chosen key that makes this trigger safe to repeat. Persisted on
+   * the execution row under a per-tenant unique index; the HTTP layer turns
+   * a collision into a replay of the first run.
+   */
+  idempotency_key?: string | null;
+  /**
    * Per-call override for self-healing. When unset the engine uses the
    * tenant policy (`resolvePolicy()`); set explicitly when the eval
    * runner needs to compare `mode=one_shot` against `mode=self_healing`,

@@ -4698,6 +4698,9 @@
           "warnings": {
             "type": "array",
             "items": {}
+          },
+          "idempotent_replay": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -5217,6 +5220,13 @@
           "input": {},
           "async": {
             "type": "boolean"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Caller-chosen key that makes this trigger safe to repeat: a second run with the same key in this tenant is not started; the response carries the first run's id and idempotent_replay: true. Choose a request id, an event id or a time slot.",
+            "example": "orders-sync:2026-09-03T07"
           },
           "request_source": {
             "type": "string",
