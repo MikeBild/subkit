@@ -299,8 +299,12 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
 
   registerHealthRoute(app, opts.db ? { db: opts.db } : {});
   registerInstallRoute(app);
-  registerInstallBinaryRoute(app);
+  // Before the binary route: that one owns `/install/{asset}` and answers 404
+  // for any asset it does not know, which on 6.25.0 in production swallowed
+  // `/install/skill` while the unit test, registering the skill route alone,
+  // stayed green. install-skill.test.ts now goes through createApp().
   registerInstallSkillRoute(app);
+  registerInstallBinaryRoute(app);
   registerSetupRoute(app);
   registerStatusRoute(app);
   registerStatsRoutes(app);

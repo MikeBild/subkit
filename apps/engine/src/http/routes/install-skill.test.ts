@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { ESSENTIAL_PATHS } from "@shared/llms-index.ts";
 import type { AppEnv } from "../openapi.ts";
+import { createApp } from "../server.ts";
 import {
   _internal,
   registerInstallSkillRoute,
@@ -117,5 +118,20 @@ describe("the installer", () => {
     const body = await res.text();
     expect(body).not.toContain("rm -rf /");
     expect(body).toContain('ENGINE_URL=""');
+  });
+});
+
+describe("in the real route table", () => {
+  // The unit tests above register the skill route by itself. In production the
+  // binary route owns `/install/{asset}` and 404s unknown assets; registered
+  // first, it swallowed `/install/skill` on 6.25.0 while every test was green.
+  // This goes through createApp() so the order server.ts uses is what is tested.
+  test("/install/skill is reached before /install/{asset} can 404 it", async () => {
+    const app = createApp();
+    const res = await app.request("http://127.0.0.1/install/skill");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/x-shellscript");
+    const file = await app.request("http://127.0.0.1/install/skill/SKILL.md");
+    expect(file.status).toBe(200);
   });
 });
