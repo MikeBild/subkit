@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "6.25.0",
+    "version": "6.25.1",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -18045,6 +18045,48 @@
         }
       }
     },
+    "/install/skill": {
+      "get": {
+        "tags": [
+          "install"
+        ],
+        "summary": "Installer for the build-or-adopt agent skill",
+        "description": "Returns a POSIX shell script that installs the `build-or-adopt` skill into the user-level agent skill directories (`~/.claude/skills`, `~/.agents/skills`, or `SK_SKILL_DIR`) and fetches this engine's decision-and-install pages next to it as references. The skill makes a coding agent answer, in writing, which share of what it is about to write is generic execution infrastructure, before it writes it.",
+        "responses": {
+          "200": {
+            "description": "Shell script (text/x-shellscript)",
+            "content": {
+              "text/x-shellscript": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/install/skill/SKILL.md": {
+      "get": {
+        "tags": [
+          "install"
+        ],
+        "summary": "The build-or-adopt skill file",
+        "description": "The skill the installer at /install/skill writes, served verbatim from this binary so an agent can read it before installing it.",
+        "responses": {
+          "200": {
+            "description": "Skill file (text/markdown)",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/install/sha256sums": {
       "get": {
         "tags": [
@@ -18113,48 +18155,6 @@
             "description": "Asset unavailable",
             "content": {
               "text/plain": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/install/skill": {
-      "get": {
-        "tags": [
-          "install"
-        ],
-        "summary": "Installer for the build-or-adopt agent skill",
-        "description": "Returns a POSIX shell script that installs the `build-or-adopt` skill into the user-level agent skill directories (`~/.claude/skills`, `~/.agents/skills`, or `SK_SKILL_DIR`) and fetches this engine's decision-and-install pages next to it as references. The skill makes a coding agent answer, in writing, which share of what it is about to write is generic execution infrastructure, before it writes it.",
-        "responses": {
-          "200": {
-            "description": "Shell script (text/x-shellscript)",
-            "content": {
-              "text/x-shellscript": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/install/skill/SKILL.md": {
-      "get": {
-        "tags": [
-          "install"
-        ],
-        "summary": "The build-or-adopt skill file",
-        "description": "The skill the installer at /install/skill writes, served verbatim from this binary so an agent can read it before installing it.",
-        "responses": {
-          "200": {
-            "description": "Skill file (text/markdown)",
-            "content": {
-              "text/markdown": {
                 "schema": {
                   "type": "string"
                 }
