@@ -30,9 +30,14 @@ import {
   parseMasterKeyHex,
 } from "../crypto/aes-gcm.ts";
 import type { Db } from "../db/client.ts";
-import { runtimeConfigReplicas, runtimeSecretVersions } from "../db/schema/index.ts";
+import {
+  runtimeConfigReplicas,
+  runtimeConfigRevisions,
+  runtimeConfigState,
+  runtimeSecretVersions,
+} from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
-import { REPLICA_LEASE_MS } from "../runtime-config/contracts.ts";
+import { CONFIG_STATE_KEY, REPLICA_LEASE_MS } from "../runtime-config/contracts.ts";
 import {
   createSecretVersion,
   getRuntimeConfigState,
@@ -183,10 +188,28 @@ export async function rewrapMasterKey(
 }
 
 /**
- * Re-point one dotted settings path at `secret://<name>/<version>` by
- * saving a new revision. Global scope only: a tenant overlay is re-pinned
- * through the settings API by someone who can name the tenant, and guessing
- * at one from a host shell is how the wrong tenant gets rewritten.
+ * Re-point one dotted settings path at `secret://<name>/<version>` and make
+ * that the ACTIVE revision.
+ *
+ * The activation is the load-bearing half. `saveRuntimeConfigPatch` writes a
+ * revision with status `saved` and moves `desired_revision` only; the
+ * preflight — and every boot — reads `active_revision`. A re-pin that
+ * stopped at "saved" would print `pinned to … version 3` and leave the
+ * engine refusing on the old version, which is the deadlock this command
+ * exists to break, with a success line on top of it.
+ *
+ * The normal activation path is not available here and should not be: it
+ * either requires a healthy replica to prepare and ACK, or defers to the
+ * next boot via `restart_required`. Neither fits a host shell fixing a
+ * process that cannot start. So the pointer is written directly, under the
+ * same precondition that makes it safe and that `--rewrap-master-key`
+ * already uses: nothing is serving. With a live replica this refuses and
+ * says so, because a replica holding the old snapshot must be told to
+ * prepare, not overtaken.
+ *
+ * Global scope only: a tenant overlay is re-pinned through the settings API
+ * by someone who can name the tenant, and guessing at one from a host shell
+ * is how the wrong tenant gets rewritten.
  */
 export async function rebindSettingPath(
   db: Db,
@@ -194,14 +217,66 @@ export async function rebindSettingPath(
   name: string,
   version: number,
 ): Promise<Rebound> {
+  const serving = await servingReplicas(db);
+  if (serving.length > 0) {
+    throw new Error(
+      `the engine is still serving (${serving.length} replica lease(s): ${serving.slice(0, 3).join(", ")}); stop it, or re-pin through the settings API where replicas are coordinated`,
+    );
+  }
+
   const state = await getRuntimeConfigState(db);
-  await saveRuntimeConfigPatch(db, {
+  const saved = await saveRuntimeConfigPatch(db, {
     expected_revision: state.saved_revision,
     changes: { [path]: secretReference(name, version) },
     scope: "global",
     created_by: null,
   });
+
+  await activateRevisionOnHost(db, saved.saved_revision);
   return { path, name, version };
+}
+
+/**
+ * Point `runtime_config_state.active_revision` at a saved revision, the way
+ * `initializeRuntimeConfig` does for a `restart_required` one when no
+ * replica lease is healthy. Re-checks the lease inside the transaction, so
+ * a replica that came back between the check above and here loses the race
+ * rather than being overtaken.
+ */
+async function activateRevisionOnHost(db: Db, revision: number): Promise<void> {
+  await db.transaction(async (tx) => {
+    // tenant-filter:exempt — the canonical active pointer is product-global.
+    const [state] = await tx
+      .select()
+      .from(runtimeConfigState)
+      .where(eq(runtimeConfigState.key, CONFIG_STATE_KEY))
+      .for("update");
+    if (!state) throw new Error("runtime config is not initialized");
+    if (state.desired_revision !== revision) {
+      throw new Error(
+        `revision ${revision} is no longer the saved revision (${state.desired_revision}); someone else saved settings in between`,
+      );
+    }
+    const cutoff = new Date(Date.now() - REPLICA_LEASE_MS);
+    // tenant-filter:exempt — replica leases are product-global runtime state.
+    const healthy = await tx
+      .select({ instance_id: runtimeConfigReplicas.instance_id })
+      .from(runtimeConfigReplicas)
+      .where(gte(runtimeConfigReplicas.last_seen_at, cutoff))
+      .limit(1);
+    if (healthy.length > 0) {
+      throw new Error("a replica lease became healthy during the re-pin; nothing was activated");
+    }
+    const activatedAt = new Date();
+    await tx
+      .update(runtimeConfigRevisions)
+      .set({ status: "active", activated_at: activatedAt, failure_reason: null })
+      .where(eq(runtimeConfigRevisions.revision, revision));
+    await tx
+      .update(runtimeConfigState)
+      .set({ active_revision: revision, updated_at: activatedAt })
+      .where(eq(runtimeConfigState.key, CONFIG_STATE_KEY));
+  });
 }
 
 /** The production wiring. `preflight` is injected so this module stays free of the check set. */

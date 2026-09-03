@@ -56,7 +56,7 @@ function healthyEnvironment(overrides: Partial<PreflightEnvironment> = {}): {
       touched.push("activeSettingsDocument");
       return null;
     },
-    objectStoreBinding: () => {
+    objectStoreBinding: async () => {
       touched.push("objectStoreBinding");
       return BINDING;
     },
@@ -142,9 +142,26 @@ describe("check 2 — DATABASE_URL and the schema version", () => {
 
 describe("check 3 — the object store", () => {
   test("a release with no binding refuses BEFORE it migrates anything", async () => {
-    const { env, touched } = healthyEnvironment({ objectStoreBinding: () => null });
+    const { env, touched } = healthyEnvironment({ objectStoreBinding: async () => null });
     const outcome = await runPreflightChecks(env);
     expect(firstRefusal(outcome)?.code).toBe("object_store_missing");
+    expect(touched).not.toContain("probeObjectStore");
+  });
+
+  test("credentials that do not decrypt refuse as secret_unreadable, not as a bucket problem", async () => {
+    // The stored block's credential leaves are secret:// references, so
+    // resolving the binding is itself a decrypt. When that fails the cause
+    // an operator must act on is the key — reporting object_store_missing
+    // would send them to the wrong file.
+    const { env, touched } = healthyEnvironment({
+      objectStoreBinding: async () => {
+        throw new Error("decrypt failed: unable to authenticate data");
+      },
+    });
+    const outcome = await runPreflightChecks(env);
+    const refusal = firstRefusal(outcome);
+    expect(refusal?.code).toBe("secret_unreadable");
+    expect(refusal?.detail).toContain("storage.object_store");
     expect(touched).not.toContain("probeObjectStore");
   });
 
@@ -346,5 +363,57 @@ describe("T2 does not apply to SubKit — and this is the proof, not the claim",
       if (original === undefined) delete process.env.MASTER_KEY;
       else process.env.MASTER_KEY = original;
     }
+  });
+});
+
+describe("check 3 reads the credentials the engine will actually use", () => {
+  // The regression this guards: every credential leaf of storage.object_store
+  // is `meta.secret`, so a stored revision holds `secret://…` there, never a
+  // usable value. A preflight that took those strings verbatim would probe
+  // with the literal reference as an access key; one that treated them as
+  // "incomplete" would fall through to OBJECT_STORAGE_*, which a stateless
+  // deployment no longer sets — refusing a healthy engine, or passing on a
+  // credential the engine does not use.
+  const DOC = {
+    storage: {
+      object_store: {
+        endpoint: "https://objects.example.invalid",
+        region: "eu-central-1",
+        bucket: "subkit",
+        access_key_id: "secret://settings.storage.object_store.access_key_id/2",
+        secret_access_key: "secret://settings.storage.object_store.secret_access_key/2",
+        force_path_style: true,
+      },
+    },
+  };
+
+  test("secret:// references are decrypted, not passed through", async () => {
+    const { objectStoreBindingFromDocument } = await import("../environment.ts");
+    const asked: string[] = [];
+    const binding = await objectStoreBindingFromDocument(DOC, async (name, version) => {
+      asked.push(`${name}/${version}`);
+      return name.endsWith("access_key_id") ? "AKIAREAL" : "realsecret";
+    });
+    expect(binding?.access_key_id).toBe("AKIAREAL");
+    expect(binding?.secret_access_key).toBe("realsecret");
+    expect(asked).toEqual([
+      "settings.storage.object_store.access_key_id/2",
+      "settings.storage.object_store.secret_access_key/2",
+    ]);
+  });
+
+  test("a reference that does not decrypt propagates, so the caller can name the key", async () => {
+    const { objectStoreBindingFromDocument } = await import("../environment.ts");
+    await expect(
+      objectStoreBindingFromDocument(DOC, async () => {
+        throw new Error("decrypt failed");
+      }),
+    ).rejects.toThrow("decrypt failed");
+  });
+
+  test("a document with no object-store block is null, so the env seed can answer", async () => {
+    const { objectStoreBindingFromDocument } = await import("../environment.ts");
+    expect(await objectStoreBindingFromDocument({}, async () => "x")).toBeNull();
+    expect(await objectStoreBindingFromDocument(null, async () => "x")).toBeNull();
   });
 });

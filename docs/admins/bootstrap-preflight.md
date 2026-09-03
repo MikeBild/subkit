@@ -46,7 +46,7 @@ Outside production the automatic run is a no-op — local development and the te
 |---|---|---|---|
 | 1 | `MASTER_KEY` present and exactly 64 hex | read straight from the process environment (`MASTER_KEY` is SubKit's only `BOOTSTRAP_ONLY_ENV_KEYS` entry, so this check needs no loaded config) | `master_key_missing`, `master_key_malformed` |
 | 2 | `DATABASE_URL` reaches PostgreSQL; the schema is one this release can start from or migrate forward from | `SELECT 1`, then a read-only query over `subkit.__drizzle_migrations` compared against the migrations embedded in this binary | `database_url_missing`, `database_unreachable`, `schema_ahead` |
-| 3 | The object store answers: endpoint is a URL, bucket exists, a probe object round-trips | the active revision's `storage.object_store` block, else the `OBJECT_STORAGE_*` revision-1 seed; `headBucket()` then one `.preflight/probe.<pid>` object written, read back and deleted | `object_store_missing`, `object_store_unreachable` |
+| 3 | The object store answers: endpoint is a URL, bucket exists, a probe object round-trips | the active revision's `storage.object_store` block **with its `secret://` credentials decrypted**, else the `OBJECT_STORAGE_*` revision-1 seed; `headBucket()` then one `.preflight/probe.<pid>` object written, read back and deleted | `object_store_missing`, `object_store_unreachable`, `secret_unreadable` |
 | 4 | The current settings revision parses after retired keys are dropped | the active `runtime_config_revisions.document` against `ConfigSchema` | `settings_unparsable` |
 | 5 | Every secret version the settings bind to decrypts under the running `MASTER_KEY` | every `secret://name/version` in the active document is read from `runtime_secret_versions` and decrypted with AAD `runtime-secret:<name>:<version>` | `secret_unreadable` |
 | 6 | The identity provider is well-formed: https issuer, PKCE, no client secret | the parsed `auth.providers` OIDC entries | `identity_malformed` |
@@ -64,6 +64,8 @@ The checks stop at the first refusal. Once the release cannot run on this bootst
 Files, attachments and offloaded step results live in S3-compatible object storage. A production SubKit with no object store is not a degraded SubKit; it is one that will fail on the first upload, after it has migrated and written revision 1. The check therefore refuses before the migration rather than after.
 
 `object_store_missing` means neither the active revision nor the `OBJECT_STORAGE_*` seed names a complete binding (endpoint, region, bucket, access key id, secret access key). `object_store_unreachable` means one was named and did not answer — a wrong endpoint, a bucket that does not exist, or credentials that cannot write.
+
+**Which credentials it probes.** All three credential leaves of `storage.object_store` are `secret: true` in the config schema, so a stored revision holds `secret://name/version` there, never a usable value. The check decrypts them before probing. This matters twice over: probing with the literal reference string as an access key would fail for the wrong reason, and treating a reference as "not a complete binding" would fall through to `OBJECT_STORAGE_*` — which a stateless deployment that moved its settings into PostgreSQL no longer sets, refusing a perfectly healthy engine, or, worse, quietly probing stale environment credentials the engine does not use and passing. When one of those references does not decrypt, check 3 refuses with `secret_unreadable` rather than an object-store code: the cause an operator has to act on is the key, not the bucket.
 
 ### Check 4 — retired keys are reported, never refused
 
@@ -137,11 +139,13 @@ Writes the next **immutable** version. SubKit's versions are addressed by a stor
 
 `--purpose` is recorded in the audit row (`secret.version_created`), not beside the ciphertext — `runtime_secret_versions` has no description column and this release adds no migration. It is where an operator asking "why does this version exist" will look anyway.
 
-`--bind` takes **dotted settings paths**, not binding names, because in SubKit a binding *is* a settings path. Each named path is re-pointed at the new reference by saving a new global revision:
+`--bind` takes **dotted settings paths**, not binding names, because in SubKit a binding *is* a settings path. Each named path is re-pointed at the new reference by saving a new global revision **and activating it**:
 
 ```
 llm.providers.anthropic.api_key: pinned to settings.llm.providers.anthropic.api_key version 3
 ```
+
+The activation is the load-bearing half, and it is why `--bind` requires the engine to be stopped. A saved revision only moves `desired_revision`; the preflight and every boot read `active_revision`, so a re-pin that stopped at "saved" would print `pinned to …` and leave the engine refusing on exactly the version it was already refusing on. The normal activation path cannot help here — it either needs a live replica to prepare and acknowledge, or defers to the next boot — so this writes the pointer directly, under the same precondition that makes it safe and that `--rewrap-master-key` already uses: nothing is serving. With a live replica lease it refuses and says so, because a replica holding the old snapshot must be told to prepare, not overtaken. Minting the version itself (`--vault-set` without `--bind`) is safe at any time.
 
 Without `--bind` the command says so explicitly — `bindings keep their pinned version; re-run with --bind <binding> to re-pin them` — because a pinned revision does not follow a new version on its own. A binding that could not be re-pinned exits 1 even though the new version exists: the deploy this was meant to unblock will fail again on the version the revision still points at. Tenant overlays are out of scope for this flag; re-pin those through the settings API, where the tenant is named by someone who knows which one they mean.
 
@@ -192,7 +196,7 @@ The engine refuses to boot with `secret_unreadable`, naming the secret and the s
    shred -u /run/secrets/new
    ```
 
-   `--if-unreadable` makes this line idempotent: run it on every deploy and it does nothing until the day it is needed.
+   `--if-unreadable` makes this line idempotent: run it on every deploy and it does nothing until the day it is needed. The engine must be stopped for the `--bind` half, which activates the revision it saves; without that the new version would exist but nothing would point at it.
 4. `engine --preflight` — expect exit 0 — then start the engine.
 
 A known limitation, stated plainly: `--vault-check` asks about the secret's current version, not about what a revision points at. A revision pinned to an older, unreadable version is left alone by the check and stays broken. The preflight's check 5 is the one that catches that case, because it reads the bindings rather than the names.
