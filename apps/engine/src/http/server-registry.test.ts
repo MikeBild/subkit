@@ -26,7 +26,13 @@ describe("buildDefaultRegistry — provider-neutral membership", () => {
     // cannot shadow one. Without it a human who just signed in through the login
     // funnel was anonymous to every route on an api_key-only deployment — which
     // is what left `granted_by_user_id` NULL on every approval in production.
-    expect(names(auth)).toEqual(["mcp_oauth", "portal_token", "api_key", "browser_session"]);
+    expect(names(auth)).toEqual([
+      "mcp_oauth",
+      "portal_token",
+      "token_exchange",
+      "api_key",
+      "browser_session",
+    ]);
   });
 
   test("configured OIDC adapters are registered by id", () => {
@@ -45,6 +51,7 @@ describe("buildDefaultRegistry — provider-neutral membership", () => {
     expect(names(auth)).toEqual([
       "mcp_oauth",
       "portal_token",
+      "token_exchange",
       "api_key",
       "partner",
       "browser_session",
@@ -53,6 +60,6 @@ describe("buildDefaultRegistry — provider-neutral membership", () => {
 
   test("disabling MCP OAuth drops only its bearer adapter", () => {
     const auth = authWith([{ protocol: "api_key", id: "api-key", label: "SubKit API key" }], false);
-    expect(names(auth)).toEqual(["portal_token", "api_key", "browser_session"]);
+    expect(names(auth)).toEqual(["portal_token", "token_exchange", "api_key", "browser_session"]);
   });
 });

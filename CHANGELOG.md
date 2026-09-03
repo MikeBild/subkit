@@ -6,6 +6,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.30.1 — 2026-09-04
+
+### Fixed
+
+- The auth-registry membership contract (`server-registry.test.ts`) now states
+  the `token_exchange` provider that 6.30.0 registers ahead of `api_key` in
+  every configuration; CI shard 5/8 was red on 6.30.0 because the pinned
+  provider lists had become false.
+- The token-exchange unit test no longer mutates `process.env.MASTER_KEY`: the
+  env facade parses it once per process, so the mutation re-keyed every later
+  suite in the same run and made the host-CLI end-to-end test fail with 401
+  whenever the two ran together.
+
 ## 6.30.0 — 2026-09-04
 
 ### Added

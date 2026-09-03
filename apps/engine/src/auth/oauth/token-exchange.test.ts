@@ -23,8 +23,6 @@ import {
 } from "./token-exchange.ts";
 import { parseTokenExchangeArgs, readKeyFile } from "./token-exchange-cli.ts";
 
-const MASTER_KEY = "ab".repeat(32);
-
 describe("token exchange — grant constants", () => {
   test("uses the RFC 8693 grant URN and a SubKit-owned subject token type", () => {
     expect(TOKEN_EXCHANGE_GRANT_TYPE).toBe("urn:ietf:params:oauth:grant-type:token-exchange");
@@ -137,7 +135,12 @@ describe("applyTokenGrants", () => {
 
 describe("token shape", () => {
   test("verify accepts only our typ + issuer, signed with the MASTER_KEY-derived secret", async () => {
-    const secret = deriveTokenExchangeSecret(MASTER_KEY);
+    // Sign with the secret THIS process resolves. The env facade parses
+    // MASTER_KEY once per process and caches it, so a test must never set
+    // process.env.MASTER_KEY — it would silently re-key every later suite in
+    // the same run (the CLI end-to-end test spawns a child that inherits the
+    // restored value and then fails to verify against the cached one).
+    const secret = deriveTokenExchangeSecret();
     const claims = { tenant_id: "t1", api_key_id: "k1", key_version: "abc", scope: "a" };
     const good = await new jose.SignJWT(claims)
       .setProtectedHeader({ alg: "HS256", typ: "subkit-tx+jwt" })
@@ -172,24 +175,12 @@ describe("token shape", () => {
       .setExpirationTime(2)
       .sign(secret);
 
-    const priorMasterKey = process.env.MASTER_KEY;
-    process.env.MASTER_KEY = MASTER_KEY;
-    try {
-      const verified = await verifyExchangedToken(good);
-      // Only meaningful when the env facade resolves to this MASTER_KEY —
-      // the env schema is parsed once per process, so a suite that loaded
-      // it earlier with another key legitimately yields null here.
-      if (verified) {
-        expect(verified.sub).toBe("u1");
-        expect(verified.api_key_id).toBe("k1");
-      }
-      expect(await verifyExchangedToken(wrongSecret)).toBeNull();
-      expect(await verifyExchangedToken(expired)).toBeNull();
-      expect(await verifyExchangedToken(foreignTyp)).toBeNull();
-    } finally {
-      if (priorMasterKey === undefined) delete process.env.MASTER_KEY;
-      else process.env.MASTER_KEY = priorMasterKey;
-    }
+    const verified = await verifyExchangedToken(good);
+    expect(verified?.sub).toBe("u1");
+    expect(verified?.api_key_id).toBe("k1");
+    expect(await verifyExchangedToken(wrongSecret)).toBeNull();
+    expect(await verifyExchangedToken(expired)).toBeNull();
+    expect(await verifyExchangedToken(foreignTyp)).toBeNull();
   });
 
   test("key version fingerprint is not the stored hash and changes with it", () => {
