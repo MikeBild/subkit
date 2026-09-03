@@ -12,6 +12,7 @@ import { AuditPage } from "@/pages/audit";
 import { CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
+import { ConnectionsPage } from "@/pages/connections";
 import { DecisionsPage } from "@/pages/decisions";
 import { OverviewPage } from "@/pages/overview";
 import { RunsPage } from "@/pages/runs";
@@ -50,6 +51,7 @@ const PAGE_COMPONENTS: Record<PageRoute, () => React.ReactElement> = {
   "/people": PeoplePage,
   "/access": AccessPage,
   "/api-access": ApiAccessPage,
+  "/connections": ConnectionsPage,
   "/notifications": NotificationsPage,
   "/operations": OperationsPage,
   "/settings": SettingsPage,

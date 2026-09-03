@@ -23,6 +23,7 @@ export const PAGE_ROUTES = [
   "/people",
   "/access",
   "/api-access",
+  "/connections",
   "/notifications",
   "/operations",
   "/settings",

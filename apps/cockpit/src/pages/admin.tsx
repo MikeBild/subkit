@@ -19,6 +19,7 @@ import { useSession } from "@/app/session";
 import { ContextHelp } from "@/components/cockpit/context-help";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
+import { PreparedChanges } from "@/components/cockpit/prepared-changes";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -2043,6 +2044,7 @@ export function SettingsPage() {
       titleKey="resource.settings.title"
       descriptionKey="resource.settings.description"
     >
+      <PreparedChanges canDecide={canWrite} />
       <div
         className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end"
         data-family-slot="configuration-content"
@@ -2293,6 +2295,14 @@ export function SettingsPage() {
                                   disabled={!canWrite || save.isPending}
                                   data-testid={`setting-input-${index}`}
                                 />
+                              )}
+                              {item.meta.sensitive && (
+                                <FieldDescription
+                                  className="pt-1.5"
+                                  data-testid={`setting-secret-hint-${index}`}
+                                >
+                                  {t("settings.secretExternalOnly")}
+                                </FieldDescription>
                               )}
                               <FieldDescription className="flex flex-wrap gap-1.5 pt-1.5">
                                 <Badge variant="secondary">

@@ -13,6 +13,7 @@ import {
   ListChecks,
   type LucideIcon,
   MessageSquare,
+  Plug,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -183,6 +184,16 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         permission: "audit:read",
         icon: History,
         api: ["GET /v1/audit-log"],
+      },
+      {
+        // Outbound connections: what this installation may call on someone's
+        // behalf — the other half of Zugangsdaten (keys we hand out, grants we
+        // hold). After the five entries §6 pins, like every product-specific one.
+        labelKey: "nav.connections",
+        path: "/connections",
+        permission: "connection:read",
+        icon: Plug,
+        api: ["GET /v1/connections"],
       },
       {
         labelKey: "nav.people",

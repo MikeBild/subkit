@@ -4,6 +4,7 @@
 export * from "./_common.ts";
 export * from "./audit.ts";
 export * from "./chat.ts";
+export * from "./connections.ts";
 export * from "./connector_docs.ts";
 export * from "./connector_mcp_sessions.ts";
 export * from "./connector_template_credentials.ts";

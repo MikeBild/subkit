@@ -84,6 +84,7 @@ const MOUNT_MARKERS = {
   people: '[data-testid="admin-people"]',
   access: '[data-testid="admin-access"]',
   "api-access": '[data-testid="admin-api-access"]',
+  connections: '[data-testid="admin-connections"]',
   operations: '[data-testid="admin-operations"]',
   notifications: '[data-testid="admin-notifications"]',
   settings: '[data-testid="admin-settings"]',
@@ -435,6 +436,8 @@ const BOOTSTRAP = {
     "settings:write",
     "self_healing:read",
     "self_healing:write",
+    "connection:read",
+    "connection:write",
   ],
   csrf_token: "test-csrf",
   version: "konvention-check",
@@ -938,6 +941,91 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
       });
     }
 
+    // Anbindungen: one connection per state word, so every badge the page can
+    // render is in the DOM — and the expired one carries its way back (§11).
+    if (path === "/v1/connections")
+      return json(route, {
+        items: [
+          {
+            id: ID,
+            name: "wiki",
+            base_url: "https://wiki.example.org",
+            issuer: "https://wiki.example.org",
+            service_name: "Wissensbasis",
+            service_description: "Die interne Wissensbasis der Firma.",
+            scopes: ["read", "write"],
+            granted_scopes: ["read", "write"],
+            state: "valid",
+            auto_renew: true,
+            expires_at: hours(1),
+            last_used_at: days(0.1),
+            last_refreshed_at: days(0.5),
+            refresh_failed_at: null,
+            last_error: null,
+            used_by_connectors: 2,
+            created_at: days(20),
+          },
+          {
+            id: "018f4b4a-6d33-7b3a-9c2d-123456789abd",
+            name: "kalender",
+            base_url: "https://kalender.example.org",
+            issuer: "https://kalender.example.org",
+            service_name: null,
+            service_description: null,
+            scopes: ["read"],
+            granted_scopes: ["read"],
+            state: "expired",
+            auto_renew: true,
+            expires_at: days(1),
+            last_used_at: days(3),
+            last_refreshed_at: days(2),
+            refresh_failed_at: days(1),
+            last_error: "invalid_grant",
+            used_by_connectors: 0,
+            created_at: days(40),
+          },
+          {
+            id: "018f4b4a-6d33-7b3a-9c2d-123456789abe",
+            name: "archiv",
+            base_url: "https://archiv.example.org",
+            issuer: "https://archiv.example.org",
+            service_name: "Archiv",
+            service_description: null,
+            scopes: ["read"],
+            granted_scopes: null,
+            state: "expiring",
+            auto_renew: false,
+            expires_at: hours(72),
+            last_used_at: null,
+            last_refreshed_at: null,
+            refresh_failed_at: null,
+            last_error: null,
+            used_by_connectors: 0,
+            created_at: days(2),
+          },
+        ],
+      });
+    if (path === `/v1/connectors/${ID}/credential`)
+      return json(route, {
+        mode: "connection",
+        environment: "prod",
+        connection: { id: ID, name: "wiki" },
+        updated_at: days(2),
+      });
+    // Vorbereitete Änderungen: one waits, so Einstellungen shows the section.
+    if (path === "/v1/secret-approvals")
+      return json(route, {
+        items: [
+          {
+            name: "settings.llm.providers.anthropic.api_key",
+            version: 4,
+            reference: "secret://settings.llm.providers.anthropic.api_key/4",
+            prepared_by: "Host-Kommando (engine --vault-set --pending)",
+            pending_since: days(1),
+            bindings: ["llm.providers.anthropic.api_key"],
+          },
+        ],
+      });
     if (path === "/v1/settings")
       return json(route, {
         saved_revision: 7,

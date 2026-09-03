@@ -14,6 +14,7 @@ import { AuditAction } from "../audit/types.ts";
 import { probeAllSelfDescriptionLinks } from "../connectors/discovery/self-description-probe.ts";
 import { runDiscoveryCached } from "../connectors/discovery/service.ts";
 import { attachConnectorSelfDescriptionLinks } from "../connectors/service.ts";
+import { refreshDueConnections } from "../credentials/index.ts";
 import type { Db } from "../db/client.ts";
 import {
   connectors,
@@ -77,6 +78,9 @@ const FILES_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
  *  matches the files-cleanup cadence — the sweeps are filtered by
  *  `now() - interval ...` so a second concurrent instance is a no-op. */
 const MCP_OAUTH_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
+/** Outbound connections renew themselves within five minutes of expiry; a
+ *  one-minute cadence leaves at least four sweeps inside that window. */
+const CONNECTION_REFRESH_CADENCE_MS = 60 * 1000;
 
 /** Fixed cadence for the chat_events_seen retention sweep. Slack
  *  retries arrive within minutes, so a 24h grace is plenty; sweeping
@@ -341,6 +345,7 @@ export class SchedulerReconciler {
   /** Last instant the MCP OAuth cleanup cron ran. Same in-process
    *  throttle as `lastFilesCleanupAt`. */
   private lastMcpOAuthCleanupAt: Date | null = null;
+  private lastConnectionRefreshAt: Date | null = null;
 
   /** Last instant the chat_events_seen retention sweep ran. */
   private lastChatDedupCleanupAt: Date | null = null;
@@ -553,6 +558,18 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "mcp_oauth_cleanup_failed",
         msg: "scheduler MCP OAuth cleanup pass failed",
+        ...errorFields(err),
+      });
+    });
+    // Outbound connections: renew every grant whose token ends within the
+    // refresh buffer, so a connection nobody used today still works tomorrow.
+    await retryTransient(() => this.reconcileConnectionRefresh(), {
+      label: "connection_refresh",
+    }).catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "connection_refresh_failed",
+        msg: "scheduler outbound-connection refresh pass failed",
         ...errorFields(err),
       });
     });
@@ -1143,6 +1160,29 @@ export class SchedulerReconciler {
     }
     this.lastMcpOAuthCleanupAt = now;
     await runMcpOAuthCleanup(now, this.opts.db);
+  }
+
+  /**
+   * Renew outbound connections that are about to expire. Overlap between
+   * instances is harmless: a second refresh of the same grant mints one more
+   * version and revokes the one before it.
+   */
+  async reconcileConnectionRefresh(now: Date = new Date()): Promise<void> {
+    if (this.lastConnectionRefreshAt !== null) {
+      const elapsed = now.getTime() - this.lastConnectionRefreshAt.getTime();
+      if (elapsed < CONNECTION_REFRESH_CADENCE_MS) return;
+    }
+    this.lastConnectionRefreshAt = now;
+    const report = await refreshDueConnections(this.opts.db, now);
+    if (report.refreshed > 0 || report.failed > 0) {
+      logger.info({
+        module: "scheduler",
+        action: "connection_refresh",
+        msg: "outbound connections refreshed",
+        refreshed: report.refreshed,
+        failed: report.failed,
+      });
+    }
   }
 
   /**

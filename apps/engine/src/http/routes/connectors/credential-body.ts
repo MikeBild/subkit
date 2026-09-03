@@ -25,7 +25,7 @@ export type StaticCredentialValue = Extract<
 
 /** The wire shape, structurally. Mirrors `CredentialBody` in `./schemas.ts`. */
 export interface CredentialBodyInput {
-  mode: "none" | "header" | "query" | "bearer" | "basic" | "aws_sigv4";
+  mode: "none" | "header" | "query" | "bearer" | "basic" | "aws_sigv4" | "connection";
   headers?: Record<string, string> | undefined;
   query?: Record<string, string> | undefined;
   token?: string | undefined;
@@ -46,6 +46,10 @@ export interface CredentialBodyInput {
  */
 export function credentialBodyToValue(body: CredentialBodyInput): StaticCredentialValue {
   switch (body.mode) {
+    case "connection":
+      // Handled by the route before this point: a connection is a pointer,
+      // not material, so there is no static value to build from it.
+      throw new BadRequestError("connection mode carries no credential value");
     case "none":
       return { mode: "none" };
     case "header":

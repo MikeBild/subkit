@@ -35,6 +35,8 @@ export const mcpOauthClients = pgTable(
       .$type<"none">(),
     scope: text("scope").notNull().default("mcp:read"),
     client_name: text("client_name"),
+    /** RFC 7591 `client_uri` — the client's own base address, shown on the consent page. */
+    client_uri: text("client_uri"),
     software_id: text("software_id"),
     registration_source: text("registration_source")
       .notNull()
