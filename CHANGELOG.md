@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 6.23.2 — 2026-09-03
+
+### Fixed
+
+- Demote cross-links inside the served decision-and-install pages when they point
+  at a page this binary does not carry: the text stays, the dead link goes. A
+  comparison onboarding run on 2026-09-03 found twelve of them and read the set
+  as broken rather than intentional.
+- Name a seeded starter workflow in `sk init`'s success output, and in the
+  self-host guide right after setup. The same run had all three and never
+  noticed.
+- Document that `--llm-api-key` is required for every provider, `mock` included,
+  and what the mock provider actually prints; show a keyless HTTP connector body
+  for `sk connectors create --file`. Both gaps were hit by both baseline runs.
+
 ## 6.23.1 — 2026-09-02
 
 6.23.0 was tagged but never published: its release gate found CI red on the
