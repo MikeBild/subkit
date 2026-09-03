@@ -7,6 +7,7 @@
 // endpoint. Once CLIs consume `messages_v2` exclusively a later PR can
 // physically migrate rows.
 
+import type { ConversationReference } from "./references.ts";
 import type {
   ContentPart,
   ConversationMessageRecord,
@@ -27,7 +28,15 @@ export function toMessageParts(
   const parts: ContentPart[] = [];
   const text = extractText(message.content);
   if (text !== null && text.length > 0) {
-    parts.push({ type: "text", text });
+    // A user turn carries its @-mentions next to the text so the client
+    // can render chips after a reload; the engine wrote them at ingest.
+    const refs = extractReferences(message.content);
+    parts.push({
+      type: "text",
+      text,
+      ...(refs.references ? { references: refs.references } : {}),
+      ...(refs.unresolved ? { unresolved_references: refs.unresolved } : {}),
+    });
   }
 
   if (message.role === "assistant") {
@@ -106,6 +115,33 @@ function groupToolCallsByAssistantTurn(
 export function messageHasText(content: unknown): boolean {
   const text = extractText(content);
   return text !== null && text.length > 0;
+}
+
+function isReferenceArray(value: unknown): value is ConversationReference[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (r) =>
+        typeof r === "object" &&
+        r !== null &&
+        typeof (r as { id?: unknown }).id === "string" &&
+        typeof (r as { type?: unknown }).type === "string" &&
+        typeof (r as { label?: unknown }).label === "string",
+    )
+  );
+}
+
+function extractReferences(content: unknown): {
+  references: ConversationReference[] | null;
+  unresolved: ConversationReference[] | null;
+} {
+  if (!content || typeof content !== "object") return { references: null, unresolved: null };
+  const rec = content as Record<string, unknown>;
+  return {
+    references: isReferenceArray(rec.references) ? rec.references : null,
+    unresolved: isReferenceArray(rec.unresolved_references) ? rec.unresolved_references : null,
+  };
 }
 
 function extractText(content: unknown): string | null {

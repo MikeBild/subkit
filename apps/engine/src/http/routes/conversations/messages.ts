@@ -148,6 +148,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
         conversation_id: id,
         actor_id: principal.id,
         message: body.message,
+        ...(body.references && body.references.length > 0 ? { references: body.references } : {}),
         ...(body.memory !== undefined ? { memory: body.memory } : {}),
         ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
       } as const;
@@ -166,6 +167,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
             actor_id: principal.id,
             principal,
             user_message: appended.message,
+            ...(appended.references ? { user_references: appended.references } : {}),
             // A person typed this into an authenticated session, so a fast-path
             // "yes" in it is their approval.
             answer_actor: humanChatAnswer(principal),

@@ -17516,6 +17516,14 @@ export interface components {
             permission_mode?: "auto" | "ask" | "plan" | "yolo";
             step_budget?: number;
             playground?: boolean;
+            references?: components["schemas"]["ConversationReference"][];
+        };
+        ConversationReference: {
+            /** @enum {string} */
+            type: "workflow" | "connector";
+            /** Format: uuid */
+            id: string;
+            label: string;
         };
         ConversationDetail: {
             conversation: components["schemas"]["Conversation"];
@@ -17634,6 +17642,7 @@ export interface components {
             /** @enum {string} */
             permission_mode?: "auto" | "ask" | "plan" | "yolo";
             step_budget?: number;
+            references?: components["schemas"]["ConversationReference"][];
             client_suppress?: boolean;
             event?: {
                 /** @enum {string} */

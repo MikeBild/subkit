@@ -78,7 +78,14 @@ export function withToolResult(tool: ToolPart, parts: readonly unknown[]): ToolP
   if (!hasOutput) return { ...tool, [VERDICT_KEY]: verdict } as unknown as ToolPart;
   return {
     ...tool,
-    state: verdict.outcome === "error" ? "output-error" : "output-available",
+    // A stated "denied" (declined, expired, not permitted) is not a completed
+    // call, whatever payload rode along with it.
+    state:
+      verdict.outcome === "error"
+        ? "output-error"
+        : verdict.outcome === "denied"
+          ? "output-denied"
+          : "output-available",
     output: result.output,
     [VERDICT_KEY]: verdict,
   } as unknown as ToolPart;

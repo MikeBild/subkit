@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleStop, List, MessageSquarePlus, PanelRight, Pencil, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   apiRequest,
   appendConversationMessage,
   type Conversation,
+  type ConversationReference,
   cancelConversation,
   createConversation,
   getConversation,
@@ -32,6 +33,7 @@ import {
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  usePromptInputController,
 } from "@/components/ai-elements/prompt-input";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import {
@@ -43,6 +45,7 @@ import {
 } from "@/components/ai-elements/tool";
 import { DiffCard } from "@/components/cockpit/diff-card";
 import { IconButton } from "@/components/cockpit/icon-button";
+import { MentionChips, MentionPicker, useMentionInput } from "@/components/cockpit/mention-picker";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
@@ -80,11 +83,13 @@ import { Textarea } from "@/components/ui/textarea";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import type { DiffLine } from "@/lib/line-diff";
+import { reconcileReferences } from "@/lib/mentions";
 import { conversationExcerpt, hideTechnicalIdentifiers, humanFacingText } from "@/lib/presentation";
 import { statusLabel } from "@/lib/status-label";
 import { patchCandidateId, toolPartVerdict } from "@/lib/tool-parts";
 import { isStaleCall, toolLabel, toolOutcomeKey } from "@/lib/tool-presentation";
 import { cn } from "@/lib/utils";
+import { useMentionCandidates } from "@/queries/mention-sources";
 import { conversationRow } from "./chat-list-model";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "./chat-resume";
@@ -138,6 +143,32 @@ function textFromPart(part: unknown): string | null {
   if (!part || typeof part !== "object") return null;
   const record = part as Record<string, unknown>;
   return typeof record.text === "string" ? record.text : null;
+}
+
+function referenceList(value: unknown): ConversationReference[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (r): r is ConversationReference =>
+      !!r &&
+      typeof r === "object" &&
+      typeof (r as { id?: unknown }).id === "string" &&
+      typeof (r as { label?: unknown }).label === "string" &&
+      ((r as { type?: unknown }).type === "workflow" ||
+        (r as { type?: unknown }).type === "connector"),
+  );
+}
+
+/** The @-mentions the engine stored on a user text part, if any. */
+function referencesFromPart(part: unknown): {
+  references: ConversationReference[];
+  unresolved: ConversationReference[];
+} {
+  if (!part || typeof part !== "object") return { references: [], unresolved: [] };
+  const record = part as Record<string, unknown>;
+  return {
+    references: referenceList(record.references),
+    unresolved: referenceList(record.unresolved_references),
+  };
 }
 
 /** The proposal is decided where it appeared, so the diff renders inside the tool card. */
@@ -248,13 +279,28 @@ function StarterCards({
   );
 }
 
-/** What to call an action that gets a card of its own. */
-function actionLabel(t: Translate, toolName: string): string {
+/** What to call an action that gets a card of its own. `notRun` swaps the
+ *  past tense for the honest form when the verdict says nothing ran. */
+function actionLabel(t: Translate, toolName: string, notRun = false): string {
   const label = toolLabel(toolName);
-  if (label.kind === "workflow") return t("tool.name.runNamedWorkflow", { name: label.slug });
+  if (label.kind === "workflow")
+    return t(notRun ? "tool.name.runNamedWorkflow.notRun" : "tool.name.runNamedWorkflow", {
+      name: label.slug,
+    });
   if (label.kind === "literal") return label.text;
   if (label.kind === "background") return t(label.words.past);
+  if (notRun && label.key === "tool.name.runWorkflow") return t("tool.name.runWorkflow.notRun");
   return t(label.key);
+}
+
+/** A verdict under which the action did not happen. */
+function didNotRun(verdict: { confirmationState: string | null; outcome: string | null }): boolean {
+  return (
+    verdict.outcome === "denied" ||
+    verdict.confirmationState === "declined" ||
+    verdict.confirmationState === "auto_declined" ||
+    verdict.confirmationState === "expired"
+  );
 }
 
 /** What to call a background read, in the tense that matches its state. */
@@ -262,6 +308,94 @@ function backgroundLabel(t: Translate, toolName: string, running: boolean): stri
   const label = toolLabel(toolName);
   if (label.kind === "background") return t(running ? label.words.active : label.words.past);
   return actionLabel(t, toolName);
+}
+
+/**
+ * The composer with `@`-mentions. Lives inside `PromptInputProvider` so it
+ * can read and write the shared text state; the references travel beside
+ * the text and are reconciled against it on send (a token deleted by hand
+ * drops its reference).
+ */
+function ChatComposer({
+  disabled,
+  status,
+  onSend,
+}: {
+  disabled: boolean;
+  status: React.ComponentProps<typeof PromptInputSubmit>["status"];
+  onSend: (message: string, references: ConversationReference[]) => Promise<unknown>;
+}) {
+  const { t } = useI18n();
+  const session = useSession();
+  const controller = usePromptInputController();
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [references, setReferences] = useState<ConversationReference[]>([]);
+  const [query, setQuery] = useState<string | null>(null);
+  const { candidates, isLoading } = useMentionCandidates(query, session.permissions);
+  const mentions = useMentionInput({
+    value: controller.textInput.value,
+    setValue: controller.textInput.setInput,
+    textareaRef,
+    references,
+    setReferences,
+    candidates,
+    onQueryChange: setQuery,
+  });
+  return (
+    <div className="relative">
+      <MentionPicker
+        open={mentions.open}
+        groups={mentions.groups}
+        highlighted={mentions.highlighted}
+        loading={isLoading}
+        onHighlight={mentions.setHighlighted}
+        onSelect={mentions.select}
+      />
+      <PromptInput
+        data-testid="chat-composer"
+        onSubmit={async ({ text }) => {
+          const trimmed = text.trim();
+          if (!trimmed) return;
+          await onSend(trimmed, reconcileReferences(trimmed, references));
+          setReferences([]);
+        }}
+      >
+        <PromptInputBody>
+          <PromptInputTextarea
+            ref={textareaRef}
+            name="message"
+            placeholder={t("chat.composer.placeholder")}
+            disabled={disabled}
+            onKeyDown={(event) => {
+              mentions.onKeyDown(event);
+            }}
+            onChange={(event) =>
+              mentions.onChange(event.currentTarget.value, event.currentTarget.selectionStart)
+            }
+            onClick={(event) => mentions.onCaretMove(event.currentTarget.selectionStart)}
+            onKeyUp={(event) => {
+              if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End")
+                mentions.onCaretMove(event.currentTarget.selectionStart);
+            }}
+            onBlur={mentions.close}
+            data-testid="chat-composer-input"
+          />
+        </PromptInputBody>
+        <PromptInputFooter>
+          <PromptInputTools>
+            <span className="px-2 text-xs text-muted-foreground">{t("chat.composer.mode")}</span>
+          </PromptInputTools>
+          <PromptInputSubmit
+            status={status}
+            disabled={disabled}
+            aria-label={t("chat.submit")}
+            tooltip={t("chat.submit")}
+            data-testid="chat-composer-submit"
+          />
+        </PromptInputFooter>
+      </PromptInput>
+    </div>
+  );
 }
 
 function ChatMessage({
@@ -301,6 +435,7 @@ function ChatMessage({
           if (group.kind === "part") {
             const text = textFromPart(group.part);
             if (!text) return null;
+            const mentions = from === "user" ? referencesFromPart(group.part) : null;
             return (
               <Bubble
                 key={`${message.id}-text-${group.index}`}
@@ -308,9 +443,19 @@ function ChatMessage({
                 align={from === "user" ? "end" : "start"}
               >
                 <BubbleContent data-testid={`chat-message-${messageIndex}-text-${group.index}`}>
-                  <MessageResponse>
-                    {hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"))}
-                  </MessageResponse>
+                  {mentions && mentions.references.length > 0 ? (
+                    <MentionChips
+                      text={text}
+                      references={mentions.references}
+                      unresolved={mentions.unresolved}
+                      hiddenLabel={t("tool.referenceHiddenInline")}
+                      testIdPrefix={`chat-message-${messageIndex}-text-${group.index}`}
+                    />
+                  ) : (
+                    <MessageResponse>
+                      {hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"))}
+                    </MessageResponse>
+                  )}
                 </BubbleContent>
               </Bubble>
             );
@@ -330,6 +475,7 @@ function ChatMessage({
             outcome: verdict.outcome,
             stale,
           });
+          const notRun = didNotRun(verdict);
           return (
             <Tool
               key={`${message.id}-tool-${partIndex}`}
@@ -341,7 +487,7 @@ function ChatMessage({
                   type={tool.type}
                   state={tool.state}
                   toolName={tool.toolName}
-                  title={actionLabel(t, tool.toolName)}
+                  title={actionLabel(t, tool.toolName, notRun)}
                   outcomeKey={outcomeKey}
                   data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
                 />
@@ -349,7 +495,7 @@ function ChatMessage({
                 <ToolHeader
                   type={tool.type}
                   state={tool.state}
-                  title={actionLabel(t, tool.type.replace(/^tool-/, ""))}
+                  title={actionLabel(t, tool.type.replace(/^tool-/, ""), notRun)}
                   outcomeKey={outcomeKey}
                   data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
                 />
@@ -583,7 +729,13 @@ export function ChatPage() {
     enabled: Boolean(activeId),
   });
   const send = useMutation({
-    mutationFn: async (message: string) => {
+    mutationFn: async ({
+      message,
+      references,
+    }: {
+      message: string;
+      references?: ConversationReference[];
+    }) => {
       setStreamedText("");
       setStreamedDiffs([]);
       setLiveCalls([]);
@@ -602,14 +754,19 @@ export function ChatPage() {
         const diff = asStreamedDiff(event);
         if (diff) setStreamedDiffs((current) => [...current, diff]);
       };
-      if (activeId) return appendConversationMessage(activeId, message, onEvent);
+      if (activeId) return appendConversationMessage(activeId, message, onEvent, references);
       const params = new URLSearchParams(window.location.search);
       const workflowId = params.get("workflow_id");
       const connectorId = params.get("connector_id");
-      return createConversation(message, onEvent, {
-        ...(workflowId ? { workflow_id: workflowId } : {}),
-        ...(connectorId ? { connector_id: connectorId } : {}),
-      });
+      return createConversation(
+        message,
+        onEvent,
+        {
+          ...(workflowId ? { workflow_id: workflowId } : {}),
+          ...(connectorId ? { connector_id: connectorId } : {}),
+        },
+        references,
+      );
     },
     onSuccess: async (result) => {
       setSelection({ kind: "existing", id: result.conversation.id });
@@ -770,7 +927,7 @@ export function ChatPage() {
                         {t("chat.empty.description")}
                       </p>
                       <StarterCards
-                        onPick={(prompt) => send.mutate(prompt)}
+                        onPick={(prompt) => send.mutate({ message: prompt })}
                         disabled={send.isPending}
                       />
                     </div>
@@ -878,42 +1035,17 @@ export function ChatPage() {
                     key={key}
                     suggestion={t(key)}
                     data-testid={`chat-suggestion-${index}`}
-                    onClick={(suggestion) => send.mutate(suggestion)}
+                    onClick={(suggestion) => send.mutate({ message: suggestion })}
                   />
                 ))}
               </Suggestions>
             )}
             <PromptInputProvider key={activeId ?? "new"} initialInput="">
-              <PromptInput
-                data-testid="chat-composer"
-                onSubmit={async ({ text }) => {
-                  const trimmed = text.trim();
-                  if (trimmed) await send.mutateAsync(trimmed);
-                }}
-              >
-                <PromptInputBody>
-                  <PromptInputTextarea
-                    name="message"
-                    placeholder={t("chat.composer.placeholder")}
-                    disabled={send.isPending}
-                    data-testid="chat-composer-input"
-                  />
-                </PromptInputBody>
-                <PromptInputFooter>
-                  <PromptInputTools>
-                    <span className="px-2 text-xs text-muted-foreground">
-                      {t("chat.composer.mode")}
-                    </span>
-                  </PromptInputTools>
-                  <PromptInputSubmit
-                    status={status}
-                    disabled={send.isPending}
-                    aria-label={t("chat.submit")}
-                    tooltip={t("chat.submit")}
-                    data-testid="chat-composer-submit"
-                  />
-                </PromptInputFooter>
-              </PromptInput>
+              <ChatComposer
+                disabled={send.isPending}
+                status={status}
+                onSend={(message, references) => send.mutateAsync({ message, references })}
+              />
             </PromptInputProvider>
           </div>
         </div>
@@ -1056,7 +1188,7 @@ export function ChatPage() {
               type="button"
               disabled={!createPrompt.trim() || send.isPending}
               data-testid="conversation-create-submit"
-              onClick={() => send.mutate(createPrompt.trim())}
+              onClick={() => send.mutate({ message: createPrompt.trim() })}
             >
               {t(send.isPending ? "chat.create.starting" : "chat.create.submit")}
             </Button>

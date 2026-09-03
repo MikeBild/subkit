@@ -282,6 +282,7 @@ const CONFIRMATION_WORDS: Record<string, TranslationKey> = {
   partial: "tool.outcome.partlyApproved",
   declined: "tool.outcome.declined",
   auto_declined: "tool.outcome.autoDeclined",
+  expired: "tool.outcome.expired",
   oauth_success: "tool.outcome.signInCompleted",
   oauth_failure: "tool.outcome.signInFailed",
 };
