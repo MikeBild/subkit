@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 6.24.0 — 2026-09-03
+
+### Added
+
+- Add a generic `http` connector template: any HTTP or REST API with no
+  dedicated template, with no authentication, a bearer token or an API-key
+  header. Both onboarding baseline runs had to hand-author the connector body
+  from the OpenAPI schema for a keyless public API.
+- Add a concepts page, "Why these primitives", built from the product's own
+  incident record: seven documented failures with their measured numbers, and an
+  explicit list of the primitives whose origin the history does not carry.
+
+### Fixed
+
+- `sk -p` in text mode no longer exits silently with 0 when a turn produced
+  neither prose nor an execution; it names the tool calls made and the state
+  the turn ended in, including a pending confirmation.
+- Align the when-to-use page's second criterion with the capability matrix: a
+  crashed run is terminalized and audited, not continued.
+
 ## 6.23.2 — 2026-09-03
 
 ### Fixed
