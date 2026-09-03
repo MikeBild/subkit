@@ -6,6 +6,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.29.1 — 2026-09-03
+
+### Fixed
+
+- The committed Cockpit bundle now matches a fresh build (CI "Cockpit bundle
+  drift" was red on 6.29.0: the Anbindungen page shipped in source only).
+- `upsertCredential` names only pre-0048 columns on a schema that lacks
+  `credentials.connection_id` — it runs inside data migrations and their
+  proofs (`mcp-servers-to-connectors-migration.test.ts` drives the schema
+  before 0048), where a select or insert that names the new column crashed.
+  Same rule as the preflight: nothing on the pre-migration path names a 0048
+  column; column presence is detected once per database handle.
+
 ## 6.29.0 — 2026-09-03
 
 ### Added

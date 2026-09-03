@@ -33,7 +33,7 @@ export const SECRET_VERSION_PENDING_COLUMNS = {
   pending_bindings: runtimeSecretVersions.pending_bindings,
 };
 
-let detected = new WeakMap<object, Promise<boolean>>();
+let detected = new WeakMap<object, Map<string, Promise<boolean>>>();
 
 /**
  * Forget every answer. Called after migrations ran in this process: the
@@ -44,24 +44,44 @@ export function resetSecretColumnDetection(): void {
 }
 
 /**
- * Whether this database already carries the prepared-version columns.
- * Detected once per executor and remembered; a transaction handle is its own
- * executor and asks once more, which is one cheap catalog read.
+ * Whether `table.column` exists on this database. Detected once per executor
+ * and remembered; a transaction handle is its own executor and asks once
+ * more, which is one cheap catalog read.
  */
-export function hasPendingSecretColumns(db: Executor): Promise<boolean> {
-  const cached = detected.get(db);
+export function hasColumn(db: Executor, table: string, column: string): Promise<boolean> {
+  let perDb = detected.get(db);
+  if (!perDb) {
+    perDb = new Map();
+    detected.set(db, perDb);
+  }
+  const key = `${table}.${column}`;
+  const cached = perDb.get(key);
   if (cached) return cached;
   const probe = db
     .execute(
-      sql`SELECT 1 FROM information_schema.columns WHERE table_name = 'runtime_secret_versions' AND column_name = 'pending_since' LIMIT 1`,
+      sql`SELECT 1 FROM information_schema.columns WHERE table_name = ${table} AND column_name = ${column} LIMIT 1`,
     )
     .then((result) => {
       const rows = (result as { rows?: unknown[] }).rows ?? (result as unknown as unknown[]);
       return Array.isArray(rows) ? rows.length > 0 : false;
     });
-  detected.set(db, probe);
-  probe.catch(() => detected.delete(db));
+  perDb.set(key, probe);
+  probe.catch(() => perDb?.delete(key));
   return probe;
+}
+
+/** Whether this database already carries the prepared-version columns (6.29). */
+export function hasPendingSecretColumns(db: Executor): Promise<boolean> {
+  return hasColumn(db, "runtime_secret_versions", "pending_since");
+}
+
+/**
+ * Whether `credentials.connection_id` (6.29) exists. `upsertCredential` runs
+ * inside data migrations and their proofs against the schema that preceded
+ * 0048, so it may not name the column there.
+ */
+export function hasCredentialConnectionColumn(db: Executor): Promise<boolean> {
+  return hasColumn(db, "credentials", "connection_id");
 }
 
 export interface SecretVersionRow {
