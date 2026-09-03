@@ -32,6 +32,54 @@ export interface CreateExecutionParams {
   /** The caller-supplied run input — persisted so a rerun can default
    *  to the original instead of silently running with nothing. */
   input?: unknown;
+  /** Caller-chosen key that makes the trigger safe to repeat; see
+   *  `findExecutionByIdempotencyKey`. */
+  idempotency_key?: string | null;
+}
+
+/** Postgres raises 23505 when the partial unique index on
+ *  (tenant_id, idempotency_key) refuses a second run with the same key. */
+export function isIdempotencyConflict(err: unknown): boolean {
+  // Drizzle wraps the driver error ("Failed query: …" with the Postgres
+  // error as `cause`), so walk the chain: the code and the constraint name
+  // live on the innermost error, not on the one that reaches the caller.
+  let cur: unknown = err;
+  for (let depth = 0; cur && depth < 5; depth += 1) {
+    const e = cur as {
+      code?: string;
+      constraint_name?: string;
+      constraint?: string;
+      message?: string;
+      cause?: unknown;
+    };
+    const named = e.constraint_name ?? e.constraint ?? "";
+    const msg = e.message ?? "";
+    if (
+      (e.code === "23505" || msg.includes("23505") || msg.includes("duplicate key")) &&
+      (named === "executions_tenant_idempotency_key_uidx" ||
+        msg.includes("executions_tenant_idempotency_key_uidx"))
+    ) {
+      return true;
+    }
+    cur = e.cause;
+  }
+  return false;
+}
+
+/** The execution a tenant already started under this key, or null. */
+export async function findExecutionByIdempotencyKey(
+  db: Db,
+  tenant_id: string,
+  idempotency_key: string,
+): Promise<{ id: string; status: ExecutionStatus } | null> {
+  const [row] = await db
+    .select({ id: executions.id, status: executions.status })
+    .from(executions)
+    .where(
+      and(eq(executions.tenant_id, tenant_id), eq(executions.idempotency_key, idempotency_key)),
+    )
+    .limit(1);
+  return row ?? null;
 }
 
 export async function createExecution(db: Db, params: CreateExecutionParams): Promise<string> {
@@ -49,6 +97,7 @@ export async function createExecution(db: Db, params: CreateExecutionParams): Pr
         execution_mode: params.execution_mode ?? "dev",
         parent_execution_id: params.parent_execution_id ?? null,
         input: params.input ?? null,
+        idempotency_key: params.idempotency_key ?? null,
       })
       .returning({ id: executions.id });
     assertInsertRow(row, "executions");

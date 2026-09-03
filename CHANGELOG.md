@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- Idempotency key on the saved-workflow trigger: `idempotency_key` in the
+  `POST /v1/executions` body, the `Idempotency-Key` header, or
+  `sk workflows run --idempotency-key`. A second call with the same key in the
+  same tenant starts nothing and answers with the first run's id and
+  `idempotent_replay: true`; a partial unique index on
+  `executions(tenant_id, idempotency_key)` closes the concurrent case. The
+  capability matrix row "Prevent the same trigger running twice" moves from
+  partial to yes. Both Codex builders in the Track 0.1 measurement quoted that
+  row as their reason to keep a hand-rolled run ledger instead of adopting.
+
 ## 6.25.1 — 2026-09-03
 
 ### Fixed

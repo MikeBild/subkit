@@ -1,5 +1,15 @@
 import { sql } from "drizzle-orm";
-import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { executionModeEnum, tenantId, timestamps } from "./_common.ts";
 import { connectors } from "./connectors.ts";
 import { tenants } from "./identity.ts";
@@ -59,6 +69,11 @@ export const executions = pgTable(
     // different replica from the worker that owns the in-memory
     // AbortController, so the database is the cross-replica source of truth.
     abort_requested_at: timestamp("abort_requested_at", { withTimezone: true }),
+    // Caller-chosen key that makes a trigger safe to repeat. Two runs with
+    // the same key in one tenant cannot both exist: the partial unique index
+    // below refuses the second insert, and the run route answers with the
+    // first execution instead. NULL for every run that did not ask for it.
+    idempotency_key: text("idempotency_key"),
     started_at: timestamp("started_at", { withTimezone: true }),
     finished_at: timestamp("finished_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -74,6 +89,9 @@ export const executions = pgTable(
     index("executions_tenant_status_started_idx").on(t.tenant_id, t.status, t.started_at),
     index("executions_tenant_request_source_idx").on(t.tenant_id, t.request_source),
     index("executions_tenant_source_kind_idx").on(t.tenant_id, t.source_kind),
+    uniqueIndex("executions_tenant_idempotency_key_uidx")
+      .on(t.tenant_id, t.idempotency_key)
+      .where(sql`${t.idempotency_key} IS NOT NULL`),
   ],
 );
 

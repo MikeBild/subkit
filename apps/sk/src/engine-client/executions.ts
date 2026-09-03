@@ -20,6 +20,8 @@ export type RunExecutionBody =
       version_id?: string;
       input?: unknown;
       async?: boolean;
+      /** Caller-chosen key that makes the trigger safe to repeat. */
+      idempotency_key?: string;
       request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler" | "chat";
     }
   | {
@@ -79,6 +81,8 @@ export interface RunExecutionResponse {
   steps?: RunExecutionStepSummary[];
   connector_resolutions?: ConnectorResolutionSummary[];
   warnings?: unknown[];
+  /** True when an earlier run already used the idempotency key: nothing new started. */
+  idempotent_replay?: boolean;
 }
 
 export const executionsMethods = {

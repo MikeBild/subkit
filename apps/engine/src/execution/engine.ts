@@ -217,6 +217,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         parent_execution_id,
         execution_mode,
         input: normalizedInput ?? null,
+        idempotency_key: opts.idempotency_key ?? null,
       });
 
   // Wire abort: external signal (if any) feeds into the per-execution

@@ -77,6 +77,11 @@ function intentFromBody(body: Record<string, unknown>): WorkflowIntent {
  *  identifiers, rate-limit hits, pagination edges). */
 function printRunResult(result: RunExecutionResponse): void {
   printJson(result);
+  if (result.idempotent_replay) {
+    process.stderr.write(
+      `\n${pc.dim("note:")} nothing new was started — an earlier run already used this idempotency key\n`,
+    );
+  }
   const warnings = (result.warnings ?? []) as Array<{
     step_key?: string;
     code?: string;
@@ -420,6 +425,11 @@ const runCommand = defineCommand({
       description:
         "Queue the run and stream its progress live (step-by-step JSON lines). Saved workflows only.",
     },
+    "idempotency-key": {
+      type: "string",
+      description:
+        "Make this trigger safe to repeat: a second run with the same key is not started, the first run's id comes back instead. Saved workflows only.",
+    },
   },
   async run({ args }) {
     const client = makeClient();
@@ -547,6 +557,7 @@ const runCommand = defineCommand({
         source: "saved",
         workflow_id: workflowId,
         ...(input !== null ? { input } : {}),
+        ...(args["idempotency-key"] ? { idempotency_key: String(args["idempotency-key"]) } : {}),
         request_source: "cli",
       };
       if (args.follow) {
@@ -554,7 +565,13 @@ const runCommand = defineCommand({
         // events live. The engine closes the stream right after the
         // terminal frame; the exit code mirrors the run's outcome.
         const queued = await client.runExecution({ ...body, async: true });
-        process.stderr.write(`execution ${queued.execution_id} queued — following\n`);
+        if (queued.idempotent_replay) {
+          process.stderr.write(
+            `execution ${queued.execution_id} already started under this idempotency key (${queued.status}) — following\n`,
+          );
+        } else {
+          process.stderr.write(`execution ${queued.execution_id} queued — following\n`);
+        }
         const terminal = await tailExecution(client, queued.execution_id);
         if (terminal !== "succeeded") {
           process.stderr.write(
