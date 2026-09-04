@@ -143,4 +143,32 @@ describe("MentionPicker (component)", () => {
       cleanup();
     }
   });
+
+  test("a namespace query matches the inserted value even when the label is human-readable", async () => {
+    const { cwd, cleanup } = seededCwd([]);
+    const onPick = mock();
+    const ui = renderInk(
+      <MentionPicker
+        query="workflow:"
+        cwd={cwd}
+        engineCandidates={[
+          { value: "workflow:invoice", label: "Invoice digest", kind: "workflow" },
+        ]}
+        onPick={onPick}
+        onDismiss={mock()}
+      />,
+    );
+    try {
+      await ui.waitFor((text) => text.includes("Invoice digest"));
+      await ui.press("enter");
+      expect(onPick.mock.calls[0]?.[0]).toEqual({
+        value: "workflow:invoice",
+        label: "Invoice digest",
+        kind: "workflow",
+      });
+    } finally {
+      ui.unmount();
+      cleanup();
+    }
+  });
 });

@@ -147,8 +147,10 @@ export const MentionPicker: React.FC<MentionPickerProps> = ({
   const candidates = useMemo((): MentionCandidate[] => {
     const files = scanFiles(cwd, query, 6);
     const q = query.toLowerCase();
-    const filteredEngine = engineCandidates.filter((c) =>
-      q.length === 0 ? true : c.label.toLowerCase().includes(q),
+    const filteredEngine = engineCandidates.filter((candidate) =>
+      q.length === 0
+        ? true
+        : candidate.label.toLowerCase().includes(q) || candidate.value.toLowerCase().includes(q),
     );
     return [...files, ...filteredEngine].slice(0, 8);
   }, [cwd, query, engineCandidates]);
