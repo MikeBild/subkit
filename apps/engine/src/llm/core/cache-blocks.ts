@@ -6,8 +6,8 @@
 //
 //   stable   = base system + all Skills + ingested connector docs
 //              (changes rarely → long TTL, high cache hit rate)
-//   volatile = user memory + prior-failure traces + any [TENANT STATE]
-//              / [RBAC SNAPSHOT] pseudo-messages
+//   volatile = user memory + prior-failure traces + the volatile sections the
+//              context assembler marks as such
 //              (changes every turn → uncached)
 //
 // The split is purely textual. The provider registry (core/invoke.ts)

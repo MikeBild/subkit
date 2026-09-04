@@ -15,7 +15,6 @@
 // Used by:
 //   - `apps/engine/src/conversations/tests/attachments-resolver.test.ts`
 //   - `apps/engine/src/conversations/tests/save-connector-draft-analysis.test.ts`
-//   - `apps/engine/src/llm/core/tests/pseudo-messages.test.ts`
 //   - `apps/engine/src/llm/flows/tests/analyze-conversation-attachments.test.ts`
 //
 // Returns the canonical wire-format file id (`fid_<uuid>`) so callers
