@@ -6,7 +6,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
-## 6.36.0 — 2026-09-04
+## 6.37.0 — 2026-09-04
 
 ### Fixed
 
@@ -20,6 +20,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Links in an answer are links: the markdown renderer emitted buttons, which
   carry no address for the browser and no test id for the interactive-element
   gate.
+- **The dormant-title sweep names what you are looking at first.** It walked by
+  conversation id, and those are random: an hour in, a third of an installation
+  was renamed and the rows a person actually reads were no likelier to be among
+  them than any other, so the work was invisible. It now walks newest-first, by
+  the column the list sorts on.
 - The composer is a field again rather than a panel. With the approval-mode
   caption gone its footer held a single button, and that row plus a
   four-line-tall empty field made the place you type one sentence the largest
