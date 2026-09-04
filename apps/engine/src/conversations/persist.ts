@@ -213,16 +213,11 @@ export async function appendMessage(
   conversation_id: string,
   role: "user" | "assistant" | "tool" | "system",
   content: unknown,
+  options: { model?: string | null } = {},
 ): Promise<string> {
-  // Persistence safety net: a user-pasted secret must never land raw in
-  // `conversation_messages` (rows are replayed into every later model
-  // turn AND rendered in transcripts). Pattern-only scrub on the text
-  // leaf at the single insert chokepoint — covers `service/append.ts`,
-  // `service/create.ts`, and the loop's user-row inserts.
-  // Capture-to-credential-cache happens upstream in `service/append.ts`.
-  // This row is the persisted REPLAY source. `scrubString`'s generic
-  // matcher is code-context-suppressed — see the authoritative redaction
-  // contract above `redactGenericTokens` in `packages/shared/src/redaction.ts`.
+  // User text is scrubbed at this shared insert chokepoint before it becomes
+  // the persisted replay/transcript source. Credential capture stays upstream;
+  // `scrubString` remains code-context-suppressed by the redaction contract.
   if (role === "user" && content && typeof content === "object") {
     const c = content as Record<string, unknown>;
     if (typeof c.text === "string") content = { ...c, text: scrubString(c.text) };
@@ -230,13 +225,17 @@ export async function appendMessage(
   }
   const [row] = await db
     .insert(conversationMessages)
-    .values({ tenant_id, conversation_id, role, content: content as Record<string, unknown> })
+    .values({
+      tenant_id,
+      conversation_id,
+      role,
+      content: content as Record<string, unknown>,
+      model: role === "assistant" ? (options.model ?? null) : null,
+    })
     .returning({ id: conversationMessages.id });
   assertInsertRow(row, "conversation_messages");
-  // Name the conversation from its first request. Deliberately AFTER the scrub
-  // above, so a pasted secret can never become a title. The helper's
-  // `title IS NULL` guard makes every later message a no-op, so this stays a
-  // single indexed UPDATE that fires meaningfully exactly once per session.
+  // Derive the first title only after scrubbing; the helper's null guard makes
+  // later messages no-ops.
   if (role === "user") await ensureConversationTitle(db, tenant_id, conversation_id, content);
   return row.id;
 }
@@ -245,10 +244,14 @@ export async function updateMessageContent(
   db: Executor,
   message_id: string,
   content: unknown,
+  options: { model?: string | null } = {},
 ): Promise<void> {
   await db
     .update(conversationMessages)
-    .set({ content: content as Record<string, unknown> })
+    .set({
+      content: content as Record<string, unknown>,
+      ...(options.model !== undefined ? { model: options.model } : {}),
+    })
     .where(eq(conversationMessages.id, message_id));
 }
 

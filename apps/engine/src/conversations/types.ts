@@ -128,6 +128,7 @@ export interface ConversationMessageRecord {
   conversation_id: string;
   role: ConversationRole;
   content: unknown;
+  model: string | null;
   created_at: string;
 }
 
@@ -912,6 +913,7 @@ export interface UIMessage {
   id: string;
   role: ConversationRole;
   parts: ContentPart[];
+  model: string | null;
   created_at: string;
 }
 

@@ -66,6 +66,7 @@ import sql0045SteadySmilingTiger from "./0045_steady_smiling_tiger.sql" with { t
 import sql0046PurpleGroot from "./0046_purple_groot.sql" with { type: "text" };
 import sql0047BoringCaptainMidlands from "./0047_boring_captain_midlands.sql" with { type: "text" };
 import sql0048AnbindungenUndFreigaben from "./0048_anbindungen_und_freigaben.sql" with { type: "text" };
+import sql0049MagicalKorg from "./0049_magical_korg.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -139,6 +140,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0046_purple_groot": sql0046PurpleGroot,
   "0047_boring_captain_midlands": sql0047BoringCaptainMidlands,
   "0048_anbindungen_und_freigaben": sql0048AnbindungenUndFreigaben,
+  "0049_magical_korg": sql0049MagicalKorg,
 };
 
 const journal = journalMeta as unknown as Journal;

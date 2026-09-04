@@ -12223,6 +12223,12 @@
             "type": "array",
             "items": {}
           },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
             "type": "string"
           }
@@ -12231,6 +12237,7 @@
           "id",
           "role",
           "parts",
+          "model",
           "created_at"
         ]
       },

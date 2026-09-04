@@ -3,15 +3,14 @@ import { List, MessageSquarePlus, PanelRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   apiRequest,
-  appendConversationMessage,
   type Conversation,
   type ConversationReference,
   cancelConversation,
-  createConversation,
   getConversation,
   listConversations,
   renameConversation,
   respondToToolCall,
+  sendConversationTurn,
   setConversationHidden,
   type UiMessage,
 } from "@/api/client";
@@ -59,7 +58,7 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroupAddon } from "@/components/ui/input-group";
-import { Message, MessageContent } from "@/components/ui/message";
+import { Message, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -76,7 +75,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { formatRelativeTime, type TranslationKey } from "@/lib/i18n";
+import { formatDateTime, formatRelativeTime, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { nameIdentifiers, type ResolvedIdentifier } from "@/lib/identifiers";
 import type { DiffLine } from "@/lib/line-diff";
@@ -88,6 +87,7 @@ import { cn } from "@/lib/utils";
 import { useMentionCandidates } from "@/queries/mention-sources";
 import { ConversationList } from "./chat-conversation-list";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
+import { collectReferencedResources, referencesFromPart } from "./chat-references";
 import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "./chat-resume";
 import { activeConversationId, type ConversationSelection } from "./chat-selection";
 import { dedupeBackground, groupMessageParts } from "./chat-transcript";
@@ -198,32 +198,6 @@ function textFromPart(part: unknown): string | null {
   if (!part || typeof part !== "object") return null;
   const record = part as Record<string, unknown>;
   return typeof record.text === "string" ? record.text : null;
-}
-
-function referenceList(value: unknown): ConversationReference[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter(
-    (r): r is ConversationReference =>
-      !!r &&
-      typeof r === "object" &&
-      typeof (r as { id?: unknown }).id === "string" &&
-      typeof (r as { label?: unknown }).label === "string" &&
-      ((r as { type?: unknown }).type === "workflow" ||
-        (r as { type?: unknown }).type === "connector"),
-  );
-}
-
-/** The @-mentions the engine stored on a user text part, if any. */
-function referencesFromPart(part: unknown): {
-  references: ConversationReference[];
-  unresolved: ConversationReference[];
-} {
-  if (!part || typeof part !== "object") return { references: [], unresolved: [] };
-  const record = part as Record<string, unknown>;
-  return {
-    references: referenceList(record.references),
-    unresolved: referenceList(record.unresolved_references),
-  };
 }
 
 /** The proposal is decided where it appeared, so the diff renders inside the tool card. */
@@ -411,6 +385,7 @@ function ChatComposer({
       />
       <PromptInput
         data-testid="chat-composer"
+        inputGroupClassName="h-auto min-h-12 items-stretch rounded-xl has-[[data-slot=input-group-control]:focus-visible]:ring-2 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/30"
         onSubmit={async ({ text }) => {
           const trimmed = text.trim();
           if (!trimmed) return;
@@ -422,6 +397,7 @@ function ChatComposer({
           <PromptInputTextarea
             ref={textareaRef}
             name="message"
+            className="min-h-[46px] px-4 py-[11px] leading-6"
             placeholder={t("chat.composer.placeholder")}
             disabled={disabled}
             onKeyDown={(event) => {
@@ -442,7 +418,7 @@ function ChatComposer({
         {/* The send control sits beside the field, not on a row of its own:
             once the approval-mode caption was gone that row held one button
             and a band of empty space taller than the field itself. */}
-        <InputGroupAddon align="inline-end">
+        <InputGroupAddon align="inline-end" className="self-end p-[7px] has-[>button]:mr-0">
           <PromptInputSubmit
             status={status}
             onStop={onStop}
@@ -471,7 +447,7 @@ function ChatMessage({
   /** What this conversation knows about the identifiers it mentions. */
   nameFor: (id: string) => ResolvedIdentifier | null;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const from = message.role === "user" ? "user" : "assistant";
   // Both roles get the same column: a dark bubble on the right made the
   // reader's own words the loudest thing on the page and cut the usable width
@@ -483,12 +459,9 @@ function ChatMessage({
       data-testid={`chat-message-${messageIndex}`}
     >
       <MessageContent data-testid={`chat-message-${messageIndex}-content`}>
-        <span
-          className="text-xs font-medium text-muted-foreground"
-          data-testid={`chat-message-${messageIndex}-role`}
-        >
+        <MessageHeader data-testid={`chat-message-${messageIndex}-role`}>
           {t(from === "user" ? "chat.role.you" : "chat.role.assistant")}
-        </span>
+        </MessageHeader>
         {groupMessageParts(message.parts, pendingApprovalId).map((group) => {
           if (group.kind === "background") {
             return (
@@ -608,6 +581,13 @@ function ChatMessage({
             </Tool>
           );
         })}
+        {from === "assistant" && (
+          <MessageFooter data-testid={`chat-message-${messageIndex}-metadata`}>
+            {[message.model, formatDateTime(locale, message.created_at)]
+              .filter(Boolean)
+              .join(" · ")}
+          </MessageFooter>
+        )}
       </MessageContent>
     </Message>
   );
@@ -705,18 +685,21 @@ export function ChatPage() {
         const diff = asStreamedDiff(event);
         if (diff) setStreamedDiffs((current) => [...current, diff]);
       };
-      if (activeId) return appendConversationMessage(activeId, message, onEvent, references);
       const params = new URLSearchParams(window.location.search);
       const workflowId = params.get("workflow_id");
       const connectorId = params.get("connector_id");
-      return createConversation(
-        message,
+      return sendConversationTurn(
+        activeId
+          ? { conversationId: activeId, message, references }
+          : {
+              message,
+              references,
+              target: {
+                ...(workflowId ? { workflow_id: workflowId } : {}),
+                ...(connectorId ? { connector_id: connectorId } : {}),
+              },
+            },
         onEvent,
-        {
-          ...(workflowId ? { workflow_id: workflowId } : {}),
-          ...(connectorId ? { connector_id: connectorId } : {}),
-        },
-        references,
       );
     },
     onSuccess: async (result) => {
@@ -763,6 +746,7 @@ export function ChatPage() {
   const messages = detail.data?.messages ?? [];
   const resume = detail.data?.resume_summary;
   const createdResources = detail.data?.created_resources ?? [];
+  const referencedResources = useMemo(() => collectReferencedResources(messages), [messages]);
   // Everything this conversation is known to be about: what it made, and what
   // it was pointed at. An identifier the conversation never touched stays a
   // phrase — guessing at a name from elsewhere would be worse than saying
@@ -774,6 +758,13 @@ export function ChatPage() {
       if (!label) continue;
       known.set(resource.id, { label, href: catalogHref(resource.kind, resource.id) });
     }
+    for (const resource of referencedResources) {
+      if (resource.unresolved) continue;
+      known.set(resource.id, {
+        label: resource.label,
+        href: catalogHref(resource.type, resource.id),
+      });
+    }
     const target = resume?.active_target;
     if (target?.id && (target.name || target.slug) && target.kind !== "none") {
       known.set(target.id, {
@@ -782,7 +773,7 @@ export function ChatPage() {
       });
     }
     return (id: string) => known.get(id) ?? null;
-  }, [createdResources, resume?.active_target]);
+  }, [createdResources, referencedResources, resume?.active_target]);
   const session = useSession();
   const status = send.isPending ? "streaming" : send.isError ? "error" : "ready";
   const ordered = useMemo(
@@ -863,7 +854,10 @@ export function ChatPage() {
           demand at every width, and the conversation keeps the whole page.
           A reader who is reading one conversation is not choosing another. */}
       <section className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="chat-main">
-        <header className="shrink-0 border-b px-4 py-3 sm:px-6" data-testid="chat-header">
+        <header
+          className="shrink-0 overflow-y-auto border-b px-4 py-3 sm:px-6 [scrollbar-gutter:stable_both-edges]"
+          data-testid="chat-header"
+        >
           <div className={cn("flex items-center justify-between gap-3", COLUMN)}>
             {/* The title starts where the messages start. Controls sit on the
                 other end of the same line, so the page has one left edge. */}
@@ -1050,7 +1044,7 @@ export function ChatPage() {
         </MessageScrollerProvider>
 
         <div
-          className="shrink-0 border-t bg-background/95 px-4 py-3 sm:px-6 supports-[backdrop-filter]:backdrop-blur"
+          className="shrink-0 overflow-y-auto border-t bg-background/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable_both-edges]"
           data-testid="chat-composer-area"
         >
           <div className={COLUMN}>
@@ -1102,6 +1096,47 @@ export function ChatPage() {
                 <dt className="text-xs text-muted-foreground">{t("chat.context.checkpoint")}</dt>
                 <dd className="mt-1">
                   {t(resume?.unsaved ? "chat.context.unsaved" : "chat.context.saved")}
+                </dd>
+              </div>
+              <div data-testid="chat-context-references">
+                <dt className="text-xs text-muted-foreground">{t("chat.context.references")}</dt>
+                <dd className="mt-1">
+                  {referencedResources.length === 0 ? (
+                    <span className="text-muted-foreground">
+                      {t("chat.context.referencesEmpty")}
+                    </span>
+                  ) : (
+                    <ul className="grid gap-1.5">
+                      {referencedResources.map((resource, index) => (
+                        <li
+                          key={`${resource.type}-${resource.id}`}
+                          className="flex min-w-0 items-center gap-2"
+                          data-testid={`chat-context-reference-${index}`}
+                        >
+                          {resource.unresolved ? (
+                            <span className="min-w-0 flex-1 truncate">{resource.label}</span>
+                          ) : (
+                            <a
+                              className="min-w-0 flex-1 truncate underline-offset-4 hover:underline"
+                              data-testid={`chat-context-reference-link-${index}`}
+                              href={catalogHref(resource.type, resource.id)}
+                            >
+                              {resource.label}
+                            </a>
+                          )}
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {t(`chat.created.kind.${resource.type}`)} ·{" "}
+                            {formatRelativeTime(locale, resource.at)}
+                          </span>
+                          {resource.unresolved && (
+                            <Badge variant="outline" className="shrink-0">
+                              {t("chat.context.referenceUnavailable")}
+                            </Badge>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </dd>
               </div>
               <div data-testid="chat-context-created">
