@@ -6,6 +6,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.34.0 — 2026-09-04
+
+### Fixed
+
+- The age on a conversation row is readable again. German narrow units collapse
+  week to "W", month to "M" and minute to "min", so a row read "3 W" and the
+  one fact it carries became a guess; short units say "3 Wo." and still fit.
+- The empty chat shows its whole icon. Centring a block taller than its
+  scroller splits the overflow between top and bottom, and the top half was
+  clipped.
+
 ## 6.33.0 — 2026-09-04
 
 ### Changed
