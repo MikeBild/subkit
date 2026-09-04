@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _resetConfigForTests, getConfig, loadConfig, setConfigKey } from "../loader.ts";
+import { ConfigSchema } from "../schema.ts";
 
 let dir: string;
 let cfgPath: string;
@@ -58,16 +59,21 @@ describe("config loader — array leaves do not double", () => {
   });
 
   test("the schema default array is applied once, not duplicated", async () => {
-    // No mcp_oauth in the file → the schema default (3 scopes) applies; a load
-    // must yield exactly those 3, and a reload after a write must keep 3.
+    // No mcp_oauth in the file → the schema default applies; a load must yield
+    // exactly the default set, and a reload after a write must keep it. Read
+    // the length from the schema rather than typing it, so adding an offerable
+    // scope (e.g. `metrics:read`) does not look like a doubling regression.
+    const DEFAULT_LENGTH = ConfigSchema.parse({
+      database: { url: ENV.DATABASE_URL },
+    }).auth.mcp_oauth.scopes_supported.length;
     writeFileSync(cfgPath, JSON.stringify({ database: { url: ENV.DATABASE_URL } }));
 
     await loadConfig({ env: ENV, configPathOverride: cfgPath });
-    expect(getConfig().auth.mcp_oauth.scopes_supported).toHaveLength(3);
+    expect(getConfig().auth.mcp_oauth.scopes_supported).toHaveLength(DEFAULT_LENGTH);
 
     await setConfigKey(["llm", "model"], "claude-haiku-4-5", { force: true });
     _resetConfigForTests();
     await loadConfig({ env: ENV, configPathOverride: cfgPath });
-    expect(getConfig().auth.mcp_oauth.scopes_supported).toHaveLength(3);
+    expect(getConfig().auth.mcp_oauth.scopes_supported).toHaveLength(DEFAULT_LENGTH);
   });
 });

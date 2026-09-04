@@ -91,7 +91,7 @@ describe("streamable-http transport guards", () => {
 
     expect(res.status).toBe(401);
     expect(res.headers.get("www-authenticate")).toContain(
-      'scope="mcp:read mcp:authoring mcp:admin"',
+      'scope="mcp:read mcp:authoring mcp:admin metrics:read"',
     );
   });
 

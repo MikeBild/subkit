@@ -3827,6 +3827,23 @@ flowchart LR
 No external metrics system is required for collection — any Prometheus-compatible
 scraper works. Logs ship to any standard aggregator without transformation.
 
+### Who may scrape `/metrics`
+
+`/metrics` requires the `metrics:read` scope — from an API key, from an RFC 8693
+exchanged token and from a Cockpit connection token alike; the caller's role does
+not widen a narrow scope list, and a caller without the scope gets `403` naming
+`scope_missing:metrics:read`. A connection can carry that scope (it is offered on
+the consent screen as "Betriebszähler lesen" and advertised in
+`scopes_supported`), so a monitoring system needs no pasted key: grant it
+`metrics:read` and nothing else.
+
+An unrestricted credential — a key minted with the `*` wildcard scope, or a
+browser/OIDC session — asserts no narrowing and still scrapes under an `admin`
+role, which is why an existing operator key keeps working. Keys minted with a
+narrow scope list that reached `/metrics` before this rule existed were granted
+`metrics:read` by a one-shot boot backfill, so production scraping does not break
+at upgrade.
+
 **Product analytics (opt-in).** To forward HTTP-response telemetry to an external
 product-analytics platform (PostHog, Mixpanel, a custom ingest endpoint), enable
 `observability.analytics`. Off by default — no external calls until the operator
@@ -9739,6 +9756,7 @@ sequenceDiagram
 | none, a narrowed set, `mcp:read`, or a plain `*` | product | **Read and execute.** Every tenant read (`list_*`, `get_*`, `find_*`, `inspect_*`, `search_*`), plus `run_workflow`, `get_execution`, the `wf_<slug>` palette, `call_connector` and `probe_connector`. |
 | `mcp:authoring` | authoring | Adds the tools that **build** definitions: the `conversation_*` cluster and the authoring helpers (`discover_connector_endpoints`, `dry_run_transform`, `suggest_*`, …). Still **no tenant writes** beyond `run_workflow`. |
 | `mcp:admin` | admin | Adds the tenant writes authoring withholds (subject to RBAC, and to the read-only config switch). |
+| `metrics:read` | — | Not an MCP mode at all: it unlocks `GET /metrics` and nothing else. Offered on the consent screen so a monitoring system can connect with this scope alone, instead of being handed a pasted key. See [Observability → Who may scrape `/metrics`](../operators/observability.md#who-may-scrape-metrics). |
 
 The scope granted at consent is the intersection of what the client requested, what the server supports and what the consenting user's current role permits. An unrequested scope is never displayed or granted, including when a form is tampered with. A role/session downgrade is rechecked at decision time.
 
@@ -13256,7 +13274,7 @@ Authentication
 | `auth.mcp_oauth.dynamic_registration_enabled` | boolean | `true` | global | no | no | Allow RFC 7591 dynamic client registration at POST /v1/oauth/register. |
 | `auth.mcp_oauth.enabled` | boolean | `true` | global | no | yes | Enable the MCP OAuth 2.1 authorization server (ChatGPT / Claude.ai / Cursor). |
 | `auth.mcp_oauth.refresh_token_ttl_seconds` | number | `2592000` | global | no | no | Lifetime in seconds for MCP OAuth refresh tokens (30 days). |
-| `auth.mcp_oauth.scopes_supported` | string[] | `["mcp:read","mcp:authoring","mcp:admin"]` | global | no | no | OAuth scopes advertised in the authorization server metadata. |
+| `auth.mcp_oauth.scopes_supported` | string[] | `["mcp:read","mcp:authoring","mcp:admin","metrics:read"]` | global | no | no | OAuth scopes advertised in the authorization server metadata. |
 | `auth.providers` | json | `[{"protocol":"api_key","id":"api-key","label":"SubKit API key"}]` | global | no | yes | Provider-neutral browser authentication adapters. OIDC records are public clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration. |
 | `auth.session.secret` | string | `""` | global | yes | yes | Session signing secret (auto-generated to a 32-byte hex value on first boot if empty); operator-supplied values must be at least 32 chars |
 

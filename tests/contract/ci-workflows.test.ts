@@ -440,6 +440,13 @@ describe("gate and workflows", () => {
     }
   });
 
+  test("the cockpit visual sweep is a gate stage AND a CI step", () => {
+    // It was neither for five releases: red on main since 6.29.0, in no
+    // workflow, so the only way to learn it was red was to type it.
+    expect(verifyStages()).toContain("verify:cockpit-visual");
+    expect(runs(job(ci, "konvention"))).toContain("bun run verify:cockpit-visual");
+  });
+
   test("konvention:check is a gate stage AND a CI job", () => {
     expect(verifyStages()).toContain("konvention:check");
     expect(runs(job(ci, "konvention"))).toContain("bun run konvention:check");

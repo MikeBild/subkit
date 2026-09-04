@@ -6,6 +6,62 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.33.0 — 2026-09-04
+
+### Changed
+
+- **`/metrics` requires the `metrics:read` scope, from every credential that
+  names a narrow scope list.** API keys, RFC 8693 exchanged tokens and Cockpit
+  connection tokens are all held to the same rule; a caller without the scope
+  gets `403` with `scope_missing:metrics:read` in the body and a
+  `policy.denied` audit row. Production measured on 2026-09-04 that a
+  connection token whose grant said only `mcp:read` read `/metrics`, because
+  the approving person held the `admin` role and the role bypassed the scope
+  gate — a delegated token now means what its consent screen said. Unchanged:
+  a credential that asserts no narrowing (the `*` wildcard scope a key is
+  minted with by default, a browser or OIDC session) still falls back to the
+  role check, so an operator key keeps scraping.
+- **Existing keys keep working.** A one-shot boot backfill
+  (`metrics_scope_grant_v1`) grants `metrics:read` to every live API key that
+  names a narrow scope list, lacks the scope, and belongs to an admin owner —
+  exactly the rows whose answer on `/metrics` would otherwise change. Keys with
+  `*`, keys that already carry the scope and keys of non-admin owners are left
+  untouched; connection tokens are deliberately not repaired.
+
+### Added
+
+- **`metrics:read` is offerable.** It is advertised in `scopes_supported` of
+  `/.well-known/oauth-authorization-server` (and therefore in the `/mcp`
+  `WWW-Authenticate` challenge and in the Cockpit connect page's scope list,
+  which renders what the other side advertises), described in the OpenAPI
+  security schemes, and shown on the consent screen as
+  "Betriebszähler · Betriebszähler lesen — sonst nichts". A client asking for
+  `scope=metrics:read` alone now gets a usable consent screen: the entitlement
+  gate asks for a non-empty offer instead of demanding `mcp:read`, so a
+  monitoring system connects with that one scope and needs no pasted key. A
+  scope-less DCR client is offered the box unticked — only an explicit `scope=`
+  parameter pre-ticks it.
+- `docs/operators/observability.md` states the rule in two sentences, and the
+  scope table in `docs/developers/input-surfaces.md` names it.
+
+### Fixed
+
+- **The cockpit visual sweep is gated in CI.** `verify:cockpit-visual` was red
+  on `main` from 6.29.0 and ran in no workflow, so nothing reported it. It is
+  now a step of the `konvention` job and a stage of `bun run verify`, held
+  there by `tests/contract/ci-workflows.test.ts`. Three defects made it red:
+  the settings page threw because `/v1/secret-approvals` (the "Vorbereitete
+  Änderungen" section added in 6.29.0) had no fixture and the generic list
+  fallthrough answered it with rows carrying no `pending_since` and no
+  `bindings`; `/v1/connections` and the connector credential summary had none
+  either; and the sweep waited for a `resource-connections` marker on a page
+  that frames itself as `admin-connections`.
+- **The sweep serves the build it photographs.** It used to point at a fixed
+  default port and photograph whatever answered — twice that was a masterless
+  preview of a foreign working tree serving the same product, which the
+  identity stand cannot tell apart. It now starts its own `vite preview` over
+  `assets/cockpit` on a port it picks, unless `COCKPIT_BASE_URL` names one.
+
 ## 6.32.0 — 2026-09-04
 
 ### Changed

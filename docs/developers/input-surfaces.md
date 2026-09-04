@@ -376,6 +376,7 @@ sequenceDiagram
 | none, a narrowed set, `mcp:read`, or a plain `*` | product | **Read and execute.** Every tenant read (`list_*`, `get_*`, `find_*`, `inspect_*`, `search_*`), plus `run_workflow`, `get_execution`, the `wf_<slug>` palette, `call_connector` and `probe_connector`. |
 | `mcp:authoring` | authoring | Adds the tools that **build** definitions: the `conversation_*` cluster and the authoring helpers (`discover_connector_endpoints`, `dry_run_transform`, `suggest_*`, …). Still **no tenant writes** beyond `run_workflow`. |
 | `mcp:admin` | admin | Adds the tenant writes authoring withholds (subject to RBAC, and to the read-only config switch). |
+| `metrics:read` | — | Not an MCP mode at all: it unlocks `GET /metrics` and nothing else. Offered on the consent screen so a monitoring system can connect with this scope alone, instead of being handed a pasted key. See [Observability → Who may scrape `/metrics`](../operators/observability.md#who-may-scrape-metrics). |
 
 The scope granted at consent is the intersection of what the client requested, what the server supports and what the consenting user's current role permits. An unrequested scope is never displayed or granted, including when a form is tampered with. A role/session downgrade is rechecked at decision time.
 
