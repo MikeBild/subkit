@@ -271,10 +271,32 @@ export const MessageBranchPage = ({ className, ...props }: MessageBranchPageProp
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
+/**
+ * A link in an answer is a link.
+ *
+ * The renderer's own anchor is a `button`, which carries no href for the
+ * browser and no testid for the interactive-element gate — so any link the
+ * model wrote was both unnavigable and a contract breach waiting for the first
+ * fixture that contained one. Rendering a real anchor fixes both.
+ */
+const MARKDOWN_COMPONENTS = {
+  a: ({ href, children, ...props }: ComponentProps<"a">) => (
+    <a
+      className="font-medium text-primary underline underline-offset-4"
+      data-testid="message-link"
+      href={href}
+      {...props}
+    >
+      {children}
+    </a>
+  ),
+};
+
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
       controls={false}
+      components={MARKDOWN_COMPONENTS}
       className={cn(
         "w-full min-w-0 overflow-hidden text-pretty [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         "[&_p]:break-words [&_p]:leading-6 [&_li]:break-words [&_li]:leading-6",

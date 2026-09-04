@@ -78,6 +78,7 @@ import {
 } from "@/components/ui/sheet";
 import { formatRelativeTime, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { nameIdentifiers, type ResolvedIdentifier } from "@/lib/identifiers";
 import type { DiffLine } from "@/lib/line-diff";
 import { reconcileReferences } from "@/lib/mentions";
 import { conversationExcerpt, hideTechnicalIdentifiers, humanFacingText } from "@/lib/presentation";
@@ -140,6 +141,12 @@ export function originLine(
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** Where a catalogue object lives in the Cockpit. */
+function catalogHref(kind: string, id: string): string {
+  const section = kind === "execution" ? "runs" : kind === "workflow" ? "workflows" : "connectors";
+  return `/cockpit/${section}/${encodeURIComponent(id)}`;
 }
 
 export interface StreamedDiff {
@@ -439,11 +446,14 @@ function ChatMessage({
   messageIndex,
   pendingApprovalId,
   onDecision,
+  nameFor,
 }: {
   message: UiMessage;
   messageIndex: number;
   pendingApprovalId: string | null;
   onDecision: (toolCallId: string, approved: boolean) => void;
+  /** What this conversation knows about the identifiers it mentions. */
+  nameFor: (id: string) => ResolvedIdentifier | null;
 }) {
   const { t } = useI18n();
   const from = message.role === "user" ? "user" : "assistant";
@@ -494,7 +504,7 @@ function ChatMessage({
                     />
                   ) : (
                     <MessageResponse>
-                      {hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"))}
+                      {nameIdentifiers(text, nameFor, t("tool.referenceHiddenInline"))}
                     </MessageResponse>
                   )}
                 </BubbleContent>
@@ -737,6 +747,26 @@ export function ChatPage() {
   const messages = detail.data?.messages ?? [];
   const resume = detail.data?.resume_summary;
   const createdResources = detail.data?.created_resources ?? [];
+  // Everything this conversation is known to be about: what it made, and what
+  // it was pointed at. An identifier the conversation never touched stays a
+  // phrase — guessing at a name from elsewhere would be worse than saying
+  // nothing, because the reader cannot tell a guess from a fact.
+  const nameFor = useMemo(() => {
+    const known = new Map<string, ResolvedIdentifier>();
+    for (const resource of createdResources) {
+      const label = resource.name || resource.slug;
+      if (!label) continue;
+      known.set(resource.id, { label, href: catalogHref(resource.kind, resource.id) });
+    }
+    const target = resume?.active_target;
+    if (target?.id && (target.name || target.slug) && target.kind !== "none") {
+      known.set(target.id, {
+        label: (target.name || target.slug) as string,
+        href: catalogHref(target.kind, target.id),
+      });
+    }
+    return (id: string) => known.get(id) ?? null;
+  }, [createdResources, resume?.active_target]);
   const session = useSession();
   const status = send.isPending ? "streaming" : send.isError ? "error" : "ready";
   const ordered = useMemo(
@@ -918,6 +948,7 @@ export function ChatPage() {
                         message={message}
                         messageIndex={index}
                         pendingApprovalId={resume?.pending_approval?.id ?? null}
+                        nameFor={nameFor}
                         onDecision={(toolCallId, approved) =>
                           decide.mutate({ toolCallId, approved })
                         }
@@ -1068,7 +1099,7 @@ export function ChatPage() {
                         >
                           <a
                             className="truncate underline-offset-4 hover:underline"
-                            href={`/cockpit/${resource.kind === "execution" ? "runs" : resource.kind === "workflow" ? "workflows" : "connectors"}/${encodeURIComponent(resource.id)}`}
+                            href={catalogHref(resource.kind, resource.id)}
                             data-testid={`chat-context-created-${index}`}
                           >
                             {resource.name ||
