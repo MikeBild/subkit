@@ -10,6 +10,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Native approval resumes can no longer be overwritten by the pausing
+  worker.** The native MCP flow deliberately reuses one public task id across
+  `input_required`, but the first queue worker could finish unwinding after
+  the resume was armed and restore its stale terminal result. Queue attempts
+  are now pre-bound and fenced by their pg-boss job id; stale results,
+  failures and dead letters are discarded, while provider-limit retries bind
+  a fresh attempt before they become visible.
 - **`GET /v1/oauth/clients` answered 500 instead of listing the connections.**
   The approval lookup added in 6.40.0 asked the database with raw SQL
   through `execute()` and then iterated the result. The node-postgres driver

@@ -217,6 +217,17 @@ export interface ConversationRunTurnJob {
   tenant_id: string;
   conversation_id: string;
   mcp_task_id: string;
+  /**
+   * Fences this queue attempt against a later resume that deliberately
+   * reuses the same MCP task id. It is also the pg-boss job id. A resumed
+   * native elicitation replaces `mcp_tasks.job_id` before enqueueing, so the
+   * worker from the pausing turn cannot publish a stale terminal result over
+   * the resumed turn.
+   *
+   * Optional only for jobs written before this fence and for low-level tests
+   * that enqueue a legacy-shaped envelope directly.
+   */
+  attempt_id?: string;
   actor_id: string | null;
   /**
    * Resolved principal of the actor who initiated the turn. The HTTP/SSE

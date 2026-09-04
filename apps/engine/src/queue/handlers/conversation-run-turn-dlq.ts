@@ -60,6 +60,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
       data.mcp_task_id,
       WORKER_EXPIRED_FAILURE_REASON,
       tx,
+      data.attempt_id,
     );
     if (!didStamp) return false;
 
