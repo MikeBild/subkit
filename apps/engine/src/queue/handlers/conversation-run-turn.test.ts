@@ -28,10 +28,13 @@ import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import {
   getMcpTask,
   insertMcpTask,
+  rearmMcpTaskForNativeElicitation,
   setMcpTaskCancelled,
   setMcpTaskFailure,
+  setMcpTaskJobId,
   setMcpTaskParked,
   setMcpTaskResult,
+  setMcpTaskResultIfCurrentAttempt,
 } from "../../mcp/tasks/store.ts";
 import { ConversationTaskStore } from "../../mcp/tasks/task-store.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
@@ -209,6 +212,50 @@ describe("conversation.run-turn worker", () => {
     expect(r1?.turn_seq).toBe(1);
     expect(r2?.turn_seq).toBe(2);
   });
+
+  test("a pausing attempt cannot overwrite the native-resume attempt on a reused task id", async () => {
+    const { conversation_id, mcp_task_id } = await seedConversationAndTask("resume fence");
+    const pausingAttempt = "00000000-0000-4000-8000-000000000101";
+    const resumedAttempt = "00000000-0000-4000-8000-000000000102";
+    await setMcpTaskJobId(tenantId, mcp_task_id, pausingAttempt, queue.testDb.db);
+
+    // Native MCP Tasks keep one public task id across input_required. Rearming
+    // clears the paused result, then the resume owns a new queue attempt.
+    expect(
+      await rearmMcpTaskForNativeElicitation(
+        { tenant_id: tenantId, task_id: mcp_task_id, actor_id: userId },
+        queue.testDb.db,
+      ),
+    ).toBe(true);
+    await setMcpTaskJobId(tenantId, mcp_task_id, resumedAttempt, queue.testDb.db);
+
+    // The old worker can finish unwinding after the rearm. Its stale result is
+    // rejected, while the current resume can publish normally.
+    expect(
+      await setMcpTaskResultIfCurrentAttempt(
+        tenantId,
+        mcp_task_id,
+        pausingAttempt,
+        { conversation_id, status: "awaiting_input", events: [{ marker: "stale" }] },
+        queue.testDb.db,
+      ),
+    ).toBe(false);
+    expect(
+      await setMcpTaskResultIfCurrentAttempt(
+        tenantId,
+        mcp_task_id,
+        resumedAttempt,
+        { conversation_id, status: "active", events: [{ marker: "resumed" }] },
+        queue.testDb.db,
+      ),
+    ).toBe(true);
+
+    const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    expect(row?.job_id).toBe(resumedAttempt);
+    expect((row?.result?.events as Array<{ marker?: string }> | undefined)?.[0]?.marker).toBe(
+      "resumed",
+    );
+  });
 });
 
 describe("conversation.run-turn worker — failure path", () => {
@@ -314,7 +361,9 @@ describe("conversation.run-turn worker — failure path", () => {
       // would otherwise sit in pg-boss with a 15-minute startAfter anyway.
       if ((data as { provider_limit_parks?: number }).provider_limit_parks) {
         sends.push({ data, options });
-        return null;
+        // Mirror pg-boss' successful preassigned-id response without making
+        // the scheduled job visible to this test worker.
+        return (options as { id?: string } | undefined)?.id ?? null;
       }
       return await originalSend(name, data, options);
     }) as typeof queue.boss.send);

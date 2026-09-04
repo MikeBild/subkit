@@ -23,6 +23,7 @@
 // to poll the `conversation_get` tool. Either way the `tools/call`
 // returns in milliseconds.
 
+import { randomUUID } from "node:crypto";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { principalOrigin } from "../../auth/origin.ts";
@@ -297,22 +298,32 @@ async function backgroundTurn(p: {
   // job — `deriveTask` would report `working` forever. Mark the row
   // `failed` and return a structured error instead of a fake `working`.
   let jobId: string | null;
+  const attemptId = randomUUID();
   try {
-    jobId = await enqueueConversationRunTurn(getBoss(), {
-      tenant_id: p.principal.tenant_id,
-      conversation_id: p.conversation_id,
-      mcp_task_id: taskId,
-      actor_id: p.principal.id,
-      // Thread the initiating principal so the queue worker can run
-      // RBAC-gated tools (run_workflow) instead of failing
-      // principal_required — see ConversationRunTurnJob.principal.
-      principal: p.principal,
-      kind: p.kind,
-      ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
-      ...(p.elicitation_id ? { elicitation_id: p.elicitation_id } : {}),
-      ...(p.answer_channel ? { answer_channel: p.answer_channel } : {}),
-      ...(p.reason ? { reason: p.reason } : {}),
-    });
+    // Bind the attempt BEFORE making it visible to pg-boss. A native
+    // elicitation resume reuses the public task id while the pausing worker may
+    // still be unwinding; pre-binding makes that older worker's terminal write
+    // fail its compare-and-set instead of clobbering this resume.
+    await setMcpTaskJobId(p.principal.tenant_id, taskId, attemptId, p.db);
+    jobId = await enqueueConversationRunTurn(
+      getBoss(),
+      {
+        tenant_id: p.principal.tenant_id,
+        conversation_id: p.conversation_id,
+        mcp_task_id: taskId,
+        actor_id: p.principal.id,
+        // Thread the initiating principal so the queue worker can run
+        // RBAC-gated tools (run_workflow) instead of failing
+        // principal_required — see ConversationRunTurnJob.principal.
+        principal: p.principal,
+        kind: p.kind,
+        ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
+        ...(p.elicitation_id ? { elicitation_id: p.elicitation_id } : {}),
+        ...(p.answer_channel ? { answer_channel: p.answer_channel } : {}),
+        ...(p.reason ? { reason: p.reason } : {}),
+      },
+      { id: attemptId },
+    );
   } catch (err) {
     await setMcpTaskFailure(p.principal.tenant_id, taskId, "enqueue_failed", p.db);
     return errorText(
@@ -323,7 +334,10 @@ async function backgroundTurn(p: {
     await setMcpTaskFailure(p.principal.tenant_id, taskId, "enqueue_failed", p.db);
     return errorText("failed to enqueue conversation turn: queue rejected the job");
   }
-  await setMcpTaskJobId(p.principal.tenant_id, taskId, jobId, p.db);
+  if (jobId !== attemptId) {
+    await setMcpTaskFailure(p.principal.tenant_id, taskId, "enqueue_id_mismatch", p.db);
+    return errorText("failed to enqueue conversation turn: queue returned an unexpected job id");
+  }
 
   const now = new Date().toISOString();
   if (p.taskAugmented) {

@@ -17,6 +17,7 @@
 // would hold the approval page open for minutes and hand the operator a timeout
 // instead of a confirmation.
 
+import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { ResolvedPrincipal } from "../auth/types.ts";
@@ -140,25 +141,36 @@ export async function enqueueApprovalElicitationResume(
   }
 
   try {
-    const job_id = await enqueueConversationRunTurn(boss, {
-      tenant_id: p.tenant_id,
-      conversation_id: p.conversation_id,
-      mcp_task_id: task_id,
-      actor_id,
-      ...(runAs ? { principal: runAs } : {}),
-      kind: "respond_elicitation",
-      elicitation_id: p.elicitation_id,
-      answer_channel: "portal",
-      approver_user_id: p.approver_user_id,
-      ...(p.decision === "decline" ? { reason: "user_declined" } : {}),
-    });
+    const attempt_id = randomUUID();
+    // Bind the attempt before enqueue so a worker can never publish a result
+    // without first owning the task row it belongs to.
+    await setMcpTaskJobId(p.tenant_id, task_id, attempt_id, db);
+    const job_id = await enqueueConversationRunTurn(
+      boss,
+      {
+        tenant_id: p.tenant_id,
+        conversation_id: p.conversation_id,
+        mcp_task_id: task_id,
+        actor_id,
+        ...(runAs ? { principal: runAs } : {}),
+        kind: "respond_elicitation",
+        elicitation_id: p.elicitation_id,
+        answer_channel: "portal",
+        approver_user_id: p.approver_user_id,
+        ...(p.decision === "decline" ? { reason: "user_declined" } : {}),
+      },
+      { id: attempt_id },
+    );
     if (!job_id) {
       // pg-boss dedup or a rejected send. Mark the task failed rather than
       // leaving it deriving `working` forever.
       await setMcpTaskFailure(p.tenant_id, task_id, "enqueue_failed", db);
       return false;
     }
-    await setMcpTaskJobId(p.tenant_id, task_id, job_id, db);
+    if (job_id !== attempt_id) {
+      await setMcpTaskFailure(p.tenant_id, task_id, "enqueue_id_mismatch", db);
+      return false;
+    }
     return true;
   } catch (err) {
     logger.error({
