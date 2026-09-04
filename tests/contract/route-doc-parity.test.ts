@@ -94,6 +94,10 @@ const ENGINE_ROUTE_FILES = [
   "apps/engine/src/http/routes/connector-discovery.ts",
   "apps/engine/src/http/routes/connector-templates/import-spec.ts",
   "apps/engine/src/http/routes/identity/providers.ts",
+  // The withdrawal path and the client-revocation path — both named by the
+  // connection rules in input-surfaces.md.
+  "apps/engine/src/http/routes/identity/users.ts",
+  "apps/engine/src/http/routes/oauth-clients.ts",
   "apps/engine/src/http/routes/identity/sessions.ts",
   "apps/engine/src/http/routes/executions/list.ts",
   "apps/engine/src/http/routes/executions/run.ts",

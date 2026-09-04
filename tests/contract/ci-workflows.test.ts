@@ -706,6 +706,57 @@ describe("gate and workflows", () => {
     }
   });
 
+  // ── the scheduled advisory check ───────────────────────────────────────
+  //
+  // The point of these four is the NEGATIVE space. An advisory check is easy
+  // to add and easy to promote into the release path a month later, which is
+  // exactly how a third party's 503 came to block a rollout. The assertions
+  // pin where it may live and where it may not.
+  test("audit.yml exists, is scheduled, and can be run by hand", () => {
+    expect(WORKFLOW_FILES).toContain("audit.yml");
+    const audit = load("audit.yml");
+    const on = audit.on as Record<string, unknown>;
+    expect(on.schedule, "audit.yml runs on a schedule").toBeDefined();
+    expect(Array.isArray(on.schedule) && (on.schedule as unknown[]).length).toBeGreaterThan(0);
+    expect("workflow_dispatch" in on, "audit.yml can be started by hand").toBe(true);
+  });
+
+  test("the advisory job asks bun, through the script that tells an outage from a finding", () => {
+    const audit = load("audit.yml");
+    const commands = Object.values(audit.jobs ?? {}).flatMap((entry) => runs(entry));
+    expect(
+      commands.some((command) => command.includes("scripts/audit-advisories.ts")),
+      "audit.yml runs scripts/audit-advisories.ts",
+    ).toBe(true);
+    const script = readFileSync(join(root, "scripts/audit-advisories.ts"), "utf8");
+    expect(script, "the script asks bun, not npm").toContain("bun");
+    expect(script, "the script asks for JSON").toContain("--json");
+    // A registry that says nothing usable exits 0; only a real advisory exits 1.
+    expect(script).toContain("process.exit(0)");
+    expect(script).toContain("critical");
+  });
+
+  test("no gate and no release path waits for the advisory check", () => {
+    for (const [name, entry] of Object.entries({ "ci.yml": ci, "release.yml": release })) {
+      const text = JSON.stringify(entry);
+      expect(text, `${name} does not reference audit.yml`).not.toContain("audit.yml");
+      expect(text, `${name} does not run an advisory check`).not.toContain("audit-advisories");
+      expect(text, `${name} runs no blocking npm/bun audit step`).not.toMatch(/(npm|bun) audit/);
+    }
+  });
+
+  test("the advisory check is nobody's dependency", () => {
+    for (const file of WORKFLOW_FILES) {
+      if (file === "audit.yml") continue;
+      const other = load(file);
+      for (const [name, entry] of Object.entries(other.jobs ?? {})) {
+        expect(entry.needs ?? [], `${file}:${name} does not need the advisory job`).not.toContain(
+          "advisories",
+        );
+      }
+    }
+  });
+
   test("every job using bun installs with a frozen lockfile via setup-bun", () => {
     for (const [name, entry] of Object.entries(ci.jobs ?? {})) {
       const commands = runs(entry);

@@ -17,6 +17,7 @@ import { logger } from "../logging/logger.ts";
 import { now } from "../utils/clock.ts";
 import { constantTimeHexEquals } from "./api-key.ts";
 import { generateInviteToken, parseInviteToken } from "./invite.ts";
+import { revokeConnectionsForUser } from "./oauth-connections.ts";
 import { type IssueApiKeyResult, issueApiKey, type UserRole, type UserStatus } from "./service.ts";
 
 // ---------- users -----------------------------------------------------------
@@ -112,15 +113,19 @@ export interface DeactivateUserInput {
 
 /**
  * Soft-deactivate a user: set `deleted_at` + `status='disabled'`, revoke
- * every one of the user's non-revoked api keys, AND revoke every one of the
- * user's still-pending (un-redeemed, un-revoked) invites — all in the SAME
- * transaction. The api-key provider does not check `users.deleted_at`, so
- * revoking the keys is what severs existing access; revoking the pending
- * invites closes the resurrection path where a deactivated user redeems a
- * still-live invite to mint a fresh key (the redeem claim's
- * `isNull(revoked_at)` guard then fails). Writes one `USER_DELETED` audit row,
- * an `API_KEY_REVOKED` row per key, and an `INVITE_REVOKED` row per invite.
- * Returns `null` if the user is already gone.
+ * every one of the user's non-revoked api keys, every OAuth connection the
+ * user approved, AND every one of the user's still-pending (un-redeemed,
+ * un-revoked) invites — all in the SAME transaction. Revoking the keys is
+ * what severs existing key access; revoking the access and refresh tokens
+ * does the same for the MCP connections the person approved, so a withdrawal
+ * ends them at once rather than at expiry (tranche E, rule 2 — the resolvers
+ * refuse a withdrawn person too, and this closes the gap in the same breath
+ * by making the rows themselves dead); revoking the pending invites closes
+ * the resurrection path where a deactivated user redeems a still-live invite
+ * to mint a fresh key (the redeem claim's `isNull(revoked_at)` guard then
+ * fails). Writes one `USER_DELETED` audit row, an `API_KEY_REVOKED` row per
+ * key, one `MCP_OAUTH_TOKEN_REVOKED` row for the connections, and an
+ * `INVITE_REVOKED` row per invite. Returns `null` if the user is already gone.
  */
 export async function deactivateUser(input: DeactivateUserInput, exec?: Executor) {
   const db = exec ?? getDb();
@@ -162,6 +167,37 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
           resource_id: key.id,
           result: "success",
           metadata: { prefix: key.prefix, reason: "user_deactivated" },
+        },
+        tx,
+      );
+    }
+
+    // End the OAuth connections this person approved. An access token that
+    // outlives its person is the hole tranche E closed: the resolver now
+    // refuses a withdrawn user, and revoking the rows here means the refusal
+    // does not depend on a later read of the users table.
+    const revokedConnections = await revokeConnectionsForUser(
+      tx,
+      input.tenant_id,
+      input.user_id,
+      nowTs,
+    );
+    if (revokedConnections.access_tokens + revokedConnections.refresh_tokens > 0) {
+      await auditAwait(
+        {
+          tenant_id: input.tenant_id,
+          actor_type: input.actor_id ? "user" : "system",
+          actor_id: input.actor_id,
+          action: AuditAction.MCP_OAUTH_TOKEN_REVOKED,
+          resource_type: "mcp_oauth_token",
+          resource_id: row.id,
+          result: "success",
+          metadata: {
+            reason: "user_deactivated",
+            access_tokens_revoked: revokedConnections.access_tokens,
+            refresh_tokens_revoked: revokedConnections.refresh_tokens,
+            connections_ended: revokedConnections.connections,
+          },
         },
         tx,
       );
@@ -248,6 +284,7 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
           email: row.email,
           revoked_api_keys: revoked.length,
           revoked_invites: revokedInvites.length,
+          ended_connections: revokedConnections.connections,
         },
       },
       tx,

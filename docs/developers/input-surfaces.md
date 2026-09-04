@@ -421,6 +421,28 @@ Add to `.cursor/mcp.json`:
 ```
 Cursor discovers OAuth from the `WWW-Authenticate` header on the first unauthenticated request and opens the browser-based consent flow.
 
+**A connection belongs to the installation, and a withdrawn person loses it.**
+
+| Event | What happens to the connection |
+|---|---|
+| The approving person signs out of the Cockpit | **Nothing.** A browser session and a connection are different things; a machine caller does not die because someone closed a tab. |
+| The engine restarts, the token rotates | **Nothing.** Neither is a liveness event. |
+| The approving person is deactivated (`DELETE /v1/identity/users/{id}`) | **The connection ends at once.** The withdrawal revokes every access and refresh token that person approved, in the same transaction that disables the account. |
+| The person is soft-deleted or disabled by any other path | **The next use is refused.** Both the access path and the refresh path re-read the person's row. |
+| The client registration is revoked (`DELETE /v1/oauth/clients/{client_id}`) | **The connection ends at once**, and both paths refuse it afterwards. |
+
+Access and refresh are checked against the *same* rule — the person still
+active on the token's tenant, the client registration not revoked — so a
+refresh never answers `200` with a credential the resource server will refuse.
+A refusal on the token endpoint names what happened
+(`error_description: "the person who approved this connection is no longer
+active …"`); it never tells the client to paste an API key.
+
+The Cockpit shows both sides of this. **Credentials** lists the approved
+connections with the person whose approval keeps each one alive, and **People**
+says how many connections a deactivation will end before it asks for the
+confirmation.
+
 **Security notes.** Authorization codes are single-use with a 60-second TTL. `redirect_uri` is matched exactly against the registered URIs — no prefix or wildcard matching. Login state is short-lived and signed; account switching revokes the old session. Browser sessions have an eight-hour sliding limit and a 24-hour absolute lifetime cap. Refresh tokens rotate on every use; replay or explicit revocation of a refresh token revokes the full family and its access tokens. Only SHA-256 hashes of tokens are persisted; the plaintext values are never stored. `mcp_oauth_clients` intentionally has no `tenant_id` because DCR (RFC 7591) registers the client before any tenant context exists; the tenant binds at consent time on the authorization-code row and on every token. This is a deliberate, documented exception to the "every row carries tenant_id" rule.
 
 ---

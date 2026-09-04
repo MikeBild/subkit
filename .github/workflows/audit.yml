@@ -1,0 +1,50 @@
+name: audit
+
+# The scheduled check for known advisories in the dependency tree.
+#
+# It is deliberately NOT in ci.yml and NOT in release.yml. On 2026-09-04 an
+# advisory endpoint answered 503 for hours, and a product whose release path
+# ran `npm audit --audit-level=high` could not ship while nothing was wrong
+# with its code. A release must build the same way today and tomorrow, so the
+# advisory question is asked on a schedule instead — where a bad answer costs
+# a notification rather than a rollout.
+#
+# `scripts/audit-advisories.ts` tells a network fault from a finding: an
+# unreachable or unparseable registry writes a warning and SUCCEEDS; only an
+# advisory reported at high or critical severity fails the job, naming
+# package, severity and title.
+#
+# Nothing depends on this workflow and it is not a required check.
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  advisories:
+    name: known advisories
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+      - name: Cache Bun install
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+      - name: bun audit
+        run: bun run scripts/audit-advisories.ts

@@ -438,6 +438,7 @@ const BOOTSTRAP = {
     "self_healing:write",
     "connection:read",
     "connection:write",
+    "mcp_oauth_client:read",
   ],
   csrf_token: "test-csrf",
   version: "konvention-check",
@@ -1103,6 +1104,7 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
             effective_role: "admin",
             role_consistent: true,
             status: "active",
+            oauth_connections: 2,
           },
           {
             id: "user-2",
@@ -1111,6 +1113,22 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
             effective_role: "member",
             role_consistent: true,
             status: "active",
+            oauth_connections: 0,
+          },
+        ],
+      });
+
+    if (path === "/v1/oauth/clients")
+      return json(route, {
+        items: [
+          {
+            id: ID,
+            client_id: "reporting-desktop",
+            client_name: "Reporting-Desktop",
+            approved_by: ["betrieb@example.org"],
+            live_connections: 1,
+            disabled_at: null,
+            created_at: days(12),
           },
         ],
       });
