@@ -528,7 +528,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     if (livenessRefusal) {
       // The grant is dead, not merely unusable this once: end the whole
       // family so a second attempt cannot race a restore.
-      await revokeRefreshTokenFamily(refreshRow.id, now);
+      await revokeOAuthRefreshTokenFamily(db, refreshRow.id, now);
       await auditAwait(
         {
           tenant_id: refreshRow.tenant_id,
