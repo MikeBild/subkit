@@ -6,10 +6,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
-## 6.37.0 — 2026-09-04
+## 6.38.0 — 2026-09-04
 
 ### Fixed
 
+- **The chat page has one column and one left edge.** The header sat at the page
+  margin, the transcript was centred inside its own padding and the composer was
+  centred without any, so the title, the messages and the field you type in each
+  began somewhere else — and on a wide screen the conversation was a narrow strip
+  in the middle of an empty page. All three regions now share the same 1280 px
+  column the shared page frame gives its wide surfaces, with the padding outside
+  it, and the transcript reserves its scrollbar gutter on both edges so a growing
+  conversation cannot shift that line.
 - **An answer's payload keeps its identifier; its prose gets the name.** The
   transcript masked every internal identifier in a message, including the ones
   inside code. A request body the agent handed you rendered with
