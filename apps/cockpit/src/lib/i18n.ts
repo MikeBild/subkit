@@ -1107,7 +1107,7 @@ const EN = {
   "chat.empty.title": "What should SubKit accomplish?",
   "chat.empty.description":
     "Describe the outcome. The agent can inspect, verify, preview and request approval here.",
-  "chat.composer.placeholder": "Ask SubKit to build, run, inspect or repair…",
+  "chat.composer.placeholder": "Message SubKit…",
   "chat.mention.workflows": "Workflows",
   "chat.mention.connectors": "Connectors",
   "chat.mention.empty": "No matches",
@@ -1130,6 +1130,9 @@ const EN = {
   "chat.context.checkpoint": "Checkpoint",
   "chat.context.unsaved": "Unsaved changes",
   "chat.context.saved": "No unsaved changes",
+  "chat.context.references": "Referenced in this conversation",
+  "chat.context.referencesEmpty": "No references yet",
+  "chat.context.referenceUnavailable": "Unavailable",
   "chat.context.approval": "Approval required",
   "chat.approval.review": "Review this governed action before SubKit continues.",
   "chat.approval.decline": "Decline",
@@ -2465,8 +2468,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.empty.title": "Was soll SubKit erreichen?",
   "chat.empty.description":
     "Beschreib das Ergebnis. Der Agent kann hier prüfen, verifizieren, testen und Freigaben anfordern.",
-  "chat.composer.placeholder":
-    "SubKit bitten, etwas zu erstellen, auszuführen, zu prüfen oder zu reparieren…",
+  "chat.composer.placeholder": "SubKit fragen…",
   "chat.mention.workflows": "Workflows",
   "chat.mention.connectors": "Konnektoren",
   "chat.mention.empty": "Keine Treffer",
@@ -2490,6 +2492,9 @@ const DE: Record<TranslationKey, string> = {
   "chat.context.checkpoint": "Prüfpunkt",
   "chat.context.unsaved": "Ungespeicherte Änderungen",
   "chat.context.saved": "Keine ungespeicherten Änderungen",
+  "chat.context.references": "In dieser Unterhaltung referenziert",
+  "chat.context.referencesEmpty": "Noch keine Referenzen",
+  "chat.context.referenceUnavailable": "Nicht verfügbar",
   "chat.context.approval": "Freigabe erforderlich",
   "chat.approval.review": "Prüf diese gesteuerte Aktion, bevor SubKit fortfährt.",
   "chat.approval.decline": "Ablehnen",

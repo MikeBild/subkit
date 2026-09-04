@@ -62,6 +62,7 @@ export function toMessageParts(
     id: message.id,
     role: message.role,
     parts,
+    model: message.model,
     created_at: message.created_at,
   };
 }

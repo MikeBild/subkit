@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { Bot } from "lucide-react";
 import { useState } from "react";
-import { appendConversationMessage, createConversation } from "@/api/client";
+import { sendConversationTurn } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -44,9 +44,12 @@ export function AgentPanel({
       const onEvent = (event: { type: string; [key: string]: unknown }) => {
         if (event.type === "text_delta" && typeof event.text === "string") answer += event.text;
       };
-      const outcome = conversationId
-        ? await appendConversationMessage(conversationId, message, onEvent)
-        : await createConversation(message, onEvent, { workflow_id: workflowId });
+      const outcome = await sendConversationTurn(
+        conversationId
+          ? { conversationId, message }
+          : { message, target: { workflow_id: workflowId } },
+        onEvent,
+      );
       return { conversationId: outcome.conversation.id, answer };
     },
     onSuccess: (result, message) => {

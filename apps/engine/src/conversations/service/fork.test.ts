@@ -57,6 +57,7 @@ async function seedConversationWithMessages(tenantLabel: string, count: number):
         conversation_id,
         role: i % 2 === 0 ? "user" : "assistant",
         content: { text: `turn-${i}` },
+        model: i === 1 ? "provider/model-v1" : null,
       })
       .returning();
     message_ids.push(msg!.id);
@@ -102,6 +103,7 @@ describe("forkConversation", () => {
       )
       .orderBy(asc(conversationMessages.created_at));
     expect(forked.length).toBe(3);
+    expect(forked[1]?.model).toBe("provider/model-v1");
     for (const row of forked) {
       expect(seed.message_ids).not.toContain(row.id);
       expect(row.tenant_id).toBe(seed.tenant_id);

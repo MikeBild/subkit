@@ -111,6 +111,7 @@ export const conversationMessages = pgTable(
       .references(() => conversations.id, { onDelete: "cascade" }),
     role: conversationRoleEnum("role").notNull(),
     content: jsonb("content").notNull(),
+    model: text("model"),
     tokens_in: integer("tokens_in"),
     tokens_out: integer("tokens_out"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

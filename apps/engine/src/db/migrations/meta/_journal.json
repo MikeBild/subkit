@@ -344,6 +344,13 @@
       "when": 1788466601600,
       "tag": "0048_anbindungen_und_freigaben",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1788539731809,
+      "tag": "0049_magical_korg",
+      "breakpoints": true
     }
   ]
 }
