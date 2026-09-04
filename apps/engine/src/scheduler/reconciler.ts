@@ -40,6 +40,7 @@ import {
   runConnectorReauthScanForTenant,
   runOAuth2RefreshKeepAliveForTenant,
 } from "./connector-reauth-scan-runner.ts";
+import { runConversationTitleSweepSafely } from "./conversation-title-runner.ts";
 import { parseCronExpression } from "./cron.ts";
 import { runElicitationExpiry } from "./elicitation-expiry-runner.ts";
 import { runEndpointContractScanForTenant } from "./endpoint-contract-scan-runner.ts";
@@ -87,6 +88,14 @@ const CONNECTION_REFRESH_CADENCE_MS = 60 * 1000;
  *  hourly keeps growth bounded and the cadence in line with the other
  *  retention sweeps. */
 const CHAT_DEDUP_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
+
+/** Cadence for naming dormant conversations. Five minutes, like the other
+ *  backfill sweep: the work is bounded per tick and only matters to a person
+ *  scrolling the list, so it may take hours to walk an old estate. Two
+ *  instances doing it at once cost duplicate model calls at worst — the write
+ *  is guarded by `title_locked = false` and the second one finds the row
+ *  already renamed and skips it. */
+const CONVERSATION_TITLE_SWEEP_CADENCE_MS = 5 * 60 * 1000;
 
 /** Fixed cadence for the cli_notification_inbox retention sweep. Hourly,
  *  like the other retention sweeps; the sweep filters by
@@ -349,6 +358,7 @@ export class SchedulerReconciler {
 
   /** Last instant the chat_events_seen retention sweep ran. */
   private lastChatDedupCleanupAt: Date | null = null;
+  private lastConversationTitleSweepAt: Date | null = null;
 
   /** Last instant the cli_notification_inbox retention sweep ran. */
   private lastNotificationInboxRetentionAt: Date | null = null;
@@ -575,6 +585,17 @@ export class SchedulerReconciler {
     });
     // chat_events_seen retention sweep. Same hour-throttle pattern;
     // bounds the replay-dedup table as inbound Slack volume grows.
+    // Names the conversations nobody has touched since auto-titling shipped.
+    await retryTransient(() => this.reconcileConversationTitleSweep(), {
+      label: "conversation_title_sweep",
+    }).catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "conversation_title_sweep_failed",
+        msg: "scheduler dormant-conversation titling pass failed",
+        ...errorFields(err),
+      });
+    });
     await retryTransient(() => this.reconcileChatDedupCleanup(), {
       label: "chat_dedup_cleanup",
     }).catch((err) => {
@@ -1183,6 +1204,21 @@ export class SchedulerReconciler {
         failed: report.failed,
       });
     }
+  }
+
+  /**
+   * Throttle the dormant-conversation titling sweep. Overlap between
+   * instances is safe: the sweep's write is guarded by
+   * `title_locked = false` and a conversation that has been renamed no
+   * longer matches its derived title, so the loser of the race skips it.
+   */
+  async reconcileConversationTitleSweep(now: Date = new Date()): Promise<void> {
+    if (this.lastConversationTitleSweepAt !== null) {
+      const elapsed = now.getTime() - this.lastConversationTitleSweepAt.getTime();
+      if (elapsed < CONVERSATION_TITLE_SWEEP_CADENCE_MS) return;
+    }
+    this.lastConversationTitleSweepAt = now;
+    await runConversationTitleSweepSafely(this.opts.db);
   }
 
   /**

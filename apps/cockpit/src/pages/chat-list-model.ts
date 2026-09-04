@@ -6,6 +6,12 @@
 // when it last moved. The status word is deliberately absent — "active" is
 // the engine's authoring state, not something a reader can act on, and the
 // second line used to show it exactly when the list had nothing else to say.
+//
+// The second line names the object the conversation is about, or says nothing.
+// It used to fall back to the last thing said, which made neighbouring rows
+// read as unrelated fragments ("Validation result: ok: false ...") and cost
+// more attention than it repaid. An excerpt still stands in for a missing
+// title, where it is the only thing identifying the row.
 
 import { clipAtWord } from "@/lib/presentation";
 
@@ -59,16 +65,13 @@ export function conversationRow(
   const target = targetName(conversation);
   const excerpt = labels.excerpt?.trim() || null;
   if (title) {
-    // The object it is about beats the last thing said: "Monatsreport" tells
-    // a reader more than a clipped sentence from the transcript.
-    const secondary =
-      target && target !== title ? target : excerpt && excerpt !== title ? excerpt : null;
-    return { title: clipTitle(title), secondary, named: true, waiting };
+    return {
+      title: clipTitle(title),
+      secondary: target && target !== title ? target : null,
+      named: true,
+      waiting,
+    };
   }
-  if (excerpt) {
-    // Borrowing the last message as the title is honest — it is what this
-    // conversation is about — but then the second line must not repeat it.
-    return { title: clipTitle(excerpt), secondary: target, named: false, waiting };
-  }
+  if (excerpt) return { title: clipTitle(excerpt), secondary: target, named: false, waiting };
   return { title: labels.untitled, secondary: target, named: false, waiting };
 }

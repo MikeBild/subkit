@@ -7,14 +7,22 @@ const labels = (excerpt: string | null) => ({
 });
 
 describe("conversationRow", () => {
-  test("a real title wins, and the excerpt moves to the second line", () => {
+  test("a titled row says the title and nothing else", () => {
     const row = conversationRow({ title: "Monatsreport reparieren" }, labels("…"));
     expect(row).toEqual({
       title: "Monatsreport reparieren",
-      secondary: "…",
+      secondary: null,
       named: true,
       waiting: false,
     });
+  });
+
+  test("the last thing said never becomes the second line", () => {
+    const row = conversationRow(
+      { title: "Report prüfen" },
+      labels("Validation result: ok: false, 3 steps skipped"),
+    );
+    expect(row.secondary).toBeNull();
   });
 
   test("the object the conversation is about beats the last thing said", () => {
