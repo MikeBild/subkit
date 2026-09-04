@@ -36,6 +36,8 @@ const listExecutionsRoute = createRoute({
         workflow_id: z.string().uuid().optional(),
         status: z.string().optional(),
         request_source: z.string().optional(),
+        /** Free text, matched against the name or slug of the workflow. */
+        q: z.string().trim().min(1).max(200).optional(),
         /** Lineage filter: list the reruns spawned from this execution. */
         parent_execution_id: z.string().uuid().optional(),
       })
@@ -106,6 +108,7 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
         ...(q.workflow_id !== undefined ? { workflow_id: q.workflow_id } : {}),
         ...(q.status !== undefined ? { status: q.status } : {}),
         ...(q.request_source !== undefined ? { request_source: q.request_source } : {}),
+        ...(q.q !== undefined ? { q: q.q } : {}),
         ...(q.parent_execution_id !== undefined
           ? { parent_execution_id: q.parent_execution_id }
           : {}),
