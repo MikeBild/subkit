@@ -15,11 +15,12 @@ Supported protocols:
 registered when the MCP OAuth server is enabled. They are not interactive
 browser providers and therefore are not entries in `auth.providers`.
 
-The same `auth.providers` list drives the authenticated sign-in inventory, the
-public server-rendered browser chooser, MCP OAuth login, and external assertion
-exchange. `GET /v1/identity/providers` requires `identity:read` and returns only
-protocol, opaque id, and the configured label—never an issuer, client id, scope
-list, tenant slug, or allowlist. OIDC adapters are resolved from the live list by the
+The same `auth.providers` list drives the public sign-in inventory, the generic
+browser routes, MCP OAuth login, and external assertion exchange.
+`GET /v1/identity/providers` returns only protocol, opaque id, and a generic
+label for the protocol — never the operator's own wording, and never an issuer,
+client id or allowlist. It is public by family rule (2026-09-04) and answers the
+same to an anonymous and a signed-in caller. OIDC adapters are resolved from the live list by the
 login and assertion-exchange funnels rather than being captured in the static
 HTTP authentication registry. Multiple direct OIDC records
 may coexist; each client, secret, callback and session belongs to this SubKit

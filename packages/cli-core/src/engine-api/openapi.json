@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "6.42.1",
+    "version": "6.43.0",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -23476,11 +23476,7 @@
           "MCP authentication"
         ],
         "summary": "List configured authentication methods",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "description": "Public. Returns the sign-in methods this installation offers, with a generic label per protocol. No issuer, client id, scope or operator wording is included, and the answer does not change when the caller is authenticated.",
         "responses": {
           "200": {
             "description": "Sanitised provider inventory",
@@ -23488,26 +23484,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProvidersResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
