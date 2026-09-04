@@ -91,3 +91,35 @@ describe("nameIdentifiers", () => {
     expect(nameIdentifiers("Nichts zu tun.", known, HIDDEN)).toBe("Nichts zu tun.");
   });
 });
+
+// The case that reached production: a model sets a bare identifier in
+// backticks mid-sentence, and treating every code span as a payload put a raw
+// identifier back on a surface that bans them.
+describe("nameIdentifiers — a bare identifier in backticks", () => {
+  test("a span that is only an identifier is named, backticks and all", () => {
+    const out = nameIdentifiers(`Connector-ID: \`${ID}\` (prod)`, known, HIDDEN);
+    expect(out).toBe("Connector-ID: [Monatsreport](/cockpit/workflows/wf-1) (prod)");
+    expect(out).not.toContain("`");
+  });
+
+  test("an unnameable one is masked rather than shown", () => {
+    const out = nameIdentifiers(`Connector-ID: \`${OTHER}\``, known, HIDDEN);
+    expect(out).toBe(`Connector-ID: ${HIDDEN}`);
+    expect(out).not.toContain(OTHER);
+  });
+
+  test("a span carrying more than the identifier is still a payload", () => {
+    const text = `Body: \`{"workflow_id":"${ID}"}\``;
+    expect(nameIdentifiers(text, known, HIDDEN)).toBe(text);
+  });
+
+  test("a fenced block holding only an identifier is still a payload", () => {
+    const text = "```\n" + ID + "\n```";
+    expect(nameIdentifiers(text, known, HIDDEN)).toBe(text);
+  });
+
+  test("surrounding whitespace inside the span does not hide it", () => {
+    const out = nameIdentifiers(`Die \` ${OTHER} \` davon`, known, HIDDEN);
+    expect(out).toBe(`Die ${HIDDEN} davon`);
+  });
+});

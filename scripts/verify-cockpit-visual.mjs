@@ -288,7 +288,13 @@ const baseMessages = [
     ],
   },
   {
-    // An answer that mentions the same identifier twice: once in a sentence,
+    // An answer that mentions the same identifier three ways: in a sentence,
+    // alone in backticks the way a model writes "Connector-ID: `…`", and inside
+    // a payload. The first two must be named or masked; the third must survive
+    // untouched. Monospace alone is not permission to print an identifier —
+    // that is how one reached a running installation.
+    //
+    // Formerly: an answer that mentions the same identifier twice: once in a sentence,
     // where the reader needs the name, and once inside a payload, where the
     // identifier IS the answer and masking it hands the reader something that
     // cannot work. The fixture holds both because the display rule differs.
@@ -298,7 +304,7 @@ const baseMessages = [
     parts: [
       {
         type: "text",
-        text: `Der Workflow ${uuid} ist gespeichert und läuft.\n\nStart:\n\n\`\`\`json\n{ "source": "saved", "workflow_id": "${uuid}" }\n\`\`\`\n\nEin gelöschtes Objekt bleibt ohne Namen: 7c9e6679-7425-40de-944b-e07fc1f90ae7.`,
+        text: `Der Workflow ${uuid} ist gespeichert und läuft.\n\nConnector-ID: \`${uuid}\` (prod)\n\nStart:\n\n\`\`\`json\n{ "source": "saved", "workflow_id": "${uuid}" }\n\`\`\`\n\nEin gelöschtes Objekt bleibt ohne Namen: 7c9e6679-7425-40de-944b-e07fc1f90ae7.`,
       },
     ],
   },
@@ -1923,8 +1929,19 @@ for (const locale of variants) {
         )
           throw new Error(`${locale.artifact}/${viewport.name}/${route} displays a resource error`);
       }
+      // An identifier is banned everywhere a person reads, with exactly one
+      // exception: inside a fenced block, where it is not a label but the
+      // content — a request body the answer is handing over. Masking it there
+      // hands the reader something that cannot work. Everywhere else, including
+      // a bare identifier set in backticks mid-sentence, it is still banned;
+      // monospace is not permission.
       const text = await page.locator("body").innerText();
-      if (text.includes(uuid))
+      const visibleText = await page.evaluate(() => {
+        const body = document.body.cloneNode(true);
+        for (const block of [...body.querySelectorAll("pre")]) block.remove();
+        return body.innerText ?? "";
+      });
+      if (visibleText.includes(uuid))
         throw new Error(`${locale.artifact}/${viewport.name}/${route} exposes a UUID`);
       if ((await page.locator("html").getAttribute("lang")) !== locale.name)
         throw new Error(`${locale.artifact}/${viewport.name}/${route} uses the wrong locale`);
