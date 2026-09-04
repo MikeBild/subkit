@@ -6,6 +6,25 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.36.0 — 2026-09-04
+
+### Fixed
+
+- **An answer's payload keeps its identifier; its prose gets the name.** The
+  transcript masked every internal identifier in a message, including the ones
+  inside code. A request body the agent handed you rendered with
+  `"workflow_id": "internal reference"` in it, so copying it produced something
+  that cannot work. Code is now left exactly as written, and a sentence names
+  the workflow, connector or run it means — as a link, when the conversation
+  knows which one — keeping the phrase only where nothing can be named.
+- Links in an answer are links: the markdown renderer emitted buttons, which
+  carry no address for the browser and no test id for the interactive-element
+  gate.
+- The composer is a field again rather than a panel. With the approval-mode
+  caption gone its footer held a single button, and that row plus a
+  four-line-tall empty field made the place you type one sentence the largest
+  object on the page.
+
 ## 6.35.0 — 2026-09-04
 
 ### Fixed
