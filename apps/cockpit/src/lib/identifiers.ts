@@ -13,12 +13,19 @@
 //
 // So the text is split first, and the two halves get opposite treatment:
 //
-//   - Code — fenced blocks and inline spans — is left exactly as written. It
-//     is a value to be used, not prose to be read, and an identifier inside it
-//     is the point.
+//   - A payload is left exactly as written. It is a value to be used, not prose
+//     to be read, and an identifier inside it is the point.
 //   - Prose gets the name of the thing instead, as a link, whenever the
 //     conversation knows which thing it is. Only when nothing resolves does the
 //     phrase remain, because then there is genuinely nothing to say.
+//
+// Monospace is not the same thing as a payload. Models set a bare identifier in
+// backticks in the middle of a sentence — "Connector-ID: `2f65…`" — and treating
+// every code span as untouchable put a raw identifier back on the surface, which
+// is banned here and useless to a reader besides. A span whose whole content IS
+// an identifier is therefore prose: nothing is being handed over, an id is being
+// named. A span carrying JSON, a URL or a command stays verbatim, as does every
+// fenced block.
 //
 // The splitter is deliberately one function used by both rules: a second copy
 // is how "what counts as code" starts disagreeing with itself.
@@ -71,20 +78,32 @@ function escapeLinkText(value: string): string {
  * renders — keeping it a string transform is what lets the whole message stay
  * one markdown document rather than a row of spans with the formatting lost.
  */
+/** A span that holds nothing but one identifier is a mention, not a payload. */
+function bareIdentifier(segment: TextSegment): string | null {
+  if (!segment.code || segment.text.startsWith("```")) return null;
+  const inner = segment.text.replace(/^`+|`+$/g, "").trim();
+  return new RegExp(`^${IDENTIFIER_PATTERN.source}$`, "i").test(inner) ? inner : null;
+}
+
 export function nameIdentifiers(
   text: string,
   resolve: (id: string) => ResolvedIdentifier | null,
   hiddenLabel: string,
 ): string {
+  const name = (id: string): string => {
+    const known = resolve(id);
+    if (!known) return hiddenLabel;
+    const label = escapeLinkText(known.label);
+    return known.href ? `[${label}](${known.href})` : label;
+  };
   return splitCodeAndProse(text)
     .map((segment) => {
+      const bare = bareIdentifier(segment);
+      // The backticks go with it: what replaces the id is a name, and a name
+      // set in monospace reads as a value the reader is meant to copy.
+      if (bare) return name(bare);
       if (segment.code) return segment.text;
-      return segment.text.replace(IDENTIFIER_PATTERN, (id) => {
-        const known = resolve(id);
-        if (!known) return hiddenLabel;
-        const label = escapeLinkText(known.label);
-        return known.href ? `[${label}](${known.href})` : label;
-      });
+      return segment.text.replace(IDENTIFIER_PATTERN, name);
     })
     .join("");
 }
