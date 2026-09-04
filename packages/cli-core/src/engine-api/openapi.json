@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "6.41.0",
+    "version": "6.41.1",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -3544,14 +3544,7 @@
           },
           "label": {
             "type": "string",
-            "enum": [
-              "SSO",
-              "API key"
-            ]
-          },
-          "issuer": {
-            "type": "string",
-            "format": "uri"
+            "minLength": 1
           }
         },
         "required": [
@@ -3606,6 +3599,34 @@
         "required": [
           "provider_id",
           "identity_token"
+        ],
+        "additionalProperties": false
+      },
+      "CliSessionResponse": {
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "principal_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "context_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        },
+        "required": [
+          "api_key",
+          "principal_id",
+          "context_id",
+          "email"
         ],
         "additionalProperties": false
       },
@@ -23454,14 +23475,39 @@
         "tags": [
           "MCP authentication"
         ],
-        "summary": "List available MCP authentication methods",
+        "summary": "List configured authentication methods",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Canonical SSO-first method matrix",
+            "description": "Sanitised provider inventory",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -23519,6 +23565,51 @@
           },
           "403": {
             "description": "Provider not configured or identity is not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/identity/cli-session": {
+      "post": {
+        "tags": [
+          "MCP authentication"
+        ],
+        "summary": "Exchange a one-time CLI OAuth token for a personal API key",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Personal CLI session credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or expired token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token lacks the CLI login scope",
             "content": {
               "application/json": {
                 "schema": {
@@ -23634,6 +23725,27 @@
           "MCP authentication"
         ],
         "summary": "Read MCP protected-resource metadata",
+        "responses": {
+          "200": {
+            "description": "Metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/oauth-protected-resource/v1/identity/cli-session": {
+      "get": {
+        "operationId": "getCliLoginOAuthProtectedResource",
+        "tags": [
+          "MCP authentication"
+        ],
+        "summary": "Read CLI-login protected-resource metadata",
         "responses": {
           "200": {
             "description": "Metadata",

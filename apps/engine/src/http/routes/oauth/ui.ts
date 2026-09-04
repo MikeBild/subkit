@@ -171,19 +171,21 @@ export function renderConsentPage(opts: {
         "mcp:authoring": ["Bearbeiten", "Entwürfe, Versionen und Vorschauen anlegen"],
         "mcp:admin": ["Verwalten", "Freigaben erteilen und Zugriff verwalten"],
         "metrics:read": ["Betriebszähler", "Betriebszähler lesen — sonst nichts"],
+        "sk:login": ["CLI-Anmeldung", "Einen persönlichen Schlüssel für die SubKit CLI ausstellen"],
       }
     : {
         "mcp:read": ["Read", "Read published content, resources and product statistics"],
         "mcp:authoring": ["Authoring", "Create drafts, revisions and previews"],
         "mcp:admin": ["Administration", "Publish releases and administer access"],
         "metrics:read": ["Operational counters", "Read the operational counters — nothing else"],
+        "sk:login": ["CLI sign-in", "Issue a personal key for the SubKit CLI"],
       };
   const checked = new Set(opts.preChecked);
   const scopeItems = opts.offeredScopes
     .map((scope) => {
       const value = escapeHtml(scope);
       const [name, description] = labels[scope] ?? [scope, scope];
-      const required = scope === "mcp:read";
+      const required = scope === "mcp:read" || scope === "sk:login";
       return `<li><label class="scope-row"><input type="checkbox" name="scope" value="${value}"${required || checked.has(scope) ? " checked" : ""}${required ? " disabled" : ""}><span class="scope-text"><span class="scope-name">${escapeHtml(name)} · ${value}</span><span class="scope-desc">${escapeHtml(description)}</span></span></label>${required ? `<input type="hidden" name="scope" value="${value}">` : ""}</li>`;
     })
     .join("");

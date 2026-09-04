@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { apiKeys, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer, loadAuthProvidersForTest } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -15,13 +17,17 @@ afterEach(async () => {
 });
 
 describe("GET /v1/identity/providers", () => {
-  test("returns the canonical API-key adapter by default", async () => {
-    const res = await fetch(`${ctx.baseUrl}/v1/identity/providers`);
+  test("returns the configured API-key adapter to an identity reader", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/identity/providers`, {
+      headers: { authorization: `Bearer ${ctx.apiKey}` },
+    });
     expect(res.status).toBe(200);
     const data = (await res.json()) as {
       providers: { protocol: string; id: string; label: string }[];
     };
-    expect(data.providers).toEqual([{ protocol: "api_key", id: "api-key", label: "API key" }]);
+    expect(data.providers).toEqual([
+      { protocol: "api_key", id: "api-key", label: "SubKit API key" },
+    ]);
   });
 
   test("returns every configured adapter with only protocol-neutral connection metadata", async () => {
@@ -41,29 +47,52 @@ describe("GET /v1/identity/providers", () => {
       ctx.testDb.url,
     );
 
-    const res = await fetch(`${ctx.baseUrl}/v1/identity/providers`);
+    const res = await fetch(`${ctx.baseUrl}/v1/identity/providers`, {
+      headers: { authorization: `Bearer ${ctx.apiKey}` },
+    });
     expect(res.status).toBe(200);
     const data = (await res.json()) as {
       providers: {
         protocol: string;
         id: string;
         label: string;
-        issuer?: string;
       }[];
     };
     expect(data.providers).toEqual([
       {
         protocol: "oidc",
         id: "partner",
-        label: "SSO",
-        issuer: "https://partner.example.com",
+        label: "Partner",
       },
-      { protocol: "api_key", id: "api-key", label: "API key" },
+      { protocol: "api_key", id: "api-key", label: "SubKit API key" },
     ]);
+    expect(JSON.stringify(data)).not.toContain("partner.example.com");
+    expect(JSON.stringify(data)).not.toContain("client_id");
   });
 
-  test("does not require authentication", async () => {
+  test("rejects anonymous requests", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/identity/providers`);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
+  });
+
+  test("rejects an authenticated principal without identity:read", async () => {
+    const [user] = await ctx.db
+      .insert(users)
+      .values({ tenant_id: ctx.tenantId, email: "enduser-providers@test.local", role: "enduser" })
+      .returning();
+    expect(user).toBeDefined();
+    const plaintext = `wf_live_${"x".repeat(32)}`;
+    await ctx.db.insert(apiKeys).values({
+      tenant_id: ctx.tenantId,
+      user_id: user!.id,
+      prefix: plaintext.slice(0, 12),
+      token_sha256: createHash("sha256").update(plaintext).digest("hex"),
+      scopes: ["*"],
+    });
+
+    const res = await fetch(`${ctx.baseUrl}/v1/identity/providers`, {
+      headers: { authorization: `Bearer ${plaintext}` },
+    });
+    expect(res.status).toBe(403);
   });
 });

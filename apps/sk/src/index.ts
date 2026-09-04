@@ -10,7 +10,6 @@
 
 import * as prompts from "@clack/prompts";
 import { exitCodeFor, isEngineError, wasReported } from "@cli-core/errors";
-import { runDeviceFlow } from "@cli-core/index.ts";
 import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
 import { VERSION } from "@cli-core/version.ts";
 import { type CommandDef, defineCommand, runCommand, type SubCommandsDef, showUsage } from "citty";
@@ -70,6 +69,7 @@ import type { OutputFormat } from "./headless.ts";
 import { runHeadless } from "./headless.ts";
 import { riskSummaryLine } from "./lib/operator-digest.ts";
 import { suggestCommand } from "./lib/suggest.ts";
+import { runCliOAuthLogin } from "./login-oauth.ts";
 import { runMcpProxy } from "./mcp-proxy.ts";
 import { personaCanSee, recordPersonaHint } from "./persona-probe.ts";
 
@@ -98,16 +98,12 @@ const commonArgs = {
 
 // ---------- `sk login` ----------
 
-const DEFAULT_OIDC_SCOPE = "openid profile email offline_access";
-
 const loginCommand = defineCommand({
   meta: { name: "login", description: "Authenticate against a subkit engine" },
   args: {
     ...commonArgs,
     "api-key": { type: "string", description: "Scripted API-key login (skips device flow)" },
     "portal-token": { type: "string", description: "Authenticate as a portal-token principal" },
-    "client-id": { type: "string", description: "OIDC client id (device flow)" },
-    scope: { type: "string", description: "OIDC scope override" },
   },
   async run({ args }) {
     const profileName = (args.profile as string | undefined) ?? "default";
@@ -160,101 +156,40 @@ const loginCommand = defineCommand({
       return;
     }
 
-    // Path 3: Discover providers from the engine and use the best available method.
-    interface AuthProvider {
-      protocol: "api_key" | "oidc";
-      id: string;
-      label: string;
-      issuer?: string;
-    }
-    let providers: AuthProvider[] = [];
     try {
-      const res = await fetch(`${engineUrl}/v1/identity/providers`);
-      if (res.ok) {
-        const data = (await res.json()) as { providers: AuthProvider[] };
-        providers = data.providers.filter((provider) => provider.protocol !== "api_key");
-      }
-    } catch {
-      /* engine unreachable — fall through to manual OIDC */
+      const result = await runCliOAuthLogin({
+        engineUrl,
+        onAuthorizationUrl: (url) => {
+          process.stdout.write(`sk: complete sign-in in your browser:\n${url}\n`);
+        },
+        onBrowserLaunchError: () => {
+          process.stderr.write("sk: browser launch failed; open the URL above manually\n");
+        },
+      });
+      const activeTenant = tenant ?? result.context_id;
+      saveProfile({
+        name: profileName,
+        engine_url: engineUrl,
+        api_key: result.api_key,
+        active_tenant_id: activeTenant,
+      });
+      await recordPersonaHint(
+        new EngineClient({ engine_url: engineUrl, api_key: result.api_key, tenant: activeTenant }),
+        profileName,
+        engineUrl,
+        result.api_key,
+        activeTenant,
+      );
+      process.stdout.write(
+        `sk: signed in as ${result.email || result.principal_id} — profile '${profileName}' saved\n`,
+      );
+    } catch (err) {
+      process.stderr.write(
+        `sk: browser login failed: ${err instanceof Error ? err.message : String(err)}\n` +
+          "sk: use --api-key only for scripted or break-glass login\n",
+      );
+      process.exit(2);
     }
-
-    // If we have browser-based providers, use them
-    if (providers.length > 0) {
-      let provider: AuthProvider;
-      if (providers.length === 1) {
-        provider = providers[0]!;
-      } else {
-        const selected = await prompts.select({
-          message: "Sign in with",
-          options: providers.map((p) => ({
-            value: p.id,
-            label: p.label,
-            hint: p.issuer ?? "",
-          })),
-        });
-        if (prompts.isCancel(selected)) {
-          process.stdout.write("sk: login cancelled\n");
-          return;
-        }
-        provider = providers.find((p) => p.id === selected)!;
-      }
-
-      // OIDC device flow provider
-      if (provider.protocol === "oidc" && provider.issuer) {
-        let clientId =
-          (args["client-id"] as string | undefined) ?? process.env.SUBKIT_OIDC_CLIENT_ID ?? "";
-        const scope = (args.scope as string | undefined) ?? DEFAULT_OIDC_SCOPE;
-        if (!clientId) {
-          const v = await prompts.text({ message: "OIDC client id", placeholder: "subkit-cli" });
-          if (prompts.isCancel(v)) {
-            process.stdout.write("sk: login cancelled\n");
-            return;
-          }
-          clientId = v as string;
-        }
-        try {
-          const result = await runDeviceFlow({
-            provider_id: provider.id,
-            issuer_url: provider.issuer,
-            client_id: clientId,
-            engine_url: engineUrl,
-            scope,
-          });
-          const activeTenant = tenant ?? result.context_id ?? null;
-          saveProfile({
-            name: profileName,
-            engine_url: engineUrl,
-            api_key: result.api_key,
-            active_tenant_id: activeTenant,
-          });
-          await recordPersonaHint(
-            new EngineClient({
-              engine_url: engineUrl,
-              api_key: result.api_key,
-              tenant: activeTenant,
-            }),
-            profileName,
-            engineUrl,
-            result.api_key,
-            activeTenant,
-          );
-          process.stdout.write(
-            `sk: signed in as ${result.email || result.principal_id} — profile '${profileName}' saved\n`,
-          );
-          return;
-        } catch (err) {
-          process.stderr.write(
-            `sk: device-flow login failed: ${err instanceof Error ? err.message : String(err)}\n`,
-          );
-          process.exit(2);
-        }
-      }
-    }
-
-    process.stderr.write(
-      "sk: the engine exposes no configured interactive identity provider; use --api-key or ask the operator to configure auth.providers\n",
-    );
-    process.exit(2);
   },
 });
 

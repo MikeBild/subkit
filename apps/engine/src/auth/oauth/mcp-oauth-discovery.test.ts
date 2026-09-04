@@ -26,21 +26,40 @@ describe("GET /.well-known/oauth-protected-resource", () => {
     const res = await fetch(`${ctx.baseUrl}/.well-known/oauth-protected-resource`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
-    expect(typeof body.resource).toBe("string");
+    expect(body.resource).toBe("https://test.example.com/mcp");
     expect(Array.isArray(body.authorization_servers)).toBe(true);
     expect((body.authorization_servers as string[]).length).toBeGreaterThan(0);
     expect(Array.isArray(body.scopes_supported)).toBe(true);
     expect(body.scopes_supported).toContain("mcp:read");
+    expect(body.scopes_supported).not.toContain("sk:login");
   });
 
   test("/mcp variant also returns RFC 9728 document", async () => {
     const res = await fetch(`${ctx.baseUrl}/.well-known/oauth-protected-resource/mcp`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
-    expect(typeof body.resource).toBe("string");
+    expect(body.resource).toBe("https://test.example.com/mcp");
     expect(Array.isArray(body.authorization_servers)).toBe(true);
     expect(Array.isArray(body.scopes_supported)).toBe(true);
     expect(body.scopes_supported).toContain("mcp:read");
+    expect(body.scopes_supported).not.toContain("sk:login");
+  });
+
+  test("CLI variant is audience-specific and advertises only sk:login", async () => {
+    const res = await fetch(
+      `${ctx.baseUrl}/.well-known/oauth-protected-resource/v1/identity/cli-session`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      resource: string;
+      authorization_servers: string[];
+      scopes_supported: string[];
+    };
+    expect(body).toEqual({
+      resource: "https://test.example.com/v1/identity/cli-session",
+      authorization_servers: ["https://test.example.com"],
+      scopes_supported: ["sk:login"],
+    });
   });
 });
 
@@ -97,6 +116,7 @@ describe("GET /.well-known/oauth-authorization-server", () => {
     const body = (await res.json()) as { scopes_supported?: string[] };
     expect(Array.isArray(body.scopes_supported)).toBe(true);
     expect((body.scopes_supported ?? []).length).toBeGreaterThan(0);
+    expect(body.scopes_supported).toContain("sk:login");
   });
 });
 

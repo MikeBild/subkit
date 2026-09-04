@@ -109,7 +109,7 @@ describe("GET /v1/settings", () => {
     expect(authProviders!.meta).toMatchObject({
       kind: "json",
       sensitive: false,
-      requiresRestart: true,
+      requiresRestart: false,
       scope: "global",
     });
   });
@@ -247,15 +247,15 @@ describe("GET /v1/settings/{path}", () => {
 });
 
 describe("PUT /v1/settings/{path}", () => {
-  test("public OIDC providers are marked restart-required", async () => {
+  test("OIDC providers apply hot and remain private", async () => {
     const providers = [
       { protocol: "api_key", id: "api-key", label: "SubKit API key" },
       {
         protocol: "oidc",
-        id: "upraft",
-        label: "Upraft Auth",
-        issuer_url: "https://auth.mikebild.info",
-        client_id: "capp_subkit",
+        id: "workforce",
+        label: "Workforce SSO",
+        issuer_url: "https://identity.example.test",
+        client_id: "subkit-test-client",
         scopes: "openid profile email",
         tenant_slug: "default",
       },
@@ -267,20 +267,21 @@ describe("PUT /v1/settings/{path}", () => {
     expect(res.status).toBe(200);
     expect((await res.json()) as PutResult).toEqual({
       value: providers,
-      requiresRestart: true,
+      requiresRestart: false,
     });
 
-    const discovery = await fetch(`${server.baseUrl}/v1/identity/providers`);
+    const anonymous = await fetch(`${server.baseUrl}/v1/identity/providers`);
+    expect(anonymous.status).toBe(401);
+    const discovery = await authedFetch("/v1/identity/providers");
     expect(discovery.status).toBe(200);
     expect((await discovery.json()) as Record<string, unknown>).toEqual({
       providers: [
         {
           protocol: "oidc",
-          id: "upraft",
-          label: "SSO",
-          issuer: "https://auth.mikebild.info",
+          id: "workforce",
+          label: "Workforce SSO",
         },
-        { protocol: "api_key", id: "api-key", label: "API key" },
+        { protocol: "api_key", id: "api-key", label: "SubKit API key" },
       ],
     });
   });

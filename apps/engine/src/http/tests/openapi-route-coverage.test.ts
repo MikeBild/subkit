@@ -139,8 +139,7 @@ describe("openapi route coverage", () => {
       properties: {
         protocol: { type: "string", enum: ["api_key", "oidc"] },
         id: { type: "string" },
-        label: { type: "string", enum: ["SSO", "API key"] },
-        issuer: { type: "string", format: "uri" },
+        label: { type: "string", minLength: 1 },
       },
       required: ["protocol", "id", "label"],
       additionalProperties: false,

@@ -61,6 +61,14 @@ export function registerRawMcpAuthOpenApi(app: OpenAPIHono<AppEnv>): void {
   register(
     app,
     "get",
+    "/.well-known/oauth-protected-resource/v1/identity/cli-session",
+    "getCliLoginOAuthProtectedResource",
+    "Read CLI-login protected-resource metadata",
+    metadata,
+  );
+  register(
+    app,
+    "get",
     "/.well-known/oauth-authorization-server",
     "getOAuthAuthorizationServer",
     "Read OAuth authorization-server metadata",

@@ -19,7 +19,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../../audit/types.ts";
 import type { Config } from "../../config/schema.ts";
-import type { Db } from "../../db/client.ts";
+import type { Db, Executor } from "../../db/client.ts";
 import {
   mcpOauthAccessTokens,
   mcpOauthAuthorizationCodes,
@@ -101,6 +101,46 @@ export interface ExchangeRefreshInput {
 export interface McpOAuthServerOptions {
   db: Db;
   config: Config;
+}
+
+export async function revokeOAuthRefreshTokenFamily(
+  db: Executor,
+  refreshId: string,
+  revokedAt: Date,
+): Promise<void> {
+  // UNION prevents the bidirectional rotation walk from cycling indefinitely.
+  await db.execute(sql`
+    WITH RECURSIVE chain AS (
+      SELECT id, rotated_to_id
+      FROM mcp_oauth_refresh_tokens
+      WHERE id = ${refreshId}
+      UNION
+      SELECT r.id, r.rotated_to_id
+      FROM mcp_oauth_refresh_tokens r
+      INNER JOIN chain c ON r.id = c.rotated_to_id OR c.id = r.rotated_to_id
+      WHERE r.revoked_at IS NULL
+    )
+    UPDATE mcp_oauth_refresh_tokens
+    SET revoked_at = ${revokedAt}
+    WHERE id IN (SELECT id FROM chain)
+      AND revoked_at IS NULL
+  `);
+
+  await db.execute(sql`
+    WITH RECURSIVE chain AS (
+      SELECT id, rotated_to_id
+      FROM mcp_oauth_refresh_tokens
+      WHERE id = ${refreshId}
+      UNION
+      SELECT r.id, r.rotated_to_id
+      FROM mcp_oauth_refresh_tokens r
+      INNER JOIN chain c ON r.id = c.rotated_to_id OR c.id = r.rotated_to_id
+    )
+    UPDATE mcp_oauth_access_tokens
+    SET revoked_at = ${revokedAt}
+    WHERE refresh_token_id IN (SELECT id FROM chain)
+      AND revoked_at IS NULL
+  `);
 }
 
 export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
@@ -706,42 +746,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     };
   }
 
-  async function revokeRefreshTokenFamily(refreshId: string, now: Date): Promise<void> {
-    // UNION prevents the bidirectional rotation walk from cycling indefinitely.
-    await db.execute(sql`
-      WITH RECURSIVE chain AS (
-        SELECT id, rotated_to_id
-        FROM mcp_oauth_refresh_tokens
-        WHERE id = ${refreshId}
-        UNION
-        SELECT r.id, r.rotated_to_id
-        FROM mcp_oauth_refresh_tokens r
-        INNER JOIN chain c ON r.id = c.rotated_to_id OR c.id = r.rotated_to_id
-        WHERE r.revoked_at IS NULL
-      )
-      UPDATE mcp_oauth_refresh_tokens
-      SET revoked_at = ${now}
-      WHERE id IN (SELECT id FROM chain)
-        AND revoked_at IS NULL
-    `);
-
-    await db.execute(sql`
-      WITH RECURSIVE chain AS (
-        SELECT id, rotated_to_id
-        FROM mcp_oauth_refresh_tokens
-        WHERE id = ${refreshId}
-        UNION
-        SELECT r.id, r.rotated_to_id
-        FROM mcp_oauth_refresh_tokens r
-        INNER JOIN chain c ON r.id = c.rotated_to_id OR c.id = r.rotated_to_id
-      )
-      UPDATE mcp_oauth_access_tokens
-      SET revoked_at = ${now}
-      WHERE refresh_token_id IN (SELECT id FROM chain)
-        AND revoked_at IS NULL
-    `);
-  }
-
   // ── revokeToken ─────────────────────────────────────────────────────────────
   async function revokeToken(token: string, requestSource = "api"): Promise<void> {
     const tokenHash = sha256Hex(token);
@@ -799,7 +803,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       .limit(1);
     const refreshRow = refreshRows[0];
     if (refreshRow) {
-      await revokeRefreshTokenFamily(refreshRow.id, now);
+      await revokeOAuthRefreshTokenFamily(db, refreshRow.id, now);
       await auditAwait(
         {
           tenant_id: refreshRow.tenant_id,
@@ -830,7 +834,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     userId: string,
     now: Date,
   ): Promise<void> {
-    await revokeRefreshTokenFamily(refreshId, now);
+    await revokeOAuthRefreshTokenFamily(db, refreshId, now);
 
     await auditAwait(
       {

@@ -6,6 +6,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.41.1 — 2026-09-04
+
+### Added
+
+- `sk login` now uses a standard public-client Authorization Code flow with
+  PKCE and dynamic registration. A dedicated `sk:login` resource exchanges the
+  one-time OAuth credential for a personal API key; the CLI persists only that
+  key, revokes the OAuth token family, and never discovers provider inventory.
+
+### Security
+
+- Provider inventory now requires an authenticated `identity:read` caller and
+  returns only protocol, id and label. OAuth resource indicators are exact,
+  registered client scopes are a hard ceiling, and CLI tokens cannot be used
+  at MCP (or MCP tokens at the CLI exchange).
+- Browser identity providers are hot-applied from database-backed settings;
+  changing `auth.providers` no longer requires a restart.
+
 ## 6.41.0 — 2026-09-04
 
 ### Fixed
@@ -93,7 +111,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The pseudo-message builders in the LLM core. They had no caller other than
   their own test and described a prompt shape the assembler no longer produces,
   which is worse than no documentation at all.
-
 ## 6.38.0 — 2026-09-04
 
 ### Fixed
