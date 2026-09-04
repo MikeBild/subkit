@@ -13,6 +13,13 @@
 // costs availability. On the reconciler tick it is late, cheap and
 // interruptible instead.
 //
+// Order matters more than it looks. Conversation ids are random, so walking
+// them in id order visits the estate in no order a reader can perceive: after
+// an hour a third of the table is named and the rows a person actually looks
+// at — the ones they touched most recently — are as likely to be untouched as
+// any other. The walk therefore goes newest-first, by the same column the list
+// sorts on, so the improvement shows up where it is being looked for.
+//
 // Termination without a schema column: a conversation is a candidate only
 // while its stored title is still byte-identical to what
 // `deriveConversationTitle` produces from its first user message. Naming it
@@ -20,7 +27,7 @@
 // keep the sweep from redoing its own work. The `data_migrations` marker only
 // stops the (cheap, LLM-free) scan once the walk has reached the end.
 
-import { and, asc, eq, gt, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { deriveConversationTitle, refreshConversationTitle } from "../conversations/title.ts";
 import type { Db } from "../db/client.ts";
 import { conversationMessages, conversations, dataMigrations } from "../db/schema/index.ts";
@@ -59,9 +66,15 @@ export interface ConversationTitleSweepReport {
   retitled: number;
 }
 
-/** Where the walk got to. Instance-local on purpose: losing it on restart
- *  costs one cheap re-scan, and a row already named no longer matches. */
-let cursor: string | null = null;
+/**
+ * Where the walk got to: the last row's sort position, as a pair.
+ *
+ * `updated_at` alone is not unique, so a keyset cursor needs the id beside it
+ * or a batch boundary that lands mid-second silently drops rows. Instance-local
+ * on purpose: losing it on restart costs one cheap re-scan, and a row already
+ * named no longer matches.
+ */
+let cursor: { updated_at: Date; id: string } | null = null;
 
 /** Test seam — the walk is otherwise a module-level fold over the table. */
 export function resetConversationTitleSweep(): void {
@@ -82,17 +95,22 @@ export async function runConversationTitleSweep(db: Db): Promise<ConversationTit
     // A person named it; the sweep has no business overruling that.
     eq(conversations.title_locked, false),
   ];
-  if (cursor) conds.push(gt(conversations.id, cursor));
+  if (cursor) {
+    conds.push(
+      sql`(${conversations.updated_at}, ${conversations.id}) < (${cursor.updated_at}, ${cursor.id})`,
+    );
+  }
 
   const batch = await db
     .select({
       id: conversations.id,
       tenant_id: conversations.tenant_id,
       title: conversations.title,
+      updated_at: conversations.updated_at,
     })
     .from(conversations) // tenant-filter:exempt — instance-wide maintenance sweep
     .where(and(...conds))
-    .orderBy(asc(conversations.id))
+    .orderBy(desc(conversations.updated_at), desc(conversations.id))
     .limit(SCAN);
 
   if (batch.length === 0) {
@@ -109,7 +127,8 @@ export async function runConversationTitleSweep(db: Db): Promise<ConversationTit
     });
     return { done: true, scanned: 0, retitled: 0 };
   }
-  cursor = batch[batch.length - 1]?.id ?? null;
+  const lastRow = batch[batch.length - 1];
+  cursor = lastRow ? { updated_at: lastRow.updated_at, id: lastRow.id } : null;
 
   const ids = batch.map((row) => row.id);
   const messages = await db
@@ -136,7 +155,7 @@ export async function runConversationTitleSweep(db: Db): Promise<ConversationTit
     if (retitled >= RETITLE) {
       // Leave the cursor on the unfinished part of the batch so the next tick
       // resumes here instead of skipping the rest.
-      cursor = row.id;
+      cursor = { updated_at: row.updated_at, id: row.id };
       break;
     }
     if (!isStillOpeningLine(row.title, firstUserMessage.get(row.id))) continue;
