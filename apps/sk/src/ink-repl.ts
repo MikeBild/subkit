@@ -219,6 +219,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
           raw_input: text,
           resolved_prompt: resolved.prompt,
           artifacts: resolved.artifacts,
+          references: resolved.references,
           warnings: resolved.warnings,
         },
         baseCtx(),
@@ -252,6 +253,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         ? await currentClient.createConversationStream(
             {
               initial_message: resolved.prompt,
+              ...(resolved.references.length > 0 ? { references: resolved.references } : {}),
               ...(turnMemory ? { memory: turnMemory } : {}),
               ...(settings.merged.model ? { model: settings.merged.model } : {}),
               ...(promptOpts?.permission_mode
@@ -264,6 +266,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
             currentConversationId as string,
             {
               message: resolved.prompt,
+              ...(resolved.references.length > 0 ? { references: resolved.references } : {}),
               ...(memory.content ? { memory: memory.content } : {}),
               ...(promptOpts?.permission_mode
                 ? { permission_mode: promptOpts.permission_mode }

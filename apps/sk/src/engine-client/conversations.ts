@@ -345,6 +345,8 @@ export const conversationsMethods = {
       title?: string;
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
       step_budget?: number;
+      /** Objects the opening message names; the engine resolves them per turn. */
+      references?: Array<{ type: "workflow" | "connector"; id: string; label: string }>;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
@@ -388,6 +390,8 @@ export const conversationsMethods = {
       client_suppress?: boolean;
       /** Typed no-LLM turn event — see `RequestCredentialFormEvent`. */
       event?: RequestCredentialFormEvent;
+      /** Objects the message names; the engine resolves them per turn. */
+      references?: Array<{ type: "workflow" | "connector"; id: string; label: string }>;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
