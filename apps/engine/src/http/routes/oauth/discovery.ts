@@ -4,13 +4,13 @@
 // Precedent: the raw /mcp mount in mcp/transports/streamable-http.ts.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { TOKEN_EXCHANGE_GRANT_TYPE } from "../../../auth/index.ts";
+import { CLI_LOGIN_SCOPE, TOKEN_EXCHANGE_GRANT_TYPE } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import type { AppEnv } from "../../openapi.ts";
 
-function buildProtectedResourceDocument(base: string, scopesSupported: string[]) {
+function buildProtectedResourceDocument(resource: string, base: string, scopesSupported: string[]) {
   return {
-    resource: `${base}/mcp`,
+    resource,
     authorization_servers: [base],
     scopes_supported: scopesSupported,
   };
@@ -24,7 +24,9 @@ export function registerOAuthDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     try {
       const cfg = getConfig();
       base = cfg.server.public_base_url;
-      return c.json(buildProtectedResourceDocument(base, cfg.auth.mcp_oauth.scopes_supported));
+      return c.json(
+        buildProtectedResourceDocument(`${base}/mcp`, base, cfg.auth.mcp_oauth.scopes_supported),
+      );
     } catch {
       return c.json({ error: "service_unavailable" }, 503);
     }
@@ -35,7 +37,21 @@ export function registerOAuthDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     try {
       const cfg = getConfig();
       base = cfg.server.public_base_url;
-      return c.json(buildProtectedResourceDocument(base, cfg.auth.mcp_oauth.scopes_supported));
+      return c.json(
+        buildProtectedResourceDocument(`${base}/mcp`, base, cfg.auth.mcp_oauth.scopes_supported),
+      );
+    } catch {
+      return c.json({ error: "service_unavailable" }, 503);
+    }
+  });
+
+  app.get("/.well-known/oauth-protected-resource/v1/identity/cli-session", (c) => {
+    try {
+      const cfg = getConfig();
+      const base = cfg.server.public_base_url;
+      return c.json(
+        buildProtectedResourceDocument(`${base}/v1/identity/cli-session`, base, [CLI_LOGIN_SCOPE]),
+      );
     } catch {
       return c.json({ error: "service_unavailable" }, 503);
     }
@@ -49,7 +65,7 @@ export function registerOAuthDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     try {
       const cfg = getConfig();
       base = cfg.server.public_base_url;
-      scopesSupported = cfg.auth.mcp_oauth.scopes_supported;
+      scopesSupported = [...new Set([...cfg.auth.mcp_oauth.scopes_supported, CLI_LOGIN_SCOPE])];
     } catch {
       return c.json({ error: "service_unavailable" }, 503);
     }

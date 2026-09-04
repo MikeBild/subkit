@@ -25,6 +25,7 @@ const FILE_TO_SLUG: Record<string, string> = {
   "providers.ts": "identity-providers",
   "login.ts": "identity-login",
   "sessions.ts": "identity-sessions",
+  "cli-session.ts": "identity-cli-session",
 };
 
 // R6-S5: top-level routes that the carve-out also covers (health,
@@ -102,9 +103,9 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
     expect([...SELF_INTROSPECTION_ROUTES].sort()).toEqual([
       "cockpit-bootstrap",
       "health",
+      "identity-cli-session",
       "identity-login",
       "identity-permissions",
-      "identity-providers",
       "identity-sessions",
       "metrics",
       "sk-bootstrap",

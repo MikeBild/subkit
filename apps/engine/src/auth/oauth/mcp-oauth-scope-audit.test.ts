@@ -89,7 +89,7 @@ describe("consent denial", () => {
         csrf_token: csrfToken,
         client_id: clientId,
         redirect_uri: "https://client.example.com/deny-cb",
-        resource: "",
+        resource: "https://test.example.com/mcp",
         state: "deny-state",
         decision: "deny",
       }).toString(),
@@ -147,7 +147,7 @@ describe("consent denial", () => {
         csrf_token: csrfToken,
         client_id: clientId,
         redirect_uri: "https://client.example.com/revoke-cb",
-        resource: "",
+        resource: "https://test.example.com/mcp",
         state: "",
         scope: "mcp:read",
         decision: "approve",
@@ -253,7 +253,7 @@ describe("scope intersection — role-based scope restriction", () => {
         csrf_token: csrfToken,
         client_id: clientId,
         redirect_uri: "https://member.example.com/cb",
-        resource: "",
+        resource: "https://test.example.com/mcp",
         state: "",
         scope: "mcp:read",
         decision: "approve",
@@ -336,7 +336,7 @@ describe("scope intersection — role-based scope restriction", () => {
         csrf_token: csrfToken,
         client_id: clientId,
         redirect_uri: "https://downgrade.example.com/cb",
-        resource: "",
+        resource: "https://test.example.com/mcp",
         state: "",
         scope: "mcp:read mcp:authoring",
         decision: "approve",
@@ -398,7 +398,7 @@ describe("scope selection — client request is a hard ceiling", () => {
         cookie: `subkit_session=${jwt}`,
       },
       // Two `scope` values, exactly as the checkbox form would post them.
-      body: `csrf_token=${encodeURIComponent(csrfToken)}&client_id=${clientId}&redirect_uri=${encodeURIComponent("https://elevate.example.com/cb")}&resource=&state=&decision=approve&scope=mcp%3Aread&scope=mcp%3Aadmin`,
+      body: `csrf_token=${encodeURIComponent(csrfToken)}&client_id=${clientId}&redirect_uri=${encodeURIComponent("https://elevate.example.com/cb")}&resource=${encodeURIComponent("https://test.example.com/mcp")}&state=&decision=approve&scope=mcp%3Aread&scope=mcp%3Aadmin`,
       redirect: "manual",
     });
     expect(decisionRes.status).toBe(302);
@@ -468,7 +468,7 @@ describe("scope selection — client request is a hard ceiling", () => {
         "content-type": "application/x-www-form-urlencoded",
         cookie: `subkit_session=${jwt}`,
       },
-      body: `csrf_token=${encodeURIComponent(csrfToken)}&client_id=${clientId}&redirect_uri=${encodeURIComponent("https://tamper.example.com/cb")}&resource=&state=&decision=approve&scope=mcp%3Aread&scope=mcp%3Aadmin`,
+      body: `csrf_token=${encodeURIComponent(csrfToken)}&client_id=${clientId}&redirect_uri=${encodeURIComponent("https://tamper.example.com/cb")}&resource=${encodeURIComponent("https://test.example.com/mcp")}&state=&decision=approve&scope=mcp%3Aread&scope=mcp%3Aadmin`,
       redirect: "manual",
     });
     expect(decisionRes.status).toBe(302);
@@ -588,7 +588,7 @@ async function runFullOAuthFlow(opts: {
       csrf_token: csrfToken,
       client_id: clientId,
       redirect_uri: redirectUri,
-      resource: "",
+      resource: "https://test.example.com/mcp",
       state: "",
       scope: "mcp:read",
       decision: "approve",
@@ -655,7 +655,7 @@ describe("audit log entries (HTTP layer)", () => {
         csrf_token: csrfToken,
         client_id: clientId,
         redirect_uri: "https://audit.example.com/cb",
-        resource: "",
+        resource: "https://test.example.com/mcp",
         state: "",
         scope: "mcp:read",
         decision: "approve",
@@ -846,7 +846,7 @@ describe("consent form structure — scope inputs must submit", () => {
     body.set("csrf_token", csrfToken);
     body.set("client_id", clientId);
     body.set("redirect_uri", "https://form.example.com/cb");
-    body.set("resource", "");
+    body.set("resource", "https://test.example.com/mcp");
     body.set("state", "");
     body.set("decision", "approve");
     for (const s of submitted) body.append("scope", s);

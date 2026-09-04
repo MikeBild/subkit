@@ -3841,7 +3841,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List available MCP authentication methods */
+        /** List configured authentication methods */
         get: {
             parameters: {
                 query?: never;
@@ -3851,13 +3851,31 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Canonical SSO-first method matrix */
+                /** @description Sanitised provider inventory */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": components["schemas"]["ProvidersResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
                     };
                 };
             };
@@ -3881,6 +3899,60 @@ export interface paths {
         put?: never;
         /** Exchange a configured identity assertion for a scoped API key */
         post: operations["createIdentitySession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/cli-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange a one-time CLI OAuth token for a personal API key */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Personal CLI session credential */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CliSessionResponse"];
+                    };
+                };
+                /** @description Invalid or expired token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Token lacks the CLI login scope */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -4004,6 +4076,23 @@ export interface paths {
         };
         /** Read MCP protected-resource metadata */
         get: operations["getMcpOAuthProtectedResource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/oauth-protected-resource/v1/identity/cli-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read CLI-login protected-resource metadata */
+        get: operations["getCliLoginOAuthProtectedResource"];
         put?: never;
         post?: never;
         delete?: never;
@@ -16089,10 +16178,7 @@ export interface components {
             /** @enum {string} */
             protocol: "api_key" | "oidc";
             id: string;
-            /** @enum {string} */
-            label: "SSO" | "API key";
-            /** Format: uri */
-            issuer?: string;
+            label: string;
         };
         IdentitySessionResponse: {
             api_key: string;
@@ -16103,6 +16189,15 @@ export interface components {
         IdentitySessionRequest: {
             provider_id: string;
             identity_token: string;
+        };
+        CliSessionResponse: {
+            api_key: string;
+            /** Format: uuid */
+            principal_id: string;
+            /** Format: uuid */
+            context_id: string;
+            /** Format: email */
+            email: string;
         };
         CockpitBootstrapResponse: {
             principal: {
@@ -19808,6 +19903,26 @@ export interface operations {
         };
     };
     getMcpOAuthProtectedResource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    getCliLoginOAuthProtectedResource: {
         parameters: {
             query?: never;
             header?: never;

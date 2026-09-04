@@ -1,21 +1,19 @@
-// GET /v1/identity/providers — public endpoint for auth provider discovery.
+// GET /v1/identity/providers — authenticated, sanitised provider inventory.
 //
-// CLIs call this to find out which auth methods are available before
-// prompting the user. Returns a list of configured providers with
-// enough metadata for the CLI to open the right login flow.
-//
-// This route is intentionally public (no requireAuth) — the caller
-// has no API key yet.
+// Browser login uses the server-rendered chooser and OAuth clients use the
+// standard well-known documents. There is therefore no reason to disclose a
+// machine-readable installation-specific provider list before authentication.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { ErrorSchema } from "./schemas.ts";
 
 const ProviderEntry = z
   .object({
     protocol: z.enum(["api_key", "oidc"]),
     id: z.string(),
-    label: z.enum(["SSO", "API key"]),
-    issuer: z.string().url().optional(),
+    label: z.string().min(1),
   })
   .strict()
   .openapi("AuthProvider");
@@ -31,16 +29,20 @@ const route = createRoute({
   method: "get",
   path: "/v1/identity/providers",
   tags: ["MCP authentication"],
-  summary: "List available MCP authentication methods",
+  summary: "List configured authentication methods",
+  security: [{ bearerAuth: [] }],
   responses: {
     200: {
-      description: "Canonical SSO-first method matrix",
+      description: "Sanitised provider inventory",
       content: { "application/json": { schema: ProvidersResponse } },
     },
+    401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
 export function registerProvidersRoute(app: OpenAPIHono<AppEnv>): void {
+  app.use("/v1/identity/providers", requirePermission("identity:read"));
   app.openapi(route, async (c) => {
     const { getConfig } = await import("../../../config/loader.ts");
     const providers: z.infer<typeof ProviderEntry>[] = [...getConfig().auth.providers]
@@ -50,8 +52,7 @@ export function registerProvidersRoute(app: OpenAPIHono<AppEnv>): void {
       .map((provider) => ({
         protocol: provider.protocol,
         id: provider.id,
-        label: provider.protocol === "api_key" ? "API key" : "SSO",
-        ...(provider.protocol === "oidc" ? { issuer: provider.issuer_url } : {}),
+        label: provider.label,
       }));
 
     return c.json({ providers }, 200);

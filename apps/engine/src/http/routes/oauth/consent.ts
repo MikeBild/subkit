@@ -12,7 +12,12 @@ import {
   readRequestSource,
   SYSTEM_TENANT_ID,
 } from "../../../audit/index.ts";
-import { createMcpOAuthProvider, signLoginState } from "../../../auth/index.ts";
+import {
+  CLI_LOGIN_SCOPE,
+  createMcpOAuthProvider,
+  oauthResource,
+  signLoginState,
+} from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import { roles as rolesTable, sessions, tenants, users } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
@@ -72,7 +77,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     const codeChallenge = q.data.code_challenge;
     const codeChallengeMethod = q.data.code_challenge_method;
     const scopeParam = q.data.scope;
-    const resource = q.data.resource ?? "";
+    const target = oauthResource(getConfig().server.public_base_url, q.data.resource);
     const state = q.data.state ?? "";
 
     const db = c.get("db");
@@ -120,6 +125,12 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       );
       return authorizeBrowserError(c, "invalid_request", "redirect_uri not registered");
     }
+
+    // Only redirect OAuth errors after the callback URI has passed the exact
+    // registration check above. Doing this earlier would turn an otherwise
+    // harmless invalid resource indicator into an open redirect.
+    if (!target) return buildErrorRedirect(redirectUri, "invalid_target", state);
+    const resource = target.resource;
 
     if (responseType !== "code") {
       await auditAwait(
@@ -255,31 +266,46 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     const tenantRow = tenantRows[0];
 
     // Intersect requested scopes with supported scopes
-    let supportedScopes: string[] = [...MCP_SCOPE_PERMISSIONS];
-    try {
-      supportedScopes = getConfig().auth.mcp_oauth.scopes_supported;
-    } catch {
-      /* not yet loaded */
+    let supportedScopes: string[] =
+      target.kind === "cli_login" ? [CLI_LOGIN_SCOPE] : [...MCP_SCOPE_PERMISSIONS];
+    if (target.kind === "mcp") {
+      try {
+        supportedScopes = getConfig().auth.mcp_oauth.scopes_supported;
+      } catch {
+        /* not yet loaded */
+      }
     }
     // RFC 6749 §3.3 — a request with no scope param falls back to the client's
     // REGISTERED scope set, not a hard "mcp:read": scope-less clients (ChatGPT
     // omits the param entirely) can then still be OFFERED authoring/admin.
     // Offering is not granting — the role intersection below and the consent
     // checkboxes remain the gate, and mcp:read stays the only pre-checked box.
-    const requestedScope = scopeParam ?? (client.scope || "mcp:read");
+    const registeredScope =
+      client.scope || (target.kind === "cli_login" ? CLI_LOGIN_SCOPE : "mcp:read");
+    const requestedScope = scopeParam ?? registeredScope;
     // A token can never carry a scope its owner's role lacks.
     // Prefer the custom-role name from the roles table; fall back to the
     // legacy enum column so built-in roles without a roles row still resolve.
-    const roleScopes = await permittedMcpScopes(
-      db,
-      sessionPayload.tenant_id,
-      sessionPayload.user_id,
-      userRow.role_name ?? userRow.role,
-    );
+    const roleScopes =
+      target.kind === "cli_login"
+        ? [CLI_LOGIN_SCOPE]
+        : await permittedMcpScopes(
+            db,
+            sessionPayload.tenant_id,
+            sessionPayload.user_id,
+            userRow.role_name ?? userRow.role,
+          );
     // A consent screen may only offer scopes the client actually requested.
     // Clamp request ∩ supported ∩ current role, in stable presentation order.
-    const scopeOrder = MCP_SCOPE_PERMISSIONS as readonly string[];
-    const requestBoundScopes = intersectScopes(requestedScope, supportedScopes);
+    const scopeOrder =
+      target.kind === "cli_login"
+        ? ([CLI_LOGIN_SCOPE] as readonly string[])
+        : (MCP_SCOPE_PERMISSIONS as readonly string[]);
+    const clientBoundScopes = intersectScopes(
+      requestedScope,
+      registeredScope.split(" ").filter(Boolean),
+    );
+    const requestBoundScopes = intersectScopes(clientBoundScopes, supportedScopes);
     const offeredScopes = intersectScopes(requestBoundScopes, roleScopes)
       .split(" ")
       .filter(Boolean)
@@ -299,15 +325,6 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       s === METRICS_SCOPE ? explicitlyRequested.has(s) : requestedSet.has(s) || s === "mcp:read",
     );
 
-    // Validate RFC 8707 resource indicator — must target this server if present.
-    if (resource) {
-      const publicBaseUrl = getConfig().server.public_base_url;
-      const allowed = [publicBaseUrl, `${publicBaseUrl}/mcp`];
-      if (!allowed.includes(resource)) {
-        return buildErrorRedirect(redirectUri, "invalid_target", state);
-      }
-    }
-
     // Never silently add an unrequested scope, and never render a consent
     // screen with nothing on it.
     //
@@ -322,7 +339,11 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     // `scope=metrics:read` was offered exactly that and then refused for not
     // having asked for MCP read as well. Any non-empty offer is a valid
     // consent screen.
-    if (offeredScopes.length === 0) {
+    const hasEntitlement =
+      target.kind === "cli_login"
+        ? offeredScopes.includes(CLI_LOGIN_SCOPE)
+        : offeredScopes.length > 0;
+    if (!hasEntitlement) {
       await auditAwait(
         {
           tenant_id: sessionPayload.tenant_id,
@@ -332,7 +353,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
           resource_type: "mcp_oauth_client",
           resource_id: clientId,
           result: "denied",
-          reason: "no_mcp_entitlement",
+          reason: target.kind === "cli_login" ? "no_cli_login_entitlement" : "no_mcp_entitlement",
           metadata: {
             role: userRow.role_name ?? userRow.role,
             requested_scope: requestedScope,
@@ -403,7 +424,6 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       decision,
       client_id: clientId,
       redirect_uri: redirectUri,
-      resource,
       state: stateParam,
     } = parsedForm.data;
 
@@ -455,6 +475,18 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     const state = (csrfPayload.state as string | undefined) ?? stateParam;
+    const signedResource = String(csrfPayload.resource ?? "");
+    if (parsedForm.data.resource !== signedResource) {
+      return c.json({ error: "invalid_request", error_description: "resource mismatch" }, 400);
+    }
+    const target = oauthResource(getConfig().server.public_base_url, signedResource);
+    if (!target) {
+      return buildErrorRedirect(redirectUri, "invalid_target", state);
+    }
+    // Normalize legacy signed consent pages (empty/base resource) to the exact
+    // MCP audience at code issuance. The form still has to match the signed
+    // value byte-for-byte, so this compatibility path cannot be tampered with.
+    const resource = target.resource;
 
     if (!redirectUri || !clientId) {
       return c.json({ error: "invalid_request" }, 400);
@@ -549,12 +581,10 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     // Prefer the custom-role name from the roles table; fall back to the
     // legacy enum column so built-in roles without a roles row still resolve.
     const freshRole = freshRoleRow?.role_name ?? freshRoleRow?.role ?? "enduser";
-    const freshRoleScopes = await permittedMcpScopes(
-      db,
-      sessionPayload.tenant_id,
-      sessionPayload.user_id,
-      freshRole,
-    );
+    const freshRoleScopes =
+      target.kind === "cli_login"
+        ? [CLI_LOGIN_SCOPE]
+        : await permittedMcpScopes(db, sessionPayload.tenant_id, sessionPayload.user_id, freshRole);
     // Clamp the operator's selection by BOTH the baked ceiling and the fresh
     // role permissions. A tampered form that posts a scope the role lacks (or
     // that was never offered) is intersected away; an empty result denies. The

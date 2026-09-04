@@ -24,12 +24,13 @@ export const SELF_INTROSPECTION_ROUTES = Object.freeze([
   "sk-bootstrap",
   // GET /v1/cockpit/bootstrap
   "cockpit-bootstrap",
-  // GET /v1/identity/providers (lists which auth providers are configured)
-  "identity-providers",
   // POST /v1/identity/login (issues a session — auth side, not RBAC side)
   "identity-login",
   // POST /v1/identity/sessions (provider assertion exchange)
   "identity-sessions",
+  // POST /v1/identity/cli-session (dedicated OAuth audience+scope exchange;
+  // authenticated before an API principal exists, so RBAC cannot gate it)
+  "identity-cli-session",
   // GET /healthz, /health (liveness, no auth needed)
   "health",
   // GET /metrics (prometheus, gated by auth-middleware-only)

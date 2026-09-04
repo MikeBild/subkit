@@ -4,7 +4,7 @@
 // profiles is a single flag (`--profile <name>`) or the active one via
 // `/tenant` at runtime.
 //
-// runDeviceFlow + readSse + the TurnEvent reducer live under
+// readSse + the TurnEvent reducer live under
 // packages/cli-core (@cli-core/*) and are imported by the shared `sk`
 // CLI surfaces.
 
