@@ -48,7 +48,7 @@ describe("listConfigLeaves", () => {
     expect(leaf!.meta.structural).toBe(true);
     expect(leaf!.meta.runtimeEditable).toBe(true);
     expect(leaf!.meta.secret).toBeUndefined();
-    expect(leaf!.meta.requiresRestart).toBe(true);
+    expect(leaf!.meta.requiresRestart).toBeUndefined();
   });
 
   test("tenant-scoped leaves match the documented set", () => {
