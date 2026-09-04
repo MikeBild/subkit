@@ -6,6 +6,26 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.41.2 — 2026-09-04
+
+### Fixed
+
+- **`GET /v1/oauth/clients` answered 500 instead of listing the connections.**
+  The approval lookup added in 6.40.0 asked the database with raw SQL
+  through `execute()` and then iterated the result. The node-postgres driver
+  answers a `QueryResult` OBJECT, not an array, so every call threw
+  `TypeError: {} is not iterable` — and a cast (`as unknown as Array<…>`) is
+  what let that compile. The lookup is now built with the query builder, which
+  returns rows typed as the array they really are, and carries no cast.
+  This supersedes the `Array.isArray(result) ? result : result.rows` shim of
+  6.41.1: that made the call work but kept the raw SQL and the unchecked
+  assertion on `result.rows`, and it left the route with no test that reads a
+  real approval.
+  The route is covered by tests that assert the VALUES of `approved_by` and
+  `live_connections` against real Postgres, not merely the shape of a row: two
+  approvals name both people, an unapproved client names nobody, and a revoked
+  or expired grant is not an approval. All four fail without the fix.
+
 ## 6.41.1 — 2026-09-04
 
 ### Added

@@ -10,7 +10,11 @@ import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { setConfigKey } from "../../config/loader.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";
-import { mcpOauthClients } from "../../db/schema/mcp_oauth.ts";
+import {
+  mcpOauthAccessTokens,
+  mcpOauthClients,
+  mcpOauthRefreshTokens,
+} from "../../db/schema/mcp_oauth.ts";
 import { createRole } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
@@ -77,6 +81,62 @@ async function seedClient(clientId: string): Promise<string> {
   return row.id;
 }
 
+/** A person in this tenant who can approve a connection. */
+let personSeq = 0;
+async function seedPerson(): Promise<{ id: string; email: string }> {
+  const email = `approver-${++personSeq}@test.local`;
+  const [row] = await ctx.db
+    .insert(users)
+    .values({ tenant_id: ctx.tenantId, email, role: "admin" })
+    .returning({ id: users.id, email: users.email });
+  if (!row) throw new Error("seed person failed");
+  return row;
+}
+
+/**
+ * One approved connection: the access token and the refresh token a consent
+ * mints. `state` picks whether it is still live — the approval list must count
+ * a live grant and ignore a dead one.
+ */
+let tokenSeq = 0;
+async function seedApprovedConnection(
+  clientId: string,
+  userId: string,
+  state: "live" | "revoked" | "expired" = "live",
+): Promise<void> {
+  const now = Date.now(); // allow-wall-clock
+  const expiresAt = new Date(state === "expired" ? now - 60_000 : now + 3_600_000);
+  const revokedAt = state === "revoked" ? new Date(now - 60_000) : null;
+  const n = ++tokenSeq;
+  await ctx.db.insert(mcpOauthAccessTokens).values({
+    tenant_id: ctx.tenantId,
+    client_id: clientId,
+    user_id: userId,
+    prefix: `wf_mcp_a${n}`,
+    token_sha256: createHash("sha256").update(`access-${clientId}-${userId}-${n}`).digest("hex"),
+    scope: "mcp:read",
+    expires_at: expiresAt,
+    revoked_at: revokedAt,
+  });
+  await ctx.db.insert(mcpOauthRefreshTokens).values({
+    tenant_id: ctx.tenantId,
+    client_id: clientId,
+    user_id: userId,
+    prefix: `wf_mcr_r${n}`,
+    token_sha256: createHash("sha256").update(`refresh-${clientId}-${userId}-${n}`).digest("hex"),
+    scope: "mcp:read",
+    expires_at: expiresAt,
+    revoked_at: revokedAt,
+  });
+}
+
+async function listClients(): Promise<Array<Record<string, unknown>>> {
+  const res = await fetch(`${ctx.baseUrl}/v1/oauth/clients`, { headers: authHeader() });
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { items: Array<Record<string, unknown>> };
+  return body.items;
+}
+
 function authHeader(): { Authorization: string } {
   return { Authorization: `Bearer ${ctx.apiKey}` };
 }
@@ -117,6 +177,50 @@ describe("GET /v1/oauth/clients", () => {
     // No secret fields
     expect(found?.client_secret).toBeUndefined();
     expect(found?.token_sha256).toBeUndefined();
+  });
+
+  // These three exist because the route once answered 500 in production while
+  // every local suite was green. The approval fields were read from a raw
+  // `execute()` result — an object under the node-postgres driver, not the
+  // array a cast claimed it was — and no test called the route with a live
+  // token behind it. A test that only asserts the shape of a client row would
+  // have missed it again; these assert the VALUES, which means the query has
+  // to have really run and really been read.
+  test("names the people whose approval keeps a client connected", async () => {
+    const clientId = "approved-by-client-bbb222";
+    await seedClient(clientId);
+    const first = await seedPerson();
+    const second = await seedPerson();
+    await seedApprovedConnection(clientId, first.id);
+    await seedApprovedConnection(clientId, second.id);
+
+    const found = (await listClients()).find((i) => i.client_id === clientId);
+    expect(found).toBeDefined();
+    expect(found?.approved_by).toEqual([first.email, second.email].sort());
+    // One connection per person, however many token rows carry it.
+    expect(found?.live_connections).toBe(2);
+  });
+
+  test("a client nobody has approved reports no approver and no connection", async () => {
+    const clientId = "unapproved-client-ccc333";
+    await seedClient(clientId);
+
+    const found = (await listClients()).find((i) => i.client_id === clientId);
+    expect(found?.approved_by).toEqual([]);
+    expect(found?.live_connections).toBe(0);
+  });
+
+  test("a revoked or expired grant is not an approval", async () => {
+    const clientId = "dead-grant-client-ddd444";
+    await seedClient(clientId);
+    const revoked = await seedPerson();
+    const expired = await seedPerson();
+    await seedApprovedConnection(clientId, revoked.id, "revoked");
+    await seedApprovedConnection(clientId, expired.id, "expired");
+
+    const found = (await listClients()).find((i) => i.client_id === clientId);
+    expect(found?.approved_by).toEqual([]);
+    expect(found?.live_connections).toBe(0);
   });
 });
 
