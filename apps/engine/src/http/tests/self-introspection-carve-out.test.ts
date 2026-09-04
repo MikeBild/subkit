@@ -106,6 +106,7 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
       "identity-cli-session",
       "identity-login",
       "identity-permissions",
+      "identity-providers",
       "identity-sessions",
       "metrics",
       "sk-bootstrap",
