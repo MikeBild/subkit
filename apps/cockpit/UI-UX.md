@@ -7,8 +7,9 @@ session boundary, API facade and deployment lifecycle.
 ## Product adaptation
 
 The home surface is a persistent, governed conversation rather than a dashboard. It combines the
-family shell with the Reference Architecture's useful working pattern: a narrow history rail, a focused work surface
-and an on-demand evidence drawer. The drawer never consumes the transcript's working width. Vercel
+family shell with the Reference Architecture's useful working pattern: a work surface that keeps the
+page, a history panel that opens from the header, and an on-demand evidence drawer. Neither the panel
+nor the drawer consumes the transcript's working width. Vercel
 AI Elements render messages, tool calls, approval cards, suggestions and the prompt composer.
 
 Navigation follows the work instead of the engine's directory tree:
@@ -210,8 +211,17 @@ repair it proposes becomes a decision a person makes. There is no button that do
 ### Conversation surface
 
 Chat does not take the shared page frame, and that is a recorded decision rather than an oversight:
-it is a two-column workspace with three independent scroll regions, not a heading above a scrolling
-body.
+it is a work surface with its own scroll regions, not a heading above a scrolling body. It follows the
+frame's alignment rule regardless: header, transcript and composer share one 1280 px column with the
+horizontal padding outside it, so the title, the messages and the field the reader types in all begin
+on the same line, and the scroll owner reserves its gutter on both edges so a growing conversation
+cannot shift that line. Chat had drifted away from this and carried three different left edges — the
+header at the page margin, the transcript centred inside its own padding, the composer centred
+without any.
+
+The history is a panel rather than a rail. A reader who is reading one conversation is not choosing
+another, so the list opens from the header, lies over the conversation, and closes when one is
+picked — at every width, so there is one layout rather than two.
 
 A conversation carries a name. The engine derives one from the first request and a boot backfill
 named the rows that predate it; where a conversation genuinely has none, the list borrows the last

@@ -84,6 +84,7 @@ import { reconcileReferences } from "@/lib/mentions";
 import { conversationExcerpt, hideTechnicalIdentifiers, humanFacingText } from "@/lib/presentation";
 import { patchCandidateId, toolPartVerdict } from "@/lib/tool-parts";
 import { isStaleCall, toolLabel, toolOutcomeKey } from "@/lib/tool-presentation";
+import { cn } from "@/lib/utils";
 import { useMentionCandidates } from "@/queries/mention-sources";
 import { ConversationList } from "./chat-conversation-list";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
@@ -142,6 +143,21 @@ export function originLine(
     .filter(Boolean)
     .join(" · ");
 }
+
+/**
+ * The column every region of this page shares.
+ *
+ * `PageFrame` states the rule for the rest of the Cockpit: a body must be
+ * centred in the SAME box as its own heading, and the horizontal padding must
+ * sit OUTSIDE that box in both places — put the padding on the same element as
+ * the cap and the content starts one padding-width right of the title naming
+ * it. Chat builds its own three regions instead of using `PageFrame`, and it
+ * had drifted into three different left edges: the header at the page margin,
+ * the transcript centred inside its own padding, the composer centred without
+ * any. The width is the workbench width `PageFrame` gives its wide surfaces,
+ * because a transcript carries tool cards, diffs and payloads, not prose alone.
+ */
+const COLUMN = "mx-auto w-full max-w-[1280px]";
 
 /** Where a catalogue object lives in the Cockpit. */
 function catalogHref(kind: string, id: string): string {
@@ -847,31 +863,10 @@ export function ChatPage() {
           demand at every width, and the conversation keeps the whole page.
           A reader who is reading one conversation is not choosing another. */}
       <section className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="chat-main">
-        <header
-          className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b px-4 py-2"
-          data-testid="chat-header"
-        >
-          <div className="flex min-w-0 items-center gap-2">
-            <IconButton
-              label={t("chat.conversations.open")}
-              data-testid="conversation-list-trigger"
-              onClick={() => setListOpen(true)}
-            >
-              <List />
-            </IconButton>
-            {/* "New" is a reset to the empty state, not a form: the composer
-                and the starter cards are the way in. */}
-            <IconButton
-              label={t("chat.new")}
-              data-testid="conversation-new"
-              onClick={() => {
-                setSelection({ kind: "new" });
-                setChatPath(null);
-                setListOpen(false);
-              }}
-            >
-              <MessageSquarePlus />
-            </IconButton>
+        <header className="shrink-0 border-b px-4 py-3 sm:px-6" data-testid="chat-header">
+          <div className={cn("flex items-center justify-between gap-3", COLUMN)}>
+            {/* The title starts where the messages start. Controls sit on the
+                other end of the same line, so the page has one left edge. */}
             <div className="min-w-0">
               <h1 className="truncate text-sm font-semibold" data-testid="chat-title">
                 {current?.title || t("chat.new")}
@@ -887,23 +882,43 @@ export function ChatPage() {
                 </p>
               )}
             </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {/* A badge earns its place by changing what the reader does next.
+            <div className="flex shrink-0 items-center gap-1">
+              {/* A badge earns its place by changing what the reader does next.
                 "Waiting for you" and "In progress" do; "Answered" and "Idle"
                 are the resting state and were on almost every conversation. */}
-            {current && badge && (
-              <Badge variant={badge.urgent ? "destructive" : "outline"} data-testid="chat-status">
-                {badge.label}
-              </Badge>
-            )}
-            <IconButton
-              label={t("chat.toggleContext")}
-              data-testid="chat-context-toggle"
-              onClick={() => setContextOpen((open) => !open)}
-            >
-              <PanelRight />
-            </IconButton>
+              {current && badge && (
+                <Badge variant={badge.urgent ? "destructive" : "outline"} data-testid="chat-status">
+                  {badge.label}
+                </Badge>
+              )}
+              <IconButton
+                label={t("chat.conversations.open")}
+                data-testid="conversation-list-trigger"
+                onClick={() => setListOpen(true)}
+              >
+                <List />
+              </IconButton>
+              {/* "New" is a reset to the empty state, not a form: the composer
+                and the starter cards are the way in. */}
+              <IconButton
+                label={t("chat.new")}
+                data-testid="conversation-new"
+                onClick={() => {
+                  setSelection({ kind: "new" });
+                  setChatPath(null);
+                  setListOpen(false);
+                }}
+              >
+                <MessageSquarePlus />
+              </IconButton>
+              <IconButton
+                label={t("chat.toggleContext")}
+                data-testid="chat-context-toggle"
+                onClick={() => setContextOpen((open) => !open)}
+              >
+                <PanelRight />
+              </IconButton>
+            </div>
           </div>
         </header>
 
@@ -916,8 +931,12 @@ export function ChatPage() {
 
         <MessageScrollerProvider>
           <MessageScroller className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
-            <MessageScrollerViewport>
-              <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-6 px-5 py-6 sm:px-8">
+            {/* `both-edges` is the operative part, the same as the shared page
+                frame: plain `stable` reserves the gutter on one side only, so
+                the centred column steps sideways the moment a conversation
+                grows past one screen. */}
+            <MessageScrollerViewport className="px-4 py-6 sm:px-6 [scrollbar-gutter:stable_both-edges]">
+              <MessageScrollerContent className={COLUMN}>
                 {messages.length === 0 ? (
                   // `place-items-center` on a box taller than the scroller splits
                   // the overflow between top and bottom, and the top half is
@@ -1031,10 +1050,10 @@ export function ChatPage() {
         </MessageScrollerProvider>
 
         <div
-          className="shrink-0 border-t bg-background/95 px-4 py-3 supports-[backdrop-filter]:backdrop-blur"
+          className="shrink-0 border-t bg-background/95 px-4 py-3 sm:px-6 supports-[backdrop-filter]:backdrop-blur"
           data-testid="chat-composer-area"
         >
-          <div className="mx-auto w-full max-w-3xl">
+          <div className={COLUMN}>
             <PromptInputProvider
               key={activeId ?? "new"}
               initialInput={selection.kind === "new" ? initialPrompt : ""}
