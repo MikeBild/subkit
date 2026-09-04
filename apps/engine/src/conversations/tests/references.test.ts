@@ -238,7 +238,14 @@ describe("references on the persisted user row", () => {
 
     // The transcript projection hands both lists to the client on the text part.
     const ui = toMessageParts(
-      { id: last.id, conversation_id, role: "user", content: last.content, created_at: "now" },
+      {
+        id: last.id,
+        conversation_id,
+        role: "user",
+        content: last.content,
+        model: null,
+        created_at: "now",
+      },
       [],
     );
     const textPart = ui.parts[0] as {
