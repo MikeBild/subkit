@@ -801,6 +801,22 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
     expect(parseEnvelope(delivery).status).toBe("input_required");
     await waitForResumedTask(conversation.id);
 
+    // The native resume reuses the original MCP task row. Under a busy
+    // scheduler the first worker can finish writing its parked result while
+    // that row is being re-armed, so the task row alone is not the business
+    // completion signal. Wait for the gated write itself before taking the
+    // one final client-facing projection below.
+    const storedWorkflow = await waitFor(
+      async () => {
+        const [row] = await suite.http.db
+          .select({ deleted_at: workflows.deleted_at })
+          .from(workflows)
+          .where(and(eq(workflows.tenant_id, suite.http.tenantId), eq(workflows.id, workflow.id)));
+        return row?.deleted_at ? row : null;
+      },
+      { tries: 500, sleepMs: 10, label: "native approval gated write" },
+    );
+
     const completed = await approvalClient.callTool({
       name: "conversation_get",
       arguments: { conversation_id: conversation.id },
@@ -809,10 +825,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
 
     expect(approvalRequests).toBe(1);
     expect(terminalStatus).toBe("completed");
-    const [storedWorkflow] = await suite.http.db
-      .select({ deleted_at: workflows.deleted_at })
-      .from(workflows)
-      .where(and(eq(workflows.tenant_id, suite.http.tenantId), eq(workflows.id, workflow.id)));
-    expect(storedWorkflow?.deleted_at).toBeInstanceOf(Date);
+    expect(storedWorkflow.deleted_at).toBeInstanceOf(Date);
   }, 60_000);
 });
