@@ -20,6 +20,7 @@ import {
   setupMcpOauthServer,
   teardownMcpOauthServer,
 } from "../../auth/oauth/mcp-oauth-test-helpers.ts";
+import { CLI_LOGIN_SCOPE } from "../../auth/oauth/resources.ts";
 import { METRICS_SCOPE, withNonRemovableScopes } from "../../auth/scopes.ts";
 import { getConfig, installRuntimeConfig } from "../../config/loader.ts";
 import type { HttpTestServer } from "./setup.ts";
@@ -101,8 +102,11 @@ describe("scopes_supported on a configured installation", () => {
     expect(await protectedResourceScopes()).toContain(METRICS_SCOPE);
   });
 
-  test("an explicit list that already names the scope is left exactly as written", async () => {
-    const stored = ["metrics:read", "mcp:read"];
+  test("an explicit list that already names every mandatory advertised scope is left exactly as written", async () => {
+    // The authorization-server document also serves the dedicated CLI
+    // audience, so it always advertises sk:login in addition to the
+    // non-removable MCP metrics scope.
+    const stored = [METRICS_SCOPE, CLI_LOGIN_SCOPE, "mcp:read"];
     installRuntimeConfig({
       ...productionShapedDocument(),
       auth: {
