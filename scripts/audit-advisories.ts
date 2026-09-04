@@ -17,15 +17,9 @@
 // This job is never a required check and nothing depends on it.
 
 import { appendFileSync } from "node:fs";
+import { readAuditReport } from "./lib/audit-report.ts";
 
 const FAILING_SEVERITIES = new Set(["high", "critical"]);
-
-interface Finding {
-  package: string;
-  severity: string;
-  title: string;
-  url?: string;
-}
 
 function summary(lines: string[]): void {
   const path = process.env.GITHUB_STEP_SUMMARY;
@@ -50,48 +44,6 @@ function unreachable(reason: string): never {
     "and nothing in this repository waits for this job.",
   ]);
   process.exit(0);
-}
-
-/**
- * Both shapes seen in the wild: `bun audit --json` reports
- * `{ advisories: { "<package>": [ … ] } }`, npm's bulk endpoint reports
- * `{ vulnerabilities: { "<package>": { severity, via: [ … ] } } }`.
- */
-function collect(report: Record<string, unknown>): Finding[] {
-  const out: Finding[] = [];
-
-  const advisories = report.advisories;
-  if (advisories && typeof advisories === "object") {
-    for (const [name, entries] of Object.entries(advisories as Record<string, unknown>)) {
-      for (const entry of Array.isArray(entries) ? entries : [entries]) {
-        const item = entry as Record<string, unknown>;
-        out.push({
-          package: typeof item.module_name === "string" ? item.module_name : name,
-          severity: String(item.severity ?? "unknown"),
-          title: String(item.title ?? "untitled advisory"),
-          ...(typeof item.url === "string" ? { url: item.url } : {}),
-        });
-      }
-    }
-  }
-
-  const vulnerabilities = report.vulnerabilities;
-  if (vulnerabilities && typeof vulnerabilities === "object" && !Array.isArray(vulnerabilities)) {
-    for (const [name, raw] of Object.entries(vulnerabilities as Record<string, unknown>)) {
-      const entry = raw as Record<string, unknown>;
-      const via = Array.isArray(entry.via) ? entry.via : [];
-      const titles = via
-        .filter((v): v is Record<string, unknown> => typeof v === "object" && v !== null)
-        .map((v) => String(v.title ?? "untitled advisory"));
-      out.push({
-        package: typeof entry.name === "string" ? entry.name : name,
-        severity: String(entry.severity ?? "unknown"),
-        title: titles.length ? titles.join("; ") : "untitled advisory",
-      });
-    }
-  }
-
-  return out;
 }
 
 // A registry that accepts the connection and then never answers would hang
@@ -135,7 +87,16 @@ if (report.error !== undefined) {
   unreachable(`the registry answered with an error (${text})`);
 }
 
-const findings = collect(report).filter((f) => FAILING_SEVERITIES.has(f.severity.toLowerCase()));
+const reading = readAuditReport(report);
+// An answer we cannot read is our defect, not a clean tree. It still does not
+// block — nothing in this repository waits for this job — but it must not print
+// a verdict it has not earned. This shipped the other way: the reader looked up
+// two keys the tool does not use, found nothing, and announced no advisories
+// over a lockfile carrying one at high.
+if (!reading.recognised) {
+  unreachable("the answer was in a shape this reporter does not recognise");
+}
+const findings = reading.findings.filter((f) => FAILING_SEVERITIES.has(f.severity.toLowerCase()));
 
 if (findings.length === 0) {
   summary([
