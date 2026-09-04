@@ -29,11 +29,9 @@ import { MessageResponse } from "@/components/ai-elements/message";
 import {
   PromptInput,
   PromptInputBody,
-  PromptInputFooter,
   PromptInputProvider,
   PromptInputSubmit,
   PromptInputTextarea,
-  PromptInputTools,
   usePromptInputController,
 } from "@/components/ai-elements/prompt-input";
 import {
@@ -60,6 +58,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { InputGroupAddon } from "@/components/ui/input-group";
 import { Message, MessageContent } from "@/components/ui/message";
 import {
   MessageScroller,
@@ -417,11 +416,10 @@ function ChatComposer({
             data-testid="chat-composer-input"
           />
         </PromptInputBody>
-        <PromptInputFooter>
-          {/* The composer carries two affordances at most, and it had one:
-              the approval-mode caption was fixed text bound to no state, so it
-              claimed a setting the reader could neither see nor change. */}
-          <PromptInputTools />
+        {/* The send control sits beside the field, not on a row of its own:
+            once the approval-mode caption was gone that row held one button
+            and a band of empty space taller than the field itself. */}
+        <InputGroupAddon align="inline-end">
           <PromptInputSubmit
             status={status}
             onStop={onStop}
@@ -430,7 +428,7 @@ function ChatComposer({
             tooltip={t("chat.submit")}
             data-testid="chat-composer-submit"
           />
-        </PromptInputFooter>
+        </InputGroupAddon>
       </PromptInput>
     </div>
   );
