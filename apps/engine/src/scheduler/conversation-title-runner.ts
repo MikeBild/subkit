@@ -53,6 +53,11 @@ const SCAN = 100;
  *  provider's rate limit. */
 const RETITLE = 10;
 
+export interface ConversationTitleSweepDependencies {
+  /** Test seam: production always uses the normal best-effort title refresher. */
+  refreshTitle?: typeof refreshConversationTitle;
+}
+
 /**
  * Whether a stored title is still the opening line the backfill derived, and
  * therefore something the model may rewrite.
@@ -94,14 +99,17 @@ export interface ConversationTitleSweepReport {
  * on purpose: losing it on restart costs one cheap re-scan, and a row already
  * named no longer matches.
  */
-let cursor: { updated_at: Date; id: string } | null = null;
+let cursor: { updated_at: string; id: string } | null = null;
 
 /** Test seam — the walk is otherwise a module-level fold over the table. */
 export function resetConversationTitleSweep(): void {
   cursor = null;
 }
 
-export async function runConversationTitleSweep(db: Db): Promise<ConversationTitleSweepReport> {
+export async function runConversationTitleSweep(
+  db: Db,
+  dependencies: ConversationTitleSweepDependencies = {},
+): Promise<ConversationTitleSweepReport> {
   const marker = await db
     .select({ name: dataMigrations.name })
     .from(dataMigrations) // tenant-filter:exempt — instance-global sweep ledger
@@ -117,7 +125,7 @@ export async function runConversationTitleSweep(db: Db): Promise<ConversationTit
   ];
   if (cursor) {
     conds.push(
-      sql`(${conversations.updated_at}, ${conversations.id}) < (${cursor.updated_at}, ${cursor.id})`,
+      sql`(${conversations.updated_at}, ${conversations.id}) < (${cursor.updated_at}::timestamptz, ${cursor.id}::uuid)`,
     );
   }
 
@@ -126,7 +134,7 @@ export async function runConversationTitleSweep(db: Db): Promise<ConversationTit
       id: conversations.id,
       tenant_id: conversations.tenant_id,
       title: conversations.title,
-      updated_at: conversations.updated_at,
+      updated_at: sql<string>`${conversations.updated_at}::text`,
     })
     .from(conversations) // tenant-filter:exempt — instance-wide maintenance sweep
     .where(and(...conds))
@@ -147,9 +155,6 @@ export async function runConversationTitleSweep(db: Db): Promise<ConversationTit
     });
     return { done: true, scanned: 0, retitled: 0 };
   }
-  const lastRow = batch[batch.length - 1];
-  cursor = lastRow ? { updated_at: lastRow.updated_at, id: lastRow.id } : null;
-
   const ids = batch.map((row) => row.id);
   const messages = await db
     .select({
@@ -170,17 +175,25 @@ export async function runConversationTitleSweep(db: Db): Promise<ConversationTit
     firstUserMessage.set(message.conversation_id, message.content);
   }
 
+  const refreshTitle = dependencies.refreshTitle ?? refreshConversationTitle;
+  let attempted = 0;
   let retitled = 0;
   for (const row of batch) {
-    if (retitled >= RETITLE) {
-      // Leave the cursor on the unfinished part of the batch so the next tick
-      // resumes here instead of skipping the rest.
-      cursor = { updated_at: row.updated_at, id: row.id };
+    const candidate = isStillOpeningLine(row.title, firstUserMessage.get(row.id));
+    if (candidate && attempted >= RETITLE) {
+      // The keyset predicate is strict `<`, so the cursor must remain on the
+      // LAST row we actually handled. Pointing it at this unfinished row would
+      // exclude that row from the next tick and lose it forever.
       break;
     }
-    if (!isStillOpeningLine(row.title, firstUserMessage.get(row.id))) continue;
-    const named = await refreshConversationTitle(row.tenant_id, row.id, db);
-    if (named) retitled += 1;
+    if (candidate) {
+      attempted += 1;
+      const named = await refreshTitle(row.tenant_id, row.id, db);
+      if (named) retitled += 1;
+    }
+    // Rows that are not candidates are still part of the walk. Advancing over
+    // them is what lets a batch with fewer than ten matches reach its end.
+    cursor = { updated_at: row.updated_at, id: row.id };
   }
 
   logger.info({
@@ -188,6 +201,7 @@ export async function runConversationTitleSweep(db: Db): Promise<ConversationTit
     action: "conversation_title_sweep.fired",
     msg: "named dormant conversations",
     scanned: batch.length,
+    attempted,
     retitled,
     duration_ms: Date.now() - started,
   });
