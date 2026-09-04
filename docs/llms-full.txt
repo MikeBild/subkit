@@ -9700,14 +9700,19 @@ adapter's redirect URI. Every adapter uses only the generic `login/start`,
 with `token_endpoint_auth_method=none`; confidential-only clients are not
 representable in `auth.providers`.
 
-The CLI discovers the same list through `GET /v1/identity/providers`. An OIDC
-device-flow result is exchanged at `POST /v1/identity/sessions`
-with `{ "provider_id": "<configured-id>", "identity_token": "<assertion>" }`.
-The response is exactly `{api_key,principal_id,context_id,email}`; `email` is
-nullable and contains only a provider-verified address;
-`context_id` is the sk tenant id.
-The exchange never accepts an arbitrary issuer URL and has no protocol- or
-vendor-specific route alias.
+`GET /v1/identity/providers` is private operator inventory: it requires an
+authenticated `identity:read` principal and returns only `protocol`, opaque
+`id` and configured `label`. It never returns an issuer, client metadata or an
+allowlist. `sk login` deliberately does not call it; the CLI discovers its
+dedicated protected resource and authorization-server metadata, dynamically
+registers a public client, and uses Authorization Code with PKCE-S256 for the
+sole `sk:login` scope. A configured external assertion may still be exchanged
+at `POST /v1/identity/sessions` with
+`{ "provider_id": "<configured-id>", "identity_token": "<assertion>" }`.
+That response is exactly `{api_key,principal_id,context_id,email}`; `email` is
+nullable and contains only a provider-verified address, and `context_id` is the
+sk tenant id. The exchange never accepts an arbitrary issuer URL and has no
+protocol- or vendor-specific route alias.
 
 **Discovery endpoints.**
 
