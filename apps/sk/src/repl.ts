@@ -377,6 +377,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           raw_input: input,
           resolved_prompt: resolved.prompt,
           artifacts: resolved.artifacts,
+          references: resolved.references,
           warnings: resolved.warnings,
         },
         traceContext(),
@@ -390,6 +391,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         const created = await client.createConversation(
           {
             initial_message: resolved.prompt,
+            ...(resolved.references.length > 0 ? { references: resolved.references } : {}),
             ...(memory.content ? { memory: memory.content } : {}),
             ...(settings.merged.model ? { model: settings.merged.model } : {}),
           },
@@ -424,6 +426,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           session.conversationId,
           {
             message: resolved.prompt,
+            ...(resolved.references.length > 0 ? { references: resolved.references } : {}),
             ...(memory.content ? { memory: memory.content } : {}),
           },
           traceContext(),
