@@ -6,7 +6,28 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
-## 6.41.2 — 2026-09-04
+## 6.42.0 — 2026-09-04
+
+### Changed
+
+- **`GET /v1/identity/providers` is public again, and says less.** The route had
+  been made authenticated on the reasoning that an installation-specific list
+  should not be disclosed before sign-in. The reasoning was sound but aimed at
+  the wrong half of the question: the caller who has no credential yet is
+  exactly the caller who needs to know which credentials exist. Family decision
+  of 2026-09-04 — public in all six products, with the same shape everywhere.
+  So WHO may ask is now everyone, and WHAT is answered has been narrowed
+  instead: `protocol`, an opaque `id`, and a **generic** label for the protocol
+  (`SSO`, `API key`). The operator's own wording is no longer returned — it can
+  carry the name of an organisation — and issuer, client id, scopes and tenant
+  slug never were. The answer is byte-identical for anonymous and signed-in
+  callers, asserted in a test, so the route cannot be used to probe whether a
+  credential is valid.
+
+  Nothing in the Cockpit or in `sk login` reads this route; `sk` discovers its
+  protected-resource metadata and registers a public client instead. The change
+  is visible only to the family's rollout gate, which had been failing healthy
+  SubKit deployments on it.
 
 ### Fixed
 
