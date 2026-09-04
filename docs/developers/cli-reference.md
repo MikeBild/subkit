@@ -947,8 +947,6 @@ Authenticate against a subkit engine
 - `--tenant` (string) — Active tenant id
 - `--profile` (string) — Profile name (~/.sk/config.json)
 - `--portal-token` (string) — Authenticate as a portal-token principal
-- `--client-id` (string) — OIDC client id (device flow)
-- `--scope` (string) — OIDC scope override
 
 
 ### `sk logout`

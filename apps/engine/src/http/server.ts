@@ -15,7 +15,6 @@ import { createTokenExchangeProvider } from "../auth/oauth/token-exchange.ts";
 import { createApiKeyProvider } from "../auth/providers/api-key.ts";
 import { createBrowserSessionProvider } from "../auth/providers/browser-session.ts";
 import { createMcpOAuthAuthProvider } from "../auth/providers/mcp-oauth.ts";
-import { createOidcProvider } from "../auth/providers/oidc.ts";
 import { createPortalTokenProvider } from "../auth/providers/portal-token.ts";
 import { AuthProviderRegistry } from "../auth/registry.ts";
 import { ChatAdapterRegistry } from "../chat/registry.ts";
@@ -68,6 +67,7 @@ import { registerFileRoutes } from "./routes/files.ts";
 import { registerHealthRoute } from "./routes/health.ts";
 import { registerHooksInboundRoutes } from "./routes/hooks-inbound.ts";
 import { registerApiKeyRoutes } from "./routes/identity/api-keys.ts";
+import { registerCliSessionRoute } from "./routes/identity/cli-session.ts";
 import { registerCockpitIdentityRoutes } from "./routes/identity/cockpit.ts";
 import { registerInviteRoutes } from "./routes/identity/invites.ts";
 import { registerLoginRoutes } from "./routes/identity/login.ts";
@@ -146,10 +146,6 @@ export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProvide
     }
   }
   const enableMcpOAuth = auth?.mcp_oauth.enabled ?? true;
-  const providerConfigs = auth?.providers ?? [
-    { protocol: "api_key" as const, id: "api-key", label: "SubKit API key" },
-  ];
-
   const registered: string[] = [];
 
   // Registration order is a latency optimisation, not a correctness
@@ -169,22 +165,6 @@ export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProvide
   registered.push("token_exchange");
   reg.register(createApiKeyProvider(db ? { db } : {}));
   registered.push("api_key");
-  for (const provider of providerConfigs) {
-    if (provider.protocol === "oidc") {
-      reg.register(
-        createOidcProvider({
-          providerId: provider.id,
-          issuerUrl: provider.issuer_url,
-          clientId: provider.client_id,
-          scopes: provider.scopes,
-          tenantSlug: provider.tenant_slug,
-          ...(db ? { db } : {}),
-        }),
-      );
-      registered.push(provider.id);
-    }
-  }
-
   // The `subkit_session` cookie, LAST: it only reads a cookie, so it costs a
   // token-bearing request nothing and can never shadow one.
   //
@@ -331,6 +311,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerPortalTokenRoutes(app);
   registerProvidersRoute(app);
   registerIdentitySessionsRoute(app);
+  registerCliSessionRoute(app);
   registerLoginRoutes(app);
   registerCockpitIdentityRoutes(app);
   registerMcpOAuthRoutes(app);

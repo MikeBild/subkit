@@ -313,7 +313,7 @@ const AuthProviders = z
   .describe(
     "Provider-neutral browser authentication adapters. OIDC records are public clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration.",
   )
-  .meta(global({ structural: true, runtimeEditable: true, requiresRestart: true }));
+  .meta(global({ structural: true, runtimeEditable: true }));
 
 const McpOAuthSection = z
   .object({

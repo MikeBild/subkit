@@ -15,6 +15,14 @@ import type { AppEnv } from "../openapi.ts";
 
 export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
+    // This resource consumes a dedicated, one-time OAuth audience itself. The
+    // general registry intentionally rejects that audience; resolving it here
+    // first would misclassify every valid CLI exchange as a failed API login
+    // and feed the brute-force tracker before the route accepts it.
+    if (c.req.method === "POST" && c.req.path === "/v1/identity/cli-session") {
+      await next();
+      return;
+    }
     const principal = await registry.resolve(c.req.raw);
     if (principal) {
       c.set("principal", principal);

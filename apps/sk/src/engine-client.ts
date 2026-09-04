@@ -45,6 +45,7 @@ import {
 } from "./engine-client/http.ts";
 import { identityMethods } from "./engine-client/identity.ts";
 import { knowledgeMethods } from "./engine-client/knowledge.ts";
+import { oauthMethods } from "./engine-client/oauth.ts";
 import { rbacMethods } from "./engine-client/rbac.ts";
 import { selfHealingMethods } from "./engine-client/self-healing.ts";
 import { settingsMethods } from "./engine-client/settings.ts";
@@ -616,6 +617,7 @@ export interface EngineClient
     ApiMethods<typeof filesMethods>,
     ApiMethods<typeof identityMethods>,
     ApiMethods<typeof knowledgeMethods>,
+    ApiMethods<typeof oauthMethods>,
     ApiMethods<typeof rbacMethods>,
     ApiMethods<typeof selfHealingMethods>,
     ApiMethods<typeof settingsMethods>,
@@ -637,6 +639,7 @@ Object.assign(
   filesMethods,
   identityMethods,
   knowledgeMethods,
+  oauthMethods,
   rbacMethods,
   selfHealingMethods,
   settingsMethods,
