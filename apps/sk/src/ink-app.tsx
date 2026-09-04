@@ -121,6 +121,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   onCancelConversation,
   resumeSummary,
   engineClient,
+  engineMentionCandidates = [],
   prefs,
   pushNotifyOverride,
   nextCommandPreviewEnabled = true,
@@ -943,6 +944,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         <MentionPicker
           query={mentionSpec.query}
           cwd={cwd ?? process.cwd()}
+          engineCandidates={engineMentionCandidates}
           onPick={(candidate: MentionCandidate) => {
             setInput((prev) => {
               const next = applyMention(prev.value, prev.cursor, mentionSpec.start, candidate);

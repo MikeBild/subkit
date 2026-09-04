@@ -41,6 +41,7 @@ import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
 import { enableBracketedPaste } from "./repl/bracketed-paste.ts";
 import { humanizeRequestError } from "./repl/error-humanize.ts";
+import { loadMentionCandidates, type MentionCandidate } from "./repl/mention-candidates.ts";
 import { fallbackPersona, type ResolvedPersona, resolvePersona } from "./repl/resolved-persona.ts";
 import { handleSlash, type PaneSpec } from "./repl/slash/handler.ts";
 import { runRepl } from "./repl.ts";
@@ -57,12 +58,11 @@ export interface InkReplOptions {
 import { digestAsContext, fetchOperatorDigest } from "./lib/operator-digest.ts";
 import { fetchPendingLearningsCount } from "./lib/pending-learnings.ts";
 
-/** Start-screen chrome signals that share one boot/re-seed lifecycle. */
 interface OperatorBootSnapshot {
   digest: OperatorHealthDigest | null;
   pendingLearnings: number;
+  mentions: MentionCandidate[];
 }
-
 export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // Fall back to the readline REPL when stdout is not a TTY — Ink
   // cannot render sensibly into a pipe and `bun test` drives us
@@ -95,7 +95,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // ONE channel on purpose — every start-screen signal shares this
   // lifecycle, so the tenant-switch re-seed that keeps tenant-A data out
   // of tenant-B is implemented once, not per signal. Best-effort fetches.
-  let bootSnapshot: OperatorBootSnapshot = { digest: null, pendingLearnings: 0 };
+  let bootSnapshot: OperatorBootSnapshot = { digest: null, pendingLearnings: 0, mentions: [] };
 
   const client = new EngineClient({
     engine_url: opts.profile.engine_url,
@@ -108,11 +108,6 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   const canReadSetup = (persona: ResolvedPersona): boolean =>
     persona.allowed.has("audit:read") || persona.allowed.has("identity:read");
 
-  // Boot round-trips overlap instead of serializing: status starts
-  // before the persona resolution, setup validation starts the moment
-  // the persona (its permission gate) is known, and both are awaited
-  // only AFTER the heavy react/ink dynamic imports — the network waits
-  // and the module loads pay for each other.
   const statusPromise = client.statusSummary().catch(() => null);
   // Started here so it resolves alongside the awaited boot snapshots: the
   // welcome banner sits in Ink's <Static> block which flushes ONCE, so the
@@ -121,6 +116,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // whats-new headline documents in ink-app.tsx).
   const learningsPromise = fetchPendingLearningsCount(client);
   let currentPersona = await resolvePersona(client, opts.profile);
+  const mentionCandidatesPromise = loadMentionCandidates(client, currentPersona.allowed);
   const setupPromise: Promise<SetupValidationResponse | null> = canReadSetup(currentPersona)
     ? client.setupValidation().catch(() => null)
     : Promise.resolve(null);
@@ -150,7 +146,11 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   const statusListeners = new Set<(snap: StatusSummary | null) => void>();
   let setupSnapshot: SetupValidationResponse | null = await setupPromise;
   const setupListeners = new Set<(snap: SetupValidationResponse | null) => void>();
-  bootSnapshot = { ...bootSnapshot, pendingLearnings: await learningsPromise };
+  bootSnapshot = {
+    ...bootSnapshot,
+    pendingLearnings: await learningsPromise,
+    mentions: await mentionCandidatesPromise,
+  };
   const bootSnapshotListeners = new Set<(snap: OperatorBootSnapshot) => void>();
   const refreshStatus = async (): Promise<void> => {
     try {
@@ -719,6 +719,8 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     currentClient = newClient;
     currentProfile = newProfile;
     currentConversationId = null;
+    bootSnapshot = { ...bootSnapshot, mentions: [] };
+    for (const listener of bootSnapshotListeners) listener(bootSnapshot);
 
     // Re-resolve persona against the new client so the status bar gets
     // the new tenant slug + RBAC label, then refresh the status snapshot
@@ -749,13 +751,14 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     // like the boot-time call — and fetched CONCURRENTLY with status +
     // setup so the switch pays one round-trip, not three.
     pendingDigestContext = null;
-    const [nextStatus, nextSetup, nextDigest, nextLearnings] = await Promise.all([
+    const [nextStatus, nextSetup, nextDigest, nextLearnings, nextMentions] = await Promise.all([
       newClient.statusSummary().catch(() => null),
       canReadSetup(nextPersona)
         ? newClient.setupValidation().catch(() => null)
         : Promise.resolve(null),
       fetchOperatorDigest(newClient),
       fetchPendingLearningsCount(newClient),
+      loadMentionCandidates(newClient, nextPersona.allowed),
     ]);
     // A second /profile may have superseded this switch while it awaited —
     // commit NOTHING then (same staleness rule as the boot digest fetch):
@@ -766,7 +769,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     currentPersona = nextPersona;
     statusSnapshot = nextStatus;
     setupSnapshot = nextSetup;
-    bootSnapshot = { digest: nextDigest, pendingLearnings: nextLearnings };
+    bootSnapshot = { digest: nextDigest, pendingLearnings: nextLearnings, mentions: nextMentions };
     // Unconditional (null included): a stale boot-fetch write that landed
     // during the awaits above must not survive into the new tenant.
     pendingDigestContext = nextDigest ? digestAsContext(nextDigest) : null;
@@ -967,6 +970,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       // the settings list. Pass the active client through so the
       // modal renders inside the REPL with REPL state.
       engineClient: currentClient,
+      engineMentionCandidates: boot.mentions,
       // Pass the engine-resolved push/notification prefs so
       // applyEventStream can call notify() without an env-var hop.
       // On older engines the snapshot's prefs come from `fromLegacy()`
