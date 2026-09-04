@@ -6,9 +6,10 @@
 // the keyset cursor run, few enough that this suite is not paging through a
 // table while its neighbours wait for a connection.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { deriveConversationTitle } from "../../conversations/title.ts";
+import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations, dataMigrations } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import {
@@ -108,6 +109,34 @@ describe("runConversationTitleSweep — the walk", () => {
 
     const second = await runConversationTitleSweep(srv.db);
     expect(second.done).toBe(true);
+  }, 60_000);
+
+  test("a failed refresh still consumes the cap and the unfinished candidate resumes", async () => {
+    await srv.db
+      .delete(dataMigrations)
+      .where(eq(dataMigrations.name, CONVERSATION_TITLE_SWEEP_NAME));
+    const opening =
+      "Erstelle einen belastbaren Abgleich für die monatlichen Lieferantenrechnungen und Abweichungen";
+    const title = deriveConversationTitle({ text: opening });
+    expect(title).not.toBeNull();
+    for (let index = 0; index < 11; index += 1) {
+      await seedConversation({
+        id: `60000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        title: title as string,
+        locked: false,
+        opening,
+      });
+    }
+    const refreshTitle = mock(async (_tenantId: string, _conversationId: string, _db: Db) => null);
+    resetConversationTitleSweep();
+
+    const first = await runConversationTitleSweep(srv.db, { refreshTitle });
+    expect(first.retitled).toBe(0);
+    expect(refreshTitle).toHaveBeenCalledTimes(10);
+
+    await runConversationTitleSweep(srv.db, { refreshTitle });
+    expect(refreshTitle).toHaveBeenCalledTimes(11);
+    expect(new Set(refreshTitle.mock.calls.map((call) => call[1])).size).toBe(11);
   }, 60_000);
 });
 
