@@ -221,8 +221,11 @@ export function RunsPage() {
   const debouncedSearch = useDebouncedValue(search);
   const allowed = session.permissions.includes("execution:read");
   const title = t("resource.runs.title");
+  const needle = debouncedSearch.trim();
   const query = useQuery({
-    queryKey: ["runs", statusFilter, page],
+    // The needle is part of the key: it is a filter the engine applies, so a
+    // changed needle is a different question and gets its own answer.
+    queryKey: ["runs", statusFilter, needle, page],
     enabled: allowed,
     queryFn: () => {
       const params = new URLSearchParams({
@@ -230,18 +233,15 @@ export function RunsPage() {
         offset: String(page * PAGE_SIZE),
       });
       if (statusFilter !== "all") params.set("status", statusFilter);
+      // The engine searches the whole log by the workflow's name. The list used
+      // to narrow the page it had already fetched, which reads as search and is
+      // not: a run outside the newest fifty could not be found by name at all.
+      if (needle) params.set("q", needle);
       return apiRequest<ExecutionList>(`/v1/executions?${params}`);
     },
   });
-  const items = useMemo(() => query.data?.items ?? [], [query.data]);
-  // `/v1/executions` has no free-text parameter, so the needle narrows the
-  // page the engine returned rather than pretending to search the whole log.
-  const rows = useMemo(() => {
-    const needle = debouncedSearch.trim().toLowerCase();
-    if (!needle) return items;
-    return items.filter((run) => runName(run, t).toLowerCase().includes(needle));
-  }, [items, debouncedSearch, t]);
-  const total = query.data?.total ?? items.length;
+  const rows = useMemo(() => query.data?.items ?? [], [query.data]);
+  const total = query.data?.total ?? rows.length;
 
   const columns = useMemo<CockpitColumn<Execution>[]>(() => {
     const column = tableColumns<Execution>({ t, dateTime });
@@ -338,7 +338,13 @@ export function RunsPage() {
               </InputGroupAddon>
               <InputGroupInput
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  // A new question is asked from the first page: the answer to
+                  // it has its own length, and page three of the old one is
+                  // usually empty in the new one.
+                  setPage(0);
+                }}
                 placeholder={t("runs.search")}
                 aria-label={t("runs.search")}
                 data-testid="runs-search"
