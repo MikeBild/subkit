@@ -6,6 +6,54 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Changed
+
+- **The Cockpit chat gives the page back to the conversation.** The list of
+  past conversations moved out of a permanent 17-rem rail and behind a control
+  in the header, at every screen width: the transcript now spans the whole
+  column, and the list opens when you go looking for one and closes when you
+  pick it. A row is one line — the title, and a compact stamp of when the
+  conversation last moved in a fixed box that becomes the rename and hide
+  controls when you point at it, so nothing reflows. The second line names the
+  workflow or connector the conversation is about, or says nothing; it used to
+  fall back to the last thing said, which filled the list with unrelated
+  fragments. Starting a conversation is one control in the page header rather
+  than one there and one in the list.
+- **The chat header states only what a reader can use.** An unknown source is
+  left out instead of spelled out as "unknown source", your own name is left
+  out of your own conversations, and the badge appears only for the two
+  outcomes that change what you do next — waiting for you, and in progress.
+  Answered and idle conversations carry no chip.
+- **Both roles read as one column.** A question no longer arrives as a dark
+  bubble on the right at 80% width; both roles are left-aligned prose under a
+  small role label, and the transcript and the composer now share one width so
+  they line up. Sending and stopping are one button in the composer, which
+  swaps its glyph while a turn runs; the header's separate stop is gone, and so
+  is the composer's approval-mode caption, which was fixed text bound to no
+  state.
+
+### Added
+
+- **Dormant conversations get a real name.** Auto-titling only fires while a
+  conversation is in use, so anything untouched since kept the opening line it
+  was backfilled with — a list of half-sentences that all start the same way. A
+  scheduler sweep now names them a few at a time, skipping any title a person
+  set and any the model has already rewritten, and stops for good once it has
+  walked the installation. It runs on the reconciler tick rather than at boot,
+  because model calls in front of the health gate turn a slow provider into a
+  failed deploy.
+
+### Fixed
+
+- A missing timestamp no longer takes a Cockpit page down. The date formatter
+  already answered an unreadable value with an em-dash but threw on an absent
+  one, which crashed the settings page over one empty field.
+- The Cockpit visual sweep can see the connections page again: it was waiting
+  for a marker the page does not carry and running as a principal without
+  `connection:read`, so the route never rendered and the sweep had been red
+  since that page shipped. It now also carries a connections fixture with one
+  row per state.
+
 ## 6.30.1 — 2026-09-04
 
 ### Fixed
