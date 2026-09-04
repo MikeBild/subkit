@@ -3841,10 +3841,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * List configured authentication methods
-         * @description Public. Returns the sign-in methods this installation offers, with a generic label per protocol. No issuer, client id, scope or operator wording is included, and the answer does not change when the caller is authenticated.
-         */
+        /** List configured authentication methods */
         get: {
             parameters: {
                 query?: never;
@@ -3861,6 +3858,24 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["ProvidersResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
                     };
                 };
             };
