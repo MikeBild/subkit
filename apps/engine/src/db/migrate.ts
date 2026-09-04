@@ -43,6 +43,7 @@ import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedd
 import { runInboxNonActionablePurge } from "./migrations/inbox-nonactionable-purge.ts";
 import { runItemvarBackfill } from "./migrations/itemvar-backfill.ts";
 import { runLoopToForEachBackfill } from "./migrations/loop-to-for-each-backfill.ts";
+import { runMetricsScopeBackfill } from "./migrations/metrics-scope-backfill.ts";
 import * as schema from "./schema/index.ts";
 
 export interface MigrationReport {
@@ -397,6 +398,16 @@ async function applyMigrations(
       module: "db",
       action: "migrate.code_backfill_failed",
       msg: "conversation title backfill failed (non-fatal; retried on next boot)",
+      ...errorFields(err),
+    });
+  }
+  try {
+    await runMetricsScopeBackfill(db);
+  } catch (err) {
+    logger.error({
+      module: "db",
+      action: "migrate.code_backfill_failed",
+      msg: "metrics:read scope backfill failed (non-fatal; retried on next boot)",
       ...errorFields(err),
     });
   }

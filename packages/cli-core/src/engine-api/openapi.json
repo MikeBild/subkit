@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "6.32.0",
+    "version": "6.33.0",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -10,7 +10,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "SubKit API key or an OAuth 2.1 access token issued by the MCP authorization server."
+        "description": "SubKit API key or an OAuth 2.1 access token issued by the MCP authorization server. A credential that carries a scope list is bounded by it: GET /metrics requires the metrics:read scope from API keys, RFC 8693 exchanged tokens and connection tokens alike, and the caller's role does not widen it."
       },
       "oauth2": {
         "type": "oauth2",
@@ -22,7 +22,8 @@
             "scopes": {
               "mcp:read": "Read published content, resources, and product statistics",
               "mcp:authoring": "Create drafts, revisions, and previews",
-              "mcp:admin": "Publish releases and administer access"
+              "mcp:admin": "Publish releases and administer access",
+              "metrics:read": "Read the operational counters exposed by GET /metrics — nothing else"
             }
           }
         }

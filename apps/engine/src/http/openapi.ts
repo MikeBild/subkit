@@ -81,7 +81,7 @@ export const SECURITY_SCHEMES = {
     type: "http" as const,
     scheme: "bearer" as const,
     description:
-      "SubKit API key or an OAuth 2.1 access token issued by the MCP authorization server.",
+      "SubKit API key or an OAuth 2.1 access token issued by the MCP authorization server. A credential that carries a scope list is bounded by it: GET /metrics requires the metrics:read scope from API keys, RFC 8693 exchanged tokens and connection tokens alike, and the caller's role does not widen it.",
   },
   oauth2: {
     type: "oauth2" as const,
@@ -95,6 +95,7 @@ export const SECURITY_SCHEMES = {
           "mcp:read": "Read published content, resources, and product statistics",
           "mcp:authoring": "Create drafts, revisions, and previews",
           "mcp:admin": "Publish releases and administer access",
+          "metrics:read": "Read the operational counters exposed by GET /metrics — nothing else",
         },
       },
     },

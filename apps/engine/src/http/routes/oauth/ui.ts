@@ -170,11 +170,13 @@ export function renderConsentPage(opts: {
         "mcp:read": ["Lesen", "Veröffentlichte Inhalte, Ressourcen und Kennzahlen lesen"],
         "mcp:authoring": ["Bearbeiten", "Entwürfe, Versionen und Vorschauen anlegen"],
         "mcp:admin": ["Verwalten", "Freigaben erteilen und Zugriff verwalten"],
+        "metrics:read": ["Betriebszähler", "Betriebszähler lesen — sonst nichts"],
       }
     : {
         "mcp:read": ["Read", "Read published content, resources and product statistics"],
         "mcp:authoring": ["Authoring", "Create drafts, revisions and previews"],
         "mcp:admin": ["Administration", "Publish releases and administer access"],
+        "metrics:read": ["Operational counters", "Read the operational counters — nothing else"],
       };
   const checked = new Set(opts.preChecked);
   const scopeItems = opts.offeredScopes

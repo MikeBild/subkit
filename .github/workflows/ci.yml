@@ -212,9 +212,10 @@ jobs:
   konvention:
     name: cockpit convention
     runs-on: ubuntu-24.04
-    # ~3x the observed local runtime (28 s for 27 routes) plus the browser
-    # install and a cold bun cache.
-    timeout-minutes: 15
+    # ~3x the observed local runtime (28 s for 27 routes in the convention
+    # check, ~3 min for the 296-frame visual sweep) plus the browser install
+    # and a cold bun cache.
+    timeout-minutes: 25
     env:
       TZ: UTC
       LANG: C.UTF-8
@@ -251,6 +252,19 @@ jobs:
       # actually embeds, not a dev server.
       - name: Cockpit convention
         run: bun run konvention:check
+
+      # The visual sweep — 296 frames across four locale/theme variants and
+      # three viewports, each asserted for mount, locale, theme, overflow,
+      # table shape and heading alignment before it is written.
+      #
+      # It was red on main from 6.29.0 and nobody saw it, because it lived in
+      # no workflow: a check that exists, is never asked, and is therefore a
+      # comment. It also used to need a preview server somebody else started,
+      # which is why it could not simply be listed here; the script now serves
+      # its own build (scripts/verify-cockpit-visual.mjs) and needs no step of
+      # its own beyond this one.
+      - name: Cockpit visual sweep
+        run: bun run verify:cockpit-visual
 
   # The engine's architectural invariants (file size, tenant filtering, route
   # layering, coverage floors, subsystem count, audit_log single writer, test

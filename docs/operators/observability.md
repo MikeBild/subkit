@@ -62,6 +62,23 @@ flowchart LR
 No external metrics system is required for collection — any Prometheus-compatible
 scraper works. Logs ship to any standard aggregator without transformation.
 
+### Who may scrape `/metrics`
+
+`/metrics` requires the `metrics:read` scope — from an API key, from an RFC 8693
+exchanged token and from a Cockpit connection token alike; the caller's role does
+not widen a narrow scope list, and a caller without the scope gets `403` naming
+`scope_missing:metrics:read`. A connection can carry that scope (it is offered on
+the consent screen as "Betriebszähler lesen" and advertised in
+`scopes_supported`), so a monitoring system needs no pasted key: grant it
+`metrics:read` and nothing else.
+
+An unrestricted credential — a key minted with the `*` wildcard scope, or a
+browser/OIDC session — asserts no narrowing and still scrapes under an `admin`
+role, which is why an existing operator key keeps working. Keys minted with a
+narrow scope list that reached `/metrics` before this rule existed were granted
+`metrics:read` by a one-shot boot backfill, so production scraping does not break
+at upgrade.
+
 **Product analytics (opt-in).** To forward HTTP-response telemetry to an external
 product-analytics platform (PostHog, Mixpanel, a custom ingest endpoint), enable
 `observability.analytics`. Off by default — no external calls until the operator
