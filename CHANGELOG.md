@@ -6,6 +6,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.43.0 — 2026-09-04
+
+### Fixed
+
+- **The public sign-in inventory, restored.** 6.42.0 made
+  `GET /v1/identity/providers` public with a generic label per protocol — the
+  family decision of 2026-09-04, confirmed again after the route had been closed
+  again in three products. `fix(auth): restore private provider inventory`
+  reverted it here, together with its tests and its entry on the RBAC carve-out
+  list, and production answered 401 while five siblings answered 200.
+
+  Re-applied. The route answers anonymously with protocol, opaque id and a
+  generic label; issuer, client id, scopes and the operator's own wording stay
+  out, and anonymous and authenticated answers are byte-identical — asserted as
+  a pair, so the route cannot become a probe for whether a credential is valid.
+
 ## 6.42.1 — 2026-09-04
 
 ### Fixed

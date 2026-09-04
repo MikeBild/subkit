@@ -31,6 +31,12 @@ export const SELF_INTROSPECTION_ROUTES = Object.freeze([
   // POST /v1/identity/cli-session (dedicated OAuth audience+scope exchange;
   // authenticated before an API principal exists, so RBAC cannot gate it)
   "identity-cli-session",
+  // GET /v1/identity/providers (the sign-in inventory — public by family rule
+  // of 2026-09-04: the caller who has no credential yet is exactly the caller
+  // who needs to know which credentials exist, so RBAC cannot gate it. It
+  // answers protocol, opaque id and a generic label per protocol; no issuer,
+  // client id, scope list or operator wording)
+  "identity-providers",
   // GET /healthz, /health (liveness, no auth needed)
   "health",
   // GET /metrics (prometheus, gated by auth-middleware-only)

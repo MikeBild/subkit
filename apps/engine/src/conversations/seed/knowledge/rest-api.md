@@ -217,8 +217,8 @@ The grounding + capture surface for external coding agents (Claude Code, Codex).
 - Tenants: `GET /v1/identity/tenants`, `GET /v1/identity/tenants/{id}`.
 - `GET /v1/identity/whoami` — the calling principal.
 - `GET /v1/identity/permissions` — the caller's effective, enforced permission set (displayed equals enforced).
-- `GET /v1/identity/providers` — authenticated, sanitised provider inventory:
-  protocol, opaque id, and configured label only.
+- `GET /v1/identity/providers` — public, sanitised provider inventory: protocol,
+  opaque id and a generic label per protocol. Same answer signed in or not.
 - `POST /v1/identity/sessions` — exchange a configured provider assertion.
 
 # RBAC
