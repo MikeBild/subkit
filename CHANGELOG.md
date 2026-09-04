@@ -6,6 +6,33 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.39.0 — 2026-09-04
+
+### Added
+
+- **The run log can be searched by the name of the thing that ran.**
+  `/v1/executions` takes a `q` that reaches through the run's workflow and
+  matches its name or slug, so a run outside the newest page can be found at
+  all. Runs in the Cockpit used to narrow the fifty rows it had already
+  fetched, which reads as search and is not.
+
+### Changed
+
+- **A workflow mentioned in the sk CLI travels as a reference rather than a
+  paste.** `@workflow:` and `@connector:` inlined the whole object into the
+  message, which is persisted and replayed on every later turn — one mention of
+  a large object became permanent context for the rest of the conversation, and
+  a deleted object went on appearing as though it still existed. The engine has
+  resolved references per turn since the Cockpit got mentions; sk now names the
+  object and lets it. Kinds the engine has no reference type for keep the
+  inline copy.
+
+### Removed
+
+- The pseudo-message builders in the LLM core. They had no caller other than
+  their own test and described a prompt shape the assembler no longer produces,
+  which is worse than no documentation at all.
+
 ## 6.38.0 — 2026-09-04
 
 ### Fixed

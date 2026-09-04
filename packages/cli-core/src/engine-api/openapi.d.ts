@@ -5057,6 +5057,7 @@ export interface paths {
                     workflow_id?: string;
                     status?: string;
                     request_source?: string;
+                    q?: string;
                     parent_execution_id?: string;
                 };
                 header?: never;
