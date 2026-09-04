@@ -284,6 +284,9 @@ const EN = {
   "people.inviteReady": "Invite ready",
   "people.deactivate": "Deactivate",
   "people.deactivateDescription": "Deactivate {email} and revoke their active access?",
+  "people.deactivateConnections":
+    "This also ends {count} approved connection(s) — every client {email} authorised stops working at once.",
+  "people.connections": "{count} connection(s)",
   "people.created": "Person added",
   "people.roleUpdated": "Role updated",
   "people.deactivated": "Person deactivated",
@@ -302,6 +305,15 @@ const EN = {
   "apiKeys.ready": "API key ready",
   "apiKeys.exchangeHint":
     "A key can be swapped for a short-lived Bearer token (15 minutes by default, at most one hour) that is accepted everywhere the key is — so the key itself stays on disk and never appears in a request.",
+  "connectedClients.title": "Approved connections",
+  "connectedClients.description":
+    "Programs that were granted access to this installation. A connection belongs to the installation: it survives a sign-out and ends when the person who approved it is withdrawn.",
+  "connectedClients.empty": "No program has been approved yet.",
+  "connectedClients.approvedBy": "Approved by {people}",
+  "connectedClients.noLiveApproval": "No live approval — nothing can use this registration.",
+  "connectedClients.live": "{count} connection(s)",
+  "connectedClients.revoked": "Revoked",
+  "connectedClients.unnamed": "Unnamed program",
   "access.roles": "Roles",
   "access.groups": "Groups",
   "access.grants": "Grants",
@@ -1610,6 +1622,9 @@ const DE: Record<TranslationKey, string> = {
   "people.inviteReady": "Einladung bereit",
   "people.deactivate": "Deaktivieren",
   "people.deactivateDescription": "{email} deaktivieren und aktive Zugriffe widerrufen?",
+  "people.deactivateConnections":
+    "Damit enden auch {count} freigegebene Anbindung(en) — jedes von {email} freigegebene Programm funktioniert sofort nicht mehr.",
+  "people.connections": "{count} Anbindung(en)",
   "people.created": "Person angelegt",
   "people.roleUpdated": "Rolle aktualisiert",
   "people.deactivated": "Person deaktiviert",
@@ -1629,6 +1644,16 @@ const DE: Record<TranslationKey, string> = {
   "apiKeys.ready": "API-Schlüssel bereit",
   "apiKeys.exchangeHint":
     "Ein Schlüssel lässt sich gegen ein kurzlebiges Bearer-Token tauschen (standardmäßig 15 Minuten, höchstens eine Stunde), das überall gilt, wo der Schlüssel gilt — der Schlüssel selbst bleibt auf der Platte und taucht in keiner Anfrage auf.",
+  "connectedClients.title": "Freigegebene Anbindungen",
+  "connectedClients.description":
+    "Programme, die Zugriff auf diese Installation bekommen haben. Eine Anbindung gehört der Installation: Sie übersteht eine Abmeldung und endet, wenn die freigebende Person entzogen wird.",
+  "connectedClients.empty": "Es wurde noch kein Programm freigegeben.",
+  "connectedClients.approvedBy": "Freigegeben von {people}",
+  "connectedClients.noLiveApproval":
+    "Keine gültige Freigabe — diese Registrierung kann niemand nutzen.",
+  "connectedClients.live": "{count} Anbindung(en)",
+  "connectedClients.revoked": "Widerrufen",
+  "connectedClients.unnamed": "Unbenanntes Programm",
   "access.roles": "Rollen",
   "access.groups": "Gruppen",
   "access.grants": "Zuweisungen",

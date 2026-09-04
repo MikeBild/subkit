@@ -6,6 +6,55 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.40.0 — 2026-09-04
+
+### Fixed
+
+- **A connection now ends when the person who approved it is withdrawn.** A
+  deactivated user's MCP OAuth token kept authenticating: the OAuth resolver
+  joined `users` on id and tenant only, while the API-key and OIDC resolvers in
+  the same repository already refused a `deleted_at` or a non-`active`
+  `status`. The rule is now one rule (`auth/liveness.ts`), and the OAuth access
+  path applies it like its siblings.
+- **Refresh is checked exactly like access.** The rotation read no user row at
+  all, so `grant_type=refresh_token` answered 200 with a pair the resource
+  server would then refuse. It now re-reads the person (on the token's own
+  tenant binding) and the client registration, ends the whole refresh family,
+  and refuses with a description that names what happened — never with advice
+  to paste an API key.
+- **A revoked client registration is refused on both paths.** Disabling a
+  client revoked its tokens but the check itself lived nowhere; the access and
+  refresh paths now refuse for the same set of reasons.
+- **Deactivating a person ends their connections in the same transaction** that
+  disables the account, the way it already ended their API keys, their sessions
+  and their pending invites — with an audit row naming how many.
+
+### Added
+
+- **The Cockpit says who approved a connection, and what a withdrawal ends.**
+  *Credentials* lists the approved programs with the people whose approval
+  keeps each alive (`GET /v1/oauth/clients` gained `approved_by` and
+  `live_connections`); *People* shows a person's live connection count and
+  names it in the deactivation dialog before it asks
+  (`GET /v1/identity/users` gained `oauth_connections`).
+
+### Changed
+
+- **Known advisories are checked on a schedule, not in a gate.** A new
+  `.github/workflows/audit.yml` runs `bun audit --json` once a day (and on
+  demand) through `scripts/audit-advisories.ts`, which tells a registry outage
+  from a finding: an unreachable, unparseable or erroring registry writes a
+  warning and succeeds, and only an advisory at high or critical severity fails
+  the job — naming package, severity and title. Nothing depends on the
+  workflow, no release waits for it, and the workflow contract test holds all
+  of that. SubKit had no blocking audit step to remove.
+
+### Unchanged, and now proven
+
+- Signing out of the Cockpit does not end a connection, and neither does a
+  restart or a token rotation. SubKit never tied a token row to an operator
+  session; the tests now hold that open.
+
 ## 6.39.0 — 2026-09-04
 
 ### Added

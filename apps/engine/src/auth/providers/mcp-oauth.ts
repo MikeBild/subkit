@@ -5,6 +5,8 @@
 // - Looks up mcp_oauth_access_tokens row by prefix
 // - Constant-time sha256 comparison
 // - Validates revoked_at / expires_at
+// - Applies the shared liveness rule: a withdrawn person and a revoked
+//   client registration both stop authenticating on the next use
 // - Throttled last_used_at flush (once per 60s per token)
 // - Sampled audit on flush window
 // - Builds a ResolvedPrincipal with tenant + roles + scopes from the token
@@ -14,10 +16,16 @@ import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { type Db, getDb } from "../../db/client.ts";
-import { mcpOauthAccessTokens, roles as rolesTable, users } from "../../db/schema/index.ts";
+import {
+  mcpOauthAccessTokens,
+  mcpOauthClients,
+  roles as rolesTable,
+  users,
+} from "../../db/schema/index.ts";
 import { sha256Hex } from "../../identity/api-key.ts";
 import { log, logger } from "../../logging/logger.ts";
 import { recordAuthFailure } from "../failed-auth-tracker.ts";
+import { clientLivenessRefusal, userLivenessRefusal } from "../liveness.ts";
 import {
   ACCESS_TOKEN_PREFIX_LITERAL,
   constantTimeHexEquals,
@@ -223,16 +231,45 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
           email: users.email,
           role_id: users.role_id,
           role_name: rolesTable.name,
+          status: users.status,
+          deleted_at: users.deleted_at,
         })
         .from(users)
         .leftJoin(rolesTable, eq(rolesTable.id, users.role_id))
         .where(and(eq(users.id, row.user_id), eq(users.tenant_id, row.tenant_id)))
         .limit(1);
       const u = userRows[0];
-      if (!u) {
+      // The same rule the api-key and OIDC resolvers apply: a soft-deleted
+      // or disabled person authenticates nowhere, an OAuth connection
+      // included. Until tranche E this join filtered on id + tenant alone,
+      // so a deactivated user's token kept working until it expired.
+      const userRefusal = userLivenessRefusal(u);
+      if (!u || userRefusal) {
+        if (userRefusal && userRefusal !== "user_missing") recordAuthFailure(ip);
         log.auth.denied({
           provider: "mcp_oauth",
-          reason: "user_missing",
+          reason: userRefusal ?? "user_missing",
+          token_id: row.id,
+        });
+        return null;
+      }
+
+      // A revoked client registration ends its connections too. Disabling a
+      // client through the admin route revokes the outstanding tokens, but
+      // the check belongs here as well so the access path and the refresh
+      // path refuse for the same set of reasons (tranche E, rule 3).
+      // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
+      const clientRows = await db
+        .select({ disabled_at: mcpOauthClients.disabled_at })
+        .from(mcpOauthClients)
+        .where(eq(mcpOauthClients.client_id, row.client_id))
+        .limit(1);
+      const clientRefusal = clientLivenessRefusal(clientRows[0]);
+      if (clientRefusal) {
+        recordAuthFailure(ip);
+        log.auth.denied({
+          provider: "mcp_oauth",
+          reason: clientRefusal,
           token_id: row.id,
         });
         return null;

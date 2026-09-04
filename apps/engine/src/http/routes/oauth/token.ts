@@ -87,13 +87,22 @@ export function registerOAuthTokenRoutes(app: OpenAPIHono<AppEnv>): void {
         return c.json(tokens, 200, { "Cache-Control": "no-store" });
       } catch (err) {
         const oauthError = (err as { oauth_error?: string }).oauth_error ?? "invalid_grant";
+        // A refusal that knows why says so. The liveness refusals name what
+        // happened — the person was withdrawn, the client registration was
+        // revoked — instead of leaving the client to guess (and instead of
+        // advising an API key, the fallback tranche B removed).
+        const description = (err as { oauth_error_description?: string }).oauth_error_description;
         logger.warn({
           module: "mcp_oauth",
           action: "token.refresh_failed",
           msg: "refresh token exchange failed",
           error: err instanceof Error ? err.message : String(err),
         });
-        return c.json({ error: oauthError }, 400, { "Cache-Control": "no-store" });
+        return c.json(
+          { error: oauthError, ...(description ? { error_description: description } : {}) },
+          400,
+          { "Cache-Control": "no-store" },
+        );
       }
     }
 

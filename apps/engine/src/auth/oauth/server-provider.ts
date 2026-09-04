@@ -4,7 +4,8 @@
 //   - Dynamic client registration (RFC 7591) — public clients only (none)
 //   - Authorization code issuance with PKCE S256
 //   - Code exchange (atomic single-use claim + redirect_uri match + PKCE verify)
-//   - Refresh token rotation inside a transaction (revoke-chain on replay)
+//   - Refresh token rotation inside a transaction (revoke-chain on replay),
+//     gated by the same liveness rule the access path applies
 //   - Token revocation (RFC 7009)
 //
 // Every mint / rotate / revoke writes an audit_log entry.
@@ -24,8 +25,15 @@ import {
   mcpOauthAuthorizationCodes,
   mcpOauthClients,
   mcpOauthRefreshTokens,
+  users,
 } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
+import {
+  clientLivenessRefusal,
+  type LivenessRefusal,
+  livenessRefusalDescription,
+  userLivenessRefusal,
+} from "../liveness.ts";
 import {
   generateAccessToken,
   generateAuthorizationCode,
@@ -456,6 +464,54 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     }
 
     const now = new Date();
+
+    // ── Liveness, exactly as the access path checks it ────────────────────
+    // Rotation used to read no user row at all: a withdrawn person's client
+    // could keep minting fresh pairs the resource server would then refuse.
+    // A refresh must never answer 200 with a credential the access path
+    // rejects, so the same two rows are read here — the person, on the
+    // token's own tenant binding, and the client registration.
+    // tenant-filter:exempt — the refresh row's tenant_id IS the filter
+    const userRows = await db
+      .select({ status: users.status, deleted_at: users.deleted_at })
+      .from(users)
+      .where(and(eq(users.id, refreshRow.user_id), eq(users.tenant_id, refreshRow.tenant_id)))
+      .limit(1);
+    // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
+    const clientRows = await db
+      .select({ disabled_at: mcpOauthClients.disabled_at })
+      .from(mcpOauthClients)
+      .where(eq(mcpOauthClients.client_id, refreshRow.client_id))
+      .limit(1);
+    const livenessRefusal: LivenessRefusal | null =
+      userLivenessRefusal(userRows[0]) ?? clientLivenessRefusal(clientRows[0]);
+    if (livenessRefusal) {
+      // The grant is dead, not merely unusable this once: end the whole
+      // family so a second attempt cannot race a restore.
+      await revokeRefreshTokenFamily(refreshRow.id, now);
+      await auditAwait(
+        {
+          tenant_id: refreshRow.tenant_id,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.MCP_OAUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_token",
+          resource_id: null,
+          result: "denied",
+          metadata: {
+            request_source: requestSource,
+            reason: livenessRefusal,
+            client_id: refreshRow.client_id,
+            affected_user_id: refreshRow.user_id,
+          },
+        },
+        db,
+      );
+      throw Object.assign(new Error(`invalid_grant: ${livenessRefusal}`), {
+        oauth_error: "invalid_grant",
+        oauth_error_description: livenessRefusalDescription(livenessRefusal),
+      });
+    }
 
     if (refreshRow.revoked_at && refreshRow.revoked_at <= now) {
       // A rotated/revoked token was replayed — revoke the whole chain.

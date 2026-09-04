@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "6.39.0",
+    "version": "6.40.0",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -2876,6 +2876,10 @@
               "disabled"
             ]
           },
+          "oauth_connections": {
+            "type": "integer",
+            "minimum": 0
+          },
           "created_at": {
             "type": "string"
           },
@@ -2891,6 +2895,7 @@
           "effective_role",
           "role_consistent",
           "status",
+          "oauth_connections",
           "created_at",
           "updated_at"
         ]
@@ -3789,6 +3794,16 @@
               "manual"
             ]
           },
+          "approved_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "live_connections": {
+            "type": "integer",
+            "minimum": 0
+          },
           "disabled_at": {
             "type": [
               "string",
@@ -3805,6 +3820,8 @@
           "client_name",
           "redirect_uris",
           "registration_source",
+          "approved_by",
+          "live_connections",
           "disabled_at",
           "created_at"
         ]

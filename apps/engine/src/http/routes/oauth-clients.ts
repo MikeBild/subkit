@@ -19,6 +19,8 @@ import {
   mcpOauthClients,
   mcpOauthRefreshTokens,
 } from "../../db/schema/index.ts";
+import { listClientApprovals } from "../../identity/index.ts";
+import { now } from "../../utils/clock.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -33,6 +35,11 @@ const OAuthClientSchema = z
     client_name: z.string().nullable(),
     redirect_uris: z.array(z.string()),
     registration_source: z.enum(["dcr", "manual"]),
+    /** Who approved this connection — the people whose live grant keeps it
+     *  working. Empty when nothing live points at the registration. */
+    approved_by: z.array(z.string()),
+    /** Live connections for this client, one per approving person. */
+    live_connections: z.number().int().nonnegative(),
     disabled_at: z.string().nullable(),
     created_at: z.string(),
   })
@@ -110,15 +117,24 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
       })
       .from(mcpOauthClients);
 
-    const items = rows.map((r) => ({
-      id: r.id,
-      client_id: r.client_id,
-      client_name: r.client_name ?? null,
-      redirect_uris: r.redirect_uris,
-      registration_source: r.registration_source,
-      disabled_at: r.disabled_at ? r.disabled_at.toISOString() : null,
-      created_at: r.created_at.toISOString(),
-    }));
+    // A connection is a person's decision. The list says whose, so revoking
+    // one is never a shot in the dark (tranche E, rule 4).
+    const approvals = await listClientApprovals(db, new Date(now()));
+
+    const items = rows.map((r) => {
+      const approval = approvals.get(r.client_id);
+      return {
+        id: r.id,
+        client_id: r.client_id,
+        client_name: r.client_name ?? null,
+        redirect_uris: r.redirect_uris,
+        registration_source: r.registration_source,
+        approved_by: approval?.approved_by ?? [],
+        live_connections: approval?.live_connections ?? 0,
+        disabled_at: r.disabled_at ? r.disabled_at.toISOString() : null,
+        created_at: r.created_at.toISOString(),
+      };
+    });
 
     await auditAwait(
       {

@@ -6,6 +6,7 @@ import { and, eq, isNull, or } from "drizzle-orm";
 import { hasLegacyRoleDrift, policy, resolveEffectiveUserRole } from "../../../auth/index.ts";
 import { roles } from "../../../db/schema/index.ts";
 import * as identity from "../../../identity/index.ts";
+import { now } from "../../../utils/clock.ts";
 import { ConflictError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { enforce } from "../../middleware/policy.ts";
@@ -111,6 +112,7 @@ const deactivateRoute = createRoute({
 function serialize(
   u: NonNullable<Awaited<ReturnType<typeof identity.getUser>>>,
   assignedRoleName?: string | null,
+  oauthConnections = 0,
 ) {
   return {
     id: u.id,
@@ -120,6 +122,7 @@ function serialize(
     effective_role: resolveEffectiveUserRole(u.role, assignedRoleName),
     role_consistent: !hasLegacyRoleDrift(u.role, assignedRoleName),
     status: u.status,
+    oauth_connections: oauthConnections,
     created_at: u.created_at.toISOString(),
     updated_at: u.updated_at.toISOString(),
   };
@@ -169,8 +172,18 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
       .from(roles)
       .where(or(isNull(roles.tenant_id), eq(roles.tenant_id, principal.tenant_id)));
     const roleNames = new Map(roleRows.map((role) => [role.id, role.name]));
+    // The People page asks "deactivate?" — it may as well say what that ends.
+    const connections = await identity.countLiveConnectionsByUser(
+      db,
+      principal.tenant_id,
+      new Date(now()),
+    );
     return c.json(
-      { items: items.map((user) => serialize(user, roleNames.get(user.role_id ?? ""))) },
+      {
+        items: items.map((user) =>
+          serialize(user, roleNames.get(user.role_id ?? ""), connections.get(user.id) ?? 0),
+        ),
+      },
       200,
     );
   });
@@ -191,6 +204,11 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
     );
     const u = await identity.getUser(principal.tenant_id, id, db);
     if (!u) throw new NotFoundError("user");
+    const connections = await identity.countLiveConnectionsByUser(
+      db,
+      principal.tenant_id,
+      new Date(now()),
+    );
     const [role] = u.role_id
       ? await db
           .select({ name: roles.name })
@@ -203,7 +221,7 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
           )
           .limit(1)
       : [];
-    return c.json(serialize(u, role?.name), 200);
+    return c.json(serialize(u, role?.name, connections.get(u.id) ?? 0), 200);
   });
 
   app.openapi(createRoute_, async (c) => {

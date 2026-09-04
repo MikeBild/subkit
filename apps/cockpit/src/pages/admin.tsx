@@ -85,6 +85,19 @@ interface UserItem {
   effective_role: string;
   role_consistent: boolean;
   status: string;
+  /** Live connections this person approved — what a withdrawal would end. */
+  oauth_connections?: number;
+}
+
+/** One program that was granted access to this installation. */
+interface ConnectedClientItem {
+  id: string;
+  client_id: string;
+  client_name: string | null;
+  approved_by: string[];
+  live_connections: number;
+  disabled_at: string | null;
+  created_at: string;
 }
 
 interface RoleItem {
@@ -434,6 +447,11 @@ export function PeoplePage() {
                   <CardDescription className="mt-1 flex flex-wrap gap-2">
                     <Badge variant="outline">{roleLabel(user.effective_role, t)}</Badge>
                     <Badge variant="secondary">{statusLabel(t, user.status)}</Badge>
+                    {(user.oauth_connections ?? 0) > 0 && (
+                      <Badge variant="outline" data-testid={`people-connections-${index}`}>
+                        {t("people.connections", { count: String(user.oauth_connections ?? 0) })}
+                      </Badge>
+                    )}
                     {!user.role_consistent && (
                       <Badge variant="destructive" data-testid={`people-role-drift-${index}`}>
                         {t("people.roleDrift")}
@@ -556,10 +574,19 @@ export function PeoplePage() {
         <AlertDialogContent data-testid="people-deactivate-dialog">
           <AlertDialogHeader>
             <AlertDialogTitle>{t("people.deactivate")}</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogDescription data-testid="people-deactivate-description">
               {t("people.deactivateDescription", {
                 email: deactivate?.email ?? "",
               })}
+              {(deactivate?.oauth_connections ?? 0) > 0 && (
+                <>
+                  {" "}
+                  {t("people.deactivateConnections", {
+                    count: String(deactivate?.oauth_connections ?? 0),
+                    email: deactivate?.email ?? "",
+                  })}
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -623,6 +650,66 @@ function SecretDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The programs that were approved for this installation, and who approved
+ * each one. A connection belongs to the installation, not to a browser
+ * session — so the page that lists them has to say whose decision keeps one
+ * alive, or a withdrawal is a silent side effect.
+ */
+function ConnectedClients() {
+  const { t, dateTime } = useI18n();
+  const session = useSession();
+  const canRead = session.permissions.includes("mcp_oauth_client:read");
+  const query = useQuery({
+    queryKey: ["admin", "oauth-clients"],
+    queryFn: () => apiRequest<{ items: ConnectedClientItem[] }>("/v1/oauth/clients"),
+    enabled: canRead,
+  });
+  if (!canRead) return null;
+  const items = query.data?.items ?? [];
+  return (
+    <section className="flex flex-col gap-2" data-testid="connected-clients">
+      <div>
+        <h2 className="text-sm font-medium">{t("connectedClients.title")}</h2>
+        <p className="text-xs text-muted-foreground">{t("connectedClients.description")}</p>
+      </div>
+      {query.isPending ? (
+        <LoadingCards testId="connected-clients-loading" />
+      ) : !items.length ? (
+        <EmptyCard text={t("connectedClients.empty")} testId="connected-clients-empty" />
+      ) : (
+        <div className="grid gap-2" data-testid="connected-clients-list">
+          {items.map((item, index) => (
+            <Card key={item.id} size="sm" data-testid={`connected-client-${index}`}>
+              <CardContent className="flex flex-col gap-2 p-4">
+                <p className="truncate font-medium">
+                  {item.client_name || t("connectedClients.unnamed")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {item.approved_by.length
+                    ? t("connectedClients.approvedBy", { people: item.approved_by.join(", ") })
+                    : t("connectedClients.noLiveApproval")}
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  <Badge variant="secondary">
+                    {t("connectedClients.live", { count: String(item.live_connections) })}
+                  </Badge>
+                  {item.disabled_at && (
+                    <Badge variant="destructive">{t("connectedClients.revoked")}</Badge>
+                  )}
+                  <Badge variant="outline">
+                    {t("apiKeys.created", { date: dateTime(item.created_at) })}
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -701,6 +788,7 @@ export function ApiAccessPage() {
         ) : undefined
       }
     >
+      <ConnectedClients />
       <Card size="sm" data-testid="api-keys-token-exchange">
         <CardContent className="flex flex-col gap-2 p-4">
           <p className="text-sm text-muted-foreground">{t("apiKeys.exchangeHint")}</p>
