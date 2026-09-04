@@ -270,24 +270,19 @@ describe("PUT /v1/settings/{path}", () => {
       requiresRestart: false,
     });
 
-    // Public, and byte-identical either way: a caller with no credential is
-    // exactly the caller that needs to know which credentials exist. The label
-    // is generic per protocol — the operator typed "Workforce SSO", and an
-    // operator's wording can name an organisation.
     const anonymous = await fetch(`${server.baseUrl}/v1/identity/providers`);
-    expect(anonymous.status).toBe(200);
+    expect(anonymous.status).toBe(401);
     const discovery = await authedFetch("/v1/identity/providers");
     expect(discovery.status).toBe(200);
     const expected = {
       providers: [
-        { protocol: "oidc", id: "workforce", label: "SSO" },
-        { protocol: "api_key", id: "api-key", label: "API key" },
+        { protocol: "oidc", id: "workforce", label: "Workforce SSO" },
+        { protocol: "api_key", id: "api-key", label: "SubKit API key" },
       ],
     };
-    const anonymousBody = (await anonymous.json()) as Record<string, unknown>;
-    expect(anonymousBody).toEqual(expected);
-    expect((await discovery.json()) as Record<string, unknown>).toEqual(expected);
-    expect(JSON.stringify(anonymousBody)).not.toContain("Workforce");
+    const discoveryBody = (await discovery.json()) as Record<string, unknown>;
+    expect(discoveryBody).toEqual(expected);
+    expect(JSON.stringify(discoveryBody)).not.toContain("identity.example.test");
   });
 
   test("confidential OIDC secrets are rejected instead of persisted", async () => {

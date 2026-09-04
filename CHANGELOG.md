@@ -6,6 +6,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.42.1 — 2026-09-04
+
+### Fixed
+
+- `GET /v1/identity/providers` is private again: anonymous callers receive
+  `401`, authenticated principals without `identity:read` receive `403`, and
+  authorized callers see only `protocol`, `id`, and the configured `label`.
+  The public server-rendered login chooser remains available and hot provider
+  activation still works.
+
 ## 6.42.0 — 2026-09-04
 
 ### Changed

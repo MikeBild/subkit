@@ -1,22 +1,12 @@
-// GET /v1/identity/providers — public, sanitised inventory of the ways a person
-// or a program can sign in here.
+// GET /v1/identity/providers — authenticated, sanitised provider inventory.
 //
-// PUBLIC IS A FAMILY RULE, decided 2026-09-04, not a local preference. A caller
-// that has no credential yet is exactly the caller that needs to know which
-// credentials exist, so requiring one is circular. This route answered 401 for
-// a while, on the reasoning that an installation-specific list should not be
-// disclosed before authentication; that reasoning survives here as WHAT is
-// disclosed rather than WHO may ask.
-//
-// What leaves this route: the protocol, the adapter id, and a GENERIC label for
-// the protocol. What never leaves it: issuer URLs, client ids, allow lists,
-// scopes, tenant slugs — and the operator's own wording. An operator-typed
-// label can carry the name of a company, and the anonymous answer is not the
-// place to publish it. That is also why the answer is identical whether or not
-// the caller is signed in: two different answers would make this route a probe
-// for whether a credential is valid.
+// Browser login uses the server-rendered chooser and OAuth clients use the
+// standard well-known documents. There is therefore no reason to disclose a
+// machine-readable installation-specific provider list before authentication.
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { ErrorSchema } from "./schemas.ts";
 
 const ProviderEntry = z
   .object({
@@ -34,28 +24,30 @@ const ProvidersResponse = z
   .strict()
   .openapi("ProvidersResponse");
 
-/** The only labels this route emits — one per protocol, never the operator's. */
-const LABELS: Record<"api_key" | "oidc", string> = {
-  oidc: "SSO",
-  api_key: "API key",
-};
-
 const route = createRoute({
   method: "get",
   path: "/v1/identity/providers",
   tags: ["MCP authentication"],
   summary: "List configured authentication methods",
-  description:
-    "Public. Returns the sign-in methods this installation offers, with a generic label per protocol. No issuer, client id, scope or operator wording is included, and the answer does not change when the caller is authenticated.",
+  security: [{ bearerAuth: [] }],
   responses: {
     200: {
       description: "Sanitised provider inventory",
       content: { "application/json": { schema: ProvidersResponse } },
     },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    403: {
+      description: "Forbidden",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
 export function registerProvidersRoute(app: OpenAPIHono<AppEnv>): void {
+  app.use("/v1/identity/providers", requirePermission("identity:read"));
   app.openapi(route, async (c) => {
     const { getConfig } = await import("../../../config/loader.ts");
     const providers: z.infer<typeof ProviderEntry>[] = [...getConfig().auth.providers]
@@ -65,7 +57,7 @@ export function registerProvidersRoute(app: OpenAPIHono<AppEnv>): void {
       .map((provider) => ({
         protocol: provider.protocol,
         id: provider.id,
-        label: LABELS[provider.protocol],
+        label: provider.label,
       }));
 
     return c.json({ providers }, 200);

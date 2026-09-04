@@ -314,12 +314,11 @@ adapter's redirect URI. Every adapter uses only the generic `login/start`,
 with `token_endpoint_auth_method=none`; confidential-only clients are not
 representable in `auth.providers`.
 
-`GET /v1/identity/providers` is public: it needs no credential, because the
-caller that has none is exactly the caller who needs to know which credentials
-exist. It returns only `protocol`, an opaque `id` and a generic label for the
-protocol, and it answers identically whether or not the caller is signed in. It
-never returns an issuer, client metadata, an allowlist — or the operator's own
-wording, which can carry the name of an organisation. `sk login` deliberately does not call it; the CLI discovers its
+`GET /v1/identity/providers` is authenticated and requires `identity:read`. It
+returns only `protocol`, an opaque `id`, and the configured `label`; it never
+returns an issuer, client metadata, an allowlist, scope list, or tenant slug.
+The public server-rendered chooser remains the unauthenticated login surface.
+`sk login` deliberately does not call the inventory; the CLI discovers its
 dedicated protected resource and authorization-server metadata, dynamically
 registers a public client, and uses Authorization Code with PKCE-S256 for the
 sole `sk:login` scope. A configured external assertion may still be exchanged
