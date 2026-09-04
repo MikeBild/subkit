@@ -428,6 +428,10 @@ async function mockApi(route) {
         "connector:read",
         "connector:write",
         "connector:test",
+        "connection:read",
+        "connection:write",
+        "connection:read",
+        "connection:write",
         "knowledge:read",
         "knowledge:write",
         "skill:read",
@@ -694,6 +698,125 @@ async function mockApi(route) {
       items,
       total: items.length,
       ...(categories ? { categories } : {}),
+    });
+  }
+  if (path === "/v1/connections") {
+    // One row per state the page words differently. A fixture that only ever
+    // shows healthy grants proves nothing about the two that need a way back.
+    return json(route, {
+      items: [
+        {
+          id: "connection-valid",
+          name: "Reporting-Portal",
+          base_url: "https://reporting.example.com",
+          issuer: "https://login.example.com",
+          service_name: "Reporting",
+          service_description: "Monatszahlen und Auswertungen",
+          scopes: ["reports.read"],
+          granted_scopes: ["reports.read"],
+          state: "valid",
+          auto_renew: true,
+          expires_at: "2026-12-01T09:00:00.000Z",
+          last_used_at: conversation.updated_at,
+          last_refreshed_at: conversation.updated_at,
+          refresh_failed_at: null,
+          last_error: null,
+          used_by_connectors: 2,
+          created_at: "2026-06-02T09:00:00.000Z",
+        },
+        {
+          id: "connection-expiring",
+          name: "Abrechnung",
+          base_url: "https://billing.example.com",
+          issuer: "https://login.example.com",
+          service_name: "Abrechnung",
+          service_description: null,
+          scopes: ["invoices.read", "invoices.write"],
+          granted_scopes: ["invoices.read"],
+          state: "expiring",
+          auto_renew: true,
+          expires_at: "2026-09-05T09:00:00.000Z",
+          last_used_at: null,
+          last_refreshed_at: null,
+          refresh_failed_at: null,
+          last_error: null,
+          used_by_connectors: 1,
+          created_at: "2026-07-14T09:00:00.000Z",
+        },
+        {
+          id: "connection-expired",
+          name: "Postfach",
+          base_url: "https://mail.example.com",
+          issuer: "https://login.example.com",
+          service_name: null,
+          service_description: null,
+          scopes: ["mail.send"],
+          granted_scopes: null,
+          state: "expired",
+          auto_renew: false,
+          expires_at: "2026-08-20T09:00:00.000Z",
+          last_used_at: "2026-08-19T09:00:00.000Z",
+          last_refreshed_at: null,
+          refresh_failed_at: "2026-08-20T09:05:00.000Z",
+          last_error: "invalid_grant",
+          used_by_connectors: 3,
+          created_at: "2026-05-05T09:00:00.000Z",
+        },
+        {
+          id: "connection-unreadable",
+          name: "Lager",
+          base_url: "https://inventory.example.com",
+          issuer: "https://login.example.com",
+          service_name: "Lager",
+          service_description: null,
+          scopes: ["stock.read"],
+          granted_scopes: null,
+          state: "unreadable",
+          auto_renew: false,
+          expires_at: null,
+          last_used_at: null,
+          last_refreshed_at: null,
+          refresh_failed_at: null,
+          last_error: null,
+          used_by_connectors: 0,
+          created_at: "2026-04-01T09:00:00.000Z",
+        },
+      ],
+    });
+  }
+  if (path === "/v1/connections") {
+    // One row per state the page words differently. A fixture that only ever
+    // shows healthy grants proves nothing about the two that need a way back.
+    const grant = (id, name, state, extra) => ({
+      id,
+      name,
+      base_url: `https://${id}.example.com`,
+      issuer: "https://login.example.com",
+      service_name: name,
+      service_description: null,
+      scopes: ["reports.read"],
+      granted_scopes: state === "valid" ? ["reports.read"] : null,
+      state,
+      auto_renew: state !== "expired",
+      expires_at: null,
+      last_used_at: null,
+      last_refreshed_at: null,
+      refresh_failed_at: null,
+      last_error: null,
+      used_by_connectors: 0,
+      created_at: "2026-06-02T09:00:00.000Z",
+      ...extra,
+    });
+    return json(route, {
+      items: [
+        grant("reporting", "Reporting-Portal", "valid", {
+          expires_at: "2026-12-01T09:00:00.000Z",
+          used_by_connectors: 2,
+        }),
+        grant("billing", "Abrechnung", "expiring", { expires_at: "2026-09-05T09:00:00.000Z" }),
+        grant("mail", "Postfach", "expired", { last_error: "invalid_grant" }),
+        grant("inventory", "Lager", "unreadable", {}),
+      ],
     });
   }
   if (path === "/v1/executions") {
@@ -1016,6 +1139,9 @@ async function mockApi(route) {
           status: "active",
         },
       ],
+      // Declared by the settings response and read by the page; a fixture that
+      // omits it renders a page that cannot mount.
+      diagnostics: { pending_restart_keys: [], override_keys: [] },
     });
   if (path === "/v1/identity/api-keys")
     return json(route, {
@@ -1031,6 +1157,9 @@ async function mockApi(route) {
           revoked_at: null,
         },
       ],
+      // Declared by the settings response; a fixture that omits it renders a
+      // page that cannot mount.
+      diagnostics: { pending_restart_keys: [], override_keys: [] },
     });
   if (path === "/v1/rbac/roles")
     return json(route, {
@@ -1247,7 +1376,10 @@ function markerFor(route) {
   if (route === "") return '[data-testid="overview-page"]';
   // Decisions owns its page rather than rendering a list of records.
   if (route === "decisions") return '[data-testid="decisions-page"]';
-  if (["people", "access", "api-access", "operations", "settings"].includes(route))
+  // Installation surfaces name their frame after the section, not the record
+  // type. Connections joined them without joining this list, and the sweep has
+  // been waiting for a marker that is not on the page since.
+  if (["people", "access", "api-access", "operations", "settings", "connections"].includes(route))
     return `[data-testid="admin-${route}"]`;
   // Connectors render through the shared catalog table like every other list.
   if (["workflows", "connectors", "knowledge", "skills", "files"].includes(route))
@@ -1297,7 +1429,6 @@ async function assertChat(page, label) {
       transcript: rect("chat-transcript"),
       composer: rect("chat-composer-area"),
       main: rect("chat-main"),
-      sidebar: rect("conversation-sidebar"),
     };
   });
   if (layout.transcript.height < 120) throw new Error(`${label} transcript collapsed`);
@@ -1305,13 +1436,36 @@ async function assertChat(page, label) {
     throw new Error(`${label} transcript overlaps composer`);
   if (layout.composer.bottom > layout.main.bottom + 1)
     throw new Error(`${label} composer is outside Chat`);
-  const sidebarText = await page.locator('[data-testid="conversation-item-0"]').innerText();
-  if (sidebarText.includes('{"tool"')) throw new Error(`${label} exposes a raw tool payload`);
+  // The transcript owns the page now: a chat that gives its width to a
+  // permanent list is the state this check exists to catch.
+  if (layout.transcript.width < layout.main.width - 4)
+    throw new Error(`${label} transcript does not span the conversation column`);
+  await openConversationList(page);
+  const listText = await page.locator('[data-testid="conversation-item-0"]').innerText();
+  if (listText.includes('{"tool"')) throw new Error(`${label} exposes a raw tool payload`);
+  await closeConversationList(page);
   const assistantWidths = await page
     .locator('[data-testid^="chat-message-"][data-testid$="-content"]')
     .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().width));
   if (assistantWidths.some((width) => width > layout.main.width - 24))
     throw new Error(`${label} message content reaches outside its readable column`);
+}
+
+/**
+ * The conversation list opens on demand. Every check that reads a row has to
+ * open it first — a closed panel yields an empty, green screenshot, which is
+ * exactly the false pass these fixtures exist to prevent.
+ */
+async function openConversationList(page) {
+  if (await page.locator('[data-testid="conversation-list"]').isVisible()) return;
+  await page.locator('[data-testid="conversation-list-trigger"]').click();
+  await page.locator('[data-testid="conversation-list"]').waitFor({ state: "visible" });
+}
+
+async function closeConversationList(page) {
+  if (!(await page.locator('[data-testid="conversation-list"]').isVisible())) return;
+  await page.locator('[data-testid="conversation-list-close"]').click();
+  await page.locator('[data-testid="conversation-list"]').waitFor({ state: "hidden" });
 }
 
 /**
@@ -1723,12 +1877,12 @@ for (const locale of variants) {
       });
 
       await stand.visit(page, "chat");
-      // "New" resets to the empty state — starter cards and the composer,
-      // no dialog in between.
-      await page.locator('[data-testid="conversation-new"]').click();
-      await page.locator('[data-testid="chat-empty"]').waitFor({ state: "visible" });
+      // The list is a panel now. Capture it open, with rows in it — a shot of
+      // the closed page proves nothing about the list.
+      await openConversationList(page);
+      await page.locator('[data-testid="conversation-item-0"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-chat-new`, {
+      await shoot(page, `${locale.artifact}-desktop-chat-list`, {
         fullPage: false,
       });
       // The hidden view: empty here, because this fixture hides nothing.
@@ -1738,6 +1892,17 @@ for (const locale of variants) {
         fullPage: false,
       });
       await page.locator('[data-testid="conversation-toggle-hidden"]').click();
+      await closeConversationList(page);
+      // "New" resets to the empty state — starter cards and the composer, no
+      // dialog in between. It lives on the page, not inside the list, so the
+      // panel has to be out of the way before the click.
+      await page.locator('[data-testid="conversation-new"]').click();
+      await page.locator('[data-testid="chat-empty"]').waitFor({ state: "visible" });
+      await page.waitForTimeout(300);
+      await shoot(page, `${locale.artifact}-desktop-chat-new`, {
+        fullPage: false,
+      });
+      await openConversationList(page);
       await page.locator('[data-testid="conversation-item-0"]').click();
       const tool = page.locator('[data-testid="chat-message-3-tool-0"]');
       await tool.scrollIntoViewIfNeeded();

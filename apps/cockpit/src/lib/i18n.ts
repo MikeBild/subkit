@@ -1016,6 +1016,8 @@ const EN = {
   "overview.classification.safe": "Safe",
   "overview.classification.unsafe": "Unsafe",
   "chat.conversations": "Conversations",
+  "chat.conversations.open": "Past conversations",
+  "chat.conversations.close": "Close the conversation list",
   "chat.new": "New conversation",
   "chat.search": "Search conversations",
   "chat.rename": "Rename conversation",
@@ -1026,6 +1028,9 @@ const EN = {
   "chat.create.submit": "Start conversation",
   "chat.create.starting": "Starting…",
   "chat.untitled": "Untitled conversation",
+  "chat.time.now": "now",
+  "chat.role.you": "You",
+  "chat.role.assistant": "SubKit",
   "chat.outcome.answered": "Answered",
   "chat.outcome.in_progress": "In progress",
   "chat.outcome.awaiting_you": "Waiting for you",
@@ -1091,7 +1096,6 @@ const EN = {
   "chat.empty.description":
     "Describe the outcome. The agent can inspect, verify, preview and request approval here.",
   "chat.composer.placeholder": "Ask SubKit to build, run, inspect or repair…",
-  "chat.composer.mode": "Approval mode · ask",
   "chat.mention.workflows": "Workflows",
   "chat.mention.connectors": "Connectors",
   "chat.mention.empty": "No matches",
@@ -2351,6 +2355,8 @@ const DE: Record<TranslationKey, string> = {
   "overview.classification.safe": "Sicher",
   "overview.classification.unsafe": "Unsicher",
   "chat.conversations": "Unterhaltungen",
+  "chat.conversations.open": "Frühere Unterhaltungen",
+  "chat.conversations.close": "Unterhaltungsliste schließen",
   "chat.new": "Neue Unterhaltung",
   "chat.search": "Unterhaltungen durchsuchen",
   "chat.rename": "Unterhaltung umbenennen",
@@ -2361,6 +2367,9 @@ const DE: Record<TranslationKey, string> = {
   "chat.create.submit": "Unterhaltung starten",
   "chat.create.starting": "Wird gestartet…",
   "chat.untitled": "Unbenannte Unterhaltung",
+  "chat.time.now": "jetzt",
+  "chat.role.you": "Du",
+  "chat.role.assistant": "SubKit",
   "chat.outcome.answered": "Beantwortet",
   "chat.outcome.in_progress": "In Arbeit",
   "chat.outcome.awaiting_you": "Wartet auf dich",
@@ -2433,7 +2442,6 @@ const DE: Record<TranslationKey, string> = {
     "Beschreib das Ergebnis. Der Agent kann hier prüfen, verifizieren, testen und Freigaben anfordern.",
   "chat.composer.placeholder":
     "SubKit bitten, etwas zu erstellen, auszuführen, zu prüfen oder zu reparieren…",
-  "chat.composer.mode": "Freigabemodus · nachfragen",
   "chat.mention.workflows": "Workflows",
   "chat.mention.connectors": "Konnektoren",
   "chat.mention.empty": "Keine Treffer",
@@ -2682,7 +2690,11 @@ export function translate(
   return interpolate(CATALOGS[locale][key], values);
 }
 
-export function formatDateTime(locale: Locale, value: string | Date): string {
+export function formatDateTime(locale: Locale, value: string | Date | null | undefined): string {
+  // A missing timestamp is the same to a reader as an unreadable one, and it
+  // already had an answer for that. Without the null branch the absent case
+  // threw instead, taking the whole page down over one empty field.
+  if (value === null || value === undefined) return "—";
   const date = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(date.valueOf())) return "—";
   return new Intl.DateTimeFormat(LOCALE_TAGS[locale], {
@@ -2697,6 +2709,40 @@ export function formatDateTime(locale: Locale, value: string | Date): string {
  * style keeps it inside a rail column; anything older than a month falls
  * back to the date, because "vor 3 Monaten" hides more than it tells.
  */
+/**
+ * The same instant as `formatRelativeTime`, but as a stamp that fits a fixed
+ * box at the end of a list row: "3 Wo." / "3w", never "vor 3 Wochen". A row
+ * that reflows because one timestamp is wider than its neighbour is the noise
+ * this list is trying to lose, so the caller gets a width it can reserve.
+ *
+ * Built from `Intl.NumberFormat` unit style rather than hand-written suffixes:
+ * the abbreviations differ per language and are not ours to invent.
+ */
+export function formatShortRelativeTime(
+  locale: Locale,
+  value: string,
+  nowLabel: string,
+  now = Date.now(),
+): string {
+  const at = Date.parse(value);
+  if (Number.isNaN(at)) return "";
+  const abs = Math.abs(Math.round((at - now) / 1000));
+  const unit = (amount: number, name: Intl.NumberFormatOptions["unit"]): string =>
+    new Intl.NumberFormat(LOCALE_TAGS[locale], {
+      style: "unit",
+      unit: name,
+      unitDisplay: "narrow",
+      maximumFractionDigits: 0,
+    }).format(amount);
+  if (abs < 60) return nowLabel;
+  if (abs < 3600) return unit(Math.round(abs / 60), "minute");
+  if (abs < 86_400) return unit(Math.round(abs / 3600), "hour");
+  if (abs < 7 * 86_400) return unit(Math.round(abs / 86_400), "day");
+  if (abs < 31 * 86_400) return unit(Math.round(abs / (7 * 86_400)), "week");
+  if (abs < 365 * 86_400) return unit(Math.round(abs / (30 * 86_400)), "month");
+  return unit(Math.round(abs / (365 * 86_400)), "year");
+}
+
 export function formatRelativeTime(locale: Locale, value: string, now = Date.now()): string {
   const at = Date.parse(value);
   if (Number.isNaN(at)) return "";

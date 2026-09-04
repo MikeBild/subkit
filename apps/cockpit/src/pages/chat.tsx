@@ -1,14 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  CircleStop,
-  Eye,
-  EyeOff,
-  List,
-  MessageSquarePlus,
-  PanelRight,
-  Pencil,
-  Search,
-} from "lucide-react";
+import { List, MessageSquarePlus, PanelRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   apiRequest,
@@ -69,7 +60,6 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Message, MessageContent } from "@/components/ui/message";
 import {
   MessageScroller,
@@ -80,7 +70,6 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
   SheetContent,
@@ -93,12 +82,10 @@ import { useI18n } from "@/lib/i18n-context";
 import type { DiffLine } from "@/lib/line-diff";
 import { reconcileReferences } from "@/lib/mentions";
 import { conversationExcerpt, hideTechnicalIdentifiers, humanFacingText } from "@/lib/presentation";
-import { statusLabel } from "@/lib/status-label";
 import { patchCandidateId, toolPartVerdict } from "@/lib/tool-parts";
 import { isStaleCall, toolLabel, toolOutcomeKey } from "@/lib/tool-presentation";
-import { cn } from "@/lib/utils";
 import { useMentionCandidates } from "@/queries/mention-sources";
-import { conversationRow } from "./chat-list-model";
+import { ConversationList } from "./chat-conversation-list";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "./chat-resume";
 import { activeConversationId, type ConversationSelection } from "./chat-selection";
@@ -111,27 +98,7 @@ function localizedTarget(value: string | null | undefined, t: Translate): string
   return hideTechnicalIdentifiers(value, t("tool.referenceHiddenInline"));
 }
 
-/** The word for what a conversation has come to — never the engine's status. */
-function outcomeLabel(t: Translate, outcome: string | null | undefined): string | null {
-  switch (outcome) {
-    case "answered":
-      return t("chat.outcome.answered");
-    case "in_progress":
-      return t("chat.outcome.in_progress");
-    case "awaiting_you":
-      return t("chat.outcome.awaiting_you");
-    case "committed":
-      return t("chat.outcome.committed");
-    case "abandoned":
-      return t("chat.outcome.abandoned");
-    case "stale":
-      return t("chat.outcome.stale");
-    default:
-      return null;
-  }
-}
-
-function surfaceLabel(t: Translate, surface: string | null | undefined): string {
+function surfaceLabel(t: Translate, surface: string | null | undefined): string | null {
   switch (surface) {
     case "web":
       return t("chat.origin.web");
@@ -146,11 +113,14 @@ function surfaceLabel(t: Translate, surface: string | null | undefined): string 
     case "api":
       return t("chat.origin.api");
     default:
-      return t("chat.origin.unknown");
+      // Conversations older than the surface column have no answer here, and
+      // "unknown source" is not one — it fills the line without saying
+      // anything. The reader learns nothing and reads it on every row.
+      return null;
   }
 }
 
-/** "Cockpit · you · 2 h ago" — where it came from, whose it is, when it last moved. */
+/** "Cockpit · Ada · 2 h ago" — only the parts that tell the reader something. */
 export function originLine(
   t: Translate,
   locale: Parameters<typeof formatRelativeTime>[0],
@@ -161,11 +131,9 @@ export function originLine(
     at?: string | null;
   },
 ): string {
-  const who = input.owner
-    ? input.owner.id === input.viewerId
-      ? t("chat.origin.you")
-      : input.owner.name
-    : null;
+  // Your own name is the one name you never need to be told.
+  const who =
+    input.owner && input.owner.id !== input.viewerId && input.owner.name ? input.owner.name : null;
   return [
     surfaceLabel(t, input.surface),
     who,
@@ -385,10 +353,13 @@ function ChatComposer({
   disabled,
   status,
   onSend,
+  onStop,
 }: {
   disabled: boolean;
   status: React.ComponentProps<typeof PromptInputSubmit>["status"];
   onSend: (message: string, references: ConversationReference[]) => Promise<unknown>;
+  /** Sending and stopping are one affordance: the button swaps its glyph. */
+  onStop: () => void;
 }) {
   const { t } = useI18n();
   const session = useSession();
@@ -447,11 +418,13 @@ function ChatComposer({
           />
         </PromptInputBody>
         <PromptInputFooter>
-          <PromptInputTools>
-            <span className="px-2 text-xs text-muted-foreground">{t("chat.composer.mode")}</span>
-          </PromptInputTools>
+          {/* The composer carries two affordances at most, and it had one:
+              the approval-mode caption was fixed text bound to no state, so it
+              claimed a setting the reader could neither see nor change. */}
+          <PromptInputTools />
           <PromptInputSubmit
             status={status}
+            onStop={onStop}
             disabled={disabled}
             aria-label={t("chat.submit")}
             tooltip={t("chat.submit")}
@@ -476,13 +449,22 @@ function ChatMessage({
 }) {
   const { t } = useI18n();
   const from = message.role === "user" ? "user" : "assistant";
+  // Both roles get the same column: a dark bubble on the right made the
+  // reader's own words the loudest thing on the page and cut the usable width
+  // of every question to 80%. Who spoke is a label, not a shape.
   return (
     <Message
-      align={from === "user" ? "end" : "start"}
+      align="start"
       data-cockpit-ui="chat-message"
       data-testid={`chat-message-${messageIndex}`}
     >
       <MessageContent data-testid={`chat-message-${messageIndex}-content`}>
+        <span
+          className="text-xs font-medium text-muted-foreground"
+          data-testid={`chat-message-${messageIndex}-role`}
+        >
+          {t(from === "user" ? "chat.role.you" : "chat.role.assistant")}
+        </span>
         {groupMessageParts(message.parts, pendingApprovalId).map((group) => {
           if (group.kind === "background") {
             return (
@@ -502,11 +484,7 @@ function ChatMessage({
             if (!text) return null;
             const mentions = from === "user" ? referencesFromPart(group.part) : null;
             return (
-              <Bubble
-                key={`${message.id}-text-${group.index}`}
-                variant={from === "user" ? "default" : "ghost"}
-                align={from === "user" ? "end" : "start"}
-              >
+              <Bubble key={`${message.id}-text-${group.index}`} variant="ghost" align="start">
                 <BubbleContent data-testid={`chat-message-${messageIndex}-text-${group.index}`}>
                   {mentions && mentions.references.length > 0 ? (
                     <MentionChips
@@ -611,167 +589,6 @@ function ChatMessage({
   );
 }
 
-function ConversationList({
-  conversations,
-  activeId,
-  onSelect,
-  onNew,
-  search,
-  onSearchChange,
-  onRename,
-  showHidden,
-  onToggleHidden,
-  onHide,
-}: {
-  conversations: readonly Conversation[];
-  activeId: string | null;
-  onSelect(id: string): void;
-  onNew(): void;
-  showHidden: boolean;
-  onToggleHidden(): void;
-  onHide(conversation: Conversation, hidden: boolean): void;
-  search: string;
-  onSearchChange(value: string): void;
-  onRename(conversation: Conversation): void;
-}) {
-  const { t, locale } = useI18n();
-  return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="conversation-list">
-      <div className="flex items-center justify-between p-3">
-        <p className="text-sm font-semibold">{t("chat.conversations")}</p>
-        <IconButton label={t("chat.new")} data-testid="conversation-new" onClick={onNew}>
-          <MessageSquarePlus />
-        </IconButton>
-      </div>
-      <Separator />
-      <div className="p-2">
-        <InputGroup>
-          <InputGroupAddon>
-            <Search />
-          </InputGroupAddon>
-          <InputGroupInput
-            value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder={t("chat.search")}
-            aria-label={t("chat.search")}
-            data-testid="conversation-search"
-          />
-        </InputGroup>
-      </div>
-      <ScrollArea className="h-0 min-h-0 flex-1">
-        <div className="grid gap-1 p-2">
-          {conversations.map((conversation, index) => {
-            const row = conversationRow(
-              {
-                ...conversation,
-                title: conversation.title
-                  ? humanFacingText(conversation.title, t("tool.referenceHidden"))
-                  : conversation.title,
-              },
-              {
-                untitled: t("chat.untitled"),
-                excerpt:
-                  conversationExcerpt(
-                    conversation.last_message_excerpt,
-                    t("chat.toolActivity"),
-                    t("tool.referenceHidden"),
-                    (toolName) => actionLabel(t, toolName),
-                  ) || null,
-              },
-            );
-            return (
-              <div key={conversation.id} className="group flex min-w-0 items-center gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  data-testid={`conversation-item-${index}`}
-                  onClick={() => onSelect(conversation.id)}
-                  className={cn(
-                    "h-auto min-w-0 flex-1 justify-start rounded-lg px-3 py-2.5 text-left",
-                    activeId === conversation.id && "bg-muted text-foreground hover:bg-muted",
-                  )}
-                >
-                  <span className="block min-w-0 flex-1">
-                    <span className="flex items-baseline gap-2">
-                      <span
-                        className="min-w-0 flex-1 truncate text-sm font-medium"
-                        data-testid={`conversation-item-${index}-title`}
-                      >
-                        {row.title}
-                      </span>
-                      {/* When it last moved — the one fact every row carries. */}
-                      <span
-                        className="shrink-0 text-xs font-normal text-muted-foreground"
-                        data-testid={`conversation-item-${index}-time`}
-                      >
-                        {formatRelativeTime(
-                          locale,
-                          conversation.last_activity_at ?? conversation.updated_at,
-                        )}
-                      </span>
-                    </span>
-                    {(row.secondary || row.waiting) && (
-                      <span
-                        className={cn(
-                          "block truncate text-xs font-normal text-muted-foreground",
-                          row.waiting && "text-warning",
-                        )}
-                        data-testid={`conversation-item-${index}-secondary`}
-                      >
-                        {row.waiting ? t("chat.outcome.awaiting_you") : row.secondary}
-                      </span>
-                    )}
-                  </span>
-                </Button>
-                <IconButton
-                  label={t("chat.rename")}
-                  variant="ghost"
-                  className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-                  data-testid={`conversation-rename-${index}`}
-                  onClick={() => onRename(conversation)}
-                >
-                  <Pencil />
-                </IconButton>
-                {/* The open conversation cannot be hidden from under the reader. */}
-                {activeId !== conversation.id && (
-                  <IconButton
-                    label={t(showHidden ? "chat.unhide" : "chat.hide")}
-                    variant="ghost"
-                    className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-                    data-testid={`conversation-hide-${index}`}
-                    onClick={() => onHide(conversation, !showHidden)}
-                  >
-                    {showHidden ? <Eye /> : <EyeOff />}
-                  </IconButton>
-                )}
-              </div>
-            );
-          })}
-          {showHidden && conversations.length === 0 && (
-            <p
-              className="px-3 py-2 text-xs text-muted-foreground"
-              data-testid="conversation-hidden-empty"
-            >
-              {t("chat.hidden.empty")}
-            </p>
-          )}
-        </div>
-      </ScrollArea>
-      <Separator />
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="m-2 justify-start text-xs text-muted-foreground"
-        data-testid="conversation-toggle-hidden"
-        onClick={onToggleHidden}
-      >
-        {t(showHidden ? "chat.hidden.back" : "chat.hidden.show")}
-      </Button>
-    </div>
-  );
-}
-
 function selectionFromPath(initialPrompt: string): ConversationSelection {
   if (initialPrompt || window.location.pathname.endsWith("/chat/new")) return { kind: "new" };
   const match = window.location.pathname.match(/\/chat\/([^/?]+)$/);
@@ -812,7 +629,7 @@ export function ChatPage() {
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
-  const [mobileListOpen, setMobileListOpen] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
   useEffect(() => {
     const onPopState = () => {
       const prompt = new URLSearchParams(window.location.search).get("prompt") ?? "";
@@ -923,7 +740,7 @@ export function ChatPage() {
   const resume = detail.data?.resume_summary;
   const createdResources = detail.data?.created_resources ?? [];
   const session = useSession();
-  const status = send.isPending ? "submitted" : send.isError ? "error" : "ready";
+  const status = send.isPending ? "streaming" : send.isError ? "error" : "ready";
   const ordered = useMemo(
     () =>
       [...(conversations.data?.items ?? [])].sort((a, b) =>
@@ -934,24 +751,44 @@ export function ChatPage() {
   // The row the header reads outcome and activity from: the list carries the
   // read-time projection, the detail does not.
   const activeRow = ordered.find((conversation) => conversation.id === activeId) ?? null;
+  const origin = current
+    ? originLine(t, locale, {
+        surface: current.surface,
+        owner: detail.data?.owner ?? null,
+        viewerId: session.principal.id ?? null,
+        at: activeRow?.last_activity_at ?? current.updated_at,
+      })
+    : "";
+  // Only an outcome the reader can act on gets a chip; the rest is the
+  // resting state and the row already carries it.
+  const badge =
+    activeRow?.outcome === "awaiting_you"
+      ? { label: t("chat.outcome.awaiting_you"), urgent: true }
+      : activeRow?.outcome === "in_progress" || (!activeRow && current?.status === "active")
+        ? { label: t("chat.outcome.in_progress"), urgent: false }
+        : null;
+  // Titles are prose the model wrote: internal references never reach a row.
+  const listRows = useMemo(
+    () =>
+      ordered.map((conversation) => ({
+        ...conversation,
+        title: conversation.title
+          ? humanFacingText(conversation.title, t("tool.referenceHidden"))
+          : conversation.title,
+      })),
+    [ordered, t],
+  );
   const list = (
     <ConversationList
-      conversations={ordered}
+      conversations={listRows}
       activeId={activeId}
       showHidden={showHidden}
       onToggleHidden={() => setShowHidden((value) => !value)}
       onHide={(conversation, hidden) => hide.mutate({ id: conversation.id, hidden })}
-      onNew={() => {
-        // "New" is a reset to the empty state, not a form: the composer and
-        // the starter cards are the way in.
-        setSelection({ kind: "new" });
-        setChatPath(null);
-        setMobileListOpen(false);
-      }}
       onSelect={(id) => {
         setSelection({ kind: "existing", id });
         setChatPath(id);
-        setMobileListOpen(false);
+        setListOpen(false);
       }}
       search={conversationSearch}
       onSearchChange={setConversationSearch}
@@ -959,35 +796,53 @@ export function ChatPage() {
         setRenameTarget(conversation);
         setRenameTitle(conversation.title || t("chat.untitled"));
       }}
+      labelsFor={(conversation) => ({
+        untitled: t("chat.untitled"),
+        excerpt:
+          conversationExcerpt(
+            conversation.last_message_excerpt,
+            t("chat.toolActivity"),
+            t("tool.referenceHidden"),
+            (toolName) => actionLabel(t, toolName),
+          ) || null,
+      })}
     />
   );
 
   return (
     <div
-      className="grid h-full min-h-0 min-w-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[17rem_minmax(0,1fr)]"
+      className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden"
       data-cockpit-ui="chat-workspace"
       data-testid="chat-workspace"
     >
-      <aside
-        className="hidden min-h-0 border-r bg-muted/20 lg:flex"
-        data-testid="conversation-sidebar"
-      >
-        {list}
-      </aside>
-
-      <section className="flex min-h-0 min-w-0 flex-col" data-testid="chat-main">
+      {/* The list is a way back in, not a permanent neighbour: it opens on
+          demand at every width, and the conversation keeps the whole page.
+          A reader who is reading one conversation is not choosing another. */}
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="chat-main">
         <header
           className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b px-4 py-2"
           data-testid="chat-header"
         >
           <div className="flex min-w-0 items-center gap-2">
             <IconButton
-              className="lg:hidden"
-              label={t("chat.conversations")}
-              data-testid="conversation-list-mobile-trigger"
-              onClick={() => setMobileListOpen(true)}
+              label={t("chat.conversations.open")}
+              data-testid="conversation-list-trigger"
+              onClick={() => setListOpen(true)}
             >
               <List />
+            </IconButton>
+            {/* "New" is a reset to the empty state, not a form: the composer
+                and the starter cards are the way in. */}
+            <IconButton
+              label={t("chat.new")}
+              data-testid="conversation-new"
+              onClick={() => {
+                setSelection({ kind: "new" });
+                setChatPath(null);
+                setListOpen(false);
+              }}
+            >
+              <MessageSquarePlus />
             </IconButton>
             <div className="min-w-0">
               <h1 className="truncate text-sm font-semibold" data-testid="chat-title">
@@ -998,37 +853,21 @@ export function ChatPage() {
               </p>
               {/* Where it came from, whose it is, when it last moved — beside
                   the summary, not instead of it (§5 keeps the summary line). */}
-              {current && (
+              {current && origin && (
                 <p className="truncate text-xs text-muted-foreground" data-testid="chat-origin">
-                  {originLine(t, locale, {
-                    surface: current.surface,
-                    owner: detail.data?.owner ?? null,
-                    viewerId: session.principal.id ?? null,
-                    at: activeRow?.last_activity_at ?? current.updated_at,
-                  })}
+                  {origin}
                 </p>
               )}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {current && (
-              <Badge
-                variant={activeRow?.outcome === "awaiting_you" ? "destructive" : "outline"}
-                data-testid="chat-status"
-              >
-                {outcomeLabel(t, activeRow?.outcome) ?? statusLabel(t, current.status)}
+            {/* A badge earns its place by changing what the reader does next.
+                "Waiting for you" and "In progress" do; "Answered" and "Idle"
+                are the resting state and were on almost every conversation. */}
+            {current && badge && (
+              <Badge variant={badge.urgent ? "destructive" : "outline"} data-testid="chat-status">
+                {badge.label}
               </Badge>
-            )}
-            {send.isPending && activeId && (
-              <Button
-                size="sm"
-                variant="outline"
-                data-testid="chat-stop"
-                onClick={() => cancel.mutate()}
-              >
-                <CircleStop data-icon="inline-start" />
-                <span className="hidden sm:inline">{t("chat.stop")}</span>
-              </Button>
             )}
             <IconButton
               label={t("chat.toggleContext")}
@@ -1050,7 +889,7 @@ export function ChatPage() {
         <MessageScrollerProvider>
           <MessageScroller className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
             <MessageScrollerViewport>
-              <MessageScrollerContent className="mx-auto w-full max-w-4xl gap-6 px-5 py-6 sm:px-8">
+              <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-6 px-5 py-6 sm:px-8">
                 {messages.length === 0 ? (
                   <div
                     className="grid flex-1 place-items-center py-16 text-center"
@@ -1173,6 +1012,7 @@ export function ChatPage() {
               <ChatComposer
                 disabled={send.isPending}
                 status={status}
+                onStop={() => cancel.mutate()}
                 onSend={(message, references) => send.mutateAsync({ message, references })}
               />
             </PromptInputProvider>
@@ -1278,13 +1118,13 @@ export function ChatPage() {
         </SheetContent>
       </Sheet>
 
-      <Sheet open={mobileListOpen} onOpenChange={setMobileListOpen}>
+      <Sheet open={listOpen} onOpenChange={setListOpen}>
         <SheetContent
           side="left"
           className="w-80 p-0"
-          closeLabel={t("common.close")}
-          closeTestId="conversation-list-mobile-close"
-          data-testid="conversation-list-mobile"
+          closeLabel={t("chat.conversations.close")}
+          closeTestId="conversation-list-close"
+          data-testid="conversation-list-panel"
         >
           <SheetHeader className="sr-only">
             <SheetTitle>{t("chat.conversations")}</SheetTitle>
