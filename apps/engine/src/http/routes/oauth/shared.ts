@@ -125,8 +125,7 @@ export const MCP_SCOPE_PERMISSIONS = [
   "metrics:read",
 ] as const;
 
-/** The read-only scope that gates `GET /metrics`. */
-export const METRICS_SCOPE = "metrics:read";
+export { METRICS_SCOPE } from "../../../auth/index.ts";
 
 // MCP scopes the principal is permitted to hold — a token can never
 // carry a scope its owner lacks. Derived from the RBAC catalog via

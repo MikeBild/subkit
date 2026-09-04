@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { METRICS_SCOPE } from "../../auth/scopes.ts";
 import {
   _resetConfigForTests,
   getConfig,
@@ -24,6 +25,9 @@ import {
   setConfigKey,
 } from "../loader.ts";
 import { type ConfigLeaf, dottedPath, listConfigLeaves } from "../walk.ts";
+
+/** See `config/non-removable-scopes.ts` — written value is a prefix, not the whole. */
+const PINNED_SCOPES_LEAF = "auth.mcp_oauth.scopes_supported";
 
 let dir: string;
 let cfgPath: string;
@@ -151,7 +155,19 @@ describe("ConfigSchema round-trip — every leaf", () => {
         dottedPath(leaf),
       );
       const live = readDeep(getConfig() as unknown as Record<string, unknown>, leaf.path);
-      expect(live, `${dottedPath(leaf)} (${leaf.kind}) round-trips`).toEqual(written);
+      const label = `${dottedPath(leaf)} (${leaf.kind}) round-trips`;
+      if (dottedPath(leaf) === PINNED_SCOPES_LEAF) {
+        // The one leaf that deliberately reads back as MORE than was written:
+        // it carries scopes an installation may not drop
+        // (`config/non-removable-scopes.ts`). What the operator wrote survives
+        // in their order; the missing non-removable scope is appended.
+        const applied = live as string[];
+        const asked = written as string[];
+        expect(applied.slice(0, asked.length), label).toEqual(asked);
+        expect(applied, `${label} — pinned scope`).toContain(METRICS_SCOPE);
+      } else {
+        expect(live, label).toEqual(written);
+      }
     }
   });
 

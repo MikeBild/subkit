@@ -6,6 +6,30 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.35.0 — 2026-09-04
+
+### Fixed
+
+- **`metrics:read` is advertised by a configured installation, not only by a
+  fresh one.** 6.33.0 enforced the scope on `/metrics` and added it to the
+  schema default for `auth.mcp_oauth.scopes_supported` — and every test read
+  that default. A running installation does not: its settings document carries
+  an explicit list persisted by an earlier settings write, and an explicit
+  value beats a default forever. Production on 2026-09-04, engine reporting
+  6.33.0, still served `["mcp:admin","mcp:authoring","mcp:read"]` from
+  `/.well-known/oauth-authorization-server`, so the scope was enforced on a
+  route and offerable nowhere and a monitoring system could not connect at all.
+  The scope is now **non-removable**: it is unioned into the configured list
+  every time a configuration document becomes the running config — the config
+  file, a PostgreSQL revision, a single-leaf settings write — so it always
+  appears in `scopes_supported`, in the `/mcp` `WWW-Authenticate` challenge and
+  on the consent screen. Operators keep the rest of the leaf: entries may be
+  added, reordered and removed, their order is preserved, and the scope is
+  appended only when absent. Stated on the leaf itself (and therefore in
+  `docs/admins/settings-reference.md`) and in `docs/operators/observability.md`.
+  No migration: the pin applies on every boot, so an installation whose stored
+  document lists three scopes serves four after the upgrade.
+
 ## 6.34.0 — 2026-09-04
 
 ### Fixed

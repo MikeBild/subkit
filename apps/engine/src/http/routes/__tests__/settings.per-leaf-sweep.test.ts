@@ -19,6 +19,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
+import { METRICS_SCOPE } from "../../../auth/scopes.ts";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../../config/loader.ts";
 import { type ConfigLeaf, dottedPath, listConfigLeaves } from "../../../config/walk.ts";
 import { auditLog } from "../../../db/schema/audit.ts";
@@ -232,7 +233,17 @@ describe(`per-leaf HTTP sweep — ${EDITABLE_LEAVES.length}/${LEAVES.length} edi
           }
           return cursor;
         })();
-        if (JSON.stringify(cur) !== JSON.stringify(value)) {
+        // `auth.mcp_oauth.scopes_supported` reads back as MORE than was PUT:
+        // it carries scopes an installation may not drop
+        // (`config/non-removable-scopes.ts`). The operator's value survives in
+        // their order, so compare the prefix and require the pinned scope
+        // rather than skipping the leaf.
+        const pinned = dotted === "auth.mcp_oauth.scopes_supported";
+        const applied = pinned ? (cur as string[]).slice(0, (value as string[]).length) : cur;
+        if (pinned && !(cur as string[]).includes(METRICS_SCOPE)) {
+          failures.push(`${dotted}: getConfig=${JSON.stringify(cur)} dropped ${METRICS_SCOPE}`);
+        }
+        if (JSON.stringify(applied) !== JSON.stringify(value)) {
           failures.push(
             `${dotted}: getConfig=${JSON.stringify(cur)} != PUT ${JSON.stringify(value)}`,
           );
