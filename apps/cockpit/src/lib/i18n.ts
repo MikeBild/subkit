@@ -2716,7 +2716,10 @@ export function formatDateTime(locale: Locale, value: string | Date | null | und
  * this list is trying to lose, so the caller gets a width it can reserve.
  *
  * Built from `Intl.NumberFormat` unit style rather than hand-written suffixes:
- * the abbreviations differ per language and are not ours to invent.
+ * the abbreviations differ per language and are not ours to invent. "short"
+ * rather than "narrow": German narrow collapses week to "W", month to "M" and
+ * minute to "min", so a row read "3 W" and the reader had to guess between
+ * week and something else. "3 Wo." still fits the box the row reserves.
  */
 export function formatShortRelativeTime(
   locale: Locale,
@@ -2731,7 +2734,7 @@ export function formatShortRelativeTime(
     new Intl.NumberFormat(LOCALE_TAGS[locale], {
       style: "unit",
       unit: name,
-      unitDisplay: "narrow",
+      unitDisplay: "short",
       maximumFractionDigits: 0,
     }).format(amount);
   if (abs < 60) return nowLabel;
