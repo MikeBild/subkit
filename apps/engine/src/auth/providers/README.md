@@ -16,9 +16,12 @@ registered when the MCP OAuth server is enabled. They are not interactive
 browser providers and therefore are not entries in `auth.providers`.
 
 The same `auth.providers` list drives the private authenticated operator
-inventory, the generic browser routes, MCP OAuth login, and bearer verification.
+inventory, the generic browser routes, MCP OAuth login, and external assertion
+exchange.
 `GET /v1/identity/providers` returns only protocol, opaque id, and label; it is
-never anonymous discovery. Multiple direct OIDC records
+never anonymous discovery. OIDC adapters are resolved from the live list by the
+login and assertion-exchange funnels rather than being captured in the static
+HTTP authentication registry. Multiple direct OIDC records
 may coexist; each client, secret, callback and session belongs to this SubKit
 deployment. Provider IDs and labels are deployment choices. The only
 browser routes are:

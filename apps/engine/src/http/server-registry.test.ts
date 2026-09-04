@@ -35,7 +35,7 @@ describe("buildDefaultRegistry — provider-neutral membership", () => {
     ]);
   });
 
-  test("configured OIDC adapters are registered by id", () => {
+  test("configured OIDC adapters stay in the hot login funnel, not the static middleware registry", () => {
     const auth = authWith([
       { protocol: "api_key", id: "api-key", label: "SubKit API key" },
       {
@@ -53,7 +53,6 @@ describe("buildDefaultRegistry — provider-neutral membership", () => {
       "portal_token",
       "token_exchange",
       "api_key",
-      "partner",
       "browser_session",
     ]);
   });
