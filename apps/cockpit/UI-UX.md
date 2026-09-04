@@ -283,7 +283,11 @@ The shared contract is copied into each repository; no Cockpit imports another p
 
 `scripts/verify-cockpit-visual.mjs` exercises every Cockpit route with representative data in both
 languages at desktop and mobile sizes. It rejects document overflow, transcript/composer overlap,
-raw tool payload excerpts, visible UUIDs and resource error states. It also records Chat tool,
+raw tool payload excerpts, visible UUIDs and resource error states. An identifier inside a fenced
+block is the single exception: there it is the content of an answer rather than a label on it, and
+masking it hands the reader a request body that cannot work. Monospace alone is not the exception —
+a bare identifier in backticks mid-sentence is banned like any other, and reached production once
+because the rule was read as "code is untouchable" rather than "a payload is untouchable". It also records Chat tool,
 tooltip and user-menu states for visual comparison. The production deployment verifier repeats the
 authenticated bilingual route sweep after SSO and publishes its screenshots as a workflow artifact.
 
