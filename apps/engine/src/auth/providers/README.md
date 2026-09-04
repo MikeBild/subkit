@@ -15,8 +15,10 @@ Supported protocols:
 registered when the MCP OAuth server is enabled. They are not interactive
 browser providers and therefore are not entries in `auth.providers`.
 
-The same `auth.providers` list drives provider discovery, the generic browser
-routes, MCP OAuth login, and bearer verification. Multiple direct OIDC records
+The same `auth.providers` list drives the private authenticated operator
+inventory, the generic browser routes, MCP OAuth login, and bearer verification.
+`GET /v1/identity/providers` returns only protocol, opaque id, and label; it is
+never anonymous discovery. Multiple direct OIDC records
 may coexist; each client, secret, callback and session belongs to this SubKit
 deployment. Provider IDs and labels are deployment choices. The only
 browser routes are:
