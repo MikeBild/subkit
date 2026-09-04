@@ -891,11 +891,12 @@ export function ChatPage() {
             <MessageScrollerViewport>
               <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-6 px-5 py-6 sm:px-8">
                 {messages.length === 0 ? (
-                  <div
-                    className="grid flex-1 place-items-center py-16 text-center"
-                    data-testid="chat-empty"
-                  >
-                    <div className="max-w-2xl">
+                  // `place-items-center` on a box taller than the scroller splits
+                  // the overflow between top and bottom, and the top half is
+                  // clipped — which is where the icon sat. `m-auto` centres the
+                  // same way while keeping the whole block below the top edge.
+                  <div className="flex flex-1 py-10 text-center" data-testid="chat-empty">
+                    <div className="m-auto max-w-2xl">
                       <span className="mx-auto grid size-10 place-items-center rounded-full bg-muted">
                         <MessageSquarePlus />
                       </span>

@@ -86,7 +86,7 @@ export function ConversationList({
                   data-testid={`conversation-item-${index}`}
                   onClick={() => onSelect(conversation.id)}
                   className={cn(
-                    "h-auto min-w-0 flex-1 justify-start rounded-lg py-2 pr-16 pl-3 text-left",
+                    "h-auto min-w-0 flex-1 justify-start rounded-lg py-2 pr-18 pl-3 text-left",
                     active && "bg-muted text-foreground hover:bg-muted",
                   )}
                 >
@@ -113,7 +113,7 @@ export function ConversationList({
                 {/* One box, two contents: the age at rest, the actions on
                     approach. Reserving the width here is what stops the title
                     from jumping when the pointer crosses a row. */}
-                <span className="pointer-events-none absolute inset-y-0 right-1 flex w-14 items-center justify-end">
+                <span className="pointer-events-none absolute inset-y-0 right-1 flex w-16 items-center justify-end">
                   <span
                     className="text-xs text-muted-foreground tabular-nums transition-opacity group-focus-within:opacity-0 group-hover:opacity-0"
                     data-testid={`conversation-item-${index}-time`}
