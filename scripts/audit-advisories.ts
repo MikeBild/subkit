@@ -17,6 +17,7 @@
 // This job is never a required check and nothing depends on it.
 
 import { appendFileSync } from "node:fs";
+import { classifyAuditProcess } from "./lib/audit-process.ts";
 import { readAuditReport } from "./lib/audit-report.ts";
 
 const FAILING_SEVERITIES = new Set(["high", "critical"]);
@@ -58,16 +59,26 @@ const proc = Bun.spawn(["bun", "audit", "--json"], {
   stderr: "pipe",
   timeout: TIMEOUT_MS,
 });
-const [stdout, stderr] = await Promise.all([
+const [rawStdout, rawStderr] = await Promise.all([
   new Response(proc.stdout).text(),
   new Response(proc.stderr).text(),
-]).then(([out, err]) => [out.trim(), err.trim()] as const);
+]);
 await proc.exited;
-if (proc.killed) unreachable(`no answer within ${TIMEOUT_MS / 1000}s`);
+const disposition = classifyAuditProcess(
+  {
+    stdout: rawStdout,
+    stderr: rawStderr,
+    exitCode: proc.exitCode,
+    signalCode: proc.signalCode,
+    killed: proc.killed,
+  },
+  TIMEOUT_MS,
+);
+if (disposition.kind === "unreachable") unreachable(disposition.reason);
+const stdout = disposition.stdout;
 
 // `bun audit` exits non-zero merely BECAUSE it found something, so the exit
 // code says nothing on its own. The body is the only evidence.
-if (!stdout) unreachable(stderr ? `no output (${stderr.split("\n")[0]})` : "no output");
 
 let report: Record<string, unknown>;
 try {
