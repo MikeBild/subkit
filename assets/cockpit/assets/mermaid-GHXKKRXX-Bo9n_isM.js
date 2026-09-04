@@ -1,1 +1,0 @@
-import{i as e}from"./index-2AMFgLNx.js";export{e as Mermaid};
