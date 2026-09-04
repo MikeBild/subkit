@@ -78,7 +78,7 @@ export async function listClientApprovals(
 ): Promise<Map<string, ClientApproval>> {
   // tenant-filter:exempt — mcp_oauth_clients is platform-global; the admin
   // route that calls this is platform-global for the same reason.
-  const rows = await exec.execute(sql`
+  const result = await exec.execute(sql`
     SELECT client_id, email
     FROM (
       SELECT t.client_id AS client_id, u.email AS email
@@ -93,9 +93,12 @@ export async function listClientApprovals(
     ) AS approvals
     ORDER BY client_id, email
   `);
+  const rows = Array.isArray(result)
+    ? result
+    : (result.rows as Array<{ client_id: string; email: string }>);
 
   const out = new Map<string, ClientApproval>();
-  for (const raw of rows as unknown as Array<{ client_id: string; email: string }>) {
+  for (const raw of rows) {
     const entry = out.get(raw.client_id) ?? { approved_by: [], live_connections: 0 };
     entry.approved_by.push(raw.email);
     entry.live_connections += 1;
