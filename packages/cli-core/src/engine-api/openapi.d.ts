@@ -15934,6 +15934,7 @@ export interface components {
             role_consistent: boolean;
             /** @enum {string} */
             status: "invited" | "active" | "disabled";
+            oauth_connections: number;
             created_at: string;
             updated_at: string;
         };
@@ -16149,6 +16150,8 @@ export interface components {
             redirect_uris: string[];
             /** @enum {string} */
             registration_source: "dcr" | "manual";
+            approved_by: string[];
+            live_connections: number;
             disabled_at: string | null;
             created_at: string;
         };

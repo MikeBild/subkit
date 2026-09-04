@@ -88,6 +88,9 @@ Ground rules (enforced by CI and review):
 - **Tests accompany behavior** — a behavior change without a test at the right layer
   will be asked to add one.
 - **No secrets in fixtures** — use obviously fake values; gitleaks runs in CI.
+- **Known advisories are checked on a schedule, not in the gate** — `.github/workflows/audit.yml`
+  runs `bun audit` once a day and fails only on a real high/critical advisory; an unreachable
+  registry is a warning. It is not a required check, and no release waits for it.
 
 ## Reporting bugs and proposing features
 

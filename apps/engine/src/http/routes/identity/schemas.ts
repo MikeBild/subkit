@@ -31,6 +31,9 @@ export const UserSchema = z
     effective_role: z.string(),
     role_consistent: z.boolean(),
     status: z.enum(["invited", "active", "disabled"]),
+    /** Live MCP connections this person approved. Withdrawing them ends
+     *  exactly this many, which is what the Cockpit says before it asks. */
+    oauth_connections: z.number().int().nonnegative(),
     created_at: z.string(),
     updated_at: z.string(),
   })
