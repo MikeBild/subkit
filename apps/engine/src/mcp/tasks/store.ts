@@ -172,6 +172,33 @@ export async function setMcpTaskResult(
     .where(and(eq(mcpTasks.tenant_id, tenant_id), eq(mcpTasks.id, task_id)));
 }
 
+/**
+ * Publish a worker result only while that queue attempt still owns the task.
+ * Native elicitation resumes reuse the public MCP task id and replace
+ * `job_id`; the pausing worker may still be unwinding at that instant and
+ * must not overwrite the resumed attempt with its stale result.
+ */
+export async function setMcpTaskResultIfCurrentAttempt(
+  tenant_id: string,
+  task_id: string,
+  attempt_id: string,
+  result: ConversationTurnEnvelope,
+  db: Executor,
+): Promise<boolean> {
+  const rows = await db
+    .update(mcpTasks)
+    .set({ result, updated_at: new Date() })
+    .where(
+      and(
+        eq(mcpTasks.tenant_id, tenant_id),
+        eq(mcpTasks.id, task_id),
+        eq(mcpTasks.job_id, attempt_id),
+      ),
+    )
+    .returning({ id: mcpTasks.id });
+  return rows.length === 1;
+}
+
 /** Worker failure path — persist the machine-readable failure code. */
 export async function setMcpTaskFailure(
   tenant_id: string,
@@ -198,6 +225,7 @@ export async function setMcpTaskFailureIfNotTerminal(
   task_id: string,
   failure_reason: string,
   db: Executor,
+  expected_attempt_id?: string,
 ): Promise<boolean> {
   const rows = await db
     .update(mcpTasks)
@@ -209,6 +237,7 @@ export async function setMcpTaskFailureIfNotTerminal(
         sql`${mcpTasks.result} IS NULL`,
         sql`${mcpTasks.failure_reason} IS NULL`,
         sql`${mcpTasks.cancelled_at} IS NULL`,
+        ...(expected_attempt_id ? [eq(mcpTasks.job_id, expected_attempt_id)] : []),
       ),
     )
     .returning({ id: mcpTasks.id });

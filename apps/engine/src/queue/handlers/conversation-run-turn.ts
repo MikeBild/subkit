@@ -20,6 +20,7 @@
 //     `catch` never ran, so without the DLQ consumer the task would
 //     poll `working` forever.
 
+import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import { auditAwait } from "../../audit/audit.ts";
@@ -45,8 +46,10 @@ import {
   laterTurnCompleted,
   setMcpTaskFailure,
   setMcpTaskFailureIfNotTerminal,
+  setMcpTaskJobId,
   setMcpTaskParked,
   setMcpTaskResult,
+  setMcpTaskResultIfCurrentAttempt,
 } from "../../mcp/tasks/store.ts";
 import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
 import { recordUsageEvent } from "../../stats/usage-events.ts";
@@ -101,6 +104,45 @@ function toEnvelope(outcome: svc.ConversationTurnOutcome): ConversationTurnEnvel
   };
 }
 
+async function storeAttemptResult(
+  data: ConversationRunTurnJob,
+  result: ConversationTurnEnvelope,
+  db: Db,
+): Promise<boolean> {
+  if (data.attempt_id) {
+    return await setMcpTaskResultIfCurrentAttempt(
+      data.tenant_id,
+      data.mcp_task_id,
+      data.attempt_id,
+      result,
+      db,
+    );
+  }
+  // Compatibility for queue rows created before attempt fencing was added.
+  await setMcpTaskResult(data.tenant_id, data.mcp_task_id, result, db);
+  return true;
+}
+
+async function storeAttemptFailure(
+  data: ConversationRunTurnJob,
+  attempt_id: string | undefined,
+  failure_reason: string,
+  db: Db,
+): Promise<boolean> {
+  if (attempt_id) {
+    return await setMcpTaskFailureIfNotTerminal(
+      data.tenant_id,
+      data.mcp_task_id,
+      failure_reason,
+      db,
+      attempt_id,
+    );
+  }
+  // Compatibility for queue rows created before attempt fencing was added.
+  await setMcpTaskFailure(data.tenant_id, data.mcp_task_id, failure_reason, db);
+  return true;
+}
+
 /**
  * Machine-readable failure code for a parked turn the conversation
  * outran. Named for the only condition under which it is stamped.
@@ -127,6 +169,16 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       queue: CONVERSATION_RUN_TURN_QUEUE,
       job_id: job.id,
       error: "mcp_task_not_found",
+      duration_ms: Date.now() - started,
+    });
+    return;
+  }
+  if (data.attempt_id && task.job_id !== data.attempt_id) {
+    log.queue.job.completed({
+      msg: "conversation.run-turn queue attempt was superseded — idempotent no-op",
+      queue: CONVERSATION_RUN_TURN_QUEUE,
+      job_id: job.id,
+      tenant_id: data.tenant_id,
       duration_ms: Date.now() - started,
     });
     return;
@@ -316,8 +368,20 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       );
     }
 
-    // (g) Success — persist the terminal CallToolResult envelope.
-    await setMcpTaskResult(data.tenant_id, data.mcp_task_id, toEnvelope(outcome), db);
+    // (g) Success — persist the terminal CallToolResult envelope. A native
+    // resume reuses the MCP task id, so the pausing attempt is allowed to
+    // finish unwinding only if it still owns `job_id`.
+    const resultStored = await storeAttemptResult(data, toEnvelope(outcome), db);
+    if (!resultStored) {
+      log.queue.job.completed({
+        msg: "conversation.run-turn completed after a newer attempt took ownership — stale result discarded",
+        queue: CONVERSATION_RUN_TURN_QUEUE,
+        job_id: job.id,
+        tenant_id: data.tenant_id,
+        duration_ms: Date.now() - started,
+      });
+      return;
+    }
     recordUsageEvent(db, {
       tenantId: data.tenant_id,
       surface: "conversations",
@@ -363,22 +427,19 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
     // `input_required` from the still-pending row, so `tasks/get`
     // re-surfaces the form) and complete the job without a failure audit.
     if (err instanceof svc.ElicitationValidationError) {
-      await setMcpTaskResult(
-        data.tenant_id,
-        data.mcp_task_id,
-        {
-          conversation_id: data.conversation_id,
-          status: "awaiting_input",
-          events: [
-            {
-              type: "validation_error",
-              errors: err.field_errors.map((fe) => ({ path: fe.name, message: fe.message })),
-            },
-          ],
-          pending_elicitation_id: err.elicitation_id,
-        },
-        db,
-      );
+      const validationResult = {
+        conversation_id: data.conversation_id,
+        status: "awaiting_input",
+        events: [
+          {
+            type: "validation_error",
+            errors: err.field_errors.map((fe) => ({ path: fe.name, message: fe.message })),
+          },
+        ],
+        pending_elicitation_id: err.elicitation_id,
+      } satisfies ConversationTurnEnvelope;
+      const validationStored = await storeAttemptResult(data, validationResult, db);
+      if (!validationStored) return;
       recordUsageEvent(db, {
         tenantId: data.tenant_id,
         surface: "conversations",
@@ -412,13 +473,18 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
     // cannot ping-pong forever. The mcp_tasks row stays non-terminal, so
     // `tasks/get` keeps deriving `working` until the parked turn runs.
     const parkPlan = planProviderLimitPark(err, data.provider_limit_parks ?? 0, Date.now());
+    let failureAttemptId = data.attempt_id;
     if (parkPlan) {
       try {
-        await boss.send(
-          CONVERSATION_RUN_TURN_QUEUE,
+        const retryAttemptId = randomUUID();
+        await setMcpTaskJobId(data.tenant_id, data.mcp_task_id, retryAttemptId, db);
+        failureAttemptId = retryAttemptId;
+        const retryJobId = await enqueueConversationRunTurn(
+          boss,
           { ...data, provider_limit_parks: parkPlan.parks },
-          { startAfter: parkPlan.start_after },
+          { id: retryAttemptId, startAfter: parkPlan.start_after },
         );
+        if (retryJobId !== retryAttemptId) throw new Error("queue rejected the parked retry job");
         // Make the wait legible to whoever is polling. The task row stays
         // non-terminal on purpose — the turn WILL run — but "not terminal" must
         // not mean "indistinguishable from working".
@@ -455,7 +521,17 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       }
     }
     const failureReason = err instanceof Error ? err.message : String(err);
-    await setMcpTaskFailure(data.tenant_id, data.mcp_task_id, failureReason, db);
+    const failureStored = await storeAttemptFailure(data, failureAttemptId, failureReason, db);
+    if (!failureStored) {
+      log.queue.job.completed({
+        msg: "conversation.run-turn failed after a newer attempt took ownership — stale failure discarded",
+        queue: CONVERSATION_RUN_TURN_QUEUE,
+        job_id: job.id,
+        tenant_id: data.tenant_id,
+        duration_ms: Date.now() - started,
+      });
+      return;
+    }
     recordUsageEvent(db, {
       tenantId: data.tenant_id,
       surface: "conversations",
@@ -524,6 +600,12 @@ export async function registerConversationRunTurnHandler(
 export async function enqueueConversationRunTurn(
   boss: PgBoss,
   payload: ConversationRunTurnJob,
+  options: { id?: string; startAfter?: Date } = {},
 ): Promise<string | null> {
-  return await boss.send(CONVERSATION_RUN_TURN_QUEUE, payload);
+  const { id, ...sendOptions } = options;
+  return await boss.send(
+    CONVERSATION_RUN_TURN_QUEUE,
+    { ...payload, ...(id ? { attempt_id: id } : {}) },
+    { ...sendOptions, ...(id ? { id } : {}) },
+  );
 }
