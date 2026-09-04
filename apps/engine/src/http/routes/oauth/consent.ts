@@ -24,6 +24,7 @@ import {
   deriveSessionSecret,
   intersectScopes,
   MCP_SCOPE_PERMISSIONS,
+  METRICS_SCOPE,
   parseFormBody,
   permittedMcpScopes,
   resolveSession,
@@ -254,7 +255,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     const tenantRow = tenantRows[0];
 
     // Intersect requested scopes with supported scopes
-    let supportedScopes: string[] = ["mcp:read", "mcp:authoring", "mcp:admin"];
+    let supportedScopes: string[] = [...MCP_SCOPE_PERMISSIONS];
     try {
       supportedScopes = getConfig().auth.mcp_oauth.scopes_supported;
     } catch {
@@ -286,8 +287,17 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
 
     // Pre-check what the client asked for (clamped to the offered ceiling), and
     // always pre-check mcp:read when offered — it is the granted baseline.
+    //
+    // `metrics:read` is the exception: a scope-less DCR client registers the
+    // FULL supported set, so the RFC 6749 fallback above would otherwise
+    // pre-tick "read the operational counters" for a client that never asked
+    // for it. It is offered — an unchecked box the person can tick — but only
+    // an explicit `scope=` parameter pre-ticks it.
     const requestedSet = new Set(requestedScope.split(" ").filter(Boolean));
-    const preChecked = offeredScopes.filter((s) => requestedSet.has(s) || s === "mcp:read");
+    const explicitlyRequested = new Set((scopeParam ?? "").split(" ").filter(Boolean));
+    const preChecked = offeredScopes.filter((s) =>
+      s === METRICS_SCOPE ? explicitlyRequested.has(s) : requestedSet.has(s) || s === "mcp:read",
+    );
 
     // Validate RFC 8707 resource indicator — must target this server if present.
     if (resource) {
@@ -298,13 +308,21 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       }
     }
 
-    // Read is the mandatory baseline. Never silently add an unrequested scope.
+    // Never silently add an unrequested scope, and never render a consent
+    // screen with nothing on it.
     //
-    // This is also the entitlement gate: an account whose role holds no `mcp:*`
-    // permission cannot be offered anything, so it is denied here. It used to
-    // deny SILENTLY — no audit row, no log — which is why an unentitled account
-    // reaching this screen could only be detected by scraping the HTML.
-    if (!offeredScopes.includes("mcp:read")) {
+    // This is the entitlement gate: an account whose role holds none of the
+    // offerable permissions cannot be offered anything, so it is denied here.
+    // It used to deny SILENTLY — no audit row, no log — which is why an
+    // unentitled account reaching this screen could only be detected by
+    // scraping the HTML.
+    //
+    // The gate used to demand `mcp:read` specifically, which made a
+    // monitoring-only connection impossible: a client asking for
+    // `scope=metrics:read` was offered exactly that and then refused for not
+    // having asked for MCP read as well. Any non-empty offer is a valid
+    // consent screen.
+    if (offeredScopes.length === 0) {
       await auditAwait(
         {
           tenant_id: sessionPayload.tenant_id,

@@ -92,7 +92,7 @@
       "access_token_ttl_seconds": 3600,
       "refresh_token_ttl_seconds": 2592000,
       "authorization_code_ttl_seconds": 60,
-      "scopes_supported": ["mcp:read", "mcp:authoring", "mcp:admin"]
+      "scopes_supported": ["mcp:read", "mcp:authoring", "mcp:admin", "metrics:read"]
     }
   },
   "platform": {

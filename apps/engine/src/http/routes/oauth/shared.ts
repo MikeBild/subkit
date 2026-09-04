@@ -113,7 +113,20 @@ export function intersectScopes(requested: string, supported: string[]): string 
 }
 
 // The OAuth scope strings are 1:1 with RBAC permission names.
-export const MCP_SCOPE_PERMISSIONS = ["mcp:read", "mcp:authoring", "mcp:admin"] as const;
+//
+// `metrics:read` is a full member of the vocabulary, not an afterthought: a
+// person connecting a monitoring system must be able to grant "read the
+// operational counters" and nothing else. It is read-only — it gates
+// `GET /metrics` and no other route.
+export const MCP_SCOPE_PERMISSIONS = [
+  "mcp:read",
+  "mcp:authoring",
+  "mcp:admin",
+  "metrics:read",
+] as const;
+
+/** The read-only scope that gates `GET /metrics`. */
+export const METRICS_SCOPE = "metrics:read";
 
 // MCP scopes the principal is permitted to hold — a token can never
 // carry a scope its owner lacks. Derived from the RBAC catalog via
@@ -135,7 +148,7 @@ export async function permittedMcpScopes(
   };
   const allowed: string[] = [];
   for (const permission of MCP_SCOPE_PERMISSIONS) {
-    // `quiet: true` — this loop probes all three `mcp:*` scopes purely
+    // `quiet: true` — this loop probes every offerable scope purely
     // to enumerate which the role holds. Every "no" is an expected,
     // routine outcome (a `mcp:read` role legitimately lacks `mcp:admin`)
     // and must not WARN-log as if it were an enforcement failure. The

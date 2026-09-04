@@ -1,14 +1,16 @@
 // GET /metrics — Prometheus text exposition.
 //
-// Deliberately ungated inside the product. Whether this port is reachable at
-// all is a deployment property, and this route makes no claim about what any
-// deployment does — the previous version of this comment asserted that a
-// shared scrape key is checked once at the edge, which was a plan, not a fact:
-// no such credential exists and the design was withdrawn the same day. What
-// the route owns is the exposition; a caller that reaches this process reads
-// it. `metrics:read` and the `metrics_scraper` role stay seeded in
-// `../../rbac/seed.ts` — they predate this and dropping them would be a
-// migration with nothing on the other side.
+// One scope, stated here and in `docs/operators/observability.md`:
+// `/metrics` needs `metrics:read`. That holds for every credential that
+// carries a scope list — an API key, an RFC 8693 exchanged token, a Cockpit
+// connection token — and the caller's role never widens it (see
+// `../middleware/scope.ts`). A credential with no scope list at all falls
+// back to the role check, so an unrestricted admin key still scrapes.
+//
+// A monitoring system therefore needs no pasted key: a connection whose
+// consent screen granted `metrics:read` and nothing else reads this route
+// and nothing else. `metrics:read` and the `metrics_scraper` role are seeded
+// in `../../rbac/seed.ts`.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { getMetrics, refreshProcessUptime } from "../../observability/index.ts";

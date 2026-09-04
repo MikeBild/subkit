@@ -1,10 +1,80 @@
+import { spawn } from "node:child_process";
 import { mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
 import { standAt } from "./lib/cockpit-identity.mjs";
 
-const baseUrl = (process.env.COCKPIT_BASE_URL || "http://127.0.0.1:4175").replace(/\/$/, "");
+/** A port nothing is listening on right now — claimed immediately with --strictPort. */
+function freePort() {
+  return new Promise((ok, no) => {
+    const probe = createServer();
+    probe.once("error", no);
+    probe.listen(0, "127.0.0.1", () => {
+      const { port } = probe.address();
+      probe.close(() => ok(port));
+    });
+  });
+}
+
+/** Start `vite preview` over the built cockpit and wait until it answers. */
+async function startPreviewServer() {
+  const port = await freePort();
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const child = spawn(
+    "bunx",
+    [
+      "vite",
+      "preview",
+      "--config",
+      "apps/cockpit/vite.config.ts",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      String(port),
+      "--strictPort",
+    ],
+    { stdio: ["ignore", "ignore", "inherit"] },
+  );
+  const stop = () => {
+    if (!child.killed) child.kill("SIGTERM");
+  };
+  process.on("exit", stop);
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    if (child.exitCode !== null)
+      throw new Error(
+        `Cockpit visual sweep NOT TAKEN — the preview server exited with code ${child.exitCode} before serving ${baseUrl}/cockpit/.`,
+      );
+    const answered = await fetch(`${baseUrl}/cockpit/`)
+      .then((res) => res.ok)
+      .catch(() => false);
+    if (answered) return { baseUrl, stop };
+    await new Promise((ok) => setTimeout(ok, 250));
+  }
+  stop();
+  throw new Error(
+    `Cockpit visual sweep NOT TAKEN — the preview server never answered on ${baseUrl}/cockpit/ within 30 s.`,
+  );
+}
+
+/**
+ * The sweep serves the build it is checking.
+ *
+ * It used to point at a fixed default port and photograph whatever answered
+ * there. Twice now that was a masterless preview of a FOREIGN session: the
+ * identity stand below asks "which product?" and gets the right answer, because
+ * the other process is serving this same product from a different working tree.
+ * A run then measures somebody else's cockpit — on 2026-09-04 that showed up as
+ * a chat page failing an assertion about a sidebar the checked-out source
+ * plainly renders, and cost an hour before the port was looked at.
+ *
+ * So unless an operator names a target explicitly, this script now starts a
+ * `vite preview` over `assets/cockpit` on a port it picked, and takes it down
+ * again. That also makes the check runnable in CI without a second step.
+ */
+const spawnedPreview = process.env.COCKPIT_BASE_URL ? null : await startPreviewServer();
+const baseUrl = (process.env.COCKPIT_BASE_URL || spawnedPreview.baseUrl).replace(/\/$/, "");
 const outputDir = resolve(process.env.COCKPIT_SCREENSHOT_DIR || ".artifacts/cockpit-sweep/local");
 const uuid = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
 const routes = [
@@ -428,8 +498,6 @@ async function mockApi(route) {
         "connector:read",
         "connector:write",
         "connector:test",
-        "connection:read",
-        "connection:write",
         "connection:read",
         "connection:write",
         "knowledge:read",
@@ -1062,6 +1130,45 @@ async function mockApi(route) {
       rendered: "Attention needed",
       all_clear: false,
     });
+  // "Vorbereitete Änderungen" on the settings page — a secret version somebody
+  // prepared and nobody has approved yet. Added in 6.29.0 and never given a
+  // fixture, so the generic list fallthrough at the bottom of this router
+  // answered it with `{id, name, status, type, created_at}` rows: the section
+  // then read `pending_since` (undefined → `dateTime` calls `.valueOf()` on it)
+  // and `bindings.length`, and threw before the page mounted. The rows below
+  // carry the real `PendingSecretVersion` shape
+  // (`apps/engine/src/http/routes/secret-approvals.ts`).
+  if (path === "/v1/secret-approvals" && request.method() === "GET")
+    return json(route, {
+      items: [
+        {
+          name: "settings.llm.api_key",
+          version: 4,
+          reference: "secret://settings.llm.api_key#4",
+          prepared_by: "operator@example.com",
+          pending_since: new Date(SWEEP_NOW - 3 * 3_600_000).toISOString(),
+          bindings: ["llm.api_key"],
+        },
+        {
+          name: "tenants.default.settings.notifications.smtp.password",
+          version: 2,
+          reference: "secret://tenants.default.settings.notifications.smtp.password#2",
+          prepared_by: "deploy@example.com",
+          pending_since: new Date(SWEEP_NOW - 26 * 3_600_000).toISOString(),
+          bindings: [],
+        },
+      ],
+    });
+  // How a connector authenticates — the card that names a connection or a
+  // pasted key. Unmocked, the generic list fallthrough answered it with an
+  // object that has no `updated_at`, and the card called `dateTime` on it.
+  if (/^\/v1\/connectors\/[^/]+\/credential$/.test(path) && request.method() === "GET")
+    return json(route, {
+      mode: "connection",
+      environment: "prod",
+      connection: { id: "connection-valid", name: "Reporting-Portal" },
+      updated_at: new Date(SWEEP_NOW - 6 * 3_600_000).toISOString(),
+    });
   if (path === "/v1/settings")
     return json(route, {
       saved_revision: 7,
@@ -1672,10 +1779,12 @@ async function shootSheet(page, label, options) {
 /**
  * Whose console is being photographed — asked AT EVERY NAVIGATION.
  *
- * This script starts no server; it points at whatever holds `COCKPIT_BASE_URL`.
- * On its default port a masterless process of a foreign session was listening
- * for two days, and 296 screenshots of someone else's cockpit would have been
- * produced in silence.
+ * This script now SERVES what it photographs (see `startPreviewServer` above).
+ * It used to point at whatever held `COCKPIT_BASE_URL`, and on its default port
+ * a masterless process of a foreign session was listening for two days — twice.
+ * The stand below still asks at every navigation, because a named target
+ * (`COCKPIT_BASE_URL`) is still allowed, and because a product that answers is
+ * not the same as the product this tree builds.
  *
  * The question used to be asked of the HTTP TEXT with a regex while the frames
  * came out of Chromium's parse. That was repaired to the browser — and the
@@ -1692,7 +1801,9 @@ async function shootSheet(page, label, options) {
 const stand = standAt({
   baseUrl,
   refuse: (sentence, options) => new Error(`Cockpit visual sweep NOT TAKEN — ${sentence}`, options),
-  hint: "This sweep starts no server — build the cockpit and run a preview on that port first.",
+  hint: process.env.COCKPIT_BASE_URL
+    ? "COCKPIT_BASE_URL names this port; build the cockpit and run a preview on it, or unset it and let the sweep serve its own build."
+    : "The sweep started this preview itself over assets/cockpit — a foreign answer here means the port was taken between the probe and the bind.",
 });
 
 // BEFORE the browser starts, and before a single frame is produced: a sweep
@@ -2023,6 +2134,7 @@ for (const locale of variants) {
   }
 }
 await browser.close();
+spawnedPreview?.stop();
 if (errors.length) throw new Error(errors.join("; "));
 // The count, held against the effect it claims to describe.
 //
