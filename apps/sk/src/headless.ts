@@ -236,6 +236,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
         raw_input: opts.prompt,
         resolved_prompt: resolved.prompt,
         artifacts: resolved.artifacts,
+        references: resolved.references,
         warnings: resolved.warnings,
       },
       traceContext(),
@@ -312,6 +313,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
           conversationId,
           {
             message: resolved.prompt,
+            ...(resolved.references.length > 0 ? { references: resolved.references } : {}),
             ...(memory.content ? { memory: memory.content } : {}),
             ...(opts.maxTurns !== undefined ? { step_budget: opts.maxTurns } : {}),
           },
@@ -370,6 +372,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       streamResponse = await client.createConversationStream(
         {
           initial_message: resolved.prompt,
+          ...(resolved.references.length > 0 ? { references: resolved.references } : {}),
           ...(memory.content ? { memory: memory.content } : {}),
           ...(connectorId ? { connector_id: connectorId } : {}),
           ...(workflowId ? { workflow_id: workflowId } : {}),
@@ -478,6 +481,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
         conversationId,
         {
           message: resolved.prompt,
+          ...(resolved.references.length > 0 ? { references: resolved.references } : {}),
           ...(memory.content ? { memory: memory.content } : {}),
           ...(opts.maxTurns !== undefined ? { step_budget: opts.maxTurns } : {}),
         },

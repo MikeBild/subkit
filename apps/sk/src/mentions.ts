@@ -34,13 +34,49 @@ export interface MentionResolveOptions {
   client?: EngineClient;
 }
 
+/** A reference the engine resolves itself, once per turn. */
+export interface ConversationReference {
+  type: "workflow" | "connector";
+  id: string;
+  label: string;
+}
+
 export interface ResolvedMentions {
   /** The prompt with mention markers replaced by human-readable references. */
   prompt: string;
   /** Inlined artifacts keyed by the original mention string. */
   artifacts: Array<{ mention: string; title: string; body: string }>;
+  /**
+   * Structured references travelling beside the text.
+   *
+   * A workflow or a connector is named rather than pasted: the engine resolves
+   * it fresh on every turn, projects it, and budgets it. The alternative —
+   * inlining the whole GET payload into the message, which is what this did —
+   * is stored on the user row and replayed in full on every later turn, so one
+   * mention of a large object becomes permanent context for the rest of the
+   * conversation, and a deleted object stays in the transcript as though it
+   * still existed.
+   */
+  references: ConversationReference[];
   /** Warnings surfaced during resolution (oversized, not-found, denied). */
   warnings: string[];
+}
+
+/** Mention kinds the engine can resolve for itself. */
+const REFERENCE_KINDS: Record<string, ConversationReference["type"]> = {
+  workflow: "workflow",
+  connector: "connector",
+};
+
+/** The engine's label charset; anything else falls back to the written token. */
+const LABEL_OK = /^[\p{L}\p{N} _./-]{1,200}$/u;
+
+function referenceLabel(payload: Record<string, unknown>, written: string): string {
+  for (const key of ["slug", "name", "display_name"]) {
+    const value = payload[key];
+    if (typeof value === "string" && LABEL_OK.test(value)) return value;
+  }
+  return LABEL_OK.test(written) ? written : "reference";
 }
 
 const MENTION_RE = /@([A-Za-z0-9_\-./:]+)/g;
@@ -63,6 +99,7 @@ export async function resolveMentions(
   const additionalDirectories = opts.additionalDirectories ?? [];
   const maxBytes = opts.maxBytes ?? 262144;
   const artifacts: ResolvedMentions["artifacts"] = [];
+  const references: ConversationReference[] = [];
   const warnings: string[] = [];
   const handled = new Set<string>();
 
@@ -103,6 +140,20 @@ export async function resolveMentions(
           string,
           unknown
         >;
+        const referenceType = REFERENCE_KINDS[kind];
+        const id = payload.id;
+        if (referenceType && typeof id === "string") {
+          // Name it and let the engine fetch it. The token stays in the text so
+          // the person still reads what they wrote.
+          references.push({
+            type: referenceType,
+            id,
+            label: referenceLabel(payload, rest),
+          });
+          continue;
+        }
+        // Kinds the engine has no reference type for keep the inline copy;
+        // there is nothing on the other side to resolve them against yet.
         artifacts.push({
           mention: full,
           title: `${kind.charAt(0).toUpperCase()}${kind.slice(1)} ${rest}`,
@@ -152,5 +203,5 @@ export async function resolveMentions(
       .join("\n\n");
     out = `${prompt}\n\n---\n${appendix}`;
   }
-  return { prompt: out, artifacts, warnings };
+  return { prompt: out, artifacts, references, warnings };
 }
