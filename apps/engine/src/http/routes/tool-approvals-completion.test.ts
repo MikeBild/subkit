@@ -39,16 +39,20 @@ let requester: ResolvedPrincipal;
 
 /** Jobs the route handed to pg-boss. A stub, so the test needs no queue runtime
  *  and can assert the envelope the worker will actually receive. */
-const sent: Array<{ queue: string; job: ConversationRunTurnJob }> = [];
-let sendResult: string | null = "job-1";
+const sent: Array<{
+  queue: string;
+  job: ConversationRunTurnJob;
+  options: { id?: string } | undefined;
+}> = [];
+let acceptSend = true;
 
 beforeAll(async () => {
   server = await createHttpTestServer("tool-approvals-completion", {
     appOptions: {
       boss: {
-        send: async (queue: string, job: unknown) => {
-          sent.push({ queue, job: job as ConversationRunTurnJob });
-          return sendResult;
+        send: async (queue: string, job: unknown, options?: { id?: string }) => {
+          sent.push({ queue, job: job as ConversationRunTurnJob, options });
+          return acceptSend ? (options?.id ?? null) : null;
         },
       } as never,
     },
@@ -207,7 +211,8 @@ describe("approval portal — the decision owns its effect", () => {
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.kind).toBe("respond_elicitation");
     expect(tasks[0]?.request_source).toBe("portal");
-    expect(tasks[0]?.job_id).toBe("job-1");
+    expect(tasks[0]?.job_id).toBe(sent[0]?.options?.id);
+    expect(tasks[0]?.job_id).toBe(sent[0]?.job.attempt_id);
     expect(tasks[0]?.failure_reason).toBeNull();
 
     // 4. The job carries the provenance the worker needs to treat this as a
@@ -267,7 +272,7 @@ describe("approval portal — the decision owns its effect", () => {
     // pg-boss dedup or a rejected send. The human's decision still stands — it is
     // already recorded on the approval — and the expiry sweep is the backstop.
     sent.length = 0;
-    sendResult = null;
+    acceptSend = false;
     try {
       const parked = await seedParkedCall();
 
@@ -294,7 +299,7 @@ describe("approval portal — the decision owns its effect", () => {
       expect(tasks).toHaveLength(1);
       expect(tasks[0]?.failure_reason).toBe("enqueue_failed");
     } finally {
-      sendResult = "job-1";
+      acceptSend = true;
     }
   });
 
