@@ -1,0 +1,408 @@
+{
+  "@faker-js/faker": [
+    {
+      "id": 1158500,
+      "url": "https://github.com/advisories/GHSA-qxc2-j82w-r537",
+      "title": "Faker: helpers.fake exploitable into arbritary code execution",
+      "severity": "high",
+      "vulnerable_versions": "<=10.4.0",
+      "cwe": ["CWE-95"],
+      "cvss": {
+        "score": 7.8,
+        "vectorString": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H"
+      }
+    }
+  ],
+  "@grpc/grpc-js": [
+    {
+      "id": 1120582,
+      "url": "https://github.com/advisories/GHSA-5375-pq7m-f5r2",
+      "title": "@grpc/grpc-js: A malformed request can cause a server crash",
+      "severity": "high",
+      "vulnerable_versions": ">=1.14.0 <1.14.4",
+      "cwe": ["CWE-248"],
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+      }
+    },
+    {
+      "id": 1120588,
+      "url": "https://github.com/advisories/GHSA-99f4-grh7-6pcq",
+      "title": "@grpc/grpc-js: An incoming malformed compressed message can cause a client or server crash",
+      "severity": "high",
+      "vulnerable_versions": ">=1.14.0 <1.14.4",
+      "cwe": ["CWE-248", "CWE-400"],
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+      }
+    }
+  ],
+  "adm-zip": [
+    {
+      "id": 1123686,
+      "url": "https://github.com/advisories/GHSA-xcpc-8h2w-3j85",
+      "title": "adm-zip: Crafted ZIP file triggers 4GB memory allocation",
+      "severity": "high",
+      "vulnerable_versions": "<0.6.0",
+      "cwe": ["CWE-400", "CWE-789"],
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+      }
+    }
+  ],
+  "axios": [
+    {
+      "id": 1118607,
+      "url": "https://github.com/advisories/GHSA-q8qp-cvcw-x6jj",
+      "title": "Axios has prototype pollution read-side gadgets in HTTP adapter that allow credential injection and request hijacking",
+      "severity": "high",
+      "vulnerable_versions": ">=1.0.0 <1.15.2",
+      "cwe": ["CWE-1321"],
+      "cvss": {
+        "score": 7.4,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N"
+      }
+    },
+    {
+      "id": 1120125,
+      "url": "https://github.com/advisories/GHSA-62hf-57xw-28j9",
+      "title": "Axios: unbounded recursion in toFormData causes DoS via deeply nested request data",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.0.0 <1.15.1",
+      "cwe": ["CWE-674"],
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+      }
+    },
+    {
+      "id": 1120547,
+      "url": "https://github.com/advisories/GHSA-hfxv-24rg-xrqf",
+      "title": "Axios: Regular Expression Denial of Service (ReDoS) via Cookie Name Injection",
+      "severity": "high",
+      "vulnerable_versions": ">=1.0.0 <1.16.0",
+      "cwe": ["CWE-400", "CWE-1333"],
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+      }
+    },
+    {
+      "id": 1120643,
+      "url": "https://github.com/advisories/GHSA-777c-7fjr-54vf",
+      "title": "Allocation of Resources Without Limits or Throttling in Axios",
+      "severity": "high",
+      "vulnerable_versions": ">=1.7.0 <1.16.0",
+      "cwe": ["CWE-770"],
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+      }
+    },
+    {
+      "id": 1120645,
+      "url": "https://github.com/advisories/GHSA-p92q-9vqr-4j8v",
+      "title": "Axios: Proxy-Authorization Credential Leak to Origin Server Across HTTP-to-HTTPS Redirect in Axios Node.js HTTP Adapter",
+      "severity": "high",
+      "vulnerable_versions": ">=1.0.0 <1.16.0",
+      "cwe": ["CWE-201"],
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      }
+    },
+    {
+      "id": 1120647,
+      "url": "https://github.com/advisories/GHSA-j5f8-grm9-p9fc",
+      "title": "Axios: Proxy-Authorization header leaks to redirect target when proxy is re-evaluated to direct connection",
+      "severity": "high",
+      "vulnerable_versions": ">=1.0.0 <1.16.0",
+      "cwe": ["CWE-200"],
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+      }
+    },
+    {
+      "id": 1120649,
+      "url": "https://github.com/advisories/GHSA-3g43-6gmg-66jw",
+      "title": "axios Vulnerable to Credential Theft and Response Hijacking via Prototype Pollution Gadget in Config Merge",
+      "severity": "high",
+      "vulnerable_versions": ">=1.0.0 <1.15.2",
+      "cwe": ["CWE-94", "CWE-1321"],
+      "cvss": {
+        "score": 7,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:L/A:L"
+      }
+    },
+    {
+      "id": 1120650,
+      "url": "https://github.com/advisories/GHSA-35jp-ww65-95wh",
+      "title": "axios Vulnerable to Full Man-in-the-Middle via Prototype Pollution Gadget in `config.proxy`",
+      "severity": "high",
+      "vulnerable_versions": ">=1.0.0 <1.16.0",
+      "cwe": ["CWE-441", "CWE-1321"],
+      "cvss": {
+        "score": 8.7,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:N"
+      }
+    },
+    {
+      "id": 1120652,
+      "url": "https://github.com/advisories/GHSA-898c-q2cr-xwhg",
+      "title": "axios has DoS & Header Injection via Prototype Pollution Read-Side Gadgets in axios merge functions",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.0.0 <1.16.0",
+      "cwe": ["CWE-1321"],
+      "cvss": {
+        "score": 4.8,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:L"
+      }
+    },
+    {
+      "id": 1117574,
+      "url": "https://github.com/advisories/GHSA-w9j2-pvgh-6h63",
+      "title": "Axios: Authentication Bypass via Prototype Pollution Gadget in `validateStatus` Merge Strategy",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.0.0 <1.15.1",
+      "cwe": ["CWE-287", "CWE-1321"],
+      "cvss": {
+        "score": 4.8,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N"
+      }
+    },
+    {
+      "id": 1117576,
+      "url": "https://github.com/advisories/GHSA-pmwg-cvhr-8vh7",
+      "title": "Axios: Incomplete Fix for CVE-2025-62718 \u2014 NO_PROXY Protection Bypassed via RFC 1122 Loopback Subnet (127.0.0.0/8) in Axios 1.15.0",
+      "severity": "high",
+      "vulnerable_versions": ">=1.0.0 <1.15.1",
+      "cwe": ["CWE-183", "CWE-441", "CWE-918"],
+      "cvss": {
+        "score": 7.2,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:L/I:L/A:N"
+      }
+    },
+    {
+      "id": 1117577,
+      "url": "https://github.com/advisories/GHSA-3w6x-2g7m-8v23",
+      "title": "Axios: Invisible JSON Response Tampering via Prototype Pollution Gadget in `parseReviver`",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.0.0 <1.15.2",
+      "cwe": ["CWE-915", "CWE-1321"],
+      "cvss": {
+        "score": 6.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:H/A:N"
+      }
+    },
+    {
+      "id": 1117580,
+      "url": "https://github.com/advisories/GHSA-xhjh-pmcv-23jw",
+      "title": "Axios: Null Byte Injection via Reverse-Encoding in AxiosURLSearchParams",
+      "severity": "low",
+      "vulnerable_versions": ">=1.0.0 <1.15.1",
+      "cwe": ["CWE-116", "CWE-626"],
+      "cvss": {
+        "score": 3.7,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N"
+      }
+    },
+    {
+      "id": 1117581,
+      "url": "https://github.com/advisories/GHSA-445q-vr5w-6q77",
+      "title": "Axios: CRLF Injection in multipart/form-data body via unsanitized blob.type in formDataToStream",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.0.0 <1.15.1",
+      "cwe": ["CWE-93"],
+      "cvss": {
+        "score": 5.3,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N"
+      }
+    },
+    {
+      "id": 1117583,
+      "url": "https://github.com/advisories/GHSA-m7pr-hjqh-92cm",
+      "title": "Axios: no_proxy bypass via IP alias allows SSRF",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.0.0 <1.15.1",
+      "cwe": ["CWE-918"],
+      "cvss": {
+        "score": 6.8,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:N/A:N"
+      }
+    },
+    {
+      "id": 1117587,
+      "url": "https://github.com/advisories/GHSA-5c9x-8gcm-mpgx",
+      "title": "Axios' HTTP adapter-streamed uploads bypass maxBodyLength when maxRedirects: 0",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.0.0 <1.15.1",
+      "cwe": ["CWE-770"],
+      "cvss": {
+        "score": 5.3,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+      }
+    },
+    {
+      "id": 1117589,
+      "url": "https://github.com/advisories/GHSA-vf2m-468p-8v99",
+      "title": "Axios: HTTP adapter streamed responses bypass maxContentLength",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.0.0 <1.15.1",
+      "cwe": ["CWE-770"],
+      "cvss": {
+        "score": 5.3,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+      }
+    },
+    {
+      "id": 1117591,
+      "url": "https://github.com/advisories/GHSA-pf86-5x62-jrwf",
+      "title": "Axios: Prototype Pollution Gadgets - Response Tampering, Data Exfiltration, and Request Hijacking",
+      "severity": "high",
+      "vulnerable_versions": ">=1.0.0 <1.15.1",
+      "cwe": ["CWE-1321"],
+      "cvss": {
+        "score": 7.4,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N"
+      }
+    },
+    {
+      "id": 1117593,
+      "url": "https://github.com/advisories/GHSA-6chq-wfr3-2hj9",
+      "title": "Axios: Header Injection via Prototype Pollution",
+      "severity": "high",
+      "vulnerable_versions": ">=1.0.0 <1.15.1",
+      "cwe": ["CWE-113", "CWE-1321"],
+      "cvss": {
+        "score": 7.4,
+        "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N"
+      }
+    },
+    {
+      "id": 1117595,
+      "url": "https://github.com/advisories/GHSA-xx6v-rp6x-q39c",
+      "title": "Axios: XSRF Token Cross-Origin Leakage via Prototype Pollution Gadget in `withXSRFToken` Boolean Coercion",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.0.0 <1.15.1",
+      "cwe": ["CWE-183", "CWE-201"],
+      "cvss": {
+        "score": 5.4,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N"
+      }
+    },
+    {
+      "id": 1123824,
+      "url": "https://github.com/advisories/GHSA-pjwm-pj3p-43mv",
+      "title": "axios's shouldBypassProxy does not recognize IPv4-mapped IPv6 addresses, allowing NO_PROXY bypass (incomplete fix for CVE-2025-62718)",
+      "severity": "high",
+      "vulnerable_versions": ">=1.15.0 <1.16.0",
+      "cwe": ["CWE-289", "CWE-918"],
+      "cvss": {
+        "score": 8.6,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:N/A:N"
+      }
+    },
+    {
+      "id": 1147949,
+      "url": "https://github.com/advisories/GHSA-mmx7-hfxf-jppx",
+      "title": "Axios: Prototype pollution gadgets can alter axios request construction",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.0.0 <1.18.0",
+      "cwe": ["CWE-1321"],
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      }
+    },
+    {
+      "id": 1147950,
+      "url": "https://github.com/advisories/GHSA-pmv8-rq9r-6j72",
+      "title": "Axios: Deep formToJSON Key Recursion Can Cause Denial of Service",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.0.0 <1.18.0",
+      "cwe": ["CWE-400", "CWE-770"],
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      }
+    },
+    {
+      "id": 1153175,
+      "url": "https://github.com/advisories/GHSA-mwf2-3pr3-8698",
+      "title": "Axios: HTTP/2 streamed uploads bypass `maxBodyLength`",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.13.0 <1.18.0",
+      "cwe": ["CWE-400"],
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      }
+    },
+    {
+      "id": 1153180,
+      "url": "https://github.com/advisories/GHSA-7q8q-rj6j-mhjq",
+      "title": "Axios: Nested axios option objects can consume polluted prototype values",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.0.0 <1.18.0",
+      "cwe": ["CWE-1321"],
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      }
+    },
+    {
+      "id": 1153182,
+      "url": "https://github.com/advisories/GHSA-jqh4-m9w3-8hp9",
+      "title": "Axios: Fetch adapter `ReadableStream` uploads bypass `maxBodyLength`",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.7.0 <1.18.0",
+      "cwe": ["CWE-770"],
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      }
+    },
+    {
+      "id": 1153184,
+      "url": "https://github.com/advisories/GHSA-f4gw-2p7v-4548",
+      "title": "Axios: NO_PROXY bypass for 0.0.0.0 local addresses in axios",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.15.0 <1.18.0",
+      "cwe": ["CWE-183", "CWE-918"],
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      }
+    },
+    {
+      "id": 1153185,
+      "url": "https://github.com/advisories/GHSA-42h9-826w-cgv3",
+      "title": "Axios: Excessive recursion in formDataToJSON can cause denial of service",
+      "severity": "moderate",
+      "vulnerable_versions": ">=1.0.0 <1.18.0",
+      "cwe": ["CWE-400", "CWE-674"],
+      "cvss": {
+        "score": 0,
+        "vectorString": null
+      }
+    }
+  ],
+  "@protobufjs/utf8": [
+    {
+      "id": 1118933,
+      "url": "https://github.com/advisories/GHSA-q6x5-8v7m-xcrf",
+      "title": "protobufjs has overlong UTF-8 decoding",
+      "severity": "moderate",
+      "vulnerable_versions": "<=1.1.0",
+      "cwe": ["CWE-176"],
+      "cvss": {
+        "score": 5.3,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N"
+      }
+    }
+  ]
+}
