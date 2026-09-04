@@ -15,6 +15,7 @@ import type {
   SetupValidationResponse,
   StatusSummary,
 } from "../engine-client.ts";
+import type { MentionCandidate } from "../repl/mention-picker.tsx";
 import type { PaneSpec } from "../repl/slash/handler.ts";
 import type { PermissionMode, StatusLineConfig } from "../repl/status-line/render.ts";
 import type { PersonaProbe } from "../slash.ts";
@@ -73,6 +74,8 @@ export interface InkAppProps {
    * suggesting the standalone `sk settings` CLI.
    */
   engineClient?: EngineClient;
+  /** Engine-backed @-mention choices loaded by the REPL host. */
+  engineMentionCandidates?: readonly MentionCandidate[];
   /**
    * Engine-resolved REPL/UI/notification preferences. Drives `notify()`
    * inside `applyEventStream` — push fires when `pushNotifyEnabled`
