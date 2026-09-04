@@ -287,6 +287,21 @@ const baseMessages = [
       },
     ],
   },
+  {
+    // An answer that mentions the same identifier twice: once in a sentence,
+    // where the reader needs the name, and once inside a payload, where the
+    // identifier IS the answer and masking it hands the reader something that
+    // cannot work. The fixture holds both because the display rule differs.
+    id: "message-3b",
+    role: "assistant",
+    created_at: "2026-08-10T08:02:30.000Z",
+    parts: [
+      {
+        type: "text",
+        text: `Der Workflow ${uuid} ist gespeichert und läuft.\n\nStart:\n\n\`\`\`json\n{ "source": "saved", "workflow_id": "${uuid}" }\n\`\`\`\n\nEin gelöschtes Objekt bleibt ohne Namen: 7c9e6679-7425-40de-944b-e07fc1f90ae7.`,
+      },
+    ],
+  },
 ];
 
 const toolTurn = [
@@ -1547,6 +1562,26 @@ async function assertChat(page, label) {
   // permanent list is the state this check exists to catch.
   if (layout.transcript.width < layout.main.width - 4)
     throw new Error(`${label} transcript does not span the conversation column`);
+  // A payload keeps its identifier; a sentence must not. Both live in the
+  // fixture above, so a rule that masks everything and a rule that masks
+  // nothing each fail here.
+  const identifiers = await page.evaluate(() => {
+    const ID = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
+    const messages = [...document.querySelectorAll('[data-cockpit-ui="chat-message"]')];
+    const inCode = messages.some((message) =>
+      [...message.querySelectorAll("pre, code")].some((element) =>
+        (element.textContent ?? "").includes(ID),
+      ),
+    );
+    const inProse = messages.some((message) => {
+      const clone = message.cloneNode(true);
+      for (const element of [...clone.querySelectorAll("pre, code")]) element.remove();
+      return (clone.textContent ?? "").includes(ID);
+    });
+    return { inCode, inProse };
+  });
+  if (!identifiers.inCode) throw new Error(`${label} rewrote an identifier inside a payload`);
+  if (identifiers.inProse) throw new Error(`${label} prints an identifier in prose`);
   await openConversationList(page);
   const listText = await page.locator('[data-testid="conversation-item-0"]').innerText();
   if (listText.includes('{"tool"')) throw new Error(`${label} exposes a raw tool payload`);
