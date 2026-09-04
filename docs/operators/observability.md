@@ -79,6 +79,14 @@ narrow scope list that reached `/metrics` before this rule existed were granted
 `metrics:read` by a one-shot boot backfill, so production scraping does not break
 at upgrade.
 
+`metrics:read` cannot be configured away. `auth.mcp_oauth.scopes_supported` is an
+operator-owned list — add to it, reorder it, drop anything else from it — but
+`metrics:read` is unioned back in every time a configuration document becomes the
+running config, so it is always in `scopes_supported`, in the `/mcp`
+`WWW-Authenticate` challenge, and on the consent screen. A scope this server
+*enforces* has to be one a person can be *offered*; an installation that dropped
+it would enforce `/metrics` against a scope nobody could grant.
+
 **Product analytics (opt-in).** To forward HTTP-response telemetry to an external
 product-analytics platform (PostHog, Mixpanel, a custom ingest endpoint), enable
 `observability.analytics`. Off by default — no external calls until the operator
