@@ -6,6 +6,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.41.0 — 2026-09-04
+
+### Fixed
+
+- **Monospace is not permission to print an identifier.** The rule that keeps a
+  payload verbatim shipped as "code is untouchable", and an answer that writes
+  "Connector-ID: `2f65…`" put a raw identifier on a surface that bans them. A
+  span whose whole content is an identifier is a mention, not a payload: it gets
+  the object's name. JSON, URLs, commands and every fenced block stay exactly as
+  written. The visual sweep's own identifier rule now states the same exception
+  where it is enforced, and its fixture carries all three shapes.
+
 ## 6.40.0 — 2026-09-04
 
 ### Fixed
@@ -56,16 +68,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   session; the tests now hold that open.
 
 ## 6.39.0 — 2026-09-04
-
-### Fixed
-
-- **Monospace is not permission to print an identifier.** The rule that keeps a
-  payload verbatim shipped as "code is untouchable", and an answer that writes
-  "Connector-ID: `2f65…`" put a raw identifier on a surface that bans them. A
-  span whose whole content is an identifier is a mention, not a payload: it gets
-  the object's name. JSON, URLs, commands and every fenced block stay exactly as
-  written. The visual sweep's own identifier rule now states the same exception
-  where it is enforced, and its fixture carries all three shapes.
 
 ### Added
 
