@@ -110,3 +110,34 @@ describe("runConversationTitleSweep — the walk", () => {
     expect(second.done).toBe(true);
   }, 60_000);
 });
+
+// The form that reached production: titles written before the excerpt helper
+// stopped at a word boundary were cut mid-word at the same length. The first
+// walk skipped every one of them and reported itself complete.
+describe("isStillOpeningLine — the older clip", () => {
+  const LONG =
+    "Erstelle den Workflow guard-probe-replay (slug: guard-probe-replay). Ein transformierender Schritt.";
+  const long = { text: LONG };
+
+  test("a title cut mid-word at the old length is still machine-derived", () => {
+    const hardClip = `${LONG.slice(0, 49)}…`;
+    expect(hardClip.length).toBe(50);
+    expect(isStillOpeningLine(hardClip, long)).toBe(true);
+  });
+
+  test("today's word-boundary derivation is still recognised", () => {
+    expect(isStillOpeningLine(deriveConversationTitle(long), long)).toBe(true);
+  });
+
+  test("the two forms really differ, or this test proves nothing", () => {
+    expect(deriveConversationTitle(long)).not.toBe(`${LONG.slice(0, 49)}…`);
+  });
+
+  test("a person's title of the same length is still left alone", () => {
+    expect(isStillOpeningLine(`${"Mein eigener Titel ".repeat(3)}xyz…`, long)).toBe(false);
+  });
+
+  test("a message shorter than the limit has no clipped form to match", () => {
+    expect(isStillOpeningLine("Kurz…", { text: "Kurz" })).toBe(false);
+  });
+});

@@ -28,12 +28,21 @@
 // stops the (cheap, LLM-free) scan once the walk has reached the end.
 
 import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { deriveConversationTitle, refreshConversationTitle } from "../conversations/title.ts";
+import { stringifyConversationExcerpt } from "../conversations/excerpt.ts";
+import {
+  CONVERSATION_TITLE_MAX,
+  deriveConversationTitle,
+  refreshConversationTitle,
+} from "../conversations/title.ts";
 import type { Db } from "../db/client.ts";
 import { conversationMessages, conversations, dataMigrations } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 
-export const CONVERSATION_TITLE_SWEEP_NAME = "conversation_title_model_v1";
+// v2: the first walk finished having skipped every title cut by the older,
+// word-boundary-less excerpt rule. A new marker is what lets the walk run once
+// more; the old one stays where it is so an instance that has done both is not
+// asked a third time.
+export const CONVERSATION_TITLE_SWEEP_NAME = "conversation_title_model_v2";
 
 /** Rows examined per tick. The scan is one indexed select plus one message
  *  lookup; the cost that matters is the model call per match below. */
@@ -56,7 +65,18 @@ const RETITLE = 10;
 export function isStillOpeningLine(storedTitle: string | null, firstUserMessage: unknown): boolean {
   if (!storedTitle) return false;
   const derived = deriveConversationTitle(firstUserMessage);
-  return derived !== null && derived === storedTitle;
+  if (derived !== null && derived === storedTitle) return true;
+  // Titles written before the excerpt helper learned to stop at a word
+  // boundary were cut mid-word at the same length. They are just as
+  // machine-derived, and the first walk skipped every one of them: on a real
+  // installation that was 58 rows of the newest 100, which is most of what the
+  // reader actually sees. Listing the older form is not a loosening — a title
+  // still has to equal a derivation exactly, there is simply more than one.
+  const text = stringifyConversationExcerpt(firstUserMessage);
+  if (!text) return false;
+  const squashed = text.replace(/\s+/g, " ").trim();
+  if (squashed.length <= CONVERSATION_TITLE_MAX) return false;
+  return `${squashed.slice(0, CONVERSATION_TITLE_MAX - 1).trimEnd()}…` === storedTitle;
 }
 
 export interface ConversationTitleSweepReport {
