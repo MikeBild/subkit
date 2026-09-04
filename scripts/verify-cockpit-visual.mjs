@@ -238,12 +238,14 @@ const baseMessages = [
   {
     id: "message-1",
     role: "user",
+    model: null,
     created_at: "2026-08-10T08:00:00.000Z",
     parts: [{ type: "text", text: "Bitte repariere den Monatsreport." }],
   },
   {
     id: "message-2",
     role: "assistant",
+    model: "provider/model-v1",
     created_at: "2026-08-10T08:01:00.000Z",
     parts: [
       {
@@ -255,6 +257,7 @@ const baseMessages = [
   {
     id: "message-3",
     role: "user",
+    model: null,
     created_at: "2026-08-10T08:02:00.000Z",
     // Two @-mentions, one of which the engine could not resolve: the chip
     // for a workflow that exists and the struck-through warning chip for a
@@ -275,6 +278,7 @@ const baseMessages = [
   {
     id: "message-4",
     role: "assistant",
+    model: "provider/model-v1",
     created_at: "2026-08-10T08:03:00.000Z",
     parts: [
       {
@@ -300,6 +304,7 @@ const baseMessages = [
     // cannot work. The fixture holds both because the display rule differs.
     id: "message-3b",
     role: "assistant",
+    model: "provider/model-v2",
     created_at: "2026-08-10T08:02:30.000Z",
     parts: [
       {
@@ -318,6 +323,7 @@ const toolTurn = [
     // how every card in the product came to read the same three words unnoticed.
     id: "message-5",
     role: "assistant",
+    model: "provider/model-v2",
     created_at: "2026-08-10T08:04:00.000Z",
     parts: [
       {
@@ -401,6 +407,7 @@ const messages = [
   ...Array.from({ length: 36 }, (_, index) => ({
     id: `history-message-${index}`,
     role: index % 3 === 0 ? "user" : "assistant",
+    model: index % 3 === 0 ? null : "provider/model-v1",
     created_at: new Date(Date.parse("2026-08-10T08:04:00.000Z") + index * 60_000).toISOString(),
     parts: [
       {
@@ -1555,19 +1562,89 @@ async function assertChat(page, label) {
     };
     return {
       transcript: rect("chat-transcript"),
-      composer: rect("chat-composer-area"),
+      composerArea: rect("chat-composer-area"),
+      composer: rect("chat-composer"),
+      composerSubmit: rect("chat-composer-submit"),
       main: rect("chat-main"),
+      headerColumn: document
+        .querySelector('[data-testid="chat-header"] > div')
+        ?.getBoundingClientRect()
+        .toJSON(),
+      transcriptColumn: document
+        .querySelector('[data-slot="message-scroller-content"]')
+        ?.getBoundingClientRect()
+        .toJSON(),
+      inputStyle: (() => {
+        const input = document.querySelector('[data-testid="chat-composer-input"]');
+        if (!(input instanceof HTMLElement)) throw new Error("chat-composer-input missing");
+        const style = getComputedStyle(input);
+        return {
+          paddingLeft: Number.parseFloat(style.paddingLeft),
+          paddingTop: Number.parseFloat(style.paddingTop),
+          lineHeight: Number.parseFloat(style.lineHeight),
+        };
+      })(),
     };
   });
   if (layout.transcript.height < 120) throw new Error(`${label} transcript collapsed`);
-  if (layout.transcript.bottom > layout.composer.top + 1)
+  if (layout.transcript.bottom > layout.composerArea.top + 1)
     throw new Error(`${label} transcript overlaps composer`);
-  if (layout.composer.bottom > layout.main.bottom + 1)
+  if (layout.composerArea.bottom > layout.main.bottom + 1)
     throw new Error(`${label} composer is outside Chat`);
   // The transcript owns the page now: a chat that gives its width to a
   // permanent list is the state this check exists to catch.
   if (layout.transcript.width < layout.main.width - 4)
     throw new Error(`${label} transcript does not span the conversation column`);
+  if (Math.abs(layout.composer.height - 48) > 1)
+    throw new Error(`${label} one-line composer is ${layout.composer.height}px, expected 48px`);
+  if (
+    Math.abs(layout.composerSubmit.width - 32) > 1 ||
+    Math.abs(layout.composerSubmit.height - 32) > 1
+  )
+    throw new Error(`${label} composer submit control is not 32px square`);
+  const submitRightInset = layout.composer.right - layout.composerSubmit.right;
+  const submitBottomInset = layout.composer.bottom - layout.composerSubmit.bottom;
+  if (Math.abs(submitRightInset - 8) > 1 || Math.abs(submitBottomInset - 8) > 1)
+    throw new Error(`${label} composer submit control is not inset by 8px`);
+  if (
+    Math.abs(layout.inputStyle.paddingLeft - 16) > 1 ||
+    Math.abs(layout.inputStyle.paddingTop - 11) > 1 ||
+    Math.abs(layout.inputStyle.lineHeight - 24) > 1
+  )
+    throw new Error(`${label} composer input spacing is not 16px/11px with 24px leading`);
+  if (!layout.headerColumn || !layout.transcriptColumn)
+    throw new Error(`${label} shared chat columns are missing`);
+  for (const column of [layout.headerColumn, layout.transcriptColumn]) {
+    if (
+      Math.abs(column.left - layout.composer.left) > 2 ||
+      Math.abs(column.right - layout.composer.right) > 2
+    )
+      throw new Error(
+        `${label} header, transcript, and composer columns do not align: ` +
+          `header=${layout.headerColumn.left}/${layout.headerColumn.right}, ` +
+          `transcript=${layout.transcriptColumn.left}/${layout.transcriptColumn.right}, ` +
+          `composer=${layout.composer.left}/${layout.composer.right}`,
+      );
+  }
+  const composerInput = page.locator('[data-testid="chat-composer-input"]');
+  await composerInput.fill("first line\nsecond line");
+  const multiline = await page.evaluate(() => {
+    const rect = (testId) => {
+      const element = document.querySelector(`[data-testid="${testId}"]`);
+      if (!(element instanceof HTMLElement)) throw new Error(`${testId} missing`);
+      return element.getBoundingClientRect().toJSON();
+    };
+    return { composer: rect("chat-composer"), submit: rect("chat-composer-submit") };
+  });
+  if (multiline.composer.height <= 48) throw new Error(`${label} multiline composer did not grow`);
+  if (Math.abs(multiline.composer.bottom - multiline.submit.bottom - 8) > 1)
+    throw new Error(`${label} multiline submit control is not bottom-aligned`);
+  await composerInput.fill("");
+  const assistantMetadata = await page
+    .locator('[data-testid="chat-message-1-metadata"]')
+    .textContent();
+  if (!assistantMetadata.includes("provider/model-v1"))
+    throw new Error(`${label} assistant metadata is ${JSON.stringify(assistantMetadata)}`);
   // A payload keeps its identifier; a sentence must not. Both live in the
   // fixture above, so a rule that masks everything and a rule that masks
   // nothing each fail here.
@@ -1605,9 +1682,14 @@ async function assertChat(page, label) {
  * exactly the false pass these fixtures exist to prevent.
  */
 async function openConversationList(page) {
-  if (await page.locator('[data-testid="conversation-list"]').isVisible()) return;
-  await page.locator('[data-testid="conversation-list-trigger"]').click();
-  await page.locator('[data-testid="conversation-list"]').waitFor({ state: "visible" });
+  const list = page.locator('[data-testid="conversation-list"]');
+  if (!(await list.isVisible())) {
+    await page.locator('[data-testid="conversation-list-trigger"]').click();
+    await list.waitFor({ state: "visible" });
+  }
+  // Visibility starts at the beginning of the 200 ms sheet transition. Wait
+  // for its documented duration before clicking a moving row or close button.
+  await page.waitForTimeout(250);
 }
 
 async function closeConversationList(page) {
@@ -2075,6 +2157,14 @@ for (const locale of variants) {
       });
       await page.locator('[data-testid="chat-context-toggle"]').click();
       await page.locator('[data-testid="chat-context"]').waitFor({ state: "visible" });
+      await page.locator('[data-testid="chat-context-reference-0"]').waitFor({ state: "visible" });
+      if ((await page.locator('[data-testid="chat-context-reference-0"] a').count()) !== 0)
+        throw new Error(`${locale.artifact}: unresolved chat reference is still linked`);
+      const resolvedReference = page.locator('[data-testid="chat-context-reference-1"] a');
+      if ((await resolvedReference.count()) !== 1)
+        throw new Error(`${locale.artifact}: resolved chat reference is not linked`);
+      if (!(await resolvedReference.getAttribute("href"))?.includes(`/workflows/${uuid}`))
+        throw new Error(`${locale.artifact}: resolved chat reference links to the wrong record`);
       await page.waitForTimeout(300);
       await shoot(page, `${locale.artifact}-desktop-chat-context`, {
         fullPage: false,

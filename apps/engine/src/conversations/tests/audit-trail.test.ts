@@ -92,6 +92,14 @@ describe("conversations/audit-trail", () => {
     const rolesPause = messagesPause.map((m) => m.role);
     expect(rolesPause[0]).toBe("user");
     expect(rolesPause.filter((r) => r === "tool").length).toBe(toolCallsAfterPause.length);
+    const assistantMessages = messagesPause.filter((message) => message.role === "assistant");
+    expect(assistantMessages.length).toBeGreaterThan(0);
+    const billedModels = new Set(usagePause.map((usage) => usage.model));
+    expect(
+      assistantMessages.every(
+        (message) => message.model !== null && billedModels.has(message.model),
+      ),
+    ).toBe(true);
 
     // Audit-log entries so far: created, memory_injected? (no), approval.requested.
     const auditPause = await ctx.testDb.db

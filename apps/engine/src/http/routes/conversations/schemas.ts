@@ -121,6 +121,7 @@ export const UIMessageSchema = z
     id: z.string(),
     role: z.string(),
     parts: z.array(z.unknown()),
+    model: z.string().nullable(),
     created_at: z.string(),
   })
   .openapi("UIMessage");

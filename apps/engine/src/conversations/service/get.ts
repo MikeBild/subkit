@@ -127,6 +127,7 @@ export async function getConversation(
         // a `[file]` placeholder. Without this, the raw fid would land
         // in any UI that renders the conversation transcript.
         content: stripContentSentinels(m.content),
+        model: m.model,
         created_at: m.created_at.toISOString(),
       }),
     ),

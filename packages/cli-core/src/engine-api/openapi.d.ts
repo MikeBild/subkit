@@ -18348,6 +18348,7 @@ export interface components {
             id: string;
             role: string;
             parts: unknown[];
+            model: string | null;
             created_at: string;
         };
         ConversationToolCall: {

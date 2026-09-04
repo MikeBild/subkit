@@ -167,33 +167,35 @@ function withReferences(references?: readonly ConversationReference[]) {
   return references && references.length > 0 ? { references } : {};
 }
 
-export function createConversation(
-  initialMessage: string,
+type ConversationTarget = { workflow_id?: string; connector_id?: string };
+
+export type SendConversationTurnInput = {
+  message: string;
+  references?: readonly ConversationReference[];
+} & (
+  | { conversationId: string; target?: never }
+  | { conversationId?: null; target?: ConversationTarget }
+);
+
+export function sendConversationTurn(
+  input: SendConversationTurnInput,
   onEvent?: (event: ConversationStreamEvent) => void,
-  target: { workflow_id?: string; connector_id?: string } = {},
-  references?: readonly ConversationReference[],
 ): Promise<ConversationRun> {
+  if (input.conversationId) {
+    return streamConversation(
+      `/v1/conversations/${encodeURIComponent(input.conversationId)}/messages`,
+      { message: input.message, ...withReferences(input.references) },
+      onEvent,
+    );
+  }
   return streamConversation(
     "/v1/conversations",
     {
-      initial_message: initialMessage,
+      initial_message: input.message,
       permission_mode: "ask",
-      ...target,
-      ...withReferences(references),
+      ...input.target,
+      ...withReferences(input.references),
     },
-    onEvent,
-  );
-}
-
-export function appendConversationMessage(
-  id: string,
-  message: string,
-  onEvent?: (event: ConversationStreamEvent) => void,
-  references?: readonly ConversationReference[],
-): Promise<ConversationRun> {
-  return streamConversation(
-    `/v1/conversations/${encodeURIComponent(id)}/messages`,
-    { message, ...withReferences(references) },
     onEvent,
   );
 }

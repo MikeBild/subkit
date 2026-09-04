@@ -1767,9 +1767,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                 p.conversation_id,
                 "assistant",
                 assistantContent,
+                { model: activeStepModel },
               ));
             if (signals.assistantMessageId) {
-              await updateMessageContent(p.db, assistantMessageId, assistantContent);
+              await updateMessageContent(p.db, assistantMessageId, assistantContent, {
+                model: activeStepModel,
+              });
             }
             // Back-fill parent_message_id on every child row created during
             // this step so the read path can interleave them under this

@@ -12,6 +12,7 @@ function msg(
   return {
     conversation_id: "conv-1",
     content: null,
+    model: null,
     created_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
@@ -41,10 +42,16 @@ describe("toMessageParts", () => {
 
   test("extracts text from { text } wrapper objects", () => {
     const ui = toMessageParts(
-      msg({ id: "m1", role: "assistant", content: { text: "hi there" } }),
+      msg({
+        id: "m1",
+        role: "assistant",
+        content: { text: "hi there" },
+        model: "provider/model-v1",
+      }),
       [],
     );
     expect(ui.parts).toEqual([{ type: "text", text: "hi there" }]);
+    expect(ui.model).toBe("provider/model-v1");
   });
 
   test("emits empty parts for null/undefined content", () => {

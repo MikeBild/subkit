@@ -174,6 +174,7 @@ export async function forkConversation(
         conversation_id: row.id,
         role: m.role,
         content: m.content,
+        model: m.model,
         tokens_in: m.tokens_in,
         tokens_out: m.tokens_out,
       })),
