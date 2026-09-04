@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.32.0 — 2026-09-04
+
 ### Changed
 
 - **The Cockpit chat gives the page back to the conversation.** The list of
