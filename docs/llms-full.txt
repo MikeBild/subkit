@@ -3844,6 +3844,14 @@ narrow scope list that reached `/metrics` before this rule existed were granted
 `metrics:read` by a one-shot boot backfill, so production scraping does not break
 at upgrade.
 
+`metrics:read` cannot be configured away. `auth.mcp_oauth.scopes_supported` is an
+operator-owned list — add to it, reorder it, drop anything else from it — but
+`metrics:read` is unioned back in every time a configuration document becomes the
+running config, so it is always in `scopes_supported`, in the `/mcp`
+`WWW-Authenticate` challenge, and on the consent screen. A scope this server
+*enforces* has to be one a person can be *offered*; an installation that dropped
+it would enforce `/metrics` against a scope nobody could grant.
+
 **Product analytics (opt-in).** To forward HTTP-response telemetry to an external
 product-analytics platform (PostHog, Mixpanel, a custom ingest endpoint), enable
 `observability.analytics`. Off by default — no external calls until the operator
@@ -13274,7 +13282,7 @@ Authentication
 | `auth.mcp_oauth.dynamic_registration_enabled` | boolean | `true` | global | no | no | Allow RFC 7591 dynamic client registration at POST /v1/oauth/register. |
 | `auth.mcp_oauth.enabled` | boolean | `true` | global | no | yes | Enable the MCP OAuth 2.1 authorization server (ChatGPT / Claude.ai / Cursor). |
 | `auth.mcp_oauth.refresh_token_ttl_seconds` | number | `2592000` | global | no | no | Lifetime in seconds for MCP OAuth refresh tokens (30 days). |
-| `auth.mcp_oauth.scopes_supported` | string[] | `["mcp:read","mcp:authoring","mcp:admin","metrics:read"]` | global | no | no | OAuth scopes advertised in the authorization server metadata. |
+| `auth.mcp_oauth.scopes_supported` | string[] | `["mcp:read","mcp:authoring","mcp:admin","metrics:read"]` | global | no | no | OAuth scopes advertised in the authorization server metadata. Add, reorder and remove freely, except metrics:read: GET /metrics enforces it, so it is restored whenever a written value omits it. |
 | `auth.providers` | json | `[{"protocol":"api_key","id":"api-key","label":"SubKit API key"}]` | global | no | yes | Provider-neutral browser authentication adapters. OIDC records are public clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration. |
 | `auth.session.secret` | string | `""` | global | yes | yes | Session signing secret (auto-generated to a 32-byte hex value on first boot if empty); operator-supplied values must be at least 32 chars |
 

@@ -348,7 +348,9 @@ const McpOAuthSection = z
     scopes_supported: z
       .array(z.string())
       .default(["mcp:read", "mcp:authoring", "mcp:admin", "metrics:read"])
-      .describe("OAuth scopes advertised in the authorization server metadata.")
+      .describe(
+        "OAuth scopes advertised in the authorization server metadata. Add, reorder and remove freely, except metrics:read: GET /metrics enforces it, so it is restored whenever a written value omits it.",
+      )
       .meta(global()),
   })
   .strict()

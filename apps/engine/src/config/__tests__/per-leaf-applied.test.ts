@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { METRICS_SCOPE } from "../../auth/scopes.ts";
 import {
   _resetConfigForTests,
   getConfig,
@@ -163,6 +164,30 @@ function readDeep(source: unknown, leafPath: string[]): unknown {
 
 const LEAVES = listConfigLeaves();
 
+/**
+ * The one leaf whose applied value is deliberately NOT what was written.
+ *
+ * `auth.mcp_oauth.scopes_supported` carries scopes an installation may not
+ * drop (`config/non-removable-scopes.ts`): what the operator wrote is kept, in
+ * their order, and a missing non-removable scope is appended. Written as
+ * "written is a prefix of applied" rather than a skip, so this sweep still
+ * proves the leaf round-trips — it just stops demanding equality where the
+ * product deliberately adds.
+ */
+const PINNED_SCOPES_LEAF = "auth.mcp_oauth.scopes_supported";
+
+function expectApplied(leaf: ConfigLeaf, actual: unknown, written: unknown, where: string): void {
+  const label = `${dottedPath(leaf)} (${leaf.kind}) ${where}`;
+  if (dottedPath(leaf) !== PINNED_SCOPES_LEAF) {
+    expect(actual, label).toEqual(written);
+    return;
+  }
+  const applied = actual as string[];
+  const asked = written as string[];
+  expect(applied.slice(0, asked.length), `${label} keeps what was written`).toEqual(asked);
+  expect(applied, `${label} pins the non-removable scope`).toContain(METRICS_SCOPE);
+}
+
 describe("per-leaf application sweep — every leaf in ConfigSchema", () => {
   test(`every leaf round-trips through PUT + getConfig + on-disk file (${LEAVES.length} leaves)`, async () => {
     let salt = 0;
@@ -176,12 +201,11 @@ describe("per-leaf application sweep — every leaf in ConfigSchema", () => {
       expect(result.leafPath, `${dottedPath(leaf)} returned path`).toBe(dottedPath(leaf));
 
       // 2) in-memory getConfig() reflects the value.
-      const live = readDeep(getConfig(), leaf.path);
-      expect(live, `${dottedPath(leaf)} (${leaf.kind}) in-memory`).toEqual(written);
+      expectApplied(leaf, readDeep(getConfig(), leaf.path), written, "in-memory");
 
       // 3) on-disk file carries the value.
       const onDisk = JSON.parse(readFileSync(cfgPath, "utf8")) as unknown;
-      expect(readDeep(onDisk, leaf.path), `${dottedPath(leaf)} on-disk`).toEqual(written);
+      expectApplied(leaf, readDeep(onDisk, leaf.path), written, "on-disk");
     }
   });
 

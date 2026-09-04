@@ -8,8 +8,9 @@ import {
   ScopeViolationError,
   ValidationError,
 } from "./errors.ts";
+import { parseConfigDocument, safeParseConfigDocument } from "./non-removable-scopes.ts";
 import { inspectRetiredMcpSections, retiredSectionMessage } from "./retired-sections.ts";
-import { type Config, ConfigSchema } from "./schema.ts";
+import type { Config } from "./schema.ts";
 import { type ConfigLeaf, dottedPath, findLeafByPath, listConfigLeaves } from "./walk.ts";
 
 export type SourceTag = "override" | "tenant" | "global" | "default";
@@ -400,7 +401,7 @@ export async function loadConfig(
 
   let parsed: Config;
   try {
-    parsed = ConfigSchema.parse(mergedObj);
+    parsed = parseConfigDocument(mergedObj);
   } catch (err) {
     if (err instanceof Error && "issues" in err) {
       const issues = (err as z.ZodError).issues
@@ -643,7 +644,7 @@ export function installRuntimeConfig(document: unknown): Config {
   if (_state === null) {
     throw new ConfigLoaderError("installRuntimeConfig() called before loadConfig()");
   }
-  const parsed = ConfigSchema.parse(document);
+  const parsed = parseConfigDocument(document);
   mirrorGenericLlmKey(parsed);
   _state.config = parsed;
   _state.globalSourceMap = buildSourceMap(parsed as unknown as Record<string, unknown>);
@@ -803,7 +804,7 @@ export async function setConfigKey(
 
     // Re-validate the whole config after the targeted edit so cross-leaf
     // refinements stay coherent.
-    const fullParse = ConfigSchema.safeParse(updatedConfig);
+    const fullParse = safeParseConfigDocument(updatedConfig);
     if (!fullParse.success) {
       const issue = fullParse.error.issues[0];
       throw new ValidationError(

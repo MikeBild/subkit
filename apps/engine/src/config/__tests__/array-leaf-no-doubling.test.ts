@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { METRICS_SCOPE } from "../../auth/scopes.ts";
 import { _resetConfigForTests, getConfig, loadConfig, setConfigKey } from "../loader.ts";
 import { ConfigSchema } from "../schema.ts";
 
@@ -28,7 +29,7 @@ afterEach(() => {
 });
 
 describe("config loader — array leaves do not double", () => {
-  test("scopes_supported stays at its 3 values across load → setConfigKey → reload", async () => {
+  test("scopes_supported stays bounded across load → setConfigKey → reload", async () => {
     writeFileSync(
       cfgPath,
       JSON.stringify({
@@ -37,25 +38,28 @@ describe("config loader — array leaves do not double", () => {
       }),
     );
 
+    // The configured three, in the operator's order, plus the one scope an
+    // installation may not drop (`config/non-removable-scopes.ts`). The count
+    // this test is about is stability across cycles, not the number itself —
+    // read it from the first load so adding a non-removable scope is not
+    // mistaken for the doubling bug.
     await loadConfig({ env: ENV, configPathOverride: cfgPath });
-    expect(getConfig().auth.mcp_oauth.scopes_supported).toEqual([
-      "mcp:read",
-      "mcp:authoring",
-      "mcp:admin",
-    ]);
+    const afterFirstLoad = [...getConfig().auth.mcp_oauth.scopes_supported];
+    expect(afterFirstLoad.slice(0, 3)).toEqual(["mcp:read", "mcp:authoring", "mcp:admin"]);
+    expect(afterFirstLoad).toContain(METRICS_SCOPE);
 
     // A settings write persists the full in-memory config back to disk; a
     // reload must not concatenate the array with itself.
     await setConfigKey(["llm", "model"], "claude-haiku-4-5", { force: true });
     _resetConfigForTests();
     await loadConfig({ env: ENV, configPathOverride: cfgPath });
-    expect(getConfig().auth.mcp_oauth.scopes_supported).toHaveLength(3);
+    expect(getConfig().auth.mcp_oauth.scopes_supported).toEqual(afterFirstLoad);
 
     // Third cycle — still bounded.
     await setConfigKey(["llm", "model"], "claude-sonnet-4-6", { force: true });
     _resetConfigForTests();
     await loadConfig({ env: ENV, configPathOverride: cfgPath });
-    expect(getConfig().auth.mcp_oauth.scopes_supported).toHaveLength(3);
+    expect(getConfig().auth.mcp_oauth.scopes_supported).toEqual(afterFirstLoad);
   });
 
   test("the schema default array is applied once, not duplicated", async () => {
