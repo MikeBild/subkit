@@ -4,6 +4,7 @@
 // committed-conversation short-circuit.
 
 import { and, desc, eq } from "drizzle-orm";
+import { z } from "zod";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -407,6 +408,40 @@ export async function respondElicitation(
       draft: conv.draft,
       permission_mode: explicitPermissionMode,
     });
+  }
+  // A successful save concludes this turn, not the workflow lifecycle.
+  // Bind the shortcut to this dispatch's exact saved version: an unrelated
+  // confirmation or failed save must never inherit an earlier draft's success.
+  const savedDraft = z
+    .object({
+      workflow_id: z.string(),
+      workflow_version_id: z.string(),
+      persistence_kind: z.literal("draft"),
+      activation_required: z.literal(true),
+    })
+    .safeParse(autoPersist.synthetic_result?.data);
+  if (
+    autoPersist.dispatched &&
+    autoPersist.synthetic_result?.ok &&
+    autoPersist.synthetic_result.tool === "save_workflow_draft" &&
+    savedDraft.success &&
+    conv.conversation.target_workflow_id === savedDraft.data.workflow_id &&
+    conv.draft?.state?.persisted_resources.some(
+      (resource) =>
+        resource.kind === "workflow" &&
+        resource.id === savedDraft.data.workflow_id &&
+        resource.version_id === savedDraft.data.workflow_version_id &&
+        resource.persistence_kind === "draft",
+    )
+  ) {
+    return {
+      conversation: conv.conversation,
+      result: {
+        events: [{ type: "committed", workflow_id: savedDraft.data.workflow_id }],
+        status: "active",
+        committed_workflow_id: savedDraft.data.workflow_id,
+      },
+    };
   }
   if (
     autoPersist.dispatched &&

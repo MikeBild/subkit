@@ -230,7 +230,11 @@ function WorkflowBody({
       </TabsList>
       <TabsContent value="steps" className="pt-4">
         <WorkflowGallery
+          key={`${id}:${String(record.current_version_id ?? "none")}`}
           workflowId={id}
+          versionId={
+            typeof record.current_version_id === "string" ? record.current_version_id : null
+          }
           steps={steps}
           definition={workflowDraftDefinition(record, steps)}
           canRun={canRun}

@@ -9,6 +9,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import {
+  type WorkflowPreviewSource,
+  workflowPreviewRequest,
+  workflowPreviewSucceeded,
+} from "@/lib/workflow-preview";
+import {
   connectorNameOf,
   type ExecutionStep,
   joinStepsWithLastRun,
@@ -26,11 +31,13 @@ interface TestRunResult {
 
 export function WorkflowGallery({
   workflowId,
+  versionId,
   steps,
   definition,
   canRun,
 }: {
   workflowId: string;
+  versionId: string | null;
   steps: readonly unknown[];
   /** The saved definition, replayed as a draft for a whole-workflow test run. */
   definition: Record<string, unknown>;
@@ -50,13 +57,15 @@ export function WorkflowGallery({
   );
 
   const lastExecution = useQuery({
-    queryKey: ["workflow", workflowId, "last-execution"],
+    queryKey: ["workflow", workflowId, versionId, "last-execution"],
     queryFn: () =>
       apiRequest<{ items: Execution[] }>(
         `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&limit=1`,
       ),
   });
-  const executionId = lastExecution.data?.items[0]?.id ?? null;
+  const lastRun = lastExecution.data?.items[0];
+  // Evidence belongs to an exact version, not merely to a workflow or step id.
+  const executionId = versionId && lastRun?.workflow_version_id === versionId ? lastRun.id : null;
   const runSteps = useQuery({
     queryKey: ["execution", executionId, "steps"],
     enabled: Boolean(executionId),
@@ -67,20 +76,20 @@ export function WorkflowGallery({
   });
 
   const test = useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
+    mutationFn: (body: WorkflowPreviewSource) =>
       apiRequest<Record<string, unknown>>("/v1/executions", {
         method: "POST",
-        body: JSON.stringify({ ...body, request_source: "api" }),
+        body: JSON.stringify(workflowPreviewRequest(body)),
       }),
   });
 
-  async function runOne(key: string, body: Record<string, unknown>): Promise<void> {
+  async function runOne(key: string, body: WorkflowPreviewSource): Promise<void> {
     setRunning(key);
     try {
       const result = await test.mutateAsync(body);
       setRuns((current) => ({
         ...current,
-        [key]: { ok: true, preview: JSON.stringify(result, null, 2) },
+        [key]: { ok: workflowPreviewSucceeded(result), preview: JSON.stringify(result, null, 2) },
       }));
     } catch (error) {
       setRuns((current) => ({
@@ -95,7 +104,7 @@ export function WorkflowGallery({
   const schedules = useQuery({
     queryKey: ["workflow", workflowId, "schedules"],
     queryFn: () =>
-      apiRequest<{ items: { cron?: string; timezone?: string; enabled?: boolean }[] }>(
+      apiRequest<components["schemas"]["ScheduleListResponse"]>(
         `/v1/schedules?workflow_id=${encodeURIComponent(workflowId)}`,
       ),
   });
@@ -105,8 +114,8 @@ export function WorkflowGallery({
   // "Läuft automatisch: , , , , , , , , , , , ," — thirteen blanks and a
   // sentence claiming the workflow runs by itself. What survives here is what
   // has something to say.
-  const activeSchedules = (schedules.data?.items ?? [])
-    .filter((entry) => entry.enabled !== false)
+  const activeSchedules = (schedules.data?.schedules ?? [])
+    .filter((entry) => entry.workflow_id === workflowId && !entry.paused)
     .map((entry) => [entry.cron, entry.timezone].filter(Boolean).join(" · "))
     .filter((label) => label.length > 0);
 
@@ -126,9 +135,13 @@ export function WorkflowGallery({
   return (
     <div className="grid gap-3" data-testid="workflow-gallery">
       <p className="text-xs text-muted-foreground" data-testid="workflow-schedule">
-        {activeSchedules.length > 0
-          ? t("run.schedule", { schedule: activeSchedules.join(", ") })
-          : t("run.scheduleNone")}
+        {schedules.isPending
+          ? t("workflow.scheduleLoading")
+          : schedules.isError
+            ? t("workflow.scheduleFailed")
+            : activeSchedules.length > 0
+              ? t("run.schedule", { schedule: activeSchedules.join(", ") })
+              : t("run.scheduleNone")}
       </p>
       {canRun && (
         <div className="flex flex-wrap items-center gap-2">

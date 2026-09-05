@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
+import { workflows } from "../../apps/engine/src/db/schema/index.ts";
 import { boot, cli, type E2EEnv, parseJson, shutdown } from "./setup.ts";
 
 let env: E2EEnv;
@@ -16,7 +18,7 @@ function bearer(): HeadersInit {
 }
 
 describe("guided authoring smoke", () => {
-  test("connector-first journey pauses for connector save approval, then workflow commit approval", async () => {
+  test("manual connector-first journey confirms the connector, then saves an inert workflow draft", async () => {
     const turn1 = await cli(["--p", "subkit engine onboarding", "--output", "json"], {
       env,
       persona: "admin",
@@ -77,8 +79,19 @@ describe("guided authoring smoke", () => {
       status: string;
       committed_workflow_id?: string;
     };
-    expect(resumedCommit.status).toBe("committed");
+    expect(resumedCommit.status).toBe("active");
     expect(resumedCommit.committed_workflow_id).toBeDefined();
+    const [workflow] = await env.db
+      .select()
+      .from(workflows)
+      .where(
+        and(
+          eq(workflows.tenant_id, env.tenantId),
+          eq(workflows.id, resumedCommit.committed_workflow_id!),
+        ),
+      );
+    expect(workflow?.draft_version_id).toBeTruthy();
+    expect(workflow?.current_version_id).toBeNull();
 
     const detailRes = await fetch(`${env.baseUrl}/v1/conversations/${body1.session_id}`, {
       headers: bearer(),
@@ -100,7 +113,7 @@ describe("guided authoring smoke", () => {
       };
       tool_calls: Array<{ tool: string }>;
     };
-    expect(detail.conversation.status).toBe("committed");
+    expect(detail.conversation.status).toBe("active");
     expect(detail.conversation.target_connector_id).toBeTruthy();
     expect(detail.conversation.target_workflow_id).toBeTruthy();
     expect(detail.draft.connector?.name).toBe("Subkit Engine");

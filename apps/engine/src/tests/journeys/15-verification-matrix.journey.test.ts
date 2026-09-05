@@ -9,8 +9,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { eq } from "drizzle-orm";
-import { executions, workflowsSchedules } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { executions, workflows, workflowsSchedules } from "../../db/schema/index.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
 import {
@@ -146,8 +146,20 @@ describe("journey: verification matrix (docs/33)", () => {
       `/v1/conversations/${out.conversation.id}/elicitations/${out.pending_elicitation_id}/respond`,
       { method: "POST", body: JSON.stringify({ output: { confirmed: true } }) },
     );
-    const approved = (await respond.json()) as { status: string };
-    expect(approved.status).toBe("committed");
+    const approved = (await respond.json()) as { status: string; committed_workflow_id?: string };
+    expect(approved.status).toBe("active");
+    expect(approved.committed_workflow_id).toBeTruthy();
+    const [draft] = await ctx.db
+      .select()
+      .from(workflows)
+      .where(
+        and(
+          eq(workflows.tenant_id, ctx.tenantId),
+          eq(workflows.id, approved.committed_workflow_id!),
+        ),
+      );
+    expect(draft?.draft_version_id).toBeTruthy();
+    expect(draft?.current_version_id).toBeNull();
   });
 
   test("05. Trigger workflow via REST (request_source=api)", async () => {

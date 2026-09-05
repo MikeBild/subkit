@@ -717,7 +717,10 @@ export function withWorkflowPersisted(
 ): DraftDocument {
   return bindPersistedWorkflow(draft, resource, {
     tool_name: "save_workflow_draft",
-    summary: `Workflow ${resource.name ?? resource.id} persisted.`,
+    summary:
+      resource.persistence_kind === "draft"
+        ? `Workflow draft ${resource.name ?? resource.id} saved; activation is still required.`
+        : `Workflow ${resource.name ?? resource.id} persisted.`,
     last_action,
   });
 }
@@ -752,7 +755,10 @@ export function bindPersistedWorkflow(
     "workflow_persisted",
     options?.tool_name ?? "workflow_binding",
     true,
-    options?.summary ?? `Saved workflow ${resource.name ?? resource.id} is active.`,
+    options?.summary ??
+      (resource.persistence_kind === "draft"
+        ? `Workflow draft ${resource.name ?? resource.id} saved; activation is still required.`
+        : `Saved workflow ${resource.name ?? resource.id} is active.`),
     {
       kind: "workflow",
       id: resource.id,

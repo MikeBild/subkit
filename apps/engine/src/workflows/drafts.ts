@@ -35,9 +35,14 @@ export interface SaveWorkflowDraftInput {
   /** Required for updates. null means no previous draft was observed. */
   expected_draft_version_id?: string | null;
   def: unknown;
+  /** Preview-derived shape hints, never an execution grant. Omission preserves
+   * an unchanged draft; a changed definition starts without stale hints. */
+  scope_index?: typeof workflowVersions.$inferInsert.scope_index;
   actor_id: string | null;
   actor_type?: "user" | "system_account" | "system";
   request_source: RequestSource;
+  /** Server-owned provenance; authoritative draft identity fields win below. */
+  audit_metadata?: Record<string, unknown>;
 }
 
 function canonical(value: unknown): string {
@@ -137,7 +142,23 @@ export async function saveWorkflowDraft(
             previous &&
             previous.digest === createHash("sha256").update(canonical(def)).digest("hex")
           ) {
-            return { draft: previous };
+            if (input.scope_index === undefined) return { draft: previous };
+            const [stored] = await tx
+              .select({ scope_index: workflowVersions.scope_index })
+              .from(workflowVersions)
+              .where(
+                and(
+                  eq(workflowVersions.tenant_id, input.tenant_id),
+                  eq(workflowVersions.workflow_id, wf.id),
+                  eq(workflowVersions.id, previous.version_id),
+                ),
+              )
+              .limit(1);
+            if (stored && canonical(stored.scope_index) === canonical(input.scope_index)) {
+              return { draft: previous };
+            }
+            // Retain immutable preview evidence on the old version. New shape
+            // hints receive their own draft version, not an in-place rewrite.
           }
         }
       } else {
@@ -170,6 +191,7 @@ export async function saveWorkflowDraft(
           workflow_id: wf.id,
           version: Number(latest?.max ?? 0) + 1,
           dag: def,
+          scope_index: input.scope_index ?? null,
         })
         .returning();
       assertInsertRow(version, "workflow_versions");
@@ -192,6 +214,7 @@ export async function saveWorkflowDraft(
           },
           after: { draft_version_id: version.id, current_version_id: wf.current_version_id },
           metadata: {
+            ...input.audit_metadata,
             kind: "draft",
             version: version.version,
             request_source: input.request_source,

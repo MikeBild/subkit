@@ -60,7 +60,7 @@ retries in the worst recorded session.
    `dry_run_transform` iterates a transform against the recorded scope
    without re-hitting the network.
 5. **Persist according to permission mode** — after a clean judged preview,
-   read the envelope. `auto_committed: true` means the save already landed.
+   read the envelope. `auto_committed: true` means an inert draft save already landed.
    `save_required: true` means call `save_workflow_draft` and surface its
    structured human approval.
 
@@ -69,9 +69,16 @@ whole-draft build, then `edit_workflow_patch` for every targeted change.
 "Change the limit to 5" on a previewed or committed workflow is a
 one-patch edit.
 
-There is no separate publish step. Do not call a preview-only draft live.
-Only `auto_committed: true` or a successfully approved
-`save_workflow_draft` establishes the persisted version.
+Persistence and activation are separate. Do not call a preview-only or
+saved-but-inactive draft live. `auto_committed: true` or a successful
+`save_workflow_draft` establishes only the exact stored draft version.
+Neither operation changes the active workflow, its schedules or webhooks,
+and neither grants execution authority. Read `persistence_kind`,
+`activation_required` and `current_version_id` from the result. Use
+`dry_run_workflow` for further previews; do not run an older active version
+as a substitute for the newly saved draft. Review the exact version and
+effects before activation. A capability Skill-Candidate describing the
+draft is also only preparation, not a transitive activation approval.
 
 **Dry-runs hold writes — sends never fire in a preview.** Write steps
 (email sends, webhook posts, publishes) are resolved against real upstream
@@ -1175,8 +1182,9 @@ into a malformed payload in production. Likewise never reach for `new Date()`,
   The `loop` kind is only needed when the iteration body requires multiple
   sequential sibling steps or nested aggregation.
 - **Skipping `dry_run_workflow` and reaching for `save_workflow_draft`
-  directly.** Direct `save_workflow_draft` calls are policy-gated and the inner
-  prior-approval check rejects with `no_prior_approval`. The persistence
+  directly.** In `ask`/`plan`, `save_workflow_draft` uses the human gate and the inner
+  prior-approval check may reject with `no_prior_approval`. In `auto`, ordinary
+  inert saves do not require that decision. In every mode the persistence
   contract starts with a green judged preview. If the dry-run is failing, the
   workflow needs a fix, not a force-commit.
 - **Calling `save_workflow_draft` after a green `dry_run_workflow`.** The

@@ -199,13 +199,30 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
 
   test("tasks/cancel of an input-required task is accepted", async () => {
     const client = await suite.connectTasks();
+    // Saving a draft leaves its authoring conversation active. Use a separate
+    // connector so start deduplication does not correctly resume that earlier
+    // conversation instead of creating the pending task this test needs.
+    const [cancelConnector] = await suite.http.db
+      .insert(connectors)
+      .values({
+        tenant_id: suite.http.tenantId,
+        slug: "api-mcp-tasks-cancel",
+        display_name: "API cancellation fixture",
+        driver: "http",
+        environment: "dev",
+        auth_type: "none",
+        base_url: "https://jsonplaceholder.typicode.com",
+        config: {},
+      })
+      .returning();
+    if (!cancelConnector) throw new Error("seed cancellation connector failed");
 
     const createResult = (await client.request(
       {
         method: "tools/call",
         params: {
           name: "conversation_start",
-          arguments: { connector_id: connectorId, message: "list users from the api" },
+          arguments: { connector_id: cancelConnector.id, message: "list users from the api" },
           task: {},
         },
       },

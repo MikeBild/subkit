@@ -51,6 +51,9 @@ export interface ContextSnapshot {
     version: number | null;
     environment: string | null;
     saved_at: string;
+    draft_version_id?: string | null;
+    current_version_id?: string | null;
+    persistence_kind?: "draft" | "active";
   }>;
   latest_execution: {
     execution_id: string;

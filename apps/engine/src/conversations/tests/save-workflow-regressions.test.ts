@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   conversationDrafts,
   conversations,
@@ -100,6 +100,21 @@ async function seedLiveWorkflow(slug: string, name: string): Promise<{ id: strin
   return { id: wf.id };
 }
 
+async function assertInertSavedWorkflow(workflowId: string | undefined): Promise<void> {
+  if (!workflowId) throw new Error("saved workflow id missing");
+  const [row] = await ctx.testDb.db
+    .select({
+      current_version_id: workflows.current_version_id,
+      draft_version_id: workflows.draft_version_id,
+      lifecycle: workflows.lifecycle,
+    })
+    .from(workflows)
+    .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.id, workflowId)));
+  expect(row?.current_version_id).toBeNull();
+  expect(row?.draft_version_id).toBeTruthy();
+  expect(row?.lifecycle).toBe("draft");
+}
+
 describe("workflow save regressions", () => {
   test("a short auto-mode approval follows the draft summary into save_workflow_draft", async () => {
     const draft = {
@@ -139,8 +154,9 @@ describe("workflow save regressions", () => {
       ctx.testDb.db,
     );
 
-    expect(result.result.status).toBe("committed");
+    expect(result.result.status).toBe("active");
     expect(result.result.committed_workflow_id).toBeTruthy();
+    await assertInertSavedWorkflow(result.result.committed_workflow_id);
 
     const detail = await getConversation(ctx.tenant_id, conversation.id, ctx.testDb.db);
     expect(detail?.conversation.target_workflow_id).toBe(result.result.committed_workflow_id);
@@ -196,8 +212,9 @@ describe("workflow save regressions", () => {
       ctx.testDb.db,
     );
 
-    expect(result.result.status).toBe("committed");
+    expect(result.result.status).toBe("active");
     expect(result.result.committed_workflow_id).toBeTruthy();
+    await assertInertSavedWorkflow(result.result.committed_workflow_id);
 
     const detail = await getConversation(ctx.tenant_id, conversation.id, ctx.testDb.db);
     expect(detail?.conversation.target_workflow_id).toBe(result.result.committed_workflow_id);

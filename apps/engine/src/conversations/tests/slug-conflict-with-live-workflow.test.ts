@@ -23,6 +23,7 @@ import {
   workflowVersions,
 } from "../../db/schema/index.ts";
 import {
+  bindPersistedWorkflow,
   withLatestPreview,
   withWorkflowInspection,
   withWorkflowValidation,
@@ -103,7 +104,10 @@ function readyDraft(input: { name: string; slug: string }): DraftDocument {
   );
 }
 
-async function seedLiveWorkflow(slug: string, name: string): Promise<{ id: string }> {
+async function seedLiveWorkflow(
+  slug: string,
+  name: string,
+): Promise<{ id: string; version_id: string }> {
   const [wf] = await ctx.testDb.db
     .insert(workflows)
     .values({
@@ -139,7 +143,7 @@ async function seedLiveWorkflow(slug: string, name: string): Promise<{ id: strin
     .update(workflows)
     .set({ current_version_id: version.id })
     .where(eq(workflows.id, wf.id));
-  return { id: wf.id };
+  return { id: wf.id, version_id: version.id };
 }
 
 describe("save_workflow_draft — slug-conflict-with-live-workflow contract", () => {
@@ -209,7 +213,7 @@ describe("save_workflow_draft — slug-conflict-with-live-workflow contract", ()
     expect(convAfter[0]?.target_workflow_id).toBeNull();
   });
 
-  test("explicit target_workflow_id arg adopts after user confirmation in chat", async () => {
+  test("explicit replacement needs both confirmation and an observed draft base", async () => {
     const existing = await seedLiveWorkflow("invoices-export", "Invoices Export");
 
     const [conv] = await ctx.testDb.db
@@ -224,9 +228,28 @@ describe("save_workflow_draft — slug-conflict-with-live-workflow contract", ()
     await seedApprovedConfirm(conv.id);
 
     const draft = readyDraft({ name: "Invoices Export v2", slug: "invoices-export" });
+    const unobserved = await saveWorkflowDraftTool.execute(
+      toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => draft),
+      { target_workflow_id: existing.id },
+    );
+    expect(unobserved.ok).toBe(false);
+    if (!unobserved.ok) expect(unobserved.error_code).toBe("draft_base_not_observed");
+    const observedDraft = bindPersistedWorkflow(draft, {
+      kind: "workflow",
+      id: existing.id,
+      slug: "invoices-export",
+      name: "Invoices Export",
+      version_id: existing.version_id,
+      version: 1,
+      draft_version_id: null,
+      current_version_id: existing.version_id,
+      persistence_kind: "active",
+      environment: null,
+      saved_at: "2026-05-01T00:00:00.000Z",
+    });
 
     const result = await saveWorkflowDraftTool.execute(
-      toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => draft),
+      toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => observedDraft),
       { target_workflow_id: existing.id },
     );
 
@@ -240,6 +263,12 @@ describe("save_workflow_draft — slug-conflict-with-live-workflow contract", ()
       .where(eq(workflowVersions.workflow_id, existing.id))
       .orderBy(workflowVersions.version);
     expect(versionRows.map((r) => r.version)).toEqual([1, 2]);
+    const [after] = await ctx.testDb.db
+      .select()
+      .from(workflows)
+      .where(eq(workflows.id, existing.id));
+    expect(after?.current_version_id).toBe(existing.version_id);
+    expect(after?.draft_version_id).toBeTruthy();
 
     // The conversation is now pinned for follow-up edits.
     const convAfter = await ctx.testDb.db

@@ -181,9 +181,17 @@ describe("mcp conversation tools", () => {
       status: string;
       committed?: { version: number; steps_present: number };
       draft_state?: string;
+      persistence_kind: string;
+      activation_required: boolean;
+      current_version_id: string | null;
+      usage?: unknown;
     };
     expect(commitParsed.workflow_id.length).toBeGreaterThan(0);
-    expect(commitParsed.status).toBe("committed");
+    expect(commitParsed.status).toBe("active");
+    expect(commitParsed.persistence_kind).toBe("draft");
+    expect(commitParsed.activation_required).toBe(true);
+    expect(commitParsed.current_version_id).toBeNull();
+    expect(commitParsed.usage).toBeUndefined();
     // The reply carries persisted facts, not a draft echo.
     expect(commitParsed.committed?.version).toBeGreaterThanOrEqual(1);
     expect(commitParsed.committed?.steps_present).toBeGreaterThanOrEqual(1);

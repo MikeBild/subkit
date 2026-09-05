@@ -1,5 +1,5 @@
 // Does a conversation's working draft hold workflow-DEFINITION edits that are
-// not yet persisted to its bound workflow's current version?
+// not yet persisted to its bound workflow's saved draft (or legacy active version)?
 //
 // Two callers need this exact question:
 //   - `conversation_commit` (MCP) — so it stops echoing "committed" when the
@@ -34,10 +34,10 @@ import { workflowDefFromDraft } from "./commit-workflow.ts";
  * - `no_target`   — nothing was compared. The `reason` says why:
  *                   `unbound` (no target workflow id), `empty_draft` (no steps
  *                   to compare), `no_persisted_version` (workflow row missing,
- *                   deleted, or has no current version), `unreadable_dag`
+ *                   deleted, or has no saved version), `unreadable_dag`
  *                   (a version row exists but its stored dag is missing or
  *                   fails schema parse).
- * - `clean`       — the draft's structural def matches the persisted current
+ * - `clean`       — the draft's structural def matches the persisted draft
  *                   version (any difference is metadata-only, which is fine).
  * - `structural`  — the draft's steps/edges/schemas/trigger/output_transform
  *                   differ from the persisted version (uncommitted def edits).
@@ -76,7 +76,7 @@ function structuralFingerprint(def: Record<string, unknown>): string {
 }
 
 /**
- * Classify a conversation's working draft against the persisted current version
+ * Classify a conversation's working draft against the persisted draft version
  * of `target_workflow_id`. Best-effort and read-only: any ambiguity (unparseable
  * stored dag, draft that fails validation, no target) resolves to `no_target`
  * rather than a false `structural`, so neither caller blocks/denies on noise.
@@ -97,7 +97,10 @@ export async function classifyDraftVsPersisted(
   }
 
   const wfRows = await exec
-    .select({ current_version_id: workflows.current_version_id })
+    .select({
+      current_version_id: workflows.current_version_id,
+      draft_version_id: workflows.draft_version_id,
+    })
     .from(workflows)
     .where(
       and(
@@ -107,14 +110,27 @@ export async function classifyDraftVsPersisted(
       ),
     )
     .limit(1);
-  const currentVersionId = wfRows[0]?.current_version_id;
+  const currentVersionId = wfRows[0]?.draft_version_id ?? wfRows[0]?.current_version_id;
   if (!currentVersionId) return { state: "no_target", reason: "no_persisted_version" };
+  const bound = draft.state?.persisted_resources.find(
+    (resource) => resource.kind === "workflow" && resource.id === target_workflow_id,
+  );
+  // A stale observed base is not a successful save, even if another session
+  // happened to write identical steps. The caller must not announce that its
+  // exact draft version is current or substitute an active-version approval.
+  if (bound?.persistence_kind === "draft" && bound.version_id !== currentVersionId) {
+    return { state: "structural" };
+  }
 
   const versionRows = await exec
     .select({ dag: workflowVersions.dag })
     .from(workflowVersions)
     .where(
-      and(eq(workflowVersions.tenant_id, tenant_id), eq(workflowVersions.id, currentVersionId)),
+      and(
+        eq(workflowVersions.tenant_id, tenant_id),
+        eq(workflowVersions.workflow_id, target_workflow_id),
+        eq(workflowVersions.id, currentVersionId),
+      ),
     )
     .limit(1);
   const dag = versionRows[0]?.dag;
