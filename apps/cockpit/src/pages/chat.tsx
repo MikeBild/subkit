@@ -926,10 +926,13 @@ export function ChatPage() {
         <MessageScrollerProvider>
           <MessageScroller className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
             {/* `both-edges` is the operative part, the same as the shared page
-                frame: plain `stable` reserves the gutter on one side only, so
-                the centred column steps sideways the moment a conversation
-                grows past one screen. */}
-            <MessageScrollerViewport className="px-4 py-6 sm:px-6 [scrollbar-gutter:stable_both-edges]">
+                frame: the primitive's default utility sets plain `stable`, so
+                this page-level override must win in computed style. The visual
+                sweep measures the resulting three column edges on Linux. */}
+            <MessageScrollerViewport
+              className="px-4 py-6 sm:px-6"
+              style={{ scrollbarGutter: "stable both-edges" }}
+            >
               <MessageScrollerContent className={COLUMN}>
                 {messages.length === 0 ? (
                   // `place-items-center` on a box taller than the scroller splits
