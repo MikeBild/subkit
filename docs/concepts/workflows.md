@@ -195,6 +195,13 @@ Each listed workflow reports its `category` and the `connectors` it uses, so the
 
 Every change to a Workflow creates a new version. A version is a complete snapshot of the workflow's DAG — not a diff, not a patch, but the full definition as it stood at the moment of change. Versions are immutable once created.
 
+Draft saves, definition updates, restores, internal rotations and patch application
+serialize on the same tenant-scoped workflow row inside their transaction. They
+read the current pointers and allocate the next version only after obtaining that
+lock. A concurrent draft therefore cannot collide with an activation-capable
+writer's version number. This serialization does not grant approval or extend an
+existing execution authority to a new version.
+
 At any given time, exactly one version is designated "active." The active version is what runs when the workflow is triggered. Operators can inspect any prior version and promote it to active in a single action.
 
 This is the rollback story for sk. When a change introduces failures, the response is to promote the previous known-good version to active. No code changes are required, no deployment is needed, and the rollback is immediate. The audit log records the promotion decision — who made it, when, and from which version.

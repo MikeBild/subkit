@@ -12,6 +12,7 @@ import type { Executor } from "../db/client.ts";
 import { patchCandidates, workflows, workflowVersions } from "../db/schema/index.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
 import { log } from "../logging/logger.ts";
+import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { applyPatchToWorkflowDag, type PatchApplyFailure } from "./patch-apply.ts";
 import { resolveCandidateStepKey } from "./step-snapshot.ts";
 
@@ -63,12 +64,7 @@ export async function autoApplyPatch(
     proposal: PatchProposal;
   },
 ): Promise<AutoApplyResult> {
-  const wfRows = await tx
-    .select()
-    .from(workflows)
-    .where(and(eq(workflows.tenant_id, params.tenant_id), eq(workflows.id, params.workflow_id)))
-    .limit(1);
-  const wf = wfRows[0];
+  const wf = await lockWorkflowForVersionWrite(tx, params.tenant_id, params.workflow_id);
   if (!wf?.current_version_id) return { applied: false, reason: "workflow_missing" };
 
   const cvRows = await tx
@@ -103,10 +99,8 @@ export async function autoApplyPatch(
     },
   };
 
-  // DB-side MAX(version)+1 in the INSERT itself — a read-then-insert
-  // computed in JS loses the race when two reactive repairs for the same
-  // workflow run concurrently (both read the same max, both insert the
-  // same version → unique violation rolls one repair back).
+  // The workflow row lock serializes this allocation with every other version
+  // writer. A MAX subquery inside INSERT alone does not serialize transactions.
   const [inserted] = await tx
     .insert(workflowVersions)
     .values({
@@ -125,12 +119,17 @@ export async function autoApplyPatch(
   await tx
     .update(workflows)
     .set({ current_version_id: inserted.id, updated_at: new Date() })
-    .where(eq(workflows.id, params.workflow_id));
+    .where(and(eq(workflows.tenant_id, params.tenant_id), eq(workflows.id, params.workflow_id)));
 
   await tx
     .update(patchCandidates)
     .set({ status: "applied", updated_at: new Date() })
-    .where(eq(patchCandidates.id, params.candidate_id));
+    .where(
+      and(
+        eq(patchCandidates.tenant_id, params.tenant_id),
+        eq(patchCandidates.id, params.candidate_id),
+      ),
+    );
 
   return { applied: true, version_id: inserted.id, changed_paths: patched.changed_paths };
 }
