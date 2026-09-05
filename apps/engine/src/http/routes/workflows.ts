@@ -25,6 +25,7 @@ import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
+import { registerWorkflowDraftRoutes } from "./workflow-drafts.ts";
 
 const WorkflowSchema = z
   .object({
@@ -35,6 +36,7 @@ const WorkflowSchema = z
     description: z.string().nullable(),
     lifecycle: z.string(),
     current_version_id: z.string().nullable(),
+    draft_version_id: z.string().nullable(),
     current_version: z.number().nullable(),
     created_at: z.string(),
     updated_at: z.string(),
@@ -159,6 +161,7 @@ function serializeWorkflow(w: svc.WorkflowView) {
     description: w.description ?? w.definition.description ?? null,
     lifecycle: w.lifecycle,
     current_version_id: w.current_version_id,
+    draft_version_id: w.draft_version_id ?? null,
     current_version: w.current_version,
     created_at: w.created_at.toISOString(),
     updated_at: w.updated_at.toISOString(),
@@ -556,6 +559,7 @@ const inputSchemaRoute = createRoute({
 });
 
 export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
+  registerWorkflowDraftRoutes(app);
   // Pass-2 C5: RBAC gating. Every mutation + run goes through
   // `requirePermission` which calls the `can()` evaluator. Admin
   // principals short-circuit, so existing tests keep passing.
