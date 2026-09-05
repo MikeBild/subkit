@@ -38,11 +38,12 @@ import type { Db } from "../db/client.ts";
 import { conversationMessages, conversations, dataMigrations } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 
-// v3: v2 reached production before its bounded cursor resumed every attempted
-// refresh. Some installations therefore recorded v2 as complete while legacy
-// hard-clipped titles remained. A new marker reruns the repaired walk once;
-// older markers stay as the immutable record of what those versions finished.
-export const CONVERSATION_TITLE_SWEEP_NAME = "conversation_title_model_v3";
+// v4: v3 found legacy conversations whose persisted assistant placeholder had
+// no readable text, then advanced past them when the title refresher declined
+// the source. The refresher can now name those conversations from the readable
+// user request alone, so a new marker reruns the walk once. Older markers stay
+// as the immutable record of what those versions finished.
+export const CONVERSATION_TITLE_SWEEP_NAME = "conversation_title_model_v4";
 
 /** Rows examined per tick. The scan is one indexed select plus one message
  *  lookup; the cost that matters is the model call per match below. */

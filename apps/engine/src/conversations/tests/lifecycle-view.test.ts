@@ -9,6 +9,7 @@ import {
   shouldRefreshTitle,
   TITLE_WORDS_MAX,
   titleFromSummary,
+  titleSourceTurns,
 } from "../title.ts";
 
 const NOW = Date.parse("2026-09-03T12:00:00.000Z");
@@ -141,5 +142,13 @@ describe("automatic title", () => {
     expect(prompt).toContain("User: Bitte repariere den Monatsreport.");
     expect(prompt).toContain("Assistant: Ich habe die Transformation eingegrenzt.");
     expect(prompt).toContain("Reply with the title only");
+  });
+  test("an empty historical assistant payload leaves the user request as a valid title source", () => {
+    expect(
+      titleSourceTurns([
+        { role: "user", content: { text: "Prüfe den Editorial-Workflow" } },
+        { role: "assistant", content: {} },
+      ]),
+    ).toEqual([{ role: "user", text: "Prüfe den Editorial-Workflow" }]);
   });
 });
