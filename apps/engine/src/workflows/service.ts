@@ -29,6 +29,7 @@ import { applyTriggerBindings, triggerOf } from "./trigger-bindings.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
+import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 
 /**
  * Emit a `workflow.lifecycle` outbox event after Zod-validating the
@@ -308,18 +309,7 @@ export async function updateWorkflow(
   if (!storageGate.ok) return { errors: storageGate.errors };
   const def = annotateRuntime(validation.workflow);
   const updated = await db.transaction(async (tx) => {
-    const wfRows = await tx
-      .select()
-      .from(workflows)
-      .where(
-        and(
-          eq(workflows.tenant_id, input.tenant_id),
-          eq(workflows.id, input.id),
-          isNull(workflows.deleted_at),
-        ),
-      )
-      .limit(1);
-    const wf = wfRows[0];
+    const wf = await lockWorkflowForVersionWrite(tx, input.tenant_id, input.id);
     if (!wf) return null;
     // Idempotency: an unchanged def must not rotate the version (that
     // churns history and unbinds schedules). See `version-dedup.ts`.
@@ -898,6 +888,7 @@ export async function restoreWorkflowVersion(
 ): Promise<WorkflowView | null> {
   const db = exec ?? getDb();
   const updatedId = await db.transaction(async (tx) => {
+    if (!(await lockWorkflowForVersionWrite(tx, tenant_id, id))) return null;
     const targetRows = await tx
       .select()
       .from(workflowVersions)

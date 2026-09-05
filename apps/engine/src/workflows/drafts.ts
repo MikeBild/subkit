@@ -13,6 +13,7 @@ import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
+import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 
 export interface WorkflowDraftView {
   workflow_id: string;
@@ -124,18 +125,7 @@ export async function saveWorkflowDraft(
     return await exec.transaction(async (tx): Promise<SaveWorkflowDraftResult> => {
       let wf: typeof workflows.$inferSelect;
       if (input.workflow_id) {
-        const [existing] = await tx
-          .select()
-          .from(workflows)
-          .where(
-            and(
-              eq(workflows.tenant_id, input.tenant_id),
-              eq(workflows.id, input.workflow_id),
-              isNull(workflows.deleted_at),
-            ),
-          )
-          .for("update")
-          .limit(1);
+        const existing = await lockWorkflowForVersionWrite(tx, input.tenant_id, input.workflow_id);
         if (!existing) return { code: "not_found", errors: ["workflow not found"] };
         wf = existing;
         if (wf.draft_version_id !== input.expected_draft_version_id) {
