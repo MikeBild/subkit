@@ -38,11 +38,11 @@ import type { Db } from "../db/client.ts";
 import { conversationMessages, conversations, dataMigrations } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 
-// v2: the first walk finished having skipped every title cut by the older,
-// word-boundary-less excerpt rule. A new marker is what lets the walk run once
-// more; the old one stays where it is so an instance that has done both is not
-// asked a third time.
-export const CONVERSATION_TITLE_SWEEP_NAME = "conversation_title_model_v2";
+// v3: v2 reached production before its bounded cursor resumed every attempted
+// refresh. Some installations therefore recorded v2 as complete while legacy
+// hard-clipped titles remained. A new marker reruns the repaired walk once;
+// older markers stay as the immutable record of what those versions finished.
+export const CONVERSATION_TITLE_SWEEP_NAME = "conversation_title_model_v3";
 
 /** Rows examined per tick. The scan is one indexed select plus one message
  *  lookup; the cost that matters is the model call per match below. */
