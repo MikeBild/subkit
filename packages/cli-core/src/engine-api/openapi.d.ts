@@ -4489,6 +4489,245 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workflows/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save a new inert workflow draft without activating triggers */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CreateWorkflowDraft"];
+                };
+            };
+            responses: {
+                /** @description Inert draft; no activation or execution authority */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowDraft"];
+                    };
+                };
+                /** @description Invalid draft */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Permission denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Draft not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Draft or slug changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/{id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the exact pending draft, separately from the active version */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Inert draft; no activation or execution authority */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowDraft"];
+                    };
+                };
+                /** @description Invalid draft */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Permission denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Draft not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Draft or slug changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /** Save a draft version without changing the active workflow */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["UpdateWorkflowDraft"];
+                };
+            };
+            responses: {
+                /** @description Inert draft; no activation or execution authority */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowDraft"];
+                    };
+                };
+                /** @description Invalid draft */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Permission denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Draft not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Draft or slug changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows": {
         parameters: {
             query?: never;
@@ -16337,6 +16576,460 @@ export interface components {
             /** @description Server-side ISO timestamp; lets the CLI sync clocks. */
             server_time: string;
         };
+        WorkflowDraft: {
+            /** Format: uuid */
+            workflow_id: string;
+            /** Format: uuid */
+            version_id: string;
+            version: number;
+            digest: string;
+            /** Format: uuid */
+            current_version_id: string | null;
+            definition: components["schemas"]["WorkflowDef"];
+        };
+        WorkflowDef: {
+            name: string;
+            slug?: string;
+            description?: string;
+            /** @enum {string} */
+            tool_effect?: "read" | "reversible_write" | "irreversible_write";
+            derived_from_skill_id?: string | null;
+            input_schema?: {
+                [key: string]: unknown;
+            };
+            input_schema_sample?: unknown;
+            output_schema?: {
+                [key: string]: unknown;
+            };
+            validation_expression?: string;
+            validation_function?: string;
+            output_transform?: string;
+            output_transform_function?: string;
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            steps: (components["schemas"]["RequestStep"] | components["schemas"]["TransformStep"] | components["schemas"]["CallStep"] | components["schemas"]["WaitStep"] | components["schemas"]["WaitForEventStep"] | components["schemas"]["BranchStep"] | components["schemas"]["ParallelStep"] | components["schemas"]["LoopStep"])[];
+            timeout_ms?: number;
+            max_llm_tokens_per_run?: number;
+            runtime?: components["schemas"]["WorkflowRuntime"];
+            trigger?: components["schemas"]["WorkflowTrigger"];
+        };
+        ResponseFilter: {
+            /** @enum {string} */
+            target: "KEYS" | "VALUES" | "BOTH";
+            /** @enum {string} */
+            action: "REMOVE" | "MASK" | "FAIL";
+            pattern: string;
+            mask?: string;
+            /** @enum {string} */
+            scope?: "FIELD" | "ITEM" | "ENTRY";
+        };
+        RequestStep: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "request";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS" | "LIST" | "SELECT" | "INSERT" | "UPDATE" | "CALL";
+            /** @enum {string} */
+            side_effects?: "read" | "write";
+            url?: string;
+            path?: string;
+            /** Format: uuid */
+            connector_id?: string;
+            headers?: {
+                [key: string]: string;
+            } | string;
+            query?: {
+                [key: string]: string | number | boolean;
+            };
+            body?: components["schemas"]["WorkflowJsonValue"];
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            pagination?: components["schemas"]["Pagination"];
+            max_retries?: number;
+            retry_backoff_ms?: number;
+            retry_on_status?: number[];
+            graphql?: {
+                /** @enum {string} */
+                operation?: "query" | "mutation" | "subscription";
+                query: string;
+                variables?: {
+                    [key: string]: unknown;
+                };
+            } | string;
+            /**
+             * @default none
+             * @enum {string}
+             */
+            error_policy: "none" | "all";
+            xml?: {
+                body: components["schemas"]["WorkflowJsonValue"];
+                declaration?: boolean;
+            };
+            sql?: {
+                query: string;
+                params?: unknown[];
+                also?: {
+                    query: string;
+                    params?: unknown[];
+                    expected_row_count?: number | [
+                        number,
+                        number
+                    ] | {
+                        min?: number;
+                        max?: number;
+                    };
+                }[];
+                transaction?: boolean;
+                cursor?: {
+                    /** @default 1000 */
+                    fetch_size: number;
+                };
+            };
+            s3?: {
+                key?: string;
+                prefix?: string;
+                /** @enum {string} */
+                parse_as?: "json" | "text" | "base64" | "bytes";
+                max_keys?: number;
+                content_type?: string;
+                metadata?: {
+                    [key: string]: string;
+                };
+                paginate?: boolean;
+                multipart?: boolean;
+                multipart_threshold_mb?: number;
+                range?: string;
+                presign?: {
+                    /** @default 900 */
+                    expires_in_s: number;
+                };
+            };
+            mcp?: {
+                /**
+                 * @default call_tool
+                 * @enum {string}
+                 */
+                operation: "call_tool" | "read_resource" | "get_prompt";
+                tool?: string;
+                uri?: string;
+                prompt?: string;
+                arguments?: {
+                    [key: string]: components["schemas"]["WorkflowJsonValue"];
+                };
+            };
+            body_schema?: {
+                [key: string]: unknown;
+            };
+            response_schema?: {
+                [key: string]: unknown;
+            };
+            expected_statuses?: number[];
+            expected_row_count?: number | [
+                number,
+                number
+            ] | {
+                min?: number;
+                max?: number;
+            };
+            idempotency_key?: string;
+            outputs?: {
+                [key: string]: {
+                    secret?: boolean;
+                };
+            };
+            state_read?: {
+                key: string;
+                into_var: string;
+                default_value?: unknown;
+            };
+            state_write?: {
+                key: string;
+                value_path: string;
+            };
+            multipart?: components["schemas"]["MultipartPart"][];
+        };
+        WorkflowJsonValue: string | number | boolean | null | components["schemas"]["FileRef"] | (components["schemas"]["WorkflowJsonValue"] | null)[] | {
+            [key: string]: components["schemas"]["WorkflowJsonValue"] | null;
+        };
+        FileRef: {
+            $file: components["schemas"]["FileId"];
+        };
+        FileId: string;
+        Pagination: {
+            /** @enum {string} */
+            strategy: "offset";
+            /** @default 100 */
+            page_size: number;
+            /** @default offset */
+            offset_param: string;
+            /** @default limit */
+            limit_param: string;
+            /** @enum {string} */
+            parameter_location?: "query" | "body";
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            items_path?: string;
+            stop_when_empty_path?: string;
+            max_pages?: number;
+        } | {
+            /** @enum {string} */
+            strategy: "page";
+            /** @default 100 */
+            page_size: number;
+            /** @default page */
+            page_param: string;
+            /** @default page_size */
+            limit_param: string;
+            /** @default 1 */
+            start_page: number;
+            /** @enum {string} */
+            parameter_location?: "query" | "body";
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            items_path?: string;
+            max_pages?: number;
+        } | {
+            /** @enum {string} */
+            strategy: "cursor";
+            cursor_request_param: string;
+            cursor_response_path: string;
+            page_size?: number;
+            limit_param?: string;
+            /** @enum {string} */
+            parameter_location?: "query" | "body";
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            items_path?: string;
+            max_pages?: number;
+        };
+        MultipartPart: {
+            name: string;
+            file?: components["schemas"]["FileRef"];
+            value?: string;
+            filename?: string;
+            content_type?: string;
+        };
+        TransformStep: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "transform";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            expression?: string;
+            /** @enum {string} */
+            language?: "javascript" | "readability" | "html-to-markdown" | "structured-data";
+            readability?: components["schemas"]["ReadabilityConfig"];
+            markdown?: components["schemas"]["MarkdownConfig"];
+            structured_data?: components["schemas"]["StructuredDataConfig"];
+            input_schema?: {
+                [key: string]: unknown;
+            };
+            output_schema?: {
+                [key: string]: unknown;
+            };
+            /** @description Suppress specific non-fatal warnings on this step. */
+            silence_warnings?: "dropped_fields"[];
+        };
+        ReadabilityConfig: {
+            max_chars?: number;
+            length_guard?: number;
+        };
+        MarkdownConfig: {
+            max_chars?: number;
+            preserve_links?: boolean;
+            strip_tags?: string[];
+            truncate?: boolean;
+        };
+        StructuredDataConfig: {
+            types?: ("json-ld" | "opengraph" | "microdata")[];
+        };
+        CallStep: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "call";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /** Format: uuid */
+            workflow_id?: string;
+            workflow_slug?: string;
+            input?: components["schemas"]["WorkflowJsonValue"];
+        };
+        WaitStep: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "wait";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            duration_ms: number;
+        };
+        WaitForEventStep: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "wait_for_event";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            event_name: string;
+            match?: {
+                path: string;
+                equals: string | number | boolean | null;
+            };
+            on_timeout?: string;
+        };
+        BranchStep: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "branch";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            when: string;
+            then_steps: string[];
+            else_steps?: string[];
+        };
+        ParallelStep: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "parallel";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            branches: string[][];
+        };
+        LoopStep: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "loop";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            over?: string;
+            body: string[];
+            fail_fast?: boolean;
+            item_var?: string;
+        };
+        WorkflowRuntime: {
+            stdlib_version?: string;
+        };
+        WorkflowTrigger: components["schemas"]["RequestTrigger"] | components["schemas"]["WebhookTrigger"] | components["schemas"]["ScheduleTrigger"];
+        RequestTrigger: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "request";
+        };
+        WebhookTrigger: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "webhook";
+            source: string;
+            events: string[];
+            /** @enum {string} */
+            verify: "stripe-signature" | "github-hmac" | "none";
+        };
+        ScheduleTrigger: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "schedule";
+            cron: string;
+            /** @default UTC */
+            tz: string;
+            /** @enum {string} */
+            execution_mode?: "dev" | "prod";
+            business_days_only?: boolean;
+            skip_dates?: string[];
+        };
+        CreateWorkflowDraft: {
+            definition: components["schemas"]["WorkflowDef"];
+        };
+        UpdateWorkflowDraft: components["schemas"]["CreateWorkflowDraft"] & {
+            /** Format: uuid */
+            expected_draft_version_id: string | null;
+        };
         WorkflowListResponse: {
             items: components["schemas"]["WorkflowListItem"][];
             total: number;
@@ -16349,30 +17042,6 @@ export interface components {
             category: string;
             connectors: string[];
         };
-        WorkflowTrigger: components["schemas"]["RequestTrigger"] | components["schemas"]["WebhookTrigger"] | components["schemas"]["ScheduleTrigger"] | null;
-        RequestTrigger: {
-            /** @enum {string} */
-            kind: "request";
-        };
-        WebhookTrigger: {
-            /** @enum {string} */
-            kind: "webhook";
-            source: string;
-            events: string[];
-            /** @enum {string} */
-            verify: "stripe-signature" | "github-hmac" | "none";
-        };
-        ScheduleTrigger: {
-            /** @enum {string} */
-            kind: "schedule";
-            cron: string;
-            /** @default UTC */
-            tz: string;
-            /** @enum {string} */
-            execution_mode?: "dev" | "prod";
-            business_days_only?: boolean;
-            skip_dates?: string[];
-        };
         Workflow: {
             id: string;
             tenant_id: string;
@@ -16381,6 +17050,7 @@ export interface components {
             description: string | null;
             lifecycle: string;
             current_version_id: string | null;
+            draft_version_id: string | null;
             current_version: number | null;
             created_at: string;
             updated_at: string;
@@ -16748,16 +17418,6 @@ export interface components {
                 [key: string]: unknown;
             };
             timeout_ms?: number;
-        };
-        ResponseFilter: {
-            /** @enum {string} */
-            target: "KEYS" | "VALUES" | "BOTH";
-            /** @enum {string} */
-            action: "REMOVE" | "MASK" | "FAIL";
-            pattern: string;
-            mask?: string;
-            /** @enum {string} */
-            scope?: "FIELD" | "ITEM" | "ENTRY";
         };
         RerunExecutionBody: {
             input?: unknown;
@@ -18621,7 +19281,6 @@ export interface components {
         ConversationAttachment: components["schemas"]["File"] & {
             slug: string;
         };
-        FileId: string;
         /** @enum {string} */
         FileStatus: "pending" | "uploading" | "scanning" | "ready" | "failed" | "expired";
         File: {
@@ -18640,9 +19299,6 @@ export interface components {
             filename: string;
             content_type?: string;
             content_base64: string;
-        };
-        FileRef: {
-            $file: components["schemas"]["FileId"];
         };
         ConversationAttachmentList: {
             attachments: components["schemas"]["ConversationAttachment"][];

@@ -39,14 +39,16 @@ export {
 // parses unchanged; the new FileRef variant is simply an additional leaf type.
 const JsonLiteralSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 type JsonValue = z.infer<typeof JsonLiteralSchema> | { [k: string]: JsonValue } | JsonValue[];
-export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    JsonLiteralSchema,
-    FileRefSchema as z.ZodType<JsonValue>,
-    z.array(JsonValueSchema),
-    z.record(z.string(), JsonValueSchema),
-  ]),
-);
+export const JsonValueSchema: z.ZodType<JsonValue> = z
+  .lazy(() =>
+    z.union([
+      JsonLiteralSchema,
+      FileRefSchema as z.ZodType<JsonValue>,
+      z.array(JsonValueSchema),
+      z.record(z.string(), JsonValueSchema),
+    ]),
+  )
+  .openapi("WorkflowJsonValue");
 
 // Filter spec
 //
