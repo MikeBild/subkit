@@ -1,5 +1,7 @@
 # SubKit Agent Guide
 
+Bounded-autonomy changes follow [the local portfolio contract](contract/BOUNDED-AUTONOMY.md).
+
 Canonical repo-wide instructions for the SubKit engine and CLI. Closer AGENTS.md files override this guide.
 
 ## Product boundaries

@@ -4917,7 +4917,20 @@ The usual bottleneck is that whoever wants the automation cannot build it, and w
 
 ## The Conversation Model
 
-A Conversation is the primary authoring interface. The user describes a goal; the AI replies with a structured proposal — a Draft workflow that can be inspected, modified, and approved — never free-form code or autonomous decisions.
+A Conversation is the primary authoring interface. The user describes a goal; the AI prepares a structured Draft workflow that can be inspected, revised, and validated. Saving that preparation does not activate the workflow or authorize external execution.
+
+### Bounded auto preparation
+
+`permission_mode: "auto"` is not a blanket execution grant. Ordinary draft work,
+reads and explicitly known preparation writes can run without a confirmation.
+Inert workflow draft saves and knowledge-source preparation belong to that set;
+forced draft replacement still requires a decision. Input-aware policies run
+before the auto allowance: live writes and production probes keep their gates.
+An unclassified tenant-write tool also requires confirmation, even if a stored
+tool preference says `no_confirm`. Explicit preferences requesting confirmation
+remain effective. No new execution authority or broader permission is inferred
+from an existing conversation's mode. `ask`, `plan` and explicitly armed `yolo`
+retain their separate behavior; this change alone does not change session defaults.
 
 | Property | Behaviour |
 |---|---|

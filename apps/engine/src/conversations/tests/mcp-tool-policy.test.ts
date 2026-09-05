@@ -123,13 +123,11 @@ describe("resolveToolMode — per-conversation overrides and the external-MCP di
   // overrides and no permission_mode —
   // exactly the arguments pinned below. A stored per-conversation
   // `no_confirm` override therefore never lifts the confirm gate on that
-  // path, even though the loop's wrapped in-repo tools honour it
-  // (documented in dangerous-tools.ts). These tests pin both halves of the
-  // asymmetry so a refactor that threads overrides into the external-MCP
-  // dispatch surfaces as an explicit test change, not a silent gate bypass.
+  // path. Bounded auto also refuses that override on the loop path: neither
+  // a tool preference nor a transport difference grants external authority.
   const storedNoConfirmOverride = { [FAKE_MCP_TOOL]: "no_confirm" as const };
 
-  it("loop path: a stored no_confirm override lifts the gate under auto (overrides threaded)", () => {
+  it("loop path: a stored no_confirm preference cannot grant external authority under auto", () => {
     const mode = resolveToolMode({
       tool: FAKE_MCP_TOOL,
       category: "tenant_write",
@@ -137,7 +135,7 @@ describe("resolveToolMode — per-conversation overrides and the external-MCP di
       overrides: storedNoConfirmOverride,
       permission_mode: "auto",
     });
-    expect(mode).toBe("no_confirm");
+    expect(mode).toBe("confirm_before_execution");
   });
 
   it("external-MCP dispatch path: the same stored override cannot apply — empty overrides keep confirm_before_execution", () => {
