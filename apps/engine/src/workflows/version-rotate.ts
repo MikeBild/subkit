@@ -2,7 +2,7 @@
 // service.ts so the migration-facing write path has a single focused
 // owner (and service.ts stays under the file-size invariant).
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -14,6 +14,7 @@ import { emitWorkflowLifecycle } from "./service.ts";
 import { triggerOf } from "./trigger-bindings.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
+import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 
 export interface RotateWorkflowVersionInternalInput {
   tenant_id: string;
@@ -72,18 +73,7 @@ export async function rotateWorkflowVersionInternal(
         .join("; ")}`,
     );
   }
-  const wfRows = await exec
-    .select()
-    .from(workflows)
-    .where(
-      and(
-        eq(workflows.tenant_id, input.tenant_id),
-        eq(workflows.id, input.workflow_id),
-        isNull(workflows.deleted_at),
-      ),
-    )
-    .limit(1);
-  const wf = wfRows[0];
+  const wf = await lockWorkflowForVersionWrite(exec, input.tenant_id, input.workflow_id);
   if (!wf)
     throw new Error(`rotateWorkflowVersionInternal: workflow not found: ${input.workflow_id}`);
   if (!wf.current_version_id) {
@@ -134,7 +124,7 @@ export async function rotateWorkflowVersionInternal(
   await exec
     .update(workflows)
     .set({ current_version_id: v.id, updated_at: new Date() })
-    .where(eq(workflows.id, wf.id));
+    .where(and(eq(workflows.tenant_id, input.tenant_id), eq(workflows.id, wf.id)));
   await auditAwait(
     {
       tenant_id: input.tenant_id,
