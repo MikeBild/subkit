@@ -85,13 +85,13 @@ describe("isStillOpeningLine", () => {
 // to use that cursor, which is where the composite `(updated_at, id) <` lives.
 // A malformed predicate fails here rather than silently on an installation.
 describe("runConversationTitleSweep — the walk", () => {
-  test("a completed v2 walk does not suppress the repaired v3 walk", async () => {
+  test("a completed v3 walk does not suppress the repaired v4 walk", async () => {
     await srv.db
       .delete(dataMigrations)
       .where(eq(dataMigrations.name, CONVERSATION_TITLE_SWEEP_NAME));
     await srv.db
       .insert(dataMigrations)
-      .values({ name: "conversation_title_model_v2" })
+      .values({ name: "conversation_title_model_v3" })
       .onConflictDoNothing();
     const opening =
       "Erstelle den Workflow guard-probe-replay (slug: guard-probe-replay). Ein transformierender Schritt.";

@@ -119,6 +119,23 @@ export function buildTitlePrompt(turns: Array<{ role: string; text: string }>): 
 }
 
 /**
+ * Keep every readable opening turn, including a user-only source.
+ *
+ * Some older conversation rows contain an assistant placeholder with an empty
+ * object instead of display text. The assistant did answer, but that payload
+ * cannot help the title model. The user's request still carries enough signal
+ * for a short title and must not strand the conversation on a clipped opening
+ * line forever.
+ */
+export function titleSourceTurns(
+  rows: Array<{ role: string; content: unknown }>,
+): Array<{ role: string; text: string }> {
+  return rows
+    .map((row) => ({ role: row.role, text: stringifyConversationExcerpt(row.content) ?? "" }))
+    .filter((turn) => turn.text.length > 0);
+}
+
+/**
  * Re-title a conversation from its opening exchange. Best effort and quiet:
  * a failure logs and leaves the row as it was. Skips locked titles (a
  * person named it) and the mock provider (tests would otherwise burn a
@@ -165,10 +182,8 @@ async function refreshConversationTitleInner(
     )
     .orderBy(asc(conversationMessages.created_at))
     .limit(TITLE_SOURCE_MESSAGES);
-  const turns = rows
-    .map((r) => ({ role: r.role, text: stringifyConversationExcerpt(r.content) ?? "" }))
-    .filter((t) => t.text.length > 0);
-  if (turns.length < 2 || !turns.some((t) => t.role === "assistant")) return null;
+  const turns = titleSourceTurns(rows);
+  if (!turns.some((turn) => turn.role === "user")) return null;
   const result = await runSummarizeFlow({ tenant_id, prompt: buildTitlePrompt(turns) }, exec);
   const title = titleFromSummary(result.summary);
   if (!title) return null;
