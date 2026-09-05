@@ -85,6 +85,38 @@ describe("isStillOpeningLine", () => {
 // to use that cursor, which is where the composite `(updated_at, id) <` lives.
 // A malformed predicate fails here rather than silently on an installation.
 describe("runConversationTitleSweep — the walk", () => {
+  test("a completed v2 walk does not suppress the repaired v3 walk", async () => {
+    await srv.db
+      .delete(dataMigrations)
+      .where(eq(dataMigrations.name, CONVERSATION_TITLE_SWEEP_NAME));
+    await srv.db
+      .insert(dataMigrations)
+      .values({ name: "conversation_title_model_v2" })
+      .onConflictDoNothing();
+    const opening =
+      "Erstelle den Workflow guard-probe-replay (slug: guard-probe-replay). Ein transformierender Schritt.";
+    const legacyTitle = `${opening.slice(0, 49)}…`;
+    const conversationId = "33333333-3333-4333-8333-333333333333";
+    await seedConversation({
+      id: conversationId,
+      title: legacyTitle,
+      locked: false,
+      opening,
+    });
+    const refreshTitle = mock(async (_tenantId: string, _conversationId: string, _db: Db) => null);
+    resetConversationTitleSweep();
+
+    try {
+      const report = await runConversationTitleSweep(srv.db, { refreshTitle });
+
+      expect(report.done).toBe(false);
+      expect(report.scanned).toBeGreaterThan(0);
+      expect(refreshTitle).toHaveBeenCalledWith(srv.tenantId, conversationId, srv.db);
+    } finally {
+      await srv.db.delete(conversations).where(eq(conversations.id, conversationId));
+    }
+  }, 60_000);
+
   test("a second tick resumes past the first and finishes the walk", async () => {
     await srv.db
       .delete(dataMigrations)
