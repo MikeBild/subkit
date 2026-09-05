@@ -39,6 +39,9 @@ export const workflows = pgTable(
     // and fall through to the DAG/name fallback.
     description: text("description"),
     current_version_id: uuid("current_version_id"),
+    // Authoring never moves the executable pointer. Draft versions are inert
+    // until an explicit, version-bound activation promotes them.
+    draft_version_id: uuid("draft_version_id"),
     lifecycle: workflowLifecycleEnum("lifecycle").notNull(),
     // Product-catalog flag: if true AND current_version_id is set AND
     // deleted_at is NULL, this workflow appears in the MCP tools/list

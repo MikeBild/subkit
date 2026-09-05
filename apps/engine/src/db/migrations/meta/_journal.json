@@ -351,6 +351,13 @@
       "when": 1788539731809,
       "tag": "0049_magical_korg",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1788603679698,
+      "tag": "0050_bright_the_leader",
+      "breakpoints": true
     }
   ]
 }

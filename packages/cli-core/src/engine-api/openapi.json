@@ -4302,69 +4302,1411 @@
           "server_time"
         ]
       },
-      "WorkflowListResponse": {
+      "WorkflowDraft": {
         "type": "object",
         "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/WorkflowListItem"
-            }
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
           },
-          "total": {
+          "version_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
             "type": "integer",
-            "minimum": 0
+            "exclusiveMinimum": 0
           },
-          "categories": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "category": {
-                  "type": "string"
-                },
-                "count": {
-                  "type": "integer",
-                  "minimum": 0
-                }
-              },
-              "required": [
-                "category",
-                "count"
-              ]
-            }
+          "digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "current_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/WorkflowDef"
           }
         },
         "required": [
-          "items",
-          "total",
-          "categories"
+          "workflow_id",
+          "version_id",
+          "version",
+          "digest",
+          "current_version_id",
+          "definition"
         ]
       },
-      "WorkflowListItem": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/Workflow"
+      "WorkflowDef": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
           },
-          {
+          "slug": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "tool_effect": {
+            "type": "string",
+            "enum": [
+              "read",
+              "reversible_write",
+              "irreversible_write"
+            ]
+          },
+          "derived_from_skill_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "input_schema_sample": {},
+          "output_schema": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "validation_expression": {
+            "type": "string",
+            "minLength": 1
+          },
+          "validation_function": {
+            "type": "string",
+            "minLength": 1
+          },
+          "output_transform": {
+            "type": "string",
+            "minLength": 1
+          },
+          "output_transform_function": {
+            "type": "string",
+            "minLength": 1
+          },
+          "response_filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResponseFilter"
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestStep"
+                },
+                {
+                  "$ref": "#/components/schemas/TransformStep"
+                },
+                {
+                  "$ref": "#/components/schemas/CallStep"
+                },
+                {
+                  "$ref": "#/components/schemas/WaitStep"
+                },
+                {
+                  "$ref": "#/components/schemas/WaitForEventStep"
+                },
+                {
+                  "$ref": "#/components/schemas/BranchStep"
+                },
+                {
+                  "$ref": "#/components/schemas/ParallelStep"
+                },
+                {
+                  "$ref": "#/components/schemas/LoopStep"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "kind",
+                "mapping": {
+                  "request": "#/components/schemas/RequestStep",
+                  "transform": "#/components/schemas/TransformStep",
+                  "call": "#/components/schemas/CallStep",
+                  "wait": "#/components/schemas/WaitStep",
+                  "wait_for_event": "#/components/schemas/WaitForEventStep",
+                  "branch": "#/components/schemas/BranchStep",
+                  "parallel": "#/components/schemas/ParallelStep",
+                  "loop": "#/components/schemas/LoopStep"
+                }
+              }
+            },
+            "minItems": 1,
+            "maxItems": 200
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "max_llm_tokens_per_run": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/WorkflowRuntime"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/WorkflowTrigger"
+          }
+        },
+        "required": [
+          "name",
+          "steps"
+        ]
+      },
+      "ResponseFilter": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": [
+              "KEYS",
+              "VALUES",
+              "BOTH"
+            ]
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "REMOVE",
+              "MASK",
+              "FAIL"
+            ]
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "mask": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "FIELD",
+              "ITEM",
+              "ENTRY"
+            ]
+          }
+        },
+        "required": [
+          "target",
+          "action",
+          "pattern"
+        ]
+      },
+      "RequestStep": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "request"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "on_error": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "continue"
+            ],
+            "default": "fail"
+          },
+          "data_selector": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "for_each": {
+            "type": "string"
+          },
+          "for_each_concurrency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE",
+              "HEAD",
+              "OPTIONS",
+              "LIST",
+              "SELECT",
+              "INSERT",
+              "UPDATE",
+              "CALL"
+            ],
+            "default": "GET"
+          },
+          "side_effects": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "connector_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "headers": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "query": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          "body": {
+            "$ref": "#/components/schemas/WorkflowJsonValue"
+          },
+          "response_filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResponseFilter"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          },
+          "max_retries": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5
+          },
+          "retry_backoff_ms": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 10000
+          },
+          "retry_on_status": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 599
+            }
+          },
+          "graphql": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "operation": {
+                    "type": "string",
+                    "enum": [
+                      "query",
+                      "mutation",
+                      "subscription"
+                    ]
+                  },
+                  "query": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "variables": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "query"
+                ]
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              }
+            ]
+          },
+          "error_policy": {
+            "type": "string",
+            "enum": [
+              "none",
+              "all"
+            ],
+            "default": "none"
+          },
+          "xml": {
             "type": "object",
             "properties": {
-              "category": {
-                "type": "string"
+              "body": {
+                "$ref": "#/components/schemas/WorkflowJsonValue"
               },
-              "connectors": {
+              "declaration": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "body"
+            ]
+          },
+          "sql": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "minLength": 1
+              },
+              "params": {
+                "type": "array",
+                "items": {}
+              },
+              "also": {
                 "type": "array",
                 "items": {
-                  "type": "string"
+                  "type": "object",
+                  "properties": {
+                    "query": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "params": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "expected_row_count": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        {
+                          "type": "array",
+                          "prefixItems": [
+                            {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            {
+                              "type": "integer",
+                              "minimum": 0
+                            }
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "min": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "max": {
+                              "type": "integer",
+                              "minimum": 0
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "query"
+                  ]
+                }
+              },
+              "transaction": {
+                "type": "boolean"
+              },
+              "cursor": {
+                "type": "object",
+                "properties": {
+                  "fetch_size": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 10000,
+                    "default": 1000
+                  }
                 }
               }
             },
             "required": [
-              "category",
-              "connectors"
+              "query"
+            ]
+          },
+          "s3": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "prefix": {
+                "type": "string"
+              },
+              "parse_as": {
+                "type": "string",
+                "enum": [
+                  "json",
+                  "text",
+                  "base64",
+                  "bytes"
+                ]
+              },
+              "max_keys": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 10000
+              },
+              "content_type": {
+                "type": "string"
+              },
+              "metadata": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "paginate": {
+                "type": "boolean"
+              },
+              "multipart": {
+                "type": "boolean"
+              },
+              "multipart_threshold_mb": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1024
+              },
+              "range": {
+                "type": "string"
+              },
+              "presign": {
+                "type": "object",
+                "properties": {
+                  "expires_in_s": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 604800,
+                    "default": 900
+                  }
+                }
+              }
+            }
+          },
+          "mcp": {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "call_tool",
+                  "read_resource",
+                  "get_prompt"
+                ],
+                "default": "call_tool"
+              },
+              "tool": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uri": {
+                "type": "string",
+                "minLength": 1
+              },
+              "prompt": {
+                "type": "string",
+                "minLength": 1
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/WorkflowJsonValue"
+                }
+              }
+            }
+          },
+          "body_schema": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "response_schema": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "expected_statuses": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "expected_row_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "min": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "max": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            ]
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "secret": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "state_read": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "into_var": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default_value": {}
+            },
+            "required": [
+              "key",
+              "into_var"
+            ]
+          },
+          "state_write": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value_path": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "key",
+              "value_path"
+            ]
+          },
+          "multipart": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MultipartPart"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ]
+      },
+      "WorkflowJsonValue": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          },
+          {
+            "$ref": "#/components/schemas/FileRef"
+          },
+          {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/WorkflowJsonValue"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/WorkflowJsonValue"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "FileRef": {
+        "type": "object",
+        "properties": {
+          "$file": {
+            "$ref": "#/components/schemas/FileId"
+          }
+        },
+        "required": [
+          "$file"
+        ]
+      },
+      "FileId": {
+        "type": "string",
+        "pattern": "^fid_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      },
+      "Pagination": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "strategy": {
+                "type": "string",
+                "enum": [
+                  "offset"
+                ]
+              },
+              "page_size": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 100000,
+                "default": 100
+              },
+              "offset_param": {
+                "type": "string",
+                "default": "offset"
+              },
+              "limit_param": {
+                "type": "string",
+                "default": "limit"
+              },
+              "parameter_location": {
+                "type": "string",
+                "enum": [
+                  "query",
+                  "body"
+                ]
+              },
+              "output_mode": {
+                "type": "string",
+                "enum": [
+                  "items",
+                  "pages"
+                ]
+              },
+              "items_path": {
+                "type": "string"
+              },
+              "stop_when_empty_path": {
+                "type": "string"
+              },
+              "max_pages": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1000
+              }
+            },
+            "required": [
+              "strategy"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "strategy": {
+                "type": "string",
+                "enum": [
+                  "page"
+                ]
+              },
+              "page_size": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 100000,
+                "default": 100
+              },
+              "page_param": {
+                "type": "string",
+                "default": "page"
+              },
+              "limit_param": {
+                "type": "string",
+                "default": "page_size"
+              },
+              "start_page": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 1
+              },
+              "parameter_location": {
+                "type": "string",
+                "enum": [
+                  "query",
+                  "body"
+                ]
+              },
+              "output_mode": {
+                "type": "string",
+                "enum": [
+                  "items",
+                  "pages"
+                ]
+              },
+              "items_path": {
+                "type": "string"
+              },
+              "max_pages": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1000
+              }
+            },
+            "required": [
+              "strategy"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "strategy": {
+                "type": "string",
+                "enum": [
+                  "cursor"
+                ]
+              },
+              "cursor_request_param": {
+                "type": "string"
+              },
+              "cursor_response_path": {
+                "type": "string"
+              },
+              "page_size": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 100000
+              },
+              "limit_param": {
+                "type": "string"
+              },
+              "parameter_location": {
+                "type": "string",
+                "enum": [
+                  "query",
+                  "body"
+                ]
+              },
+              "output_mode": {
+                "type": "string",
+                "enum": [
+                  "items",
+                  "pages"
+                ]
+              },
+              "items_path": {
+                "type": "string"
+              },
+              "max_pages": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1000
+              }
+            },
+            "required": [
+              "strategy",
+              "cursor_request_param",
+              "cursor_response_path"
             ]
           }
         ]
+      },
+      "MultipartPart": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "file": {
+            "$ref": "#/components/schemas/FileRef"
+          },
+          "value": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "TransformStep": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "transform"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "on_error": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "continue"
+            ],
+            "default": "fail"
+          },
+          "data_selector": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "for_each": {
+            "type": "string"
+          },
+          "for_each_concurrency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expression": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "javascript",
+              "readability",
+              "html-to-markdown",
+              "structured-data"
+            ]
+          },
+          "readability": {
+            "$ref": "#/components/schemas/ReadabilityConfig"
+          },
+          "markdown": {
+            "$ref": "#/components/schemas/MarkdownConfig"
+          },
+          "structured_data": {
+            "$ref": "#/components/schemas/StructuredDataConfig"
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "output_schema": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "silence_warnings": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "dropped_fields"
+              ]
+            },
+            "description": "Suppress specific non-fatal warnings on this step."
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ]
+      },
+      "ReadabilityConfig": {
+        "type": "object",
+        "properties": {
+          "max_chars": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2000000
+          },
+          "length_guard": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2000000
+          }
+        }
+      },
+      "MarkdownConfig": {
+        "type": "object",
+        "properties": {
+          "max_chars": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2000000
+          },
+          "preserve_links": {
+            "type": "boolean"
+          },
+          "strip_tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "truncate": {
+            "type": "boolean"
+          }
+        }
+      },
+      "StructuredDataConfig": {
+        "type": "object",
+        "properties": {
+          "types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "json-ld",
+                "opengraph",
+                "microdata"
+              ]
+            },
+            "minItems": 1
+          }
+        }
+      },
+      "CallStep": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "call"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "on_error": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "continue"
+            ],
+            "default": "fail"
+          },
+          "data_selector": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "for_each": {
+            "type": "string"
+          },
+          "for_each_concurrency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_slug": {
+            "type": "string"
+          },
+          "input": {
+            "$ref": "#/components/schemas/WorkflowJsonValue"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ]
+      },
+      "WaitStep": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "wait"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "on_error": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "continue"
+            ],
+            "default": "fail"
+          },
+          "data_selector": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "for_each": {
+            "type": "string"
+          },
+          "for_each_concurrency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 86400000
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "duration_ms"
+        ]
+      },
+      "WaitForEventStep": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "wait_for_event"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "on_error": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "continue"
+            ],
+            "default": "fail"
+          },
+          "data_selector": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "for_each": {
+            "type": "string"
+          },
+          "for_each_concurrency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "event_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "match": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "equals": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "path",
+              "equals"
+            ]
+          },
+          "on_timeout": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "timeout_ms",
+          "event_name"
+        ]
+      },
+      "BranchStep": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "branch"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "on_error": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "continue"
+            ],
+            "default": "fail"
+          },
+          "data_selector": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "for_each": {
+            "type": "string"
+          },
+          "for_each_concurrency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "when": {
+            "type": "string"
+          },
+          "then_steps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "else_steps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "when",
+          "then_steps"
+        ]
+      },
+      "ParallelStep": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "parallel"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "on_error": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "continue"
+            ],
+            "default": "fail"
+          },
+          "data_selector": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "for_each": {
+            "type": "string"
+          },
+          "for_each_concurrency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "branches": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "branches"
+        ]
+      },
+      "LoopStep": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "loop"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "on_error": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "continue"
+            ],
+            "default": "fail"
+          },
+          "data_selector": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "for_each": {
+            "type": "string"
+          },
+          "for_each_concurrency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "over": {
+            "type": "string"
+          },
+          "body": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "fail_fast": {
+            "type": "boolean"
+          },
+          "item_var": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "body"
+        ]
+      },
+      "WorkflowRuntime": {
+        "type": "object",
+        "properties": {
+          "stdlib_version": {
+            "type": "string"
+          }
+        }
       },
       "WorkflowTrigger": {
         "oneOf": [
@@ -4376,11 +5718,16 @@
           },
           {
             "$ref": "#/components/schemas/ScheduleTrigger"
-          },
-          {
-            "type": "null"
           }
-        ]
+        ],
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "request": "#/components/schemas/RequestTrigger",
+            "webhook": "#/components/schemas/WebhookTrigger",
+            "schedule": "#/components/schemas/ScheduleTrigger"
+          }
+        }
       },
       "RequestTrigger": {
         "type": "object",
@@ -4473,6 +5820,105 @@
           "cron"
         ]
       },
+      "CreateWorkflowDraft": {
+        "type": "object",
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/WorkflowDef"
+          }
+        },
+        "required": [
+          "definition"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateWorkflowDraft": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateWorkflowDraft"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "expected_draft_version_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "expected_draft_version_id"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "WorkflowListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowListItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "category",
+                "count"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "categories"
+        ]
+      },
+      "WorkflowListItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Workflow"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "category": {
+                "type": "string"
+              },
+              "connectors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "category",
+              "connectors"
+            ]
+          }
+        ]
+      },
       "Workflow": {
         "type": "object",
         "properties": {
@@ -4498,6 +5944,12 @@
             "type": "string"
           },
           "current_version_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "draft_version_id": {
             "type": [
               "string",
               "null"
@@ -4609,6 +6061,7 @@
           "description",
           "lifecycle",
           "current_version_id",
+          "draft_version_id",
           "current_version",
           "created_at",
           "updated_at",
@@ -5815,46 +7268,6 @@
             "maximum": 60000
           }
         }
-      },
-      "ResponseFilter": {
-        "type": "object",
-        "properties": {
-          "target": {
-            "type": "string",
-            "enum": [
-              "KEYS",
-              "VALUES",
-              "BOTH"
-            ]
-          },
-          "action": {
-            "type": "string",
-            "enum": [
-              "REMOVE",
-              "MASK",
-              "FAIL"
-            ]
-          },
-          "pattern": {
-            "type": "string"
-          },
-          "mask": {
-            "type": "string"
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "FIELD",
-              "ITEM",
-              "ENTRY"
-            ]
-          }
-        },
-        "required": [
-          "target",
-          "action",
-          "pattern"
-        ]
       },
       "RerunExecutionBody": {
         "type": "object",
@@ -13484,10 +14897,6 @@
           }
         ]
       },
-      "FileId": {
-        "type": "string",
-        "pattern": "^fid_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-      },
       "FileStatus": {
         "type": "string",
         "enum": [
@@ -13586,17 +14995,6 @@
               "content_base64"
             ]
           }
-        ]
-      },
-      "FileRef": {
-        "type": "object",
-        "properties": {
-          "$file": {
-            "$ref": "#/components/schemas/FileId"
-          }
-        },
-        "required": [
-          "$file"
         ]
       },
       "ConversationAttachmentList": {
@@ -24493,6 +25891,269 @@
           },
           "500": {
             "description": "Internal — engine bug or schema regression.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/drafts": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Save a new inert workflow draft without activating triggers",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkflowDraft"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Inert draft; no activation or execution authority",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDraft"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Draft not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Draft or slug changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/{id}/draft": {
+      "put": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Save a draft version without changing the active workflow",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkflowDraft"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Inert draft; no activation or execution authority",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDraft"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Draft not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Draft or slug changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Read the exact pending draft, separately from the active version",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Inert draft; no activation or execution authority",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDraft"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Draft not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Draft or slug changed",
             "content": {
               "application/json": {
                 "schema": {

@@ -29,6 +29,25 @@ stateDiagram-v2
 
 _Draft → active → archived. Every transition lands in the Audit Log with the actor, the version, and the timestamp._
 
+### Durable drafts are not active versions
+
+The draft API persists preparation without activating a workflow. A workflow has
+separate `draft_version_id` and `current_version_id` pointers. Saving a draft writes
+an additional version and advances only the draft pointer; the active definition,
+schedule, webhook and tool catalog stay unchanged. A new draft has no active
+version and creates no live trigger. Existing workflows acquire no draft or
+execution authority through migration.
+
+Updates bind `expected_draft_version_id` to the version the author read (`null`
+when no draft exists). A concurrent edit returns a conflict instead of silently
+overwriting another draft. Identical definitions reuse the existing draft version;
+changed definitions retain earlier versions. Draft responses include a canonical
+SHA-256 definition digest, not an execution grant. Every actual save has a
+transactional audit record carrying actor, request source and both pointers.
+
+Use the dedicated draft endpoints for this behavior. Existing definition-commit
+endpoints are activation-capable and are not equivalent to saving an inert draft.
+
 ### The authoring critic
 
 Static validation catches what a schema can prove: unknown step kinds, malformed placeholders, a scope reference that can't resolve. It cannot catch a draft that is _structurally valid but semantically wrong_ — a workflow that parses cleanly yet quietly drifts from what the author actually asked for (the wrong endpoint, an inverted condition, a dropped field).

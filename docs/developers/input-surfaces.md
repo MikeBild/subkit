@@ -115,6 +115,18 @@ The REST API is the full programmatic interface to sk and the canonical interfac
 | **Discoverability** | OpenAPI spec served at `/openapi.json`; interactive Scalar UI at `/docs`. Both available to any authenticated client. |
 | **LLM grounding** | The engine publishes its own docs in the [llms-txt](https://llmstxt.org) format, unauthenticated, as `text/markdown`: `GET /llms.txt` (a robots.txt-style index) and `GET /llms-full.txt` (the full docs in one fetch). Point an MCP client or model at these to ground it on auth, error-code semantics, and conventions in prose the bare schema can't express. |
 
+### Durable workflow draft API
+
+`POST /v1/workflows/drafts` accepts `{definition}` and requires `workflow:write`.
+`GET /v1/workflows/{id}/draft` requires resource-scoped `workflow:read` and returns
+the exact saved draft. `PUT /v1/workflows/{id}/draft` requires resource-scoped
+`workflow:write` and accepts `{definition, expected_draft_version_id}`; the expected
+version is a UUID or `null` when there is no prior draft. Responses carry
+`workflow_id`, `version_id`, `version`, `digest`, `current_version_id` and the
+validated `definition`. Workflow list/detail responses separately expose
+`draft_version_id`. Missing drafts return 404; stale expected versions or duplicate
+slugs return 409. No endpoint in this group activates triggers or authorizes a run.
+
 ### Runtime configuration across surfaces
 
 Cockpit Settings, `GET /v1/settings` + `PUT /v1/settings/{path}`, and the

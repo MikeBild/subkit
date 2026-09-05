@@ -71,6 +71,8 @@ export interface WorkflowView {
   description: string | null;
   lifecycle: "draft" | "active" | "archived";
   current_version_id: string | null;
+  /** Independent authoring pointer; never used for saved live execution. */
+  draft_version_id?: string | null;
   current_version: number | null;
   created_at: Date;
   updated_at: Date;
@@ -148,6 +150,7 @@ async function loadWorkflowView(
     description: wf.description ?? null,
     lifecycle: wf.lifecycle as "draft" | "active" | "archived",
     current_version_id: wf.current_version_id,
+    draft_version_id: wf.draft_version_id,
     current_version: version,
     created_at: wf.created_at,
     updated_at: wf.updated_at,
