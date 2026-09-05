@@ -6581,6 +6581,9 @@
           "error": {},
           "request_meta": {
             "$ref": "#/components/schemas/RequestMeta"
+          },
+          "held": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -7055,6 +7058,12 @@
               "saved"
             ]
           },
+          "hold_writes": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
           "workflow_id": {
             "type": "string",
             "format": "uuid"
@@ -7100,6 +7109,13 @@
             "enum": [
               "draft"
             ]
+          },
+          "hold_writes": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "Preview a temporary definition: hold request steps classified as writes; reads still execute against real systems. This flag is not a live-execution authorization."
           },
           "definition": {
             "$ref": "#/components/schemas/ExecutionRunDraftDefinition"
@@ -7175,6 +7191,13 @@
             "enum": [
               "step"
             ]
+          },
+          "hold_writes": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "Preview a temporary definition: hold request steps classified as writes; reads still execute against real systems. This flag is not a live-execution authorization."
           },
           "step": {
             "$ref": "#/components/schemas/ExecutionRunStep"
@@ -14298,6 +14321,25 @@
                 },
                 "saved_at": {
                   "type": "string"
+                },
+                "draft_version_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "current_version_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "persistence_kind": {
+                  "type": "string",
+                  "enum": [
+                    "draft",
+                    "active"
+                  ]
                 }
               },
               "required": [

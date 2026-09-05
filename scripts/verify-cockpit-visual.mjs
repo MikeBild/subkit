@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
 import { standAt } from "./lib/cockpit-identity.mjs";
+import { verifyWorkflowPreview } from "./lib/cockpit-workflow-preview.mjs";
 
 /** A port nothing is listening on right now — claimed immediately with --strictPort. */
 function freePort() {
@@ -522,6 +523,7 @@ async function mockApi(route) {
         "conversation:approve",
         "workflow:read",
         "workflow:write",
+        "workflow:run",
         "execution:read",
         "connector:read",
         "connector:write",
@@ -625,6 +627,7 @@ async function mockApi(route) {
       slug: "monatsreport",
       lifecycle: "active",
       current_version: 8,
+      current_version_id: "018f4b4a-6d33-7b3a-9c2d-123456789ab8",
       steps: [
         { id: "fetch", name: "Daten laden", kind: "request" },
         { id: "transform", name: "Report berechnen", kind: "transform" },
@@ -2074,6 +2077,7 @@ for (const locale of variants) {
         fullPage: false,
       });
     }
+    await verifyWorkflowPreview(page, stand, uuid, locale.name);
     if (viewport.name === "desktop") {
       for (const resource of ["workflows", "connectors", "knowledge", "skills", "files"]) {
         await stand.visit(page, `${resource}/${uuid}`);

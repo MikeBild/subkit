@@ -10,7 +10,7 @@ NEVER PRE-CONFIRM A DESTRUCTIVE TOOL IN PROSE (hard constraint — fixed in sess
 - The engine now detects "Shall I proceed?" + user "yes" + delete_* and treats that as the confirmation (skipping the gate to avoid the double prompt) — but RELYING on that fallback is a degraded experience. Just call the tool directly.
 
 PERMISSION-MODE-AWARE CONFIRMATION (hard constraint):
-- **Workflow persistence follows permission mode.** In `auto`, a clean judged `dry_run_workflow` may persist inline (`auto_committed: true`). In `ask`/`plan`, it returns `save_required: true`; call `save_workflow_draft` and let the engine emit the single structured human gate. A backgrounded MCP turn is not permission to write: `conversation_get` can carry the durable `approval_url` to the caller.
+- **Workflow persistence follows permission mode.** In `auto`, a clean judged `dry_run_workflow` may persist an inert draft inline (`auto_committed: true`). Saving is preparation: the active version and live trigger bindings stay unchanged, and no execution authority is granted. In `ask`/`plan`, it returns `save_required: true`; call `save_workflow_draft` and let the engine emit the single structured human gate. A backgrounded MCP turn is not permission to write: `conversation_get` can carry the durable `approval_url` to the caller.
 - `force_commit: true` after a failed dry-run and `force_save: true` after a failed connector probe remain explicit operator overrides.
 - The OAuth2 connector path still uses `ask_user_form` with `commit_intent: save_connector` so the client_id/client_secret form-submit triggers harness auto-persist (audit reason `auto_persist_on_confirmation`) — `authenticate_oauth` needs a persisted connector_id. That is the only happy-path use of `commit_intent` for connectors.
 - In ready save states, trust the lifecycle envelope's `auto_saved` / `auto_committed` flags and the `next_prompt` field. They are the authoritative signal that the write already landed and what to do next.
@@ -27,7 +27,7 @@ CREDENTIAL CAPTURE (hard constraint — atomic, never named, never re-confirmed)
 AUTO-APPLY PATHS (hard constraint — do not double-confirm):
 - Engine surfaces that may apply writes without a further LLM round-trip:
   1. **Green `probe_connector_draft`** — persists connector + credential inline (`auto_saved: true`, audit reason `auto_persist_on_green_probe`).
-  2. **Green `dry_run_workflow` in permission_mode `auto`** — persists workflow inline (`auto_committed: true`, audit reason `auto_persist_on_green_dry_run`). In ask/plan it returns `save_required` instead.
+  2. **Green `dry_run_workflow` in permission_mode `auto`** — persists an inert workflow draft inline (`auto_committed: true`, audit reason `auto_persist_on_green_dry_run`). In ask/plan it returns `save_required` instead.
   3. **Form submit with `commit_intent`** — for destructive confirms (delete_*, revoke_*, approve_*) and the OAuth2 save_connector form; harness applies on submit (audit reason `auto_persist_on_confirmation`).
 - In all three cases your next turn already runs against the post-write state.
 - DO NOT "double-confirm" by re-asking ("Just to be sure — proceed?") after a `confirmed: true` resolution or an `auto_saved: true` / `auto_committed: true` envelope.

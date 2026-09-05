@@ -114,8 +114,12 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
     if (c.req.method === "POST") {
       let workflowId: string | undefined;
       try {
-        const body = (await c.req.json().catch(() => null)) as { workflow_id?: string } | null;
-        workflowId = body?.workflow_id;
+        const savedTarget = z
+          .object({ source: z.literal("saved"), workflow_id: z.string().uuid() })
+          .safeParse(await c.req.json().catch(() => null));
+        // A resource grant authorizes that saved workflow only. Inline bodies
+        // must not borrow it through an otherwise ignored workflow_id field.
+        workflowId = savedTarget.success ? savedTarget.data.workflow_id : undefined;
       } catch {
         // Body may be missing / invalid — fall through to the unscoped check.
       }
@@ -269,6 +273,9 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           principal,
           execution_mode,
           idempotency_key: idempotencyKey,
+          ...(body.source !== "saved" && body.hold_writes
+            ? { hold_writes: true, self_healing: { enabled: false } }
+            : {}),
         },
       });
       return c.json(

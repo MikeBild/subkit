@@ -17214,6 +17214,7 @@ export interface components {
             retry_count: number;
             error?: unknown;
             request_meta?: components["schemas"]["RequestMeta"];
+            held?: boolean;
         };
         RequestMeta: components["schemas"]["HttpRequestMeta"] | components["schemas"]["GraphqlRequestMeta"] | components["schemas"]["PostgresRequestMeta"] | components["schemas"]["S3RequestMeta"] | components["schemas"]["McpRequestMeta"] | components["schemas"]["ConnectorlessRequestMeta"] | components["schemas"]["ErrorRequestMeta"] | null;
         HttpRequestMeta: {
@@ -17340,6 +17341,8 @@ export interface components {
              * @enum {string}
              */
             source: "saved";
+            /** @enum {boolean} */
+            hold_writes?: false;
             /** Format: uuid */
             workflow_id: string;
             /** Format: uuid */
@@ -17360,6 +17363,11 @@ export interface components {
              * @enum {string}
              */
             source: "draft";
+            /**
+             * @description Preview a temporary definition: hold request steps classified as writes; reads still execute against real systems. This flag is not a live-execution authorization.
+             * @enum {boolean}
+             */
+            hold_writes?: true;
             definition: components["schemas"]["ExecutionRunDraftDefinition"];
             name?: string;
             input?: unknown;
@@ -17387,6 +17395,11 @@ export interface components {
              * @enum {string}
              */
             source: "step";
+            /**
+             * @description Preview a temporary definition: hold request steps classified as writes; reads still execute against real systems. This flag is not a live-execution authorization.
+             * @enum {boolean}
+             */
+            hold_writes?: true;
             step: components["schemas"]["ExecutionRunStep"];
             workflow_slug?: string;
             input?: unknown;
@@ -19156,6 +19169,10 @@ export interface components {
                 version: number | null;
                 environment: string | null;
                 saved_at: string;
+                draft_version_id?: string | null;
+                current_version_id?: string | null;
+                /** @enum {string} */
+                persistence_kind?: "draft" | "active";
             }[];
             latest_execution: {
                 execution_id: string;

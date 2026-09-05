@@ -57,10 +57,12 @@ sequenceDiagram
     E-->>C: reads run live, writes resolved but not dispatched
     C->>J: evaluate artifacts vs stashed goal
     J-->>C: verdict (pass / findings)
-    C->>U: preview draft for approval
-    U->>C: approve
-    C->>E: save_workflow_draft (commit versioned workflow)
-    E-->>U: runnable, governed workflow
+    opt ask / plan mode
+        C->>U: preview draft for save confirmation
+        U->>C: approve save
+    end
+    C->>E: save_workflow_draft (or inline save in auto mode)
+    E-->>U: immutable saved draft; activation still required
 ```
 
 ---
@@ -83,7 +85,8 @@ stateDiagram-v2
     WorkflowJudged --> WorkflowRepair: judge / recorded_eval findings
     WorkflowPreviewed --> WorkflowRepair: preview failure
     WorkflowRepair --> WorkflowPreviewed: edit_workflow_patch (RFC-6902), then preview again
-    WorkflowPersisted --> WorkflowExecuted: run
+    WorkflowPersisted --> WorkflowActivated: separate exact-version activation
+    WorkflowActivated --> WorkflowExecuted: authorized run
     WorkflowExecuted --> Diagnosis: warnings / failure
     Diagnosis --> WorkflowRepair: repair draft
     WorkflowExecuted --> [*]: success
@@ -122,7 +125,7 @@ When the user says they want to create a new workflow after inspecting or runnin
 
 The most important architectural decision in sk: **the author sees what a workflow will do before it can do it.** In `ask` and `plan`, a commit lands only after the structured human save gate. In explicitly selected `auto` mode, a clean judged dry-run may commit inline. Starting an unattended trigger takes a further, separate decision.
 
-When the AI finishes a Draft, it pauses the authoring loop and presents it for review. The operator sees every step, connector reference, parameter, and branching condition — and can push back, ask for changes, iterate. On approval, the Draft is committed as a new versioned Workflow; the Conversation transitions to active and the workflow is ready to run.
+When the AI finishes a draft, the operator can inspect every step, connector reference, parameter and branching condition and ask for changes. A successful save stores an immutable draft version and leaves the conversation active for further work. It does not make the draft executable: the active version, existing schedules and webhooks remain unchanged. Review and activation concern the exact saved version; saving or approving a capability skill grants no execution authority.
 
 This is the governance model, not a UX convenience. It is the structural answer to "How do we know the AI did the right thing?" — because a human read what it would do, on a preview whose writes were held, before it ran for real.
 
@@ -132,7 +135,7 @@ The gate sits on top of hard quality gates:
 |---|---|
 | Connector save | Blocked until `inspect`, `validate`, `probe` checkpoints are fresh |
 | Workflow commit | Blocked until `inspect`, `validate`, `preview` checkpoints are fresh |
-| Workflow run | Always targets a persisted version, never an ambiguous draft |
+| Workflow run | Uses the exact inspected active version; an inactive saved draft returns `workflow_activation_required`, rather than running an older active version |
 | Connector persistence | A green `probe_connector_draft` calls `saveConnectorAtomic` inline (audit reason `auto_persist_on_green_probe`), returns `auto_saved: true` |
 | Workflow persistence | In `auto`, a green judged dry-run may call `commitWorkflowAtomic` inline. In `ask`/`plan`, it returns `save_required` and `save_workflow_draft` uses the human gate. |
 | Force overrides | `force_save: true` (after a failed probe) and `force_commit: true` (after a failed dry-run) go through the explicit `ask_user_confirm` carrier so the deviation is auditable |

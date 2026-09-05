@@ -84,7 +84,7 @@ async function getDetail(conversationId: string): Promise<{
 }
 
 describe("ready workflow saves stay deterministic in auto mode", () => {
-  test("a short yes follow-up commits the ready workflow without an extra confirm stall", async () => {
+  test("a short yes follow-up saves an inert draft without an extra confirm stall", async () => {
     const conversationId = await seedConversation();
 
     getMockProvider().setConversePlan(conversationId, [{ tool: "save_workflow_draft", args: {} }]);
@@ -106,15 +106,21 @@ describe("ready workflow saves stay deterministic in auto mode", () => {
     expect(body.assistant_text).not.toContain("confirm");
 
     const detail = await getDetail(conversationId);
-    expect(detail.conversation.status).toBe("committed");
+    expect(detail.conversation.status).toBe("active");
     expect(detail.conversation.target_workflow_id).toBe(body.committed_workflow_id);
     expect(detail.tool_calls.map((call) => call.tool)).toContain("save_workflow_draft");
     expect(detail.tool_calls.map((call) => call.tool)).not.toContain("cannot_help");
 
     const workflowRows = await env.db
-      .select({ id: workflows.id })
+      .select({
+        id: workflows.id,
+        current_version_id: workflows.current_version_id,
+        draft_version_id: workflows.draft_version_id,
+      })
       .from(workflows)
       .where(eq(workflows.id, body.committed_workflow_id!));
     expect(workflowRows).toHaveLength(1);
+    expect(workflowRows[0]!.current_version_id).toBeNull();
+    expect(workflowRows[0]!.draft_version_id).toBeTruthy();
   }, 120_000);
 });

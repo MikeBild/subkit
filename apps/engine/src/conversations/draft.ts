@@ -60,6 +60,7 @@ function workflowDraftFromDag(dag: unknown): WorkflowDraftDocument | null {
 async function buildPreviewFromLastExecution(
   tenant_id: string,
   workflow_id: string,
+  workflow_version_id: string,
   exec: Executor,
 ): Promise<DraftDocument["latest_preview"] | null> {
   const executionRows = await exec
@@ -69,6 +70,7 @@ async function buildPreviewFromLastExecution(
       and(
         eq(executions.tenant_id, tenant_id),
         eq(executions.workflow_id, workflow_id),
+        eq(executions.workflow_version_id, workflow_version_id),
         eq(executions.status, "succeeded"),
       ),
     )
@@ -148,6 +150,7 @@ async function hydrateBoundWorkflow(
       slug: workflows.slug,
       name: workflows.name,
       current_version_id: workflows.current_version_id,
+      draft_version_id: workflows.draft_version_id,
       updated_at: workflows.updated_at,
     })
     .from(workflows)
@@ -163,14 +166,16 @@ async function hydrateBoundWorkflow(
   if (!workflow) return normalized;
   let version: number | null = null;
   let hydratedWorkflow: WorkflowDraftDocument | null = null;
-  if (workflow.current_version_id) {
+  const selectedVersionId = workflow.draft_version_id ?? workflow.current_version_id;
+  if (selectedVersionId) {
     const versionRows = await exec
       .select({ version: workflowVersions.version, dag: workflowVersions.dag })
       .from(workflowVersions)
       .where(
         and(
           eq(workflowVersions.tenant_id, tenant_id),
-          eq(workflowVersions.id, workflow.current_version_id),
+          eq(workflowVersions.id, selectedVersionId),
+          eq(workflowVersions.workflow_id, workflow.id),
         ),
       )
       .limit(1);
@@ -189,7 +194,9 @@ async function hydrateBoundWorkflow(
   // Seed latest_preview from the most recent succeeded run so the
   // transform / loop authoring gates have real upstream shape evidence
   // on a workflow that has executed before.
-  const seededPreview = await buildPreviewFromLastExecution(tenant_id, workflow.id, exec);
+  const seededPreview = selectedVersionId
+    ? await buildPreviewFromLastExecution(tenant_id, workflow.id, selectedVersionId, exec)
+    : null;
   const withPreview: DraftDocument = seededPreview
     ? { ...draftToBind, latest_preview: seededPreview }
     : draftToBind;
@@ -203,7 +210,10 @@ async function hydrateBoundWorkflow(
     id: workflow.id,
     slug: workflow.slug,
     name: workflow.name,
-    version_id: workflow.current_version_id,
+    version_id: selectedVersionId,
+    draft_version_id: workflow.draft_version_id,
+    current_version_id: workflow.current_version_id,
+    persistence_kind: workflow.draft_version_id ? "draft" : "active",
     version,
     environment: null,
     saved_at: workflow.updated_at.toISOString(),

@@ -8,9 +8,8 @@
 //
 //   AC1. Confirming a save_workflow_draft elicitation unblocks the loop:
 //        the conversation transitions from `awaiting_input` to
-//        `committed`, an `approval.approved` audit row fires, a
-//        `conversation.committed` audit row fires, and a new
-//        workflow row is created.
+//        `active`, an `approval.approved` audit row fires, and a new
+//        inert workflow draft is created without a committed audit event.
 //   AC2. Rejecting the elicitation drives a new turn with the
 //        negative result; the conversation does NOT commit, the
 //        stored output carries `{ confirmed: false }`, and the
@@ -37,6 +36,7 @@ async function countAudit(action: string, resourceId: string): Promise<number> {
     .from(auditLog)
     .where(
       and(
+        eq(auditLog.tenant_id, ctx.tenantId),
         eq(auditLog.action, action),
         eq(auditLog.resource_id, resourceId),
         isNull(auditLog.reason),
@@ -79,7 +79,7 @@ describe("journey: sk-cli elicitation lifecycle", () => {
     return { conversationId: convoId, elicitationId: elicit.id };
   }
 
-  test("AC1: confirm drives commit → workflow row + approval.approved + conversation.committed", async () => {
+  test("AC1: manual confirmation saves an inert workflow draft with an approval audit", async () => {
     const { conversationId, elicitationId } = await newCommitConversation();
 
     const res = await journeyFetch(
@@ -90,19 +90,25 @@ describe("journey: sk-cli elicitation lifecycle", () => {
     expect(res.status).toBe(200);
 
     const detail = await conversationsSvc.getConversation(ctx.tenantId, conversationId, ctx.db);
-    expect(detail?.conversation.status).toBe("committed");
+    expect(detail?.conversation.status).toBe("active");
     const workflowId = detail?.conversation.target_workflow_id;
     expect(workflowId).toBeDefined();
 
     const [row] = await ctx.db
-      .select({ id: workflows.id })
+      .select({
+        id: workflows.id,
+        draft: workflows.draft_version_id,
+        active: workflows.current_version_id,
+      })
       .from(workflows)
-      .where(eq(workflows.id, workflowId as string))
+      .where(and(eq(workflows.id, workflowId as string), eq(workflows.tenant_id, ctx.tenantId)))
       .limit(1);
     expect(row).toBeDefined();
+    expect(row?.draft).toBeTruthy();
+    expect(row?.active).toBeNull();
 
     expect(await countAudit("approval.approved", elicitationId)).toBe(1);
-    expect(await countAudit("conversation.committed", conversationId)).toBe(1);
+    expect(await countAudit("conversation.committed", conversationId)).toBe(0);
   });
 
   test("AC2: reject records the reason and does not commit", async () => {

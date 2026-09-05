@@ -7,17 +7,16 @@
 //   - AC2: Closing the stream and re-opening with the same conversation
 //          id re-plays the same state plus any subsequent events.
 //   - AC3: After responding to the elicitation with `{confirmed:true}`,
-//          a reconnect surfaces a `committed` frame referencing the
-//          materialised workflow.
+//          a reconnect preserves the saved draft without claiming activation.
 //   - AC4: Aborting an in-flight SSE read mid-stream and reconnecting
 //          replays the same events in the same order (the server
 //          re-delivers the persisted snapshot on every GET), then a
-//          follow-up turn + elicit response produces a `committed`
-//          frame on the subsequent reconnect.
+//          follow-up elicit response saves an inert draft on reconnect.
 // Spec refs: docs/authors/authoring-workflows.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { connectors } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { connectors, conversations, workflows } from "../../db/schema/index.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
@@ -57,6 +56,22 @@ async function streamEvents(id: string): Promise<string[]> {
     .map((l) => l.slice("event:".length).trim());
 }
 
+async function expectSavedDraft(id: string) {
+  const [row] = await ctx.db
+    .select({ draft: workflows.draft_version_id, active: workflows.current_version_id })
+    .from(conversations)
+    .innerJoin(
+      workflows,
+      and(
+        eq(workflows.id, conversations.target_workflow_id),
+        eq(workflows.tenant_id, ctx.tenantId),
+      ),
+    )
+    .where(and(eq(conversations.id, id), eq(conversations.tenant_id, ctx.tenantId)));
+  expect(row?.draft).toBeTruthy();
+  expect(row?.active).toBeNull();
+}
+
 describe("journey: conversation resume", () => {
   test("AC1: initial turn pauses at an elicitation and SSE surfaces the trace", async () => {
     const createRes = await journeyFetch(ctx, "/v1/conversations", {
@@ -89,7 +104,7 @@ describe("journey: conversation resume", () => {
     expect(evts).toContain("elicit_request");
   });
 
-  test("AC3: responding to the elicitation drives the conversation to committed; next stream emits committed", async () => {
+  test("AC3: confirming saves an inert draft; reconnect does not claim activation", async () => {
     const respondRes = await journeyFetch(
       ctx,
       `/v1/conversations/${conversationId}/elicitations/${pendingElicitationId}/respond`,
@@ -99,17 +114,18 @@ describe("journey: conversation resume", () => {
     const out = (await respondRes.json()) as {
       status: string;
     };
-    expect(out.status).toBe("committed");
+    expect(out.status).toBe("active");
+    await expectSavedDraft(conversationId);
 
     const evts = await streamEvents(conversationId);
-    expect(evts).toContain("committed");
+    expect(evts).not.toContain("committed");
     expect(evts).toContain("completed");
   });
 
-  test("AC4: mid-stream abort + reconnect replays existing events then commit arrives on the next reconnect", async () => {
+  test("AC4: mid-stream abort and reconnect preserve events and the subsequently saved draft", async () => {
     // Fresh conversation so we don't disturb the AC1-3 state machine
     // above. This conversation drives through its own
-    // awaiting_input → respond_elicitation → committed transition
+    // awaiting_input → respond_elicitation → active transition
     // end-to-end so we can assert that a reconnect after the abort
     // re-serves the same prefix of events the original stream already
     // delivered.
@@ -130,11 +146,10 @@ describe("journey: conversation resume", () => {
     const convId = created.conversation.id;
     const elicitationId = created.pending_elicitation_id!;
 
-    // Rename the live draft so the eventual commit produces a
-    // workflow with a unique slug. AC3 above commits its own draft
+    // Rename the live draft so the eventual save produces a
+    // workflow with a unique slug. AC3 above saves its own draft
     // through the same canned plan, so without this nudge the second
-    // commit would hit a (tenant_id, slug) unique-constraint
-    // violation and leave the conversation in `active`.
+    // save would hit a (tenant_id, slug) unique-constraint violation.
     {
       const { and, desc, eq } = await import("drizzle-orm");
       const { conversationDrafts } = await import("../../db/schema/index.ts");
@@ -236,7 +251,7 @@ describe("journey: conversation resume", () => {
     expect(replayed.slice(0, firstTwo.length)).toEqual(firstTwo);
 
     // 3) Respond to the pending askUser.confirm elicitation with
-    //    `{confirmed:true}` to drive the conversation to `committed`.
+    //    `{confirmed:true}` to save its draft without activating it.
     //    In this harness the respond endpoint itself is the
     //    continuation trigger; `POST /messages` would just queue
     //    another LLM turn and is not required for AC4's commit
@@ -248,11 +263,12 @@ describe("journey: conversation resume", () => {
     );
     expect(respondRes.status).toBe(200);
     const respondOut = (await respondRes.json()) as { status: string };
-    expect(respondOut.status).toBe("committed");
+    expect(respondOut.status).toBe("active");
+    await expectSavedDraft(convId);
 
-    // 4) Reconnect one more time; the replayed stream must now include
-    //    a `committed` frame that the first stream didn't carry.
+    // 4) Reconnect one more time; completion must not imply activation.
     const afterCommit = await streamEvents(convId);
-    expect(afterCommit).toContain("committed");
+    expect(afterCommit).not.toContain("committed");
+    expect(afterCommit).toContain("completed");
   });
 });

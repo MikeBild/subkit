@@ -166,11 +166,11 @@ describe("guided authoring conversation loop", () => {
       },
       ctx.testDb.db,
     );
-    expect(resumedCommit.result.status).toBe("committed");
+    expect(resumedCommit.result.status).toBe("active");
     expect(resumedCommit.result.committed_workflow_id).toBeTruthy();
 
     const detail = await getConversation(ctx.tenant_id, created.conversation.id, ctx.testDb.db);
-    expect(detail?.conversation.status).toBe("committed");
+    expect(detail?.conversation.status).toBe("active");
     expect(detail?.conversation.target_connector_id).toBeTruthy();
     expect(detail?.conversation.target_workflow_id).toBeTruthy();
     expect(detail?.draft?.connector?.name).toBe("Subkit Engine");

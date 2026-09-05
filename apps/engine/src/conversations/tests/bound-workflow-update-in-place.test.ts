@@ -119,6 +119,9 @@ function boundReadyDraft(opts: {
     slug: opts.slug,
     name: opts.name,
     version_id: opts.version_id,
+    draft_version_id: null,
+    current_version_id: opts.version_id,
+    persistence_kind: "active",
     version: 1,
     environment: null,
     saved_at: "2026-05-01T00:00:00.000Z",
@@ -173,6 +176,13 @@ describe("commitWorkflowAtomic — RC4: bound workflow resolves update-in-place"
       .where(eq(workflowVersions.workflow_id, existing.id))
       .orderBy(workflowVersions.version);
     expect(versionRows.map((r) => r.version)).toEqual([1, 2]);
+    const [workflowAfter] = await ctx.testDb.db
+      .select()
+      .from(workflows)
+      .where(eq(workflows.id, existing.id));
+    expect(workflowAfter?.current_version_id).toBe(existing.version_id);
+    expect(workflowAfter?.draft_version_id).toBeTruthy();
+    expect(workflowAfter?.draft_version_id).not.toBe(existing.version_id);
 
     // The conversation must now be pinned to the existing workflow id.
     const convAfter = await ctx.testDb.db

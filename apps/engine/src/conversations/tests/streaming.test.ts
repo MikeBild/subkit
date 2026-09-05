@@ -82,7 +82,7 @@ describe("http/conversations streaming", () => {
     const responded = (await respondRes.json()) as {
       status: string;
     };
-    expect(responded.status).toBe("committed");
+    expect(responded.status).toBe("active");
 
     // 3. Read the SSE stream.
     const streamRes = await fetch(
@@ -101,7 +101,8 @@ describe("http/conversations streaming", () => {
     expect(events).toContain("tool_call_start");
     expect(events).toContain("tool_call_end");
     expect(events).toContain("tool_result");
-    expect(events).toContain("committed");
+    // The stored workflow is still an inert draft, not an active commit.
+    expect(events).not.toContain("committed");
     expect(events).toContain("completed");
   });
 });

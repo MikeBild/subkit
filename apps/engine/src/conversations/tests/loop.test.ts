@@ -93,7 +93,7 @@ describe("conversations/loop", () => {
       ctx.testDb.db,
     );
 
-    expect(resumed.result.status).toBe("committed");
+    expect(resumed.result.status).toBe("active");
     expect(resumed.result.committed_workflow_id).toBeDefined();
 
     // There should be a brand-new workflow row for the tenant.
@@ -103,10 +103,12 @@ describe("conversations/loop", () => {
       .where(eq(workflows.tenant_id, ctx.tenant_id));
     expect(wfRows.length).toBe(1);
     expect(wfRows[0]?.id).toBe(resumed.result.committed_workflow_id);
+    expect(wfRows[0]?.current_version_id).toBeNull();
+    expect(wfRows[0]?.draft_version_id).toBeTruthy();
 
-    // Final conversation record should be committed.
+    // Saving an inert draft keeps the authoring conversation active.
     const detail = await getConversation(ctx.tenant_id, outcome.conversation.id, ctx.testDb.db);
-    expect(detail?.conversation.status).toBe("committed");
+    expect(detail?.conversation.status).toBe("active");
     expect(detail?.conversation.target_workflow_id).toBe(
       resumed.result.committed_workflow_id ?? "",
     );

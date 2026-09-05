@@ -134,7 +134,7 @@ describe("conversations/audit-trail", () => {
       },
       ctx.testDb.db,
     );
-    expect(resumed.result.status).toBe("committed");
+    expect(resumed.result.status).toBe("active");
     const committedWorkflowId = resumed.result.committed_workflow_id;
     expect(committedWorkflowId).toBeTruthy();
 
@@ -167,6 +167,8 @@ describe("conversations/audit-trail", () => {
       .from(workflows)
       .where(eq(workflows.id, committedWorkflowId as string));
     expect(wfRows.length).toBe(1);
+    expect(wfRows[0]!.current_version_id).toBeNull();
+    expect(wfRows[0]!.draft_version_id).toBeTruthy();
 
     // Full audit trail on the conversation + approval + workflow.
     const auditConv = await ctx.testDb.db
@@ -189,7 +191,7 @@ describe("conversations/audit-trail", () => {
     const lifecycleActions = auditConv
       .map((a) => a.action)
       .filter((a) => a !== "tool_policy.confirmation_required");
-    expect(lifecycleActions).toEqual(["conversation.created", "conversation.committed"]);
+    expect(lifecycleActions).toEqual(["conversation.created"]);
     // The policy row is INCIDENTAL — it fires only when the LLM
     // calls a `confirm_before_execution` tool directly. The canonical
     // path the LLM now takes is to emit
@@ -224,6 +226,7 @@ describe("conversations/audit-trail", () => {
     // canonical one for the assertion.
     const canonicalCreated = auditWorkflowCreated.filter((a) => a.reason === null);
     expect(canonicalCreated.length).toBe(1);
+    expect((canonicalCreated[0]!.metadata as { kind: string }).kind).toBe("draft");
 
     // Monthly usage reflects all recorded token activity (at least one
     // token accounted per step). Use the budget helper to verify the

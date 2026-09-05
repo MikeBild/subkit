@@ -252,6 +252,10 @@ export interface PersistedResourceRef {
   version: number | null;
   environment: Environment | null;
   saved_at: string;
+  /** Missing on legacy bindings: never infer a draft base from an active version. */
+  draft_version_id?: string | null;
+  current_version_id?: string | null;
+  persistence_kind?: "draft" | "active";
 }
 
 export interface LatestExecutionSummary {

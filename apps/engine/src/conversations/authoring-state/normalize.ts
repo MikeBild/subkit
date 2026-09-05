@@ -333,6 +333,15 @@ export function normalizePersistedResource(value: unknown): PersistedResourceRef
     environment:
       value.environment === "dev" || value.environment === "prod" ? value.environment : null,
     saved_at: typeof value.saved_at === "string" ? value.saved_at : nowIso(),
+    ...(value.draft_version_id === null || typeof value.draft_version_id === "string"
+      ? { draft_version_id: value.draft_version_id }
+      : {}),
+    ...(value.current_version_id === null || typeof value.current_version_id === "string"
+      ? { current_version_id: value.current_version_id }
+      : {}),
+    ...(value.persistence_kind === "draft" || value.persistence_kind === "active"
+      ? { persistence_kind: value.persistence_kind }
+      : {}),
   };
 }
 
