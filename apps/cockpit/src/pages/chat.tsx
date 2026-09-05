@@ -855,7 +855,7 @@ export function ChatPage() {
           A reader who is reading one conversation is not choosing another. */}
       <section className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="chat-main">
         <header
-          className="shrink-0 overflow-y-auto border-b px-4 py-3 sm:px-6 [scrollbar-gutter:stable_both-edges]"
+          className="scrollbar-thin shrink-0 overflow-y-auto border-b px-4 py-3 sm:px-6 [scrollbar-gutter:stable_both-edges]"
           data-testid="chat-header"
         >
           <div className={cn("flex items-center justify-between gap-3", COLUMN)}>
@@ -1047,7 +1047,7 @@ export function ChatPage() {
         </MessageScrollerProvider>
 
         <div
-          className="shrink-0 overflow-y-auto border-t bg-background/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable_both-edges]"
+          className="scrollbar-thin shrink-0 overflow-y-auto border-t bg-background/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable_both-edges]"
           data-testid="chat-composer-area"
         >
           <div className={COLUMN}>

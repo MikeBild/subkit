@@ -1560,10 +1560,11 @@ async function assertChat(page, label) {
       if (!(element instanceof HTMLElement)) throw new Error(`${testId} missing`);
       return element.getBoundingClientRect().toJSON();
     };
-    const gutter = (selector) => {
+    const scrollbar = (selector) => {
       const element = document.querySelector(selector);
       if (!(element instanceof HTMLElement)) throw new Error(`${selector} missing`);
-      return getComputedStyle(element).scrollbarGutter;
+      const style = getComputedStyle(element);
+      return { gutter: style.scrollbarGutter, width: style.scrollbarWidth };
     };
     return {
       transcript: rect("chat-transcript"),
@@ -1579,10 +1580,10 @@ async function assertChat(page, label) {
         .querySelector('[data-slot="message-scroller-content"]')
         ?.getBoundingClientRect()
         .toJSON(),
-      gutters: {
-        header: gutter('[data-testid="chat-header"]'),
-        transcript: gutter('[data-slot="message-scroller-viewport"]'),
-        composer: gutter('[data-testid="chat-composer-area"]'),
+      scrollbars: {
+        header: scrollbar('[data-testid="chat-header"]'),
+        transcript: scrollbar('[data-slot="message-scroller-viewport"]'),
+        composer: scrollbar('[data-testid="chat-composer-area"]'),
       },
       inputStyle: (() => {
         const input = document.querySelector('[data-testid="chat-composer-input"]');
@@ -1624,9 +1625,9 @@ async function assertChat(page, label) {
     throw new Error(`${label} composer input spacing is not 16px/11px with 24px leading`);
   if (!layout.headerColumn || !layout.transcriptColumn)
     throw new Error(`${label} shared chat columns are missing`);
-  for (const [area, gutter] of Object.entries(layout.gutters)) {
-    if (gutter !== "stable both-edges")
-      throw new Error(`${label} ${area} scrollbar gutter is ${JSON.stringify(gutter)}`);
+  for (const [area, scrollbar] of Object.entries(layout.scrollbars)) {
+    if (scrollbar.gutter !== "stable both-edges" || scrollbar.width !== "thin")
+      throw new Error(`${label} ${area} scrollbar style is ${JSON.stringify(scrollbar)}`);
   }
   for (const column of [layout.headerColumn, layout.transcriptColumn]) {
     if (
