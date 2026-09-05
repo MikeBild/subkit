@@ -37,9 +37,10 @@ export const DANGEROUS_TOOLS_SET: ReadonlySet<string> = new Set(DANGEROUS_TOOLS)
  *  Per-tool opt-out: there is deliberately no carve-out here. The existing
  *  per-conversation override (`conversations.tool_policies`) is the opt-out
  *  mechanism — `resolveToolMode`'s `auto` short-circuit skips dangerous
- *  tools, so under `permission_mode=auto` resolution falls through to
- *  `overrides[tool]` and a stored `no_confirm` override is honoured even
- *  for a dangerous tool. Caveat: that override only reaches resolution
+ *  tools. Bounded `permission_mode=auto` now requires confirmation even when
+ *  a stored override says `no_confirm`; that preference is not an execution
+ *  authority. Without an advertised permission mode the legacy override path
+ *  remains. Caveat: that override only reaches resolution
  *  paths that thread the conversation's policies into `resolveToolMode`
  *  (the loop's wrapped in-repo tools in `sdk-wrap/invoke.ts`); the chat
  *  palette's external-MCP dispatch resolves through `policyDecide`
