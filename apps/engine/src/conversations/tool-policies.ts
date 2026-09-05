@@ -96,19 +96,16 @@ export async function setToolPolicy(
   audit: ToolPolicyAuditCtx,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    // Read inside the transaction so the subsequent UPDATE in the
-    // same tx serialises against any concurrent writer of this
-    // conversation row. (We previously chained `.for("update")`
-    // for explicit row-level locking, but in practice the
-    // transaction's read-then-update sequence on the conversation
-    // PK already collapses the lost-update window — and the
-    // explicit `FOR UPDATE` plus `LIMIT 1` interaction caused
-    // afterAll cleanup hangs in the bun-test pool.)
+    // Lock BEFORE reading the policy document. An UPDATE only locks
+    // after this read; at READ COMMITTED two writers would otherwise
+    // derive their replacement JSONB from the same stale document.
+    // The lock also makes the audited prior_mode the actual predecessor.
     const [row] = await tx
       .select({ tool_policies: conversations.tool_policies })
       .from(conversations)
       .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
-      .limit(1);
+      .limit(1)
+      .for("update");
     if (!row) return;
     const raw = (row.tool_policies ?? {}) as Record<string, unknown>;
     const next: ToolPolicies = {};
