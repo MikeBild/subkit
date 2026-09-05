@@ -2377,7 +2377,7 @@ This page covers the workflow lifecycle, the execution model, the eight Step kin
 
 A workflow moves through three states. Chat authors a **draft**; approval commits it to **active**; retiring or superseding it moves it to **archived**. Promoting a prior version back to active is the rollback path — no redeploy, instant, audited.
 
-Authoring itself follows a fixed shape: sk builds a grounded draft from the described outcome, tests that draft against real connectors, refines it with targeted patch edits, and only then commits it. Each stage is a discrete, governed step — the draft is never mutated blindly, and the commit is the single gated transition from draft to active. See [AI-assisted authoring](../authors/authoring-workflows.md) for the full loop.
+Authoring itself follows a fixed shape: sk builds a grounded draft from the described outcome, previews it, refines it with targeted patch edits, and saves an immutable draft version. Saving is preparation, not the transition to active: it never changes the active version or live trigger bindings. See [AI-assisted authoring](../authors/authoring-workflows.md) for the full loop.
 
 **Playground mode.** Authoring can run in an ephemeral scratch mode that never persists. A playground conversation builds and tests drafts exactly like a normal session, but nothing it produces is written to the tenant's workflow store — the draft evaporates when the conversation ends. This is the safe space to explore a shape, probe a connector, or demonstrate the authoring loop without leaving any committed artifact behind. Playground is a durable, per-conversation flag: it is set when the conversation is opened (an AI client signals it over MCP; an HTTP caller passes it on the start request) and holds for the life of that conversation.
 
@@ -2396,7 +2396,7 @@ _Draft → active → archived. Every transition lands in the Audit Log with the
 
 ### Durable drafts are not active versions
 
-The draft API persists preparation without activating a workflow. A workflow has
+The draft API and conversational `save_workflow_draft` persist preparation without activating a workflow. A workflow has
 separate `draft_version_id` and `current_version_id` pointers. Saving a draft writes
 an additional version and advances only the draft pointer; the active definition,
 schedule, webhook and tool catalog stay unchanged. A new draft has no active
@@ -2409,6 +2409,26 @@ overwriting another draft. Identical definitions reuse the existing draft versio
 changed definitions retain earlier versions. Draft responses include a canonical
 SHA-256 definition digest, not an execution grant. Every actual save has a
 transactional audit record carrying actor, request source and both pointers.
+
+Conversation reloads prefer the saved draft over the active version. Once a
+session has observed a draft base, reload preserves that observation and local
+edits; it does not silently adopt another author's newer draft. An execution of
+an older active version is not preview evidence for the new draft. The
+`run_workflow` conversation tool refuses to substitute the old active workflow
+when the session is bound to a different saved draft.
+
+`conversation_commit` remains a read-only status tool. Its result distinguishes
+`persistence_kind`, `activation_required`, and `current_version_id`; a draft
+response contains no live invocation guidance. The legacy `committed` object
+names the exact stored version, not an approval. Proposed capability skills may
+describe that draft, but approving a skill never activates or authorizes it.
+
+Authoring callers can attach preview-derived `scope_index` shape hints to a draft
+version. Identical definitions and hints reuse that version; changed hints create
+a new inert version without rewriting the previous evidence. The digest covers
+the definition, not those hints. Omitting hints preserves an unchanged draft but
+does not carry stale preview hints into a changed definition. None of these hints
+authorizes activation or execution.
 
 Use the dedicated draft endpoints for this behavior. Existing definition-commit
 endpoints are activation-capable and are not equivalent to saving an inert draft.
@@ -4927,10 +4947,12 @@ sequenceDiagram
     E-->>C: reads run live, writes resolved but not dispatched
     C->>J: evaluate artifacts vs stashed goal
     J-->>C: verdict (pass / findings)
-    C->>U: preview draft for approval
-    U->>C: approve
-    C->>E: save_workflow_draft (commit versioned workflow)
-    E-->>U: runnable, governed workflow
+    opt ask / plan mode
+        C->>U: preview draft for save confirmation
+        U->>C: approve save
+    end
+    C->>E: save_workflow_draft (or inline save in auto mode)
+    E-->>U: immutable saved draft; activation still required
 ```
 
 ---
@@ -4953,7 +4975,8 @@ stateDiagram-v2
     WorkflowJudged --> WorkflowRepair: judge / recorded_eval findings
     WorkflowPreviewed --> WorkflowRepair: preview failure
     WorkflowRepair --> WorkflowPreviewed: edit_workflow_patch (RFC-6902), then preview again
-    WorkflowPersisted --> WorkflowExecuted: run
+    WorkflowPersisted --> WorkflowActivated: separate exact-version activation
+    WorkflowActivated --> WorkflowExecuted: authorized run
     WorkflowExecuted --> Diagnosis: warnings / failure
     Diagnosis --> WorkflowRepair: repair draft
     WorkflowExecuted --> [*]: success
@@ -4992,7 +5015,7 @@ When the user says they want to create a new workflow after inspecting or runnin
 
 The most important architectural decision in sk: **the author sees what a workflow will do before it can do it.** In `ask` and `plan`, a commit lands only after the structured human save gate. In explicitly selected `auto` mode, a clean judged dry-run may commit inline. Starting an unattended trigger takes a further, separate decision.
 
-When the AI finishes a Draft, it pauses the authoring loop and presents it for review. The operator sees every step, connector reference, parameter, and branching condition — and can push back, ask for changes, iterate. On approval, the Draft is committed as a new versioned Workflow; the Conversation transitions to active and the workflow is ready to run.
+When the AI finishes a draft, the operator can inspect every step, connector reference, parameter and branching condition and ask for changes. A successful save stores an immutable draft version and leaves the conversation active for further work. It does not make the draft executable: the active version, existing schedules and webhooks remain unchanged. Review and activation concern the exact saved version; saving or approving a capability skill grants no execution authority.
 
 This is the governance model, not a UX convenience. It is the structural answer to "How do we know the AI did the right thing?" — because a human read what it would do, on a preview whose writes were held, before it ran for real.
 
@@ -5002,7 +5025,7 @@ The gate sits on top of hard quality gates:
 |---|---|
 | Connector save | Blocked until `inspect`, `validate`, `probe` checkpoints are fresh |
 | Workflow commit | Blocked until `inspect`, `validate`, `preview` checkpoints are fresh |
-| Workflow run | Always targets a persisted version, never an ambiguous draft |
+| Workflow run | Uses the exact inspected active version; an inactive saved draft returns `workflow_activation_required`, rather than running an older active version |
 | Connector persistence | A green `probe_connector_draft` calls `saveConnectorAtomic` inline (audit reason `auto_persist_on_green_probe`), returns `auto_saved: true` |
 | Workflow persistence | In `auto`, a green judged dry-run may call `commitWorkflowAtomic` inline. In `ask`/`plan`, it returns `save_required` and `save_workflow_draft` uses the human gate. |
 | Force overrides | `force_save: true` (after a failed probe) and `force_commit: true` (after a failed dry-run) go through the explicit `ask_user_confirm` carrier so the deviation is auditable |
@@ -9535,6 +9558,25 @@ The REST API is the full programmatic interface to sk and the canonical interfac
 | **Discoverability** | OpenAPI spec served at `/openapi.json`; interactive Scalar UI at `/docs`. Both available to any authenticated client. |
 | **LLM grounding** | The engine publishes its own docs in the [llms-txt](https://llmstxt.org) format, unauthenticated, as `text/markdown`: `GET /llms.txt` (a robots.txt-style index) and `GET /llms-full.txt` (the full docs in one fetch). Point an MCP client or model at these to ground it on auth, error-code semantics, and conventions in prose the bare schema can't express. |
 
+### Temporary execution previews
+
+For `source: "draft"` and `source: "step"`, `POST /v1/executions` accepts
+`hold_writes: true`. The Cockpit's preview buttons always send this flag.
+Requests classified as writes are prepared but not dispatched; the response
+marks their step summaries with `held: true`. Reads still contact real systems.
+Preview disables self-healing and does not activate a workflow or grant live
+execution authority. Classification is the engine's existing driver-aware
+read/write classification, not proof of an approved Effect Manifest.
+
+Omitting the flag preserves the existing execution API behavior. A saved-workflow
+run rejects `hold_writes: true` rather than silently discarding it and running
+live. Preview a temporary definition instead; saved asynchronous previews are
+not supported by this contract.
+
+Inline previews require tenant-level `workflow:run`. A resource grant on one
+saved workflow does not authorize an arbitrary inline definition: adding a
+`workflow_id` to a draft or step request cannot borrow that grant.
+
 ### Durable workflow draft API
 
 `POST /v1/workflows/drafts` accepts `{definition}` and requires `workflow:write`.
@@ -9546,6 +9588,14 @@ version is a UUID or `null` when there is no prior draft. Responses carry
 validated `definition`. Workflow list/detail responses separately expose
 `draft_version_id`. Missing drafts return 404; stale expected versions or duplicate
 slugs return 409. No endpoint in this group activates triggers or authorizes a run.
+
+Conversational `save_workflow_draft` uses the same inert version contract.
+`conversation_commit` only reports stored state: `persistence_kind: "draft"`
+with `activation_required: true` is not a live workflow. The legacy `committed`
+object identifies the saved version; `current_version_id` separately identifies
+the active one. Draft responses omit live `usage` guidance. A stale observed
+draft is not reported as successfully saved, even if its steps match a newer
+version with different preview evidence.
 
 ### Runtime configuration across surfaces
 

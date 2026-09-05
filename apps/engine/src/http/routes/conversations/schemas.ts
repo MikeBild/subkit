@@ -434,6 +434,9 @@ export const ContextSnapshotSchema = z
         version: z.number().nullable(),
         environment: z.string().nullable(),
         saved_at: z.string(),
+        draft_version_id: z.string().nullable().optional(),
+        current_version_id: z.string().nullable().optional(),
+        persistence_kind: z.enum(["draft", "active"]).optional(),
       }),
     ),
     latest_execution: z

@@ -13,7 +13,7 @@
 //      freshly-bound workflow that has executed before.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   conversationDrafts,
   conversations,
@@ -22,6 +22,7 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { saveWorkflowDraft } from "../../workflows/drafts.ts";
 import { loadDraft } from "../draft.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
@@ -134,6 +135,92 @@ const STEPS_TWO = [
     expression: "return input.input.data;",
   },
 ] as Array<Record<string, unknown>>;
+
+test("authoring loads the inert version and retains its observed base across concurrent edits", async () => {
+  const active = await seedWorkflow({
+    slug: "inert-authoring-base",
+    name: "Active",
+    steps: STEPS_TWO,
+  });
+  await seedExecution({
+    ...active,
+    status: "succeeded",
+    steps: [
+      {
+        step_key: "fetch",
+        kind: "request",
+        status: "succeeded",
+        output_preview: { obsolete: true },
+      },
+    ],
+  });
+  const def = {
+    name: "Draft",
+    slug: "inert-authoring-base",
+    steps: [{ id: "output", kind: "transform", expression: "return 2;" }],
+  };
+  const saved = await saveWorkflowDraft(
+    {
+      tenant_id: ctx.tenant_id,
+      workflow_id: active.workflow_id,
+      expected_draft_version_id: null,
+      def,
+      actor_id: null,
+      request_source: "tool-chain",
+    },
+    ctx.testDb.db,
+  );
+  if (!saved.draft) throw new Error(saved.errors.join("; "));
+  const { conversation_id } = await seedConversation(active.workflow_id);
+  const loaded = await loadDraft(ctx.tenant_id, conversation_id, ctx.testDb.db);
+  expect(loaded.workflow.name).toBe("Draft");
+  expect(loaded.latest_preview).toBeUndefined();
+  expect(loaded.state?.persisted_resources[0]).toMatchObject({
+    version_id: saved.draft.version_id,
+    draft_version_id: saved.draft.version_id,
+    current_version_id: active.version_id,
+    persistence_kind: "draft",
+  });
+  expect(loaded.state?.checkpoints.workflow_persisted?.summary).toContain(
+    "activation is still required",
+  );
+  await ctx.testDb.db
+    .update(conversations)
+    .set({ draft: loaded })
+    .where(and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, conversation_id)));
+  const changed = await saveWorkflowDraft(
+    {
+      tenant_id: ctx.tenant_id,
+      workflow_id: active.workflow_id,
+      expected_draft_version_id: saved.draft.version_id,
+      def: { ...def, name: "Concurrent edit" },
+      actor_id: null,
+      request_source: "api",
+    },
+    ctx.testDb.db,
+  );
+  if (!changed.draft) throw new Error(changed.errors.join("; "));
+  const reloaded = await loadDraft(ctx.tenant_id, conversation_id, ctx.testDb.db);
+  expect(reloaded.workflow.name).toBe("Draft");
+  const observed = reloaded.state?.persisted_resources[0]?.draft_version_id;
+  expect(observed).toBe(saved.draft.version_id);
+  if (observed === undefined) throw new Error("missing observed draft base");
+  expect(
+    (
+      await saveWorkflowDraft(
+        {
+          tenant_id: ctx.tenant_id,
+          workflow_id: active.workflow_id,
+          expected_draft_version_id: observed,
+          def,
+          actor_id: null,
+          request_source: "tool-chain",
+        },
+        ctx.testDb.db,
+      )
+    ).code,
+  ).toBe("draft_conflict");
+});
 
 // ---------------------------------------------------------------------------
 // RC2: binding identity hydrated from the workflow table

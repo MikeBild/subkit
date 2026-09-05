@@ -1,20 +1,20 @@
 // User story: As an operator, I want to author a workflow through an AI
-// conversation and commit it via a human-in-the-loop approval, so that
+// conversation and save its draft in manual authoring mode, so that
 // I don't have to hand-edit JSON.
 // Acceptance criteria:
 //   - AC1: A signed Slack `app_mention` ingress verifies against the
 //          Slack HMAC scheme and is accepted; a bad signature is denied.
 //   - AC2: Starting a conversation with "list users from the api" drives
 //          the canned mock-LLM plan through an approval.
-//   - AC3: Approving the pending approval commits the draft and creates
-//          a real workflow row.
+//   - AC3: Confirming the pending prompt saves an inert draft and creates
+//          a real workflow row without activating a version.
 // Spec refs: docs/developers/input-surfaces.md, docs/authors/authoring-workflows.md,
 //            docs/authors/authoring-workflows.md, docs/concepts/workflows.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import { type ServerType, serve } from "@hono/node-server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { ChatAdapterRegistry } from "../../chat/registry.ts";
 import { SlackAdapter } from "../../chat/slack/adapter.ts";
 import { connectors, conversations, workflows } from "../../db/schema/index.ts";
@@ -187,7 +187,7 @@ describe("journey: AI chat authoring", () => {
     expect(bad.status).toBe(401);
   });
 
-  test("AC2+AC3: conversation run drives approval, approve commits a workflow", async () => {
+  test("AC2+AC3: manual authoring confirmation saves a draft without activation", async () => {
     // Start a conversation via the public REST surface with the
     // canned "list users" message so the mock plan kicks in.
     const createRes = await fetch(`${ctx.baseUrl}/v1/conversations`, {
@@ -213,7 +213,7 @@ describe("journey: AI chat authoring", () => {
     const convId = outcome.conversation.id;
 
     // Answer the pending askUser.confirm elicitation with
-    // `{confirmed: true}` — the engine resumes the loop and commits.
+    // `{confirmed: true}` — the engine saves an inert draft.
     const approveRes = await fetch(
       `${ctx.baseUrl}/v1/conversations/${convId}/elicitations/${elicitationId}/respond`,
       {
@@ -230,7 +230,7 @@ describe("journey: AI chat authoring", () => {
       status: string;
       committed_workflow_id?: string;
     };
-    expect(approveOutcome.status).toBe("committed");
+    expect(approveOutcome.status).toBe("active");
     const committedWorkflowId = approveOutcome.committed_workflow_id;
     expect(committedWorkflowId).toBeTruthy();
 
@@ -238,15 +238,17 @@ describe("journey: AI chat authoring", () => {
     const wfRows = await ctx.testDb.db
       .select()
       .from(workflows)
-      .where(eq(workflows.id, committedWorkflowId!));
+      .where(and(eq(workflows.tenant_id, ctx.tenantId), eq(workflows.id, committedWorkflowId!)));
     expect(wfRows.length).toBe(1);
-    expect(wfRows[0]?.lifecycle).toBe("active");
+    expect(wfRows[0]?.lifecycle).toBe("draft");
+    expect(wfRows[0]?.draft_version_id).toBeTruthy();
+    expect(wfRows[0]?.current_version_id).toBeNull();
 
-    // Conversation state reflects committed.
+    // Authoring remains open; the legacy result ID does not imply activation.
     const convRows = await ctx.testDb.db
       .select()
       .from(conversations)
-      .where(eq(conversations.id, convId));
-    expect(convRows[0]?.status).toBe("committed");
+      .where(and(eq(conversations.tenant_id, ctx.tenantId), eq(conversations.id, convId)));
+    expect(convRows[0]?.status).toBe("active");
   });
 });

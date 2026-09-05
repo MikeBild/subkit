@@ -3,12 +3,8 @@
 // entry on each attempt.
 
 import { z } from "@hono/zod-openapi";
-import { and, desc, eq } from "drizzle-orm";
-import {
-  conversations,
-  conversationToolCalls,
-  workflowVersions,
-} from "../../../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { conversations, workflowVersions } from "../../../../db/schema/index.ts";
 import { runExecution } from "../../../../execution/engine.ts";
 import { findExecutionByIdempotencyKey } from "../../../../execution/state.ts";
 import { logger } from "../../../../logging/logger.ts";
@@ -31,38 +27,7 @@ import type { ConversationTool } from "../../index.ts";
 import { buildRawStepResults } from "../../step-results.ts";
 import { sampleWorkflowOutputForLlm, truncateStepPreviewForLlm } from "../../truncate.ts";
 import { normalizeWorkflowInput } from "../../workflow-input-normalize.ts";
-import { type RepairLoopVerdict, tallyRepairSignals } from "./repair-loop-tally.ts";
-
-/**
- * Circuit-breaker for repair loops. Fetches the recent tool-call history
- * for this conversation and delegates to `tallyRepairSignals`, which
- * counts two trip signals (a repeating authoring-bug warning code, and a
- * repeating runtime execution failure keyed on `exec_failed:<step>:<code>`)
- * and refuses the run when either reaches the threshold — instead of
- * burning the rest of the step budget on a draft that won't work.
- */
-async function detectRepairLoop(
-  db: ReturnType<typeof eq> extends never ? never : import("../../../../db/client.ts").Db,
-  tenant_id: string,
-  conversation_id: string,
-): Promise<RepairLoopVerdict> {
-  try {
-    const rows = await db
-      .select({ tool: conversationToolCalls.tool, output: conversationToolCalls.output })
-      .from(conversationToolCalls)
-      .where(
-        and(
-          eq(conversationToolCalls.tenant_id, tenant_id),
-          eq(conversationToolCalls.conversation_id, conversation_id),
-        ),
-      )
-      .orderBy(desc(conversationToolCalls.created_at))
-      .limit(8);
-    return tallyRepairSignals(rows);
-  } catch {
-    return { tripped: false, recent_codes: [], tripped_codes: [] };
-  }
-}
+import { detectRepairLoop } from "./repair-loop-history.ts";
 
 /**
  * The workflow's `$input` map. Typed as an OBJECT on the wire — a bare
@@ -247,6 +212,29 @@ export const runWorkflowTool: ConversationTool = {
     }
     const wf = await ctx.engineClient.workflows.get(workflowId);
     if (!wf) return { ok: false, data: withStatus({ error: "workflow_not_found" }, "failed") };
+    const bound = currentDraft.state?.persisted_resources.find(
+      (resource) => resource.kind === "workflow" && resource.id === workflowId,
+    );
+    if (
+      !wf.current_version_id ||
+      (bound?.persistence_kind === "draft" && bound.version_id !== wf.current_version_id)
+    ) {
+      return {
+        ok: false,
+        data: withStatus(
+          {
+            error_code: "workflow_activation_required",
+            message:
+              "The saved draft is not the active workflow version. Review and activate that exact version before running it; saving a draft grants no execution authority.",
+            workflow_id: workflowId,
+            draft_version_id: bound?.version_id ?? wf.draft_version_id,
+            current_version_id: wf.current_version_id,
+            next_best_actions: ["inspect_workflow_draft", "dry_run_workflow"],
+          },
+          "failed",
+        ),
+      };
+    }
     // G1 (runtime-logs review plan): surface the workflow's input_schema
     // contract to the LLM in the SAME turn. Pre-fix the user asked
     // "run it for tomorrow" and the workflow returned byte-identical
@@ -511,7 +499,9 @@ export const runWorkflowTool: ConversationTool = {
       const result = await runExecution({
         db: ctx.db,
         tenant_id: ctx.tenant_id,
-        source: { kind: "saved", workflow_id: workflowId },
+        // Use the exact version whose contract and authoring binding we just
+        // checked. A concurrent activation must not silently swap the DAG.
+        source: { kind: "saved", workflow_id: workflowId, version_id: wf.current_version_id },
         input: suppliedInput ?? null,
         options: {
           request_source: "chat",

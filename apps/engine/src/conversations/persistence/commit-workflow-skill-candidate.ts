@@ -59,6 +59,7 @@ function buildAuthoringCapabilitySignal(args: {
   name: string;
   def: WorkflowDefFromDraft;
   scope_index: ScopeIndex;
+  draft_version_id?: string;
 }): PatternSignal {
   const { workflow_id, slug, name, def, scope_index } = args;
 
@@ -86,10 +87,17 @@ function buildAuthoringCapabilitySignal(args: {
     ? "declared output_schema"
     : (lastScope?.shape_summary ?? "unknown");
   const keyPaths = lastScope?.available_paths?.slice(0, 12) ?? [];
-  const exampleInvocation = `POST /v1/workflows/${slug}/runs  body: { "input": { … } }`;
+  const exampleInvocation = args.draft_version_id
+    ? `GET /v1/workflows/${workflow_id}/draft — inspect only; activation and execution authority are required before a live run`
+    : `POST /v1/workflows/${slug}/runs  body: { "input": { … } }`;
 
   const body = [
     `Workflow '${name}' (slug ${slug}) — what it does and how to invoke it.`,
+    ...(args.draft_version_id
+      ? [
+          `Saved draft version ${args.draft_version_id}. This candidate describes preparation, not an active capability. Approving this skill does not activate the workflow or authorize execution.`,
+        ]
+      : []),
     `Inputs: ${inputSummary}.`,
     `Output shape: ${outputShape}.`,
     connectorIds.length > 0
@@ -126,8 +134,8 @@ function buildAuthoringCapabilitySignal(args: {
     confidence: "high",
     evidence: [
       {
-        evidence_type: "workflow_committed",
-        summary: `Committed workflow '${slug}' (${def.steps.length} step(s)${
+        evidence_type: args.draft_version_id ? "workflow_draft_saved" : "workflow_committed",
+        summary: `${args.draft_version_id ? "Saved draft of" : "Committed"} workflow '${slug}' (${def.steps.length} step(s)${
           connectorIds.length > 0 ? `, connectors: ${connectorIds.join(", ")}` : ""
         }).`,
       },
@@ -147,6 +155,7 @@ export async function proposeAuthoringCapabilityCandidate(args: {
   workflow: { id: string; slug: string; name: string };
   def: WorkflowDefFromDraft;
   scope_index: ScopeIndex;
+  draft_version_id?: string;
 }): Promise<string | null> {
   const { db, tenant_id, conversation_id, workflow, def, scope_index } = args;
   try {
@@ -156,6 +165,7 @@ export async function proposeAuthoringCapabilityCandidate(args: {
       name: workflow.name,
       def,
       scope_index,
+      ...(args.draft_version_id ? { draft_version_id: args.draft_version_id } : {}),
     });
     const result = await upsertFromSignal(tenant_id, signal, db);
     if (result.action === "proposed" || result.action === "updated") {

@@ -2486,9 +2486,17 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     status = "abandoned";
     completedStatus = "abandoned";
   } else if (signals.committed) {
-    status = "committed";
     committedWorkflowId = signals.committed.workflow_id;
-    completedStatus = "committed";
+    const savedInertDraft = draft.state?.persisted_resources.some(
+      (resource) =>
+        resource.kind === "workflow" &&
+        resource.id === committedWorkflowId &&
+        resource.persistence_kind === "draft",
+    );
+    // Keep the legacy saved-id signal for callers, but do not finalize an
+    // authoring session as an activated workflow after an inert draft save.
+    status = savedInertDraft ? "active" : "committed";
+    completedStatus = status;
   } else if (signals.pendingElicitation || persistedStatus === "awaiting_input") {
     status = "awaiting_input";
     pendingElicitationId = signals.pendingElicitation?.elicitation_id;

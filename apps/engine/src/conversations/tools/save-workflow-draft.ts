@@ -39,7 +39,7 @@ const inputSchema = z
       .string()
       .optional()
       .describe(
-        "Explicitly pin the save target to an existing workflow id. Only set this AFTER the user has confirmed in chat that they want to overwrite that workflow — e.g. after a slug_conflict_with_live_workflow error where the user said 'yes, update it'. Otherwise leave unset.",
+        "Pin an intentional replacement to an existing workflow. Open that workflow in an authoring session first so its saved draft version is observed; replacing it requires the engine's human confirmation gate. This saves a new inactive draft only, never an active version.",
       ),
     force_commit: z
       .boolean()
@@ -59,16 +59,16 @@ const inputSchema = z
 export const saveWorkflowDraftTool: ConversationTool = {
   name: "save_workflow_draft",
   description:
-    "Diagnostic re-issue for workflow drafts. The normal commit path is the harness auto-persist on `ask_user_confirm` of the dry-run preview. Only call this tool to re-commit (revert + re-apply, force-commit after a failed dry_run, etc.).",
+    "Save an immutable, inactive workflow draft after validation and preview. In auto mode a green judged preview may already have saved it; do not repeat that save. Saving never activates a version, changes live schedules or webhooks, or grants execution authority. Force and explicit replacement remain human-gated.",
   use_case:
-    "Diagnostic re-issue when the operator wants to re-apply a draft (revert + re-commit, slug-conflict adoption, force-commit after a failed dry-run). The harness auto-persist on `ask_user_confirm` is the normal commit path; this tool is for the recovery cases the harness can't cover.",
+    "Persist validated authoring work, including recovery after an interrupted save. In ask/plan mode the existing save confirmation remains available; in auto mode ordinary draft preparation needs no human decision.",
   important_notes: [
-    "Refuses with `no_prior_approval` if no matching ask_user_confirm has been answered in this conversation.",
+    "In ask/plan mode, refuses with `no_prior_approval` until the matching save confirmation is resolved. Ordinary saves in auto mode do not require it.",
     "Refuses with `workflow_not_ready` until inspect_workflow_draft and validate_draft are fresh; with `preview_failed` if the most recent dry-run failed (pass `force_commit: true` after the operator confirms to override).",
-    "Idempotent: if the conversation's target workflow already has a version with the same content hash, returns `already_persisted: true` without writing.",
+    "Idempotent: unchanged definition and preview shape hints return the same saved draft version without writing. Changed hints receive a new immutable version.",
     "Update-in-place semantics: if the conversation has a target_workflow_id, appends a new workflow_version to that row. The slug of the existing workflow stays authoritative; changing draft.slug does not rename the workflow.",
-    "No silent slug-adoption: a draft.slug colliding with a different live workflow produces slug_conflict_with_live_workflow. To overwrite, ask the user explicitly, then call save_workflow_draft again with target_workflow_id=<conflict.workflow_id>.",
-    'No silent webhook teardown: updating a workflow whose trigger drops from `webhook` to anything else refuses with `webhook_trigger_removal_unconfirmed` (it would DELETE the live public ingress hook). If the webhook should stay, restore `trigger: { kind: "webhook", … }` via edit_workflow_patch and re-run dry_run_workflow. If removal is intended, confirm with the user, then re-call with force_commit: true.',
+    "No silent slug-adoption: a different workflow's slug produces slug_conflict_with_live_workflow. Rename the draft or open that workflow to observe its saved draft before requesting a human-approved replacement. A force flag cannot replace an observed version.",
+    "Saving changed triggers does not alter existing live webhook or schedule bindings. Review and activate the exact saved version separately; repeated live runs require bounded execution authority.",
     "Writes one `manual_re_issue`-tagged audit row in addition to the workflow_created/updated row emitted by the workflow service.",
   ],
   inputSchema,

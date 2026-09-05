@@ -80,9 +80,16 @@ export const IdempotencyKeySchema = z.string().min(1).max(200).openapi({
 
 // Runtime-only schema (used by the handler — full StepSchema /
 // WorkflowDefSchema are too rich for the public OpenAPI catalog).
+const HoldWritesPreviewSchema = z.literal(true).optional().openapi({
+  description:
+    "Preview a temporary definition: hold request steps classified as writes; reads still execute against real systems. This flag is not a live-execution authorization.",
+});
+
 export const RuntimeRunBodySchema = z.discriminatedUnion("source", [
   z.object({
     source: z.literal("saved"),
+    // A saved live run must reject, never silently strip, a preview request.
+    hold_writes: z.literal(false).optional(),
     workflow_id: z.string().uuid(),
     version_id: z.string().uuid().optional(),
     input: z.unknown().optional(),
@@ -94,6 +101,7 @@ export const RuntimeRunBodySchema = z.discriminatedUnion("source", [
   }),
   z.object({
     source: z.literal("draft"),
+    hold_writes: HoldWritesPreviewSchema,
     definition: WorkflowDefSchema,
     name: z.string().optional(),
     input: z.unknown().optional(),
@@ -103,6 +111,7 @@ export const RuntimeRunBodySchema = z.discriminatedUnion("source", [
   }),
   z.object({
     source: z.literal("step"),
+    hold_writes: HoldWritesPreviewSchema,
     step: StepSchema,
     workflow_slug: z.string().optional(),
     input: z.unknown().optional(),
@@ -135,6 +144,7 @@ export const RunBodySchema = z.discriminatedUnion("source", [
   z
     .object({
       source: z.literal("saved"),
+      hold_writes: z.literal(false).optional(),
       workflow_id: z.string().uuid(),
       version_id: z.string().uuid().optional(),
       input: z.unknown().optional(),
@@ -148,6 +158,7 @@ export const RunBodySchema = z.discriminatedUnion("source", [
   z
     .object({
       source: z.literal("draft"),
+      hold_writes: HoldWritesPreviewSchema,
       definition: OpenApiDraftDefinitionSchema,
       name: z.string().optional(),
       input: z.unknown().optional(),
@@ -159,6 +170,7 @@ export const RunBodySchema = z.discriminatedUnion("source", [
   z
     .object({
       source: z.literal("step"),
+      hold_writes: HoldWritesPreviewSchema,
       step: OpenApiStepSchema,
       workflow_slug: z.string().optional(),
       input: z.unknown().optional(),
@@ -211,6 +223,8 @@ const RunStepSummarySchema = z
     retry_count: z.number().int(),
     error: z.unknown().nullable(),
     request_meta: RequestMetaSchema.nullable().optional(),
+    /** A preview prepared this step but did not dispatch its write. */
+    held: z.boolean().optional(),
   })
   .openapi("ExecutionRunStepSummary");
 

@@ -187,6 +187,16 @@ describe.skipIf(skip)(
       expect(candidate.workflow_id).toBe(workflowId);
       // Initial version is always 1.
       expect(candidate.version).toBe(1);
+      expect(candidate.body).toContain(
+        "This candidate describes preparation, not an active capability",
+      );
+      expect(candidate.body).toContain(
+        "Approving this skill does not activate the workflow or authorize execution",
+      );
+      expect(candidate.body).not.toContain("/runs");
+      expect(candidate.body).toContain(
+        (result.data as { workflow_version_id: string }).workflow_version_id,
+      );
     }, 60_000);
   },
 );
@@ -235,6 +245,8 @@ describe.skipIf(skip)(
         "SC Recommit v2",
         "return input.input ?? null;", // different expression
       );
+      if (!secondDraft.state) throw new Error("ready draft state missing");
+      secondDraft.state.persisted_resources = firstCtx.getDraft().state?.persisted_resources ?? [];
       // Use the same conversationId — `target_workflow_id` was written there
       // by the first commit and is picked up automatically.
       const secondCtx = stubToolCtx(conversationId, secondDraft);

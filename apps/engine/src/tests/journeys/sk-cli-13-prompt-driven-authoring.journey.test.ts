@@ -1,6 +1,6 @@
 // User story: as an operator typing into the sk-cli prompt (the same
 // surface claude.ai drives via MCP), I send a natural-language
-// authoring request and the engine produces a committed workflow row
+// authoring request and the engine produces an inert workflow draft
 // without me touching workflow-shaped APIs by hand.
 //
 // This journey is the deterministic counterpart to the live browser
@@ -16,10 +16,9 @@
 //   AC1. Sending the canonical authoring prompt drives the conversation
 //        through the canned inner loop and lands the elicitation row
 //        the operator has to confirm.
-//   AC2. Confirming the elicitation commits the draft: conversation
-//        status flips to `committed`, a `workflows` row exists with the
-//        prompt-supplied slug, and the canonical approval audit row is
-//        emitted.
+//   AC2. Confirming the elicitation saves the draft: conversation
+//        status returns to `active`, a `workflows` row has a draft version
+//        and no active version, and the canonical approval audit row is emitted.
 //   AC3. The tool-call sequence never includes `run_workflow` — the
 //        whole point of the 6.0.3 step-router fix is that an authoring
 //        loop on a not-yet-persisted draft cannot reach the execution
@@ -45,6 +44,7 @@ async function countAudit(action: string, resourceId: string): Promise<number> {
     .from(auditLog)
     .where(
       and(
+        eq(auditLog.tenant_id, ctx.tenantId),
         eq(auditLog.action, action),
         eq(auditLog.resource_id, resourceId),
         isNull(auditLog.reason),
@@ -62,7 +62,7 @@ describe("journey: sk-cli prompt-driven authoring", () => {
     await ctx.cleanup();
   }, JOURNEY_HOOK_TIMEOUT);
 
-  test("AC1+AC2: prompt drives canned loop, confirm commits, workflow row + audit appear", async () => {
+  test("AC1+AC2: prompt drives canned loop, confirmation saves an inert draft and audit", async () => {
     // The exact prompt the operator types — matches the regex wired in
     // apps/engine/src/conversations/service/create.ts that seeds the
     // canned `cannedListPrivateGithubReposPlan`.
@@ -99,7 +99,7 @@ describe("journey: sk-cli prompt-driven authoring", () => {
     expect(pending).toBeDefined();
     expect(pending?.status).toBe("pending");
 
-    // AC2: confirm → commit → workflow row + audit row.
+    // AC2: confirm → inert draft → workflow row + audit row.
     await respondElicitationForTest(
       {
         tenant_id: ctx.tenantId,
@@ -112,16 +112,23 @@ describe("journey: sk-cli prompt-driven authoring", () => {
     );
 
     const detail = await conversationsSvc.getConversation(ctx.tenantId, conversation_id, ctx.db);
-    expect(detail?.conversation.status).toBe("committed");
+    expect(detail?.conversation.status).toBe("active");
     const workflowId = detail?.conversation.target_workflow_id;
     expect(workflowId).toBeDefined();
 
     const [row] = await ctx.db
-      .select({ id: workflows.id, slug: workflows.slug })
+      .select({
+        id: workflows.id,
+        slug: workflows.slug,
+        draft: workflows.draft_version_id,
+        active: workflows.current_version_id,
+      })
       .from(workflows)
-      .where(eq(workflows.id, workflowId as string))
+      .where(and(eq(workflows.id, workflowId as string), eq(workflows.tenant_id, ctx.tenantId)))
       .limit(1);
     expect(row).toBeDefined();
+    expect(row?.draft).toBeTruthy();
+    expect(row?.active).toBeNull();
     // The canned plan doesn't currently override the slug; the engine
     // derives it from the conversation summary. We just assert the row
     // exists and has the workflow id the conversation points at — the
@@ -130,6 +137,6 @@ describe("journey: sk-cli prompt-driven authoring", () => {
     expect(row?.id).toBe(workflowId as string);
 
     expect(await countAudit("approval.approved", pending!.id)).toBe(1);
-    expect(await countAudit("conversation.committed", conversation_id)).toBe(1);
+    expect(await countAudit("conversation.committed", conversation_id)).toBe(0);
   });
 });

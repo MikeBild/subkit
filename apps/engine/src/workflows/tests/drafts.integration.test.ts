@@ -192,6 +192,120 @@ test("concurrent edits cannot silently replace an unseen draft", async () => {
   expect(results.filter((result) => result.code === "draft_conflict")).toHaveLength(1);
 });
 
+test("preview hints survive draft reload without mutating previously saved evidence", async () => {
+  const def = definition("draft-preview-hints");
+  const scope_index = {
+    output: {
+      available_paths: ["$scope.output.data"],
+      shape_summary: "number",
+      primary_data_path: "$scope.output.data",
+    },
+  };
+  const first = unwrap(
+    await saveWorkflowDraft(
+      { tenant_id, def, scope_index, actor_id: null, request_source: "tool-chain" },
+      ctx.db,
+    ),
+  );
+  const input = {
+    tenant_id,
+    workflow_id: first.workflow_id,
+    expected_draft_version_id: first.version_id,
+    def,
+    actor_id: null,
+    request_source: "tool-chain" as const,
+  };
+  expect(unwrap(await saveWorkflowDraft(input, ctx.db))).toEqual(first);
+  expect(
+    unwrap(
+      await saveWorkflowDraft(
+        {
+          ...input,
+          scope_index: {
+            output: {
+              primary_data_path: "$scope.output.data",
+              shape_summary: "number",
+              available_paths: ["$scope.output.data"],
+            },
+          },
+        },
+        ctx.db,
+      ),
+    ),
+  ).toEqual(first);
+  const cleared = unwrap(await saveWorkflowDraft({ ...input, scope_index: null }, ctx.db));
+  expect(cleared.version).toBe(first.version + 1);
+  expect(cleared.digest).toBe(first.digest);
+  expect(cleared.current_version_id).toBeNull();
+  expect(await getWorkflowDraft(tenant_id, first.workflow_id, ctx.db)).toEqual(cleared);
+  const versions = await ctx.db
+    .select()
+    .from(workflowVersions)
+    .where(
+      and(
+        eq(workflowVersions.tenant_id, tenant_id),
+        eq(workflowVersions.workflow_id, first.workflow_id),
+      ),
+    );
+  expect(versions).toHaveLength(2);
+  expect(versions.find((version) => version.id === first.version_id)?.scope_index).toEqual(
+    scope_index,
+  );
+  expect(versions.find((version) => version.id === cleared.version_id)?.scope_index).toBeNull();
+  expect((await saveWorkflowDraft({ ...input, scope_index }, ctx.db)).code).toBe("draft_conflict");
+  const audit = await ctx.db
+    .select()
+    .from(auditLog)
+    .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.resource_id, first.workflow_id)));
+  expect(audit).toHaveLength(2);
+  expect(audit).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        after: { draft_version_id: cleared.version_id, current_version_id: null },
+        metadata: { kind: "draft", request_source: "tool-chain", version: 2 },
+      }),
+    ]),
+  );
+});
+
+test("a changed draft definition never inherits preview hints from its previous version", async () => {
+  const first = unwrap(
+    await saveWorkflowDraft(
+      {
+        tenant_id,
+        def: definition("draft-stale-hints"),
+        scope_index: {
+          output: { available_paths: [], shape_summary: "number", primary_data_path: null },
+        },
+        actor_id: null,
+        request_source: "tool-chain",
+      },
+      ctx.db,
+    ),
+  );
+  const changed = unwrap(
+    await saveWorkflowDraft(
+      {
+        tenant_id,
+        workflow_id: first.workflow_id,
+        expected_draft_version_id: first.version_id,
+        def: definition("draft-stale-hints", 2),
+        actor_id: null,
+        request_source: "tool-chain",
+      },
+      ctx.db,
+    ),
+  );
+  const [version] = await ctx.db
+    .select({ scope_index: workflowVersions.scope_index })
+    .from(workflowVersions)
+    .where(
+      and(eq(workflowVersions.tenant_id, tenant_id), eq(workflowVersions.id, changed.version_id)),
+    );
+  expect(changed.digest).not.toBe(first.digest);
+  expect(version?.scope_index).toBeNull();
+});
+
 test("draft access stays tenant scoped and updates require an observed base", async () => {
   const first = unwrap(await save(definition("draft-isolation")));
   expect(await getWorkflowDraft(otherTenantId, first.workflow_id, ctx.db)).toBeNull();

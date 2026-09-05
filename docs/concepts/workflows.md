@@ -12,7 +12,7 @@ This page covers the workflow lifecycle, the execution model, the eight Step kin
 
 A workflow moves through three states. Chat authors a **draft**; approval commits it to **active**; retiring or superseding it moves it to **archived**. Promoting a prior version back to active is the rollback path — no redeploy, instant, audited.
 
-Authoring itself follows a fixed shape: sk builds a grounded draft from the described outcome, tests that draft against real connectors, refines it with targeted patch edits, and only then commits it. Each stage is a discrete, governed step — the draft is never mutated blindly, and the commit is the single gated transition from draft to active. See [AI-assisted authoring](../authors/authoring-workflows.md) for the full loop.
+Authoring itself follows a fixed shape: sk builds a grounded draft from the described outcome, previews it, refines it with targeted patch edits, and saves an immutable draft version. Saving is preparation, not the transition to active: it never changes the active version or live trigger bindings. See [AI-assisted authoring](../authors/authoring-workflows.md) for the full loop.
 
 **Playground mode.** Authoring can run in an ephemeral scratch mode that never persists. A playground conversation builds and tests drafts exactly like a normal session, but nothing it produces is written to the tenant's workflow store — the draft evaporates when the conversation ends. This is the safe space to explore a shape, probe a connector, or demonstrate the authoring loop without leaving any committed artifact behind. Playground is a durable, per-conversation flag: it is set when the conversation is opened (an AI client signals it over MCP; an HTTP caller passes it on the start request) and holds for the life of that conversation.
 
@@ -31,7 +31,7 @@ _Draft → active → archived. Every transition lands in the Audit Log with the
 
 ### Durable drafts are not active versions
 
-The draft API persists preparation without activating a workflow. A workflow has
+The draft API and conversational `save_workflow_draft` persist preparation without activating a workflow. A workflow has
 separate `draft_version_id` and `current_version_id` pointers. Saving a draft writes
 an additional version and advances only the draft pointer; the active definition,
 schedule, webhook and tool catalog stay unchanged. A new draft has no active
@@ -44,6 +44,26 @@ overwriting another draft. Identical definitions reuse the existing draft versio
 changed definitions retain earlier versions. Draft responses include a canonical
 SHA-256 definition digest, not an execution grant. Every actual save has a
 transactional audit record carrying actor, request source and both pointers.
+
+Conversation reloads prefer the saved draft over the active version. Once a
+session has observed a draft base, reload preserves that observation and local
+edits; it does not silently adopt another author's newer draft. An execution of
+an older active version is not preview evidence for the new draft. The
+`run_workflow` conversation tool refuses to substitute the old active workflow
+when the session is bound to a different saved draft.
+
+`conversation_commit` remains a read-only status tool. Its result distinguishes
+`persistence_kind`, `activation_required`, and `current_version_id`; a draft
+response contains no live invocation guidance. The legacy `committed` object
+names the exact stored version, not an approval. Proposed capability skills may
+describe that draft, but approving a skill never activates or authorizes it.
+
+Authoring callers can attach preview-derived `scope_index` shape hints to a draft
+version. Identical definitions and hints reuse that version; changed hints create
+a new inert version without rewriting the previous evidence. The digest covers
+the definition, not those hints. Omitting hints preserves an unchanged draft but
+does not carry stale preview hints into a changed definition. None of these hints
+authorizes activation or execution.
 
 Use the dedicated draft endpoints for this behavior. Existing definition-commit
 endpoints are activation-capable and are not equivalent to saving an inert draft.

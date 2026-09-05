@@ -115,6 +115,25 @@ The REST API is the full programmatic interface to sk and the canonical interfac
 | **Discoverability** | OpenAPI spec served at `/openapi.json`; interactive Scalar UI at `/docs`. Both available to any authenticated client. |
 | **LLM grounding** | The engine publishes its own docs in the [llms-txt](https://llmstxt.org) format, unauthenticated, as `text/markdown`: `GET /llms.txt` (a robots.txt-style index) and `GET /llms-full.txt` (the full docs in one fetch). Point an MCP client or model at these to ground it on auth, error-code semantics, and conventions in prose the bare schema can't express. |
 
+### Temporary execution previews
+
+For `source: "draft"` and `source: "step"`, `POST /v1/executions` accepts
+`hold_writes: true`. The Cockpit's preview buttons always send this flag.
+Requests classified as writes are prepared but not dispatched; the response
+marks their step summaries with `held: true`. Reads still contact real systems.
+Preview disables self-healing and does not activate a workflow or grant live
+execution authority. Classification is the engine's existing driver-aware
+read/write classification, not proof of an approved Effect Manifest.
+
+Omitting the flag preserves the existing execution API behavior. A saved-workflow
+run rejects `hold_writes: true` rather than silently discarding it and running
+live. Preview a temporary definition instead; saved asynchronous previews are
+not supported by this contract.
+
+Inline previews require tenant-level `workflow:run`. A resource grant on one
+saved workflow does not authorize an arbitrary inline definition: adding a
+`workflow_id` to a draft or step request cannot borrow that grant.
+
 ### Durable workflow draft API
 
 `POST /v1/workflows/drafts` accepts `{definition}` and requires `workflow:write`.
@@ -126,6 +145,14 @@ version is a UUID or `null` when there is no prior draft. Responses carry
 validated `definition`. Workflow list/detail responses separately expose
 `draft_version_id`. Missing drafts return 404; stale expected versions or duplicate
 slugs return 409. No endpoint in this group activates triggers or authorizes a run.
+
+Conversational `save_workflow_draft` uses the same inert version contract.
+`conversation_commit` only reports stored state: `persistence_kind: "draft"`
+with `activation_required: true` is not a live workflow. The legacy `committed`
+object identifies the saved version; `current_version_id` separately identifies
+the active one. Draft responses omit live `usage` guidance. A stale observed
+draft is not reported as successfully saved, even if its steps match a newer
+version with different preview evidence.
 
 ### Runtime configuration across surfaces
 

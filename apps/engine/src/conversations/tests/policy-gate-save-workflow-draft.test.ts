@@ -290,12 +290,15 @@ describe("save_workflow_draft — policy gate", () => {
     expect(result.ok).toBe(true);
     const data = result.data as Record<string, unknown>;
     expect(data.workflow_id).toBeDefined();
-    // Commit success envelope carries usage + next_prompt centralised from
-    // usage.follow_up, with the capability Skill-Candidate notice appended on
-    // commit (status proposed — never an active skill).
-    expect(data.usage).toBeDefined();
-    const followUp = (data.usage as { follow_up: string }).follow_up;
-    expect((data.next_prompt as string).startsWith(followUp)).toBe(true);
+    // Saving is preparation, not a live invocation handoff. The proposed
+    // capability is retained without claiming activation or run authority.
+    expect(data.usage).toBeUndefined();
+    expect(data.persistence_kind).toBe("draft");
+    expect(data.activation_required).toBe(true);
+    expect(data.current_version_id).toBeNull();
+    expect(data.next_prompt as string).toContain(
+      "no schedule, webhook or live execution was enabled",
+    );
     expect(data.next_prompt as string).toContain("Skill-Candidate");
   });
 });

@@ -21,6 +21,7 @@ import {
   withWorkflowInspection,
   withWorkflowValidation,
 } from "../authoring-state.ts";
+import { appendSnapshot, loadDraft } from "../draft.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
@@ -77,8 +78,21 @@ function stubToolCtx(conversationId: string, draft: DraftDocument): ToolContext 
     getDraft: () => live,
     setDraft: async (next) => {
       live = next;
+      await appendSnapshot(ctx.tenant_id, conversationId, next, ctx.testDb.db);
     },
   };
+}
+
+async function observedEdit(
+  conversationId: string,
+  slug: string,
+  name: string,
+): Promise<DraftDocument> {
+  const observed = await loadDraft(ctx.tenant_id, conversationId, ctx.testDb.db);
+  const draft = readyDraft(slug, name);
+  if (!draft.state) throw new Error("ready draft state missing");
+  draft.state.persisted_resources = observed.state?.persisted_resources ?? [];
+  return draft;
 }
 
 async function freshConversation(): Promise<string> {
@@ -182,8 +196,19 @@ describe("save_workflow_draft · identity gate (session 5b97ec58)", () => {
     // slug column (renames go through updateWorkflowMetadata); the
     // target row is updated in place, version bumped, slug unchanged.
     await seedApprovedConfirm(conversationId);
-    const overwrite = await commitWorkflowAtomic({
+    const unobserved = await commitWorkflowAtomic({
       ctx: stubToolCtx(conversationId, readyDraft("would-be-new-slug", "Alpha v2")),
+      target_workflow_id: firstData.workflow_id,
+      forceCommit: true,
+    });
+    expect(unobserved.ok).toBe(false);
+    if (unobserved.ok) throw new Error("unobserved replacement unexpectedly saved");
+    expect(unobserved.error_code).toBe("draft_base_not_observed");
+    const overwrite = await commitWorkflowAtomic({
+      ctx: stubToolCtx(
+        conversationId,
+        await observedEdit(conversationId, "would-be-new-slug", "Alpha v2"),
+      ),
       target_workflow_id: firstData.workflow_id,
     });
     expect(overwrite.ok).toBe(true);
@@ -221,7 +246,10 @@ describe("save_workflow_draft · identity gate (session 5b97ec58)", () => {
     // commit should bump the version of the same row.
     await seedApprovedConfirm(conversationId);
     const second = await commitWorkflowAtomic({
-      ctx: stubToolCtx(conversationId, readyDraft("idempotent", "Idempotent v2")),
+      ctx: stubToolCtx(
+        conversationId,
+        await observedEdit(conversationId, "idempotent", "Idempotent v2"),
+      ),
     });
     expect(second.ok).toBe(true);
     const secondData = second.data as { workflow_id: string; version: number };

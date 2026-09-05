@@ -20,6 +20,7 @@ import {
 import { EngineClient } from "../../engine-client/index.ts";
 import { handleConversationTool } from "../../mcp/capabilities/conversations.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
+import { saveWorkflowDraft } from "../../workflows/drafts.ts";
 import {
   withLatestPreview,
   withWorkflowDraft,
@@ -154,7 +155,7 @@ describe("classifyDraftVsPersisted", () => {
     // Detach the current version pointer entirely.
     await db
       .update(workflows)
-      .set({ current_version_id: null })
+      .set({ current_version_id: null, draft_version_id: null })
       .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, workflowId)));
     expect(
       await classifyDraftVsPersisted(db, tenant_id, cleanDraft("wf-classify-reason"), workflowId),
@@ -236,6 +237,47 @@ describe("RC2 — conversation_commit reports honestly", () => {
     } as ResolvedPrincipal;
   }
 
+  test("a replaced draft version is stale even when its definition is unchanged", async () => {
+    const convId = await freshConversation();
+    const { workflowId, boundDraft } = await seedCommittedWorkflow(convId, "wf-stale-draft-status");
+    await appendSnapshot(ctx.tenant_id, convId, boundDraft, ctx.testDb.db);
+    const bound = boundDraft.state?.persisted_resources.find(
+      (resource) => resource.id === workflowId,
+    );
+    if (!bound?.draft_version_id) throw new Error("draft base missing");
+    const replacement = await saveWorkflowDraft(
+      {
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.user_id,
+        workflow_id: workflowId,
+        expected_draft_version_id: bound.draft_version_id,
+        request_source: "api",
+        def: boundDraft.workflow,
+        scope_index: {
+          echo: {
+            available_paths: ["echo.data"],
+            shape_summary: "new preview evidence",
+            primary_data_path: "echo.data",
+          },
+        },
+      },
+      ctx.testDb.db,
+    );
+    if (!replacement.draft) throw new Error(replacement.errors.join("; "));
+    expect(replacement.draft.version_id).not.toBe(bound.draft_version_id);
+    expect(
+      await classifyDraftVsPersisted(ctx.testDb.db, ctx.tenant_id, boundDraft, workflowId),
+    ).toEqual({ state: "structural" });
+    const reply = await handleConversationTool({
+      db: ctx.testDb.db,
+      principal: principal(),
+      name: "conversation_commit",
+      args: { conversation_id: convId },
+    });
+    expect(reply.isError).toBe(true);
+    expect(reply.content[0]?.text ?? "").toContain("NOT COMMITTED");
+  });
+
   test("clean committed draft → success echo; uncommitted step edits → NOT COMMITTED error", async () => {
     const convId = await freshConversation();
     const { boundDraft } = await seedCommittedWorkflow(convId, "wf-rc2");
@@ -263,6 +305,7 @@ describe("RC2 — conversation_commit reports honestly", () => {
     const [wfRow] = await ctx.testDb.db
       .select({
         id: workflows.id,
+        draft_version_id: workflows.draft_version_id,
         current_version_id: workflows.current_version_id,
         updated_at: workflows.updated_at,
       })
@@ -274,12 +317,25 @@ describe("RC2 — conversation_commit reports honestly", () => {
           isNull(workflows.deleted_at),
         ),
       );
-    if (!wfRow?.current_version_id) throw new Error("committed workflow row missing");
+    if (!wfRow?.draft_version_id) throw new Error("saved draft row missing");
     const [vRow] = await ctx.testDb.db
       .select({ version: workflowVersions.version, dag: workflowVersions.dag })
       .from(workflowVersions)
-      .where(eq(workflowVersions.id, wfRow.current_version_id));
-    expect(okBody.committed?.workflow_version_id).toBe(wfRow.current_version_id);
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, ctx.tenant_id),
+          eq(workflowVersions.workflow_id, wfRow.id),
+          eq(workflowVersions.id, wfRow.draft_version_id),
+        ),
+      );
+    expect(okBody.committed?.workflow_version_id).toBe(wfRow.draft_version_id);
+    expect(okBody).toMatchObject({
+      persistence_kind: "draft",
+      activation_required: true,
+      current_version_id: null,
+    });
+    expect(okBody).not.toHaveProperty("usage");
+    expect(wfRow.current_version_id).toBeNull();
     expect(okBody.committed?.version).toBe(vRow?.version ?? -1);
     expect(okBody.committed?.steps_present).toBe(
       ((vRow!.dag as { steps?: unknown[] })?.steps ?? []).length,

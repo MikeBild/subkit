@@ -6,8 +6,16 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 // subset; going through the registry index loads the same modules in a
 // cycle-safe order.
 import "../tools/index.ts";
-import { eq } from "drizzle-orm";
-import { auditLog, conversations, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import {
+  auditLog,
+  conversations,
+  executions,
+  workflows,
+  workflowVersions,
+} from "../../db/schema/index.ts";
+import { saveWorkflowDraft } from "../../workflows/drafts.ts";
+import { bindPersistedWorkflow } from "../authoring-state.ts";
 import { runWorkflowTool } from "../tools/generated/writes/run-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
@@ -23,7 +31,7 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function seedWorkflow(): Promise<{
+async function seedWorkflow(slug = "berlin-weather"): Promise<{
   workflow_id: string;
   version_id: string;
 }> {
@@ -31,7 +39,7 @@ async function seedWorkflow(): Promise<{
     .insert(workflows)
     .values({
       tenant_id: ctx.tenant_id,
-      slug: "berlin-weather",
+      slug,
       name: "Berlin Weather",
       lifecycle: "active",
     })
@@ -45,7 +53,7 @@ async function seedWorkflow(): Promise<{
       version: 1,
       dag: {
         name: "Berlin Weather",
-        slug: "berlin-weather",
+        slug,
         input_schema: {
           type: "object",
           required: ["date"],
@@ -76,6 +84,7 @@ function buildToolCtx(params: {
   conversation_id: string;
   draft: DraftDocument;
   setDraft: (next: DraftDocument) => Promise<void>;
+  afterWorkflowRead?: (id: string) => Promise<void>;
 }): ToolContext {
   // biome-ignore lint/suspicious/noExplicitAny: minimal stub matching ToolContext
   const engineClientStub: any = {
@@ -86,7 +95,9 @@ function buildToolCtx(params: {
     workflows: {
       get: async (id: string) => {
         const { getWorkflow } = await import("../../workflows/service.ts");
-        return getWorkflow(ctx.tenant_id, id, ctx.testDb.db);
+        const workflow = await getWorkflow(ctx.tenant_id, id, ctx.testDb.db);
+        await params.afterWorkflowRead?.(id);
+        return workflow;
       },
     },
     audit_write: async (entry: Record<string, unknown>) => {
@@ -135,6 +146,171 @@ function buildToolCtx(params: {
 }
 
 describe("run_workflow tool", () => {
+  test("pins the inspected version when activation changes before execution", async () => {
+    const { workflow_id, version_id } = await seedWorkflow("activation-race");
+    const [replacement] = await ctx.testDb.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenant_id,
+        workflow_id,
+        version: 2,
+        dag: {
+          name: "Replacement",
+          slug: "activation-race",
+          steps: [
+            {
+              id: "shape",
+              kind: "transform",
+              language: "javascript",
+              expression: "return { unexpected: true };",
+            },
+          ],
+        },
+      })
+      .returning();
+    if (!replacement) throw new Error("replacement insert failed");
+    const draft: DraftDocument = { workflow: { name: "stub", steps: [] } };
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({ tenant_id: ctx.tenant_id, status: "active", draft })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+    const result = await runWorkflowTool.execute(
+      buildToolCtx({
+        conversation_id: conversation.id,
+        draft,
+        setDraft: async () => {},
+        afterWorkflowRead: async (id) => {
+          await ctx.testDb.db
+            .update(workflows)
+            .set({ current_version_id: replacement.id })
+            .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.id, id)));
+        },
+      }),
+      runWorkflowTool.inputSchema.parse({
+        workflow: workflow_id,
+        input: { date: "approved input" },
+      }),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({ output: { date: "approved input" } });
+    const runs = await ctx.testDb.db
+      .select({ version: executions.workflow_version_id })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, ctx.tenant_id), eq(executions.workflow_id, workflow_id)));
+    expect(runs).toEqual([{ version: version_id }]);
+  });
+
+  for (const fixture of ["new-bound", "new-unbound", "edited-active"] as const) {
+    test(`requires activation for an inert ${fixture} draft and starts no execution`, async () => {
+      const saved = await saveWorkflowDraft(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_id: ctx.user_id,
+          request_source: "chat",
+          def: {
+            name: `Activation ${fixture}`,
+            slug: `activation-${fixture}`,
+            steps: [
+              {
+                id: "shape",
+                kind: "transform",
+                language: "javascript",
+                expression: "return { draft: true };",
+              },
+            ],
+          },
+        },
+        ctx.testDb.db,
+      );
+      if (!saved.draft) throw new Error(saved.errors.join("; "));
+      let currentVersionId: string | null = null;
+      if (fixture === "edited-active") {
+        const [active] = await ctx.testDb.db
+          .insert(workflowVersions)
+          .values({
+            tenant_id: ctx.tenant_id,
+            workflow_id: saved.draft.workflow_id,
+            version: 2,
+            dag: {
+              ...saved.draft.definition,
+              steps: [
+                {
+                  id: "shape",
+                  kind: "transform",
+                  language: "javascript",
+                  expression: "return { old: true };",
+                },
+              ],
+            },
+          })
+          .returning();
+        if (!active) throw new Error("active fixture insert failed");
+        currentVersionId = active.id;
+        await ctx.testDb.db
+          .update(workflows)
+          .set({ current_version_id: active.id, lifecycle: "active" })
+          .where(
+            and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.id, saved.draft.workflow_id)),
+          );
+      }
+      const emptyDraft: DraftDocument = { workflow: { name: "stub", steps: [] } };
+      const draft =
+        fixture === "new-unbound"
+          ? emptyDraft
+          : bindPersistedWorkflow(emptyDraft, {
+              kind: "workflow",
+              id: saved.draft.workflow_id,
+              slug: saved.draft.definition.slug ?? null,
+              name: saved.draft.definition.name,
+              version_id: saved.draft.version_id,
+              version: saved.draft.version,
+              environment: null,
+              saved_at: "2026-05-01T00:00:00.000Z",
+              draft_version_id: saved.draft.version_id,
+              current_version_id: currentVersionId,
+              persistence_kind: "draft",
+            });
+      const [conversation] = await ctx.testDb.db
+        .insert(conversations)
+        .values({ tenant_id: ctx.tenant_id, status: "active", draft })
+        .returning();
+      if (!conversation) throw new Error("conversation insert failed");
+      let draftWrites = 0;
+      const result = await runWorkflowTool.execute(
+        buildToolCtx({
+          conversation_id: conversation.id,
+          draft,
+          setDraft: async () => {
+            draftWrites++;
+          },
+        }),
+        runWorkflowTool.inputSchema.parse({
+          workflow: saved.draft.workflow_id,
+          execute_writes: true,
+        }),
+      );
+      expect(result.ok).toBe(false);
+      expect(result.data).toMatchObject({
+        status: "failed",
+        error_code: "workflow_activation_required",
+        draft_version_id: saved.draft.version_id,
+        current_version_id: currentVersionId,
+      });
+      expect(draftWrites).toBe(0);
+      const runs = await ctx.testDb.db
+        .select({ id: executions.id })
+        .from(executions)
+        .where(
+          and(
+            eq(executions.tenant_id, ctx.tenant_id),
+            eq(executions.workflow_id, saved.draft.workflow_id),
+          ),
+        );
+      expect(runs).toEqual([]);
+    });
+  }
+
   test("binds the saved workflow into the next draft and normalizes stringified input", async () => {
     const { workflow_id } = await seedWorkflow();
     const [conversation] = await ctx.testDb.db

@@ -30,6 +30,12 @@ import {
  * the cap surfaces only the generic "ask the user" hint.
  */
 export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
+  workflow_activation_required:
+    "the saved draft is not the active workflow version. Saving did not authorize a live run. Inspect and preview the draft with inspect_workflow_draft / dry_run_workflow; request human review of the exact version and effects before activation. Do not run an older active version as a substitute or retry with execute_writes.",
+  draft_base_not_observed:
+    "open the existing workflow in an authoring session to observe its saved draft version before replacing it. Keep local edits; a force flag or an old active-version approval cannot stand in for that observation.",
+  draft_conflict:
+    "another author changed the saved draft. Preserve local edits, inspect the current saved version, and reconcile the differences before saving. Do not retry blindly or replace the expected version with an unreviewed value.",
   // restore_workflow_version — the recovery tool. Its own failures must not
   // dead-end the recovery: each one names the read that resolves it.
   workflow_not_identified:
