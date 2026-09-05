@@ -1560,6 +1560,11 @@ async function assertChat(page, label) {
       if (!(element instanceof HTMLElement)) throw new Error(`${testId} missing`);
       return element.getBoundingClientRect().toJSON();
     };
+    const gutter = (selector) => {
+      const element = document.querySelector(selector);
+      if (!(element instanceof HTMLElement)) throw new Error(`${selector} missing`);
+      return getComputedStyle(element).scrollbarGutter;
+    };
     return {
       transcript: rect("chat-transcript"),
       composerArea: rect("chat-composer-area"),
@@ -1574,6 +1579,11 @@ async function assertChat(page, label) {
         .querySelector('[data-slot="message-scroller-content"]')
         ?.getBoundingClientRect()
         .toJSON(),
+      gutters: {
+        header: gutter('[data-testid="chat-header"]'),
+        transcript: gutter('[data-slot="message-scroller-viewport"]'),
+        composer: gutter('[data-testid="chat-composer-area"]'),
+      },
       inputStyle: (() => {
         const input = document.querySelector('[data-testid="chat-composer-input"]');
         if (!(input instanceof HTMLElement)) throw new Error("chat-composer-input missing");
@@ -1614,6 +1624,10 @@ async function assertChat(page, label) {
     throw new Error(`${label} composer input spacing is not 16px/11px with 24px leading`);
   if (!layout.headerColumn || !layout.transcriptColumn)
     throw new Error(`${label} shared chat columns are missing`);
+  for (const [area, gutter] of Object.entries(layout.gutters)) {
+    if (gutter !== "stable both-edges")
+      throw new Error(`${label} ${area} scrollbar gutter is ${JSON.stringify(gutter)}`);
+  }
   for (const column of [layout.headerColumn, layout.transcriptColumn]) {
     if (
       Math.abs(column.left - layout.composer.left) > 2 ||
