@@ -41,10 +41,19 @@ export interface ToolPolicies {
   [toolName: string]: ToolPolicyMode;
 }
 
+// These tenant writes only persist preparation. Anything not named here needs
+// a decision, unless its input-aware policy proves that this call is a read.
+const AUTO_PREPARATION_WRITES: ReadonlySet<string> = new Set([
+  "save_workflow_draft",
+  "create_knowledge_source",
+  "analyze_knowledge_source",
+]);
+
 /**
  * Permission mode the client advertises for a turn. Overrides the
  * per-tool policy matrix:
- *   - "auto"  — skip confirmations for all non-dangerous tools
+ *   - "auto"  — preparation and input-classified reads proceed autonomously;
+ *               unclassified tenant writes and dangerous calls still confirm
  *   - "ask"   — confirm every tenant_write before execution
  *   - "plan"  — confirm every tenant_write, client is expected to
  *               hold the approvals until the user leaves plan mode
@@ -811,7 +820,8 @@ export interface ToolModeDecision {
  * above the `yolo` short-circuit that is supposed to clear them.
  *
  * The permission_mode gate then short-circuits:
- *   - `auto` short-circuits non-dangerous tools.
+ *   - `auto` honors input-aware danger and explicit approval preferences.
+ *     Only known preparation writes and dynamically classified reads proceed.
  *   - `yolo` short-circuits everything except the inline-credential safeguard
  *     above. yolo is gated at a higher layer by tenant policy +
  *     non-stickiness + expiry; by the time it reaches this resolver, the
@@ -833,9 +843,8 @@ export function decideToolMode(args: {
   const def = TOOL_POLICIES[tool];
   // A tool is dangerous if it is statically listed OR its payload makes
   // this particular call hazardous (e.g. a write via call_connector).
-  // Dangerous tools skip the permission_mode=auto/ask/plan auto-approval
-  // short-circuits below, so the write falls through to
-  // computeModeFromInput and confirms — while yolo still honours it.
+  // Auto cannot turn a destructive call into preparation merely because a
+  // conversation persisted a no_confirm override. Yolo remains explicitly armed.
   const isDangerous = isDangerousTool(tool) || (def?.computeDangerFromInput?.(input) ?? false);
 
   // Inline-credential safeguard — fires before the permission_mode
@@ -865,8 +874,29 @@ export function decideToolMode(args: {
     // the user pasted into a declared slot.
     return { mode: "no_confirm", rule: "permission_mode" };
   }
-  if (permission_mode === "auto" && !isDangerous) {
-    return { mode: "no_confirm", rule: "permission_mode" };
+  if (permission_mode === "auto") {
+    const computed = def?.computeModeFromInput?.(input);
+    if (computed === "confirm_before_execution") {
+      return { mode: computed, rule: "computed_from_input" };
+    }
+    if (isDangerous) {
+      return { mode: "confirm_before_execution", rule: "permission_mode" };
+    }
+    if (
+      category === "tenant_write" &&
+      !AUTO_PREPARATION_WRITES.has(tool) &&
+      computed !== "no_confirm"
+    ) {
+      return { mode: "confirm_before_execution", rule: "permission_mode" };
+    }
+    const override = overrides[tool];
+    if (override && override !== "no_confirm") {
+      return { mode: override, rule: "conversation_override" };
+    }
+    return {
+      mode: computed ?? "no_confirm",
+      rule: computed ? "computed_from_input" : "permission_mode",
+    };
   }
   if (permission_mode === "ask" || permission_mode === "plan") {
     // "plan" is surfaced to the client identically to "ask" — the UI
