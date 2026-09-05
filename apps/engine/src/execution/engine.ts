@@ -45,6 +45,7 @@ import {
   WorkflowDefSchema,
 } from "../workflows/types.ts";
 import { combineSignals, registerAbort, unregisterAbort } from "./abort.ts";
+import { bindExistingRun } from "./bound-run.ts";
 import { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
 import {
   bodyEnvelopeForLoopAccumulator,
@@ -151,7 +152,8 @@ export interface RunExecutionParams {
 
 export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   const { db, tenant_id } = p;
-  const opts: RunOptions = p.options ?? {};
+  const bound = await bindExistingRun(db, tenant_id, p.source, p.input, p.options ?? {});
+  const opts = bound.options;
   const normalizedInput = normalizeWorkflowRunInput(p.input);
   const depth = opts.depth ?? 0;
   if (depth > MAX_CALL_DEPTH) {
@@ -162,7 +164,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   //   saved — persisted workflow + current_version_id
   //   draft — inline WorkflowDef (validated, not persisted)
   //   step  — single StepDef wrapped as a one-step WorkflowDef
-  const resolved = await resolveDefinition(db, tenant_id, p.source);
+  const resolved = await resolveDefinition(db, tenant_id, bound.source);
   const def = resolved.def;
   const workflow_id = resolved.workflow_id;
   const workflow_version_id = resolved.workflow_version_id;

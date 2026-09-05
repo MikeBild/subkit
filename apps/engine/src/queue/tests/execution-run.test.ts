@@ -60,6 +60,7 @@ describe("queue: execution.run worker", () => {
       source_ref: null,
       request_source: "api",
       parent_execution_id: null,
+      input: { hello: "world" },
     });
 
     const job: ExecutionRunJob = {
