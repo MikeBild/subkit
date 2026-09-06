@@ -2433,6 +2433,27 @@ authorizes activation or execution.
 Use the dedicated draft endpoints for this behavior. Existing definition-commit
 endpoints are activation-capable and are not equivalent to saving an inert draft.
 
+### Execution authority persistence boundary
+
+`workflow_execution_authorities` stores a separate, finite boundary for a tenant,
+workflow, exact version, effect-manifest digest and snapshot, execution environment,
+static target constraints, validity window and maximum run count. Existing active
+workflows receive no authority rows during migration. A stored mode or activation
+is not an implicit grant.
+
+Database constraints bind both the tenant-owned workflow and its exact version.
+Once created, the authority's identity and approved boundary cannot change.
+Reservations cannot decrease or exceed the maximum; expired, future or revoked
+authorities cannot acquire reservations. Revocation is terminal. A version that
+an authority references cannot have its definition or identity rewritten, while
+preview-only shape hints can still refresh.
+
+This is the storage contract, not a new public grant or dispatch path by itself.
+Admission services must validate the human decision and canonical manifest, lock
+the exact version while granting, and reserve transactionally before enqueueing.
+Dispatch must independently recheck the current boundary. A reservation counts
+admitted work, not proof of a completed external effect.
+
 ### The authoring critic
 
 Static validation catches what a schema can prove: unknown step kinds, malformed placeholders, a scope reference that can't resolve. It cannot catch a draft that is _structurally valid but semantically wrong_ — a workflow that parses cleanly yet quietly drifts from what the author actually asked for (the wrong endpoint, an inverted condition, a dropped field).
@@ -2506,7 +2527,7 @@ flowchart LR
 
 Two contracts sit on top and matter to everyone, not just contributors:
 
-**Every request is classified read or write.** The driver classifies at dispatch time (a GET is a read, a mutation is a write; an external MCP tool call is a write until someone inside the tenant says otherwise), and the author can override either way.
+**Every request is classified read or write.** The driver classifies at dispatch time. An author can escalate a read to a write, but a `read` label cannot downgrade HTTP PUT/PATCH/DELETE, S3 mutations, SQL writes, GraphQL mutations, or external MCP tool calls. GraphQL classification parses the document: misleading `query` labels, fragment-first mutations, mixed query/mutation documents, and malformed documents remain gated. A remote tool's read-only hint is advisory, not an execution authority. The existing read override for HTTP POST search endpoints remains available; it is not a general execution grant. SQL SELECT detection remains lexical and cannot prove the absence of effects in called functions, so it must not establish repeated execution authority.
 
 **Previews hold writes.** A dry run executes read steps live but fully resolves and _holds_ every write — URL, headers, the materialized body are recorded, nothing is dispatched. You see exactly what would have been sent before anything is sent; executing writes during a preview takes an explicit confirmation.
 

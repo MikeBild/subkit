@@ -1148,8 +1148,8 @@ export const dryRunWorkflowTool: ConversationTool = {
     // Held-read nudge: when holding a step skipped its dependents and the
     // preview is therefore incomplete, the held step is often a READ
     // misclassified as a write (e.g. a scrape that uses POST). Surface a hint
-    // to set side_effects:read so the preview executes it. Message-only — never
-    // auto-reclassify, because a POST can be a genuine write. Fires ONLY when
+    // about the supported HTTP POST search override, not a blanket bypass
+    // for SQL, GraphQL, or MCP effects. Never auto-reclassify. Fires ONLY when
     // holding actually broke the preview (held + skipped dependents), so a
     // legitimate held-write preview that still produces output stays quiet.
     const heldStepCount = run.steps.filter((s) => s.held).length;
@@ -1158,7 +1158,7 @@ export const dryRunWorkflowTool: ConversationTool = {
     ).length;
     const heldReadHint =
       heldStepCount > 0 && skippedDependentCount > 0
-        ? `${heldStepCount} step(s) were HELD as writes and ${skippedDependentCount} dependent step(s) were skipped, so the preview could not produce a complete result. If a held step only READS data (e.g. a scrape or fetch that does not mutate state), set \`side_effects: "read"\` on it so the preview runs it instead of holding it.`
+        ? `${heldStepCount} step(s) were HELD as writes and ${skippedDependentCount} dependent step(s) were skipped, so the preview could not produce a complete result. Only a verified read-only HTTP POST search endpoint supports the \`side_effects: "read"\` override. This label cannot authorize SQL writes, GraphQL mutations, or remote MCP tool calls. Keep those effects held, or request explicit approval for a live write run.`
         : null;
     const previewMessage = heldReadHint ? `${previewSummary} ${heldReadHint}` : previewSummary;
     return {

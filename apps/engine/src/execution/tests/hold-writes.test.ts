@@ -546,6 +546,32 @@ describe("hold-writes · HTTP", () => {
 });
 
 describe("hold-writes · postgres", () => {
+  test("a read label cannot dispatch a SQL insert during preview", async () => {
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "hold-pg-mislabelled",
+      steps: [
+        {
+          kind: "request",
+          id: "insert",
+          connector_id: pgConnectorId,
+          side_effects: "read",
+          sql: { query: "INSERT INTO hold_widgets (id, name) VALUES (99, 'not-authorized')" },
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+      options: { hold_writes: true },
+    });
+    expect(result.status).toBe("succeeded");
+    expect(result.steps[0]?.held).toBe(true);
+    const rows = await ctx.testDb.pool.query("SELECT id FROM hold_widgets WHERE id=99");
+    expect(rows.rows).toHaveLength(0);
+  });
+
   test("INSERT is held (table stays empty); SELECT executes live in the same preview", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "hold-pg",
@@ -598,6 +624,36 @@ describe("hold-writes · postgres", () => {
 });
 
 describe("hold-writes · graphql", () => {
+  test("query labels and read overrides cannot dispatch a mutation during preview", async () => {
+    hits.length = 0;
+    const queries = [
+      "mutation Add { add { id } }",
+      "fragment F on Thing { id } mutation Add { add { ...F } }",
+      "query List { things { id } } mutation Add { add { id } }",
+    ];
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "hold-gql-mislabelled",
+      steps: queries.map((query, index) => ({
+        kind: "request",
+        id: `unsafe${index}`,
+        connector_id: gqlConnectorId,
+        side_effects: "read",
+        graphql: { operation: "query", query },
+      })),
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+      options: { hold_writes: true },
+    });
+    expect(result.status).toBe("succeeded");
+    expect(result.steps).toHaveLength(3);
+    for (const step of result.steps) expect(step.held).toBe(true);
+    expect(hitsFor("/graphql")).toHaveLength(0);
+  });
+
   test("mutation is held with the resolved document; query executes live", async () => {
     hits.length = 0;
     const { workflow_id } = await createWorkflowRow(ctx, {

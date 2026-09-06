@@ -263,7 +263,8 @@ export const RequestStepSchema = z
      * SQL SELECT-only = read, anything else = write; S3 GET/HEAD/LIST
      * = read. Set `"read"` for a POST that is semantically a search,
      * or `"write"` to force-hold a GET that mutates server state. PUT,
-     * PATCH, DELETE and S3 mutations cannot be downgraded to reads.
+     * PATCH, DELETE, S3 mutations, SQL writes, GraphQL mutations and
+     * remote MCP tool calls cannot be downgraded to reads.
      */
     side_effects: z.enum(["read", "write"]).optional(),
     url: z.string().optional(),
@@ -444,8 +445,8 @@ export const RequestStepSchema = z
      * SIDE EFFECTS: `call_tool` is classified WRITE and therefore passes
      * through the same hold-writes / approval gate as a POST — see
      * `SideEffectInput.mcp` in packages/shared/src/side-effects.ts for
-     * why the remote's own `readOnlyHint` is not consulted. Set
-     * `side_effects: "read"` on the step to declare otherwise.
+     * why neither the remote's own `readOnlyHint` nor an author-generated
+     * `side_effects: "read"` grants permission to dispatch a tool call.
      */
     mcp: z
       .object({
