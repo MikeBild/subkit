@@ -3,7 +3,7 @@
 // The classifier lives at the driver layer (never vendor keywords):
 // HTTP method semantics via the `isIdempotent` retry seam, GraphQL
 // operation kind, SQL leading keyword, S3 verb — with the explicit
-// `side_effects` step override winning in BOTH directions.
+// `side_effects` may escalate a read, but cannot grant unknown remote effects.
 
 import { describe, expect, test } from "bun:test";
 import { type RequestStep, RequestStepSchema } from "../../workflows/types.ts";
@@ -170,7 +170,7 @@ describe("classifyRequestStepSideEffects · SQL", () => {
     ).toBe("write");
   });
 
-  test("WITH-CTE classifies write (conservative; override available)", () => {
+  test("WITH-CTE classifies write conservatively", () => {
     expect(
       classifyRequestStepSideEffects(
         step({ method: "SELECT", sql: { query: "WITH c AS (SELECT 1) SELECT * FROM c" } }),
@@ -244,7 +244,7 @@ describe("classifyRequestStepSideEffects · MCP", () => {
     ).toBe("read");
   });
 
-  test("the author override still wins in both directions", () => {
+  test("an author label cannot downgrade an MCP tool call, but can escalate a read", () => {
     expect(
       classifyRequestStepSideEffects(
         step({
@@ -253,7 +253,7 @@ describe("classifyRequestStepSideEffects · MCP", () => {
           mcp: { operation: "call_tool", tool: "search" },
         }),
       ),
-    ).toBe("read");
+    ).toBe("write");
     expect(
       classifyRequestStepSideEffects(
         step({

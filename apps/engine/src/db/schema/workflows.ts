@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -67,6 +69,7 @@ export const workflows = pgTable(
     ...timestamps,
   },
   (t) => [
+    uniqueIndex("workflows_tenant_id_key").on(t.tenant_id, t.id),
     // Partial unique: soft-deleted rows must not block their slug. Without
     // this, `delete_workflow` + re-create with the same slug fails with
     // 23505 even though the live tenant has no such workflow anymore.
@@ -119,7 +122,70 @@ export const workflowVersions = pgTable(
   },
   (t) => [
     uniqueIndex("workflow_versions_workflow_version_key").on(t.workflow_id, t.version),
+    uniqueIndex("workflow_versions_tenant_workflow_id_key").on(t.tenant_id, t.workflow_id, t.id),
     index("workflow_versions_tenant_workflow_idx").on(t.tenant_id, t.workflow_id),
+  ],
+);
+
+// Activation alone grants no repeated runs. This separate, finite boundary is
+// checked by the owning product and never inferred from another product's grant.
+export const workflowExecutionAuthorities = pgTable(
+  "workflow_execution_authorities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    workflow_id: uuid("workflow_id").notNull(),
+    workflow_version_id: uuid("workflow_version_id").notNull(),
+    effect_manifest_digest: text("effect_manifest_digest").notNull(),
+    effect_manifest: jsonb("effect_manifest").$type<Record<string, unknown>>().notNull(),
+    execution_environment: executionModeEnum("execution_environment").notNull(),
+    target_constraints: jsonb("target_constraints").$type<{ targets: string[] }>().notNull(),
+    valid_from: timestamp("valid_from", { withTimezone: true }).defaultNow().notNull(),
+    valid_until: timestamp("valid_until", { withTimezone: true }).notNull(),
+    max_runs: integer("max_runs").notNull().default(1),
+    reserved_runs: integer("reserved_runs").notNull().default(0),
+    created_by: uuid("created_by").notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    revoked_at: timestamp("revoked_at", { withTimezone: true }),
+    revoked_by: uuid("revoked_by"),
+  },
+  (t) => [
+    uniqueIndex("workflow_authorities_tenant_id_key").on(t.tenant_id, t.id),
+    index("workflow_authorities_boundary_idx")
+      .on(t.tenant_id, t.workflow_id, t.workflow_version_id, t.execution_environment)
+      .where(sql`${t.revoked_at} IS NULL`),
+    foreignKey({
+      name: "workflow_authorities_tenant_workflow_fk",
+      columns: [t.tenant_id, t.workflow_id],
+      foreignColumns: [workflows.tenant_id, workflows.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "workflow_authorities_exact_version_fk",
+      columns: [t.tenant_id, t.workflow_id, t.workflow_version_id],
+      foreignColumns: [
+        workflowVersions.tenant_id,
+        workflowVersions.workflow_id,
+        workflowVersions.id,
+      ],
+    }).onDelete("restrict"),
+    check("workflow_authorities_digest_check", sql`${t.effect_manifest_digest} ~ '^[0-9a-f]{64}$'`),
+    check("workflow_authorities_window_check", sql`${t.valid_until} > ${t.valid_from}`),
+    check(
+      "workflow_authorities_run_limit_check",
+      sql`${t.max_runs} > 0 AND ${t.reserved_runs} >= 0 AND ${t.reserved_runs} <= ${t.max_runs}`,
+    ),
+    check(
+      "workflow_authorities_manifest_check",
+      sql`jsonb_typeof(${t.effect_manifest}) = 'object'`,
+    ),
+    check(
+      "workflow_authorities_targets_check",
+      sql`jsonb_typeof(${t.target_constraints}) = 'object' AND ${t.target_constraints} ? 'targets' AND jsonb_typeof(${t.target_constraints}->'targets') = 'array'`,
+    ),
+    check(
+      "workflow_authorities_revocation_check",
+      sql`(${t.revoked_at} IS NULL) = (${t.revoked_by} IS NULL)`,
+    ),
   ],
 );
 

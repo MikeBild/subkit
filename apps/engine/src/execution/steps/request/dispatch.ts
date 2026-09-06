@@ -949,7 +949,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               code: "connector_environment_mismatch",
               message:
                 `write step requested environment "${p.ctx.execution_mode}" but connector "${connector.slug}" only resolves to "${connector.environment}" — ` +
-                `create a ${p.ctx.execution_mode} binding for this connector (or mark the step side_effects:"read" if it does not mutate)`,
+                `create a ${p.ctx.execution_mode} binding for this connector; an author label is not permission to send writes through an environment fallback`,
             },
           };
         }

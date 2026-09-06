@@ -92,4 +92,22 @@ describe("bounded auto authoring policy", () => {
       }).mode,
     ).toBe("confirm_before_execution");
   });
+
+  test("mislabelled GraphQL writes cannot inherit an autonomous read policy", () => {
+    for (const query of [
+      "mutation Remove { remove { id } }",
+      "fragment F on Item { id } mutation Remove { remove { ...F } }",
+      "query Read { items { id } } mutation Remove { remove { id } }",
+    ]) {
+      expect(
+        decideToolMode({
+          tool: "call_connector",
+          category: "tenant_read",
+          input: { body: { operation: "query", query } },
+          overrides: { call_connector: "no_confirm" },
+          permission_mode: "auto",
+        }).mode,
+      ).toBe("confirm_before_execution");
+    }
+  });
 });
