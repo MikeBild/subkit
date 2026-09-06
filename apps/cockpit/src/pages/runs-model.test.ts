@@ -1,8 +1,48 @@
 import { describe, expect, test } from "bun:test";
 import { translate } from "@/lib/i18n";
-import { formatRunDuration, requestSourceLabel, runDurationMs, runName } from "@/pages/runs-model";
+import {
+  formatRunDuration,
+  requestSourceLabel,
+  runAuthorityFacts,
+  runDurationMs,
+  runName,
+} from "@/pages/runs-model";
 
 const t = (key: Parameters<typeof translate>[1]) => translate("en", key);
+
+describe("run authority evidence", () => {
+  test("shows only the authority and version stored on the exact execution", () => {
+    expect(
+      runAuthorityFacts(
+        {
+          execution_authority_id: "historical-authority",
+          workflow_version_id: "historical-version",
+        },
+        t,
+      ),
+    ).toEqual([
+      ["Authority recorded for this run", "historical-authority"],
+      ["Exact workflow version", "historical-version"],
+    ]);
+  });
+  test("does not reinterpret legacy runs as approved or unauthorized", () => {
+    expect(
+      runAuthorityFacts({ execution_authority_id: null, workflow_version_id: null }, t),
+    ).toEqual([["Authority recorded for this run", "No execution-authority binding recorded"]]);
+  });
+  test("localizes the absence of stored evidence without translating identifiers", () => {
+    const de = (key: Parameters<typeof translate>[1]) => translate("de", key);
+    expect(
+      runAuthorityFacts({ execution_authority_id: null, workflow_version_id: "exact-id" }, de),
+    ).toEqual([
+      [
+        "Für diesen Run gespeicherte Freigabe",
+        "Keine Bindung an eine Ausführungsfreigabe gespeichert",
+      ],
+      ["Exakte Workflow-Version", "exact-id"],
+    ]);
+  });
+});
 
 function run(patch: Record<string, unknown> = {}) {
   return {
@@ -10,6 +50,7 @@ function run(patch: Record<string, unknown> = {}) {
     workflow_id: null,
     workflow_name: null,
     workflow_version_id: null,
+    execution_authority_id: null,
     source_kind: "saved" as const,
     source_ref: null,
     status: "succeeded",

@@ -4489,35 +4489,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/workflows/{id}/versions/{version_id}/authority-preview": {
+    "/v1/workflows/{id}/execution-authorities": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Review the exact locally resolved effect boundary without executing it */
+        /** List bounded authority history with current eligibility and remaining runs */
         get: {
             parameters: {
                 query?: {
                     environment?: "dev" | "prod";
+                    limit?: number;
+                    cursor?: string;
                 };
                 header?: never;
                 path: {
                     id: string;
-                    version_id: string;
                 };
                 cookie?: never;
             };
             requestBody?: never;
             responses: {
-                /** @description Read-only review with finite default bounds */
+                /** @description Newest first; cursor is the last returned authority id */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["WorkflowAuthorityPreview"];
+                        "application/json": components["schemas"]["WorkflowExecutionAuthorityList"];
                     };
                 };
                 /** @description Invalid, unavailable or unauthorized authority boundary */
@@ -4567,22 +4568,6 @@ export interface paths {
                 };
             };
         };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/workflows/{id}/execution-authorities": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
         put?: never;
         /** Grant a reviewed finite boundary from an authenticated human browser */
         post: {
@@ -4667,6 +4652,92 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/{id}/versions/{version_id}/authority-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Review the exact locally resolved effect boundary without executing it */
+        get: {
+            parameters: {
+                query?: {
+                    environment?: "dev" | "prod";
+                };
+                header?: never;
+                path: {
+                    id: string;
+                    version_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Read-only review with finite default bounds */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowAuthorityPreview"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -16937,18 +17008,44 @@ export interface components {
             /** @description Server-side ISO timestamp; lets the CLI sync clocks. */
             server_time: string;
         };
-        WorkflowAuthorityPreview: {
-            manifest: components["schemas"]["WorkflowEffectManifest"];
-            digest: string;
-            eligible_for_repeated_runs: boolean;
-            unavailable_steps: string[];
-            suggested_bounds: {
-                /** Format: date-time */
-                valid_from: string;
-                /** Format: date-time */
-                valid_until: string;
-                max_runs: number;
+        WorkflowExecutionAuthorityList: {
+            items: components["schemas"]["WorkflowExecutionAuthority"][];
+            /** Format: uuid */
+            next_cursor: string | null;
+        };
+        WorkflowExecutionAuthority: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            workflow_id: string;
+            /** Format: uuid */
+            workflow_version_id: string;
+            effect_manifest_digest: string;
+            effect_manifest: components["schemas"]["WorkflowEffectManifest"];
+            /** @enum {string} */
+            execution_environment: "dev" | "prod";
+            target_constraints: {
+                targets: string[];
             };
+            /** Format: date-time */
+            valid_from: string;
+            /** Format: date-time */
+            valid_until: string;
+            max_runs: number;
+            reserved_runs: number;
+            remaining_runs: number;
+            /** Format: uuid */
+            created_by: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            revoked_at: string | null;
+            /** Format: uuid */
+            revoked_by: string | null;
+            active_version: boolean;
+            ready_for_new_run: boolean;
+            /** @enum {string} */
+            state: "approved" | "not_yet_valid" | "expired" | "revoked" | "exhausted" | "invalidated" | "unavailable";
         };
         WorkflowEffectManifest: {
             /** @enum {number} */
@@ -16988,37 +17085,36 @@ export interface components {
                 code: "missing_binding" | "binding_mismatch" | "environment_mismatch" | "dynamic_request" | "unknown_effect" | "destructive_effect" | "unbound_workflow_call";
             }[];
         };
-        WorkflowExecutionAuthority: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            workflow_id: string;
-            /** Format: uuid */
-            workflow_version_id: string;
-            effect_manifest_digest: string;
-            effect_manifest: components["schemas"]["WorkflowEffectManifest"];
-            /** @enum {string} */
-            execution_environment: "dev" | "prod";
-            target_constraints: {
-                targets: string[];
+        WorkflowAuthorityPreview: {
+            manifest: components["schemas"]["WorkflowEffectManifest"];
+            digest: string;
+            eligible_for_repeated_runs: boolean;
+            unavailable_steps: string[];
+            execution_shape: components["schemas"]["AuthorityExecutionShape"];
+            suggested_bounds: {
+                /** Format: date-time */
+                valid_from: string;
+                /** Format: date-time */
+                valid_until: string;
+                max_runs: number;
             };
-            /** Format: date-time */
-            valid_from: string;
-            /** Format: date-time */
-            valid_until: string;
-            max_runs: number;
-            reserved_runs: number;
-            remaining_runs: number;
-            /** Format: uuid */
-            created_by: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            revoked_at: string | null;
-            /** Format: uuid */
-            revoked_by: string | null;
-            /** @enum {string} */
-            state: "approved" | "not_yet_valid" | "expired" | "revoked" | "exhausted" | "invalidated" | "unavailable";
+        };
+        AuthorityExecutionShape: {
+            requests: {
+                step_id: string;
+                retry_policy_max_attempts: number | null;
+                redacted_request_json: string;
+                request_review_truncated: boolean;
+                opaque_payload_omitted: boolean;
+            }[];
+            iterations: {
+                step_id: string;
+                /** @enum {string} */
+                kind: "loop" | "for_each";
+                body_step_ids: string[];
+            }[];
+            /** @enum {boolean} */
+            run_limit_is_request_limit: false;
         };
         WorkflowDraft: {
             /** Format: uuid */
@@ -17895,6 +17991,8 @@ export interface components {
             workflow_id: string | null;
             workflow_name: string | null;
             workflow_version_id: string | null;
+            /** Format: uuid */
+            execution_authority_id: string | null;
             /** @enum {string} */
             source_kind: "saved" | "draft" | "step";
             source_ref: {

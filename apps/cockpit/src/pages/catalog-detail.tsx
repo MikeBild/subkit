@@ -9,6 +9,7 @@ import { ConnectorCredentials } from "@/components/cockpit/connector-credentials
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { bytes, MISSING } from "@/components/cockpit/table-columns";
+import { WorkflowAuthorities } from "@/components/cockpit/workflow-authorities";
 import { WorkflowGallery } from "@/components/cockpit/workflow-gallery";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -644,6 +645,15 @@ export function CatalogDetailPage({
         </div>
       )}
       <div data-family-slot="detail-main" className="flex min-h-0 flex-1 flex-col gap-5 p-6">
+        {resource === "workflows" ? (
+          <WorkflowAuthorities
+            workflowId={id}
+            versionId={
+              typeof record.current_version_id === "string" ? record.current_version_id : null
+            }
+            canWrite={canWrite}
+          />
+        ) : null}
         {resource === "workflows" ? (
           <WorkflowBody id={id} record={record} canRun={permissions.includes("workflow:run")} />
         ) : null}

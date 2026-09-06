@@ -43,7 +43,7 @@ import { recordRequestRetry } from "../../../observability/instrumentation.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
 import type { ConnectorResolutionSummary, StepResult, StepWarning } from "../../types.ts";
 import { RequestError } from "./errors.ts";
-import { backoffMs, resolveRetryPolicy } from "./retry.ts";
+import { backoffMs, requestMaxAttempts, resolveRetryPolicy } from "./retry.ts";
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   if (ms <= 0) return Promise.resolve();
@@ -87,7 +87,7 @@ export interface RunMcpWithRetryParams {
 
 export async function runMcpWithRetry(p: RunMcpWithRetryParams): Promise<StepResult> {
   const policy = resolveRetryPolicy(p.step as RequestStep);
-  const max_attempts = (p.step.max_retries ?? 4) + 1;
+  const max_attempts = requestMaxAttempts(p.step);
   let finalAttempt = 0;
   let last: McpInvokeResult | null = null;
 

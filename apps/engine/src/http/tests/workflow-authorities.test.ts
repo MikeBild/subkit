@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import {
   browserSessionCookie,
@@ -7,8 +8,11 @@ import {
   signBrowserSession,
 } from "../../auth/browser-session.ts";
 import {
+  apiKeys,
   connectors,
   sessions,
+  tenants,
+  users,
   workflowExecutionAuthorities,
   workflows,
   workflowVersions,
@@ -106,8 +110,15 @@ async function fixture(baseUrl = "https://example.test/api") {
   expect(preview.status).toBe(200);
   const body = (await preview.json()) as {
     digest: string;
+    execution_shape: unknown;
     suggested_bounds: { valid_from: string; valid_until: string; max_runs: number };
   };
+  expect(body.execution_shape).toMatchObject({
+    requests: [{ step_id: "send", retry_policy_max_attempts: 5 }],
+    iterations: [],
+    run_limit_is_request_limit: false,
+  });
+  expect(JSON.stringify(body.execution_shape)).toContain("reviewed@example.test");
   return {
     workflow,
     version,
@@ -244,6 +255,11 @@ test("the normal run API consumes a human grant and binds replay to the exact in
   expect(first.status).toBe(200);
   const firstBody = (await first.json()) as { execution_id: string };
   expect(firstBody).toMatchObject({ status: "succeeded" });
+  const history = await app.request(`/v1/executions/${firstBody.execution_id}`, {
+    headers: { authorization: `Bearer ${ctx.apiKey}` },
+  });
+  expect(history.status).toBe(200);
+  expect(await history.json()).toMatchObject({ execution_authority_id: authority.id });
   const replay = await request({ value: 1 }, "authority-api-first");
   expect(replay.status).toBe(200);
   expect(await replay.json()).toMatchObject({
@@ -338,4 +354,155 @@ test("a grant does not let the run API activate a draft implicitly", async () =>
   expect(stored?.reserved_runs).toBe(0);
   const [workflow] = await ctx.db.select().from(workflows).where(eq(workflows.id, f.workflow.id));
   expect(workflow?.lifecycle).toBe("draft");
+});
+
+async function readOnlyKey(tenant_id = ctx.tenantId, user_id = ctx.userId) {
+  const token = `wf_live_${String(++counter).padStart(4, "0")}_authority_history_reader`;
+  await ctx.db.insert(apiKeys).values({
+    tenant_id,
+    user_id,
+    prefix: token.slice(0, 12),
+    token_sha256: createHash("sha256").update(token).digest("hex"),
+    scopes: ["workflow:read"],
+  });
+  return { authorization: `Bearer ${token}` };
+}
+
+test("read-only authority history survives reload, paginates, and distinguishes approval from an active version", async () => {
+  const f = await fixture();
+  const ids: string[] = [];
+  for (const max_runs of [1, 2, 3]) {
+    const response = await app.request(`${f.base}/execution-authorities`, {
+      method: "POST",
+      headers: browserHeaders,
+      body: JSON.stringify({ ...f.body, max_runs }),
+    });
+    expect(response.status).toBe(201);
+    ids.push(((await response.json()) as { id: string }).id);
+  }
+  const headers = await readOnlyKey();
+  const path = `${f.base}/execution-authorities`;
+  expect((await app.request(path)).status).toBe(401);
+  const first = await app.request(`${path}?limit=2`, { headers });
+  expect(first.status).toBe(200);
+  const page = (await first.json()) as { items: { id: string }[]; next_cursor: string };
+  expect(page.items.map((item) => item.id)).toEqual([ids[2]!, ids[1]!]);
+  expect(page.items[0]).toMatchObject({
+    state: "approved",
+    active_version: false,
+    ready_for_new_run: false,
+    reserved_runs: 0,
+  });
+  expect(page.next_cursor).toBe(ids[1]!);
+  const next = await app.request(`${path}?limit=2&cursor=${page.next_cursor}`, { headers });
+  expect(next.status).toBe(200);
+  const nextPage = (await next.json()) as { items: { id: string }[]; next_cursor: string | null };
+  expect(nextPage.items.map((item) => item.id)).toEqual([ids[0]!]);
+  expect(nextPage.next_cursor).toBeNull();
+  expect(await (await app.request(`${path}?environment=prod`, { headers })).json()).toMatchObject({
+    items: [],
+    next_cursor: null,
+  });
+  expect((await app.request(`${path}?limit=51`, { headers })).status).toBe(400);
+  await ctx.db
+    .update(workflows)
+    .set({ lifecycle: "active", current_version_id: f.version.id })
+    .where(eq(workflows.id, f.workflow.id));
+  const reloaded = await app.request(`${path}?limit=1`, { headers });
+  expect(((await reloaded.json()) as { items: unknown[] }).items[0]).toMatchObject({
+    id: ids[2],
+    state: "approved",
+    active_version: true,
+    ready_for_new_run: true,
+    reserved_runs: 0,
+  });
+  await ctx.db
+    .update(connectors)
+    .set({ base_url: "https://changed.example.test" })
+    .where(eq(connectors.id, f.connector.id));
+  const changed = await app.request(`${path}?limit=1`, { headers });
+  expect(((await changed.json()) as { items: unknown[] }).items[0]).toMatchObject({
+    state: "invalidated",
+    ready_for_new_run: false,
+    reserved_runs: 0,
+  });
+});
+
+test("authority history rejects cross-workflow cursors and cross-tenant reads", async () => {
+  const f = await fixture();
+  const other = await fixture();
+  const granted = await app.request(`${other.base}/execution-authorities`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify(other.body),
+  });
+  expect(granted.status).toBe(201);
+  const authority = (await granted.json()) as { id: string };
+  const headers = await readOnlyKey();
+  expect(
+    (await app.request(`${f.base}/execution-authorities?cursor=${authority.id}`, { headers }))
+      .status,
+  ).toBe(404);
+  const [tenant] = await ctx.db
+    .insert(tenants)
+    .values({ slug: `history-foreign-${++counter}`, display_name: "Foreign history fixture" })
+    .returning();
+  if (!tenant) throw new Error("missing foreign tenant fixture");
+  const [user] = await ctx.db
+    .insert(users)
+    .values({ tenant_id: tenant.id, email: "history@example.test", role: "admin" })
+    .returning();
+  if (!user) throw new Error("missing foreign user fixture");
+  const foreignHeaders = await readOnlyKey(tenant.id, user.id);
+  expect(
+    (await app.request(`${f.base}/execution-authorities`, { headers: foreignHeaders })).status,
+  ).toBe(404);
+  expect(
+    (
+      await app.request(`${other.base}/execution-authorities/${authority.id}`, {
+        headers: foreignHeaders,
+      })
+    ).status,
+  ).toBe(404);
+});
+
+test("history cursors preserve PostgreSQL microseconds and same-timestamp id ordering", async () => {
+  const f = await fixture();
+  const granted = await app.request(`${f.base}/execution-authorities`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify(f.body),
+  });
+  expect(granted.status).toBe(201);
+  const authority = (await granted.json()) as { id: string };
+  const [original] = await ctx.db
+    .select()
+    .from(workflowExecutionAuthorities)
+    .where(eq(workflowExecutionAuthorities.id, authority.id));
+  if (!original) throw new Error("missing history fixture authority");
+  const ids = [
+    "10000000-0000-4000-8000-000000000003",
+    "10000000-0000-4000-8000-000000000002",
+    "10000000-0000-4000-8000-000000000001",
+  ];
+  // History-only fixtures share a timestamp with precision beyond a JS Date.
+  // Grant/session proof is exercised above; no fixture execution is admitted.
+  for (const id of ids)
+    await ctx.db.insert(workflowExecutionAuthorities).values({
+      ...original,
+      id,
+      created_at: sql`TIMESTAMPTZ '2026-01-01 00:00:00.123456+00'`,
+    });
+  const headers = await readOnlyKey();
+  let cursor = authority.id;
+  for (const [index, id] of ids.entries()) {
+    const response = await app.request(`${f.base}/execution-authorities?limit=1&cursor=${cursor}`, {
+      headers,
+    });
+    expect(response.status).toBe(200);
+    const page = (await response.json()) as { items: { id: string }[]; next_cursor: string | null };
+    expect(page.items.map((item) => item.id)).toEqual([id]);
+    expect(page.next_cursor).toBe(index === ids.length - 1 ? null : id);
+    cursor = id;
+  }
 });
