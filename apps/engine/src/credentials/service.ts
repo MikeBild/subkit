@@ -10,7 +10,7 @@
 // Every mutation writes an audit row.
 
 import { isDeepStrictEqual } from "node:util";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { EncryptedPayload } from "../crypto/aes-gcm.ts";
@@ -22,6 +22,7 @@ import {
   hasCredentialAuthorityRevisionColumn,
   hasCredentialConnectionColumn,
 } from "../runtime-config/secret-columns.ts";
+import type { ConnectionAuthorityIdentity } from "./authority-metadata.ts";
 import { authorityScopeSet, sameAuthorityScopes } from "./authority-scopes.ts";
 import { readAccessToken } from "./connections/service.ts";
 
@@ -596,6 +597,7 @@ export async function getCredentialForConnector(
 ): Promise<{
   row: typeof credentials.$inferSelect;
   value: DecryptedCredential;
+  connection_authority?: ConnectionAuthorityIdentity | null;
 } | null> {
   // Draft-authoring flows probe a connector before it's been inserted —
   // their synthetic id looks like `draft-<conversation_uuid>` which
@@ -617,6 +619,8 @@ export async function getCredentialForConnector(
         // the primary mode (oauth2 access token, bearer, etc.); the RFC 7591
         // client identity is read via `getOAuth2ClientCredential` below.
         ne(credentials.mode, "oauth2_client"),
+        // Match authority review: a retained tombstone is never auth material.
+        isNull(credentials.deleted_at),
       ),
     )
     // Deterministic pick: if a mode change (e.g. bearer → oauth2)
@@ -635,6 +639,7 @@ export async function getCredentialForConnector(
     const grant = await readAccessToken(db as Db, tenant_id, row.connection_id);
     return {
       row,
+      connection_authority: grant?.connection_authority ?? null,
       value: {
         mode: "oauth2",
         access_token: grant?.access_token ?? "",

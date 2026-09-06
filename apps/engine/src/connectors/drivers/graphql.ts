@@ -20,8 +20,11 @@ import type { ConnectorView } from "../types.ts";
 import {
   type AppliedAuthMethod,
   applyAuthMaterial,
+  checkAuthorityRedirect,
   deriveAppliedAuthMethod,
   FETCH_DEADLINE_MS,
+  type RequestDispatchPolicy,
+  type ResolvedConnectorCredential,
   readBodyCapped,
   resolveConnectorCredential,
   resolveMaxResponseBytes,
@@ -120,7 +123,12 @@ function extractOperationName(query: string, fallback: string): string {
 }
 
 export async function executeGraphQLRequest(p: {
-  before_dispatch?: () => Promise<void>;
+  before_dispatch?: (
+    credential: Pick<
+      ResolvedConnectorCredential,
+      "credential_id" | "credential_revision" | "connection_authority"
+    >,
+  ) => Promise<RequestDispatchPolicy | undefined>;
   db: Db;
   tenant_id: string;
   connector: ConnectorView;
@@ -168,7 +176,7 @@ export async function executeGraphQLRequest(p: {
   if (p.credential_override !== undefined) {
     resolveOpts.override = p.credential_override;
   }
-  const { credential, credential_id, oauth2_refreshed } =
+  const { credential, credential_id, credential_revision, connection_authority, oauth2_refreshed } =
     await resolveConnectorCredential(resolveOpts);
   const auth_method = deriveAppliedAuthMethod(credential, oauth2_refreshed);
   const headers: Record<string, string> = {
@@ -224,7 +232,11 @@ export async function executeGraphQLRequest(p: {
   // GraphQL surface returns the obtuse "Invalid header name" error.
   // (Audit anti-pattern C1, conversation 730c568a.)
   validateOutboundHeaders(headers);
-  await p.before_dispatch?.();
+  const dispatchPolicy = await p.before_dispatch?.({
+    credential_id,
+    credential_revision,
+    connection_authority: connection_authority ?? null,
+  });
   const res = await instrument({
     module: "connector",
     action: "driver.graphql.request",
@@ -238,6 +250,7 @@ export async function executeGraphQLRequest(p: {
     },
     fn: () =>
       fetchImpl(url.toString(), {
+        ...(dispatchPolicy ? { redirect: dispatchPolicy.redirect } : {}),
         method: "POST",
         headers,
         body: JSON.stringify({ query: p.op.query, variables: p.op.variables ?? {} }),
@@ -245,6 +258,7 @@ export async function executeGraphQLRequest(p: {
       }),
   });
   const maxResponseBytes = resolveMaxResponseBytes(p.tenant_id);
+  await checkAuthorityRedirect(res, dispatchPolicy);
   const text = await readBodyCapped(res, maxResponseBytes, url.toString());
   let parsed: { data?: unknown; errors?: unknown };
   try {
@@ -290,7 +304,12 @@ export async function executeGraphQLRequest(p: {
  * a single self-explanatory function.
  */
 export async function query(p: {
-  before_dispatch?: () => Promise<void>;
+  before_dispatch?: (
+    credential: Pick<
+      ResolvedConnectorCredential,
+      "credential_id" | "credential_revision" | "connection_authority"
+    >,
+  ) => Promise<RequestDispatchPolicy | undefined>;
   db: Db;
   tenant_id: string;
   connector: ConnectorView;

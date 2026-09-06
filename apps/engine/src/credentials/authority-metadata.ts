@@ -32,6 +32,12 @@ export interface CredentialAuthorityMetadata {
   available: boolean;
 }
 
+/** Identity of the connection row whose exact token version was read. */
+export interface ConnectionAuthorityIdentity {
+  id: string;
+  revision: number;
+}
+
 export async function getCredentialAuthorityMetadata(
   tenantId: string,
   connectorId: string,
