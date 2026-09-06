@@ -7,6 +7,13 @@ export * from "./categorize.ts";
 export * from "./connector-refs.ts";
 export * from "./draft-schemas.ts";
 export * from "./drafts.ts";
+export { WorkflowEffectManifestSchema } from "./effect-manifest.ts";
+export {
+  GrantWorkflowAuthoritySchema,
+  grantWorkflowAuthority,
+  previewWorkflowAuthority,
+  revokeWorkflowAuthority,
+} from "./execution-authorities.ts";
 export * from "./input-schema-synth.ts";
 export * from "./prior-workflows.ts";
 export * from "./service.ts";

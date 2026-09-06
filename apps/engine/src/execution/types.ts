@@ -36,6 +36,9 @@ export type StepStatus =
 export type ExecutionStatus = Exclude<StepStatus, "skipped">;
 
 export interface ExecutionContext {
+  /** Server-owned guard, repeated after credential resolution and before each
+   * outbound request attempt. Never part of an authored workflow definition. */
+  before_external_request?: () => Promise<void>;
   db: Db;
   tenant_id: string;
   execution_id: string;

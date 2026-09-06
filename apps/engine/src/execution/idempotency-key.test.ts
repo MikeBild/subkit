@@ -1,8 +1,8 @@
-// Outbound Idempotency-Key — the request step attaches a per-attempt key
+// Outbound Idempotency-Key — the request step attaches a logical request key
 // to non-idempotent methods so retried writes against remotes that honour
 // the standard don't double-apply. Key shape is
-// `${execution_id}:${step_id}:${attempt}` so each retry is a distinct key
-// tracing back to a concrete attempt.
+// `${execution_id}:${step_row_id}:${page}` so retries reuse one key while
+// separate step instances and pages cannot collide.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { executionSteps, executions, tenants } from "../db/schema/index.ts";
@@ -129,7 +129,7 @@ function makeStepRunCtx(input: {
 }
 
 describe("outbound Idempotency-Key", () => {
-  test("POST request emits Idempotency-Key derived from execution + step + attempt", async () => {
+  test("POST request emits Idempotency-Key derived from execution + step instance + page", async () => {
     observed.length = 0;
     mockBehaviour = { kind: "ok" };
     const { execution_id, step_row_id } = await createExecutionRow();
@@ -146,14 +146,14 @@ describe("outbound Idempotency-Key", () => {
     expect(r.status).toBe("succeeded");
     expect(observed.length).toBe(1);
     expect(observed[0]?.method).toBe("POST");
-    expect(observed[0]?.idempotency_key).toBe(`${execution_id}:post-thing:1`);
+    expect(observed[0]?.idempotency_key).toBe(`${execution_id}:${step_row_id}:0`);
     // Surfaces in audit trail.
     expect((r.request_meta as Record<string, unknown>).idempotency_key).toBe(
-      `${execution_id}:post-thing:1`,
+      `${execution_id}:${step_row_id}:0`,
     );
   });
 
-  test("retried POST emits a fresh key per attempt", async () => {
+  test("retried POST reuses the same logical effect key", async () => {
     observed.length = 0;
     // Force one 429 then succeed — POST retries on 429 even though the
     // method is non-idempotent (matches the request step's retry policy).
@@ -173,12 +173,12 @@ describe("outbound Idempotency-Key", () => {
     expect(r.status).toBe("succeeded");
     // Two attempts: first attempt got 429, second got 200.
     expect(observed.length).toBe(2);
-    expect(observed[0]?.idempotency_key).toBe(`${execution_id}:post-thing:1`);
-    expect(observed[1]?.idempotency_key).toBe(`${execution_id}:post-thing:2`);
-    // Audit trail records the LAST emitted key (the one the remote
-    // actually applied).
+    expect(observed[0]?.idempotency_key).toBe(`${execution_id}:${step_row_id}:0`);
+    expect(observed[1]?.idempotency_key).toBe(observed[0]?.idempotency_key);
+    // The same key is recorded for diagnosis, whether or not the remote
+    // supports deduplicating it.
     expect((r.request_meta as Record<string, unknown>).idempotency_key).toBe(
-      `${execution_id}:post-thing:2`,
+      `${execution_id}:${step_row_id}:0`,
     );
   });
 

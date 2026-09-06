@@ -45,6 +45,7 @@ import {
   WorkflowDefSchema,
 } from "../workflows/types.ts";
 import { combineSignals, registerAbort, unregisterAbort } from "./abort.ts";
+import { assertExecutionAuthorityCurrent } from "./authority-admission.ts";
 import { bindExistingRun } from "./bound-run.ts";
 import { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
 import {
@@ -473,6 +474,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       kind: step.kind,
     });
     const ctx: StepRunContext = {
+      before_external_request: () => assertExecutionAuthorityCurrent(db, tenant_id, execution_id),
       db,
       tenant_id,
       execution_id,

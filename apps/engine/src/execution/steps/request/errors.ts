@@ -13,6 +13,7 @@ export class RequestError extends Error {
       | "abort"
       | "connection"
       | "filter_fail"
+      | "authority_invalid"
       // Request was malformed before it ever hit the wire (e.g. a
       // non-RFC-token header name slipped past validation). Always
       // non-retryable — retries can't fix a malformed plan, and the

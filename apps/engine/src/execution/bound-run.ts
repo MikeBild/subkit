@@ -3,7 +3,9 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { executions } from "../db/schema/index.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
+import { workflowAuthorityExecutionOptions } from "../workflows/execution-authorities.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
+import { assertExecutionAuthorityCurrent } from "./authority-admission.ts";
 import type { RunExecutionSource } from "./resolve-definition.ts";
 import type { RunOptions } from "./types.ts";
 
@@ -39,10 +41,20 @@ export async function bindExistingRun(
     !isDeepStrictEqual(normalizeWorkflowRunInput(input), normalizeWorkflowRunInput(row.input))
   )
     throw mismatch();
+  if (row.execution_authority_id) {
+    if (
+      options.self_healing?.enabled ||
+      options.hold_writes ||
+      options.step_output_fixtures !== undefined
+    )
+      throw mismatch();
+    await assertExecutionAuthorityCurrent(db, tenant_id, row.id);
+  }
   return {
     source: { kind: "saved", workflow_id: source.workflow_id, version_id: row.workflow_version_id },
     options: {
       ...options,
+      ...(row.execution_authority_id ? workflowAuthorityExecutionOptions(row.execution_mode) : {}),
       execution_mode: row.execution_mode,
       request_source: RequestSourceSchema.parse(row.request_source),
       parent_execution_id: row.parent_execution_id,

@@ -10,6 +10,7 @@
 // adding a new entry here.
 
 export * from "./abort.ts";
+export { admitAuthorizedWorkflowExecution } from "./authority-admission.ts";
 export * from "./engine.ts";
 export * from "./jsonata-engine.ts";
 export * from "./list.ts";

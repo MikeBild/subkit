@@ -81,7 +81,10 @@ test("ordinary refresh and omitted scopes preserve the credential authority iden
     ctx.db,
   );
   expect(await revision(f.credential.id)).toBe(1);
-  await rotateOAuth2Tokens({ ...refresh, access_token: "refreshed-again" }, ctx.db);
+  await rotateOAuth2Tokens(
+    { ...refresh, access_token: "refreshed-again", token_type: "bearer" },
+    ctx.db,
+  );
   expect(await revision(f.credential.id)).toBe(1);
   const value = await getCredentialForConnector(f.tenant, f.connector, "dev", ctx.db);
   expect(value?.value.mode).toBe("oauth2");

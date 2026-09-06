@@ -1,0 +1,284 @@
+import { z } from "@hono/zod-openapi";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { AuditAction, auditAwait } from "../audit/index.ts";
+import { browserSessionForPrincipal, verifyBrowserCsrf } from "../auth/browser-session.ts";
+import type { ResolvedPrincipal } from "../auth/types.ts";
+import type { Db, Executor } from "../db/client.ts";
+import { sessions, workflowExecutionAuthorities, workflowVersions } from "../db/schema/index.ts";
+import { REQUEST_TIMEOUT_DEFAULT_MS } from "../execution/steps/request.ts";
+import { WORKFLOW_TIMEOUT_DEFAULT_MS } from "../execution/timeouts.ts";
+import { can } from "../rbac/evaluator.ts";
+import { workflowJsonDigest } from "./canonical-json.ts";
+import { resolveWorkflowEffectManifest } from "./effect-resolution.ts";
+import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
+
+export const GrantWorkflowAuthoritySchema = z
+  .object({
+    workflow_version_id: z.string().uuid(),
+    expected_manifest_digest: z.string().regex(/^[a-f0-9]{64}$/),
+    execution_environment: z.enum(["dev", "prod"]),
+    valid_from: z.string().datetime({ offset: true }),
+    valid_until: z.string().datetime({ offset: true }),
+    max_runs: z.number().int().min(1).max(10_000),
+  })
+  .strict();
+
+function fail(code: string, message: string): never {
+  throw Object.assign(new Error(message), { code });
+}
+
+// Admitted runs must use these options, not caller overrides. Automatic
+// repair may prepare a new version but cannot replace the authorized version.
+export function workflowAuthorityExecutionOptions(environment: "dev" | "prod") {
+  return {
+    execution_mode: environment,
+    self_healing: { enabled: false },
+    hold_writes: false,
+  } as const;
+}
+
+export function previewWorkflowAuthority(
+  input: {
+    tenant_id: string;
+    workflow_id: string;
+    workflow_version_id: string;
+    execution_environment: "dev" | "prod";
+  },
+  db: Executor,
+) {
+  return resolveWorkflowEffectManifest(
+    {
+      ...input,
+      execution_options_digest: workflowJsonDigest({
+        ...workflowAuthorityExecutionOptions(input.execution_environment),
+        default_workflow_timeout_ms: WORKFLOW_TIMEOUT_DEFAULT_MS,
+        default_request_timeout_ms: REQUEST_TIMEOUT_DEFAULT_MS,
+        step_output_fixtures: null,
+      }),
+    },
+    db,
+  );
+}
+
+interface HumanContext {
+  request: Request;
+  principal: ResolvedPrincipal;
+  db: Db;
+}
+
+async function requireHuman(context: HumanContext, workflow_id: string) {
+  const { principal, request, db } = context;
+  const session = await browserSessionForPrincipal(request, principal);
+  if (!session) fail("human_session_required", "a signed human browser session is required");
+  if (
+    request.headers.get("sec-fetch-site") === "cross-site" ||
+    !(await verifyBrowserCsrf(request.headers.get("x-subkit-csrf") ?? "", session))
+  )
+    fail("csrf_rejected", "a valid browser CSRF proof is required");
+  const permission = await can(db, {
+    tenant_id: principal.tenant_id,
+    principal,
+    permission: "workflow:write",
+    resource: { type: "workflow", id: workflow_id },
+  });
+  if (!permission.allow)
+    fail("authority_permission_denied", "workflow:write permission is required");
+  return session;
+}
+
+async function lockLiveSession(tx: Executor, session: Awaited<ReturnType<typeof requireHuman>>) {
+  const [live] = await tx
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.id, session.session_id),
+        eq(sessions.tenant_id, session.tenant_id),
+        eq(sessions.user_id, session.user_id),
+        isNull(sessions.revoked_at),
+        sql`${sessions.expires_at} > clock_timestamp()`,
+        sql`(${sessions.absolute_expires_at} IS NULL OR ${sessions.absolute_expires_at} > clock_timestamp())`,
+      ),
+    )
+    .for("share")
+    .limit(1);
+  if (!live) fail("human_session_expired", "the human session has expired or was revoked");
+}
+
+export async function grantWorkflowAuthority(
+  workflow_id: string,
+  raw: unknown,
+  context: HumanContext,
+) {
+  const input = GrantWorkflowAuthoritySchema.parse(raw);
+  const session = await requireHuman(context, workflow_id);
+  const { db, principal } = context;
+  return db.transaction(async (tx) => {
+    await lockLiveSession(tx, session);
+    const workflow = await lockWorkflowForVersionWrite(tx, principal.tenant_id, workflow_id);
+    if (!workflow) fail("workflow_version_unavailable", "workflow version unavailable");
+    const [version] = await tx
+      .select({ id: workflowVersions.id })
+      .from(workflowVersions)
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, principal.tenant_id),
+          eq(workflowVersions.workflow_id, workflow_id),
+          eq(workflowVersions.id, input.workflow_version_id),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!version) fail("workflow_version_unavailable", "workflow version unavailable");
+    const clock = await tx.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
+    const now = clock.rows[0]?.now;
+    if (!now) throw new Error("database clock unavailable");
+    const from = new Date(input.valid_from);
+    const until = new Date(input.valid_until);
+    if (
+      until <= from ||
+      until <= new Date(now) ||
+      until.getTime() - from.getTime() > 31 * 24 * 60 * 60_000
+    )
+      fail("authority_window_invalid", "choose a non-expired authority window of at most 31 days");
+    const preview = await previewWorkflowAuthority(
+      {
+        tenant_id: principal.tenant_id,
+        workflow_id,
+        workflow_version_id: input.workflow_version_id,
+        execution_environment: input.execution_environment,
+      },
+      tx,
+    );
+    if (preview.digest !== input.expected_manifest_digest)
+      fail(
+        "authority_manifest_changed",
+        "the reviewed version, target or permissions changed; review again",
+      );
+    if (!preview.eligible_for_repeated_runs)
+      fail(
+        "authority_effect_unbound",
+        "the workflow requires concrete-run review for an unbound or unavailable effect",
+      );
+    // The workflow lock serializes identical browser retries. A lost response
+    // must not grant another max_runs allowance or resurrect a revoked grant.
+    const [existing] = await tx
+      .select()
+      .from(workflowExecutionAuthorities)
+      .where(
+        and(
+          eq(workflowExecutionAuthorities.tenant_id, principal.tenant_id),
+          eq(workflowExecutionAuthorities.workflow_id, workflow_id),
+          eq(workflowExecutionAuthorities.workflow_version_id, version.id),
+          eq(workflowExecutionAuthorities.effect_manifest_digest, preview.digest),
+          eq(workflowExecutionAuthorities.execution_environment, input.execution_environment),
+          eq(workflowExecutionAuthorities.valid_from, from),
+          eq(workflowExecutionAuthorities.valid_until, until),
+          eq(workflowExecutionAuthorities.max_runs, input.max_runs),
+          eq(workflowExecutionAuthorities.created_by, principal.id),
+        ),
+      )
+      .limit(1);
+    if (existing?.revoked_at)
+      fail("authority_revoked", "this exact grant was revoked; review a new boundary");
+    if (existing) return existing;
+    const targets = [
+      ...new Set(
+        preview.manifest.effects.flatMap((effect) => (effect.target ? [effect.target] : [])),
+      ),
+    ].sort();
+    const [authority] = await tx
+      .insert(workflowExecutionAuthorities)
+      .values({
+        tenant_id: principal.tenant_id,
+        workflow_id,
+        workflow_version_id: version.id,
+        effect_manifest_digest: preview.digest,
+        effect_manifest: { ...preview.manifest },
+        execution_environment: input.execution_environment,
+        target_constraints: { targets },
+        valid_from: from,
+        valid_until: until,
+        max_runs: input.max_runs,
+        created_by: principal.id,
+      })
+      .returning();
+    if (!authority) throw new Error("authority insert returned no row");
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: "user",
+        actor_id: principal.id,
+        action: AuditAction.WORKFLOW_AUTHORITY_GRANTED,
+        resource_type: "workflow_execution_authority",
+        resource_id: authority.id,
+        result: "success",
+        metadata: {
+          workflow_id,
+          workflow_version_id: version.id,
+          effect_manifest_digest: preview.digest,
+          execution_environment: input.execution_environment,
+          valid_from: from.toISOString(),
+          valid_until: until.toISOString(),
+          max_runs: input.max_runs,
+        },
+      },
+      tx,
+    );
+    return authority;
+  });
+}
+
+export async function revokeWorkflowAuthority(
+  workflow_id: string,
+  authority_id: string,
+  context: HumanContext,
+) {
+  const session = await requireHuman(context, workflow_id);
+  const { db, principal } = context;
+  return db.transaction(async (tx) => {
+    await lockLiveSession(tx, session);
+    const [authority] = await tx
+      .select()
+      .from(workflowExecutionAuthorities)
+      .where(
+        and(
+          eq(workflowExecutionAuthorities.tenant_id, principal.tenant_id),
+          eq(workflowExecutionAuthorities.workflow_id, workflow_id),
+          eq(workflowExecutionAuthorities.id, authority_id),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!authority) fail("authority_not_found", "execution authority unavailable");
+    if (authority.revoked_at) return authority;
+    const [revoked] = await tx
+      .update(workflowExecutionAuthorities)
+      .set({
+        revoked_at: sql`clock_timestamp()`,
+        revoked_by: principal.id,
+      })
+      .where(
+        and(
+          eq(workflowExecutionAuthorities.tenant_id, principal.tenant_id),
+          eq(workflowExecutionAuthorities.id, authority_id),
+        ),
+      )
+      .returning();
+    if (!revoked) throw new Error("authority revocation returned no row");
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: "user",
+        actor_id: principal.id,
+        action: AuditAction.WORKFLOW_AUTHORITY_REVOKED,
+        resource_type: "workflow_execution_authority",
+        resource_id: authority_id,
+        result: "success",
+        metadata: { workflow_id },
+      },
+      tx,
+    );
+    return revoked;
+  });
+}
