@@ -89,6 +89,22 @@ the exact version while granting, and reserve transactionally before enqueueing.
 Dispatch must independently recheck the current boundary. A reservation counts
 admitted work, not proof of a completed external effect.
 
+The product-local manifest compiler binds the tenant, workflow/version, canonical
+definition digest, execution environment and resolved execution-options digest.
+Every request must have a server-resolved binding for its exact request digest,
+connector, actual environment, target, configuration and stable credential
+identity/permissions. These bindings are not client assertions. Draft digests,
+version deduplication and manifest digests share the same canonical JSON rules;
+object key order is irrelevant and array order remains significant.
+
+Compilation alone performs no discovery, grants no authority and dispatches
+nothing. Missing or mismatched bindings, runtime-substituted request values
+(including recipients in bodies), target-rewriting hooks, unpinned child workflow
+calls, unknown SQL/MCP tool effects and destructive DELETE operations are not
+eligible for repeated-run authority. Existing exact-run review remains separate.
+The compiler is not yet a public grant endpoint: server resolution, human review
+and run admission must be connected before it can authorize executions.
+
 ### The authoring critic
 
 Static validation catches what a schema can prove: unknown step kinds, malformed placeholders, a scope reference that can't resolve. It cannot catch a draft that is _structurally valid but semantically wrong_ — a workflow that parses cleanly yet quietly drifts from what the author actually asked for (the wrong endpoint, an inverted condition, a dropped field).

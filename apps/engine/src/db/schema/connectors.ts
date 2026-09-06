@@ -333,6 +333,9 @@ export const credentials = pgTable(
       .references(() => connectors.id, { onDelete: "cascade" }),
     environment: environmentEnum("environment").notNull(),
     mode: credentialModeEnum("mode").notNull(),
+    // Stable authority identity: replacements and permission changes advance
+    // it; routine OAuth token refresh with unchanged scopes does not.
+    authority_revision: integer("authority_revision").notNull().default(1),
     // AES-256-GCM ciphertext (see apps/engine/src/crypto/aes-gcm.ts). Writers call encryptSecret(), readers decryptSecret(), keyed by env.MASTER_KEY.
     ciphertext: bytea("ciphertext").notNull(),
     iv: bytea("iv").notNull(),
@@ -365,6 +368,7 @@ export const credentials = pgTable(
     // partial: `connector_id` is NOT NULL, so the former
     // `WHERE connector_id IS NOT NULL` predicate was always true.
     uniqueIndex("credentials_connector_env_mode_key").on(t.connector_id, t.environment, t.mode),
+    check("credentials_authority_revision_positive", sql`${t.authority_revision} > 0`),
   ],
 );
 

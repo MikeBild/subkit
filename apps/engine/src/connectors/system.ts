@@ -9,6 +9,10 @@
 // `getCredentialForConnector` directly; the facade is for orchestrators
 // (conversation tools, execution steps) where the three are entangled.
 
+import {
+  type CredentialAuthorityMetadata,
+  getCredentialAuthorityMetadata,
+} from "../credentials/authority-metadata.ts";
 import { getCredentialForConnector } from "../credentials/service.ts";
 import type { DecryptedCredential } from "../credentials/types.ts";
 import type { Executor } from "../db/client.ts";
@@ -27,6 +31,8 @@ export interface ConnectorDocumentSummary {
 }
 
 export interface ConnectorSystem {
+  /** Metadata-only authority binding. Never decrypts tokens or refreshes OAuth. */
+  getAuthorityMetadata(): Promise<CredentialAuthorityMetadata>;
   /** The connector row id this facade is bound to. */
   readonly id: string;
   /** Tenant scope — every credential / doc lookup is filtered by this. */
@@ -98,6 +104,9 @@ export async function loadConnectorSystem(
     templateVersion: connector.template_version,
     environment: resolvedEnv,
     connector,
+    getAuthorityMetadata() {
+      return getCredentialAuthorityMetadata(tenant_id, connector.id, resolvedEnv, exec);
+    },
     async getCredentials() {
       const resolved = await getCredentialForConnector(tenant_id, connector.id, resolvedEnv, exec);
       if (!resolved) return null;

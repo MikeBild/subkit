@@ -21,6 +21,9 @@ The returned `ConnectorSystem` carries:
   environment. Returns `null` when none configured (e.g. probe path).
 - `getDocumentation()` — lazy list of ingested document summaries
   (OpenAPI / GraphQL schema / markdown).
+- `getAuthorityMetadata()` — metadata-only credential/connection identity and
+  permission revisions. It never decrypts a token or initiates OAuth refresh;
+  execution-authority preparation uses this instead of `getCredentials()`.
 
 **Rule:** every consumer that needs more than one of (driver, creds, docs)
 goes through this facade. Direct calls into `getCredentialForConnector` /

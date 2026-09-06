@@ -247,6 +247,55 @@ describe("McpDbOAuthClientProvider.saveClientInformation / clientInformation", (
 // ── saveTokens / tokens round-trip ───────────────────────────────────────────
 
 describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
+  test("a non-interactive handshake cannot establish a new credential", async () => {
+    const serverId = await seedOAuth2Server(tenantA, "authority-no-initial-grant");
+    const provider = makeNonInteractiveProvider(tenantA, serverId);
+    await expect(
+      provider.saveTokens({ access_token: "not-authorized", token_type: "Bearer" }),
+    ).rejects.toThrow("interactive authorization required");
+    expect(await provider.tokens()).toBeUndefined();
+  });
+
+  test("automatic refresh retains authority while an interactive replacement changes it", async () => {
+    const serverId = await seedOAuth2Server(tenantA, "authority-refresh-binding");
+    const interactive = makeInteractiveProvider(tenantA, serverId, "authority-refresh-state");
+    await interactive.saveTokens({
+      access_token: "original",
+      refresh_token: "refresh",
+      token_type: "Bearer",
+      scope: "read",
+    });
+    const revision = async () => {
+      const rows = await ctx.db
+        .select({ revision: credentials.authority_revision })
+        .from(credentials)
+        .where(
+          and(
+            eq(credentials.tenant_id, tenantA),
+            eq(credentials.connector_id, serverId),
+            eq(credentials.mode, "oauth2"),
+          ),
+        );
+      return rows[0]?.revision;
+    };
+    const automatic = makeNonInteractiveProvider(tenantA, serverId);
+    await automatic.saveTokens({ access_token: "refreshed", token_type: "Bearer" });
+    expect(await revision()).toBe(1);
+    expect((await automatic.tokens())?.scope).toBe("read");
+    await automatic.saveTokens({
+      access_token: "expanded",
+      token_type: "Bearer",
+      scope: "read write",
+    });
+    expect(await revision()).toBe(2);
+    await interactive.saveTokens({
+      access_token: "new-login",
+      token_type: "Bearer",
+      scope: "read write",
+    });
+    expect(await revision()).toBe(3);
+  });
+
   test("tokens() returns undefined when no credential row exists", async () => {
     const serverId = await seedOAuth2Server(tenantA, "tokens1");
     const provider = makeInteractiveProvider(tenantA, serverId, "state-tok1");
