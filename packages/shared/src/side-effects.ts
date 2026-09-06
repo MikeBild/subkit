@@ -11,9 +11,9 @@
 //   - explicit `write` always wins. Explicit `read` can describe a
 //     semantically read-only POST, but cannot downgrade PUT / PATCH /
 //     DELETE or an S3 mutation; those transports are structurally writes.
-//   - GraphQL: `query` = read; `mutation` / `subscription` = write. The
-//     operation is taken from the explicit operation or inferred from the
-//     document's leading keyword (a bare `{ … }` shorthand is a query).
+//   - GraphQL: only a parsed document containing query operations alone
+//     is read. An author label cannot conceal a mutation, subscription,
+//     mixed document, or invalid document.
 //   - SQL (postgres): SELECT-only statements = read (including every
 //     statement in `also`); anything else = write.
 //   - S3: GET / HEAD / LIST = read; PUT / DELETE = write.
@@ -23,6 +23,8 @@
 //     read of the remote's own annotations, which never reaches the gate.
 //   - HTTP: GET / HEAD / OPTIONS = read; every other method = write
 //     (RFC semantics).
+
+import { Kind, parse } from "graphql";
 
 export type SideEffect = "read" | "write";
 
@@ -58,8 +60,8 @@ export interface SideEffectInput {
    * is optional, unverified, and asserted by the very party whose
    * side effects it describes — treating its absence, or its presence,
    * as evidence would let a remote decide which of its own calls the
-   * engine gates. An author who knows a specific tool is a search sets
-   * `override: "read"`, which is a claim by someone inside the tenant.
+   * engine gates. An author-generated `override: "read"` is not an
+   * execution authority either and cannot bypass this boundary.
    */
   mcp?: { operation: McpOperation } | null;
 }
@@ -73,22 +75,29 @@ export function httpMethodIsRead(method: string): boolean {
   return m === "GET" || m === "HEAD" || m === "OPTIONS";
 }
 
-/** Leading-keyword GraphQL operation inference. Strips leading
- *  whitespace and `#` comments; a document that opens with the bare
- *  selection-set shorthand `{` is a query by spec. Exotic documents
- *  (fragment-first) fall back to "query" — authors cover those with an
- *  explicit operation or the `override`. */
-export function inferGraphqlOperation(query: string): GraphqlOperation {
-  const stripped = query.replace(/^(?:\s+|#[^\n]*\n?)+/, "");
-  const m = /^(query|mutation|subscription)\b/i.exec(stripped);
-  if (m) return m[1]!.toLowerCase() as GraphqlOperation;
-  return "query";
+/** Classify all executable operations, independent of fragment order.
+ * Without a selected operation name, any mutation/subscription prevents
+ * an autonomous read. Missing, malformed, or oversized documents are
+ * unknown (null), never implicitly queries. */
+export function inferGraphqlOperation(query: string): GraphqlOperation | null {
+  try {
+    const operations = parse(query, { maxTokens: 10_000 }).definitions.filter(
+      (definition) => definition.kind === Kind.OPERATION_DEFINITION,
+    );
+    if (operations.some((operation) => operation.operation === "mutation")) return "mutation";
+    if (operations.some((operation) => operation.operation === "subscription"))
+      return "subscription";
+    return operations.length > 0 ? "query" : null;
+  } catch {
+    return null;
+  }
 }
 
 /** True when the statement (after leading whitespace, `--` line comments
  *  and block comments) starts with SELECT. WITH-CTEs and everything else
- *  classify as write — conservative by design; `override: "read"` covers
- *  the author who knows better. */
+ *  classify as write and cannot be downgraded by an author override.
+ *  This lexical helper is not proof that SELECT cannot call a writing
+ *  function; callers must not treat it as a general execution authority. */
 export function sqlIsSelect(query: string): boolean {
   let s = query;
   for (;;) {
@@ -149,8 +158,7 @@ export function classifyHttpSideEffect(input: SideEffectInput): SideEffect {
     return input.mcp.operation === "call_tool" ? "write" : "read";
   }
   if (input.graphql) {
-    const op = input.graphql.operation ?? inferGraphqlOperation(input.graphql.query ?? "");
-    return op === "query" ? "read" : "write";
+    return graphqlDocumentIsRead(input.graphql) ? "read" : "write";
   }
   if (input.sql) {
     const statements = [input.sql.query, ...(input.sql.also ?? []).map((s) => s.query)];
@@ -164,8 +172,15 @@ export function classifyHttpSideEffect(input: SideEffectInput): SideEffect {
 }
 
 function readOverrideIsSafe(input: SideEffectInput): boolean {
-  if (input.mcp || input.graphql || input.sql) return true;
+  // These protocols carry their operation in the payload. Let the real
+  // operation classification below decide; an author's label is no grant.
+  if (input.mcp || input.graphql || input.sql) return false;
   const method = (input.method ?? "GET").toUpperCase();
   if (input.s3) return S3_READ_METHODS.has(method);
   return httpMethodIsRead(method) || method === "POST";
+}
+
+function graphqlDocumentIsRead(input: NonNullable<SideEffectInput["graphql"]>): boolean {
+  if (input.operation && input.operation !== "query") return false;
+  return inferGraphqlOperation(input.query ?? "") === "query";
 }

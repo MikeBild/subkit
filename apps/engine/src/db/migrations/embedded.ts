@@ -68,6 +68,8 @@ import sql0047BoringCaptainMidlands from "./0047_boring_captain_midlands.sql" wi
 import sql0048AnbindungenUndFreigaben from "./0048_anbindungen_und_freigaben.sql" with { type: "text" };
 import sql0049MagicalKorg from "./0049_magical_korg.sql" with { type: "text" };
 import sql0050BrightTheLeader from "./0050_bright_the_leader.sql" with { type: "text" };
+import sql0051MixedFrogThor from "./0051_mixed_frog_thor.sql" with { type: "text" };
+import sql0052WorkflowAuthorityImmutability from "./0052_workflow_authority_immutability.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -143,6 +145,8 @@ const SQL_BY_TAG: Record<string, string> = {
   "0048_anbindungen_und_freigaben": sql0048AnbindungenUndFreigaben,
   "0049_magical_korg": sql0049MagicalKorg,
   "0050_bright_the_leader": sql0050BrightTheLeader,
+  "0051_mixed_frog_thor": sql0051MixedFrogThor,
+  "0052_workflow_authority_immutability": sql0052WorkflowAuthorityImmutability,
 };
 
 const journal = journalMeta as unknown as Journal;

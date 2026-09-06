@@ -670,9 +670,8 @@ describe("an external tool call is a WRITE", () => {
     expect(remote.resourceReads).toEqual(["file:///reports/q3.md"]);
   });
 
-  test('side_effects:"read" is the author\'s escape hatch, and it is honoured', async () => {
-    // The remote's own `readOnlyHint` is not consulted — see
-    // `SideEffectInput.mcp`. A claim from inside the tenant is.
+  test('side_effects:"read" cannot authorize a remote tool call in a preview', async () => {
+    // Neither a remote hint nor an author-generated label is a human grant.
     const result = await run(
       "mcp-hold-declared-read",
       {
@@ -683,8 +682,8 @@ describe("an external tool call is a WRITE", () => {
       { hold_writes: true },
     );
     expect(result.status).toBe("succeeded");
-    expect(result.steps[0]?.held).toBeUndefined();
-    expect(remote.toolCalls).toHaveLength(1);
+    expect(result.steps[0]?.held).toBe(true);
+    expect(remote.toolCalls).toHaveLength(0);
   });
 });
 

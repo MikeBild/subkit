@@ -73,6 +73,38 @@ describe("classifyHttpSideEffect — GraphQL", () => {
     expect(classifyHttpSideEffect({ graphql: { query: "mutation Foo { x }" } })).toBe("write");
     expect(classifyHttpSideEffect({ graphql: { query: "  { bareSelection }" } })).toBe("read");
   });
+
+  test("a misleading query label or read override cannot hide a mutation", () => {
+    for (const query of [
+      "mutation Remove { remove { id } }",
+      "fragment F on Item { id } mutation Remove { remove { ...F } }",
+      "query Read { items { id } } mutation Remove { remove { id } }",
+      "subscription Watch { items { id } }",
+    ]) {
+      expect(classifyHttpSideEffect({ graphql: { operation: "query", query } })).toBe("write");
+      expect(classifyHttpSideEffect({ graphql: { query }, override: "read" })).toBe("write");
+    }
+  });
+
+  test("fragment-first reads remain reads, but missing or invalid operations fail closed", () => {
+    expect(
+      classifyHttpSideEffect({
+        graphql: {
+          query: "fragment F on Item { id } query Read { items { ...F } }",
+        },
+      }),
+    ).toBe("read");
+    for (const query of ["", "fragment F on Item { id }", "not a query", "mutation {"]) {
+      expect(
+        classifyHttpSideEffect({ graphql: { operation: "query", query }, override: "read" }),
+      ).toBe("write");
+    }
+  });
+
+  test("oversized GraphQL documents do not consume an unbounded parser budget", () => {
+    const query = `{ ${"item ".repeat(10_001)} }`;
+    expect(classifyHttpSideEffect({ graphql: { query } })).toBe("write");
+  });
 });
 
 describe("classifyHttpSideEffect — SQL", () => {
@@ -100,6 +132,16 @@ describe("classifyHttpSideEffect — SQL", () => {
       }),
     ).toBe("write");
   });
+
+  test("a read label cannot downgrade SQL writes or a writing also statement", () => {
+    for (const sql of [
+      { query: "DELETE FROM t" },
+      { query: "UPDATE t SET x = 1" },
+      { query: "SELECT 1", also: [{ query: "DELETE FROM t" }] },
+    ]) {
+      expect(classifyHttpSideEffect({ sql, override: "read" })).toBe("write");
+    }
+  });
 });
 
 describe("classifyHttpSideEffect — S3", () => {
@@ -122,8 +164,14 @@ describe("helpers", () => {
     expect(httpMethodIsRead("POST")).toBe(false);
   });
 
-  test("inferGraphqlOperation defaults to query for fragment-first docs", () => {
-    expect(inferGraphqlOperation("fragment F on T { x }")).toBe("query");
+  test("inferGraphqlOperation never invents a query for an unknown document", () => {
+    expect(inferGraphqlOperation("fragment F on T { x }")).toBeNull();
+    expect(inferGraphqlOperation("fragment F on T { x } mutation M { remove { ...F } }")).toBe(
+      "mutation",
+    );
+    expect(
+      inferGraphqlOperation("query Read { items { id } } subscription Updates { item { id } }"),
+    ).toBe("subscription");
   });
 
   test("sqlIsSelect", () => {
@@ -166,10 +214,10 @@ describe("classifyMcpToolSideEffect — the remote's own annotations", () => {
     // can send that turns its own write into an unconfirmed call. If this
     // ever fails, a remote has been handed the power to gate itself.
     expect(classifyHttpSideEffect({ mcp: { operation: "call_tool" } })).toBe("write");
-    // The author's override still works, because that claim comes from
-    // inside the tenant rather than from the party being gated.
+    // A tenant's authoring agent can also supply this label: it is not
+    // evidence of a human-approved execution boundary.
     expect(classifyHttpSideEffect({ mcp: { operation: "call_tool" }, override: "read" })).toBe(
-      "read",
+      "write",
     );
   });
 });
