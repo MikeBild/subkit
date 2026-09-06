@@ -13,6 +13,7 @@
 // via save_connector_draft({credential}) before probing.
 
 import { getConfig, isConfigLoaded } from "../../config/loader.ts";
+import type { ConnectionAuthorityIdentity } from "../../credentials/authority-metadata.ts";
 import { refreshIfStale } from "../../credentials/oauth2/refresh-worker.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
@@ -457,9 +458,43 @@ export type AppliedAuthMethod =
 export interface ResolvedConnectorCredential {
   credential: DecryptedCredential | null;
   credential_id: string | null;
+  credential_revision: number | null;
+  connection_authority?: ConnectionAuthorityIdentity | null;
   /** True when the oauth2 path rotated a stale token inline. Always
    *  false for non-oauth2 modes. */
   oauth2_refreshed: boolean;
+}
+
+/** An authorized static target cannot delegate its permission through a redirect. */
+export interface RequestDispatchPolicy {
+  redirect: "manual";
+}
+
+export class AuthorityDispatchError extends Error {
+  readonly code = "authority_invalid";
+  constructor() {
+    super("The redirect target requires separate authorization; no redirect was followed.");
+    this.name = "AuthorityDispatchError";
+  }
+}
+
+export async function checkAuthorityRedirect(
+  response: Response,
+  policy: RequestDispatchPolicy | undefined,
+): Promise<void> {
+  if (
+    policy &&
+    response.status >= 300 &&
+    response.status < 400 &&
+    response.headers.has("location")
+  ) {
+    try {
+      await response.body?.cancel();
+    } catch {
+      // Cleanup failure must not turn a denied redirect into a retryable error.
+    }
+    throw new AuthorityDispatchError();
+  }
 }
 
 /**
@@ -481,10 +516,20 @@ export async function resolveConnectorCredential(p: {
   override?: DecryptedCredential | null;
 }): Promise<ResolvedConnectorCredential> {
   if (p.override !== undefined) {
-    return { credential: p.override, credential_id: null, oauth2_refreshed: false };
+    return {
+      credential: p.override,
+      credential_id: null,
+      credential_revision: null,
+      oauth2_refreshed: false,
+    };
   }
   if (p.connector.auth_type === "none") {
-    return { credential: null, credential_id: null, oauth2_refreshed: false };
+    return {
+      credential: null,
+      credential_id: null,
+      credential_revision: null,
+      oauth2_refreshed: false,
+    };
   }
   const row = await getCredentialForConnector(
     p.tenant_id,
@@ -493,7 +538,12 @@ export async function resolveConnectorCredential(p: {
     p.db,
   );
   if (!row) {
-    return { credential: null, credential_id: null, oauth2_refreshed: false };
+    return {
+      credential: null,
+      credential_id: null,
+      credential_revision: null,
+      oauth2_refreshed: false,
+    };
   }
   let credential: DecryptedCredential = row.value;
   let oauth2_refreshed = false;
@@ -504,7 +554,13 @@ export async function resolveConnectorCredential(p: {
       oauth2_refreshed = true;
     }
   }
-  return { credential, credential_id: row.row.id, oauth2_refreshed };
+  return {
+    credential,
+    credential_id: row.row.id,
+    credential_revision: row.row.authority_revision,
+    connection_authority: row.connection_authority ?? null,
+    oauth2_refreshed,
+  };
 }
 
 /** Map a `DecryptedCredential` + the oauth2-refresh observation into the
@@ -543,6 +599,8 @@ export function deriveAppliedAuthMethod(
 }
 
 export interface ResolvedRequestPlan {
+  credential_revision: number | null;
+  connection_authority: ResolvedConnectorCredential["connection_authority"];
   url: URL;
   headers: Record<string, string>;
   query: Record<string, string | number | boolean>;
@@ -576,6 +634,8 @@ export async function buildRequestPlan(
   const {
     credential,
     credential_id: credentialId,
+    credential_revision: credentialRevision,
+    connection_authority: connectionAuthority,
     oauth2_refreshed: oauth2Refreshed,
   } = await resolveConnectorCredential(resolveOpts);
   // Step-level `Authorization` wins over the connector credential.
@@ -607,6 +667,8 @@ export async function buildRequestPlan(
     query,
     credential,
     credential_id: credentialId,
+    credential_revision: credentialRevision,
+    connection_authority: connectionAuthority,
     auth_method: deriveAppliedAuthMethod(credential, oauth2Refreshed),
   };
   // SSRF guard: block private/loopback/link-local targets, including
@@ -924,7 +986,7 @@ export async function buildMultipartBody(parts: ResolvedFilePart[]): Promise<For
 }
 
 export async function executePlannedHttpRequest(params: {
-  before_dispatch?: () => Promise<void>;
+  before_dispatch?: () => Promise<RequestDispatchPolicy | undefined>;
   tenant_id: string;
   method: string;
   url: URL;
@@ -997,7 +1059,8 @@ export async function executePlannedHttpRequest(params: {
       credential: params.sigv4.credential,
     });
   }
-  await params.before_dispatch?.();
+  const dispatchPolicy = await params.before_dispatch?.();
+  if (dispatchPolicy) init.redirect = dispatchPolicy.redirect;
   const res = await instrument({
     module: "connector",
     action: "driver.http.request",
@@ -1007,6 +1070,7 @@ export async function executePlannedHttpRequest(params: {
     fn: () => settleOnAbort(getDriverFetch()(params.url, init), params.signal),
   });
   const maxResponseBytes = resolveMaxResponseBytes(params.tenant_id);
+  await checkAuthorityRedirect(res, dispatchPolicy);
   const buf = await readBodyBytesCapped(
     res,
     maxResponseBytes,

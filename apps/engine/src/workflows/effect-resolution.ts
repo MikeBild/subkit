@@ -6,6 +6,7 @@ import { resolveUrl } from "../connectors/drivers/http.ts";
 import { loadConnectorSystem } from "../connectors/system.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
+import { authorityConnectorConfiguration } from "./authority-configuration.ts";
 import { authorityExecutionShape } from "./authority-execution-shape.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "./effect-manifest.ts";
@@ -102,21 +103,7 @@ export async function resolveWorkflowEffectManifest(
     } catch {
       // A malformed or unresolved URL is an unbound target, never a probe.
     }
-    const configuration = connector
-      ? {
-          resolved_connector_id: connector.id,
-          driver: connector.driver,
-          environment: connector.environment,
-          auth_type: connector.auth_type,
-          base_url: connector.base_url,
-          dsn: connector.dsn,
-          config: connector.config,
-          template_slug: connector.template_slug,
-          template_source: connector.template_source,
-          template_version: connector.template_version,
-          template_snapshot: connector.template_snapshot,
-        }
-      : null;
+    const configuration = authorityConnectorConfiguration(connector);
     bindings.push({
       tenant_id: input.tenant_id,
       step_id: step.id,

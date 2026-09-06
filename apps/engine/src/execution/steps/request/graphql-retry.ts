@@ -17,7 +17,10 @@ import {
   classifyGraphqlSchemaError,
   isGraphqlRetryable,
 } from "../../../connectors/drivers/graphql-retry-classify.ts";
-import { HttpRequestInvalidError } from "../../../connectors/drivers/http.ts";
+import {
+  AuthorityDispatchError,
+  HttpRequestInvalidError,
+} from "../../../connectors/drivers/http.ts";
 import type { EgressInput } from "../../../connectors/egress.ts";
 import { withEgressAudit } from "../../../connectors/egress.ts";
 import { logger } from "../../../logging/logger.ts";
@@ -123,7 +126,10 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
         },
       );
     } catch (err) {
-      if (err instanceof RequestError && err.cause_kind === "authority_invalid") {
+      if (
+        err instanceof AuthorityDispatchError ||
+        (err instanceof RequestError && err.cause_kind === "authority_invalid")
+      ) {
         return {
           status: "failed",
           retry_count: attempt,

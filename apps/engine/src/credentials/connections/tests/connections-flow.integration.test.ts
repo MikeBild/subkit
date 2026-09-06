@@ -284,6 +284,7 @@ describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
       server.db,
     );
     expect(accessTokenOf(resolved)).toBe(fake.accessTokens.at(-1) ?? "");
+    expect(resolved?.connection_authority).toEqual({ id: connectionId, revision: beforeAuthority });
     const [item] = await listConnections();
     expect(item?.state).toBe("valid");
     expect(item?.last_refreshed_at).not.toBeNull();

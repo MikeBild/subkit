@@ -474,7 +474,8 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       kind: step.kind,
     });
     const ctx: StepRunContext = {
-      before_external_request: () => assertExecutionAuthorityCurrent(db, tenant_id, execution_id),
+      before_external_request: (snapshot) =>
+        assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot),
       db,
       tenant_id,
       execution_id,

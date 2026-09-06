@@ -1,6 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import type { RequestDispatchPolicy } from "../connectors/drivers/http.ts";
+import { loadConnectorSystem } from "../connectors/system.ts";
 import type { Db } from "../db/client.ts";
 import {
   executions,
@@ -9,12 +11,35 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
+import { workflowJsonDigest } from "../workflows/canonical-json.ts";
+import { WorkflowEffectManifestSchema } from "../workflows/effect-manifest.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { JsonValueSchema, WorkflowDefSchema } from "../workflows/types.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { validateAgainstJsonSchema } from "./engine/envelope.ts";
 import { createExecution } from "./state.ts";
+import type { RequestAuthoritySnapshot } from "./types.ts";
+
+const requestSnapshotSchema = z
+  .object({
+    step_id: z.string().min(1),
+    configuration_digest: z.string().regex(/^[a-f0-9]{64}$/),
+    credential_id: z.string().uuid().nullable(),
+    credential_revision: z.number().int().positive().nullable(),
+    connection_authority: z
+      .object({ id: z.string().uuid(), revision: z.number().int().positive() })
+      .strict()
+      .nullable(),
+  })
+  .strict()
+  .refine(
+    (snapshot) =>
+      snapshot.credential_id === null
+        ? snapshot.credential_revision === null && snapshot.connection_authority === null
+        : snapshot.credential_revision !== null,
+    "credential snapshot identities must be complete",
+  );
 
 const admissionSchema = z
   .object({
@@ -188,7 +213,8 @@ export async function assertExecutionAuthorityCurrent(
   db: Db,
   tenant_id: string,
   execution_id: string,
-): Promise<void> {
+  snapshot?: RequestAuthoritySnapshot,
+): Promise<RequestDispatchPolicy | undefined> {
   const [execution] = await db
     .select()
     .from(executions)
@@ -228,6 +254,56 @@ export async function assertExecutionAuthorityCurrent(
   if (!authority)
     fail("execution_authority_unavailable", "the reserved execution authority is no longer live");
   const boundary = authority.workflow_execution_authorities;
+  if (snapshot !== undefined) {
+    const parsed = requestSnapshotSchema.safeParse(snapshot);
+    const manifest = WorkflowEffectManifestSchema.safeParse(boundary.effect_manifest);
+    const effect =
+      parsed.success && manifest.success
+        ? manifest.data.effects.find(
+            (candidate) =>
+              candidate.step_id === parsed.data.step_id &&
+              candidate.configuration_digest === parsed.data.configuration_digest,
+          )
+        : undefined;
+    if (!parsed.success || !effect)
+      fail(
+        "execution_authority_changed",
+        "the loaded request configuration is outside its approved boundary",
+      );
+    const system = effect.connector_id
+      ? await loadConnectorSystem(
+          tenant_id,
+          effect.connector_id,
+          boundary.execution_environment,
+          db,
+        )
+      : null;
+    // Restoring a credential after resolution cannot authorize a request that
+    // already captured no credential. Auth-free connectors intentionally do
+    // not load an otherwise present credential row.
+    if (parsed.data.credential_id !== null || (system && system.connector.auth_type !== "none")) {
+      const metadata = await system?.getAuthorityMetadata();
+      if (
+        !metadata?.available ||
+        workflowJsonDigest(metadata.binding) !== effect.credential_binding_digest ||
+        metadata.binding.primary?.id !== parsed.data.credential_id ||
+        metadata.binding.primary?.revision !== parsed.data.credential_revision ||
+        !isDeepStrictEqual(
+          metadata.binding.connection
+            ? {
+                id: metadata.binding.connection.id,
+                revision: metadata.binding.connection.revision,
+              }
+            : null,
+          parsed.data.connection_authority,
+        )
+      )
+        fail(
+          "execution_authority_changed",
+          "the loaded credential is outside its approved boundary",
+        );
+    }
+  }
   const current = await previewWorkflowAuthority(
     {
       tenant_id,
@@ -242,4 +318,5 @@ export async function assertExecutionAuthorityCurrent(
       "execution_authority_changed",
       "the reserved execution no longer matches its approved effect boundary",
     );
+  return { redirect: "manual" };
 }

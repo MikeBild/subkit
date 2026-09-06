@@ -17,10 +17,13 @@ import { evaluateHook } from "../../../auth/hooks.ts";
 import { filenameFromResponse } from "../../../connectors/drivers/file-promotion.ts";
 import type { query as graphqlQuery } from "../../../connectors/drivers/graphql.ts";
 import {
+  AuthorityDispatchError,
   buildMultipartBody,
   buildRequestPlan,
   executePlannedHttpRequest,
   HttpRequestInvalidError,
+  type RequestDispatchPolicy,
+  type ResolvedConnectorCredential,
   serializeXmlBody,
 } from "../../../connectors/drivers/http.ts";
 import { invokeMcpConnectorCall } from "../../../connectors/drivers/mcp.ts";
@@ -67,6 +70,7 @@ import { MCP_WIRE_METHOD, type RemoteCall } from "../../../mcp/client/remote-cal
 import { recordRequestRetry } from "../../../observability/instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "../../../observability/metrics.ts";
 import { recordSuccessShape } from "../../../schema-versions/service.ts";
+import { authorityConnectorDigest } from "../../../workflows/authority-configuration.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
 import { combineSignals } from "../../abort.ts";
 import { type ExpectedRowCount, evaluateExpectedRowCount } from "../../expected-row-count.ts";
@@ -273,7 +277,7 @@ async function fetchOnce(
   tenant_id: string,
   multipartBody?: FormData,
   captureBinary?: boolean,
-  beforeDispatch?: () => Promise<void>,
+  beforeDispatch?: () => Promise<RequestDispatchPolicy | undefined>,
 ): Promise<FetchAttemptResult> {
   // Pagination cursors and `${item.…}` resolution sometimes produce a
   // URL the placeholder validator missed. Without a typed guard,
@@ -330,7 +334,7 @@ async function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 interface DoOnePageParams {
-  before_dispatch?: () => Promise<void>;
+  before_dispatch?: () => Promise<RequestDispatchPolicy | undefined>;
   url: string;
   method: string;
   headers: Record<string, string>;
@@ -612,6 +616,8 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
       });
     } catch (err) {
       lastErr = err;
+      if (err instanceof AuthorityDispatchError)
+        throw new RequestError(err.message, "authority_invalid");
       if (err instanceof HttpRequestInvalidError) {
         throw new RequestError(err.message, "request_invalid", undefined, {
           path: err.path,
@@ -701,9 +707,24 @@ export interface RunRequestStepParams {
 
 export async function runRequestStep(p: RunRequestStepParams): Promise<StepResult> {
   const start = Date.now();
-  const beforeDispatch = async () => {
+  let configurationDigest = authorityConnectorDigest(null);
+  let credentialSnapshot: Pick<
+    ResolvedConnectorCredential,
+    "credential_id" | "credential_revision" | "connection_authority"
+  > = {
+    credential_id: null,
+    credential_revision: null,
+    connection_authority: null,
+  };
+  const beforeDispatch = async (credential = credentialSnapshot) => {
     try {
-      await p.ctx.before_external_request?.();
+      return await p.ctx.before_external_request?.({
+        step_id: p.step.id,
+        configuration_digest: configurationDigest,
+        credential_id: credential.credential_id,
+        credential_revision: credential.credential_revision,
+        connection_authority: credential.connection_authority ?? null,
+      });
     } catch (error) {
       throw new RequestError(
         "Execution authority could not be verified; review the current boundary.",
@@ -908,6 +929,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           },
         };
       }
+      configurationDigest = authorityConnectorDigest(connector);
       connectorResolution = {
         step_key: p.step.id,
         connector_id: connector.id,
@@ -1774,6 +1796,11 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       });
       baseUrl = plan.url;
       activeCredentialId = plan.credential_id;
+      credentialSnapshot = {
+        credential_id: plan.credential_id,
+        credential_revision: plan.credential_revision,
+        connection_authority: plan.connection_authority ?? null,
+      };
       for (const [k, v] of Object.entries(plan.headers)) {
         headers[k] = v;
       }
