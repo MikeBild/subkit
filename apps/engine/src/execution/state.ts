@@ -4,7 +4,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { AuditAction, type AuditActorType, auditAwait } from "../audit/index.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import type { Db } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { executionSteps, executions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
@@ -20,6 +20,9 @@ import type {
 
 export interface CreateExecutionParams {
   tenant_id: string;
+  /** Only the server admission path supplies this. The database reserves one
+   * run atomically with insertion and binds the exact version/environment. */
+  execution_authority_id?: string | null;
   /** NULL for draft and step runs — those have no persisted workflow row. */
   workflow_id: string | null;
   /** NULL for draft and step runs. */
@@ -82,12 +85,16 @@ export async function findExecutionByIdempotencyKey(
   return row ?? null;
 }
 
-export async function createExecution(db: Db, params: CreateExecutionParams): Promise<string> {
+export async function createExecution(
+  db: Executor,
+  params: CreateExecutionParams,
+): Promise<string> {
   const id = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(executions)
       .values({
         tenant_id: params.tenant_id,
+        execution_authority_id: params.execution_authority_id ?? null,
         workflow_id: params.workflow_id,
         workflow_version_id: params.workflow_version_id,
         source_kind: params.source_kind,
@@ -107,6 +114,9 @@ export async function createExecution(db: Db, params: CreateExecutionParams): Pr
       type: "execution.queued",
       payload: {
         execution_id: row.id,
+        ...(params.execution_authority_id
+          ? { execution_authority_id: params.execution_authority_id }
+          : {}),
         workflow_id: params.workflow_id,
         source_kind: params.source_kind,
         request_source: params.request_source,

@@ -924,6 +924,7 @@ export async function buildMultipartBody(parts: ResolvedFilePart[]): Promise<For
 }
 
 export async function executePlannedHttpRequest(params: {
+  before_dispatch?: () => Promise<void>;
   tenant_id: string;
   method: string;
   url: URL;
@@ -996,6 +997,7 @@ export async function executePlannedHttpRequest(params: {
       credential: params.sigv4.credential,
     });
   }
+  await params.before_dispatch?.();
   const res = await instrument({
     module: "connector",
     action: "driver.http.request",

@@ -272,6 +272,7 @@ async function fetchOnce(
   tenant_id: string,
   multipartBody?: FormData,
   captureBinary?: boolean,
+  beforeDispatch?: () => Promise<void>,
 ): Promise<FetchAttemptResult> {
   // Pagination cursors and `${item.…}` resolution sometimes produce a
   // URL the placeholder validator missed. Without a typed guard,
@@ -297,6 +298,7 @@ async function fetchOnce(
     signal,
     ...(multipartBody !== undefined ? { multipartBody } : {}),
     ...(captureBinary ? { capture_binary: true } : {}),
+    ...(beforeDispatch ? { before_dispatch: beforeDispatch } : {}),
   });
   return {
     status: execution.status,
@@ -327,6 +329,7 @@ async function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 interface DoOnePageParams {
+  before_dispatch?: () => Promise<void>;
   url: string;
   method: string;
   headers: Record<string, string>;
@@ -348,9 +351,7 @@ interface DoOnePageParams {
    *  returned to the step instead of being converted into RequestError before
    *  the request-level expected_statuses gate can inspect them. */
   accepted_statuses?: ReadonlySet<number>;
-  /** When set on a non-idempotent method, an `Idempotency-Key` header is
-   *  injected per attempt as `${base}:${attempt}` so each retry is a fresh
-   *  key. The latest emitted key is returned via `last_idempotency_key`. */
+  /** Stable key for one logical request/page, reused on every retry. */
   idempotency_key_base?: string;
   /** Out-param: the most recent Idempotency-Key emitted by this call. The
    *  request step copies the value into `request_meta.idempotency_key` for
@@ -456,11 +457,11 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
     if (p.signal.aborted) {
       throw new RequestError("aborted", "abort");
     }
-    // Per-attempt header copy so the Idempotency-Key for attempt N doesn't
-    // leak into attempt N+1 (the loop bumps the suffix every retry).
+    // Retries must reuse the same key: changing it asks the remote to apply
+    // another effect, defeating any upstream idempotency support.
     const attemptHeaders: Record<string, string> = { ...p.headers };
     if (p.idempotency_key_base && !isIdempotent(p.method)) {
-      const key = `${p.idempotency_key_base}:${attempt}`;
+      const key = p.idempotency_key_base;
       attemptHeaders["Idempotency-Key"] = key;
       if (p.last_idempotency_key) p.last_idempotency_key.value = key;
     }
@@ -474,6 +475,7 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         p.tenant_id,
         p.multipartBody,
         p.capture_binary,
+        p.before_dispatch,
       );
       if (res.status >= 400 && p.accepted_statuses?.has(res.status)) {
         return res;
@@ -619,6 +621,7 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         if (err.cause_kind === "abort") throw err;
         if (err.cause_kind === "filter_fail") throw err;
         if (err.cause_kind === "request_invalid") throw err;
+        if (err.cause_kind === "authority_invalid") throw err;
         // A per-request timeout is terminal — it already consumed the
         // full budget; retrying would re-send a non-idempotent write.
         if (err.cause_kind === "timeout") throw err;
@@ -697,6 +700,18 @@ export interface RunRequestStepParams {
 
 export async function runRequestStep(p: RunRequestStepParams): Promise<StepResult> {
   const start = Date.now();
+  const beforeDispatch = async () => {
+    try {
+      await p.ctx.before_external_request?.();
+    } catch (error) {
+      throw new RequestError(
+        "Execution authority could not be verified; review the current boundary.",
+        "authority_invalid",
+        undefined,
+        { reason: (error as { code?: string }).code ?? "authority_check_failed" },
+      );
+    }
+  };
   // Hold-writes preview (Fix G): when the run was started with
   // `hold_writes`, a write-classified step is fully RESOLVED (every
   // driver branch holds AFTER placeholder substitution, credential /
@@ -1028,6 +1043,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             };
           }
           const args: Parameters<typeof graphqlQuery>[0] = {
+            before_dispatch: beforeDispatch,
             db: p.ctx.db,
             tenant_id: p.ctx.tenant_id,
             connector,
@@ -1897,13 +1913,13 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   const retryTotal = { value: 0 };
   const retryCounter = { value: 0 };
   const retry_policy = resolveRetryPolicy(p.step);
-  // Idempotency-Key shape: `${execution_id}:${step_id}:${attempt}`. We pass
-  // the 2-segment base here; doOnePage appends the per-attempt suffix so
-  // each retry is a fresh key. Step.id is the author-facing identifier
-  // (matches the workflow definition), so a retried write that crosses an
-  // engine restart still maps back to the same logical step.
+  // The persisted step instance separates loop iterations with the same
+  // author-facing step id. Each page gets its own key, stable across retries.
+  // Remote support is optional; this is not an exactly-once guarantee.
   const idempotencyBase =
-    requestIsReadOnly || isIdempotent(p.step.method) ? null : `${p.ctx.execution_id}:${p.step.id}`;
+    requestIsReadOnly || isIdempotent(p.step.method)
+      ? null
+      : `${p.ctx.execution_id}:${p.ctx.step_row_id}`;
   const lastIdempotencyKey: { value: string | null } = { value: null };
   // Pre-populate the diagnostic envelope with what we are about to send.
   // Without this, a failure before the first response handler runs (e.g.
@@ -2059,6 +2075,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       }
       const callDoOnePage = () =>
         doOnePage({
+          before_dispatch: beforeDispatch,
           url: baseUrl.toString(),
           method: p.step.method,
           headers,
@@ -2078,7 +2095,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           last_idempotency_key: lastIdempotencyKey,
           tenant_id: p.ctx.tenant_id,
           capture_binary: true,
-          ...(idempotencyBase ? { idempotency_key_base: idempotencyBase } : {}),
+          ...(idempotencyBase ? { idempotency_key_base: `${idempotencyBase}:0` } : {}),
         });
       const res = httpEgressInput
         ? await withEgressAudit(httpEgressInput, callDoOnePage, (out) => {
@@ -2420,6 +2437,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       }
       const callPage = () =>
         doOnePage({
+          before_dispatch: beforeDispatch,
           url: next.url,
           method: p.step.method,
           headers,
@@ -2437,7 +2455,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             : {}),
           last_idempotency_key: lastIdempotencyKey,
           tenant_id: p.ctx.tenant_id,
-          ...(idempotencyBase ? { idempotency_key_base: idempotencyBase } : {}),
+          ...(idempotencyBase ? { idempotency_key_base: `${idempotencyBase}:${pageIdx}` } : {}),
         });
       const pageEgressInput = activeConnector
         ? {

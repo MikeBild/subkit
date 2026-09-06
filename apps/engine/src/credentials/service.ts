@@ -523,8 +523,11 @@ export async function rotateOAuth2Tokens(
     const nextScope = input.scope ?? previousScope;
     const previousType = priorValue.token_type ?? "Bearer";
     const nextType = input.token_type ?? previousType;
+    // OAuth token type names are case-insensitive. The OAuth client normalizes
+    // Bearer to bearer during refresh; that is not a new permission grant.
     const authorityChanged =
-      !sameAuthorityScopes(previousScope, nextScope) || previousType !== nextType;
+      !sameAuthorityScopes(previousScope, nextScope) ||
+      previousType.toLowerCase() !== nextType.toLowerCase();
     const withAuthorityRevision = await hasCredentialAuthorityRevisionColumn(tx);
     const payload = encryptSecret(
       JSON.stringify({
