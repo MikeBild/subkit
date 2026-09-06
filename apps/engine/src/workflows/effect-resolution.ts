@@ -6,6 +6,7 @@ import { resolveUrl } from "../connectors/drivers/http.ts";
 import { loadConnectorSystem } from "../connectors/system.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
+import { authorityExecutionShape } from "./authority-execution-shape.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "./effect-manifest.ts";
 import { WorkflowDefSchema } from "./types.ts";
@@ -33,7 +34,11 @@ function displayTarget(url: URL): string | null {
 /** Use the caller's transaction when issuing an authority. The admitting
  * service must lock the exact version and recheck this result before effects;
  * a read-only review result is not a durable authorization. */
-export async function resolveWorkflowEffectManifest(raw: unknown, db: Executor) {
+export async function resolveWorkflowEffectManifest(
+  raw: unknown,
+  db: Executor,
+  options: { include_review?: boolean } = {},
+) {
   const input = inputSchema.parse(raw);
   const [version] = await db
     .select({ dag: workflowVersions.dag })
@@ -140,6 +145,9 @@ export async function resolveWorkflowEffectManifest(raw: unknown, db: Executor) 
   unavailable_steps.sort();
   return {
     ...compiled,
+    ...(options.include_review
+      ? { execution_shape: authorityExecutionShape(definition, bindings) }
+      : {}),
     unavailable_steps,
     eligible_for_repeated_runs:
       compiled.eligible_for_repeated_runs && unavailable_steps.length === 0,

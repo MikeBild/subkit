@@ -36,6 +36,7 @@ import {
   formatRunDuration,
   RUN_STATUSES,
   requestSourceLabel,
+  runAuthorityFacts,
   runDurationMs,
   runName,
   SOURCE_KIND_KEYS,
@@ -118,6 +119,7 @@ function RunDetail({ run }: { run: Execution }) {
     ],
     [t("runs.column.source"), requestSourceLabel(current.request_source, t)],
     [t("resource.field.kind"), t(SOURCE_KIND_KEYS[current.source_kind] ?? "runs.sourceKind.saved")],
+    ...runAuthorityFacts(current, t),
   ];
 
   return (

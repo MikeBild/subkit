@@ -30,6 +30,19 @@ const REQUEST_SOURCE_KEYS: Partial<Record<string, TranslationKey>> = {
 
 export type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
+/** Describe the execution's stored binding, never the workflow's current grant. */
+export function runAuthorityFacts(
+  run: Pick<Execution, "execution_authority_id" | "workflow_version_id">,
+  t: Translate,
+): Array<[string, string]> {
+  return [
+    [t("authority.usedByRun"), run.execution_authority_id ?? t("authority.noStoredBinding")],
+    ...(run.workflow_version_id
+      ? [[t("authority.version"), run.workflow_version_id] as [string, string]]
+      : []),
+  ];
+}
+
 export function runName(run: Execution, t: Translate): string {
   if (run.workflow_name?.trim()) return run.workflow_name;
   return t(SOURCE_KIND_KEYS[run.source_kind] ?? "runs.sourceKind.saved");

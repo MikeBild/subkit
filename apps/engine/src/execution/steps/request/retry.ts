@@ -14,6 +14,11 @@ import type { RequestStep } from "../../../workflows/types.ts";
 
 export const RETRY_BASE_MS = 200;
 export const RETRY_CAP_MS = 30_000;
+export const REQUEST_MAX_RETRIES_DEFAULT = 4;
+
+export function requestMaxAttempts(step: Pick<RequestStep, "max_retries">): number {
+  return (step.max_retries ?? REQUEST_MAX_RETRIES_DEFAULT) + 1;
+}
 
 function jitter(ms: number): number {
   const j = ms * 0.2;

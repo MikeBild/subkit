@@ -4302,52 +4302,148 @@
           "server_time"
         ]
       },
-      "WorkflowAuthorityPreview": {
+      "WorkflowExecutionAuthorityList": {
         "type": "object",
         "properties": {
-          "manifest": {
-            "$ref": "#/components/schemas/WorkflowEffectManifest"
-          },
-          "digest": {
-            "type": "string"
-          },
-          "eligible_for_repeated_runs": {
-            "type": "boolean"
-          },
-          "unavailable_steps": {
+          "items": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/WorkflowExecutionAuthority"
             }
           },
-          "suggested_bounds": {
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ]
+      },
+      "WorkflowExecutionAuthority": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_version_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "effect_manifest_digest": {
+            "type": "string"
+          },
+          "effect_manifest": {
+            "$ref": "#/components/schemas/WorkflowEffectManifest"
+          },
+          "execution_environment": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
+          "target_constraints": {
             "type": "object",
             "properties": {
-              "valid_from": {
-                "type": "string",
-                "format": "date-time"
-              },
-              "valid_until": {
-                "type": "string",
-                "format": "date-time"
-              },
-              "max_runs": {
-                "type": "integer"
+              "targets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "required": [
-              "valid_from",
-              "valid_until",
-              "max_runs"
+              "targets"
+            ]
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "max_runs": {
+            "type": "integer"
+          },
+          "reserved_runs": {
+            "type": "integer"
+          },
+          "remaining_runs": {
+            "type": "integer"
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revoked_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "active_version": {
+            "type": "boolean"
+          },
+          "ready_for_new_run": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "not_yet_valid",
+              "expired",
+              "revoked",
+              "exhausted",
+              "invalidated",
+              "unavailable"
             ]
           }
         },
         "required": [
-          "manifest",
-          "digest",
-          "eligible_for_repeated_runs",
-          "unavailable_steps",
-          "suggested_bounds"
+          "id",
+          "workflow_id",
+          "workflow_version_id",
+          "effect_manifest_digest",
+          "effect_manifest",
+          "execution_environment",
+          "target_constraints",
+          "valid_from",
+          "valid_until",
+          "max_runs",
+          "reserved_runs",
+          "remaining_runs",
+          "created_by",
+          "created_at",
+          "revoked_at",
+          "revoked_by",
+          "active_version",
+          "ready_for_new_run",
+          "state"
         ]
       },
       "WorkflowEffectManifest": {
@@ -4519,118 +4615,135 @@
         ],
         "additionalProperties": false
       },
-      "WorkflowExecutionAuthority": {
+      "WorkflowAuthorityPreview": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "workflow_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "workflow_version_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "effect_manifest_digest": {
-            "type": "string"
-          },
-          "effect_manifest": {
+          "manifest": {
             "$ref": "#/components/schemas/WorkflowEffectManifest"
           },
-          "execution_environment": {
-            "type": "string",
-            "enum": [
-              "dev",
-              "prod"
-            ]
+          "digest": {
+            "type": "string"
           },
-          "target_constraints": {
+          "eligible_for_repeated_runs": {
+            "type": "boolean"
+          },
+          "unavailable_steps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "execution_shape": {
+            "$ref": "#/components/schemas/AuthorityExecutionShape"
+          },
+          "suggested_bounds": {
             "type": "object",
             "properties": {
-              "targets": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
+              "valid_from": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "valid_until": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "max_runs": {
+                "type": "integer"
               }
             },
             "required": [
-              "targets"
-            ]
-          },
-          "valid_from": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "valid_until": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "max_runs": {
-            "type": "integer"
-          },
-          "reserved_runs": {
-            "type": "integer"
-          },
-          "remaining_runs": {
-            "type": "integer"
-          },
-          "created_by": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "revoked_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "revoked_by": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
-          "state": {
-            "type": "string",
-            "enum": [
-              "approved",
-              "not_yet_valid",
-              "expired",
-              "revoked",
-              "exhausted",
-              "invalidated",
-              "unavailable"
+              "valid_from",
+              "valid_until",
+              "max_runs"
             ]
           }
         },
         "required": [
-          "id",
-          "workflow_id",
-          "workflow_version_id",
-          "effect_manifest_digest",
-          "effect_manifest",
-          "execution_environment",
-          "target_constraints",
-          "valid_from",
-          "valid_until",
-          "max_runs",
-          "reserved_runs",
-          "remaining_runs",
-          "created_by",
-          "created_at",
-          "revoked_at",
-          "revoked_by",
-          "state"
+          "manifest",
+          "digest",
+          "eligible_for_repeated_runs",
+          "unavailable_steps",
+          "execution_shape",
+          "suggested_bounds"
+        ]
+      },
+      "AuthorityExecutionShape": {
+        "type": "object",
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step_id": {
+                  "type": "string"
+                },
+                "retry_policy_max_attempts": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "exclusiveMinimum": 0
+                },
+                "redacted_request_json": {
+                  "type": "string"
+                },
+                "request_review_truncated": {
+                  "type": "boolean"
+                },
+                "opaque_payload_omitted": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "step_id",
+                "retry_policy_max_attempts",
+                "redacted_request_json",
+                "request_review_truncated",
+                "opaque_payload_omitted"
+              ]
+            }
+          },
+          "iterations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step_id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "loop",
+                    "for_each"
+                  ]
+                },
+                "body_step_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "step_id",
+                "kind",
+                "body_step_ids"
+              ]
+            }
+          },
+          "run_limit_is_request_limit": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          }
+        },
+        "required": [
+          "requests",
+          "iterations",
+          "run_limit_is_request_limit"
         ]
       },
       "WorkflowDraft": {
@@ -7686,6 +7799,13 @@
               "null"
             ]
           },
+          "execution_authority_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "source_kind": {
             "type": "string",
             "enum": [
@@ -7735,6 +7855,7 @@
           "workflow_id",
           "workflow_name",
           "workflow_version_id",
+          "execution_authority_id",
           "source_kind",
           "source_ref",
           "status",
@@ -26280,12 +26401,12 @@
         }
       }
     },
-    "/v1/workflows/{id}/versions/{version_id}/authority-preview": {
+    "/v1/workflows/{id}/execution-authorities": {
       "get": {
         "tags": [
           "workflows"
         ],
-        "summary": "Review the exact locally resolved effect boundary without executing it",
+        "summary": "List bounded authority history with current eligibility and remaining runs",
         "security": [
           {
             "bearerAuth": []
@@ -26304,33 +26425,43 @@
           {
             "schema": {
               "type": "string",
-              "format": "uuid"
+              "enum": [
+                "dev",
+                "prod"
+              ]
             },
-            "required": true,
-            "name": "version_id",
-            "in": "path"
+            "required": false,
+            "name": "environment",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
           },
           {
             "schema": {
               "type": "string",
-              "enum": [
-                "dev",
-                "prod"
-              ],
-              "default": "dev"
+              "format": "uuid"
             },
             "required": false,
-            "name": "environment",
+            "name": "cursor",
             "in": "query"
           }
         ],
         "responses": {
           "200": {
-            "description": "Read-only review with finite default bounds",
+            "description": "Newest first; cursor is the last returned authority id",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkflowAuthorityPreview"
+                  "$ref": "#/components/schemas/WorkflowExecutionAuthorityList"
                 }
               }
             }
@@ -26386,9 +26517,7 @@
             }
           }
         }
-      }
-    },
-    "/v1/workflows/{id}/execution-authorities": {
+      },
       "post": {
         "tags": [
           "workflows"
@@ -26465,6 +26594,114 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorkflowExecutionAuthority"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/{id}/versions/{version_id}/authority-preview": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Review the exact locally resolved effect boundary without executing it",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "version_id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "dev",
+                "prod"
+              ],
+              "default": "dev"
+            },
+            "required": false,
+            "name": "environment",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read-only review with finite default bounds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowAuthorityPreview"
                 }
               }
             }

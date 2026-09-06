@@ -27,7 +27,7 @@ import type { RequestStep } from "../../../workflows/types.ts";
 import type { ConnectorResolutionSummary, StepResult, StepWarning } from "../../types.ts";
 import { buildStepErrorDetail } from "../error-detail.ts";
 import { RequestError } from "./errors.ts";
-import { backoffMs, parseRetryAfter, resolveRetryPolicy } from "./retry.ts";
+import { backoffMs, parseRetryAfter, requestMaxAttempts, resolveRetryPolicy } from "./retry.ts";
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   if (ms <= 0) return Promise.resolve();
@@ -98,7 +98,7 @@ export interface RunGraphqlWithRetryParams {
 export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise<StepResult> {
   const { step, signal, start, egressInput } = p;
   const policy = resolveRetryPolicy(step as RequestStep);
-  const max_attempts = (step.max_retries ?? 4) + 1;
+  const max_attempts = requestMaxAttempts(step);
   let connRes = p.connectorResolution;
   let finalAttempt = 0;
   let lastRes: Awaited<ReturnType<typeof graphqlQuery>> | null = null;

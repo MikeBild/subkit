@@ -106,6 +106,7 @@ import {
   isIdempotent,
   parseRetryAfter,
   type RetryPolicy,
+  requestMaxAttempts,
   resolveRetryPolicy,
 } from "./retry.ts";
 import { checkRequired, deriveAuthMethodFromAuthType, extractModelHint } from "./shape.ts";
@@ -720,7 +721,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // dispatched. Read-classified steps execute live, unchanged.
   const requestIsReadOnly = classifyRequestStepSideEffects(p.step) === "read";
   const holdThisStep = p.ctx.hold_writes === true && !requestIsReadOnly;
-  const max_attempts = (p.step.max_retries ?? 4) + 1; // 1 initial + N retries
+  const max_attempts = requestMaxAttempts(p.step);
   const timeoutMs = p.step.timeout_ms ?? REQUEST_TIMEOUT_DEFAULT_MS;
   const timeoutCtrl = new AbortController();
 

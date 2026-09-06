@@ -5,7 +5,10 @@ import { browserSessionForPrincipal, verifyBrowserCsrf } from "../auth/browser-s
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { sessions, workflowExecutionAuthorities, workflowVersions } from "../db/schema/index.ts";
-import { REQUEST_TIMEOUT_DEFAULT_MS } from "../execution/steps/request.ts";
+import {
+  REQUEST_MAX_RETRIES_DEFAULT,
+  REQUEST_TIMEOUT_DEFAULT_MS,
+} from "../execution/steps/request.ts";
 import { WORKFLOW_TIMEOUT_DEFAULT_MS } from "../execution/timeouts.ts";
 import { can } from "../rbac/evaluator.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
@@ -45,6 +48,7 @@ export function previewWorkflowAuthority(
     execution_environment: "dev" | "prod";
   },
   db: Executor,
+  options: { include_review?: boolean } = {},
 ) {
   return resolveWorkflowEffectManifest(
     {
@@ -53,10 +57,12 @@ export function previewWorkflowAuthority(
         ...workflowAuthorityExecutionOptions(input.execution_environment),
         default_workflow_timeout_ms: WORKFLOW_TIMEOUT_DEFAULT_MS,
         default_request_timeout_ms: REQUEST_TIMEOUT_DEFAULT_MS,
+        default_request_max_retries: REQUEST_MAX_RETRIES_DEFAULT,
         step_output_fixtures: null,
       }),
     },
     db,
+    options,
   );
 }
 
