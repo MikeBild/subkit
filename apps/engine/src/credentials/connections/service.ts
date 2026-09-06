@@ -35,6 +35,7 @@ import {
   readSecretVersion,
   revokeSecretVersion,
 } from "../../runtime-config/service.ts";
+import type { ConnectionAuthorityIdentity } from "../authority-metadata.ts";
 import { sameAuthorityScopes } from "../authority-scopes.ts";
 import { discoverService, requireConnectable } from "./discovery.ts";
 import {
@@ -735,7 +736,11 @@ export async function readAccessToken(
   db: Db,
   tenantId: string,
   connectionId: string,
-): Promise<{ access_token: string; expires_at: Date | null } | null> {
+): Promise<{
+  access_token: string;
+  expires_at: Date | null;
+  connection_authority: ConnectionAuthorityIdentity;
+} | null> {
   let row = await findConnection(db, tenantId, connectionId);
   if (!row) return null;
   const nowMs = Date.now();
@@ -756,7 +761,11 @@ export async function readAccessToken(
       .set({ last_used_at: new Date(nowMs) })
       .where(and(eq(outboundConnections.id, row.id), eq(outboundConnections.tenant_id, tenantId)));
   }
-  return { access_token, expires_at: row.expires_at };
+  return {
+    access_token,
+    expires_at: row.expires_at,
+    connection_authority: { id: row.id, revision: row.authority_revision },
+  };
 }
 
 /** Renew every connection whose token ends within the buffer. One failure does not stop the sweep. */

@@ -181,6 +181,18 @@ test("authority metadata neither exposes nor decrypts stored token material", as
   );
 });
 
+test("deleted credentials are unavailable in both review and runtime without decryption", async () => {
+  const f = await fixture();
+  await ctx.pool.query(
+    "UPDATE subkit.credentials SET deleted_at=clock_timestamp(), ciphertext=decode('00','hex') WHERE tenant_id=$1 AND id=$2",
+    [f.tenant, f.credential.id],
+  );
+  const metadata = await getCredentialAuthorityMetadata(f.tenant, f.connector, "dev", ctx.db);
+  expect(metadata.available).toBe(false);
+  expect(metadata.binding.primary).toBeNull();
+  expect(await getCredentialForConnector(f.tenant, f.connector, "dev", ctx.db)).toBeNull();
+});
+
 test("a failed audit rolls token, permission metadata and authority revision back together", async () => {
   const f = await fixture();
   await ctx.pool.query(`CREATE FUNCTION subkit.reject_rotation_audit() RETURNS trigger LANGUAGE plpgsql AS $$

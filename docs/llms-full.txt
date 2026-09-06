@@ -2562,6 +2562,19 @@ cannot be recalled. HTTP write retries reuse one logical idempotency key per
 persisted step instance and page; upstream deduplication still depends on remote
 support and is not an exactly-once promise.
 
+Dispatch also binds the connector configuration, primary credential identity,
+and permission revisions actually loaded by the driver. Connection-backed OAuth
+includes the identity and permission revision of the connection row whose token
+version was read, including after inline refresh. Restoring the database
+to an earlier approved configuration does not authorize a different snapshot
+already prepared for sending. Deleted credential rows are excluded from both
+metadata review and live credential resolution, before decryption.
+A connector requiring authentication also rejects a request that loaded no
+credential, even if the approved credential is restored before dispatch.
+These bound runs do not automatically follow HTTP or GraphQL redirects. A
+redirect response is terminal (`authority_invalid`): the new destination needs
+its own reviewed boundary, and the original write is not automatically retried.
+
 This explicit run path does not yet replace legacy REST runs, scheduler/webhook
 admission, or exact tool approvals. Omitting `execution_authority_id` still uses
 the existing run path; the grant alone must not be interpreted as a portfolio-wide

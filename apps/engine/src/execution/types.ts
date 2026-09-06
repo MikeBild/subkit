@@ -4,6 +4,8 @@
 // user-authored DAG.
 
 import type { ResolvedPrincipal } from "../auth/types.ts";
+import type { RequestDispatchPolicy } from "../connectors/drivers/http.ts";
+import type { ConnectionAuthorityIdentity } from "../credentials/authority-metadata.ts";
 import type { Db } from "../db/client.ts";
 import type { RunLlmBudget } from "../llm/accounting/index.ts";
 // The single canonical RequestSource, derived from the Zod RequestSourceSchema.
@@ -35,10 +37,20 @@ export type StepStatus =
  *  individual steps within it can be. */
 export type ExecutionStatus = Exclude<StepStatus, "skipped">;
 
+export interface RequestAuthoritySnapshot {
+  step_id: string;
+  configuration_digest: string;
+  credential_id: string | null;
+  credential_revision: number | null;
+  connection_authority: ConnectionAuthorityIdentity | null;
+}
+
 export interface ExecutionContext {
   /** Server-owned guard, repeated after credential resolution and before each
    * outbound request attempt. Never part of an authored workflow definition. */
-  before_external_request?: () => Promise<void>;
+  before_external_request?: (
+    snapshot: RequestAuthoritySnapshot,
+  ) => Promise<RequestDispatchPolicy | undefined>;
   db: Db;
   tenant_id: string;
   execution_id: string;
