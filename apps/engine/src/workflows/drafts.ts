@@ -1,6 +1,6 @@
 // Durable, inert authoring versions. This path never changes the executable
 // current_version_id, reconciles triggers, or grants execution authority.
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -8,6 +8,7 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import type { RequestSource } from "../observability/service-metadata.ts";
+import { canonicalWorkflowJson as canonical, workflowJsonDigest } from "./canonical-json.ts";
 import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
@@ -45,18 +46,6 @@ export interface SaveWorkflowDraftInput {
   audit_metadata?: Record<string, unknown>;
 }
 
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-
 function draftView(
   wf: typeof workflows.$inferSelect,
   version: typeof workflowVersions.$inferSelect,
@@ -66,7 +55,7 @@ function draftView(
     workflow_id: wf.id,
     version_id: version.id,
     version: version.version,
-    digest: createHash("sha256").update(canonical(version.dag)).digest("hex"),
+    digest: workflowJsonDigest(version.dag),
     current_version_id: wf.current_version_id,
     definition,
   };
@@ -138,10 +127,7 @@ export async function saveWorkflowDraft(
         }
         if (wf.draft_version_id) {
           const previous = await getWorkflowDraft(input.tenant_id, wf.id, tx);
-          if (
-            previous &&
-            previous.digest === createHash("sha256").update(canonical(def)).digest("hex")
-          ) {
+          if (previous && previous.digest === workflowJsonDigest(def)) {
             if (input.scope_index === undefined) return { draft: previous };
             const [stored] = await tx
               .select({ scope_index: workflowVersions.scope_index })

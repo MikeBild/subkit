@@ -186,7 +186,7 @@ async function createSecretVersionInTransaction(
 }
 
 export async function createSecretVersion(
-  db: Db,
+  db: Executor,
   args: {
     name: string;
     value: string;
@@ -650,7 +650,7 @@ function documentContainsReference(value: unknown, reference: string): boolean {
 }
 
 export async function revokeSecretVersion(
-  db: Db,
+  db: Executor,
   args: { name: string; version: number },
 ): Promise<{ name: string; version: number; revoked_at: Date }> {
   const reference = secretReference(args.name, args.version);

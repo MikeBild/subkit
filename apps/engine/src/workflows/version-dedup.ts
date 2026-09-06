@@ -11,6 +11,7 @@ import { and, eq } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { canonicalWorkflowJson as stableStringify } from "./canonical-json.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 
 /** Per-step authoring metadata persisted alongside a workflow version
@@ -21,20 +22,6 @@ type ScopeIndex = Record<
   string,
   { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
 > | null;
-
-/**
- * Sorted-key JSON serialization. Postgres `jsonb` does not preserve
- * object key order, so a plain `JSON.stringify` of a stored `dag` would
- * report spurious differences against an in-memory `def`; sorting keys
- * makes the comparison structural.
- */
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
-}
 
 /**
  * Returns `{ unchanged, current_def }`. `unchanged` is true when `def` is

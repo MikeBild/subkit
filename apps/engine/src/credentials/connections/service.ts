@@ -23,7 +23,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, count, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
-import type { Db } from "../../db/client.ts";
+import type { Db, Executor } from "../../db/client.ts";
 import {
   credentials,
   outboundConnectionStarts,
@@ -35,6 +35,7 @@ import {
   readSecretVersion,
   revokeSecretVersion,
 } from "../../runtime-config/service.ts";
+import { sameAuthorityScopes } from "../authority-scopes.ts";
 import { discoverService, requireConnectable } from "./discovery.ts";
 import {
   type AuthorizationServerMetadata,
@@ -275,7 +276,7 @@ function grantedScopes(token: TokenResponse): string[] | null {
 
 /** Mint the new versions, then retire the old ones. Old versions that cannot be revoked are logged, never fatal. */
 async function storeTokens(
-  db: Db,
+  db: Executor,
   args: {
     tenant_id: string;
     name: string;
@@ -391,88 +392,111 @@ export async function completeConnection(
     return fail("token_exchange_failed", messageOf(error));
   }
 
-  const existing = start.connection_id
-    ? await findConnection(db, start.tenant_id, start.connection_id)
-    : null;
-  const versions = await storeTokens(db, {
-    tenant_id: start.tenant_id,
-    name: start.name,
-    token,
-    created_by: start.user_id,
-    previous: {
-      access: existing?.access_token_version ?? null,
-      refresh: existing?.refresh_token_version ?? null,
-    },
+  const connectionId = await db.transaction(async (tx) => {
+    const [existing] = start.connection_id
+      ? await tx
+          .select()
+          .from(outboundConnections)
+          .where(
+            and(
+              eq(outboundConnections.tenant_id, start.tenant_id),
+              eq(outboundConnections.id, start.connection_id),
+            ),
+          )
+          .for("update")
+      : [];
+    if (start.connection_id && !existing)
+      throw new ConnectionError("not_found", "connection was removed during authorization");
+    const versions = await storeTokens(tx, {
+      tenant_id: start.tenant_id,
+      name: start.name,
+      token,
+      created_by: start.user_id,
+      previous: {
+        access: existing?.access_token_version ?? null,
+        refresh: existing?.refresh_token_version ?? null,
+      },
+    });
+
+    const shared = {
+      base_url: start.base_url,
+      issuer: start.issuer,
+      authorization_endpoint: start.authorization_endpoint,
+      token_endpoint: start.token_endpoint,
+      registration_endpoint: start.registration_endpoint,
+      client_id: start.client_id,
+      scopes: start.scopes,
+      granted_scopes: grantedScopes(token),
+      service_name: start.service_name,
+      service_description: start.service_description,
+      access_token_version: versions.access,
+      refresh_token_version: versions.refresh,
+      expires_at: expiryOf(token),
+      last_refreshed_at: now,
+      refresh_failed_at: null,
+      last_error: null,
+      updated_at: now,
+    };
+
+    let connectionId: string;
+    if (existing) {
+      const [updated] = await tx
+        .update(outboundConnections)
+        .set({ ...shared, authority_revision: sql`${outboundConnections.authority_revision} + 1` })
+        .where(
+          and(
+            eq(outboundConnections.id, existing.id),
+            eq(outboundConnections.tenant_id, start.tenant_id),
+          ),
+        )
+        .returning({ id: outboundConnections.id });
+      if (!updated)
+        throw new ConnectionError("not_found", "connection was removed during authorization");
+      connectionId = existing.id;
+    } else {
+      const [created] = await tx
+        .insert(outboundConnections)
+        .values({
+          tenant_id: start.tenant_id,
+          name: start.name,
+          created_by: start.user_id,
+          ...shared,
+        })
+        .returning({ id: outboundConnections.id });
+      if (!created) throw new Error("outbound connection insert returned no row");
+      connectionId = created.id;
+    }
+
+    await auditAwait(
+      {
+        tenant_id: start.tenant_id,
+        actor_type: "user",
+        actor_id: start.user_id,
+        action: existing ? AuditAction.CONNECTION_RENEWED : AuditAction.CONNECTION_CREATED,
+        resource_type: "connection",
+        resource_id: connectionId,
+        result: "success",
+        metadata: {
+          name: start.name,
+          issuer_host: new URL(start.issuer).host,
+          scopes: start.scopes,
+          granted_scopes: grantedScopes(token),
+          expires_at: expiryOf(token)?.toISOString() ?? null,
+          auto_renew: versions.refresh !== null,
+        },
+      },
+      tx,
+    );
+
+    return connectionId;
   });
 
-  const shared = {
-    base_url: start.base_url,
-    issuer: start.issuer,
-    authorization_endpoint: start.authorization_endpoint,
-    token_endpoint: start.token_endpoint,
-    registration_endpoint: start.registration_endpoint,
-    client_id: start.client_id,
-    scopes: start.scopes,
-    granted_scopes: grantedScopes(token),
-    service_name: start.service_name,
-    service_description: start.service_description,
-    access_token_version: versions.access,
-    refresh_token_version: versions.refresh,
-    expires_at: expiryOf(token),
-    last_refreshed_at: now,
-    refresh_failed_at: null,
-    last_error: null,
-    updated_at: now,
+  return {
+    ok: true,
+    name: start.name,
+    connection_id: connectionId,
+    renewed: Boolean(start.connection_id),
   };
-
-  let connectionId: string;
-  if (existing) {
-    await db
-      .update(outboundConnections)
-      .set(shared)
-      .where(
-        and(
-          eq(outboundConnections.id, existing.id),
-          eq(outboundConnections.tenant_id, start.tenant_id),
-        ),
-      );
-    connectionId = existing.id;
-  } else {
-    const [created] = await db
-      .insert(outboundConnections)
-      .values({
-        tenant_id: start.tenant_id,
-        name: start.name,
-        created_by: start.user_id,
-        ...shared,
-      })
-      .returning({ id: outboundConnections.id });
-    if (!created) throw new Error("outbound connection insert returned no row");
-    connectionId = created.id;
-  }
-
-  await auditAwait(
-    {
-      tenant_id: start.tenant_id,
-      actor_type: "user",
-      actor_id: start.user_id,
-      action: existing ? AuditAction.CONNECTION_RENEWED : AuditAction.CONNECTION_CREATED,
-      resource_type: "connection",
-      resource_id: connectionId,
-      result: "success",
-      metadata: {
-        name: start.name,
-        issuer_host: new URL(start.issuer).host,
-        scopes: start.scopes,
-        granted_scopes: grantedScopes(token),
-        expires_at: expiryOf(token)?.toISOString() ?? null,
-        auto_renew: versions.refresh !== null,
-      },
-    },
-    db,
-  );
-
-  return { ok: true, name: start.name, connection_id: connectionId, renewed: Boolean(existing) };
 }
 
 // ── Reading and listing ─────────────────────────────────────────────────────
@@ -591,51 +615,91 @@ async function refreshRow(
       { grant_type: "refresh_token", refresh_token: refreshToken, client_id: row.client_id },
       "refresh_failed",
     );
-    const versions = await storeTokens(db, {
-      tenant_id: row.tenant_id,
-      name: row.name,
-      token,
-      created_by: actorId,
-      previous: { access: row.access_token_version, refresh: row.refresh_token_version },
-    });
     const now = new Date();
-    const [updated] = await db
-      .update(outboundConnections)
-      .set({
-        access_token_version: versions.access,
-        refresh_token_version: versions.refresh,
-        expires_at: expiryOf(token),
-        granted_scopes: grantedScopes(token) ?? row.granted_scopes,
-        last_refreshed_at: now,
-        refresh_failed_at: null,
-        last_error: null,
-        updated_at: now,
-      })
-      .where(
-        and(eq(outboundConnections.id, row.id), eq(outboundConnections.tenant_id, row.tenant_id)),
-      )
-      .returning();
-    await auditAwait(
-      {
-        tenant_id: row.tenant_id,
-        actor_type: actorId ? "user" : "system",
-        actor_id: actorId,
-        action: AuditAction.CONNECTION_REFRESHED,
-        resource_type: "connection",
-        resource_id: row.id,
-        result: "success",
-        metadata: { name: row.name, expires_at: expiryOf(token)?.toISOString() ?? null },
-      },
-      db,
+    const nextScopes = grantedScopes(token) ?? row.granted_scopes;
+    const authorityChanged = !sameAuthorityScopes(
+      row.granted_scopes?.join(" ") ?? null,
+      nextScopes?.join(" ") ?? null,
     );
-    return updated ?? row;
+    return await db.transaction(async (tx) => {
+      // Network work stays outside the transaction. Recheck its source under
+      // the row lock BEFORE creating or retiring any local secret version.
+      const [current] = await tx
+        .select({ id: outboundConnections.id })
+        .from(outboundConnections)
+        .where(
+          and(
+            eq(outboundConnections.id, row.id),
+            eq(outboundConnections.tenant_id, row.tenant_id),
+            eq(outboundConnections.authority_revision, row.authority_revision),
+            eq(outboundConnections.access_token_version, row.access_token_version),
+          ),
+        )
+        .for("update");
+      if (!current)
+        throw new ConnectionError("refresh_failed", "connection changed during refresh");
+      const versions = await storeTokens(tx, {
+        tenant_id: row.tenant_id,
+        name: row.name,
+        token,
+        created_by: actorId,
+        previous: { access: row.access_token_version, refresh: row.refresh_token_version },
+      });
+      const [updated] = await tx
+        .update(outboundConnections)
+        .set({
+          access_token_version: versions.access,
+          refresh_token_version: versions.refresh,
+          expires_at: expiryOf(token),
+          granted_scopes: nextScopes,
+          authority_revision: row.authority_revision + (authorityChanged ? 1 : 0),
+          last_refreshed_at: now,
+          refresh_failed_at: null,
+          last_error: null,
+          updated_at: now,
+        })
+        .where(
+          and(
+            eq(outboundConnections.id, row.id),
+            eq(outboundConnections.tenant_id, row.tenant_id),
+            eq(outboundConnections.authority_revision, row.authority_revision),
+            eq(outboundConnections.access_token_version, row.access_token_version),
+          ),
+        )
+        .returning();
+      if (!updated)
+        throw new ConnectionError("refresh_failed", "connection changed during refresh");
+      await auditAwait(
+        {
+          tenant_id: row.tenant_id,
+          actor_type: actorId ? "user" : "system",
+          actor_id: actorId,
+          action: AuditAction.CONNECTION_REFRESHED,
+          resource_type: "connection",
+          resource_id: row.id,
+          result: "success",
+          metadata: {
+            name: row.name,
+            expires_at: expiryOf(token)?.toISOString() ?? null,
+            authority_changed: authorityChanged,
+          },
+        },
+        tx,
+      );
+      return updated;
+    });
   } catch (error) {
     const message = messageOf(error);
     await db
       .update(outboundConnections)
       .set({ refresh_failed_at: new Date(), last_error: message, updated_at: new Date() })
       .where(
-        and(eq(outboundConnections.id, row.id), eq(outboundConnections.tenant_id, row.tenant_id)),
+        and(
+          eq(outboundConnections.id, row.id),
+          eq(outboundConnections.tenant_id, row.tenant_id),
+          eq(outboundConnections.authority_revision, row.authority_revision),
+          eq(outboundConnections.access_token_version, row.access_token_version),
+        ),
       );
     await auditAwait(
       {

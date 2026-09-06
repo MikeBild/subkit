@@ -9,6 +9,7 @@
 //
 // Every mutation writes an audit row.
 
+import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -17,7 +18,11 @@ import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import { connectors, credentials, outboundConnections } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
-import { hasCredentialConnectionColumn } from "../runtime-config/secret-columns.ts";
+import {
+  hasCredentialAuthorityRevisionColumn,
+  hasCredentialConnectionColumn,
+} from "../runtime-config/secret-columns.ts";
+import { authorityScopeSet, sameAuthorityScopes } from "./authority-scopes.ts";
 import { readAccessToken } from "./connections/service.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -306,11 +311,23 @@ export async function upsertCredential(
       : ne(credentials.mode, "oauth2_client");
     // This function runs inside data migrations (and their proofs) against
     // the schema that preceded 0048, so it names only the columns every
-    // release has had: the select projects `id`, the insert is written by
+    // release has had: the select projects legacy identity/material columns, the insert is written by
     // hand there, and `connection_id` is set only where it exists.
     const withConnectionColumn = await hasCredentialConnectionColumn(tx);
+    const withAuthorityRevision = await hasCredentialAuthorityRevisionColumn(tx);
     const existing = await tx
-      .select({ id: credentials.id })
+      .select({
+        id: credentials.id,
+        mode: credentials.mode,
+        ciphertext: credentials.ciphertext,
+        iv: credentials.iv,
+        auth_tag: credentials.auth_tag,
+        oauth2_refresh_ciphertext: credentials.oauth2_refresh_ciphertext,
+        oauth2_refresh_iv: credentials.oauth2_refresh_iv,
+        oauth2_refresh_auth_tag: credentials.oauth2_refresh_auth_tag,
+        granted_scopes: credentials.granted_scopes,
+        ...(withConnectionColumn ? { connection_id: credentials.connection_id } : {}),
+      })
       .from(credentials)
       .where(
         and(
@@ -320,7 +337,9 @@ export async function upsertCredential(
           slotPredicate,
         ),
       )
-      .limit(1);
+      .orderBy(desc(credentials.created_at), desc(credentials.id))
+      .limit(1)
+      .for("update");
     const priorId = existing[0]?.id ?? null;
 
     // Allocate a placeholder row first to get the id for AAD binding.
@@ -328,7 +347,7 @@ export async function upsertCredential(
     let id: string;
     if (priorId) {
       id = priorId;
-    } else if (withConnectionColumn) {
+    } else if (withConnectionColumn && withAuthorityRevision) {
       const [row] = await tx
         .insert(credentials)
         .values({
@@ -352,6 +371,49 @@ export async function upsertCredential(
       id = row.id;
     }
     const plain = serializePlain(input.value);
+    const grantedScopes =
+      input.oauth2_granted_scopes ??
+      (input.value.mode === "oauth2" ? (input.value.scope ?? null) : null);
+    let authorityChanged = Boolean(priorId);
+    const prior = existing[0];
+    if (prior) {
+      try {
+        const previousPlain = decryptSecret(
+          { ciphertext: prior.ciphertext, iv: prior.iv, auth_tag: prior.auth_tag },
+          aadFor(input.tenant_id, id),
+        );
+        const previousRefresh =
+          prior.oauth2_refresh_ciphertext &&
+          prior.oauth2_refresh_iv &&
+          prior.oauth2_refresh_auth_tag
+            ? decryptSecret(
+                {
+                  ciphertext: prior.oauth2_refresh_ciphertext,
+                  iv: prior.oauth2_refresh_iv,
+                  auth_tag: prior.oauth2_refresh_auth_tag,
+                },
+                refreshAadFor(input.tenant_id, id),
+              )
+            : null;
+        const nextRefresh = input.mode === "oauth2" ? input.oauth2_refresh_token || null : null;
+        const previousMaterial = previousPlain === "" ? null : JSON.parse(previousPlain);
+        const nextMaterial = plain === "" ? null : JSON.parse(plain);
+        if (prior.mode === "oauth2" && input.mode === "oauth2") {
+          previousMaterial.scope = authorityScopeSet(previousMaterial.scope ?? null);
+          nextMaterial.scope = authorityScopeSet(nextMaterial.scope ?? null);
+        }
+        authorityChanged =
+          prior.mode !== input.mode ||
+          (prior.connection_id ?? null) !== (input.connection_id ?? null) ||
+          !sameAuthorityScopes(prior.granted_scopes, grantedScopes) ||
+          !isDeepStrictEqual(previousMaterial, nextMaterial) ||
+          previousRefresh !== nextRefresh;
+      } catch {
+        // An operator must still be able to replace unreadable old material.
+        // Unknown equivalence means a new boundary, never retained authority.
+        authorityChanged = true;
+      }
+    }
     const payload = encryptSecret(plain, aadFor(input.tenant_id, id));
     let refreshPayload: EncryptedPayload | null = null;
     if (input.mode === "oauth2" && input.oauth2_refresh_token) {
@@ -376,7 +438,10 @@ export async function upsertCredential(
         // so probe / test can compute partial_grant without re-fetching
         // the OAuth bundle. Null for non-oauth2 modes (refresh-worker
         // and conversation-tool callers pass through).
-        granted_scopes: input.oauth2_granted_scopes ?? null,
+        granted_scopes: grantedScopes,
+        ...(withAuthorityRevision && authorityChanged
+          ? { authority_revision: sql`${credentials.authority_revision} + 1` }
+          : {}),
         ...(withConnectionColumn ? { connection_id: input.connection_id ?? null } : {}),
         updated_at: new Date(),
       })
@@ -396,6 +461,7 @@ export async function upsertCredential(
           environment: input.environment,
           mode: input.mode,
           source: input.source ?? "unspecified",
+          authority_changed: authorityChanged,
           ...(input.connection_id ? { connection_id: input.connection_id } : {}),
         },
       },
@@ -426,55 +492,88 @@ export async function rotateOAuth2Tokens(
   exec?: Executor,
 ): Promise<void> {
   const db = exec ?? getDb();
-  const payload = encryptSecret(
-    JSON.stringify({
-      access_token: input.access_token,
-      token_type: input.token_type ?? "Bearer",
-      scope: input.scope,
-    }),
-    aadFor(input.tenant_id, input.credential_id),
-  );
-  let refreshPayload: EncryptedPayload | null = null;
-  if (input.refresh_token) {
-    refreshPayload = encryptSecret(
-      input.refresh_token,
-      refreshAadFor(input.tenant_id, input.credential_id),
+  await db.transaction(async (tx) => {
+    const [prior] = await tx
+      .select({
+        mode: credentials.mode,
+        granted_scopes: credentials.granted_scopes,
+        ciphertext: credentials.ciphertext,
+        iv: credentials.iv,
+        auth_tag: credentials.auth_tag,
+      })
+      .from(credentials)
+      .where(
+        and(eq(credentials.tenant_id, input.tenant_id), eq(credentials.id, input.credential_id)),
+      )
+      .for("update");
+    if (prior?.mode !== "oauth2") throw new Error("OAuth credential unavailable for refresh");
+    const priorValue = deserializePlain(
+      "oauth2",
+      decryptSecret(
+        {
+          ciphertext: prior.ciphertext,
+          iv: prior.iv,
+          auth_tag: prior.auth_tag,
+        },
+        aadFor(input.tenant_id, input.credential_id),
+      ),
     );
-  }
-  await db
-    .update(credentials)
-    .set({
-      mode: "oauth2",
-      ciphertext: toBuf(payload.ciphertext),
-      iv: toBuf(payload.iv),
-      auth_tag: toBuf(payload.auth_tag),
-      ...(refreshPayload
-        ? {
-            oauth2_refresh_ciphertext: toBuf(refreshPayload.ciphertext),
-            oauth2_refresh_iv: toBuf(refreshPayload.iv),
-            oauth2_refresh_auth_tag: toBuf(refreshPayload.auth_tag),
-          }
-        : {}),
-      oauth2_expires_at: input.expires_at ?? null,
-      updated_at: new Date(),
-    })
-    .where(
-      and(eq(credentials.tenant_id, input.tenant_id), eq(credentials.id, input.credential_id)),
+    if (priorValue.mode !== "oauth2") throw new Error("OAuth credential unavailable for refresh");
+    const previousScope = prior.granted_scopes ?? priorValue.scope ?? null;
+    const nextScope = input.scope ?? previousScope;
+    const previousType = priorValue.token_type ?? "Bearer";
+    const nextType = input.token_type ?? previousType;
+    const authorityChanged =
+      !sameAuthorityScopes(previousScope, nextScope) || previousType !== nextType;
+    const withAuthorityRevision = await hasCredentialAuthorityRevisionColumn(tx);
+    const payload = encryptSecret(
+      JSON.stringify({
+        access_token: input.access_token,
+        token_type: nextType,
+        ...(nextScope === null ? {} : { scope: nextScope }),
+      }),
+      aadFor(input.tenant_id, input.credential_id),
     );
-
-  await auditAwait(
-    {
-      tenant_id: input.tenant_id,
-      actor_type: input.actor_id ? "user" : "system",
-      actor_id: input.actor_id,
-      action: AuditAction.CREDENTIAL_ROTATED,
-      resource_type: "credential",
-      resource_id: input.credential_id,
-      result: "success",
-      metadata: { reason: "oauth2_refresh" },
-    },
-    db,
-  );
+    const refreshPayload = input.refresh_token
+      ? encryptSecret(input.refresh_token, refreshAadFor(input.tenant_id, input.credential_id))
+      : null;
+    await tx
+      .update(credentials)
+      .set({
+        ciphertext: toBuf(payload.ciphertext),
+        iv: toBuf(payload.iv),
+        auth_tag: toBuf(payload.auth_tag),
+        ...(refreshPayload
+          ? {
+              oauth2_refresh_ciphertext: toBuf(refreshPayload.ciphertext),
+              oauth2_refresh_iv: toBuf(refreshPayload.iv),
+              oauth2_refresh_auth_tag: toBuf(refreshPayload.auth_tag),
+            }
+          : {}),
+        granted_scopes: nextScope,
+        ...(withAuthorityRevision && authorityChanged
+          ? { authority_revision: sql`${credentials.authority_revision} + 1` }
+          : {}),
+        oauth2_expires_at: input.expires_at ?? null,
+        updated_at: new Date(),
+      })
+      .where(
+        and(eq(credentials.tenant_id, input.tenant_id), eq(credentials.id, input.credential_id)),
+      );
+    await auditAwait(
+      {
+        tenant_id: input.tenant_id,
+        actor_type: input.actor_id ? "user" : "system",
+        actor_id: input.actor_id,
+        action: AuditAction.CREDENTIAL_ROTATED,
+        resource_type: "credential",
+        resource_id: input.credential_id,
+        result: "success",
+        metadata: { reason: "oauth2_refresh", authority_changed: authorityChanged },
+      },
+      tx,
+    );
+  });
 
   logger.info({
     module: "credentials",

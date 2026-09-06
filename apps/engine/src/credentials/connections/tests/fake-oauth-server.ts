@@ -33,6 +33,8 @@ export interface FakeOAuthServer {
   registration: boolean;
   /** Refuse every refresh_token grant when true. */
   refuseRefresh: boolean;
+  /** Deterministic race seam: hold an already-issued refresh response. */
+  beforeRefreshResponse?: () => Promise<void>;
   /** Tokens handed out so far, newest last. */
   accessTokens: string[];
   close: () => Promise<void>;
@@ -197,6 +199,7 @@ export async function startFakeOAuthServer(
         refreshTokens.set(refresh_token, { client_id, scope });
         body.refresh_token = refresh_token;
       }
+      if (grant === "refresh_token") await state.beforeRefreshResponse?.();
       return json(res, 200, body);
     }
     if (url.pathname === "/api/whoami" && req.method === "GET") {

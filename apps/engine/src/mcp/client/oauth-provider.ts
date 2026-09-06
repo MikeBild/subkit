@@ -53,6 +53,7 @@ import { and, desc, eq, gt } from "drizzle-orm";
 import {
   getCredentialForConnector,
   getOAuth2ClientCredential,
+  rotateOAuth2Tokens,
   upsertCredential,
 } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
@@ -268,37 +269,59 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
    */
   async saveTokens(tokens: OAuthTokens): Promise<void> {
     let refresh: string | null = tokens.refresh_token ?? null;
-    if (!refresh) {
-      const prior = await getCredentialForConnector(
-        this.tenant_id,
-        this.connector_id,
-        this.environment,
-        this.db,
-      );
-      if (prior && prior.value.mode === "oauth2") refresh = prior.value.refresh_token;
-    }
+    const prior =
+      !this.interactive || !refresh
+        ? await getCredentialForConnector(
+            this.tenant_id,
+            this.connector_id,
+            this.environment,
+            this.db,
+          )
+        : null;
+    if (!refresh && prior?.value.mode === "oauth2") refresh = prior.value.refresh_token;
     const expiresAt =
       typeof tokens.expires_in === "number" ? new Date(now() + tokens.expires_in * 1000) : null;
-    await upsertCredential(
-      {
-        tenant_id: this.tenant_id,
-        connector_id: this.connector_id,
-        environment: this.environment,
-        mode: "oauth2",
-        value: {
-          mode: "oauth2",
+    if (!this.interactive) {
+      // Only the browser authorization flow establishes a new credential.
+      // A pool handshake can refresh an existing grant, not replace identity
+      // or detach credentials managed by an outbound connection.
+      if (prior?.value.mode !== "oauth2" || prior.row.connection_id) {
+        throw new Error("interactive authorization required before tokens can be saved");
+      }
+      await rotateOAuth2Tokens(
+        {
+          tenant_id: this.tenant_id,
+          credential_id: prior.row.id,
           access_token: tokens.access_token,
-          token_type: tokens.token_type || "Bearer",
-          ...(tokens.scope !== undefined ? { scope: tokens.scope } : {}),
+          token_type: tokens.token_type,
+          scope: tokens.scope,
+          refresh_token: refresh,
+          expires_at: expiresAt,
+          actor_id: null,
         },
-        oauth2_refresh_token: refresh,
-        oauth2_expires_at: expiresAt,
-        ...(tokens.scope !== undefined ? { oauth2_granted_scopes: tokens.scope } : {}),
-        actor_id: null,
-        source: "oauth_callback",
-      },
-      this.db,
-    );
+        this.db,
+      );
+    } else
+      await upsertCredential(
+        {
+          tenant_id: this.tenant_id,
+          connector_id: this.connector_id,
+          environment: this.environment,
+          mode: "oauth2",
+          value: {
+            mode: "oauth2",
+            access_token: tokens.access_token,
+            token_type: tokens.token_type || "Bearer",
+            ...(tokens.scope !== undefined ? { scope: tokens.scope } : {}),
+          },
+          oauth2_refresh_token: refresh,
+          oauth2_expires_at: expiresAt,
+          ...(tokens.scope !== undefined ? { oauth2_granted_scopes: tokens.scope } : {}),
+          actor_id: null,
+          source: "oauth_callback",
+        },
+        this.db,
+      );
     logger.info({
       module: "mcp_oauth",
       action: "tokens.saved",

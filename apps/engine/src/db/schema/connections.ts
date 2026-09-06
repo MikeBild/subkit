@@ -9,7 +9,9 @@
 // endpoints, the registered client id, the scopes, and where the current
 // versions live.
 
+import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   jsonb,
@@ -38,6 +40,7 @@ export const outboundConnections = pgTable(
     registration_endpoint: text("registration_endpoint"),
     /** The client id the server handed out at dynamic registration. Public client, no secret. */
     client_id: text("client_id").notNull(),
+    authority_revision: integer("authority_revision").notNull().default(1),
     /** Scopes the person asked for, in the order picked. */
     scopes: jsonb("scopes").notNull().$type<string[]>(),
     /** Scopes the server actually granted (may be a subset), null when it did not say. */
@@ -59,6 +62,7 @@ export const outboundConnections = pgTable(
   },
   (t) => [
     uniqueIndex("outbound_connections_tenant_name_key").on(t.tenant_id, t.name),
+    check("outbound_connections_authority_revision_positive", sql`${t.authority_revision} > 0`),
     index("outbound_connections_expires_idx").on(t.expires_at),
   ],
 );

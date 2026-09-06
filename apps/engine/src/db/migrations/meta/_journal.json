@@ -372,6 +372,20 @@
       "when": 1788630174091,
       "tag": "0052_workflow_authority_immutability",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1788678312029,
+      "tag": "0053_minor_kid_colt",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1788679359703,
+      "tag": "0054_neat_alex_wilder",
+      "breakpoints": true
     }
   ]
 }
