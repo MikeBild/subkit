@@ -92,6 +92,7 @@ export const RuntimeRunBodySchema = z.discriminatedUnion("source", [
     hold_writes: z.literal(false).optional(),
     workflow_id: z.string().uuid(),
     version_id: z.string().uuid().optional(),
+    execution_authority_id: z.string().uuid().optional(),
     input: z.unknown().optional(),
     async: z.boolean().optional(),
     idempotency_key: IdempotencyKeySchema.optional(),
@@ -147,6 +148,10 @@ export const RunBodySchema = z.discriminatedUnion("source", [
       hold_writes: z.literal(false).optional(),
       workflow_id: z.string().uuid(),
       version_id: z.string().uuid().optional(),
+      execution_authority_id: z.string().uuid().optional().openapi({
+        description:
+          "Use an existing human-granted execution authority. Its exact version, environment, manifest, validity and remaining runs are checked by the server; this field never grants authority.",
+      }),
       input: z.unknown().optional(),
       async: z.boolean().optional(),
       idempotency_key: IdempotencyKeySchema.optional(),

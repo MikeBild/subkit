@@ -83,11 +83,12 @@ authorities cannot acquire reservations. Revocation is terminal. A version that
 an authority references cannot have its definition or identity rewritten, while
 preview-only shape hints can still refresh.
 
-This is the storage contract, not a new public grant or dispatch path by itself.
-Admission services must validate the human decision and canonical manifest, lock
-the exact version while granting, and reserve transactionally before enqueueing.
-Dispatch must independently recheck the current boundary. A reservation counts
-admitted work, not proof of a completed external effect.
+Storage alone is not execution admission. The human grant API below validates
+the decision and locks the exact version while storing it. The authority-bound
+run path reserves transactionally before enqueueing and independently rechecks
+the current boundary before dispatch. A reservation counts admitted work, not
+proof of a completed external effect. The grant endpoints do not themselves
+activate a draft, enqueue a run, or bypass existing execution checks.
 
 The product-local manifest compiler binds the tenant, workflow/version, canonical
 definition digest, execution environment and resolved execution-options digest.
@@ -102,6 +103,76 @@ nothing. Missing or mismatched bindings, runtime-substituted request values
 (including recipients in bodies), target-rewriting hooks, unpinned child workflow
 calls, unknown SQL/MCP tool effects and destructive DELETE operations are not
 eligible for repeated-run authority. Existing exact-run review remains separate.
+
+### Human-bound execution authority API
+
+| Operation | Endpoint | Permission |
+|---|---|---|
+| Prepare a read-only review | `GET /v1/workflows/{id}/versions/{version_id}/authority-preview?environment=dev` | `workflow:read` |
+| Grant the reviewed boundary | `POST /v1/workflows/{id}/execution-authorities` | `workflow:write` and human browser proof |
+| Read the current boundary | `GET /v1/workflows/{id}/execution-authorities/{authority_id}` | `workflow:read` |
+| Revoke it | `POST /v1/workflows/{id}/execution-authorities/{authority_id}/revoke` | `workflow:write` and human browser proof |
+| Run within a stored authority | `POST /v1/executions` with `source: saved` and `execution_authority_id` | `workflow:run` and the existing workflow allowlist |
+
+Preparation reads the stored exact version and the connector selected for the
+requested environment. It does not decrypt credentials, refresh OAuth, probe
+the destination, or execute a workflow. The response includes an effect manifest,
+its digest, eligibility and unavailable-step reasons. The suggested bounds are
+one run during the next 24 hours, requiring no operator configuration. The
+human may choose a different finite count and interval: at most 10,000 runs and
+31 days. The grant request sends the displayed `valid_from`, `valid_until`,
+`max_runs`, `execution_environment`, `workflow_version_id` and
+`expected_manifest_digest` explicitly.
+
+Only a signed browser session matching the authenticated principal can grant or
+revoke. Its database session must still be live, and a matching CSRF proof is
+required. An API key is not a human decision, even when its owner is an admin.
+The service re-resolves the manifest under the version lock and refuses a changed
+digest. Authority and audit commit together. Identical concurrent browser retries
+return the same authority rather than multiplying its run allowance. Revocation
+is idempotent; replaying an old grant request cannot resurrect a revoked grant.
+
+The explicit authority-bound run path uses the active exact version, validates
+input before reservation, and stores the authority id on the execution and its
+queued event. The execution row, run-counter reservation and event commit in one
+transaction. Parallel attempts cannot overdraw the last available run. Once
+reserved, a run may proceed even when no runs remain for **new** admissions.
+Cancellation or failure does not refund an admitted run.
+
+An authorized asynchronous request requires an `idempotency_key` (or the
+`Idempotency-Key` header). Repeating it after queue failure re-enqueues the same
+reserved execution, without a new allowance charge. A changed workflow, explicit
+version, authority, environment or input under the same key is rejected. The
+worker binds the stored version and disables self-healing, write-holding and
+output-fixture overrides for these runs.
+
+HTTP and GraphQL dispatch recheck validity, revocation, active version, targets
+and credential authority immediately before each business request, including
+retries and checks after inline OAuth refresh. Routine token refresh preserves
+authority; changed scopes stop the business request. A request already in flight
+cannot be recalled. HTTP write retries reuse one logical idempotency key per
+persisted step instance and page; upstream deduplication still depends on remote
+support and is not an exactly-once promise.
+
+This explicit run path does not yet replace legacy REST runs, scheduler/webhook
+admission, or exact tool approvals. Omitting `execution_authority_id` still uses
+the existing run path; the grant alone must not be interpreted as a portfolio-wide
+default or as enforcement for every execution entry point.
+
+The resolver currently supports static HTTP targets and the single GraphQL
+endpoint. HTTP paths use the same joining rules as dispatch. A different resolved
+connector row, environment, configuration, template, credential generation or
+permission scope changes the binding. Normal OAuth token refresh does not.
+Targets omit URL userinfo, query values and fragments from the display; full
+request/configuration digests retain the exact binding. URLs containing userinfo
+are ineligible. Runtime placeholders, response-driven pagination, unpinned child
+calls, and drivers whose targets are not yet resolved require concrete-run review.
+Normalized workflow defaults are also digest-bound.
+
+Reads show remaining runs and distinguish future, approved, expired, revoked,
+exhausted, invalidated and temporarily unavailable boundaries. A changed connector
+target is shown as invalidated, not as approved. Authority approval is separate
+from workflow activation and is not a report of a successful run.
 The compiler is not yet a public grant endpoint: server resolution, human review
 and run admission must be connected before it can authorize executions.
 

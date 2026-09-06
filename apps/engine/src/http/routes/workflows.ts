@@ -25,6 +25,7 @@ import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
+import { registerWorkflowAuthorityRoutes } from "./workflow-authorities.ts";
 import { registerWorkflowDraftRoutes } from "./workflow-drafts.ts";
 
 const WorkflowSchema = z
@@ -559,6 +560,7 @@ const inputSchemaRoute = createRoute({
 });
 
 export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
+  registerWorkflowAuthorityRoutes(app);
   registerWorkflowDraftRoutes(app);
   // Pass-2 C5: RBAC gating. Every mutation + run goes through
   // `requirePermission` which calls the `can()` evaluator. Admin

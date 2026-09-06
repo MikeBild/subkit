@@ -120,6 +120,7 @@ function extractOperationName(query: string, fallback: string): string {
 }
 
 export async function executeGraphQLRequest(p: {
+  before_dispatch?: () => Promise<void>;
   db: Db;
   tenant_id: string;
   connector: ConnectorView;
@@ -223,6 +224,7 @@ export async function executeGraphQLRequest(p: {
   // GraphQL surface returns the obtuse "Invalid header name" error.
   // (Audit anti-pattern C1, conversation 730c568a.)
   validateOutboundHeaders(headers);
+  await p.before_dispatch?.();
   const res = await instrument({
     module: "connector",
     action: "driver.graphql.request",
@@ -288,6 +290,7 @@ export async function executeGraphQLRequest(p: {
  * a single self-explanatory function.
  */
 export async function query(p: {
+  before_dispatch?: () => Promise<void>;
   db: Db;
   tenant_id: string;
   connector: ConnectorView;
@@ -310,6 +313,7 @@ export async function query(p: {
     op,
   };
   if (p.extra_headers !== undefined) args.extra_headers = p.extra_headers;
+  if (p.before_dispatch !== undefined) args.before_dispatch = p.before_dispatch;
   if (p.fetchImpl !== undefined) args.fetchImpl = p.fetchImpl;
   if (p.credential_override !== undefined) args.credential_override = p.credential_override;
   return await executeGraphQLRequest(args);

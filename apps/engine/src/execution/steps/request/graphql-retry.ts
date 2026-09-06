@@ -123,6 +123,14 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
         },
       );
     } catch (err) {
+      if (err instanceof RequestError && err.cause_kind === "authority_invalid") {
+        return {
+          status: "failed",
+          retry_count: attempt,
+          duration_ms: Date.now() - start,
+          error: buildStepErrorDetail({ code: "authority_invalid", err }),
+        };
+      }
       // Header-contract violations: non-retryable, surface as request_invalid.
       if (err instanceof HttpRequestInvalidError) {
         return {

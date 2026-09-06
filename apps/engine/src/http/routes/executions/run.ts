@@ -11,6 +11,7 @@ import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/index.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
 import {
+  admitAuthorizedWorkflowExecution,
   createExecution,
   finalizeExecution,
   findExecutionByIdempotencyKey,
@@ -50,6 +51,10 @@ const runExecutionRoute = createRoute({
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
     404: {
       description: "Workflow not found",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    409: {
+      description: "Execution authority or replay boundary no longer matches",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },
@@ -181,7 +186,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
         httpStatus,
       );
     };
-    if (idempotencyKey) {
+    if (idempotencyKey && !(body.source === "saved" && body.execution_authority_id)) {
       const replayed = await replay();
       if (replayed) return replayed;
     }
@@ -190,6 +195,101 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
     const envHeader = c.req.header("x-subkit-environment");
     let execution_mode: ExecutionMode = "dev";
     if (envHeader === "dev" || envHeader === "prod") execution_mode = envHeader;
+
+    if (body.source === "saved" && body.execution_authority_id) {
+      if (body.async && !idempotencyKey) {
+        throw new BadRequestError(
+          "An authorized async run requires an idempotency_key so queue retries reuse its reservation",
+          {
+            code: "bad_request",
+          },
+        );
+      }
+      // Authorization is product-local: the id selects a stored human grant,
+      // not a claim from the calling agent. Admission reserves atomically and
+      // validates idempotent retries against the original complete boundary.
+      let admitted: Awaited<ReturnType<typeof admitAuthorizedWorkflowExecution>>;
+      try {
+        admitted = await admitAuthorizedWorkflowExecution(
+          {
+            tenant_id: principal.tenant_id,
+            workflow_id: body.workflow_id,
+            workflow_version_id: body.version_id,
+            execution_authority_id: body.execution_authority_id,
+            execution_environment: execution_mode,
+            request_source: body.request_source ?? "api",
+            input: body.input ?? null,
+            idempotency_key: idempotencyKey ?? undefined,
+          },
+          db,
+        );
+      } catch (error) {
+        const code = (error as { code?: string }).code;
+        if (code === "input_schema_violation")
+          throw new HttpError(400, code, (error as Error).message);
+        if (
+          code?.startsWith("execution_") ||
+          code === "workflow_version_unavailable" ||
+          code === "workflow_version_not_active"
+        )
+          throw new HttpError(409, code, (error as Error).message);
+        throw error;
+      }
+      if (admitted.replayed && admitted.status !== "queued") {
+        return c.json(
+          {
+            execution_id: admitted.execution_id,
+            status: admitted.status,
+            idempotent_replay: true,
+          },
+          admitted.status === "running" ? 202 : 200,
+        );
+      }
+      if (body.async) {
+        // A queue outage leaves the SAME reserved run retryable. Re-enqueueing
+        // never spends another allowance; worker startup claims queued rows.
+        await (c.get("boss") ?? getBoss()).send(EXECUTION_RUN_QUEUE, {
+          tenant_id: principal.tenant_id,
+          workflow_id: body.workflow_id,
+          execution_id: admitted.execution_id,
+          input: admitted.input,
+          request_source: body.request_source ?? "api",
+          trace_id: c.get("trace_id") ?? null,
+          execution_mode,
+        } satisfies ExecutionRunJob);
+        return c.json(
+          {
+            execution_id: admitted.execution_id,
+            status: "queued",
+            ...(admitted.replayed ? { idempotent_replay: true } : {}),
+          },
+          202,
+        );
+      }
+      const result = await runExecution({
+        db,
+        tenant_id: principal.tenant_id,
+        source: {
+          kind: "saved",
+          workflow_id: body.workflow_id,
+          version_id: admitted.workflow_version_id,
+        },
+        input: admitted.input,
+        options: {
+          existing_execution_id: admitted.execution_id,
+          principal,
+          execution_mode,
+          request_source: body.request_source ?? "api",
+        },
+      });
+      return c.json(
+        {
+          ...result,
+          ...(admitted.replayed ? { idempotent_replay: true } : {}),
+        },
+        200,
+      );
+    }
 
     let source: RunExecutionSource;
     if (body.source === "saved") {

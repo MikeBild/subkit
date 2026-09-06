@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -13,7 +15,7 @@ import {
 import { executionModeEnum, tenantId, timestamps } from "./_common.ts";
 import { connectors } from "./connectors.ts";
 import { tenants } from "./identity.ts";
-import { workflows, workflowVersions } from "./workflows.ts";
+import { workflowExecutionAuthorities, workflows, workflowVersions } from "./workflows.ts";
 
 export const executionStatusEnum = pgEnum("execution_status", [
   "queued",
@@ -53,6 +55,7 @@ export const executions = pgTable(
     workflow_version_id: uuid("workflow_version_id").references(() => workflowVersions.id, {
       onDelete: "cascade",
     }),
+    execution_authority_id: uuid("execution_authority_id"),
     source_kind: text("source_kind").notNull().default("saved"),
     source_ref: jsonb("source_ref").$type<Record<string, unknown> | null>(),
     // The run input as supplied by the caller (null when the run had
@@ -79,6 +82,29 @@ export const executions = pgTable(
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
+    index("executions_authority_idx").on(t.tenant_id, t.execution_authority_id),
+    foreignKey({
+      name: "executions_exact_authority_fk",
+      columns: [
+        t.tenant_id,
+        t.execution_authority_id,
+        t.workflow_id,
+        t.workflow_version_id,
+        t.execution_mode,
+      ],
+      foreignColumns: [
+        workflowExecutionAuthorities.tenant_id,
+        workflowExecutionAuthorities.id,
+        workflowExecutionAuthorities.workflow_id,
+        workflowExecutionAuthorities.workflow_version_id,
+        workflowExecutionAuthorities.execution_environment,
+      ],
+    }).onDelete("restrict"),
+    check(
+      "executions_authority_saved_check",
+      sql`${t.execution_authority_id} IS NULL OR
+      (${t.source_kind} = 'saved' AND ${t.workflow_id} IS NOT NULL AND ${t.workflow_version_id} IS NOT NULL)`,
+    ),
     index("executions_tenant_workflow_started_idx").on(t.tenant_id, t.workflow_id, t.started_at),
     index("executions_tenant_status_idx").on(t.tenant_id, t.status),
     // Covers GET /v1/stats/executions: date_trunc(bucket, started_at)

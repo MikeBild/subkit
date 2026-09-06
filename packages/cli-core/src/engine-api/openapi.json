@@ -4302,6 +4302,337 @@
           "server_time"
         ]
       },
+      "WorkflowAuthorityPreview": {
+        "type": "object",
+        "properties": {
+          "manifest": {
+            "$ref": "#/components/schemas/WorkflowEffectManifest"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "eligible_for_repeated_runs": {
+            "type": "boolean"
+          },
+          "unavailable_steps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "suggested_bounds": {
+            "type": "object",
+            "properties": {
+              "valid_from": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "valid_until": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "max_runs": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "valid_from",
+              "valid_until",
+              "max_runs"
+            ]
+          }
+        },
+        "required": [
+          "manifest",
+          "digest",
+          "eligible_for_repeated_runs",
+          "unavailable_steps",
+          "suggested_bounds"
+        ]
+      },
+      "WorkflowEffectManifest": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_version_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_digest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "execution_environment": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
+          "execution_options_digest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "effects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tenant_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "step_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "connector_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid"
+                },
+                "driver": {
+                  "type": "string",
+                  "enum": [
+                    "http",
+                    "graphql",
+                    "postgres",
+                    "s3",
+                    "mcp"
+                  ]
+                },
+                "environment": {
+                  "type": "string",
+                  "enum": [
+                    "dev",
+                    "prod"
+                  ]
+                },
+                "request_digest": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "target": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "minLength": 1
+                },
+                "configuration_digest": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "credential_binding_digest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "rewrites_target": {
+                  "type": "boolean"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "effect": {
+                  "type": "string",
+                  "enum": [
+                    "read",
+                    "write",
+                    "unknown",
+                    "destructive"
+                  ]
+                }
+              },
+              "required": [
+                "tenant_id",
+                "step_id",
+                "connector_id",
+                "driver",
+                "environment",
+                "request_digest",
+                "target",
+                "configuration_digest",
+                "credential_binding_digest",
+                "rewrites_target",
+                "operation",
+                "effect"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step_id": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string",
+                  "enum": [
+                    "missing_binding",
+                    "binding_mismatch",
+                    "environment_mismatch",
+                    "dynamic_request",
+                    "unknown_effect",
+                    "destructive_effect",
+                    "unbound_workflow_call"
+                  ]
+                }
+              },
+              "required": [
+                "step_id",
+                "code"
+              ]
+            }
+          }
+        },
+        "required": [
+          "schema_version",
+          "tenant_id",
+          "workflow_id",
+          "workflow_version_id",
+          "workflow_digest",
+          "execution_environment",
+          "execution_options_digest",
+          "effects",
+          "issues"
+        ],
+        "additionalProperties": false
+      },
+      "WorkflowExecutionAuthority": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_version_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "effect_manifest_digest": {
+            "type": "string"
+          },
+          "effect_manifest": {
+            "$ref": "#/components/schemas/WorkflowEffectManifest"
+          },
+          "execution_environment": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
+          "target_constraints": {
+            "type": "object",
+            "properties": {
+              "targets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "targets"
+            ]
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "max_runs": {
+            "type": "integer"
+          },
+          "reserved_runs": {
+            "type": "integer"
+          },
+          "remaining_runs": {
+            "type": "integer"
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revoked_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "not_yet_valid",
+              "expired",
+              "revoked",
+              "exhausted",
+              "invalidated",
+              "unavailable"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "workflow_id",
+          "workflow_version_id",
+          "effect_manifest_digest",
+          "effect_manifest",
+          "execution_environment",
+          "target_constraints",
+          "valid_from",
+          "valid_until",
+          "max_runs",
+          "reserved_runs",
+          "remaining_runs",
+          "created_by",
+          "created_at",
+          "revoked_at",
+          "revoked_by",
+          "state"
+        ]
+      },
       "WorkflowDraft": {
         "type": "object",
         "properties": {
@@ -7071,6 +7402,11 @@
           "version_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "execution_authority_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Use an existing human-granted execution authority. Its exact version, environment, manifest, validity and remaining runs are checked by the server; this field never grants authority."
           },
           "input": {},
           "async": {
@@ -25944,6 +26280,438 @@
         }
       }
     },
+    "/v1/workflows/{id}/versions/{version_id}/authority-preview": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Review the exact locally resolved effect boundary without executing it",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "version_id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "dev",
+                "prod"
+              ],
+              "default": "dev"
+            },
+            "required": false,
+            "name": "environment",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read-only review with finite default bounds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowAuthorityPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/{id}/execution-authorities": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Grant a reviewed finite boundary from an authenticated human browser",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "workflow_version_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "expected_manifest_digest": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "execution_environment": {
+                    "type": "string",
+                    "enum": [
+                      "dev",
+                      "prod"
+                    ]
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "valid_until": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "max_runs": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10000
+                  }
+                },
+                "required": [
+                  "workflow_version_id",
+                  "expected_manifest_digest",
+                  "execution_environment",
+                  "valid_from",
+                  "valid_until",
+                  "max_runs"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Exact local authority; does not activate or enqueue a workflow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowExecutionAuthority"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/{id}/execution-authorities/{authority_id}": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Read remaining runs, expiry and current effect binding",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "authority_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact local authority; does not activate or enqueue a workflow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowExecutionAuthority"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/{id}/execution-authorities/{authority_id}/revoke": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Revoke the exact execution authority from an authenticated human browser",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "authority_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact local authority; does not activate or enqueue a workflow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowExecutionAuthority"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workflows/drafts": {
       "post": {
         "tags": [
@@ -27059,6 +27827,16 @@
           },
           "404": {
             "description": "Workflow not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Execution authority or replay boundary no longer matches",
             "content": {
               "application/json": {
                 "schema": {

@@ -151,6 +151,13 @@ export const workflowExecutionAuthorities = pgTable(
   },
   (t) => [
     uniqueIndex("workflow_authorities_tenant_id_key").on(t.tenant_id, t.id),
+    uniqueIndex("workflow_authorities_execution_binding_key").on(
+      t.tenant_id,
+      t.id,
+      t.workflow_id,
+      t.workflow_version_id,
+      t.execution_environment,
+    ),
     index("workflow_authorities_boundary_idx")
       .on(t.tenant_id, t.workflow_id, t.workflow_version_id, t.execution_environment)
       .where(sql`${t.revoked_at} IS NULL`),

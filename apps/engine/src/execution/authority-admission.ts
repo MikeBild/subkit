@@ -1,0 +1,245 @@
+import { isDeepStrictEqual } from "node:util";
+import { z } from "@hono/zod-openapi";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import type { Db } from "../db/client.ts";
+import {
+  executions,
+  workflowExecutionAuthorities,
+  workflows,
+  workflowVersions,
+} from "../db/schema/index.ts";
+import { RequestSourceSchema } from "../observability/service-metadata.ts";
+import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
+import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
+import { JsonValueSchema, WorkflowDefSchema } from "../workflows/types.ts";
+import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
+import { validateAgainstJsonSchema } from "./engine/envelope.ts";
+import { createExecution } from "./state.ts";
+
+const admissionSchema = z
+  .object({
+    tenant_id: z.string().uuid(),
+    workflow_id: z.string().uuid(),
+    workflow_version_id: z.string().uuid().optional(),
+    execution_authority_id: z.string().uuid().optional(),
+    execution_environment: z.enum(["dev", "prod"]),
+    request_source: RequestSourceSchema,
+    input: JsonValueSchema.optional(),
+    idempotency_key: z.string().min(1).max(512).optional(),
+    parent_execution_id: z.string().uuid().nullable().optional(),
+  })
+  .strict();
+
+function fail(code: string, message: string): never {
+  throw Object.assign(new Error(message), { code });
+}
+
+/** Caller checks its normal workflow:run permission first. This service checks
+ * the product-local human authority and atomically creates the charged run.
+ * It never enqueues; callers may retry enqueueing the SAME queued execution
+ * after a queue failure, without making a second reservation. */
+export async function admitAuthorizedWorkflowExecution(raw: unknown, db: Db) {
+  const input = admissionSchema.parse(raw);
+  const normalized = JsonValueSchema.parse(normalizeWorkflowRunInput(input.input) ?? null);
+  return db.transaction(async (tx) => {
+    if (input.idempotency_key) {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.tenant_id}:${input.idempotency_key}`}, 0))`,
+      );
+      const [existing] = await tx
+        .select()
+        .from(executions)
+        .where(
+          and(
+            eq(executions.tenant_id, input.tenant_id),
+            eq(executions.idempotency_key, input.idempotency_key),
+          ),
+        )
+        .limit(1);
+      if (existing) {
+        if (
+          !existing.execution_authority_id ||
+          existing.workflow_id !== input.workflow_id ||
+          (input.workflow_version_id &&
+            input.workflow_version_id !== existing.workflow_version_id) ||
+          (input.execution_authority_id &&
+            input.execution_authority_id !== existing.execution_authority_id) ||
+          existing.execution_mode !== input.execution_environment ||
+          (existing.parent_execution_id ?? null) !== (input.parent_execution_id ?? null) ||
+          !isDeepStrictEqual(existing.input, normalized)
+        )
+          fail(
+            "execution_boundary_mismatch",
+            "the idempotency key belongs to a different execution boundary",
+          );
+        return {
+          execution_id: existing.id,
+          execution_authority_id: existing.execution_authority_id,
+          workflow_version_id: existing.workflow_version_id!,
+          status: existing.status,
+          input: normalized,
+          replayed: true,
+        };
+      }
+    }
+    const workflow = await lockWorkflowForVersionWrite(tx, input.tenant_id, input.workflow_id);
+    if (
+      workflow?.lifecycle !== "active" ||
+      !workflow.current_version_id ||
+      (input.workflow_version_id && input.workflow_version_id !== workflow.current_version_id)
+    )
+      fail("workflow_version_not_active", "only the exact active workflow version can be admitted");
+    const [version] = await tx
+      .select({ dag: workflowVersions.dag })
+      .from(workflowVersions)
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, input.tenant_id),
+          eq(workflowVersions.workflow_id, input.workflow_id),
+          eq(workflowVersions.id, workflow.current_version_id),
+        ),
+      )
+      .for("share")
+      .limit(1);
+    if (!version) fail("workflow_version_not_active", "active workflow version unavailable");
+    const definition = WorkflowDefSchema.parse(version.dag);
+    if (
+      definition.input_schema &&
+      !validateAgainstJsonSchema(normalized, definition.input_schema, "$input").valid
+    )
+      fail(
+        "input_schema_violation",
+        "run input does not satisfy the approved workflow's input schema",
+      );
+    const preview = await previewWorkflowAuthority(
+      {
+        tenant_id: input.tenant_id,
+        workflow_id: input.workflow_id,
+        workflow_version_id: workflow.current_version_id,
+        execution_environment: input.execution_environment,
+      },
+      tx,
+    );
+    if (!preview.eligible_for_repeated_runs)
+      fail(
+        "execution_authority_required",
+        "this workflow requires concrete-run review for its current effects",
+      );
+    const [authority] = await tx
+      .select()
+      .from(workflowExecutionAuthorities)
+      .where(
+        and(
+          eq(workflowExecutionAuthorities.tenant_id, input.tenant_id),
+          eq(workflowExecutionAuthorities.workflow_id, input.workflow_id),
+          eq(workflowExecutionAuthorities.workflow_version_id, workflow.current_version_id),
+          eq(workflowExecutionAuthorities.execution_environment, input.execution_environment),
+          input.execution_authority_id
+            ? eq(workflowExecutionAuthorities.id, input.execution_authority_id)
+            : eq(workflowExecutionAuthorities.effect_manifest_digest, preview.digest),
+          isNull(workflowExecutionAuthorities.revoked_at),
+          sql`${workflowExecutionAuthorities.valid_from} <= clock_timestamp()`,
+          sql`${workflowExecutionAuthorities.valid_until} > clock_timestamp()`,
+          sql`${workflowExecutionAuthorities.reserved_runs} < ${workflowExecutionAuthorities.max_runs}`,
+        ),
+      )
+      .orderBy(desc(workflowExecutionAuthorities.created_at), desc(workflowExecutionAuthorities.id))
+      .for("update")
+      .limit(1);
+    if (!authority)
+      fail(
+        "execution_authority_unavailable",
+        "no matching live execution authority has runs remaining",
+      );
+    if (authority.effect_manifest_digest !== preview.digest)
+      fail(
+        "execution_authority_changed",
+        "the execution authority no longer matches the current effect boundary",
+      );
+    const execution_id = await createExecution(tx, {
+      tenant_id: input.tenant_id,
+      workflow_id: input.workflow_id,
+      workflow_version_id: workflow.current_version_id,
+      execution_authority_id: authority.id,
+      execution_mode: input.execution_environment,
+      source_kind: "saved",
+      source_ref: null,
+      input: normalized,
+      request_source: input.request_source,
+      parent_execution_id: input.parent_execution_id ?? null,
+      idempotency_key: input.idempotency_key ?? null,
+    });
+    return {
+      execution_id,
+      execution_authority_id: authority.id,
+      workflow_version_id: workflow.current_version_id,
+      status: "queued" as const,
+      input: normalized,
+      replayed: false,
+    };
+  });
+}
+
+/** Existing reservations remain usable when remaining_runs reaches zero.
+ * Revocation, expiry, active-version or manifest drift still stop NEW dispatch.
+ * This read must be repeated immediately before each outbound effect, including
+ * after credential refresh. It cannot undo an already-dispatched remote call. */
+export async function assertExecutionAuthorityCurrent(
+  db: Db,
+  tenant_id: string,
+  execution_id: string,
+): Promise<void> {
+  const [execution] = await db
+    .select()
+    .from(executions)
+    .where(and(eq(executions.tenant_id, tenant_id), eq(executions.id, execution_id)))
+    .limit(1);
+  if (!execution) fail("execution_boundary_mismatch", "execution unavailable");
+  if (!execution.execution_authority_id) return;
+  if (execution.abort_requested_at || !["queued", "running"].includes(execution.status))
+    fail(
+      "execution_boundary_mismatch",
+      "the authorized execution is cancelled or already terminal",
+    );
+  const [authority] = await db
+    .select()
+    .from(workflowExecutionAuthorities)
+    .innerJoin(
+      workflows,
+      and(
+        eq(workflows.id, workflowExecutionAuthorities.workflow_id),
+        eq(workflows.tenant_id, workflowExecutionAuthorities.tenant_id),
+      ),
+    )
+    .where(
+      and(
+        eq(workflowExecutionAuthorities.tenant_id, tenant_id),
+        eq(workflowExecutionAuthorities.id, execution.execution_authority_id),
+        eq(workflows.lifecycle, "active"),
+        isNull(workflows.deleted_at),
+        eq(workflows.current_version_id, workflowExecutionAuthorities.workflow_version_id),
+        isNull(workflowExecutionAuthorities.revoked_at),
+        sql`${workflowExecutionAuthorities.valid_from} <= clock_timestamp()`,
+        sql`${workflowExecutionAuthorities.valid_until} > clock_timestamp()`,
+        sql`${workflowExecutionAuthorities.reserved_runs} > 0`,
+      ),
+    )
+    .limit(1);
+  if (!authority)
+    fail("execution_authority_unavailable", "the reserved execution authority is no longer live");
+  const boundary = authority.workflow_execution_authorities;
+  const current = await previewWorkflowAuthority(
+    {
+      tenant_id,
+      workflow_id: boundary.workflow_id,
+      workflow_version_id: boundary.workflow_version_id,
+      execution_environment: boundary.execution_environment,
+    },
+    db,
+  );
+  if (!current.eligible_for_repeated_runs || current.digest !== boundary.effect_manifest_digest)
+    fail(
+      "execution_authority_changed",
+      "the reserved execution no longer matches its approved effect boundary",
+    );
+}
