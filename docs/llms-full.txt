@@ -2454,6 +2454,22 @@ the exact version while granting, and reserve transactionally before enqueueing.
 Dispatch must independently recheck the current boundary. A reservation counts
 admitted work, not proof of a completed external effect.
 
+The product-local manifest compiler binds the tenant, workflow/version, canonical
+definition digest, execution environment and resolved execution-options digest.
+Every request must have a server-resolved binding for its exact request digest,
+connector, actual environment, target, configuration and stable credential
+identity/permissions. These bindings are not client assertions. Draft digests,
+version deduplication and manifest digests share the same canonical JSON rules;
+object key order is irrelevant and array order remains significant.
+
+Compilation alone performs no discovery, grants no authority and dispatches
+nothing. Missing or mismatched bindings, runtime-substituted request values
+(including recipients in bodies), target-rewriting hooks, unpinned child workflow
+calls, unknown SQL/MCP tool effects and destructive DELETE operations are not
+eligible for repeated-run authority. Existing exact-run review remains separate.
+The compiler is not yet a public grant endpoint: server resolution, human review
+and run admission must be connected before it can authorize executions.
+
 ### The authoring critic
 
 Static validation catches what a schema can prove: unknown step kinds, malformed placeholders, a scope reference that can't resolve. It cannot catch a draft that is _structurally valid but semantically wrong_ — a workflow that parses cleanly yet quietly drifts from what the author actually asked for (the wrong endpoint, an inverted condition, a dropped field).
@@ -12739,6 +12755,43 @@ commission — it is not a runbook task.
 ---
 
 ## The Credential Vault
+
+### Credential identity for bounded execution
+
+Direct connector credentials carry an `authority_revision`, initialized to 1
+by migration without issuing any execution authority. A material replacement
+(including changed credential identity, linked connection or permissions)
+advances it. Saving identical material does not. This is separate from
+`updated_at`, which also changes during routine token renewal.
+
+OAuth refresh preserves this revision when the granted scope set and token type
+are unchanged. Omitted scopes retain the previous grant; reordered or duplicate
+scope tokens do not create a new permission. Scope names remain case-sensitive.
+Expanded or reduced scopes and changed token types advance the revision. Token,
+scope metadata, revision and audit are committed together or rolled back together.
+
+The external MCP client's non-interactive handshake uses this refresh path only
+for an existing direct OAuth credential. Initial authorization and interactive
+credential replacement remain distinct browser flows; an automatic handshake
+cannot establish a new credential or detach a connection-backed credential.
+No additional operator configuration is required. The revision is a binding
+input for execution authorities, not an approval by itself.
+
+Connection-backed credentials also bind the outbound connection's own
+`authority_revision`. A fresh interactive authorization advances that revision;
+routine refresh keeps it unless the granted scopes change. Refresh updates
+compare both the observed authority revision and token version, so a late
+refresh cannot replace a newer login. Local secret versions, retirement of old
+versions, connection identity changes and their audit records commit atomically.
+An audit failure rolls those local changes back. It cannot roll back an OAuth
+provider's already-issued token response; a consumed remote refresh token may
+therefore require a fresh interactive authorization.
+
+`ConnectorSystem.getAuthorityMetadata()` reads only stable credential and
+connection identifiers, revisions and permissions. Availability is separate
+from the stable binding. The read does not decrypt tokens, update usage or
+refresh OAuth, even when tokens are near expiry. Actual use must still check
+credential availability and perform the normal authenticated dispatch.
 
 All integration secrets — API keys, OAuth2 access and refresh tokens, database
 passwords, connection strings — are stored in the credential vault, encrypted

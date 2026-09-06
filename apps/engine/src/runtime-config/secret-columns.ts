@@ -59,7 +59,7 @@ export function hasColumn(db: Executor, table: string, column: string): Promise<
   if (cached) return cached;
   const probe = db
     .execute(
-      sql`SELECT 1 FROM information_schema.columns WHERE table_name = ${table} AND column_name = ${column} LIMIT 1`,
+      sql`SELECT 1 FROM information_schema.columns WHERE table_schema = 'subkit' AND table_name = ${table} AND column_name = ${column} LIMIT 1`,
     )
     .then((result) => {
       const rows = (result as { rows?: unknown[] }).rows ?? (result as unknown as unknown[]);
@@ -82,6 +82,12 @@ export function hasPendingSecretColumns(db: Executor): Promise<boolean> {
  */
 export function hasCredentialConnectionColumn(db: Executor): Promise<boolean> {
   return hasColumn(db, "credentials", "connection_id");
+}
+
+/** Authority identity was added after connection-backed credentials. Data
+ * migrations must still be able to replace credentials on an older schema. */
+export function hasCredentialAuthorityRevisionColumn(db: Executor): Promise<boolean> {
+  return hasColumn(db, "credentials", "authority_revision");
 }
 
 export interface SecretVersionRow {

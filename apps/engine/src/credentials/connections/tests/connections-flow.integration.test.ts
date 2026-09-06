@@ -8,8 +8,9 @@
 //   "Erneuern" repeats the flow → "Trennen" revokes and forgets.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { setConfigKey } from "../../../config/loader.ts";
+import { loadConnectorSystem } from "../../../connectors/system.ts";
 import {
   auditLog,
   connectors,
@@ -71,6 +72,20 @@ async function listConnections(): Promise<ConnectionView[]> {
 describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
   let connectionId = "";
   let connectorId = "";
+
+  async function authorityRevision(): Promise<number> {
+    const [row] = await server.db
+      .select({ revision: outboundConnections.authority_revision })
+      .from(outboundConnections)
+      .where(
+        and(
+          eq(outboundConnections.tenant_id, server.tenantId),
+          eq(outboundConnections.id, connectionId),
+        ),
+      );
+    if (!row) throw new Error("missing connection fixture");
+    return row.revision;
+  }
 
   test("discover says what is there, in words the page can show", async () => {
     const res = await api("/v1/connections/discover", {
@@ -229,11 +244,22 @@ describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
   });
 
   test("the sweep refreshes a grant before it expires and retires the old version", async () => {
+    const beforeAuthority = await authorityRevision();
     const before = fake.accessTokens.length;
     await server.db
       .update(outboundConnections)
       .set({ expires_at: new Date(Date.now() + 60_000) }) // allow-wall-clock: inside the refresh buffer
       .where(eq(outboundConnections.id, connectionId));
+    const system = await loadConnectorSystem(server.tenantId, connectorId, "dev", server.db);
+    if (!system) throw new Error("missing connector fixture");
+    const beforeRequests = fake.requests.length;
+    const metadata = await system.getAuthorityMetadata();
+    expect(metadata.available).toBe(true);
+    expect(fake.requests.length).toBe(beforeRequests);
+    expect(fake.accessTokens.length).toBe(before);
+    expect(JSON.stringify(metadata)).not.toContain(
+      fake.accessTokens.at(-1) ?? "fixture-token-not-present",
+    );
     expect(await refreshDueConnections(server.db)).toEqual({ refreshed: 1, failed: 0 });
     expect(fake.accessTokens.length).toBe(before + 1);
     expect(fake.requests.at(-1)).toBe("POST /token");
@@ -261,6 +287,8 @@ describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
     const [item] = await listConnections();
     expect(item?.state).toBe("valid");
     expect(item?.last_refreshed_at).not.toBeNull();
+    expect(await authorityRevision()).toBe(beforeAuthority);
+    expect((await system.getAuthorityMetadata()).binding).toEqual(metadata.binding);
   });
 
   test("a refused refresh turns the state to expired and the connector sends nothing", async () => {
@@ -299,6 +327,7 @@ describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
   });
 
   test("Erneuern repeats the flow for the same row and clears the failure", async () => {
+    const beforeAuthority = await authorityRevision();
     const res = await api(`/v1/connections/${connectionId}/renew`, { method: "POST" });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { authorization_url: string; name: string };
@@ -322,6 +351,107 @@ describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
       server.db,
     );
     expect(accessTokenOf(resolved)).toBe(fake.accessTokens.at(-1) ?? "");
+    expect(await authorityRevision()).toBe(beforeAuthority + 1);
+  });
+
+  test("a refresh response with broader permissions changes the authority binding", async () => {
+    // Model the stored prior grant as read-only; the IdP's next response
+    // explicitly grants read + write. This is not an ordinary token renewal.
+    const beforeAuthority = await authorityRevision();
+    await server.db
+      .update(outboundConnections)
+      .set({
+        granted_scopes: ["read"],
+        expires_at: new Date(Date.now() + 60_000), // allow-wall-clock: inside the refresh buffer
+      })
+      .where(
+        and(
+          eq(outboundConnections.tenant_id, server.tenantId),
+          eq(outboundConnections.id, connectionId),
+        ),
+      );
+    expect(await refreshDueConnections(server.db)).toEqual({ refreshed: 1, failed: 0 });
+    expect(await authorityRevision()).toBe(beforeAuthority + 1);
+    const [item] = await listConnections();
+    expect(item?.granted_scopes).toEqual(["read", "write"]);
+  });
+
+  test("a late refresh cannot replace a newer human grant or change its secrets", async () => {
+    let release!: () => void;
+    let reached!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fake.beforeRefreshResponse = async () => {
+      reached();
+      await held;
+    };
+    await server.db
+      .update(outboundConnections)
+      .set({ expires_at: new Date(Date.now() + 60_000) }) // allow-wall-clock: inside refresh buffer
+      .where(eq(outboundConnections.id, connectionId));
+    const refreshing = refreshDueConnections(server.db);
+    try {
+      await waiting;
+      const beforeAuthority = await authorityRevision();
+      const res = await api(`/v1/connections/${connectionId}/renew`, { method: "POST" });
+      expect(res.status).toBe(200);
+      await approveInBrowser(
+        ((await res.json()) as { authorization_url: string }).authorization_url,
+      );
+      const renewedToken = fake.accessTokens.at(-1);
+      const secretSnapshot = await listSecretVersions(server.db);
+      release();
+      expect(await refreshing).toEqual({ refreshed: 0, failed: 1 });
+      expect(await authorityRevision()).toBe(beforeAuthority + 1);
+      expect(await listSecretVersions(server.db)).toEqual(secretSnapshot);
+      expect(await readAccessToken(server.db, server.tenantId, connectionId)).toMatchObject({
+        access_token: renewedToken,
+      });
+      expect((await listConnections())[0]).toMatchObject({
+        state: "valid",
+        refresh_failed_at: null,
+        last_error: null,
+      });
+    } finally {
+      release();
+      await refreshing;
+      delete fake.beforeRefreshResponse;
+    }
+  });
+
+  test("an unavailable audit rolls back refresh secrets, scopes, and authority together", async () => {
+    await server.db
+      .update(outboundConnections)
+      .set({ granted_scopes: ["read"], expires_at: new Date(Date.now() + 60_000) }) // allow-wall-clock: inside refresh buffer
+      .where(eq(outboundConnections.id, connectionId));
+    const beforeAuthority = await authorityRevision();
+    const secretSnapshot = await listSecretVersions(server.db);
+    await server.db.execute(
+      sql.raw(`CREATE FUNCTION subkit.reject_connection_refresh_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.action = 'connection.refreshed' THEN RAISE EXCEPTION 'fixture audit unavailable'; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER reject_connection_refresh_audit BEFORE INSERT ON subkit.audit_log FOR EACH ROW EXECUTE FUNCTION subkit.reject_connection_refresh_audit()`),
+    );
+    try {
+      expect(await refreshDueConnections(server.db)).toEqual({ refreshed: 0, failed: 1 });
+      expect(await authorityRevision()).toBe(beforeAuthority);
+      expect(await listSecretVersions(server.db)).toEqual(secretSnapshot);
+      expect((await listConnections())[0]?.granted_scopes).toEqual(["read"]);
+    } finally {
+      await server.db.execute(
+        sql.raw(
+          "DROP TRIGGER reject_connection_refresh_audit ON subkit.audit_log; DROP FUNCTION subkit.reject_connection_refresh_audit()",
+        ),
+      );
+    }
+    // The foreign provider already consumed its refresh token; local rollback
+    // cannot undo that external action. A fresh human login repairs the grant.
+    const res = await api(`/v1/connections/${connectionId}/renew`, { method: "POST" });
+    expect(res.status).toBe(200);
+    await approveInBrowser(((await res.json()) as { authorization_url: string }).authorization_url);
   });
 
   test("a denial on the other side lands in the Cockpit as failed=denied, and a state is spent once", async () => {
