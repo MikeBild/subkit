@@ -17,6 +17,7 @@ export const ExecSchema = z
     /** Resolved workflow name so list consumers render WHAT ran, not an id. */
     workflow_name: z.string().nullable(),
     workflow_version_id: z.string().nullable(),
+    execution_authority_id: z.string().uuid().nullable(),
     source_kind: z.enum(["saved", "draft", "step"]),
     source_ref: z.record(z.string(), z.unknown()).nullable(),
     status: z.string(),
@@ -291,6 +292,7 @@ export function serializeExec(
     workflow_id: row.workflow_id ?? null,
     workflow_name: workflowName,
     workflow_version_id: row.workflow_version_id ?? null,
+    execution_authority_id: row.execution_authority_id ?? null,
     source_kind: (row.source_kind as "saved" | "draft" | "step") ?? "saved",
     source_ref: row.source_ref ?? null,
     status: row.status,

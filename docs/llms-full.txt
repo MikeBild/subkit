@@ -2471,10 +2471,43 @@ eligible for repeated-run authority. Existing exact-run review remains separate.
 
 ### Human-bound execution authority API
 
+The read-only preview includes an `execution_shape`: request-step retry-policy
+attempt limits and the IDs of explicit loops and inline `for_each` iterations.
+This is structural evidence, not an evaluated count of outgoing requests.
+One allowed run can invoke a request repeatedly; retries apply to each such
+invocation. No total request limit is inferred from `max_runs`. Unsupported or
+unresolved driver retry policies are represented by null, never guessed.
+HTTP, GraphQL and MCP use the same retry-attempt calculation as the preview.
+The runtime default retry count is part of the authority options digest, so
+changing it invalidates the old boundary instead of silently extending it.
+
+Each request also has a bounded `redacted_request_json` display projection of
+authored HTTP query/body and GraphQL content. Business recipients and message
+content remain reviewable. Known credential fields and secret-shaped values
+are masked; custom header values and opaque driver payloads are not exposed.
+This projection never reads the credential store or changes the request used
+for hashing and execution. `request_review_truncated` and
+`opaque_payload_omitted` explicitly distinguish incomplete display content;
+clients must not present such a projection as a complete payload review.
+
+In the cockpit, open a workflow and choose **Review execution authority**.
+The dialog starts in development and inherits the preview's finite suggestions
+(one run, 24 hours). Review the targets, connector IDs, request content and
+iteration/retry explanation, then confirm the exact count and window. Changing
+the environment or preparing a fresh review replaces the entire displayed
+snapshot. A conflict never retries the grant automatically. Shortened or opaque
+payload projections cannot be granted through this dialog.
+
+The same workflow page lists authorities and offers an exact-ID revocation
+review. The run detail records its stored authority ID and version separately
+from an authority's current status. Existing executions without this binding
+are labelled as having no stored binding, not retroactively approved or denied.
+
 | Operation | Endpoint | Permission |
 |---|---|---|
 | Prepare a read-only review | `GET /v1/workflows/{id}/versions/{version_id}/authority-preview?environment=dev` | `workflow:read` |
 | Grant the reviewed boundary | `POST /v1/workflows/{id}/execution-authorities` | `workflow:write` and human browser proof |
+| List authority history | `GET /v1/workflows/{id}/execution-authorities` | `workflow:read` |
 | Read the current boundary | `GET /v1/workflows/{id}/execution-authorities/{authority_id}` | `workflow:read` |
 | Revoke it | `POST /v1/workflows/{id}/execution-authorities/{authority_id}/revoke` | `workflow:write` and human browser proof |
 | Run within a stored authority | `POST /v1/executions` with `source: saved` and `execution_authority_id` | `workflow:run` and the existing workflow allowlist |
@@ -2496,6 +2529,16 @@ The service re-resolves the manifest under the version lock and refuses a change
 digest. Authority and audit commit together. Identical concurrent browser retries
 return the same authority rather than multiplying its run allowance. Revocation
 is idempotent; replaying an old grant request cannot resurrect a revoked grant.
+
+Authority history is newest first, with 20 items by default (at most 50), an
+optional `environment` filter and a `next_cursor` for older records. Cursors are
+scoped to the same tenant, workflow and environment filter. Status and remaining
+runs are read from the backend after reload. `active_version` distinguishes an
+approved grant from activation of its workflow version; `ready_for_new_run` is
+true only when that exact version is active and the current grant is usable.
+These fields report the current observation, not a reservation or a promise
+that a later run will still be eligible. Execution detail and list responses
+include `execution_authority_id`, or null for legacy executions.
 
 The explicit authority-bound run path uses the active exact version, validates
 input before reservation, and stores the authority id on the execution and its

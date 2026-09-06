@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
 import { standAt } from "./lib/cockpit-identity.mjs";
+import { verifyWorkflowAuthorities } from "./lib/cockpit-workflow-authorities.mjs";
 import { verifyWorkflowPreview } from "./lib/cockpit-workflow-preview.mjs";
 
 /** A port nothing is listening on right now — claimed immediately with --strictPort. */
@@ -620,6 +621,8 @@ async function mockApi(route) {
   }
   if (path === `/v1/conversations/${uuid}/messages`)
     return sse(route, { conversation, status: "active" });
+  if (path === `/v1/workflows/${uuid}/execution-authorities`)
+    return json(route, { items: [], next_cursor: null });
   if (path === `/v1/workflows/${uuid}`)
     return json(route, {
       id: uuid,
@@ -2078,6 +2081,11 @@ for (const locale of variants) {
       });
     }
     await verifyWorkflowPreview(page, stand, uuid, locale.name);
+    await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>
+      shoot(page, `${locale.artifact}-${viewport.name}-workflow-authority-${state}`, {
+        fullPage: false,
+      }),
+    );
     if (viewport.name === "desktop") {
       for (const resource of ["workflows", "connectors", "knowledge", "skills", "files"]) {
         await stand.visit(page, `${resource}/${uuid}`);

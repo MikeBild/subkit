@@ -1,9 +1,10 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import type { Db } from "../../db/client.ts";
-import { workflowExecutionAuthorities } from "../../db/schema/index.ts";
+import { workflowExecutionAuthorities, workflows } from "../../db/schema/index.ts";
 import {
+  AuthorityExecutionShapeSchema,
   GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
   previewWorkflowAuthority,
@@ -35,6 +36,8 @@ const authoritySchema = z
     created_at: z.string().datetime(),
     revoked_at: z.string().datetime().nullable(),
     revoked_by: z.string().uuid().nullable(),
+    active_version: z.boolean(),
+    ready_for_new_run: z.boolean(),
     state: z.enum([
       "approved",
       "not_yet_valid",
@@ -52,6 +55,7 @@ const previewSchema = z
     digest: z.string(),
     eligible_for_repeated_runs: z.boolean(),
     unavailable_steps: z.array(z.string()),
+    execution_shape: AuthorityExecutionShapeSchema,
     suggested_bounds: z.object({
       valid_from: z.string().datetime(),
       valid_until: z.string().datetime(),
@@ -111,6 +115,37 @@ const get = createRoute({
   request: { params: authorityParam },
   responses: { 200: response, ...failures },
 });
+const list = createRoute({
+  method: "get",
+  path: "/v1/workflows/{id}/execution-authorities",
+  tags: ["workflows"],
+  summary: "List bounded authority history with current eligibility and remaining runs",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: workflowParam,
+    query: z.object({
+      environment: z.enum(["dev", "prod"]).optional(),
+      limit: z.coerce.number().int().min(1).max(50).default(20),
+      cursor: z.string().uuid().optional(),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Newest first; cursor is the last returned authority id",
+      content: {
+        "application/json": {
+          schema: z
+            .object({
+              items: z.array(authoritySchema),
+              next_cursor: z.string().uuid().nullable(),
+            })
+            .openapi("WorkflowExecutionAuthorityList"),
+        },
+      },
+    },
+    ...failures,
+  },
+});
 const revoke = createRoute({
   method: "post",
   path: "/v1/workflows/{id}/execution-authorities/{authority_id}/revoke",
@@ -153,6 +188,22 @@ async function readAuthority(db: Db, tenant_id: string, workflow_id: string, aut
     )
     .limit(1);
   if (!row) throw new NotFoundError("execution authority");
+  const [workflow] = await db
+    .select({
+      lifecycle: workflows.lifecycle,
+      current_version_id: workflows.current_version_id,
+    })
+    .from(workflows)
+    .where(
+      and(
+        eq(workflows.tenant_id, tenant_id),
+        eq(workflows.id, workflow_id),
+        isNull(workflows.deleted_at),
+      ),
+    )
+    .limit(1);
+  const active_version =
+    workflow?.lifecycle === "active" && workflow.current_version_id === row.workflow_version_id;
   const clock = await db.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
   const now = clock.rows[0]?.now;
   if (!now) throw new Error("database clock unavailable");
@@ -186,6 +237,8 @@ async function readAuthority(db: Db, tenant_id: string, workflow_id: string, aut
   return authoritySchema.parse({
     ...row,
     state,
+    active_version,
+    ready_for_new_run: active_version && state === "approved",
     remaining_runs: Math.max(0, row.max_runs - row.reserved_runs),
     valid_from: row.valid_from.toISOString(),
     valid_until: row.valid_until.toISOString(),
@@ -206,10 +259,7 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
         id: c.req.param("id") ?? "",
       })),
     );
-  for (const path of [
-    "/v1/workflows/:id/execution-authorities",
-    "/v1/workflows/:id/execution-authorities/:authority_id/revoke",
-  ])
+  for (const path of ["/v1/workflows/:id/execution-authorities/:authority_id/revoke"])
     app.use(
       path,
       requirePermission("workflow:write", (c) => ({
@@ -217,6 +267,85 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
         id: c.req.param("id") ?? "",
       })),
     );
+  const readAuthorities = requirePermission("workflow:read", (c) => ({
+    type: "workflow",
+    id: c.req.param("id") ?? "",
+  }));
+  const writeAuthority = requirePermission("workflow:write", (c) => ({
+    type: "workflow",
+    id: c.req.param("id") ?? "",
+  }));
+  app.use("/v1/workflows/:id/execution-authorities", (c, next) =>
+    (c.req.method === "GET" ? readAuthorities : writeAuthority)(c, next),
+  );
+  app.openapi(list, async (c) => {
+    const { tenant_id } = requireAuth(c);
+    const { id } = c.req.valid("param");
+    const { cursor, environment, limit } = c.req.valid("query");
+    const db = c.get("db");
+    const [workflow] = await db
+      .select({ id: workflows.id })
+      .from(workflows)
+      .where(
+        and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, id), isNull(workflows.deleted_at)),
+      )
+      .limit(1);
+    if (!workflow) throw new NotFoundError("workflow");
+    const filter = and(
+      eq(workflowExecutionAuthorities.workflow_id, id),
+      environment ? eq(workflowExecutionAuthorities.execution_environment, environment) : undefined,
+    );
+    if (cursor) {
+      const [found] = await db
+        .select({ id: workflowExecutionAuthorities.id })
+        .from(workflowExecutionAuthorities)
+        .where(
+          and(
+            eq(workflowExecutionAuthorities.tenant_id, tenant_id),
+            filter,
+            eq(workflowExecutionAuthorities.id, cursor),
+          ),
+        )
+        .limit(1);
+      if (!found) throw new NotFoundError("authority cursor");
+    }
+    // Keep the timestamp in PostgreSQL: converting a microsecond timestamp to
+    // a JS Date before the keyset comparison could silently skip history rows.
+    const anchor = db
+      .select({
+        created_at: workflowExecutionAuthorities.created_at,
+        id: workflowExecutionAuthorities.id,
+      })
+      .from(workflowExecutionAuthorities)
+      .where(
+        and(
+          eq(workflowExecutionAuthorities.tenant_id, tenant_id),
+          filter,
+          eq(workflowExecutionAuthorities.id, cursor ?? "00000000-0000-0000-0000-000000000000"),
+        ),
+      );
+    const rows = await db
+      .select({ id: workflowExecutionAuthorities.id })
+      .from(workflowExecutionAuthorities)
+      .where(
+        and(
+          eq(workflowExecutionAuthorities.tenant_id, tenant_id),
+          filter,
+          cursor
+            ? sql`(${workflowExecutionAuthorities.created_at}, ${workflowExecutionAuthorities.id}) < (${anchor})`
+            : undefined,
+        ),
+      )
+      .orderBy(desc(workflowExecutionAuthorities.created_at), desc(workflowExecutionAuthorities.id))
+      .limit(limit + 1);
+    const page = rows.slice(0, limit);
+    const items = [];
+    for (const row of page) items.push(await readAuthority(db, tenant_id, id, row.id));
+    return c.json(
+      { items, next_cursor: rows.length > limit ? (page.at(-1)?.id ?? null) : null },
+      200,
+    );
+  });
   app.openapi(preview, async (c) => {
     const principal = requireAuth(c);
     const { id, version_id } = c.req.valid("param");
@@ -229,13 +358,16 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
           execution_environment: c.req.valid("query").environment,
         },
         c.get("db"),
+        { include_review: true },
       );
+      if (!result.execution_shape) throw new Error("authority review unavailable");
       const clock = await c.get("db").execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
       const now = clock.rows[0]?.now;
       if (!now) throw new Error("database clock unavailable");
       return c.json(
         {
           ...result,
+          execution_shape: result.execution_shape,
           suggested_bounds: {
             valid_from: new Date(now).toISOString(),
             valid_until: new Date(new Date(now).getTime() + 24 * 60 * 60_000).toISOString(),
