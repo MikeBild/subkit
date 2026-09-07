@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { executions, workflowsSchedules } from "../../db/schema/index.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
+import { grantScheduleAuthorityFixture } from "../../scheduler/tests/authority-fixture.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, seedWorkflow } from "./setup.ts";
 
@@ -30,6 +31,7 @@ beforeAll(async () => {
     ],
   });
   workflowId = wf.id;
+  await grantScheduleAuthorityFixture(ctx.db, ctx.tenantId, workflowId);
 
   await ctx.db.insert(workflowsSchedules).values({
     tenant_id: ctx.tenantId,

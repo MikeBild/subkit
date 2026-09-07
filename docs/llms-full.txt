@@ -2575,8 +2575,16 @@ These bound runs do not automatically follow HTTP or GraphQL redirects. A
 redirect response is terminal (`authority_invalid`): the new destination needs
 its own reviewed boundary, and the original write is not automatically retried.
 
-This explicit run path does not yet replace legacy REST runs, scheduler/webhook
-admission, or exact tool approvals. Omitting `execution_authority_id` still uses
+Cron and `every:N` schedules also require a matching live execution authority.
+Existing schedules receive no fabricated grant: authorize their exact active
+version and execution environment before expecting another scheduled run.
+A caught queue failure restores the cadence watermark; a retry reuses the same
+reserved execution and queue job ID rather than consuming another run. A crash
+between stamping the cadence and enqueueing can still miss that occurrence;
+this is not an exactly-once scheduling or external-effect guarantee.
+
+This explicit run path does not yet replace legacy REST runs, webhook
+admission, or exact tool approvals. Omitting `execution_authority_id` on REST still uses
 the existing run path; the grant alone must not be interpreted as a portfolio-wide
 default or as enforcement for every execution entry point.
 

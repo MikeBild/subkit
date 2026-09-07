@@ -12,6 +12,7 @@ import type { AddressInfo } from "node:net";
 import { and, eq } from "drizzle-orm";
 import { executions, workflows, workflowsSchedules } from "../../db/schema/index.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
+import { grantScheduleAuthorityFixture } from "../../scheduler/tests/authority-fixture.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
 import {
   createJourneyCtx,
@@ -218,8 +219,9 @@ describe("journey: verification matrix (docs/33)", () => {
     const wf = await seedWorkflow(ctx, {
       slug: "scheduled-matrix",
       name: "Scheduled Matrix",
-      steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+      steps: [{ id: "noop", kind: "transform", language: "javascript", expression: "input" }],
     });
+    await grantScheduleAuthorityFixture(ctx.db, ctx.tenantId, wf.id);
     await ctx.db.insert(workflowsSchedules).values({
       tenant_id: ctx.tenantId,
       workflow_id: wf.id,

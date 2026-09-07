@@ -25,6 +25,7 @@ import {
   type EngineTestCtx,
 } from "../../execution/tests/setup.ts";
 import { calendarGateSkipReason, localDateInTz, SchedulerReconciler } from "../reconciler.ts";
+import { grantScheduleAuthorityFixture } from "./authority-fixture.ts";
 
 let ctx: EngineTestCtx;
 
@@ -94,6 +95,7 @@ describe("scheduler reconciler honours tz + business_days_only + skip_dates", ()
       slug: "stripe-daily-charges-digest",
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
+    await grantScheduleAuthorityFixture(ctx.testDb.db, ctx.tenantId, workflow_id);
 
     // The schedule is identical to what `bindFromWorkflow` would have
     // produced for a `trigger: { kind: "schedule", cron: "0 9 * * *",

@@ -1,7 +1,6 @@
-// Scheduler reconciler. At boot + every 60s it reads
-// `workflows_schedules`, compares against the desired state, and syncs
-// pg-boss schedules. Each schedule becomes a pg-boss scheduled send
-// whose payload is an `execution.run` job envelope.
+// Scheduler reconciler. Cron occurrences are admitted by the polling pass;
+// every-mode occurrences use local timers. Both reserve a matching execution
+// authority before sending an `execution.run` job to pg-boss.
 //
 // Sub-minute schedules (expressed as `every:<seconds>`) are handled
 // locally via setInterval because pg-boss' cron is minute-resolution.
@@ -25,7 +24,7 @@ import {
 } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
 import { backfillEmbeddings } from "../embeddings/backfill.ts";
-import { createExecution } from "../execution/state.ts";
+import { admitAuthorizedWorkflowExecution } from "../execution/authority-admission.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { enqueueApprovalElicitationResume } from "../queue/approval-resume.ts";
@@ -927,6 +926,7 @@ export class SchedulerReconciler {
           tenant_id: wf.tenant_id,
           schedule_id: schedule.id,
           tz,
+          occurrence_after: dueBaseline,
         });
       } catch (err) {
         logger.error({
@@ -1441,22 +1441,25 @@ export class SchedulerReconciler {
   private async fireWorkflowSchedule(
     key: string,
     payload: ExecutionRunJob,
-    audit: { tenant_id: string; schedule_id: string; tz: string },
+    audit: { tenant_id: string; schedule_id: string; tz: string; occurrence_after: Date },
   ): Promise<void> {
-    const workflow_version_id = await this.resolveWorkflowVersion(payload.workflow_id);
-    const execution_id = await createExecution(this.opts.db, {
-      tenant_id: payload.tenant_id,
-      workflow_id: payload.workflow_id,
-      workflow_version_id,
-      source_kind: "saved",
-      source_ref: null,
-      request_source: "scheduler",
-      parent_execution_id: null,
-      execution_mode: payload.execution_mode ?? "prod",
-      input: payload.input ?? null,
-    });
+    // The restored cadence watermark is stable across queue failures. Using
+    // the retry's wall clock here would charge the same firing again.
+    const admitted = await admitAuthorizedWorkflowExecution(
+      {
+        tenant_id: payload.tenant_id,
+        workflow_id: payload.workflow_id,
+        request_source: "scheduler",
+        execution_environment: payload.execution_mode ?? "prod",
+        input: payload.input ?? null,
+        idempotency_key: `schedule:${audit.schedule_id}:after:${audit.occurrence_after.toISOString()}`,
+      },
+      this.opts.db,
+    );
+    const execution_id = admitted.execution_id;
     const job: ExecutionRunJob = { ...payload, execution_id, request_source: "scheduler" };
-    await this.opts.boss.send(EXECUTION_RUN_QUEUE, job);
+    if (admitted.status === "queued")
+      await this.opts.boss.send(EXECUTION_RUN_QUEUE, job, { id: execution_id });
     // Reverse-bind audit per AGENTS.md: every schedule firing gets an
     // immutable trail row pointing at the workflow + execution it
     // produced. The webhook variant emits the same shape via
@@ -1478,6 +1481,8 @@ export class SchedulerReconciler {
           workflow_id: payload.workflow_id,
           execution_id,
           tz: audit.tz,
+          execution_authority_id: admitted.execution_authority_id,
+          idempotent_replay: admitted.replayed,
         },
       },
       this.opts.db,
@@ -1497,6 +1502,19 @@ export class SchedulerReconciler {
     def: { schedule_id: string; seconds: number; payload: ExecutionRunJob },
   ): Promise<void> {
     const { schedule_id, seconds, payload } = def;
+    const [schedule] = await this.opts.db
+      .select()
+      .from(workflowsSchedules)
+      .where(
+        and(
+          eq(workflowsSchedules.id, schedule_id),
+          eq(workflowsSchedules.tenant_id, payload.tenant_id),
+          eq(workflowsSchedules.workflow_id, payload.workflow_id),
+          eq(workflowsSchedules.paused, false),
+        ),
+      )
+      .limit(1);
+    if (!schedule) return;
     // Cross-instance dedup: claim this cadence via a CAS on the schedule's
     // last_enqueued_at before doing anything. The every-timer is per-process,
     // so without this every running instance would fire the same cadence —
@@ -1513,6 +1531,9 @@ export class SchedulerReconciler {
       .where(
         and(
           eq(workflowsSchedules.id, schedule_id),
+          schedule.last_enqueued_at === null
+            ? isNull(workflowsSchedules.last_enqueued_at)
+            : sql`date_trunc('milliseconds', ${workflowsSchedules.last_enqueued_at}) = ${schedule.last_enqueued_at}`,
           or(
             isNull(workflowsSchedules.last_enqueued_at),
             lt(workflowsSchedules.last_enqueued_at, threshold),
@@ -1521,44 +1542,26 @@ export class SchedulerReconciler {
       )
       .returning({ id: workflowsSchedules.id });
     if (claimed.length === 0) return;
-    // Materialize the execution row here so the API can observe a
-    // `queued` row immediately, mirroring the HTTP path.
-    const workflow_version_id = await this.resolveWorkflowVersion(payload.workflow_id);
-    const execution_id = await createExecution(this.opts.db, {
-      tenant_id: payload.tenant_id,
-      workflow_id: payload.workflow_id,
-      workflow_version_id,
-      source_kind: "saved",
-      source_ref: null,
-      request_source: "scheduler",
-      parent_execution_id: null,
-      execution_mode: payload.execution_mode ?? "prod",
-      input: payload.input ?? null,
-    });
-    const job: ExecutionRunJob = { ...payload, execution_id, request_source: "scheduler" };
-    await this.opts.boss.send(EXECUTION_RUN_QUEUE, job);
-    logger.info({
-      module: "scheduler",
-      action: "schedule.fired",
-      msg: "every-schedule enqueued execution.run",
-      tenant_id: payload.tenant_id,
-      schedule_key: key,
-      execution_id,
-    });
-  }
-
-  private async resolveWorkflowVersion(workflow_id: string): Promise<string> {
-    // tenant-filter:exempt — cron scheduler sweeps every tenant; row carries tenant_id forward
-    const rows = await this.opts.db
-      .select()
-      .from(workflows)
-      .where(eq(workflows.id, workflow_id))
-      .limit(1);
-    const versionId = rows[0]?.current_version_id;
-    if (!versionId) {
-      throw new Error(`workflow ${workflow_id} has no current_version_id`);
+    try {
+      await this.fireWorkflowSchedule(key, payload, {
+        tenant_id: payload.tenant_id,
+        schedule_id,
+        tz: schedule.timezone || "UTC",
+        occurrence_after: schedule.last_enqueued_at ?? schedule.created_at,
+      });
+    } catch (error) {
+      await this.opts.db
+        .update(workflowsSchedules)
+        .set({ last_enqueued_at: schedule.last_enqueued_at })
+        .where(
+          and(
+            eq(workflowsSchedules.id, schedule_id),
+            eq(workflowsSchedules.tenant_id, payload.tenant_id),
+            sql`date_trunc('milliseconds', ${workflowsSchedules.last_enqueued_at}) = ${now}`,
+          ),
+        );
+      throw error;
     }
-    return versionId;
   }
 
   private async computeDesired(): Promise<EveryDesiredState> {

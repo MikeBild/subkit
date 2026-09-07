@@ -26,6 +26,7 @@ import {
   type EngineTestCtx,
 } from "../execution/tests/setup.ts";
 import { SchedulerReconciler } from "./reconciler.ts";
+import { grantScheduleAuthorityFixture } from "./tests/authority-fixture.ts";
 
 let ctx: EngineTestCtx;
 
@@ -65,6 +66,7 @@ describe("reconciler CAS is microsecond-safe", () => {
       slug: "cas-us-wf",
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
+    await grantScheduleAuthorityFixture(ctx.testDb.db, ctx.tenantId, workflow_id);
     const [row] = await ctx.testDb.db
       .insert(workflowsSchedules)
       .values({

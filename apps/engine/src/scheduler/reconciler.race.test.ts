@@ -14,15 +14,23 @@
 // or removed.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
-import { workflowsSchedules } from "../db/schema/index.ts";
+import {
+  executions,
+  workflowExecutionAuthorities,
+  workflowsSchedules,
+} from "../db/schema/index.ts";
+import { admitAuthorizedWorkflowExecution } from "../execution/authority-admission.ts";
 import {
   createEngineCtx,
   createWorkflowRow,
   type EngineTestCtx,
 } from "../execution/tests/setup.ts";
+import { databaseNow } from "../test-helpers/database-clock.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { SchedulerReconciler } from "./reconciler.ts";
+import { grantScheduleAuthorityFixture } from "./tests/authority-fixture.ts";
 
 let ctx: EngineTestCtx;
 
@@ -57,7 +65,10 @@ async function insertSchedule(
   workflow_id: string,
   cron: string,
   last_enqueued_at: Date | null,
+  authorize = true,
 ): Promise<string> {
+  if (authorize)
+    await grantScheduleAuthorityFixture(ctx.testDb.db, ctx.tenantId, workflow_id, "prod", 1);
   const [row] = await ctx.testDb.db
     .insert(workflowsSchedules)
     .values({
@@ -115,6 +126,12 @@ describe("reconciler exactly-once under two concurrent engines", () => {
 
     const totalFires = callsA.length + callsB.length;
     expect(totalFires).toBe(1);
+    const [authority] = await ctx.testDb.db
+      .select()
+      .from(workflowExecutionAuthorities)
+      .where(eq(workflowExecutionAuthorities.workflow_id, workflow_id));
+    expect(authority?.max_runs).toBe(1);
+    expect(authority?.reserved_runs).toBe(1);
   });
 
   test("the runner-up does not stamp last_enqueued_at past the winner's value", async () => {
@@ -156,4 +173,80 @@ describe("reconciler exactly-once under two concurrent engines", () => {
     await reconcilerB.reconcileWorkflowSchedules(now);
     expect(callsB.length).toBe(0);
   });
+
+  test("a schedule and an API admission cannot spend the same last authorized run", async () => {
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "last-authorized-run",
+      slug: "last-authorized-run",
+      steps: [{ id: "noop", kind: "transform", expression: "input" }],
+    });
+    const now = new Date(FROZEN_NOW);
+    const before = new Date(now.getTime() - 300_000);
+    await insertSchedule(workflow_id, "* * * * *", before);
+    const callsA: SendCall[] = [];
+    const first = new SchedulerReconciler({ boss: createStubBoss(callsA), db: ctx.testDb.db });
+    const [, apiResult] = await Promise.allSettled([
+      first.reconcileWorkflowSchedules(now),
+      admitAuthorizedWorkflowExecution(
+        {
+          tenant_id: ctx.tenantId,
+          workflow_id,
+          execution_environment: "prod",
+          request_source: "api",
+          input: { from: "test" },
+          idempotency_key: `api-last-run:${workflow_id}`,
+        },
+        ctx.testDb.db,
+      ),
+    ]);
+    expect(callsA.length + (apiResult.status === "fulfilled" ? 1 : 0)).toBe(1);
+    const runs = await ctx.testDb.db
+      .select()
+      .from(executions)
+      .where(eq(executions.workflow_id, workflow_id));
+    expect(runs).toHaveLength(1);
+    const [authority] = await ctx.testDb.db
+      .select()
+      .from(workflowExecutionAuthorities)
+      .where(eq(workflowExecutionAuthorities.workflow_id, workflow_id));
+    expect(authority?.reserved_runs).toBe(1);
+  });
+
+  for (const boundary of ["missing", "revoked"] as const) {
+    test(`a ${boundary} authority cannot enqueue or create a scheduled execution`, async () => {
+      const { workflow_id } = await createWorkflowRow(ctx, {
+        name: `authority-${boundary}`,
+        slug: `authority-${boundary}`,
+        steps: [{ id: "noop", kind: "transform", expression: "input" }],
+      });
+      const now = new Date(FROZEN_NOW);
+      await insertSchedule(
+        workflow_id,
+        "* * * * *",
+        new Date(now.getTime() - 300_000),
+        boundary !== "missing",
+      );
+      if (boundary === "revoked")
+        await ctx.testDb.db
+          .update(workflowExecutionAuthorities)
+          .set({
+            revoked_at: await databaseNow(ctx.testDb.db),
+            revoked_by: "00000000-0000-4000-8000-000000000001",
+          })
+          .where(eq(workflowExecutionAuthorities.workflow_id, workflow_id));
+      const calls: SendCall[] = [];
+      const scheduler = new SchedulerReconciler({
+        boss: createStubBoss(calls),
+        db: ctx.testDb.db,
+        intervalMs: 60_000,
+      });
+      await scheduler.reconcileWorkflowSchedules(now);
+      expect(calls).toHaveLength(0);
+      const runs = await ctx.testDb.db
+        .select()
+        .from(executions)
+        .where(eq(executions.workflow_id, workflow_id));
+      expect(runs).toHaveLength(0);
+    });
+  }
 });
