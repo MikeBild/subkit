@@ -16,6 +16,7 @@ import { registerExecutionRunHandler } from "../../queue/handlers/execution-run.
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { parseCronExpression } from "../cron.ts";
 import { SchedulerReconciler } from "../reconciler.ts";
+import { grantScheduleAuthorityFixture } from "./authority-fixture.ts";
 import { createSchedulerCtx, type SchedulerTestCtx } from "./setup.ts";
 
 let ctx: SchedulerTestCtx;
@@ -41,8 +42,15 @@ describe("scheduler reconciler", () => {
     const { workflow_id } = await createWorkflowRow(ctx.engine, {
       name: "sched-me",
       slug: "sched-me",
-      steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+      steps: [{ id: "noop", kind: "transform", language: "javascript", expression: "input" }],
     });
+    const authority = await grantScheduleAuthorityFixture(
+      ctx.engine.testDb.db,
+      ctx.engine.tenantId,
+      workflow_id,
+      "prod",
+      1,
+    );
 
     await ctx.engine.testDb.db.insert(workflowsSchedules).values({
       tenant_id: ctx.engine.tenantId,
@@ -69,6 +77,8 @@ describe("scheduler reconciler", () => {
       const deadline = Date.now() + 5_000;
       let rowCount = 0;
       let terminalExecutionMode: "dev" | "prod" | undefined;
+      let terminalAuthority: string | null | undefined;
+      let terminalStatus: string | undefined;
       // allow-wall-clock: this test exercises real-time polling or freshness windows.
       while (Date.now() < deadline) {
         const rows = await ctx.engine.testDb.db
@@ -81,12 +91,16 @@ describe("scheduler reconciler", () => {
         );
         if (terminal) {
           terminalExecutionMode = terminal.execution_mode;
+          terminalAuthority = terminal.execution_authority_id;
+          terminalStatus = terminal.status;
           break;
         }
         await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: cron-tick reconciler cadence
       }
       expect(rowCount).toBeGreaterThanOrEqual(1);
       expect(terminalExecutionMode).toBe("prod");
+      expect(terminalAuthority).toBe(authority.id);
+      expect(terminalStatus).toBe("succeeded");
     } finally {
       await reconciler.stop();
     }
@@ -102,6 +116,7 @@ describe("scheduler reconciler", () => {
       slug: "sched-compensate",
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
+    await grantScheduleAuthorityFixture(ctx.engine.testDb.db, ctx.engine.tenantId, workflow_id);
     const [sched] = await ctx.engine.testDb.db
       .insert(workflowsSchedules)
       .values({
@@ -154,6 +169,7 @@ describe("scheduler reconciler", () => {
       slug: "sched-fresh",
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
+    await grantScheduleAuthorityFixture(db, ctx.engine.tenantId, workflow_id);
     // 07:00 Europe/Berlin (DST) = 05:00 UTC; created two minutes before.
     const createdAt = new Date("2026-07-04T04:57:00Z");
     const [sched] = await db

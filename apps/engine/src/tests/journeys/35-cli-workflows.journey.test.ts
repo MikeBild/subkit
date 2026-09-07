@@ -200,7 +200,9 @@ async function runPlain(
 const fixture = {
   name: "test-wf",
   slug: "test-wf",
-  steps: [{ kind: "request", id: "step1", method: "GET", url: "https://example.com" }],
+  // Creation previews the DAG. This lifecycle test must not depend on a
+  // public website being reachable; request drivers have their own tests.
+  steps: [{ kind: "transform", id: "step1", language: "javascript", expression: "({ ok: true })" }],
 };
 const tmpFile = path.join(tmpdir(), `35-cli-wf-${TEST_NOW_MS}.json`);
 
@@ -268,7 +270,7 @@ describe("journey 35: sk workflows CLI", () => {
       body: JSON.stringify({
         name: "test-wf-v2",
         slug: "test-wf",
-        steps: [{ kind: "request", id: "step1", method: "GET", url: "https://example.com" }],
+        steps: fixture.steps,
       }),
     });
     expect(patchResp.status).toBe(200);
