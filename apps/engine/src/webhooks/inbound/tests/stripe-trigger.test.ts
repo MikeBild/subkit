@@ -27,6 +27,7 @@ import {
 } from "../../../db/schema/index.ts";
 import { registerExecutionRunHandler } from "../../../queue/handlers/execution-run.ts";
 import { waitFor } from "../../../test-helpers/determinism/wait.ts";
+import { WorkflowDefSchema } from "../../../workflows/types.ts";
 import { markSeenIfNew } from "../dedup.ts";
 import { bindFromWorkflow, handleInbound, rotateInboundSecret } from "../service.ts";
 import { createInboundCtx, type InboundTestCtx } from "./setup.ts";
@@ -230,7 +231,68 @@ describe("inbound: stripe webhook trigger end-to-end", () => {
     expect(outcome.reason).toBe("bad_signature");
   });
 
-  test("valid charge.failed accepted, runs workflow, posts to slack stub, emits webhook.trigger.fired", async () => {
+  test("a signed event cannot automatically execute a request with runtime substitutions", async () => {
+    const body = buildChargeFailedBody("evt_dynamic_needs_review");
+    // allow-wall-clock: stripe signature window is real-time
+    const ts = Math.floor(Date.now() / 1000);
+    const outcome = await handleInbound(
+      { db: ctx.db, boss: ctx.boss },
+      {
+        slug: "wf-wf-stripe-trigger",
+        rawBody: body,
+        headers: { "stripe-signature": signStripe(SECRET, ts, body) },
+      },
+    );
+    expect(outcome).toMatchObject({ status: "denied", reason: "execution_authority_required" });
+    expect(slackPosts).toHaveLength(0);
+    expect(
+      await ctx.db.select().from(executions).where(eq(executions.tenant_id, ctx.tenantId)),
+    ).toHaveLength(0);
+  });
+
+  test("a reviewed static production request runs and emits webhook.trigger.fired", async () => {
+    // Keep the dynamic version above unapproved. A separate version fixes the
+    // complete outbound request before the test supplies its finite authority.
+    const [prior] = await ctx.db
+      .select()
+      .from(workflowVersions)
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, ctx.tenantId),
+          eq(workflowVersions.workflow_id, ctx.workflowId),
+        ),
+      );
+    if (!prior) throw new Error("fixture version missing");
+    const definition = WorkflowDefSchema.parse(prior.dag);
+    const [version] = await ctx.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenantId,
+        workflow_id: ctx.workflowId,
+        version: 2,
+        dag: {
+          ...definition,
+          version: 2,
+          steps: definition.steps.map((step) =>
+            step.kind === "request"
+              ? {
+                  ...step,
+                  body: {
+                    channel: "C0123ALERT",
+                    text: "[stripe] charge.failed — usd 4999 — card_declined — customer@example.com — ch_1Q9testfailedcharge",
+                  },
+                }
+              : step,
+          ),
+        },
+      })
+      .returning();
+    if (!version) throw new Error("fixture replacement missing");
+    await ctx.db
+      .update(workflows)
+      .set({ current_version_id: version.id })
+      .where(and(eq(workflows.tenant_id, ctx.tenantId), eq(workflows.id, ctx.workflowId)));
+    await ctx.grantAuthority("prod", 1);
     slackPosts.length = 0;
     const eventId = "evt_ok_charge_failed_001";
     const body = buildChargeFailedBody(eventId);

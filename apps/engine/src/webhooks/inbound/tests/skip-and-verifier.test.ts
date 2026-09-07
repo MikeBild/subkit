@@ -49,6 +49,7 @@ async function insertRawBinding(params: {
 
 beforeAll(async () => {
   ctx = await createInboundCtx("skip-verifier");
+  await ctx.grantAuthority();
 });
 
 afterAll(async () => {

@@ -4539,15 +4539,15 @@ After a deploy, a discovery run against an SPA documentation site with no cheape
 
 Work that runs when it should, whether or not anyone is watching — and nothing gets in
 without being checked at the door. Scheduled runs survive a restart and still fire when
-due; an inbound webhook has its signature verified and its replays discarded before any
-work starts; and a Before-Request Hook can apply your own policy in front of every
+due within its approved boundary; an inbound webhook needs both verified ingress and
+a matching finite execution authority before work starts; and a Before-Request Hook can apply your own policy in front of every
 connector call. The trigger is the only thing that differs: one execution contract, one
 permission check, one audit trail.
 
 | Lever | What it buys you |
 |---|---|
 | **Schedule** | Time-driven runs that are a durable commitment, not a best-effort timer. |
-| **Webhook** | Event-driven runs gated by signature verification and replay dedup. |
+| **Webhook** | Event-driven runs gated by signature verification, replay dedup and production execution authority. |
 | **Before-Request Hook** | Per-request policy that static roles cannot express, fail-closed. |
 
 The execution model these sit on top of is in
@@ -4557,12 +4557,14 @@ extends is in [RBAC & Roles](../admins/rbac-and-roles.md).
 ```mermaid
 flowchart LR
     cron[["Cron schedule<br/>(workflows_schedules)"]] --> rec{Reconciler<br/>due?}
-    rec -->|fires| core
+    rec -->|due| authority{Matching finite<br/>execution authority?}
     hook[["Inbound webhook<br/>(webhooks_inbound)"]] --> verify{Signature<br/>valid?}
     verify -->|no| drop[Reject]
     verify -->|yes| dedup{Replay-id<br/>seen?}
     dedup -->|yes| drop
-    dedup -->|no| core
+    dedup -->|no| authority
+    authority -->|no| drop
+    authority -->|yes, reserve run| core
     req[On-demand<br/>chat / MCP / CLI / API] --> core[["runExecution()<br/>RBAC + audit"]]
     core --> wf[Workflow run]
 ```
@@ -4637,10 +4639,15 @@ sequenceDiagram
             E->>E: Look up replay-id (webhook-id)
             alt replay-id already seen
                 E-->>P: 200 { deduped: true } (no run)
-            else first delivery
-                E->>W: runExecution() — RBAC + audit
-                W-->>E: result
-                E-->>P: 200 { accepted: true }
+            else first delivery or unfinished enqueue
+                E->>E: Check production authority + reserve exact run
+                alt boundary unavailable or changed
+                    E-->>P: 409 { error: denied, reason, hint }
+                else authority valid
+                    E->>W: Enqueue exact execution ID (worker rechecks authority)
+                    E->>E: Record accepted replay-id
+                    E-->>P: 200 { accepted: true, execution_id }
+                end
             end
         end
     end
@@ -4650,7 +4657,33 @@ sequenceDiagram
 |---|---|
 | Signature verify | Forged or tampered payloads are rejected before processing (`verify: none` opts out — only for trusted-network sources). |
 | Event filter | `events[]` narrows which provider event names trigger a run; empty matches any. Checked **after** signature, **before** dedup. |
-| Replay dedup | Provider retries of an already-accepted delivery are suppressed; the workflow runs at most once per replay-id. |
+| Execution authority | An active version, exact effect manifest, production environment, validity window and remaining run allowance are required. A signature or `verify: none` never creates authority. |
+| Replay dedup | Accepted deliveries are suppressed. Concurrent retries and interrupted enqueueing reuse the same charged execution and queue job UUID, not an additional allowance. Foreign side effects are not promised exactly once. |
+
+### Finite authority for webhook runs
+
+In the workflow Cockpit, review the active version's production effect manifest,
+targets and credentials, then grant an explicit finite validity window and run
+limit. Existing active workflows receive no authority automatically. Both direct
+CRUD bindings and reverse-bound triggers use this check; a development grant
+cannot authorize a production webhook. No new configuration file or service is
+needed. Expiry, revocation, exhausted limits or changed version/configuration stop
+new runs. The worker repeats the authority check before external dispatch.
+
+The first reusable-authority version accepts only statically bounded requests.
+Runtime substitutions in request data, unknown effects and destructive operations
+require concrete-run review and are denied at this unattended ingress with
+`execution_authority_required`; the ingress does not create that review itself.
+This is an explicit remaining workflow, not permission to bypass the denial.
+
+A denial does not mark the event as accepted. After correcting and reviewing the
+boundary, explicitly redeliver it if the provider does not retry. A queue failure
+also leaves the replay receipt unconsumed, but retains the original reservation.
+A retry uses that exact execution and original immutable input. Fresh verified
+delivery timestamps/signatures are allowed; a changed event body, type or other
+headers cannot replace a pending execution. Completed or already-running
+executions are never re-enqueued by delivery replay. Historic replay receipts stay
+deduplicated and are not interpreted as new approvals.
 
 The driver is `handleInbound()` in `apps/engine/src/webhooks/inbound/service.ts`; the
 individual verifiers live under `apps/engine/src/webhooks/inbound/verifiers/`.
@@ -4757,6 +4790,12 @@ Denial reasons you may see as `401 { error: "denied", reason: … }`:
 | `event_not_subscribed` | `webhook-type` not in the workflow's non-empty `events[]`. |
 | `inactive` | The binding row is disabled (`active = false`). |
 
+Execution-boundary denials use **409**, not a signature-authentication failure:
+`execution_authority_unavailable`, `execution_authority_required`,
+`execution_authority_changed`, `execution_boundary_mismatch`,
+`workflow_version_not_active` or `input_schema_violation`. The response includes
+an actionable review hint; no new execution is admitted for an invalid boundary.
+
 ### End-to-end wiring recipe (upstream provider → sk ingress)
 
 Wiring an upstream system (e.g. a headless CMS emitting Standard-Webhooks-signed
@@ -4796,7 +4835,10 @@ events) to an sk workflow:
    `v1,<base64(HMAC-SHA256(secret, "<webhook-id>.<webhook-timestamp>.<body>"))>` and set
    the `webhook-type` header to the event name — which must match one of the workflow's
    `events[]`.
-6. **Verify.** Trigger an upstream event and confirm a `200 { accepted: true }` plus a
+6. **Review the production execution authority.** Activate the exact workflow
+   version and separately approve its manifest, finite validity and run limit in
+   the workflow Cockpit. A trigger binding or signing secret grants no live runs.
+7. **Verify.** Trigger an upstream event and confirm a `200 { accepted: true }` plus a
    new execution (`webhook.trigger.fired` in the Audit Log). A `bad_signature` means the
    two secrets diverged; `event_not_subscribed` means the upstream's `webhook-type` is
    not in `events[]`.

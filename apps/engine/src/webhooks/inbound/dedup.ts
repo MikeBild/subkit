@@ -13,6 +13,17 @@ export interface MarkSeenInput {
   standard_webhook_id: string; // the provider-native event id
 }
 
+/** Read existing receipts without consuming a delivery that may still fail admission or enqueue. */
+export async function wasSeen(db: Executor, input: MarkSeenInput): Promise<boolean> {
+  const result = await db.execute(sql`
+    SELECT 1 FROM "webhook_replay_seen"
+    WHERE "tenant_id" = ${input.tenant_id} AND "webhook_id" = ${input.webhook_id}
+      AND "standard_webhook_id" = ${input.standard_webhook_id}
+    LIMIT 1
+  `);
+  return result.rows.length > 0;
+}
+
 /**
  * Returns true if the row was newly inserted, false if it already
  * existed (i.e. this is a replay).

@@ -17,6 +17,7 @@ import type { PgBoss } from "pg-boss";
 import { executions, tenants, workflows, workflowVersions } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { createBoss, disposeBoss } from "../../../queue/boss.ts";
+import { grantScheduleAuthorityFixture } from "../../../scheduler/tests/authority-fixture.ts";
 import { bindFromWorkflow, handleInbound, rotateInboundSecret } from "../service.ts";
 
 let testDb: TestDb;
@@ -65,7 +66,11 @@ beforeAll(async () => {
         tenant_id: tenant.id,
         workflow_id: wf.id,
         version: 1,
-        dag: { name: `wf-${label}`, version: 1, steps: [] },
+        dag: {
+          name: `wf-${label}`,
+          version: 1,
+          steps: [{ id: "noop", kind: "transform", expression: "$" }],
+        },
       })
       .returning();
     if (!version) throw new Error(`version seed failed: ${label}`);
@@ -73,6 +78,7 @@ beforeAll(async () => {
       .update(workflows)
       .set({ current_version_id: version.id })
       .where(eq(workflows.id, wf.id));
+    await grantScheduleAuthorityFixture(testDb.db, tenant.id, wf.id);
     if (label === "a") {
       tenantA = tenant.id;
       workflowA = wf.id;

@@ -15,6 +15,7 @@ let ctx: InboundTestCtx;
 
 beforeAll(async () => {
   ctx = await createInboundCtx("github");
+  await ctx.grantAuthority();
   await ctx.createBinding({
     slug: "gh-push",
     verifier: "github",
