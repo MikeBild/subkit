@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
@@ -17,6 +17,7 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { createBoss, disposeBoss, EXECUTION_RUN_QUEUE } from "../../queue/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -26,17 +27,10 @@ let app: ReturnType<typeof createApp>;
 let browserHeaders: Record<string, string>;
 let counter = 0;
 let remote: MockServer;
-let queueFails = false;
-const queuedExecutions: string[] = [];
+let boss: PgBoss;
 beforeAll(async () => {
   ctx = await createHttpTestServer("workflow_authorities");
-  const boss = {
-    send: async (_queue: string, job: { execution_id: string }) => {
-      queuedExecutions.push(job.execution_id);
-      if (queueFails) throw new Error("fixture queue unavailable");
-      return "fixture-job";
-    },
-  } as unknown as PgBoss;
+  boss = await createBoss({ connectionString: ctx.testDb.url });
   app = createApp({ db: ctx.db, registry: buildDefaultRegistry(ctx.db), boss });
   remote = await createMockServer((_, res) => jsonResponse(res, 200, { ok: true }));
   const [session] = await ctx.db
@@ -58,6 +52,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await remote.close();
+  await disposeBoss(boss);
   await ctx.cleanup();
 });
 
@@ -303,23 +298,92 @@ test("queue failure retries the same reserved execution rather than spending ano
       }),
     });
   expect((await request(false)).status).toBe(400);
-  const before = queuedExecutions.length;
-  queueFails = true;
+  const failedSend = spyOn(boss, "send").mockRejectedValueOnce(
+    new Error("fixture queue unavailable"),
+  );
+  let reservedExecution: string | undefined;
   try {
     expect((await request(true)).status).toBe(500);
+    reservedExecution = (failedSend.mock.calls[0]?.[1] as { execution_id: string } | undefined)
+      ?.execution_id;
   } finally {
-    queueFails = false;
+    failedSend.mockRestore();
   }
-  const retried = await request(true);
+  const retries = await Promise.all([request(true), request(true), request(true)]);
+  const retried = retries[0]!;
+  expect(retries.map((response) => response.status)).toEqual([202, 202, 202]);
   expect(retried.status).toBe(202);
-  const reservedExecution = queuedExecutions[before];
   if (!reservedExecution) throw new Error("queue fixture did not receive the reserved execution");
   expect(await retried.json()).toMatchObject({
     execution_id: reservedExecution,
     status: "queued",
     idempotent_replay: true,
   });
-  expect(queuedExecutions.slice(before)).toEqual([reservedExecution, reservedExecution]);
+  const jobs = await ctx.db.execute(
+    sql`SELECT id FROM pgboss.job WHERE name = ${EXECUTION_RUN_QUEUE} AND data->>'execution_id' = ${reservedExecution}`,
+  );
+  expect(jobs.rows).toHaveLength(1);
+  expect(jobs.rows[0]?.id).toBe(reservedExecution);
+  const [stored] = await ctx.db
+    .select()
+    .from(workflowExecutionAuthorities)
+    .where(eq(workflowExecutionAuthorities.id, authority.id));
+  expect(stored?.reserved_runs).toBe(1);
+});
+
+test("revocation after queue failure prevents enqueueing the reserved retry", async () => {
+  const f = await fixture();
+  const granted = await app.request(`${f.base}/execution-authorities`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify(f.body),
+  });
+  expect(granted.status).toBe(201);
+  const authority = (await granted.json()) as { id: string };
+  await ctx.db
+    .update(workflows)
+    .set({ lifecycle: "active", current_version_id: f.version.id })
+    .where(eq(workflows.id, f.workflow.id));
+  const request = () =>
+    app.request("/v1/executions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        source: "saved",
+        workflow_id: f.workflow.id,
+        execution_authority_id: authority.id,
+        async: true,
+        idempotency_key: "authority-queue-revoked",
+        input: {},
+      }),
+    });
+  const failedSend = spyOn(boss, "send").mockRejectedValueOnce(
+    new Error("fixture queue unavailable"),
+  );
+  let executionId: string | undefined;
+  try {
+    expect((await request()).status).toBe(500);
+    executionId = (failedSend.mock.calls[0]?.[1] as { execution_id: string } | undefined)
+      ?.execution_id;
+  } finally {
+    failedSend.mockRestore();
+  }
+  expect(
+    (
+      await app.request(`${f.base}/execution-authorities/${authority.id}/revoke`, {
+        method: "POST",
+        headers: browserHeaders,
+      })
+    ).status,
+  ).toBe(200);
+  const retried = await request();
+  expect(retried.status).toBe(409);
+  expect(await retried.json()).toMatchObject({ code: "execution_authority_unavailable" });
+  if (!executionId) throw new Error("missing reserved execution");
+  const jobs = await ctx.db.execute(
+    sql`SELECT id FROM pgboss.job WHERE name = ${EXECUTION_RUN_QUEUE} AND data->>'execution_id' = ${executionId}`,
+  );
+  expect(jobs.rows).toHaveLength(0);
   const [stored] = await ctx.db
     .select()
     .from(workflowExecutionAuthorities)

@@ -14,6 +14,7 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { EngineClient } from "../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../llm/mock-provider.ts";
 import { TEST_HUMAN_ANSWER } from "../test-helpers/answer-actor.ts";
+import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
 import { type FastPathParams, tryFastPath } from "./fast-path.ts";
 import { renderRunOutput } from "./fast-path-render.ts";
 import { listWorkflowsTool } from "./tools/generated/workflows.ts";
@@ -23,6 +24,7 @@ import type { TurnEvent } from "./types.ts";
 let tdb: TestDb;
 let tenantId: string;
 let conversationId: string;
+let remote: MockServer;
 
 function makePrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrincipal {
   return {
@@ -69,6 +71,7 @@ function makeParams(msg: string, overrides: Partial<FastPathParams> = {}): FastP
 
 beforeAll(async () => {
   tdb = await createTestDb("conversations-fast-path");
+  remote = await createMockServer((_, res) => jsonResponse(res, 200, { ok: true }));
 
   const [t] = await tdb.db
     .insert(tenants)
@@ -79,6 +82,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await remote.close();
   await tdb.cleanup();
 });
 
@@ -301,21 +305,20 @@ describe("tryFastPath — run <slug> with a required input contract defers to th
   });
 });
 
-describe("tryFastPath — run <slug> confirmation gate", () => {
-  test("first turn: emits pending envelope, status=awaiting_input, NO runExecution call", async () => {
-    const wf = await seedMinimalWorkflow("conf-gate-wf");
-    // The default policy mode for tenants is "confirm_before_execution"
-    // when tool_policies is empty + the workflow category is tenant_write.
-    // Since the gate will proceed (auto mode), we test what happens.
-    // If the policy auto-proceeds, status will be "active" and runExecution runs.
-    // Either way, LLM is NOT called.
-    const result = await tryFastPath(makeParams("run conf-gate-wf"));
-    // Either pending (awaiting_input) or active (auto-proceeded) —
-    // the key assertion is NO LLM call was made
+describe("tryFastPath — read-only run <slug>", () => {
+  test("a read-only workflow completes without a confirmation or LLM call", async () => {
+    const wf = await seedMinimalWorkflow("read-only-wf");
+    const before = remote.callCount();
+    const result = await tryFastPath(makeParams("run read-only-wf"));
     expect(getMockProvider().calls.length).toBe(0);
-    // result is not null (fast path handled it)
-    expect(result).not.toBeNull();
-    void wf;
+    expect(result?.status).toBe("active");
+    expect(remote.callCount() - before).toBe(1);
+    const rows = await tdb.db
+      .select()
+      .from(executions)
+      .where(and(eq(executions.tenant_id, tenantId), eq(executions.workflow_id, wf.id)));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.status).toBe("succeeded");
   });
 });
 
@@ -621,7 +624,11 @@ async function seedMinimalWorkflow(slug: string): Promise<{ id: string }> {
       tenant_id: tenantId,
       workflow_id: wf.id,
       version: 1,
-      dag: { name: slug, slug, steps: [{ id: "s1", kind: "request", url: "https://example.com" }] },
+      dag: {
+        name: slug,
+        slug,
+        steps: [{ id: "s1", kind: "request", method: "GET", url: remote.baseUrl }],
+      },
     })
     .returning();
   if (!v) throw new Error("seed workflow version failed");

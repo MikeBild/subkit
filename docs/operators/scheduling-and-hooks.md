@@ -321,6 +321,14 @@ fires when availability is restored. The same queue backs explicitly asynchronou
 workflow runs, while synchronous API-initiated runs stay inline on the request
 path.
 
+For asynchronous REST runs that explicitly select an `execution_authority_id`,
+an idempotency key is required. Queue retries reuse both the reserved execution
+and its queue job ID, without spending another run. Before enqueueing, SubKit
+checks that the stored authority is still live and matches the active version
+and manifest. A revoked, expired, or changed boundary returns a conflict instead
+of enqueueing the retry. Runtime checks still apply before external effects;
+this does not promise exactly-once delivery to external systems.
+
 Execution state changes are published through a pub/sub system backed by an outbox
 pattern — events are written in the same transaction as the state change that
 produced them, so they are never silently lost. Subscribers (CLI live-tail, chat
