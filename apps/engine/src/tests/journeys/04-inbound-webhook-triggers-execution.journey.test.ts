@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { executions } from "../../db/schema/index.ts";
+import { grantScheduleAuthorityFixture } from "../../scheduler/tests/authority-fixture.ts";
 import {
   createJourneyCtx,
   JOURNEY_HOOK_TIMEOUT,
@@ -36,6 +37,7 @@ beforeAll(async () => {
     steps: [{ id: "noop", kind: "transform", expression: "$" }],
   });
   workflowId = wf.id;
+  await grantScheduleAuthorityFixture(ctx.db, ctx.tenantId, workflowId);
 
   // Create an inbound binding that maps the slug to the workflow.
   const bindRes = await journeyFetch(ctx, "/v1/webhooks/inbound", {
@@ -55,6 +57,47 @@ afterAll(async () => {
 }, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey: inbound webhook triggers execution", () => {
+  test("a valid signature without execution authority returns an actionable 409", async () => {
+    const wf = await seedWorkflow(ctx, {
+      slug: "unapproved-events",
+      name: "Unapproved events",
+      steps: [{ id: "noop", kind: "transform", expression: "$" }],
+    });
+    const binding = await journeyFetch(ctx, "/v1/webhooks/inbound", {
+      method: "POST",
+      body: JSON.stringify({
+        slug: "unapproved-events",
+        workflow_id: wf.id,
+        verifier: "standard",
+        secret: SECRET,
+      }),
+    });
+    expect(binding.status).toBe(201);
+    const body = '{"invoice":42}';
+    const webhookId = "authority-required-event";
+    // allow-wall-clock: the HTTP ingress verifies the live signature window.
+    const ts = Math.floor(Date.now() / 1000);
+    const res = await fetch(`${ctx.baseUrl}/v1/hooks/unapproved-events`, {
+      method: "POST",
+      body,
+      headers: {
+        "content-type": "application/json",
+        "webhook-id": webhookId,
+        "webhook-timestamp": String(ts),
+        "webhook-signature": sign(webhookId, ts, body),
+      },
+    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      error: "denied",
+      reason: "execution_authority_unavailable",
+      hint: expect.stringContaining("finite execution authority"),
+    });
+    expect(
+      await ctx.db.select().from(executions).where(eq(executions.workflow_id, wf.id)),
+    ).toHaveLength(0);
+  });
+
   test("AC1: valid signature accepted and execution enqueued", async () => {
     const body = JSON.stringify({ invoice: { id: 1, amount: 100 } });
     const webhookId = randomUUID(); // allow-random: legacy; review before changing

@@ -12,6 +12,7 @@ import type { Db } from "../../../db/client.ts";
 import { tenants, workflows, workflowVersions } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { createBoss, disposeBoss } from "../../../queue/boss.ts";
+import { grantScheduleAuthorityFixture } from "../../../scheduler/tests/authority-fixture.ts";
 import { createInbound, type InboundRow } from "../service.ts";
 
 export interface InboundTestCtx {
@@ -20,6 +21,10 @@ export interface InboundTestCtx {
   boss: PgBoss;
   tenantId: string;
   workflowId: string;
+  grantAuthority: (
+    environment?: "dev" | "prod",
+    maxRuns?: number,
+  ) => ReturnType<typeof grantScheduleAuthorityFixture>;
   cleanup: () => Promise<void>;
   createBinding: (params: {
     slug: string;
@@ -58,7 +63,9 @@ export async function createInboundCtx(label: string): Promise<InboundTestCtx> {
       dag: {
         name: `wf-${label}`,
         version: 1,
-        steps: [],
+        steps: [
+          { id: "noop", kind: "transform", language: "javascript", expression: "return input;" },
+        ],
       },
     })
     .returning();
@@ -75,6 +82,8 @@ export async function createInboundCtx(label: string): Promise<InboundTestCtx> {
     boss,
     tenantId: tenant.id,
     workflowId: wf.id,
+    grantAuthority: (environment = "prod", maxRuns = 100) =>
+      grantScheduleAuthorityFixture(testDb.db, tenant.id, wf.id, environment, maxRuns),
     cleanup: async () => {
       await disposeBoss(boss);
       await testDb.cleanup();

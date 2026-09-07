@@ -36,6 +36,7 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { grantScheduleAuthorityFixture } from "../../scheduler/tests/authority-fixture.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
   createDeterministicHexFactory,
@@ -301,6 +302,12 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
       }),
     });
     expect(bindB.status).toBe(201);
+
+    // Signatures select a tenant's binding, not its execution permission.
+    // Give each immutable version its own finite production authority so
+    // this test reaches the cross-tenant execution isolation boundary.
+    await grantScheduleAuthorityFixture(ctx.db, ctx.tenantId, tenantAWorkflowId, "prod", 1);
+    await grantScheduleAuthorityFixture(ctx.db, tenantB.tenantId, b_wf.id, "prod", 1);
 
     // Sanity: there are now two distinct rows, one per tenant, both
     // carrying the same slug. The unique constraint is `(tenant_id, slug)`.

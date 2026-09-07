@@ -46,6 +46,7 @@ beforeAll(async () => {
       },
     })
     .where(eq(workflowVersions.id, currentVersionId));
+  await ctx.grantAuthority();
   await registerExecutionRunHandler({ boss: ctx.boss, db: ctx.db });
   await ctx.createBinding({
     slug: "bind-trigger",

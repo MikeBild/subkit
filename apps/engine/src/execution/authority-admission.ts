@@ -3,7 +3,7 @@ import { z } from "@hono/zod-openapi";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { RequestDispatchPolicy } from "../connectors/drivers/http.ts";
 import { loadConnectorSystem } from "../connectors/system.ts";
-import type { Db } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import {
   executions,
   workflowExecutionAuthorities,
@@ -63,7 +63,7 @@ function fail(code: string, message: string): never {
  * the product-local human authority and atomically creates the charged run.
  * It never enqueues; callers may retry enqueueing the SAME queued execution
  * after a queue failure, without making a second reservation. */
-export async function admitAuthorizedWorkflowExecution(raw: unknown, db: Db) {
+export async function admitAuthorizedWorkflowExecution(raw: unknown, db: Executor) {
   const input = admissionSchema.parse(raw);
   const normalized = JsonValueSchema.parse(normalizeWorkflowRunInput(input.input) ?? null);
   return db.transaction(async (tx) => {

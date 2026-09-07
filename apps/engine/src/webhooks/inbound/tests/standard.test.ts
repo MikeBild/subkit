@@ -25,6 +25,7 @@ let bindingId: string;
 
 beforeAll(async () => {
   ctx = await createInboundCtx("standard");
+  await ctx.grantAuthority();
   const row = await ctx.createBinding({
     slug: "invoice-trigger",
     verifier: "standard",

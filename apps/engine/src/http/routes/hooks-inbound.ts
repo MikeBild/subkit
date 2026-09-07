@@ -203,7 +203,11 @@ export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
           reason: outcome.reason,
           ...(outcome.hint ? { hint: outcome.hint } : {}),
         },
-        401,
+        outcome.reason.startsWith("execution_") ||
+          outcome.reason.startsWith("workflow_") ||
+          outcome.reason === "input_schema_violation"
+          ? 409
+          : 401,
       );
     }
     if (outcome.status === "deduped") {
