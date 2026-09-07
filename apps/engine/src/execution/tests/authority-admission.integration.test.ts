@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import type { PgBoss } from "pg-boss";
 import { getConnectorForEnvironment } from "../../connectors/service.ts";
 import { secretNames } from "../../credentials/connections/service.ts";
 import { upsertCredential } from "../../credentials/service.ts";
@@ -12,11 +13,13 @@ import {
   tenants,
   workflowExecutionAuthorities,
   workflows,
+  workflowsSchedules,
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { RunLlmBudget } from "../../llm/accounting/index.ts";
 import { createSecretVersion } from "../../runtime-config/service.ts";
+import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createMockServer, jsonResponse } from "../../test-helpers/mock-http.ts";
@@ -215,6 +218,41 @@ test("successive runs automatically use the matching authority without another g
   await expect(admitAuthorizedWorkflowExecution(f.params, ctx.db)).rejects.toMatchObject({
     code: "execution_authority_unavailable",
   });
+});
+
+test("cron queue retries reuse one authorized reservation and stop at its run limit", async () => {
+  const f = await fixture(1);
+  const now = await databaseNow(ctx.db);
+  await ctx.db.insert(workflowsSchedules).values({
+    tenant_id: f.params.tenant_id,
+    workflow_id: f.workflow.id,
+    cron: "* * * * *",
+    timezone: "UTC",
+    execution_mode: "dev",
+    paused: false,
+    created_at: new Date(now.getTime() - 120_000),
+    input: f.params.input,
+  });
+  const sends: { execution_id: string; job_id: string }[] = [];
+  const boss = {
+    async send(_queue: string, job: { execution_id: string }, options: { id: string }) {
+      sends.push({ execution_id: job.execution_id, job_id: options.id });
+      if (sends.length === 1) throw new Error("fixture queue unavailable");
+      return options.id;
+    },
+  } as unknown as PgBoss;
+  const scheduler = new SchedulerReconciler({ boss, db: ctx.db, intervalMs: 60_000 });
+  await scheduler.reconcileWorkflowSchedules(now);
+  expect(sends).toHaveLength(1);
+  expect(await reservations(f.authority.id)).toBe(1);
+  await scheduler.reconcileWorkflowSchedules(new Date(now.getTime() + 1_000));
+  expect(sends).toHaveLength(2);
+  expect(sends[1]).toEqual(sends[0]);
+  expect(sends[0]!.job_id).toBe(sends[0]!.execution_id);
+  expect(await reservations(f.authority.id)).toBe(1);
+  await scheduler.reconcileWorkflowSchedules(new Date(now.getTime() + 70_000));
+  expect(sends).toHaveLength(2);
+  expect(await reservations(f.authority.id)).toBe(1);
 });
 
 test("concurrent retries preserve one execution and one reservation", async () => {

@@ -11,6 +11,7 @@
 // LLM: none needed — boot mock to stay hermetic.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { grantScheduleAuthorityFixture } from "../../apps/engine/src/scheduler/tests/authority-fixture.ts";
 import { seedWorkflow } from "./_helpers/factories.ts";
 import { apiClient } from "./_helpers/http.ts";
 import { findScheduledExecutions, runReconcileOnce, seedSchedule } from "./_helpers/scheduler.ts";
@@ -27,6 +28,13 @@ afterAll(async () => {
 describe("workflow schedule fan-out", () => {
   test("a due schedule fires exactly one execution with request_source=scheduler", async () => {
     const { id: workflowId } = await seedWorkflow(env, { description: "scheduled wf" });
+    const authority = await grantScheduleAuthorityFixture(
+      env.db,
+      env.tenantId,
+      workflowId,
+      "prod",
+      1,
+    );
     const schedule = await seedSchedule(env, workflowId, {
       cron: "* * * * *",
       input: { from: "cron" },
@@ -43,8 +51,9 @@ describe("workflow schedule fan-out", () => {
     await runReconcileOnce(env, new Date(Date.now() + 60_000));
 
     const after = await findScheduledExecutions(env, workflowId);
-    expect(after.length).toBeGreaterThanOrEqual(1);
+    expect(after).toHaveLength(1);
     expect(after[0]?.request_source).toBe("scheduler");
+    expect(after[0]?.execution_authority_id).toBe(authority.id);
 
     // A second identical pass must NOT double-fire (CAS-stamp on
     // last_enqueued_at dedups within the same cron window).
@@ -58,6 +67,15 @@ describe("workflow schedule fan-out", () => {
     const audit = await api.get<unknown>("/v1/audit-log?limit=50");
     expect(audit.status).toBe(200);
     expect(JSON.stringify(audit.body)).toContain("schedule.trigger.fired");
+    expect(JSON.stringify(audit.body)).toContain(authority.id);
+  }, 60_000);
+
+  test("a due schedule without an execution authority creates no run", async () => {
+    const { id: workflowId } = await seedWorkflow(env, { description: "not authorized" });
+    await seedSchedule(env, workflowId, { cron: "* * * * *" });
+    // allow-wall-clock: the explicit future instant makes the cadence due.
+    await runReconcileOnce(env, new Date(Date.now() + 60_000));
+    expect(await findScheduledExecutions(env, workflowId)).toHaveLength(0);
   }, 60_000);
 
   test("sk schedules list surfaces the bound schedule", async () => {

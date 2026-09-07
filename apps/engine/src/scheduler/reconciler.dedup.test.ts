@@ -27,6 +27,7 @@ import {
   type EngineTestCtx,
 } from "../execution/tests/setup.ts";
 import { SchedulerReconciler } from "./reconciler.ts";
+import { grantScheduleAuthorityFixture } from "./tests/authority-fixture.ts";
 
 let ctx: EngineTestCtx;
 
@@ -67,6 +68,7 @@ async function insertSchedule(
   last_enqueued_at: Date | null,
   timezone = "UTC",
 ): Promise<string> {
+  await grantScheduleAuthorityFixture(ctx.testDb.db, ctx.tenantId, workflow_id);
   const [row] = await ctx.testDb.db
     .insert(workflowsSchedules)
     .values({

@@ -16,6 +16,7 @@ import { auditLog, executions, tenants, workflowsSchedules } from "../../db/sche
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createWorkflowRow, type EngineTestCtx } from "../../execution/tests/setup.ts";
 import { SchedulerReconciler } from "../reconciler.ts";
+import { grantScheduleAuthorityFixture } from "./authority-fixture.ts";
 
 // ---------------------------------------------------------------------------
 // Shared state
@@ -92,6 +93,8 @@ beforeAll(async () => {
     steps: [{ id: "noop", kind: "transform", expression: "$input" }],
   });
   workflowB = wfB.workflow_id;
+  await grantScheduleAuthorityFixture(testDb.db, ctxA.tenantId, workflowA);
+  await grantScheduleAuthorityFixture(testDb.db, ctxB.tenantId, workflowB);
 });
 
 afterAll(async () => {
