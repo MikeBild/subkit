@@ -16,11 +16,12 @@ import { decryptSecret, encryptSecret } from "../../crypto/aes-gcm.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import { type Db, type Executor, getDb } from "../../db/client.ts";
 import { webhooksInbound, workflows } from "../../db/schema/index.ts";
-import { createExecution } from "../../execution/state.ts";
+import { assertExecutionAuthorityCurrent } from "../../execution/authority-admission.ts";
 import { logger } from "../../logging/logger.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../../queue/queues.ts";
 import type { WebhookTrigger } from "../../workflows/types.ts";
-import { markSeenIfNew } from "./dedup.ts";
+import { admitWebhookExecution } from "./admission.ts";
+import { markSeenIfNew, wasSeen } from "./dedup.ts";
 import { verifyGitHub } from "./verifiers/github.ts";
 import { verifyStandard } from "./verifiers/standard-webhooks.ts";
 import { verifyStripe } from "./verifiers/stripe.ts";
@@ -717,12 +718,12 @@ export async function handleInbound(
   }
 
   // 4) Replay dedup.
-  const fresh = await markSeenIfNew(db, {
+  const seen = await wasSeen(db, {
     tenant_id: row.tenant_id,
     webhook_id: row.id,
     standard_webhook_id: verdict.normalized.id,
   });
-  if (!fresh) {
+  if (seen) {
     // Replay rejection. Trigger-origin treats this as a verification
     // failure (the event already fired once — this attempt is
     // redundant). Crud-origin keeps the historical "received +
@@ -825,48 +826,59 @@ export async function handleInbound(
     body: normalizedBody,
   };
 
-  const execution_id = await createExecution(db, {
-    tenant_id: row.tenant_id,
-    workflow_id: row.workflow_id,
-    workflow_version_id: wf.current_version_id,
-    source_kind: "saved",
-    source_ref: null,
-    request_source: "webhook",
-    // Unattended automation runs against PROD connectors, exactly as the
-    // schedule reconciler already decides for the same reason.
-    //
-    // Leaving this to createExecution's `dev` default meant every
-    // webhook-triggered workflow resolved dev connectors, and a dev connector
-    // is the one nobody re-authenticates. The tenant's dev Gmail connector went
-    // to needs_reauth on 2026-07-23 and every contact notification since has
-    // failed with a 401 that only appears in an execution nobody was reading —
-    // the delivery was accepted, the workflow ran, the audit row says
-    // "succeeded" up to the last step, and no mail was sent.
-    //
-    // A caller who wants dev has an unattended trigger they authored; a caller
-    // who did not say anything meant production, because production is what
-    // sent the webhook.
-    execution_mode: "prod",
-    parent_execution_id: null,
-    input: inputPayload,
-  });
+  let admitted: Awaited<ReturnType<typeof admitWebhookExecution>>;
+  try {
+    admitted = await admitWebhookExecution(db, row, wf.current_version_id, inputPayload);
+    if (admitted.status === "queued")
+      await assertExecutionAuthorityCurrent(db, row.tenant_id, admitted.execution_id);
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? String(error.code) : "";
+    if (
+      ![
+        "execution_authority_required",
+        "execution_authority_unavailable",
+        "execution_authority_changed",
+        "execution_boundary_mismatch",
+        "workflow_version_not_active",
+        "input_schema_violation",
+      ].includes(code)
+    )
+      throw error;
+    const hint =
+      "Review the exact active workflow version, production effect boundary and finite execution authority in the workflow Cockpit before retrying. A webhook signature does not grant execution authority.";
+    await auditAwait(
+      {
+        tenant_id: row.tenant_id,
+        action: FAILED_ACTION,
+        resource_type: "webhook_inbound",
+        resource_id: row.id,
+        result: "denied",
+        reason: code,
+        metadata: { ...baseAuditMetadata, event_id: verdict.normalized.id, hint },
+      },
+      db,
+    );
+    return { status: "denied", reason: code, inbound_id: row.id, hint };
+  }
+  const execution_id = admitted.execution_id;
   const job: ExecutionRunJob = {
     tenant_id: row.tenant_id,
     workflow_id: row.workflow_id,
     execution_id,
-    input: inputPayload,
+    input: admitted.input,
     request_source: "webhook",
-    // The SAME mode the execution row above records.
-    //
-    // Setting it only on the row was the more dangerous half of a fix: the
-    // engine defaults `opts.execution_mode ?? "dev"`, so every webhook run
-    // still resolved dev connectors while the audit trail read `prod`. The
-    // symptom that exposed it — a governed run whose last step failed with
-    // `circuit_open` against a dev Gmail binding nobody re-authenticates,
-    // under an execution the API reported as production.
+    // Unattended deliveries use only an explicitly reviewed production authority.
     execution_mode: "prod",
   };
-  await boss.send(EXECUTION_RUN_QUEUE, job);
+  if (admitted.status === "queued") await boss.send(EXECUTION_RUN_QUEUE, job, { id: execution_id });
+  // Mark only after durable enqueue. A failed send leaves the same reservation
+  // retryable; a lost response reuses the job UUID, never a second charged run.
+  const fresh = await markSeenIfNew(db, {
+    tenant_id: row.tenant_id,
+    webhook_id: row.id,
+    standard_webhook_id: verdict.normalized.id,
+  });
+  if (!fresh || admitted.status !== "queued") return { status: "deduped", inbound_id: row.id };
 
   if (origin === "trigger") {
     audit(
