@@ -12,6 +12,7 @@ import type { ResolvedPrincipal } from "../../../auth/index.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
 import {
   admitAuthorizedWorkflowExecution,
+  assertExecutionAuthorityCurrent,
   createExecution,
   finalizeExecution,
   findExecutionByIdempotencyKey,
@@ -223,6 +224,9 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           },
           db,
         );
+        if (body.async && admitted.status === "queued") {
+          await assertExecutionAuthorityCurrent(db, principal.tenant_id, admitted.execution_id);
+        }
       } catch (error) {
         const code = (error as { code?: string }).code;
         if (code === "input_schema_violation")
@@ -248,15 +252,19 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
       if (body.async) {
         // A queue outage leaves the SAME reserved run retryable. Re-enqueueing
         // never spends another allowance; worker startup claims queued rows.
-        await (c.get("boss") ?? getBoss()).send(EXECUTION_RUN_QUEUE, {
-          tenant_id: principal.tenant_id,
-          workflow_id: body.workflow_id,
-          execution_id: admitted.execution_id,
-          input: admitted.input,
-          request_source: body.request_source ?? "api",
-          trace_id: c.get("trace_id") ?? null,
-          execution_mode,
-        } satisfies ExecutionRunJob);
+        await (c.get("boss") ?? getBoss()).send(
+          EXECUTION_RUN_QUEUE,
+          {
+            tenant_id: principal.tenant_id,
+            workflow_id: body.workflow_id,
+            execution_id: admitted.execution_id,
+            input: admitted.input,
+            request_source: body.request_source ?? "api",
+            trace_id: c.get("trace_id") ?? null,
+            execution_mode,
+          } satisfies ExecutionRunJob,
+          { id: admitted.execution_id },
+        );
         return c.json(
           {
             execution_id: admitted.execution_id,
