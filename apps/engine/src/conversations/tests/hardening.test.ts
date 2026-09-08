@@ -175,6 +175,7 @@ describe("conversations/hardening", () => {
         actor_id: ctx.user_id,
         connector_id: ctx.connector_id,
         initial_message: "please list users from the api",
+        permission_mode: "ask",
       },
       ctx.testDb.db,
     );

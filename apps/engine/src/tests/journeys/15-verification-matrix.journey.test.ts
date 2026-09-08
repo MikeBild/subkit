@@ -132,6 +132,7 @@ describe("journey: verification matrix (docs/33)", () => {
     const createRes = await journeyFetch(ctx, "/v1/conversations", {
       method: "POST",
       body: JSON.stringify({
+        permission_mode: "ask",
         connector_id: connectorId,
         initial_message: "list users from the api",
       }),

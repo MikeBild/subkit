@@ -63,6 +63,7 @@ describe("journey: sk-cli elicitation lifecycle", () => {
     // the mock provider's queued elicitation actually lands.
     const outcome = await createConversationWithTurn(
       {
+        permission_mode: "ask",
         tenant_id: ctx.tenantId,
         actor_id: ctx.userId,
         initial_message: "list users from jsonplaceholder",

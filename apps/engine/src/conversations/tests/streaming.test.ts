@@ -54,6 +54,7 @@ describe("http/conversations streaming", () => {
       body: JSON.stringify({
         connector_id: connectorId,
         initial_message: "list users from the api",
+        permission_mode: "ask",
       }),
     });
     expect(createRes.status).toBe(201);

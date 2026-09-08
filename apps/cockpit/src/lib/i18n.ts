@@ -7,6 +7,16 @@ export const LOCALE_TAGS: Record<Locale, string> = {
 };
 
 const EN = {
+  "chat.mode.label": "Authoring mode",
+  "chat.mode.default": "System default — autonomous preparation",
+  "chat.mode.auto": "Autonomous preparation",
+  "chat.mode.ask": "Ask before changes",
+  "chat.mode.plan": "Planning only",
+  "chat.mode.yolo": "Explicit unrestricted exception",
+  "chat.mode.legacy": "Existing session policy",
+  "chat.mode.loading": "Loading stored mode…",
+  "chat.mode.boundary":
+    "Authoring mode does not grant activation or live execution. External effects require their own valid authority.",
   "authority.grantOpen": "Review execution authority",
   "authority.grantDescription":
     "Create a new, finite permission for this exact version. This does not activate or run the workflow. Review the effects and limits before confirming.",
@@ -1405,6 +1415,16 @@ const EN = {
 export type TranslationKey = keyof typeof EN;
 
 const DE: Record<TranslationKey, string> = {
+  "chat.mode.label": "Entwurfsmodus",
+  "chat.mode.default": "Systemstandard — autonome Vorbereitung",
+  "chat.mode.auto": "Autonome Vorbereitung",
+  "chat.mode.ask": "Vor Änderungen fragen",
+  "chat.mode.plan": "Nur planen",
+  "chat.mode.yolo": "Explizite unbeschränkte Ausnahme",
+  "chat.mode.legacy": "Bestehende Sitzungsrichtlinie",
+  "chat.mode.loading": "Gespeicherter Modus wird geladen…",
+  "chat.mode.boundary":
+    "Der Entwurfsmodus erlaubt keine Aktivierung oder Live-Ausführung. Externe Wirkungen benötigen eine eigene gültige Freigabe.",
   "authority.grantOpen": "Ausführungsfreigabe prüfen",
   "authority.grantDescription":
     "Erstelle eine neue, begrenzte Berechtigung für diese exakte Version. Dadurch wird der Workflow weder aktiviert noch gestartet. Prüfe Wirkungen und Grenzen vor der Bestätigung.",

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { getMockProvider } from "../../llm/mock-provider.ts";
-import { getConversation } from "../service.ts";
+import { getStoredPermissionMode } from "../service/shared.ts";
+import { createConversation, getConversation } from "../service.ts";
 import {
   appendMessageWithTurn,
   type ConversationTestCtx,
@@ -20,12 +21,27 @@ afterAll(async () => {
 });
 
 describe("conversation permission mode persistence", () => {
-  test("stored auto mode survives an elicitation resume and still auto-confirms safe prompts", async () => {
+  test("new sessions persist auto by default without changing legacy or explicit modes", async () => {
+    for (const mode of [undefined, "ask", "plan", "auto"] as const) {
+      const created = await createConversation(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_id: ctx.user_id,
+          ...(mode ? { permission_mode: mode } : {}),
+        },
+        ctx.testDb.db,
+      );
+      const detail = await getConversation(ctx.tenant_id, created.conversation.id, ctx.testDb.db);
+      expect(detail?.draft?.session?.permission_mode).toBe(mode ?? "auto");
+    }
+    expect(getStoredPermissionMode(null)).toBeNull();
+    expect(getStoredPermissionMode(undefined)).toBeNull();
+  });
+  test("the persisted default survives a destructive gate and resumes autonomous preparation", async () => {
     const created = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
-        permission_mode: "auto",
       },
       ctx.testDb.db,
     );

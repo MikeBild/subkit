@@ -2170,6 +2170,26 @@ for (const locale of variants) {
       // panel has to be out of the way before the click.
       await page.locator('[data-testid="conversation-new"]').click();
       await page.locator('[data-testid="chat-empty"]').waitFor({ state: "visible" });
+      const modePicker = page.locator('[data-testid="chat-permission-select"]');
+      const defaultMode = locale.name === "de" ? "Systemstandard" : "System default";
+      if (!(await modePicker.textContent())?.includes(defaultMode))
+        throw new Error(`${locale.artifact}: new chat does not inherit the system mode`);
+      await modePicker.click();
+      await page
+        .getByRole("option", {
+          name: locale.name === "de" ? "Vor Änderungen fragen" : "Ask before changes",
+          exact: true,
+        })
+        .click();
+      if (
+        !(await modePicker.textContent())?.includes(
+          locale.name === "de" ? "Vor Änderungen fragen" : "Ask before changes",
+        )
+      )
+        throw new Error(`${locale.artifact}: explicit conservative mode is not selectable`);
+      await page.locator('[data-testid="conversation-new"]').click();
+      if (!(await modePicker.textContent())?.includes(defaultMode))
+        throw new Error(`${locale.artifact}: new chat retains an unintended override`);
       await page.waitForTimeout(300);
       await shoot(page, `${locale.artifact}-desktop-chat-new`, {
         fullPage: false,

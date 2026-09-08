@@ -199,6 +199,7 @@ describe("journey: AI chat authoring", () => {
       body: JSON.stringify({
         connector_id: ctx.connectorId,
         initial_message: "please list users from the api",
+        permission_mode: "ask",
       }),
     });
     expect(createRes.status).toBe(201);

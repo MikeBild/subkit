@@ -102,6 +102,7 @@ describe("mcp conversation tools", () => {
     // Start — returns fast `working` with the conversation id to poll.
     const start = await client.callTool({
       name: "conversation_start",
+      _meta: { sk_permission_mode: "ask" },
       arguments: {
         connector_id: connectorId,
         message: "please list users from the api",
