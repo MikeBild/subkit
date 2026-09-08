@@ -937,6 +937,7 @@ async function mockApi(route) {
               ? "Monatsreport für alle Tochtergesellschaften inklusive Nachbuchungen und Konsolidierung"
               : `Monatsreport ${index + 1}`,
         workflow_version_id: null,
+        hold_writes: rotate === 2,
         source_kind: ["saved", "draft", "step", "saved"][rotate],
         source_ref: null,
         status: ["succeeded", "running", "failed", "timed_out"][rotate],

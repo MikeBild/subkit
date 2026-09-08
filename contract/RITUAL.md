@@ -1,83 +1,75 @@
 # Changing something that is shared
 
-This file is byte-identical in every product that implements `cockpit-ui`.
+This file is byte-identical in WorkKit, CodeKit, SubKit, ContentKit, WikiKit
+and WatchKit. Shared text and token bytes travel together; product code,
+configuration, identities, databases and deployments stay independent.
 
-There is one rule above all the steps below:
+## Shared rules and local evidence
 
-> **There is no such thing as a contract change in one repository.** A branch that
-> touches `contract/` in one product without a sibling branch open is unfinished.
+The common files in `contract/` are compared byte for byte.
+`conformance.*` files are deliberately local: they record local tests,
+stricter requirements, deviations and historical evidence. They must never
+claim another product's verification.
 
-The products stay separate products. What travels between them is bytes and rules,
-by hand, in a wave — never a package, never a dependency, never a deployment.
+`BOUNDED-AUTONOMY.md` owns authority semantics, localization and defaults.
+`COCKPIT-UI.md` owns presentation rules; `cockpit-ui.css` owns token bytes.
+Neither a matching digest nor a shared status label grants runtime authority.
 
-## Changing a token value
+## Change one coherent boundary
 
-Example: `--accent` in the light scheme.
+1. Inspect the affected rules and each product's local conformance record.
+2. Make the smallest common change. Preserve stricter local rules explicitly.
+3. Carry identical shared bytes to all six checkouts.
+4. For token changes, update the originating design-system values, copy the
+   sentinel regions into each product's own CSS, and update its local TypeScript
+   token representation where present. Regenerate the token digest and ledger.
+5. Rebuild affected Cockpits with their repository-owned command. Regenerate
+   embedded assets and documentation with each product's own generators.
+6. Run all affected local contract, accessibility, locale and browser checks,
+   followed by the full repository gate.
+7. Compare every sibling checkout before calling the portfolio verified.
+   A missing checkout or a skipped comparison is not verification.
+8. Record exact commits and verification evidence for every product.
 
-| # | Where | Do | Red until you do it |
-|---|---|---|---|
-| 1 | ContentKit | `src/design-system.mjs` — the new hex | `cockpit-design-tokens` — css ≠ design system |
-| 2 | ContentKit | `contract/cockpit-ui.css` — the same hex | `cockpit-ui-contract` — file ≠ `Tokens-Digest` |
-| 3 | ContentKit | `shasum -a 256 contract/cockpit-ui.css` → paste into `Tokens-Digest`; append a Ledger row | as above |
-| 4 | ContentKit | copy the region into `apps/cockpit/src/index.css`, between the sentinels | region equality |
-| 5 | ContentKit | `npm run cockpit:build && npm run validate:cockpit` | the browser check |
-| 6 | ContentKit | commit **all four files together**, trailer `Cockpit-UI-Contract: sha256:<first 12>` | — |
-| 7 | WatchKit, **same day** | `cp ../contentkit/contract/{cockpit-ui.css,COCKPIT-UI.md} contract/` | `cockpit-ui-contract` — index.css ≠ contract |
-| 8 | WatchKit | copy the region into `apps/cockpit/src/index.css` **and** update `apps/cockpit/src/lib/tokens.ts` | `cockpit-theme` — tokens.ts ≠ contract |
-| 9 | WatchKit | `bun run build:cockpit` (regenerates `assets/cockpit` **and** `src/cockpit-embedded.ts`) | `check:cockpit-drift` |
-| 10 | WatchKit | `bun run gate`; commit with the **same trailer** | — |
-| 11 | either | `node scripts/verify-family-contracts.mjs --sibling ../watchkit` | — |
+Product-specific build commands and test names live in each repository's
+`AGENTS.md`, package scripts and conformance records, not in a copied command
+that silently invokes the wrong product's build.
 
-## Adding or removing a token name
+## Auth surfaces
 
-Steps 1–11 above, plus: change the name list in `COCKPIT-UI.md` before step 3.
-`CUI-TOKEN-2` fails until you do.
+When changing shared authentication styles, update every participating local
+implementation and its local digest assertion. The rendered marker must be
+derived from actual bytes. A hand-written version number is not evidence of
+matching styles. Approval callbacks still authenticate locally and enforce
+their own CSRF, tenant, role and bound-decision checks.
 
-There is no version to bump. A version number was tried and removed: it existed
-so a product that had NOT taken a change would fail loudly rather than render a
-component unstyled — but rule 12 below says a change lands everywhere in one
-wave, so that product does not exist. The digest is the identity.
+## Verification
 
-## Changing the auth funnel's shared block
+From a checkout containing the comparison script, run:
 
-Same shape, four repos instead of two:
-
+```sh
+node scripts/verify-family-contracts.mjs --sibling ../workkit
+node scripts/verify-family-contracts.mjs --sibling ../codekit
+node scripts/verify-family-contracts.mjs --sibling ../subkit
+node scripts/verify-family-contracts.mjs --sibling ../contentkit
+node scripts/verify-family-contracts.mjs --sibling ../wikikit
+node scripts/verify-family-contracts.mjs --sibling ../watchkit
 ```
-watchkit    src/oauth/ui.ts                              test/unit/oauth-ui.test.ts
-contentkit  src/oauth/ui.mjs                             test/unit/oauth-policy-ui.test.mjs
-wikikit     src/oauth/ui.ts                              test/unit/oauth-ui.test.ts
-subkit      apps/engine/src/http/routes/oauth/ui.ts      .../oauth/ui.test.ts
-```
 
-Author in one, run its test, copy the sha256 it printed into `COMMON_STYLE_SHA256`
-in all four, open four PRs **before merging any**, merge them together.
+The self-comparison is harmless but proves no sibling. All five foreign
+checkouts must exist and their comparisons must succeed. Repository-local
+checks remain runnable without sibling checkouts; the portfolio comparison is
+an additional development-time gate, not a shared runtime dependency.
 
-The funnel's own marker needs no editing: `AUTH_UI_DIGEST` is computed from the
-block at module load, so the `<meta name="mcp-auth-ui-contract">` every product
-serves changes with the bytes. It used to be a hand-typed `content="2"` in four
-repositories — a marker that could not be wrong because it said nothing about
-what it described.
+## Git and release boundaries
 
-## What is red if you stop halfway
+Follow the operator-approved Git workflow and repository protections. For the
+bounded-autonomy implementation, use small green commits directly on the six
+`main` branches, without PRs, force pushes or destructive resets. Keep user
+changes intact. Collect commits locally until the whole portfolio is verified;
+then recheck remote heads, integrate compatible changes, reverify affected
+products and push normally.
 
-| You did | What happens |
-|---|---|
-| `index.css` only | region ≠ contract file → red, with the differing line number |
-| contract css only | `sha256` ≠ `Tokens-Digest` → red |
-| contract css + digest, forgot `index.css` | region mismatch → red |
-| added or removed a name without changing the list | name set-equality → red |
-| **all of it in one product, forgot the sibling** | **both repos green** |
-
-That last row is the one no single-repo test can catch, and pretending otherwise
-is how `mcp-auth-v2` ended up with four repos asserting a hand-typed `content="2"`
-that would have kept passing while the CSS diverged. Three things catch it
-instead:
-
-1. the `cockpit-ui-digest` meta is **derived from the bytes**, so divergent
-   products announce divergent strings in the DOM
-2. the missing Ledger row — a one-line `diff` any human can read
-3. `verify-family-contracts`, run at promotion time on a machine that has both
-   checkouts. It exits 0 with `no sibling checkout found; nothing compared` when
-   there is nothing to compare, and it is **never** part of `npm test` / `bun test`.
-
-Keep the wave short. Open both branches before merging either.
+Six repositories cannot be committed or pushed atomically. Report each actual
+push result; a partial push is not portfolio completion. Code publication never
+implies authority to deploy to production.

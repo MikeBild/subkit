@@ -6971,6 +6971,9 @@
           "status": {
             "type": "string"
           },
+          "hold_writes": {
+            "type": "boolean"
+          },
           "output": {},
           "error": {},
           "steps": {
@@ -7504,9 +7507,7 @@
           },
           "hold_writes": {
             "type": "boolean",
-            "enum": [
-              false
-            ]
+            "description": "Omit to discover an existing matching local authority or run a held preparation. True always holds writes without spending a live run. False requires live authorization and rejects a missing or changed authority."
           },
           "workflow_id": {
             "type": "string",
@@ -7564,7 +7565,7 @@
             "enum": [
               true
             ],
-            "description": "Preview a temporary definition: hold request steps classified as writes; reads still execute against real systems. This flag is not a live-execution authorization."
+            "description": "Temporary definitions always hold writes and unknown effects, including when this flag is omitted. Reads still execute against real systems. This flag is not a live-execution authorization."
           },
           "definition": {
             "$ref": "#/components/schemas/ExecutionRunDraftDefinition"
@@ -7646,7 +7647,7 @@
             "enum": [
               true
             ],
-            "description": "Preview a temporary definition: hold request steps classified as writes; reads still execute against real systems. This flag is not a live-execution authorization."
+            "description": "Temporary definitions always hold writes and unknown effects, including when this flag is omitted. Reads still execute against real systems. This flag is not a live-execution authorization."
           },
           "step": {
             "$ref": "#/components/schemas/ExecutionRunStep"
@@ -7747,6 +7748,18 @@
           "input": {},
           "async": {
             "type": "boolean"
+          },
+          "hold_writes": {
+            "type": "boolean"
+          },
+          "execution_authority_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
           }
         }
       },
@@ -7805,6 +7818,9 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "hold_writes": {
+            "type": "boolean"
           },
           "source_kind": {
             "type": "string",

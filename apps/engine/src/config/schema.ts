@@ -863,7 +863,7 @@ const ReplSection = z
   .object({
     permissionMode: z
       .enum(["ask", "auto", "plan", "yolo"])
-      .default("ask")
+      .default("auto")
       .describe(
         // Keep the description to data semantics; sk-specific UI
         // hints (slash names, key chords) belong in the slash registry

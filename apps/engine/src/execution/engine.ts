@@ -216,6 +216,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         workflow_version_id: resolved.persist_workflow_refs ? workflow_version_id : null,
         source_kind: resolved.source_kind,
         source_ref: resolved.source_ref,
+        hold_writes: opts.hold_writes ?? false,
         request_source,
         parent_execution_id,
         execution_mode,

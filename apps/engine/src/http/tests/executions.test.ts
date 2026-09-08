@@ -134,7 +134,7 @@ describe("idempotency key on the saved-workflow trigger", () => {
     const second = await post({
       source: "saved",
       workflow_id: workflowId,
-      input: { date: "two" },
+      input: { date: "one" },
       idempotency_key: key,
     });
     expect(second.status).toBe(200);
@@ -143,6 +143,14 @@ describe("idempotency key on the saved-workflow trigger", () => {
     expect(second.body.idempotent_replay).toBe(true);
     // Nothing ran the second time: the replay carries no output of its own.
     expect(second.body.output).toBeUndefined();
+    const changed = await post({
+      source: "saved",
+      workflow_id: workflowId,
+      input: { date: "two" },
+      idempotency_key: key,
+    });
+    expect(changed.status).toBe(409);
+    expect(changed.body).toMatchObject({ code: "execution_boundary_mismatch" });
 
     const rows = await ctx.db
       .select({ id: executions.id })
@@ -158,11 +166,16 @@ describe("idempotency key on the saved-workflow trigger", () => {
       { "Idempotency-Key": key },
     );
     const second = await post(
-      { source: "saved", workflow_id: workflowId, input: { date: "h2" } },
+      { source: "saved", workflow_id: workflowId, input: { date: "h1" } },
       { "Idempotency-Key": key },
     );
     expect(second.body.execution_id).toBe(first.body.execution_id);
     expect(second.body.idempotent_replay).toBe(true);
+    const changed = await post(
+      { source: "saved", workflow_id: workflowId, input: { date: "h2" } },
+      { "Idempotency-Key": key },
+    );
+    expect(changed.status).toBe(409);
   });
 
   test("different keys are different runs, and no key is never deduplicated", async () => {

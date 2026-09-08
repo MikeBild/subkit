@@ -296,9 +296,11 @@ export function RunsPage() {
         // A child run says so in a word. There is no run detail route, so it
         // does not pretend to link to the parent.
         (run) =>
-          run.parent_execution_id
-            ? `${t(SOURCE_KIND_KEYS[run.source_kind] ?? "runs.sourceKind.saved")} · ${t("runs.childRun")}`
-            : t(SOURCE_KIND_KEYS[run.source_kind] ?? "runs.sourceKind.saved"),
+          `${run.hold_writes ? `${t("runs.preparation")} · ` : ""}${
+            run.parent_execution_id
+              ? `${t(SOURCE_KIND_KEYS[run.source_kind] ?? "runs.sourceKind.saved")} · ${t("runs.childRun")}`
+              : t(SOURCE_KIND_KEYS[run.source_kind] ?? "runs.sourceKind.saved")
+          }`,
         { width: "w-[15%]" },
       ),
     ];

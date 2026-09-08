@@ -5,6 +5,17 @@ import { ConfigSchema } from "../schema.ts";
 import { dottedPath, findLeafByPath, listConfigLeaves } from "../walk.ts";
 
 describe("ConfigSchema", () => {
+  test("new REPL defaults allow preparation while explicit stored modes remain unchanged", () => {
+    expect(ConfigSchema.parse({ database: { url: "postgres://x" } }).repl.permissionMode).toBe(
+      "auto",
+    );
+    for (const permissionMode of ["ask", "auto", "plan", "yolo"] as const) {
+      expect(
+        ConfigSchema.parse({ database: { url: "postgres://x" }, repl: { permissionMode } }).repl
+          .permissionMode,
+      ).toBe(permissionMode);
+    }
+  });
   test("zero-config: empty input produces a fully-defaulted Config except for database.url", () => {
     const result = ConfigSchema.safeParse({});
     expect(result.success).toBe(false);

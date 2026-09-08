@@ -17738,6 +17738,7 @@ export interface components {
         ExecutionRunResponse: {
             execution_id: string;
             status: string;
+            hold_writes?: boolean;
             output?: unknown;
             error?: unknown;
             steps?: components["schemas"]["ExecutionRunStepSummary"][];
@@ -17881,8 +17882,8 @@ export interface components {
              * @enum {string}
              */
             source: "saved";
-            /** @enum {boolean} */
-            hold_writes?: false;
+            /** @description Omit to discover an existing matching local authority or run a held preparation. True always holds writes without spending a live run. False requires live authorization and rejects a missing or changed authority. */
+            hold_writes?: boolean;
             /** Format: uuid */
             workflow_id: string;
             /** Format: uuid */
@@ -17909,7 +17910,7 @@ export interface components {
              */
             source: "draft";
             /**
-             * @description Preview a temporary definition: hold request steps classified as writes; reads still execute against real systems. This flag is not a live-execution authorization.
+             * @description Temporary definitions always hold writes and unknown effects, including when this flag is omitted. Reads still execute against real systems. This flag is not a live-execution authorization.
              * @enum {boolean}
              */
             hold_writes?: true;
@@ -17941,7 +17942,7 @@ export interface components {
              */
             source: "step";
             /**
-             * @description Preview a temporary definition: hold request steps classified as writes; reads still execute against real systems. This flag is not a live-execution authorization.
+             * @description Temporary definitions always hold writes and unknown effects, including when this flag is omitted. Reads still execute against real systems. This flag is not a live-execution authorization.
              * @enum {boolean}
              */
             hold_writes?: true;
@@ -17980,6 +17981,10 @@ export interface components {
         RerunExecutionBody: {
             input?: unknown;
             async?: boolean;
+            hold_writes?: boolean;
+            /** Format: uuid */
+            execution_authority_id?: string;
+            idempotency_key?: string;
         };
         ExecutionListResponse: {
             items: components["schemas"]["Execution"][];
@@ -17993,6 +17998,7 @@ export interface components {
             workflow_version_id: string | null;
             /** Format: uuid */
             execution_authority_id: string | null;
+            hold_writes?: boolean;
             /** @enum {string} */
             source_kind: "saved" | "draft" | "step";
             source_ref: {

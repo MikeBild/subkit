@@ -68,18 +68,57 @@ afterAll(async () => {
   if (fixture) await fixture.cleanup();
 });
 
-function queued() {
+function queued(hold_writes = false) {
   return createExecution(fixture.db, {
     tenant_id: tenantId,
     workflow_id: workflowId,
     workflow_version_id: versionId,
     source_kind: "saved",
     source_ref: null,
+    hold_writes,
     execution_mode: "prod",
     request_source: "scheduler",
     input: { allowed: true },
   });
 }
+
+test("a persisted preparation cannot be unheld by a worker envelope or database update", async () => {
+  const id = await queued(true);
+  const bound = await bindExistingRun(
+    fixture.db,
+    tenantId,
+    { kind: "saved", workflow_id: workflowId },
+    { allowed: true },
+    {
+      existing_execution_id: id,
+      hold_writes: false,
+      self_healing: { enabled: true },
+    },
+  );
+  expect(bound.options).toMatchObject({ hold_writes: true, self_healing: { enabled: false } });
+  for (const change of [
+    { hold_writes: false },
+    { input: { allowed: false } },
+    { workflow_version_id: laterVersionId },
+  ]) {
+    await expect(
+      fixture.db
+        .update(executions)
+        .set(change)
+        .where(and(eq(executions.tenant_id, tenantId), eq(executions.id, id)))
+        .execute(),
+    ).rejects.toThrow();
+  }
+  const [stored] = await fixture.db
+    .select()
+    .from(executions)
+    .where(and(eq(executions.tenant_id, tenantId), eq(executions.id, id)));
+  expect(stored).toMatchObject({
+    hold_writes: true,
+    input: { allowed: true },
+    workflow_version_id: versionId,
+  });
+});
 
 test("an existing run executes its recorded version, not the newly active version", async () => {
   const id = await queued();

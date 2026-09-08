@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   foreignKey,
   index,
@@ -56,6 +57,8 @@ export const executions = pgTable(
       onDelete: "cascade",
     }),
     execution_authority_id: uuid("execution_authority_id"),
+    // A queued preview must not become live because a worker omitted an option.
+    hold_writes: boolean("hold_writes").notNull().default(false),
     source_kind: text("source_kind").notNull().default("saved"),
     source_ref: jsonb("source_ref").$type<Record<string, unknown> | null>(),
     // The run input as supplied by the caller (null when the run had

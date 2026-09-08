@@ -32,10 +32,13 @@ export type Translate = (key: TranslationKey, values?: Record<string, string | n
 
 /** Describe the execution's stored binding, never the workflow's current grant. */
 export function runAuthorityFacts(
-  run: Pick<Execution, "execution_authority_id" | "workflow_version_id">,
+  run: Pick<Execution, "execution_authority_id" | "workflow_version_id" | "hold_writes">,
   t: Translate,
 ): Array<[string, string]> {
   return [
+    ...(run.hold_writes
+      ? [[t("runs.boundary"), t("runs.preparationDescription")] as [string, string]]
+      : []),
     [t("authority.usedByRun"), run.execution_authority_id ?? t("authority.noStoredBinding")],
     ...(run.workflow_version_id
       ? [[t("authority.version"), run.workflow_version_id] as [string, string]]

@@ -271,6 +271,91 @@ test("the normal run API consumes a human grant and binds replay to the exact in
   expect(writes).toBe(2);
 });
 
+test("an omitted authority id discovers the grant; exhaustion falls back to a held preparation", async () => {
+  const f = await fixture(remote.baseUrl);
+  const granted = await app.request(`${f.base}/execution-authorities`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify({ ...f.body, max_runs: 2 }),
+  });
+  expect(granted.status).toBe(201);
+  const authority = (await granted.json()) as { id: string };
+  await ctx.db
+    .update(workflows)
+    .set({ lifecycle: "active", current_version_id: f.version.id })
+    .where(eq(workflows.id, f.workflow.id));
+  let writes = 0;
+  remote.setHandler((_, res) => {
+    writes++;
+    jsonResponse(res, 200, { ok: true });
+  });
+  for (let index = 0; index < 3; index++) {
+    const response = await app.request("/v1/executions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ source: "saved", workflow_id: f.workflow.id }),
+    });
+    expect(response.status).toBe(200);
+    const run = (await response.json()) as { execution_id: string };
+    const detail = await app.request(`/v1/executions/${run.execution_id}`, {
+      headers: browserHeaders,
+    });
+    expect(await detail.json()).toMatchObject({
+      hold_writes: index === 2,
+      execution_authority_id: index === 2 ? null : authority.id,
+    });
+  }
+  expect(writes).toBe(2);
+});
+
+test("granting later cannot upgrade an idempotent preparation into a live run", async () => {
+  const f = await fixture(remote.baseUrl);
+  await ctx.db
+    .update(workflows)
+    .set({ lifecycle: "active", current_version_id: f.version.id })
+    .where(eq(workflows.id, f.workflow.id));
+  let writes = 0;
+  remote.setHandler((_, res) => {
+    writes++;
+    jsonResponse(res, 200, { ok: true });
+  });
+  const run = (hold_writes?: boolean) =>
+    app.request("/v1/executions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        source: "saved",
+        workflow_id: f.workflow.id,
+        idempotency_key: "preview-stays-preview",
+        hold_writes,
+      }),
+    });
+  const preview = await run();
+  expect(preview.status).toBe(200);
+  const prepared = (await preview.json()) as { execution_id: string };
+  const grant = await app.request(`${f.base}/execution-authorities`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify(f.body),
+  });
+  expect(grant.status).toBe(201);
+  const authority = (await grant.json()) as { id: string };
+  const replay = await run();
+  expect(replay.status).toBe(200);
+  expect(await replay.json()).toMatchObject({
+    execution_id: prepared.execution_id,
+    hold_writes: true,
+    idempotent_replay: true,
+  });
+  const escalation = await run(false);
+  expect(escalation.status).toBe(409);
+  const current = await app.request(`${f.base}/execution-authorities/${authority.id}`, {
+    headers: browserHeaders,
+  });
+  expect(await current.json()).toMatchObject({ reserved_runs: 0 });
+  expect(writes).toBe(0);
+});
+
 test("queue failure retries the same reserved execution rather than spending another run", async () => {
   const f = await fixture(remote.baseUrl);
   const granted = await app.request(`${f.base}/execution-authorities`, {

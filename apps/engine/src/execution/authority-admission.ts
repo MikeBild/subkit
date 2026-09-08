@@ -128,14 +128,10 @@ export async function admitAuthorizedWorkflowExecution(raw: unknown, db: Executo
       .limit(1);
     if (!version) fail("workflow_version_not_active", "active workflow version unavailable");
     const definition = WorkflowDefSchema.parse(version.dag);
-    if (
-      definition.input_schema &&
-      !validateAgainstJsonSchema(normalized, definition.input_schema, "$input").valid
-    )
-      fail(
-        "input_schema_violation",
-        "run input does not satisfy the approved workflow's input schema",
-      );
+    if (definition.input_schema) {
+      const check = validateAgainstJsonSchema(normalized, definition.input_schema, "$input");
+      if (!check.valid) fail("input_schema_violation", check.errors.join("; "));
+    }
     const preview = await previewWorkflowAuthority(
       {
         tenant_id: input.tenant_id,
@@ -188,7 +184,7 @@ export async function admitAuthorizedWorkflowExecution(raw: unknown, db: Executo
       execution_authority_id: authority.id,
       execution_mode: input.execution_environment,
       source_kind: "saved",
-      source_ref: null,
+      source_ref: input.parent_execution_id ? { rerun_of: input.parent_execution_id } : null,
       input: normalized,
       request_source: input.request_source,
       parent_execution_id: input.parent_execution_id ?? null,

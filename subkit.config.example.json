@@ -191,7 +191,7 @@
     "transform_wall_ms": 60000
   },
   "repl": {
-    "permissionMode": "ask",
+    "permissionMode": "auto",
     "portalTokenTtlMin": 15
   },
   "ui": {

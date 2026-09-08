@@ -11,6 +11,24 @@ import {
 const t = (key: Parameters<typeof translate>[1]) => translate("en", key);
 
 describe("run authority evidence", () => {
+  test("durable preparation is identified in both locales without claiming a live grant", () => {
+    for (const locale of ["en", "de"] as const) {
+      const local = (key: Parameters<typeof translate>[1]) => translate(locale, key);
+      const facts = runAuthorityFacts(
+        {
+          execution_authority_id: null,
+          workflow_version_id: "reviewed-version",
+          hold_writes: true,
+        },
+        local,
+      );
+      expect(facts[0]).toEqual([local("runs.boundary"), local("runs.preparationDescription")]);
+      expect(facts).toContainEqual([
+        local("authority.usedByRun"),
+        local("authority.noStoredBinding"),
+      ]);
+    }
+  });
   test("shows only the authority and version stored on the exact execution", () => {
     expect(
       runAuthorityFacts(

@@ -1,16 +1,15 @@
 // Worker for the `execution.run` queue.
 //
 // The job payload is a small envelope that points at an existing
-// executions row created when the HTTP enqueue ran. If no row exists yet
-// (e.g. the scheduler fired a cron), the handler lets runExecution create
-// it. The handler always resolves a tenant + workflow + input tuple
-// before calling into the engine.
+// executions row admitted before enqueue. Legacy jobs without a bound live
+// authority or an explicit persisted preparation cannot acquire authority
+// merely by being dequeued after an upgrade.
 
 import { and, asc, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
-import { executionSteps } from "../../db/schema/index.ts";
+import { executionSteps, executions } from "../../db/schema/index.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { finalizeExecution } from "../../execution/state.ts";
 import type { RequestSource, RunOptions } from "../../execution/types.ts";
@@ -45,6 +44,14 @@ async function maybeEnqueueRepair(
   p: { tenant_id: string; workflow_id: string; execution_id: string },
 ): Promise<void> {
   try {
+    const [execution] = await db
+      .select({ held: executions.hold_writes, authority: executions.execution_authority_id })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, p.tenant_id), eq(executions.id, p.execution_id)))
+      .limit(1);
+    // A preparation or bound live run cannot silently authorize a repair job
+    // after the engine correctly disabled its own self-healing option.
+    if (execution?.held || execution?.authority) return;
     const rows = await db
       .select()
       .from(executionSteps)
@@ -118,6 +125,27 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
   if (data.execution_id) runOptions.existing_execution_id = data.execution_id;
   if (data.execution_mode) runOptions.execution_mode = data.execution_mode;
   try {
+    const [boundary] = data.execution_id
+      ? await db
+          .select({ held: executions.hold_writes, authority: executions.execution_authority_id })
+          .from(executions)
+          .where(
+            and(
+              eq(executions.tenant_id, data.tenant_id),
+              eq(executions.workflow_id, data.workflow_id),
+              eq(executions.id, data.execution_id),
+            ),
+          )
+          .limit(1)
+      : [];
+    if (!boundary || (!boundary.held && !boundary.authority)) {
+      throw Object.assign(
+        new Error(
+          "queued execution has no admitted boundary; request a new preparation or an authorized run",
+        ),
+        { code: "execution_authority_required" },
+      );
+    }
     const result = await runExecution({
       db,
       tenant_id: data.tenant_id,
