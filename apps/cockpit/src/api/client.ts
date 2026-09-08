@@ -174,7 +174,7 @@ export type SendConversationTurnInput = {
   references?: readonly ConversationReference[];
 } & (
   | { conversationId: string; target?: never }
-  | { conversationId?: null; target?: ConversationTarget }
+  | { conversationId?: null; target?: ConversationTarget; permissionMode?: "auto" | "ask" | "plan" }
 );
 
 export function sendConversationTurn(
@@ -192,7 +192,9 @@ export function sendConversationTurn(
     "/v1/conversations",
     {
       initial_message: input.message,
-      permission_mode: "ask",
+      ...("permissionMode" in input && input.permissionMode
+        ? { permission_mode: input.permissionMode }
+        : {}),
       ...input.target,
       ...withReferences(input.references),
     },

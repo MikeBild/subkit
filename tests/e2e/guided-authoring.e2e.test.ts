@@ -18,7 +18,7 @@ function bearer(): HeadersInit {
 }
 
 describe("guided authoring smoke", () => {
-  test("manual connector-first journey confirms the connector, then saves an inert workflow draft", async () => {
+  test("connector-first journey selects manual review, then saves an inert workflow draft", async () => {
     const turn1 = await cli(["--p", "subkit engine onboarding", "--output", "json"], {
       env,
       persona: "admin",
@@ -51,7 +51,9 @@ describe("guided authoring smoke", () => {
           ...bearer(),
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ output: { confirmed: true } }),
+        // The new session defaults to autonomous preparation. This scenario
+        // deliberately selects manual review before the subsequent draft gate.
+        body: JSON.stringify({ output: { confirmed: true }, permission_mode: "ask" }),
       },
     );
     expect(approveConnectorSave.status).toBe(200);

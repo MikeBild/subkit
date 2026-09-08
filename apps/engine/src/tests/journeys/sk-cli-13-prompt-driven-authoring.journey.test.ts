@@ -73,6 +73,7 @@ describe("journey: sk-cli prompt-driven authoring", () => {
         tenant_id: ctx.tenantId,
         actor_id: ctx.userId,
         initial_message,
+        permission_mode: "ask",
       },
       ctx.db,
     );

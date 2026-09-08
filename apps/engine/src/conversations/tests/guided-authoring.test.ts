@@ -54,6 +54,7 @@ describe("guided authoring conversation loop", () => {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
         initial_message: "subkit engine onboarding",
+        permission_mode: "ask",
       },
       ctx.testDb.db,
     );
