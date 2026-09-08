@@ -481,9 +481,8 @@ export interface RunOptions {
   self_healing?: { enabled: boolean };
   /**
    * Side-effect-safe preview mode (Fix G). When true, request-class
-   * steps classified as writes (explicit `side_effects` override wins;
-   * else driver rule: HTTP non-GET/HEAD/OPTIONS, GraphQL mutation,
-   * SQL non-SELECT, S3 PUT/DELETE) are fully resolved — URL, headers,
+   * writes and unknown effects (including every SQL statement and HTTP
+   * POST, even if labelled `side_effects: "read"`) are fully resolved — URL, headers,
    * body materialized from real upstream data — and recorded as
    * `held` on the step result; the network call never fires. Steps
    * whose scope references depend on a held step's response are

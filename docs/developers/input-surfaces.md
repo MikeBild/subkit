@@ -119,11 +119,13 @@ The REST API is the full programmatic interface to sk and the canonical interfac
 
 For `source: "draft"` and `source: "step"`, `POST /v1/executions` accepts
 `hold_writes: true`. The Cockpit's preview buttons always send this flag.
-Requests classified as writes are prepared but not dispatched; the response
-marks their step summaries with `held: true`. Reads still contact real systems.
+Writes and unknown effects are prepared but not dispatched; the response
+marks their step summaries with `held: true`. Ordinary HTTP reads still contact real systems.
 Preview disables self-healing and does not activate a workflow or grant live
-execution authority. Classification is the engine's existing driver-aware
-read/write classification, not proof of an approved Effect Manifest.
+execution authority. Preparation uses a conservative driver-aware boundary:
+HTTP POST remains held even with an author's `side_effects: "read"` hint, and
+all SQL remains held because SELECT can call writing functions. A resolved
+driver mismatch is also held. These checks grant no Effect Manifest authority.
 
 Omitting the flag preserves the existing execution API behavior. A saved-workflow
 run rejects `hold_writes: true` rather than silently discarding it and running
