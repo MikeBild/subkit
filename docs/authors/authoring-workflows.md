@@ -40,7 +40,13 @@ An unclassified tenant-write tool also requires confirmation, even if a stored
 tool preference says `no_confirm`. Explicit preferences requesting confirmation
 remain effective. No new execution authority or broader permission is inferred
 from an existing conversation's mode. `ask`, `plan` and explicitly armed `yolo`
-retain their separate behavior; this change alone does not change session defaults.
+retain their separate behavior. New conversations without an explicit mode persist
+`auto` once at creation. Existing conversations retain their stored policy, including
+legacy sessions without a recorded mode; no backfill grants them wider permission.
+The cockpit defaults to system inheritance and offers explicit `ask` and `plan`
+choices for new chats. It displays the stored mode after reload, not the current
+new-session default. Clients that explicitly send a mode keep that choice.
+No additional configuration or execution authority is created by this default.
 
 | Property | Behaviour |
 |---|---|

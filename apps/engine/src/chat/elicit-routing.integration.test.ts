@@ -105,7 +105,16 @@ async function driveToElicitation(): Promise<{
   const conversationId = conversation.conversation.id;
 
   getMockProvider().setConversePlan(conversationId, [
-    { tool: "ask_user_confirm", args: { question: "Run workflow?", kind: "save_workflow_draft" } },
+    // Force a real checkpoint under the autonomous default without changing
+    // the resumed tool policy: this test must reach the principal guard.
+    {
+      tool: "ask_user_confirm",
+      args: {
+        question: "Confirm the destructive test checkpoint?",
+        kind: "generic",
+        destructive: true,
+      },
+    },
   ]);
 
   const second = await appendMessageWithTurn(

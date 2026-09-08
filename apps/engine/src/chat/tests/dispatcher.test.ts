@@ -4,7 +4,8 @@
 //   surface (channel-scoped read-only palette)
 //   → canned "list users" authoring plan tries its authoring tools —
 //     none are in the chat palette, so nothing drafts or commits
-//   → the plan's ask_user_confirm still raises an approval card
+//   → safe preparation produces no approval; an explicit destructive
+//     checkpoint still raises an approval card
 //   → the approve interaction resumes the turn — ALSO on the chat
 //     surface, so the resumed save_workflow_draft stays unavailable
 //   → conversation never commits: authoring from a chat channel is
@@ -28,6 +29,7 @@ import {
   workflows as workflowsTable,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { getMockProvider } from "../../llm/mock-provider.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import type { ChatAdapter } from "../adapter.ts";
 import { deliver, handleChatEvent } from "../dispatcher.ts";
@@ -108,7 +110,26 @@ describe("chat dispatcher", () => {
       text: "<@UBOT> list users",
       raw: {},
     };
-    const r1 = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention);
+    const initial = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention);
+    expect(initial.status).toBe("ok");
+    expect(initial.approval_sent).toBe(false);
+    expect(adapter.approvals).toHaveLength(0);
+    if (!initial.conversation_id) throw new Error("conversation missing");
+    getMockProvider().setConversePlan(initial.conversation_id, [
+      {
+        tool: "ask_user_confirm",
+        args: {
+          question: "Confirm destructive test checkpoint?",
+          kind: "generic",
+          destructive: true,
+        },
+      },
+      { tool: "save_workflow_draft", args: {} },
+    ]);
+    const r1 = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      { ...mention, text: "continue" },
+    );
     expect(r1.status).toBe("ok");
     expect(r1.approval_sent).toBe(true);
     expect(adapter.approvals.length).toBe(1);

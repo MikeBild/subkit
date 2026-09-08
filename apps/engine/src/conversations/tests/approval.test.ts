@@ -55,6 +55,7 @@ describe("conversations/elicitation", () => {
         actor_id: ctx.user_id,
         connector_id: ctx.connector_id,
         initial_message: "list users",
+        permission_mode: "ask",
       },
       ctx.testDb.db,
     );
@@ -153,6 +154,7 @@ describe("conversations/elicitation", () => {
         actor_id: ctx.user_id,
         connector_id: ctx.connector_id,
         initial_message: "list users",
+        permission_mode: "ask",
       },
       ctx.testDb.db,
     );
@@ -199,6 +201,7 @@ describe("conversations/elicitation", () => {
         actor_id: ctx.user_id,
         connector_id: ctx.connector_id,
         initial_message: "list users",
+        permission_mode: "ask",
       },
       ctx.testDb.db,
     );

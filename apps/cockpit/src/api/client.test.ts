@@ -32,9 +32,21 @@ describe("sendConversationTurn", () => {
     expect(path).toBe("/v1/conversations");
     expect(JSON.parse(String(init.body))).toEqual({
       initial_message: "inspect it",
-      permission_mode: "ask",
       workflow_id: "workflow-1",
       references: [{ type: "workflow", id: "workflow-1", label: "customer-sync" }],
+    });
+  });
+
+  test("preserves an explicit conservative mode for a new conversation", async () => {
+    const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      outcomeResponse(),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    await sendConversationTurn({ message: "inspect it", permissionMode: "ask" });
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      initial_message: "inspect it",
+      permission_mode: "ask",
     });
   });
 

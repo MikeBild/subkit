@@ -69,6 +69,13 @@ import {
 } from "@/components/ui/message-scroller";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -87,6 +94,7 @@ import { cn } from "@/lib/utils";
 import { useMentionCandidates } from "@/queries/mention-sources";
 import { ConversationList } from "./chat-conversation-list";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
+import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
 import { collectReferencedResources, referencesFromPart } from "./chat-references";
 import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "./chat-resume";
 import { activeConversationId, type ConversationSelection } from "./chat-selection";
@@ -614,6 +622,7 @@ export function ChatPage() {
     selectionFromPath(initialPrompt),
   );
   const [showHidden, setShowHidden] = useState(false);
+  const [newPermissionMode, setNewPermissionMode] = useState<AuthoringMode | "default">("default");
   const [conversationSearch, setConversationSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [streamedText, setStreamedText] = useState("");
@@ -694,6 +703,7 @@ export function ChatPage() {
           : {
               message,
               references,
+              ...(newPermissionMode !== "default" ? { permissionMode: newPermissionMode } : {}),
               target: {
                 ...(workflowId ? { workflow_id: workflowId } : {}),
                 ...(connectorId ? { connector_id: connectorId } : {}),
@@ -899,6 +909,7 @@ export function ChatPage() {
                 data-testid="conversation-new"
                 onClick={() => {
                   setSelection({ kind: "new" });
+                  setNewPermissionMode("default");
                   setChatPath(null);
                   setListOpen(false);
                 }}
@@ -913,6 +924,43 @@ export function ChatPage() {
                 <PanelRight />
               </IconButton>
             </div>
+          </div>
+          <div className={cn("mt-2 grid gap-1", COLUMN)} data-testid="chat-permission">
+            {activeId ? (
+              <p className="text-xs text-muted-foreground">
+                {t("chat.mode.label")}:{" "}
+                {t(`chat.mode.${detail.data ? storedAuthoringMode(detail.data.draft) : "loading"}`)}
+              </p>
+            ) : (
+              <Select
+                value={newPermissionMode}
+                disabled={send.isPending}
+                onValueChange={(value) => {
+                  if (
+                    value === "default" ||
+                    value === "auto" ||
+                    value === "ask" ||
+                    value === "plan"
+                  )
+                    setNewPermissionMode(value);
+                }}
+              >
+                <SelectTrigger
+                  aria-label={t("chat.mode.label")}
+                  data-testid="chat-permission-select"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(["default", "auto", "ask", "plan"] as const).map((mode) => (
+                    <SelectItem key={mode} value={mode} data-testid={`chat-permission-${mode}`}>
+                      {t(`chat.mode.${mode}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <p className="text-xs text-muted-foreground">{t("chat.mode.boundary")}</p>
           </div>
         </header>
 

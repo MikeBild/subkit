@@ -80,9 +80,18 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
     client: Awaited<ReturnType<McpTestSuite["connectTasks"]>>,
     name: string,
     args: Record<string, unknown>,
+    permissionMode?: "ask",
   ): Promise<string> {
     const createResult = (await client.request(
-      { method: "tools/call", params: { name, arguments: args, task: {} } },
+      {
+        method: "tools/call",
+        params: {
+          name,
+          arguments: args,
+          task: {},
+          ...(permissionMode ? { _meta: { sk_permission_mode: permissionMode } } : {}),
+        },
+      },
       CreateTaskResultSchema,
     )) as { task: { taskId: string; status: string } };
     expect(createResult.task.taskId.length).toBeGreaterThan(0);
@@ -110,10 +119,15 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
     // 1) Task-augmented `conversation_start`: the SDK adds `params.task`
     // because this client advertised the `tasks` capability; the
     // conversation handler returns a `CreateTaskResult`.
-    const startTaskId = await callToolAsTask(client, "conversation_start", {
-      connector_id: connectorId,
-      message: "please list users from the api",
-    });
+    const startTaskId = await callToolAsTask(
+      client,
+      "conversation_start",
+      {
+        connector_id: connectorId,
+        message: "please list users from the api",
+      },
+      "ask",
+    );
 
     // 2) Poll `tasks/get`. The backgrounded turn passes NO live
     // elicitation bridge → the ask_user_confirm takes the DB-pause path,
@@ -223,6 +237,7 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
         params: {
           name: "conversation_start",
           arguments: { connector_id: cancelConnector.id, message: "list users from the api" },
+          _meta: { sk_permission_mode: "ask" },
           task: {},
         },
       },

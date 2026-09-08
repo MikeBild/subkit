@@ -494,7 +494,12 @@ describe("conversation.run-turn worker — elicitation pause", () => {
     getMockProvider().setConversePlan(conversation_id, [
       {
         tool: "ask_user_confirm",
-        args: { question: "Proceed?", kind: "generic", summary: "confirm proceed" },
+        args: {
+          question: "Confirm the destructive test checkpoint?",
+          kind: "generic",
+          summary: "confirm destructive checkpoint",
+          destructive: true,
+        },
       },
     ]);
     const mcp_task_id = await insertMcpTask(

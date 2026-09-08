@@ -131,6 +131,7 @@ describe("journey 53: session-79bf2cca regression set", () => {
   test("AC1: duplicate /respond returns 409 elicitation_already_resolved with the previous decision", async () => {
     const outcome = await createConversationAndRunTurn(
       {
+        permission_mode: "ask",
         tenant_id: ctx.tenantId,
         actor_id: ctx.userId,
         initial_message: "list users from jsonplaceholder",

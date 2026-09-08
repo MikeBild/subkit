@@ -105,7 +105,8 @@ export async function createConversation(
   exec: Db,
 ): Promise<CreateConversationResult> {
   const memory = typeof p.memory === "string" ? p.memory : null;
-  const initialPermissionMode = normalizePermissionMode(p.permission_mode);
+  // Resolve once for new sessions; legacy snapshots retain their stored policy.
+  const initialPermissionMode = normalizePermissionMode(p.permission_mode) ?? "auto";
   const initialDraft = createEmptyDraftDocument();
   const playground = p.playground === true;
   if (initialPermissionMode || playground) {
