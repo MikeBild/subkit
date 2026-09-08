@@ -1,16 +1,6 @@
-// `wf_<slug>` writes over MCP execute directly.
-//
-// The confirm-loop premise (preview → mint an ungranted approval →
-// `confirm_tool_call` triggers the held write once a human grants it) is
-// GONE. The human-in-the-loop is now the MCP CLIENT's native `destructiveHint`
-// approval dialog, which blocks before the call ever reaches the engine
-// (empirically verified against claude.ai and ChatGPT — see tools/policy.ts).
-// So a `wf_<slug>` call whose steps include a write now:
-//   - dispatches that write for real (the mock server sees the POST hit),
-//   - returns the run's result directly — no `preview`/`confirm_id`/
-//     `approval_url` fields, no `_meta.subkit.confirm`,
-//   - mints NO approval row and writes no APPROVAL_REQUESTED audit entry.
-// A read-only workflow is unaffected either way — it always just runs.
+// Preparation does not fabricate an approval or bring back confirm_tool_call.
+// A saved workflow needs its own finite local authority for live writes;
+// client annotations are advisory and cannot supply that authority.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
@@ -40,6 +30,8 @@ afterAll(async () => {
 });
 
 interface ResultBody {
+  status?: string;
+  live_execution_authorized?: boolean;
   preview?: boolean;
   writes_held?: boolean;
   confirm_id?: string;
@@ -61,8 +53,8 @@ async function approvalRequestedCountForTool(tool: string): Promise<number> {
   return rows.filter((r) => (r.metadata as Record<string, unknown> | null)?.tool === tool).length;
 }
 
-describe("mcp wf_<slug> writes execute directly (no server-side confirm gate)", () => {
-  test("a workflow with a write step dispatches the write for real and returns the result — no preview, no confirm_id, no approval_url", async () => {
+describe("mcp wf_<slug> preparation without invented approvals", () => {
+  test("without local authority a workflow reads, holds its write, and records no approval request", async () => {
     hits.length = 0;
     await suite.seedWorkflow({
       name: "direct write probe",
@@ -81,11 +73,12 @@ describe("mcp wf_<slug> writes execute directly (no server-side confirm gate)", 
     const client = await suite.connect();
 
     const result = await client.callTool({ name: "wf_direct-write-probe", arguments: {} });
-    expect(result.isError).toBeFalsy();
+    expect(result.isError).toBe(true);
     const content = result.content as Array<{ type: string; text: string }>;
     const body = JSON.parse(content[0]!.text) as ResultBody;
 
-    // No held-writes/confirm envelope at all.
+    expect(body.status).toBe("preparation");
+    expect(body.live_execution_authorized).toBe(false);
     expect(body.preview).toBeUndefined();
     expect(body.writes_held).toBeUndefined();
     expect(body.confirm_id).toBeUndefined();
@@ -93,9 +86,8 @@ describe("mcp wf_<slug> writes execute directly (no server-side confirm gate)", 
     const meta = (result as { _meta?: { subkit?: { confirm?: unknown } } })._meta;
     expect(meta?.subkit?.confirm).toBeUndefined();
 
-    // The write step actually hit the wire — the defining behavior change.
     expect(hits.some((h) => h.url.startsWith("/data"))).toBe(true);
-    expect(hits.some((h) => h.url.startsWith("/send"))).toBe(true);
+    expect(hits.some((h) => h.url.startsWith("/send"))).toBe(false);
 
     // No approval was ever minted for this call.
     expect(await approvalRequestedCountForTool("wf_direct-write-probe")).toBe(0);

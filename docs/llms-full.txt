@@ -9700,7 +9700,12 @@ the repo; the committed driver above is the portable interface.
 
 Every inbound surface funnels through a single governance gate before it ever reaches the engine. The gate is the same callable, the audit row is the same shape, and the identity envelope is populated at every entry.
 
-One decision, rendered per surface. `policyDecide()` is the only place that decides whether a write needs a human confirmation, and no surface re-derives that answer. How the confirmation is *presented* does differ: chat raises an elicitation the engine owns end to end, while an MCP client renders its own `destructiveHint` dialog — which is why every MCP-reachable write tool must advertise that annotation. A client that ignores the annotation gets no prompt; the decision was still made, but the door it was rendered on is not one sk controls.
+Common RBAC applies on every surface. Chat confirmations use engine-owned human
+elicitation. MCP `destructiveHint` annotations describe risk but are not proof
+that a human approved anything. Saved `wf_<slug>` calls therefore verify a local
+Execution Authority before live writes; see below. Legacy named MCP tools still
+retain their client-handled confirmation path while those entry points are
+migrated. Do not interpret their annotations as a server-enforced human grant.
 
 ```mermaid
 flowchart LR
@@ -9871,6 +9876,27 @@ The Model Context Protocol (MCP) server is embedded in the sk engine and exposes
 > **Progress heartbeat.** While the turn is `working`, `conversation_get` also returns a worker-stamped heartbeat so a polling client can render live progress instead of a bare spinner: `{phase, elapsed_ms, last_action, step}` — the stage the turn is in, the wall-clock elapsed, the most recent action the worker took, and the workflow step currently being authored or tested. The heartbeat is advisory; the authoritative terminal signal remains the completion status.
 
 The complete MCP conversation cluster is `conversation_start`, `conversation_append`, `conversation_get`, `conversation_respond_elicitation`, and `conversation_commit` — the session orchestration an AI client uses to open, drive, resolve elicitations on, and commit an authoring conversation. See [Tool palette → MCP session and confirmation tools](./tool-palette.md#mcp-session-and-confirmation-tools) for each tool's role.
+
+### Bounded saved-workflow MCP runs
+
+`wf_<slug>` preserves the workflow's own input schema; no engine authority field
+is injected into business inputs. The server resolves the exact version and
+automatically finds a matching, unexpired, unrevoked local Execution Authority
+with remaining runs for the requested environment. Admission atomically reserves
+one run. Each outbound dispatch rechecks that authority and its configuration
+and credential boundary. Parallel calls cannot widen the run allowance.
+
+Without a matching authority, the call performs conservative preparation with
+self-healing disabled: ordinary reads may run, but writes and unknown effects
+are held. When effects were held, the text result explicitly reports
+`status: preparation`, `live_execution_authorized: false` and the execution ID,
+not a successful live effect or a conforming final output object.
+MCP marks this as `isError: true` because the requested live output is unavailable;
+clients must not validate a preparation envelope against the final output schema.
+Review and grant the exact version's finite authority in the workflow Cockpit to enable
+repeated live runs. Dynamic or unknown effects are ineligible for that reusable
+authority and remain held on this entry point. Existing active versions do not
+receive authority automatically.
 >
 > **Persisted-to-native MCP elicitation.** Background workers have no live MCP
 > session, so an `ask_user_*`, conversation approval, or browser authorization
