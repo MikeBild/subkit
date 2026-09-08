@@ -3,10 +3,9 @@
 //
 // The classification rules themselves live in the shared, pure
 // `classifyHttpSideEffect` (packages/shared/src/side-effects.ts) so the
-// SAME decision drives the engine's hold-writes mechanism here AND the
-// conversation/MCP confirm-gate. This file only adapts a `RequestStep`
-// onto that primitive (the `step.side_effects` author override maps to
-// the primitive's `override`).
+// retry classifier adapts a `RequestStep` onto that primitive. Preparation
+// adds a stricter boundary below: an author's read hint is not permission
+// to send a POST, and a lexical SELECT is not proof of harmless SQL.
 //
 // Transforms / branches / loops / waits are never classified — only
 // request steps dispatch externally.
@@ -18,6 +17,30 @@ import type { HeldRequest, RequestMeta, StepResult } from "../../types.ts";
 import { SAFE_HEADER_DENYLIST } from "../error-detail.ts";
 
 export type StepSideEffects = SideEffect;
+
+/** Preparation is not an execution grant. Retry hints may describe a search
+ * POST or lexical SELECT, but neither proves that an unapproved call is inert.
+ * Recheck against the resolved driver so a legacy/mismatched definition cannot
+ * borrow HTTP read semantics for another transport. */
+export function requestRequiresPreparationHold(step: RequestStep, driver?: string): boolean {
+  const declaredDriver = step.mcp
+    ? "mcp"
+    : step.sql
+      ? "postgres"
+      : step.graphql
+        ? "graphql"
+        : step.s3
+          ? "s3"
+          : "http";
+  if (driver !== undefined && driver !== declaredDriver) return true;
+  if (step.sql || driver === "postgres") return true;
+  return (
+    classifyRequestStepSideEffects({
+      ...step,
+      side_effects: step.side_effects === "write" ? "write" : undefined,
+    }) === "write"
+  );
+}
 
 export function classifyRequestStepSideEffects(step: RequestStep): StepSideEffects {
   return classifyHttpSideEffect({

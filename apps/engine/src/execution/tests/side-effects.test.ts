@@ -10,9 +10,44 @@ import { type RequestStep, RequestStepSchema } from "../../workflows/types.ts";
 import {
   classifyRequestStepSideEffects,
   redactHeldRequestHeaders,
+  requestRequiresPreparationHold,
 } from "../steps/request/side-effects.ts";
 
 const CONNECTOR_ID = "11111111-2222-4333-8444-555555555555";
+
+describe("preparation holds are stricter than retry hints", () => {
+  test("a read-labelled POST remains retry-classified read but requires a preparation hold", () => {
+    const request = step({
+      method: "POST",
+      url: "https://example.com/search",
+      side_effects: "read",
+    });
+    expect(classifyRequestStepSideEffects(request)).toBe("read");
+    expect(requestRequiresPreparationHold(request, "http")).toBe(true);
+  });
+
+  test("SELECT is not proof of a side-effect-free execution", () => {
+    expect(
+      requestRequiresPreparationHold(
+        step({ sql: { query: "SELECT writing_function()" } }),
+        "postgres",
+      ),
+    ).toBe(true);
+  });
+
+  test.each(["GET", "HEAD", "OPTIONS"])("ordinary HTTP %s stays autonomous", (method) => {
+    expect(
+      requestRequiresPreparationHold(step({ method, url: "https://example.com/items" }), "http"),
+    ).toBe(false);
+  });
+
+  test.each(["postgres", "graphql", "s3", "mcp", "unknown"])(
+    "a resolved %s driver cannot borrow HTTP read semantics",
+    (driver) => {
+      expect(requestRequiresPreparationHold(legacyStep({ method: "GET" }), driver)).toBe(true);
+    },
+  );
+});
 
 function step(partial: Record<string, unknown>) {
   return RequestStepSchema.parse({ kind: "request", id: "s", ...partial });

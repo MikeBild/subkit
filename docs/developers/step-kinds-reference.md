@@ -31,6 +31,13 @@ The `wait_for_event` step's `timeout_ms` bounds the per-step wait window. The su
 
 Because the runner does not auto-skip downstream steps on timeout, every wait-for-event workflow needs an explicit `branch` step that gates the success vs timeout path. The canonical example is the **`merge-pr-after-approval`** recipe under the GitHub template (`apps/engine/src/connectors/templates.json`): it opens a PR, waits up to 24 h for an external `pr_approved` signal, and routes through a branch step (`when: $boolean($.steps.await_approval.timed_out)`) into either a `merge` request or an `abandon_on_timeout` transform. Cancel-race semantics for human-paused workflows are documented in [`apps/engine/src/conversations/abort.ts`](../../apps/engine/src/conversations/abort.ts) (single-replica caveat, tenant-scoped registry, expected reasons).
 
+In `hold_writes` preparation, the boundary is stricter than these retry hints:
+an author-labelled read POST is still held, and all SQL is held because even
+SELECT can invoke a writing function. The resolved connector driver must match
+the declared request protocol before any step is treated as an autonomous read.
+Ordinary HTTP GET/HEAD/OPTIONS, valid GraphQL queries, S3 reads, and MCP resource
+or prompt reads remain live; an explicit write label can always hold them.
+
 ## Further reading
 
 - [Workflow execution](../concepts/workflows.md) — the model: lifecycle, triggers, versioning, self-healing.

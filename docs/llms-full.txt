@@ -9797,11 +9797,13 @@ The REST API is the full programmatic interface to sk and the canonical interfac
 
 For `source: "draft"` and `source: "step"`, `POST /v1/executions` accepts
 `hold_writes: true`. The Cockpit's preview buttons always send this flag.
-Requests classified as writes are prepared but not dispatched; the response
-marks their step summaries with `held: true`. Reads still contact real systems.
+Writes and unknown effects are prepared but not dispatched; the response
+marks their step summaries with `held: true`. Ordinary HTTP reads still contact real systems.
 Preview disables self-healing and does not activate a workflow or grant live
-execution authority. Classification is the engine's existing driver-aware
-read/write classification, not proof of an approved Effect Manifest.
+execution authority. Preparation uses a conservative driver-aware boundary:
+HTTP POST remains held even with an author's `side_effects: "read"` hint, and
+all SQL remains held because SELECT can call writing functions. A resolved
+driver mismatch is also held. These checks grant no Effect Manifest authority.
 
 Omitting the flag preserves the existing execution API behavior. A saved-workflow
 run rejects `hold_writes: true` rather than silently discarding it and running
@@ -11520,6 +11522,13 @@ The classification drives dry-run previews: a `dry_run_workflow` preview HOLDS W
 The `wait_for_event` step's `timeout_ms` bounds the per-step wait window. The surrounding `WorkflowDef.timeout_ms` (the workflow envelope) must be ≥ the wait step's bound — the `WorkflowDefSchema` `superRefine` enforces this at save time so a 24 h approval window can't be silently truncated by a 6 h workflow timeout. In practice the envelope should leave headroom for the post-wait merge / abandon transitions; e.g. a 24 h wait inside a 25 h workflow.
 
 Because the runner does not auto-skip downstream steps on timeout, every wait-for-event workflow needs an explicit `branch` step that gates the success vs timeout path. The canonical example is the **`merge-pr-after-approval`** recipe under the GitHub template (`apps/engine/src/connectors/templates.json`): it opens a PR, waits up to 24 h for an external `pr_approved` signal, and routes through a branch step (`when: $boolean($.steps.await_approval.timed_out)`) into either a `merge` request or an `abandon_on_timeout` transform. Cancel-race semantics for human-paused workflows are documented in [`apps/engine/src/conversations/abort.ts`](../../apps/engine/src/conversations/abort.ts) (single-replica caveat, tenant-scoped registry, expected reasons).
+
+In `hold_writes` preparation, the boundary is stricter than these retry hints:
+an author-labelled read POST is still held, and all SQL is held because even
+SELECT can invoke a writing function. The resolved connector driver must match
+the declared request protocol before any step is treated as an autonomous read.
+Ordinary HTTP GET/HEAD/OPTIONS, valid GraphQL queries, S3 reads, and MCP resource
+or prompt reads remain live; an explicit write label can always hold them.
 
 ## Further reading
 

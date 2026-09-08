@@ -114,7 +114,11 @@ import {
   resolveRetryPolicy,
 } from "./retry.ts";
 import { checkRequired, deriveAuthMethodFromAuthType, extractModelHint } from "./shape.ts";
-import { classifyRequestStepSideEffects, heldStepResult } from "./side-effects.ts";
+import {
+  classifyRequestStepSideEffects,
+  heldStepResult,
+  requestRequiresPreparationHold,
+} from "./side-effects.ts";
 
 export const REQUEST_TIMEOUT_DEFAULT_MS = 60 * 60_000; // 1h
 
@@ -735,13 +739,13 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     }
   };
   // Hold-writes preview (Fix G): when the run was started with
-  // `hold_writes`, a write-classified step is fully RESOLVED (every
+  // `hold_writes`, a write or unknown-effect step is fully RESOLVED (every
   // driver branch holds AFTER placeholder substitution, credential /
   // plan construction and policy hooks — i.e. immediately before its
   // network call) and returned as a `held` outcome instead of being
   // dispatched. Read-classified steps execute live, unchanged.
   const requestIsReadOnly = classifyRequestStepSideEffects(p.step) === "read";
-  const holdThisStep = p.ctx.hold_writes === true && !requestIsReadOnly;
+  let holdThisStep = p.ctx.hold_writes === true && requestRequiresPreparationHold(p.step);
   const max_attempts = requestMaxAttempts(p.step);
   const timeoutMs = p.step.timeout_ms ?? REQUEST_TIMEOUT_DEFAULT_MS;
   const timeoutCtrl = new AbortController();
@@ -930,6 +934,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         };
       }
       configurationDigest = authorityConnectorDigest(connector);
+      holdThisStep =
+        p.ctx.hold_writes === true && requestRequiresPreparationHold(p.step, connector.driver);
       connectorResolution = {
         step_key: p.step.id,
         connector_id: connector.id,
