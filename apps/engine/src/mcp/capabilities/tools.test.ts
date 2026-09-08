@@ -13,20 +13,29 @@ import type { AddressInfo } from "node:net";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { count, eq } from "drizzle-orm";
-import { executions, workflows } from "../../db/schema/index.ts";
+import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
+import { and, count, eq, sql } from "drizzle-orm";
+import {
+  executions,
+  workflowExecutionAuthorities,
+  workflows,
+  workflowVersions,
+} from "../../db/schema/index.ts";
 import {
   createJourneyCtx,
   JOURNEY_HOOK_TIMEOUT,
   type JourneyCtx,
   journeyFetch,
 } from "../../tests/journeys/setup.ts";
+import { previewWorkflowAuthority } from "../../workflows/execution-authorities.ts";
 
 let ctx: JourneyCtx;
 let mock: Server;
 let mockBase = "";
 let toolWfSlug: string;
 let toolWfId: string;
+let boundaryFixture = 0;
+let writes = 0;
 
 async function connect(): Promise<Client> {
   const transport = new StreamableHTTPClientTransport(new URL(ctx.mcpUrl), {
@@ -41,7 +50,8 @@ beforeAll(async () => {
   ctx = await createJourneyCtx("mcp-tools-catalog");
 
   // Spin up a mock HTTP target so the workflow step doesn't fail with ECONNREFUSED
-  mock = createServer((_req, res) => {
+  mock = createServer((req, res) => {
+    if (req.method === "POST" && req.url === "/bounded-write") writes++;
     res.setHeader("content-type", "application/json");
     res.statusCode = 200;
     res.end(JSON.stringify({ ok: true }));
@@ -204,6 +214,268 @@ describe("MCP tools/list — wf_<slug> catalog (T22)", () => {
 // ---------------------------------------------------------------------------
 
 describe("MCP tools/call — wf_<slug> end-to-end (T7)", () => {
+  function body(result: unknown) {
+    const text = CallToolResultSchema.parse(result).content.find(
+      (item) => item.type === "text",
+    )?.text;
+    expect(text).toBeString();
+    return JSON.parse(text!) as Record<string, unknown>;
+  }
+  async function boundedFixture(
+    state: "none" | "active" | "expired" | "revoked" = "none",
+    outputSchema = false,
+  ) {
+    const slug = `mcp-boundary-${++boundaryFixture}`;
+    const response = await journeyFetch(ctx, "/v1/workflows", {
+      method: "POST",
+      body: JSON.stringify({
+        name: slug,
+        slug,
+        ...(outputSchema
+          ? {
+              output_schema: {
+                type: "object",
+                properties: { ok: { type: "boolean" } },
+                required: ["ok"],
+              },
+            }
+          : {}),
+        steps: [
+          {
+            kind: "request",
+            id: "send",
+            method: "POST",
+            url: `${mockBase}/bounded-write`,
+            side_effects: "read",
+            body: { recipient: "reviewed@example.test" },
+          },
+        ],
+      }),
+    });
+    expect(response.ok).toBe(true);
+    const { id } = (await response.json()) as { id: string };
+    const [workflow] = await ctx.db
+      .update(workflows)
+      .set({ lifecycle: "active" })
+      .where(and(eq(workflows.tenant_id, ctx.tenantId), eq(workflows.id, id)))
+      .returning();
+    if (!workflow?.current_version_id) throw new Error("missing exact workflow fixture version");
+    if (state === "none") return { slug, id, authorityId: null };
+    const preview = await previewWorkflowAuthority(
+      {
+        tenant_id: ctx.tenantId,
+        workflow_id: id,
+        workflow_version_id: workflow.current_version_id,
+        execution_environment: "dev",
+      },
+      ctx.db,
+    );
+    expect(preview.eligible_for_repeated_runs).toBe(true);
+    // Human-channel grant verification is covered separately by the HTTP suite.
+    // Seed its exact server-resolved result here; the MCP client supplies no proof.
+    const [authority] = await ctx.db
+      .insert(workflowExecutionAuthorities)
+      .values({
+        tenant_id: ctx.tenantId,
+        workflow_id: id,
+        workflow_version_id: workflow.current_version_id,
+        effect_manifest_digest: preview.digest,
+        effect_manifest: { ...preview.manifest },
+        target_constraints: {
+          targets: preview.manifest.effects.flatMap((effect) =>
+            effect.target ? [effect.target] : [],
+          ),
+        },
+        execution_environment: "dev",
+        created_by: ctx.userId,
+        max_runs: 2,
+        valid_from: sql`clock_timestamp() - interval '2 hours'`,
+        valid_until:
+          state === "expired"
+            ? sql`clock_timestamp() - interval '1 hour'`
+            : sql`clock_timestamp() + interval '1 hour'`,
+        ...(state === "revoked"
+          ? { revoked_at: sql`clock_timestamp()`, revoked_by: ctx.userId }
+          : {}),
+      })
+      .returning();
+    if (!authority) throw new Error("missing authority fixture");
+    return { slug, id, authorityId: authority.id };
+  }
+
+  test("native MCP calls cannot turn a read-labelled POST into unapproved live execution", async () => {
+    const fixture = await boundedFixture();
+    const before = writes;
+    const client = await connect();
+    try {
+      const result = await client.callTool({ name: `wf_${fixture.slug}`, arguments: {} });
+      expect(body(result)).toMatchObject({
+        live_execution_authorized: false,
+        status: "preparation",
+      });
+      expect(writes).toBe(before);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("two authorized MCP runs dispatch automatically; the exhausted third only prepares", async () => {
+    const fixture = await boundedFixture("active");
+    const before = writes;
+    const client = await connect();
+    try {
+      for (let run = 0; run < 2; run++) {
+        const result = await client.callTool({ name: `wf_${fixture.slug}`, arguments: {} });
+        expect(result.isError).toBeFalsy();
+        expect(body(result).status).not.toBe("preparation");
+      }
+      expect(writes).toBe(before + 2);
+      const exhausted = await client.callTool({ name: `wf_${fixture.slug}`, arguments: {} });
+      expect(body(exhausted)).toMatchObject({
+        live_execution_authorized: false,
+        status: "preparation",
+      });
+      expect(writes).toBe(before + 2);
+      const [authority] = await ctx.db
+        .select()
+        .from(workflowExecutionAuthorities)
+        .where(
+          and(
+            eq(workflowExecutionAuthorities.tenant_id, ctx.tenantId),
+            eq(workflowExecutionAuthorities.id, fixture.authorityId!),
+          ),
+        );
+      expect(authority?.reserved_runs).toBe(2);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("held preparation does not masquerade as the declared live output schema", async () => {
+    const fixture = await boundedFixture("none", true);
+    const before = writes;
+    const client = await connect();
+    try {
+      await client.listTools();
+      const result = await client.callTool({ name: `wf_${fixture.slug}`, arguments: {} });
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toBeUndefined();
+      expect(body(result)).toMatchObject({
+        status: "preparation",
+        live_execution_authorized: false,
+      });
+      expect(writes).toBe(before);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("a development authority cannot authorize a production MCP call", async () => {
+    const fixture = await boundedFixture("active");
+    const before = writes;
+    const client = await connect();
+    try {
+      const result = await client.callTool({
+        name: `wf_${fixture.slug}`,
+        arguments: {},
+        _meta: { environment: "prod" },
+      });
+      expect(body(result)).toMatchObject({
+        status: "preparation",
+        live_execution_authorized: false,
+      });
+      expect(writes).toBe(before);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("a changed active version cannot inherit an earlier MCP execution authority", async () => {
+    const fixture = await boundedFixture("active");
+    const [version] = await ctx.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenantId,
+        workflow_id: fixture.id,
+        version: 2,
+        dag: {
+          name: fixture.slug,
+          steps: [
+            {
+              kind: "request",
+              id: "send",
+              method: "POST",
+              url: `${mockBase}/bounded-write`,
+              body: { recipient: "changed@example.test" },
+            },
+          ],
+        },
+      })
+      .returning();
+    if (!version) throw new Error("missing changed version fixture");
+    await ctx.db
+      .update(workflows)
+      .set({ current_version_id: version.id })
+      .where(and(eq(workflows.tenant_id, ctx.tenantId), eq(workflows.id, fixture.id)));
+    const before = writes;
+    const client = await connect();
+    try {
+      const result = await client.callTool({ name: `wf_${fixture.slug}`, arguments: {} });
+      expect(body(result)).toMatchObject({
+        status: "preparation",
+        live_execution_authorized: false,
+      });
+      expect(writes).toBe(before);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test.each(["expired", "revoked"] as const)(
+    "%s authority cannot dispatch through MCP",
+    async (state) => {
+      const fixture = await boundedFixture(state);
+      const before = writes;
+      const client = await connect();
+      try {
+        const result = await client.callTool({ name: `wf_${fixture.slug}`, arguments: {} });
+        expect(body(result)).toMatchObject({
+          live_execution_authorized: false,
+          status: "preparation",
+        });
+        expect(writes).toBe(before);
+      } finally {
+        await client.close();
+      }
+    },
+  );
+
+  test("parallel MCP calls cannot exceed the last two authorized runs", async () => {
+    const fixture = await boundedFixture("active");
+    const before = writes;
+    const client = await connect();
+    try {
+      const results = await Promise.all(
+        Array.from({ length: 3 }, () =>
+          client.callTool({ name: `wf_${fixture.slug}`, arguments: {} }),
+        ),
+      );
+      expect(results.filter((result) => body(result).status === "preparation")).toHaveLength(1);
+      expect(writes).toBe(before + 2);
+      const rows = await ctx.db
+        .select()
+        .from(executions)
+        .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.workflow_id, fixture.id)));
+      expect(rows).toHaveLength(3);
+      expect(rows.filter((row) => row.execution_authority_id === fixture.authorityId)).toHaveLength(
+        2,
+      );
+      expect(new Set(rows.map((row) => row.id)).size).toBe(3);
+    } finally {
+      await client.close();
+    }
+  });
+
   test("tools/call runs the workflow and creates an execution row", async () => {
     const priorCount =
       (

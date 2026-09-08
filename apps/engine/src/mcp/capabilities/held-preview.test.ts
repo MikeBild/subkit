@@ -1,11 +1,7 @@
 // Unit tests for buildResultEnvelope — the pure MCP result-envelope
 // shaper.
 //
-// A `wf_*` run over MCP now executes its writes directly: the human already
-// approved the call via the client's native `destructiveHint` dialog before it
-// reached the engine (see `tools/policy.ts` — the MCP surface takes no
-// server-side confirm). There is no held-writes preview and no approval
-// portal on this path anymore — `buildResultEnvelope` only wraps warnings.
+// Held preparation must not masquerade as successful live execution.
 
 import { describe, expect, test } from "bun:test";
 import type { RunResult } from "../../execution/types.ts";
@@ -23,6 +19,17 @@ function base(
 }
 
 describe("buildResultEnvelope", () => {
+  test("held effects explicitly require local authority and preserve the execution handle", () => {
+    const env = buildResultEnvelope(
+      base({ warnings: [{ code: "held_preview_no_writes", message: "held", step_key: "send" }] }),
+    );
+    expect(env.held).toBe(true);
+    expect(env.rawBody).toMatchObject({
+      status: "preparation",
+      live_execution_authorized: false,
+      execution_id: "exec-1",
+    });
+  });
   test("clean run → bare output, no wrapper", () => {
     const env = buildResultEnvelope(base({}));
     expect(env.rawBody).toEqual({ hello: "world" });

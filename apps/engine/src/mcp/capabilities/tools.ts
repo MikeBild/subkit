@@ -28,14 +28,18 @@ import {
   type ServerNotification,
   type ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { registerNativeUrlElicitationCompletion } from "../../conversations/native-url-elicitation.ts";
 import type { Db } from "../../db/client.ts";
 import { executions, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { cancel } from "../../execution/abort.ts";
-import { runExecution } from "../../execution/engine.ts";
+import {
+  admitAuthorizedWorkflowExecution,
+  createExecution,
+  runExecution,
+} from "../../execution/index.ts";
 import { previewOf } from "../../execution/offload.ts";
 import { logger } from "../../logging/logger.ts";
 import { globalEmitter } from "../../pubsub/emitter.ts";
@@ -174,8 +178,8 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     //   - listConversationTools — MCP-only conversation.* session tools.
     const mode = resolveMcpMode(principal);
     // We log the client's advertised capabilities (elicitation, sampling,
-    // roots, tasks) as a signal only. MCP writes are gated by the client's
-    // native destructiveHint approval dialog, not by any server-side channel.
+    // roots, tasks) as a signal only. They are not proof of human approval;
+    // saved workflow writes require a locally verified execution authority.
     //
     // The client's self-reported identity rides along. It is SELF-DECLARED and
     // therefore never a permission input — the credential decides what a caller
@@ -553,10 +557,8 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           ],
         };
       }
-      // A `wf_<slug>` call dispatches its write-classified steps directly: the
-      // MCP client already gated the call through its native destructiveHint
-      // approval dialog (which blocks before the server ever sees the call), so
-      // there is no server-side hold. RBAC still runs inside runWorkflowToolCall.
+      // A `wf_<slug>` call verifies its product-local authority below; the
+      // client's annotation handling is not proof of a human decision.
       return await runWorkflowToolCall({
         db,
         principal,
@@ -593,10 +595,9 @@ interface WorkflowToolCallParams {
 /**
  * Run a saved workflow behind its `wf_<slug>` tool.
  *
- * The call's write-classified steps dispatch directly — the MCP client already
- * gated it through its native destructiveHint approval dialog, which blocks
- * before the server ever sees the call. RBAC still runs before the execution
- * starts (below), so a caller without run rights is refused regardless.
+ * Writes require a locally stored, exact-version execution authority. Without
+ * one, only conservative preparation runs. Client annotation dialogs grant no
+ * server-side authority. RBAC applies to both paths.
  */
 async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolResult> {
   const { db, principal, extra, name, args, progressToken, execution_mode, started } = p;
@@ -657,31 +658,65 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
   // whether the workflow declares an `output_schema` — when it does,
   // tools/list advertised an `outputSchema`, so tools/call MUST return
   // a conforming `structuredContent` (MCP 2025-11-25 tools §Output Schema).
-  let totalSteps = 1;
-  let outputSchemaDeclared = false;
+  const wfRows = await db
+    .select({ current_version_id: workflows.current_version_id })
+    .from(workflows)
+    .where(and(eq(workflows.tenant_id, principal.tenant_id), eq(workflows.id, wf.id)))
+    .limit(1);
+  const vId = wfRows[0]?.current_version_id;
+  if (!vId) throw new Error("workflow version unavailable");
+  const vRows = await db
+    .select({ dag: workflowVersions.dag })
+    .from(workflowVersions)
+    .where(
+      and(
+        eq(workflowVersions.tenant_id, principal.tenant_id),
+        eq(workflowVersions.workflow_id, wf.id),
+        eq(workflowVersions.id, vId),
+      ),
+    )
+    .limit(1);
+  const definition = WorkflowDefSchema.parse(vRows[0]?.dag);
+  const totalSteps = definition.steps.length;
+  const outputSchemaDeclared = definition.output_schema != null;
+  let executionId: string;
+  let preparation = false;
   try {
-    const wfRows = await db
-      .select({ current_version_id: workflows.current_version_id })
-      .from(workflows)
-      .where(and(eq(workflows.tenant_id, principal.tenant_id), eq(workflows.id, wf.id)))
-      .limit(1);
-    const vId = wfRows[0]?.current_version_id ?? null;
-    if (vId) {
-      const vRows = await db
-        .select({ dag: workflowVersions.dag })
-        .from(workflowVersions)
-        .where(
-          and(eq(workflowVersions.tenant_id, principal.tenant_id), eq(workflowVersions.id, vId)),
-        )
-        .limit(1);
-      const parsed = vRows[0]?.dag ? WorkflowDefSchema.safeParse(vRows[0].dag) : null;
-      if (parsed?.success) {
-        totalSteps = parsed.data.steps.length;
-        outputSchemaDeclared = parsed.data.output_schema != null;
-      }
-    }
-  } catch {
-    // best effort
+    const admitted = await admitAuthorizedWorkflowExecution(
+      {
+        tenant_id: principal.tenant_id,
+        workflow_id: wf.id,
+        workflow_version_id: vId,
+        execution_environment: execution_mode,
+        request_source: "mcp",
+        input: args,
+      },
+      db,
+    );
+    executionId = admitted.execution_id;
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (
+      !code ||
+      ![
+        "execution_authority_required",
+        "execution_authority_unavailable",
+        "execution_authority_changed",
+        "workflow_version_not_active",
+      ].includes(code)
+    )
+      throw error;
+    preparation = true;
+    executionId = await createExecution(db, {
+      tenant_id: principal.tenant_id,
+      workflow_id: wf.id,
+      workflow_version_id: vId,
+      execution_mode,
+      source_kind: "saved",
+      source_ref: null,
+      input: args,
+      request_source: "mcp",
+    });
   }
 
   // Wire up MCP's cancellation signal into the execution abort.
@@ -698,7 +733,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     bridge: { stop: () => void } | null;
     executionId: string | null;
     runSettled: boolean;
-  } = { bridge: null, executionId: null, runSettled: false };
+  } = { bridge: null, executionId, runSettled: false };
   const settleProgressBridge = (): void => {
     state.runSettled = true;
     state.bridge?.stop();
@@ -723,9 +758,11 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
   const runPromise = runExecution({
     db,
     tenant_id: principal.tenant_id,
-    source: { kind: "saved", workflow_id: wf.id },
+    source: { kind: "saved", workflow_id: wf.id, version_id: vId },
     input: args,
     options: {
+      existing_execution_id: executionId,
+      ...(preparation ? { hold_writes: true, self_healing: { enabled: false } } : {}),
       request_source: "mcp",
       signal: abortController.signal,
       trace_id: null,
@@ -734,39 +771,10 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     },
   });
 
-  // Poll the executions table briefly to pick up the id (createExecution
-  // is called synchronously inside runExecution's first tick, so we kick
-  // off the bridge on the next microtask).
-  void Promise.resolve().then(async () => {
-    // Small delay so the executions row lands before the first poll.
-    setTimeout(async () => {
-      try {
-        const rows = await db
-          .select({ id: executions.id })
-          .from(executions)
-          .where(
-            and(eq(executions.tenant_id, principal.tenant_id), eq(executions.workflow_id, wf.id)),
-          )
-          .orderBy(asc(executions.created_at));
-        // Most recent id for this workflow.
-        const latest = rows[rows.length - 1];
-        if (latest) {
-          state.executionId = latest.id;
-          if (!state.runSettled && progressToken !== undefined && progressToken !== null) {
-            state.bridge = startProgressBridge(
-              db,
-              principal.tenant_id,
-              latest.id,
-              totalSteps,
-              notifier,
-            );
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }, 25).unref?.();
-  });
+  // The admission-created id belongs to this call even during parallel runs.
+  if (progressToken !== undefined && progressToken !== null) {
+    state.bridge = startProgressBridge(db, principal.tenant_id, executionId, totalSteps, notifier);
+  }
 
   try {
     // Bound the inline wait so a slow run doesn't blow past the client's
@@ -850,7 +858,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     if (progressToken !== undefined && progressToken !== null) {
       await notifier.send(1, 1, "completed").catch(() => {});
     }
-    const { rawBody } = buildResultEnvelope(result);
+    const { rawBody, held } = buildResultEnvelope(result);
     // Offload if oversize. Warnings travel with the envelope.
     const serialized = JSON.stringify(rawBody);
     if (serialized.length > MCP_OFFLOAD_CHAR_CAP) {
@@ -879,7 +887,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       // URI as a follow-up call. Pairs with the `s3://` reader
       // in apps/engine/src/mcp/capabilities/resources.ts.
       const summaryLines: string[] = [
-        `Execution ${result.execution_id} ${result.status}; result is ${off.size_bytes} bytes (offloaded — inline cap is ${MCP_OFFLOAD_CHAR_CAP} bytes).`,
+        `${held ? "Preparation (external effects held)" : "Execution"} ${result.execution_id} ${result.status}; result is ${off.size_bytes} bytes (offloaded — inline cap is ${MCP_OFFLOAD_CHAR_CAP} bytes).`,
       ];
       if (off.preview) summaryLines.push(`Preview: ${off.preview}`);
       if (hasWarnings) {
@@ -891,7 +899,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
         // offload threshold. If persistence did not materialize a pointer,
         // return inline rather than creating an unowned/orphan object.
         return {
-          isError: result.status !== "succeeded",
+          isError: held || result.status !== "succeeded",
           content: [{ type: "text" as const, text: serialized }],
         };
       }
@@ -917,7 +925,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
         size_bytes: off.size_bytes,
       });
       return {
-        isError: result.status !== "succeeded",
+        isError: held || result.status !== "succeeded",
         content: [{ type: "text" as const, text: summaryLines.join("\n\n") }, resourceLink],
       };
     }
@@ -940,6 +948,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     // large object.
     const structured =
       outputSchemaDeclared &&
+      !held &&
       result.status === "succeeded" &&
       result.output != null &&
       typeof result.output === "object" &&
@@ -947,7 +956,9 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
         ? { structuredContent: result.output as Record<string, unknown> }
         : {};
     return {
-      isError: result.status !== "succeeded",
+      // The requested live result is unavailable. MCP clients must not validate
+      // held preparation against the workflow's final outputSchema.
+      isError: held || result.status !== "succeeded",
       content: [{ type: "text" as const, text }],
       ...structured,
     };
