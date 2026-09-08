@@ -155,12 +155,8 @@ describe("mcp tools/call", () => {
     }
   }, 10_000);
 
-  // MCP writes execute directly (gemeldet == geschrieben, now the intended
-  // contract): a `wf_*` run dispatches its write steps for real — the
-  // client's native `destructiveHint` dialog already gated the call before it
-  // reached the engine. There is no held-writes preview and no confirm
-  // envelope left on this surface; the model sees exactly what actually ran.
-  test("a wf_* run with a write step dispatches it for real — no preview envelope, no _meta.subkit.confirm", async () => {
+  // A client annotation is not server-verifiable execution authority.
+  test("a wf_* run without authority reads but holds writes and reports preparation", async () => {
     const hits: string[] = [];
     const writeMock = await createMockServer((req, res) => {
       hits.push(req.url ?? "");
@@ -184,26 +180,29 @@ describe("mcp tools/call", () => {
       });
       const client = await suite.connect();
       const result = await client.callTool({ name: "wf_call-direct-write", arguments: {} });
-      expect(result.isError).toBeFalsy();
+      expect(result.isError).toBe(true);
 
       const content = result.content as Array<{ type: string; text: string }>;
       const body = JSON.parse(content[0]!.text) as {
-        preview?: boolean;
-        writes_held?: boolean;
+        status: string;
+        execution_id: string;
+        live_execution_authorized: boolean;
+        warnings: Array<{ code: string }>;
         confirm_id?: string;
         approval_url?: string | null;
       };
-      expect(body.preview).toBeUndefined();
-      expect(body.writes_held).toBeUndefined();
+      expect(body.status).toBe("preparation");
+      expect(body.execution_id).toBeTruthy();
+      expect(body.live_execution_authorized).toBe(false);
+      expect(body.warnings.some((warning) => warning.code === "held_preview_no_writes")).toBe(true);
       expect(body.confirm_id).toBeUndefined();
       expect(body.approval_url).toBeUndefined();
 
       const meta = (result as { _meta?: { subkit?: { confirm?: unknown } } })._meta;
       expect(meta?.subkit?.confirm).toBeUndefined();
 
-      // The write step actually hit the wire.
       expect(hits.some((u) => u.startsWith("/data"))).toBe(true);
-      expect(hits.some((u) => u.startsWith("/send"))).toBe(true);
+      expect(hits.some((u) => u.startsWith("/send"))).toBe(false);
 
       const rows = await suite.http.db
         .select({ c: count() })
