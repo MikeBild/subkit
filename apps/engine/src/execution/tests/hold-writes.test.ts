@@ -303,7 +303,7 @@ describe("hold-writes · HTTP", () => {
     expect(codes).not.toContain("output_contract_violation");
   });
 
-  test("explicit side_effects override wins both directions at runtime", async () => {
+  test("author labels can escalate a read but cannot authorize a POST during preview", async () => {
     hits.length = 0;
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "hold-override",
@@ -334,9 +334,9 @@ describe("hold-writes · HTTP", () => {
     });
 
     expect(result.status).toBe("succeeded");
-    // POST forced read → executed live.
-    expect(hitsFor("/search")).toHaveLength(1);
-    expect(result.steps.find((s) => s.step_key === "search")?.held).toBeUndefined();
+    // A search label is not authority to send a POST.
+    expect(hitsFor("/search")).toHaveLength(0);
+    expect(result.steps.find((s) => s.step_key === "search")?.held).toBe(true);
     // GET forced write → held, never dispatched.
     expect(hitsFor("/mutating-get")).toHaveLength(0);
     const heldStep = result.steps.find((s) => s.step_key === "mutating_get");
@@ -546,6 +546,47 @@ describe("hold-writes · HTTP", () => {
 });
 
 describe("hold-writes · postgres", () => {
+  test("SELECT calling a writing function is held without touching the table", async () => {
+    await ctx.testDb.pool.query(`
+      CREATE FUNCTION hold_write_via_select() RETURNS integer LANGUAGE sql AS $$
+        INSERT INTO hold_widgets (id, name) VALUES (101, 'function-effect') RETURNING id
+      $$
+    `);
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "hold-pg-writing-select",
+      steps: [
+        {
+          kind: "request",
+          id: "select_function",
+          connector_id: pgConnectorId,
+          side_effects: "read",
+          sql: { query: "SELECT hold_write_via_select()" },
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+      options: { hold_writes: true },
+    });
+    expect(result.status).toBe("succeeded");
+    expect(result.steps[0]?.held).toBe(true);
+    const rows = await ctx.testDb.pool.query("SELECT id FROM hold_widgets WHERE id=101");
+    expect(rows.rows).toHaveLength(0);
+    // Prove the fixture really writes; roll back this local control experiment.
+    const client = await ctx.testDb.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT hold_write_via_select()");
+      expect((await client.query("SELECT id FROM hold_widgets WHERE id=101")).rows).toHaveLength(1);
+    } finally {
+      await client.query("ROLLBACK");
+      client.release();
+    }
+  });
+
   test("a read label cannot dispatch a SQL insert during preview", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "hold-pg-mislabelled",
@@ -572,7 +613,7 @@ describe("hold-writes · postgres", () => {
     expect(rows.rows).toHaveLength(0);
   });
 
-  test("INSERT is held (table stays empty); SELECT executes live in the same preview", async () => {
+  test("INSERT and unproven SELECT are held in the same preview", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "hold-pg",
       steps: [
@@ -604,11 +645,11 @@ describe("hold-writes · postgres", () => {
     });
 
     expect(result.status).toBe("succeeded");
-    // The read ran live against the real database…
+    // SELECT alone is not proof that arbitrary SQL has no effects.
     const countStep = result.steps.find((s) => s.step_key === "count");
     expect(countStep?.status).toBe("succeeded");
-    expect(countStep?.held).toBeUndefined();
-    expect(countStep?.output_preview).toEqual([{ n: 0 }]);
+    expect(countStep?.held).toBe(true);
+    expect(countStep?.output_preview).toBeNull();
     // …while the write was held: artifact recorded, nothing executed.
     const insStep = result.steps.find((s) => s.step_key === "ins");
     expect(insStep?.held).toBe(true);
