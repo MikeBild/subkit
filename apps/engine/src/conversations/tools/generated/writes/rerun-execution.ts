@@ -8,7 +8,7 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { executions } from "../../../../db/schema/index.ts";
-import { createExecution, runExecution } from "../../../../execution/index.ts";
+import { admitWorkflowRun, runExecution } from "../../../../execution/index.ts";
 import { gateWorkflowRunRbac } from "../../../../workflows/rbac.ts";
 import type { ConversationTool } from "../../index.ts";
 import { sampleWorkflowOutputForLlm } from "../../truncate.ts";
@@ -28,6 +28,9 @@ export const rerunExecutionTool: ConversationTool = {
   inputSchema: RerunInput,
   category: "tenant_write",
   async execute(ctx, args: z.infer<typeof RerunInput>) {
+    if (!ctx.principal) return { ok: false, data: { error: "principal_required" } };
+    if (ctx.principal.tenant_id !== ctx.tenant_id)
+      return { ok: false, data: { error: "permission_denied" } };
     const rows = await ctx.db
       .select()
       .from(executions)
@@ -45,7 +48,7 @@ export const rerunExecutionTool: ConversationTool = {
       };
     }
 
-    if (ctx.principal) {
+    {
       const rbac = await gateWorkflowRunRbac({
         db: ctx.db,
         principal: ctx.principal,
@@ -59,17 +62,21 @@ export const rerunExecutionTool: ConversationTool = {
     }
 
     const input = args.input !== undefined ? args.input : (original.input ?? null);
-    const execution_id = await createExecution(ctx.db, {
-      tenant_id: ctx.tenant_id,
-      workflow_id: original.workflow_id,
-      workflow_version_id: original.workflow_version_id,
-      source_kind: "saved",
-      source_ref: { rerun_of: original.id },
-      request_source: "chat",
-      parent_execution_id: original.id,
-      execution_mode: original.execution_mode ?? "dev",
-      input,
-    });
+    if (!original.workflow_version_id)
+      return { ok: false, data: { error: "workflow_version_unavailable" } };
+    const admitted = await admitWorkflowRun(
+      {
+        tenant_id: ctx.tenant_id,
+        workflow_id: original.workflow_id,
+        workflow_version_id: original.workflow_version_id,
+        request_source: "chat",
+        parent_execution_id: original.id,
+        execution_environment: original.execution_mode ?? "dev",
+        input,
+      },
+      ctx.db,
+    );
+    const execution_id = admitted.execution_id;
 
     const result = await runExecution({
       db: ctx.db,
@@ -79,10 +86,10 @@ export const rerunExecutionTool: ConversationTool = {
         workflow_id: original.workflow_id,
         ...(original.workflow_version_id ? { version_id: original.workflow_version_id } : {}),
       },
-      input,
+      input: admitted.input,
       options: {
         request_source: "chat",
-        ...(ctx.principal ? { principal: ctx.principal } : {}),
+        principal: ctx.principal,
         execution_mode: original.execution_mode ?? "dev",
         parent_execution_id: original.id,
         existing_execution_id: execution_id,
@@ -95,6 +102,7 @@ export const rerunExecutionTool: ConversationTool = {
         execution_id: result.execution_id,
         rerun_of: original.id,
         status: result.status,
+        hold_writes: admitted.hold_writes,
         output: sampleWorkflowOutputForLlm(result.output),
         ...(result.error ? { error: result.error } : {}),
       },

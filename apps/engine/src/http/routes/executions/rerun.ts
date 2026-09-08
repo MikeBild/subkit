@@ -13,7 +13,12 @@ import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { executions } from "../../../db/schema/index.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
-import { createExecution, runExecution } from "../../../execution/index.ts";
+import {
+  admitWorkflowRun,
+  assertExecutionAuthorityCurrent,
+  finalizeExecution,
+  runExecution,
+} from "../../../execution/index.ts";
 import type { ExecutionRunJob } from "../../../queue/index.ts";
 import { EXECUTION_RUN_QUEUE, getBoss } from "../../../queue/index.ts";
 import { HttpError, NotFoundError } from "../../errors.ts";
@@ -29,6 +34,9 @@ const RerunBody = z
     input: z.unknown().optional(),
     /** Queue the rerun (202 + execution_id) instead of running inline. */
     async: z.boolean().optional(),
+    hold_writes: z.boolean().optional(),
+    execution_authority_id: z.string().uuid().optional(),
+    idempotency_key: z.string().min(1).max(200).optional(),
   })
   .openapi("RerunExecutionBody");
 
@@ -115,20 +123,52 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
     const input = body.input !== undefined ? body.input : (original.input ?? null);
     const execution_mode: ExecutionMode = original.execution_mode ?? "dev";
 
-    // Create the row up-front for both paths (the queue-worker pattern):
-    // it pins the original's workflow_version_id, carries the lineage,
-    // and stamps `source_ref.rerun_of` so the row reads as a rerun.
-    const execution_id = await createExecution(db, {
-      tenant_id: principal.tenant_id,
-      workflow_id: original.workflow_id,
-      workflow_version_id: original.workflow_version_id,
-      source_kind: "saved",
-      source_ref: { rerun_of: original.id },
-      request_source: "api",
-      parent_execution_id: original.id,
-      execution_mode,
-      input,
-    });
+    if (!original.workflow_version_id)
+      throw new HttpError(
+        409,
+        "workflow_version_unavailable",
+        "the original version is unavailable",
+      );
+    let admitted: Awaited<ReturnType<typeof admitWorkflowRun>>;
+    try {
+      admitted = await admitWorkflowRun(
+        {
+          tenant_id: principal.tenant_id,
+          workflow_id: original.workflow_id,
+          workflow_version_id: original.workflow_version_id,
+          execution_authority_id: body.execution_authority_id,
+          hold_writes: body.hold_writes,
+          idempotency_key: body.idempotency_key,
+          request_source: "api",
+          parent_execution_id: original.id,
+          execution_environment: execution_mode,
+          input,
+        },
+        db,
+      );
+      if (body.async && admitted.execution_authority_id && admitted.status === "queued") {
+        await assertExecutionAuthorityCurrent(db, principal.tenant_id, admitted.execution_id);
+      }
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code === "input_schema_violation")
+        throw new HttpError(400, code, (error as Error).message);
+      if (
+        code?.startsWith("execution_") ||
+        code?.startsWith("workflow_version_") ||
+        code === "workflow_archived"
+      ) {
+        throw new HttpError(409, code, (error as Error).message);
+      }
+      throw error;
+    }
+    const execution_id = admitted.execution_id;
+    if (admitted.replayed && admitted.status !== "queued") {
+      return c.json(
+        { execution_id, status: admitted.status, idempotent_replay: true },
+        admitted.status === "running" ? 202 : 200,
+      );
+    }
 
     if (body.async) {
       const trace_id = c.get("trace_id") ?? null;
@@ -136,13 +176,23 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         workflow_id: original.workflow_id,
         execution_id,
-        input,
+        input: admitted.input,
         request_source: "api",
         trace_id,
         execution_mode,
       };
-      await (c.get("boss") ?? getBoss()).send(EXECUTION_RUN_QUEUE, job);
-      return c.json({ execution_id, status: "queued" }, 202);
+      try {
+        await (c.get("boss") ?? getBoss()).send(EXECUTION_RUN_QUEUE, job, { id: execution_id });
+      } catch (error) {
+        if (!body.idempotency_key)
+          await finalizeExecution(db, principal.tenant_id, execution_id, "failed", null, {
+            step_id: null,
+            error_code: "enqueue_failed",
+            error_message: "The rerun could not be enqueued.",
+          });
+        throw error;
+      }
+      return c.json({ execution_id, status: "queued", hold_writes: admitted.hold_writes }, 202);
     }
 
     const result = await runExecution({
@@ -153,7 +203,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
         workflow_id: original.workflow_id,
         ...(original.workflow_version_id ? { version_id: original.workflow_version_id } : {}),
       },
-      input,
+      input: admitted.input,
       options: {
         request_source: "api",
         principal,
@@ -165,6 +215,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
     return c.json(
       {
         execution_id: result.execution_id,
+        hold_writes: admitted.hold_writes,
         status: result.status,
         output: result.output,
         error: result.error,

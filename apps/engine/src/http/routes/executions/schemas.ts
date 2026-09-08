@@ -18,6 +18,7 @@ export const ExecSchema = z
     workflow_name: z.string().nullable(),
     workflow_version_id: z.string().nullable(),
     execution_authority_id: z.string().uuid().nullable(),
+    hold_writes: z.boolean().optional(),
     source_kind: z.enum(["saved", "draft", "step"]),
     source_ref: z.record(z.string(), z.unknown()).nullable(),
     status: z.string(),
@@ -83,14 +84,18 @@ export const IdempotencyKeySchema = z.string().min(1).max(200).openapi({
 // WorkflowDefSchema are too rich for the public OpenAPI catalog).
 const HoldWritesPreviewSchema = z.literal(true).optional().openapi({
   description:
-    "Preview a temporary definition: hold request steps classified as writes; reads still execute against real systems. This flag is not a live-execution authorization.",
+    "Temporary definitions always hold writes and unknown effects, including when this flag is omitted. Reads still execute against real systems. This flag is not a live-execution authorization.",
+});
+
+const SavedRunModeSchema = z.boolean().optional().openapi({
+  description:
+    "Omit to discover an existing matching local authority or run a held preparation. True always holds writes without spending a live run. False requires live authorization and rejects a missing or changed authority.",
 });
 
 export const RuntimeRunBodySchema = z.discriminatedUnion("source", [
   z.object({
     source: z.literal("saved"),
-    // A saved live run must reject, never silently strip, a preview request.
-    hold_writes: z.literal(false).optional(),
+    hold_writes: SavedRunModeSchema,
     workflow_id: z.string().uuid(),
     version_id: z.string().uuid().optional(),
     execution_authority_id: z.string().uuid().optional(),
@@ -146,7 +151,7 @@ export const RunBodySchema = z.discriminatedUnion("source", [
   z
     .object({
       source: z.literal("saved"),
-      hold_writes: z.literal(false).optional(),
+      hold_writes: SavedRunModeSchema,
       workflow_id: z.string().uuid(),
       version_id: z.string().uuid().optional(),
       execution_authority_id: z.string().uuid().optional().openapi({
@@ -238,6 +243,7 @@ export const RunResponseSchema = z
   .object({
     execution_id: z.string(),
     status: z.string(),
+    hold_writes: z.boolean().optional(),
     output: z.unknown().optional(),
     error: z.unknown().nullable().optional(),
     steps: z.array(RunStepSummarySchema).optional(),
@@ -293,6 +299,7 @@ export function serializeExec(
     workflow_name: workflowName,
     workflow_version_id: row.workflow_version_id ?? null,
     execution_authority_id: row.execution_authority_id ?? null,
+    hold_writes: row.hold_writes,
     source_kind: (row.source_kind as "saved" | "draft" | "step") ?? "saved",
     source_ref: row.source_ref ?? null,
     status: row.status,

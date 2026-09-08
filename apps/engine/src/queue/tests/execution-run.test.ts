@@ -2,9 +2,9 @@
 // mark the execution row as succeeded.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
-import { executions } from "../../db/schema/index.ts";
+import { executionSteps, executions } from "../../db/schema/index.ts";
 import { createExecution } from "../../execution/state.ts";
 import {
   createEngineCtx,
@@ -14,6 +14,7 @@ import {
   jsonResponse,
   type MockServer,
 } from "../../execution/tests/setup.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createBoss, disposeBoss } from "../boss.ts";
 import { registerExecutionRunHandler } from "../handlers/execution-run.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queues.ts";
@@ -38,6 +39,119 @@ afterAll(async () => {
 });
 
 describe("queue: execution.run worker", () => {
+  test("a legacy queued write without authority fails without dispatch", async () => {
+    let writes = 0;
+    mockSrv.setHandler((request, res) => {
+      if (request.method === "POST") writes++;
+      jsonResponse(res, 200, { ok: true });
+    });
+    const { workflow_id, version_id } = await createWorkflowRow(engineCtx, {
+      name: "legacy-unbound",
+      slug: "legacy-unbound",
+      steps: [{ id: "send", kind: "request", method: "POST", url: `${mockSrv.baseUrl}/legacy` }],
+    });
+    const execution_id = await createExecution(engineCtx.testDb.db, {
+      tenant_id: engineCtx.tenantId,
+      workflow_id,
+      workflow_version_id: version_id,
+      source_kind: "saved",
+      source_ref: null,
+      request_source: "api",
+    });
+    await boss.send(
+      EXECUTION_RUN_QUEUE,
+      {
+        tenant_id: engineCtx.tenantId,
+        workflow_id,
+        execution_id,
+        input: null,
+        request_source: "api",
+      } satisfies ExecutionRunJob,
+      { id: execution_id },
+    );
+    const row = await waitFor(
+      async () => {
+        const [current] = await engineCtx.testDb.db
+          .select()
+          .from(executions)
+          .where(
+            and(eq(executions.tenant_id, engineCtx.tenantId), eq(executions.id, execution_id)),
+          );
+        return current?.status === "failed" ? current : null;
+      },
+      { tries: 150, sleepMs: 200, label: "legacy queue denial" },
+    );
+    expect(row).toMatchObject({
+      status: "failed",
+      hold_writes: false,
+      execution_authority_id: null,
+    });
+    expect(writes).toBe(0);
+    expect(
+      await engineCtx.testDb.db
+        .select()
+        .from(executionSteps)
+        .where(eq(executionSteps.execution_id, execution_id)),
+    ).toHaveLength(0);
+  });
+
+  test("a persisted preparation stays held when the real queue envelope omits hold options", async () => {
+    let writes = 0;
+    mockSrv.setHandler((request, res) => {
+      if (request.method === "POST") writes++;
+      jsonResponse(res, 200, { ok: true });
+    });
+    const { workflow_id, version_id } = await createWorkflowRow(engineCtx, {
+      name: "queued-preview",
+      slug: "queued-preview",
+      steps: [{ id: "send", kind: "request", method: "POST", url: `${mockSrv.baseUrl}/held` }],
+    });
+    const execution_id = await createExecution(engineCtx.testDb.db, {
+      tenant_id: engineCtx.tenantId,
+      workflow_id,
+      workflow_version_id: version_id,
+      source_kind: "saved",
+      source_ref: null,
+      request_source: "api",
+      hold_writes: true,
+    });
+    await boss.send(
+      EXECUTION_RUN_QUEUE,
+      {
+        tenant_id: engineCtx.tenantId,
+        workflow_id,
+        execution_id,
+        input: null,
+        request_source: "api",
+      } satisfies ExecutionRunJob,
+      { id: execution_id },
+    );
+    const row = await waitFor(
+      async () => {
+        const [current] = await engineCtx.testDb.db
+          .select()
+          .from(executions)
+          .where(
+            and(eq(executions.tenant_id, engineCtx.tenantId), eq(executions.id, execution_id)),
+          );
+        return current && !["queued", "running"].includes(current.status) ? current : null;
+      },
+      { tries: 150, sleepMs: 200, label: "queued preparation completion" },
+    );
+    expect(row).toMatchObject({ status: "succeeded", hold_writes: true });
+    const steps = await engineCtx.testDb.db
+      .select()
+      .from(executionSteps)
+      .where(
+        and(
+          eq(executionSteps.tenant_id, engineCtx.tenantId),
+          eq(executionSteps.execution_id, execution_id),
+        ),
+      );
+    expect(steps).toHaveLength(1);
+    expect(writes).toBe(0);
+  }, 40_000);
+
   test("async enqueue -> worker runs engine -> execution succeeds", async () => {
     const { workflow_id, version_id } = await createWorkflowRow(engineCtx, {
       name: "enqueue-me",
@@ -61,6 +175,7 @@ describe("queue: execution.run worker", () => {
       request_source: "api",
       parent_execution_id: null,
       input: { hello: "world" },
+      hold_writes: true,
     });
 
     const job: ExecutionRunJob = {

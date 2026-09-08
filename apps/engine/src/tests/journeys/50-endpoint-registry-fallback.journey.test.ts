@@ -13,7 +13,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { connectorEndpointSchemas } from "../../db/schema/index.ts";
+import { eq } from "drizzle-orm";
+import {
+  browserSessionCookie,
+  signBrowserCsrf,
+  signBrowserSession,
+} from "../../auth/browser-session.ts";
+import { connectorEndpointSchemas, sessions, workflows } from "../../db/schema/index.ts";
+import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
@@ -21,10 +28,60 @@ let mockApi: Server;
 let mockBase = "";
 let connectorId = "";
 let upstreamStatus = 201;
+let requests = 0;
+
+// This journey tests actual POST response classification, not preparation.
+// Grant one finite live run explicitly; the normal API must not infer it.
+async function authorizeLiveFixture(workflowId: string) {
+  const [workflow] = await ctx.db
+    .update(workflows)
+    .set({ lifecycle: "active" })
+    .where(eq(workflows.id, workflowId))
+    .returning();
+  if (!workflow?.current_version_id) throw new Error("missing workflow version");
+  const now = await databaseNow(ctx.db);
+  const [session] = await ctx.db
+    .insert(sessions)
+    .values({
+      tenant_id: ctx.tenantId,
+      user_id: ctx.userId,
+      expires_at: new Date(now.getTime() + 3600000),
+      absolute_expires_at: new Date(now.getTime() + 3600000),
+    })
+    .returning();
+  if (!session) throw new Error("missing browser fixture");
+  const payload = { tenant_id: ctx.tenantId, user_id: ctx.userId, session_id: session.id };
+  const previewResponse = await journeyFetch(
+    ctx,
+    `/v1/workflows/${workflowId}/versions/${workflow.current_version_id}/authority-preview`,
+  );
+  expect(previewResponse.status).toBe(200);
+  const preview = (await previewResponse.json()) as {
+    digest: string;
+    suggested_bounds: { valid_from: string; valid_until: string };
+  };
+  const granted = await fetch(`${ctx.baseUrl}/v1/workflows/${workflowId}/execution-authorities`, {
+    method: "POST",
+    headers: {
+      cookie: browserSessionCookie(await signBrowserSession(payload)),
+      "x-subkit-csrf": await signBrowserCsrf(payload),
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      workflow_version_id: workflow.current_version_id,
+      expected_manifest_digest: preview.digest,
+      execution_environment: "dev",
+      ...preview.suggested_bounds,
+      max_runs: 1,
+    }),
+  });
+  expect(granted.status).toBe(201);
+}
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("endpoint-registry-fallback");
   mockApi = createServer((_req, res) => {
+    requests++;
     res.statusCode = upstreamStatus;
     res.setHeader("content-type", "application/json");
     res.end(JSON.stringify({ ok: true }));
@@ -89,6 +146,7 @@ describe("50: registry expected_statuses fallback", () => {
     });
     expect(wfRes.status).toBe(201);
     const wf = (await wfRes.json()) as { id: string };
+    await authorizeLiveFixture(wf.id);
 
     const runRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
@@ -97,6 +155,7 @@ describe("50: registry expected_statuses fallback", () => {
     expect(runRes.status).toBe(200);
     const body = (await runRes.json()) as { status: string };
     expect(body.status).toBe("succeeded");
+    expect(requests).toBe(1);
   });
 
   test("AC2: upstream 200 fails with unexpected_status_code (registry allows only [201,422])", async () => {
@@ -123,6 +182,7 @@ describe("50: registry expected_statuses fallback", () => {
     });
     expect(wfRes.status).toBe(201);
     const wf = (await wfRes.json()) as { id: string };
+    await authorizeLiveFixture(wf.id);
 
     const runRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
@@ -136,5 +196,6 @@ describe("50: registry expected_statuses fallback", () => {
     expect(body.status).toBe("failed");
     const failed = body.steps.find((s) => s.status === "failed");
     expect(failed?.error?.code).toBe("unexpected_status_code");
+    expect(requests).toBe(2);
   });
 });

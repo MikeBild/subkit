@@ -73,6 +73,7 @@ import sql0052WorkflowAuthorityImmutability from "./0052_workflow_authority_immu
 import sql0053MinorKidColt from "./0053_minor_kid_colt.sql" with { type: "text" };
 import sql0054NeatAlexWilder from "./0054_neat_alex_wilder.sql" with { type: "text" };
 import sql0055UnknownGreenGoblin from "./0055_unknown_green_goblin.sql" with { type: "text" };
+import sql0056NastyChampions from "./0056_nasty_champions.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -153,6 +154,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0053_minor_kid_colt": sql0053MinorKidColt,
   "0054_neat_alex_wilder": sql0054NeatAlexWilder,
   "0055_unknown_green_goblin": sql0055UnknownGreenGoblin,
+  "0056_nasty_champions": sql0056NastyChampions,
 };
 
 const journal = journalMeta as unknown as Journal;

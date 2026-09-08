@@ -22,3 +22,4 @@ export * from "./resolve-definition.ts";
 export * from "./response-filter.ts";
 export * from "./state.ts";
 export * from "./types.ts";
+export { admitWorkflowRun } from "./workflow-run-admission.ts";

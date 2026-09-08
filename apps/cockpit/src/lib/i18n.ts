@@ -42,6 +42,9 @@ const EN = {
   "authority.connector": "Connector",
   "authority.directRequest": "Direct request without a connector",
   "authority.usedByRun": "Authority recorded for this run",
+  "runs.boundary": "Execution boundary",
+  "runs.preparation": "Preparation",
+  "runs.preparationDescription": "Writes held; this run grants no live execution authority.",
   "authority.noStoredBinding": "No execution-authority binding recorded",
   "authority.title": "Execution authorities",
   "authority.description":
@@ -1450,6 +1453,10 @@ const DE: Record<TranslationKey, string> = {
   "authority.connector": "Connector",
   "authority.directRequest": "Direkte Anfrage ohne Connector",
   "authority.usedByRun": "Für diesen Run gespeicherte Freigabe",
+  "runs.boundary": "Ausführungsgrenze",
+  "runs.preparation": "Vorbereitung",
+  "runs.preparationDescription":
+    "Schreibzugriffe zurückgehalten; dieser Run erteilt keine Live-Ausführungsfreigabe.",
   "authority.noStoredBinding": "Keine Bindung an eine Ausführungsfreigabe gespeichert",
   "authority.title": "Ausführungsfreigaben",
   "authority.description":

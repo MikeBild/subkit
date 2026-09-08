@@ -182,7 +182,7 @@ transaction. Parallel attempts cannot overdraw the last available run. Once
 reserved, a run may proceed even when no runs remain for **new** admissions.
 Cancellation or failure does not refund an admitted run.
 
-An authorized asynchronous request requires an `idempotency_key` (or the
+An asynchronous request selecting an explicit authority requires an `idempotency_key` (or the
 `Idempotency-Key` header). Repeating it after queue failure re-enqueues the same
 reserved execution, without a new allowance charge. A changed workflow, explicit
 version, authority, environment or input under the same key is rejected. The
@@ -218,10 +218,33 @@ reserved execution and queue job ID rather than consuming another run. A crash
 between stamping the cadence and enqueueing can still miss that occurrence;
 this is not an exactly-once scheduling or external-effect guarantee.
 
-This explicit run path does not yet replace legacy REST runs, webhook
-admission, or exact tool approvals. Omitting `execution_authority_id` on REST still uses
-the existing run path; the grant alone must not be interpreted as a portfolio-wide
-default or as enforcement for every execution entry point.
+The ordinary saved-workflow REST start and rerun paths also resolve this local
+authority when its ID is omitted. Without a matching authority, the default is
+a preparation run with writes held. `hold_writes: true` explicitly requests
+preparation without spending a live run; `hold_writes: false` or an explicit
+authority ID requires live admission and fails when no matching grant exists.
+New REPL installations also default to autonomous preparation (`repl.permissionMode:
+auto`). Explicit configuration and saved operator preferences, including `ask`,
+remain unchanged. Existing installations can opt in for future sessions through
+that setting. The CLI's fallback for an unreachable or older engine stays `ask`;
+an unavailable policy response is not a grant of autonomy.
+Draft and single-step REST executions always hold writes, even when the preview
+flag is omitted. Reads still reach real systems. A rerun binds the original
+version and new input, and never inherits the original execution's authority.
+
+Preparation mode is persisted on the execution row and immutable. Queue workers
+restore it rather than trusting omitted or conflicting job options, and cannot
+launch reactive repair from a held or authority-bound run. Execution responses,
+history and the cockpit identify held preparations separately from live grants.
+Use an idempotency key for retryable asynchronous starts; without one, a caught
+enqueue failure finalizes the run as failed rather than leaving it queued.
+Historical execution rows are not reinterpreted as new approvals. Queue jobs
+without an admitted execution, or with a legacy row carrying neither authority
+nor an explicit preparation boundary, are rejected before any step dispatch.
+Start a new preparation or authorize a new run; old queued writes do not gain
+authority during an upgrade. Scheduler and inbound-webhook producers already
+reserve their local authority before enqueue. Legacy chat tool-approval paths
+still require separate convergence; a queue check does not prove those paths.
 
 The resolver currently supports static HTTP targets and the single GraphQL
 endpoint. HTTP paths use the same joining rules as dispatch. A different resolved
