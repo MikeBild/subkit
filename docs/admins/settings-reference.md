@@ -225,7 +225,7 @@ sk REPL session preferences
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `repl.permissionMode` | enum("ask" \| "auto" \| "plan" \| "yolo") | `"ask"` | tenant | no | no | Default REPL permission mode for the principal: ask, auto, plan, or yolo. |
+| `repl.permissionMode` | enum("ask" \| "auto" \| "plan" \| "yolo") | `"auto"` | tenant | no | no | Default REPL permission mode for the principal: ask, auto, plan, or yolo. |
 | `repl.portalTokenTtlMin` | number | `15` | tenant | no | no | TTL in minutes for portal tokens minted by the /session slash (1..1440). |
 
 ## ui

@@ -11,17 +11,12 @@ import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/index.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
 import {
-  admitAuthorizedWorkflowExecution,
+  admitWorkflowRun,
   assertExecutionAuthorityCurrent,
-  createExecution,
   finalizeExecution,
-  findExecutionByIdempotencyKey,
-  isIdempotencyConflict,
   type RunExecutionSource,
-  resolveDefinition,
   runExecution,
 } from "../../../execution/index.ts";
-import { logger } from "../../../logging/index.ts";
 import type { ExecutionRunJob } from "../../../queue/index.ts";
 import { EXECUTION_RUN_QUEUE, getBoss } from "../../../queue/index.ts";
 import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
@@ -154,42 +149,16 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
     const body = runtimeBody.data;
     await enforceWorkflowAllowlist(principal, body, db);
 
-    // Idempotency: a saved-workflow trigger may carry a key (body field, or
-    // the conventional `Idempotency-Key` header). If this tenant already
-    // started a run under that key, answer with that run and start nothing.
-    // The check-then-insert race is closed by the partial unique index on
-    // executions(tenant_id, idempotency_key): the loser's insert raises
-    // 23505 and is mapped to the same replay answer below.
+    // Both live reservations and preparation replays validate the full stored
+    // boundary. A known key alone must not release a different workflow.
     const idempotencyKey =
       body.source === "saved"
         ? (body.idempotency_key ?? c.req.header("idempotency-key")?.trim() ?? null)
         : null;
-    if (idempotencyKey !== null && idempotencyKey.length > 200) {
+    if (idempotencyKey !== null && (idempotencyKey.length < 1 || idempotencyKey.length > 200)) {
       throw new BadRequestError("idempotency_key must be 1..200 characters", {
         code: "bad_request",
       });
-    }
-    const replay = async () => {
-      const existing = idempotencyKey
-        ? await findExecutionByIdempotencyKey(db, principal.tenant_id, idempotencyKey)
-        : null;
-      if (!existing) return null;
-      logger.info({
-        module: "http.executions",
-        action: "execution.idempotent_replay",
-        msg: "trigger repeated under a known idempotency key; no new run started",
-        execution_id: existing.id,
-        tenant_id: principal.tenant_id,
-      });
-      const httpStatus = existing.status === "queued" || existing.status === "running" ? 202 : 200;
-      return c.json(
-        { execution_id: existing.id, status: existing.status, idempotent_replay: true },
-        httpStatus,
-      );
-    };
-    if (idempotencyKey && !(body.source === "saved" && body.execution_authority_id)) {
-      const replayed = await replay();
-      if (replayed) return replayed;
     }
 
     // Resolve execution_mode from the `x-subkit-environment` header.
@@ -197,8 +166,8 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
     let execution_mode: ExecutionMode = "dev";
     if (envHeader === "dev" || envHeader === "prod") execution_mode = envHeader;
 
-    if (body.source === "saved" && body.execution_authority_id) {
-      if (body.async && !idempotencyKey) {
+    if (body.source === "saved") {
+      if (body.async && body.execution_authority_id && !idempotencyKey) {
         throw new BadRequestError(
           "An authorized async run requires an idempotency_key so queue retries reuse its reservation",
           {
@@ -209,9 +178,9 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
       // Authorization is product-local: the id selects a stored human grant,
       // not a claim from the calling agent. Admission reserves atomically and
       // validates idempotent retries against the original complete boundary.
-      let admitted: Awaited<ReturnType<typeof admitAuthorizedWorkflowExecution>>;
+      let admitted: Awaited<ReturnType<typeof admitWorkflowRun>>;
       try {
-        admitted = await admitAuthorizedWorkflowExecution(
+        admitted = await admitWorkflowRun(
           {
             tenant_id: principal.tenant_id,
             workflow_id: body.workflow_id,
@@ -221,20 +190,24 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
             request_source: body.request_source ?? "api",
             input: body.input ?? null,
             idempotency_key: idempotencyKey ?? undefined,
+            hold_writes: body.hold_writes,
           },
           db,
         );
-        if (body.async && admitted.status === "queued") {
+        if (body.async && admitted.status === "queued" && admitted.execution_authority_id) {
           await assertExecutionAuthorityCurrent(db, principal.tenant_id, admitted.execution_id);
         }
       } catch (error) {
+        if ((error as Error).message?.startsWith("workflow not found"))
+          throw new NotFoundError("workflow");
         const code = (error as { code?: string }).code;
         if (code === "input_schema_violation")
           throw new HttpError(400, code, (error as Error).message);
         if (
           code?.startsWith("execution_") ||
           code === "workflow_version_unavailable" ||
-          code === "workflow_version_not_active"
+          code === "workflow_version_not_active" ||
+          code === "workflow_archived"
         )
           throw new HttpError(409, code, (error as Error).message);
         throw error;
@@ -245,6 +218,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
             execution_id: admitted.execution_id,
             status: admitted.status,
             idempotent_replay: true,
+            hold_writes: admitted.hold_writes,
           },
           admitted.status === "running" ? 202 : 200,
         );
@@ -252,23 +226,43 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
       if (body.async) {
         // A queue outage leaves the SAME reserved run retryable. Re-enqueueing
         // never spends another allowance; worker startup claims queued rows.
-        await (c.get("boss") ?? getBoss()).send(
-          EXECUTION_RUN_QUEUE,
-          {
-            tenant_id: principal.tenant_id,
-            workflow_id: body.workflow_id,
-            execution_id: admitted.execution_id,
-            input: admitted.input,
-            request_source: body.request_source ?? "api",
-            trace_id: c.get("trace_id") ?? null,
-            execution_mode,
-          } satisfies ExecutionRunJob,
-          { id: admitted.execution_id },
-        );
+        try {
+          await (c.get("boss") ?? getBoss()).send(
+            EXECUTION_RUN_QUEUE,
+            {
+              tenant_id: principal.tenant_id,
+              workflow_id: body.workflow_id,
+              execution_id: admitted.execution_id,
+              input: admitted.input,
+              request_source: body.request_source ?? "api",
+              trace_id: c.get("trace_id") ?? null,
+              execution_mode,
+            } satisfies ExecutionRunJob,
+            { id: admitted.execution_id },
+          );
+        } catch (error) {
+          // Without a caller key there is no safe retry handle. Do not strand
+          // an undiscoverable queued row; a reservation is never refunded.
+          if (!idempotencyKey)
+            await finalizeExecution(
+              db,
+              principal.tenant_id,
+              admitted.execution_id,
+              "failed",
+              null,
+              {
+                step_id: null,
+                error_code: "enqueue_failed",
+                error_message: "The execution could not be enqueued.",
+              },
+            );
+          throw error;
+        }
         return c.json(
           {
             execution_id: admitted.execution_id,
             status: "queued",
+            hold_writes: admitted.hold_writes,
             ...(admitted.replayed ? { idempotent_replay: true } : {}),
           },
           202,
@@ -293,6 +287,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
       return c.json(
         {
           ...result,
+          hold_writes: admitted.hold_writes,
           ...(admitted.replayed ? { idempotent_replay: true } : {}),
         },
         200,
@@ -300,13 +295,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
     }
 
     let source: RunExecutionSource;
-    if (body.source === "saved") {
-      source = {
-        kind: "saved",
-        workflow_id: body.workflow_id,
-        ...(body.version_id ? { version_id: body.version_id } : {}),
-      };
-    } else if (body.source === "draft") {
+    if (body.source === "draft") {
       source = {
         kind: "draft",
         definition: body.definition,
@@ -320,56 +309,6 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
       };
     }
 
-    if (body.source === "saved" && body.async) {
-      const resolved = await resolveDefinition(db, principal.tenant_id, source);
-      let execution_id: string;
-      try {
-        execution_id = await createExecution(db, {
-          tenant_id: principal.tenant_id,
-          workflow_id: resolved.workflow_id,
-          workflow_version_id: resolved.workflow_version_id,
-          source_kind: "saved",
-          source_ref: null,
-          request_source: body.request_source ?? "api",
-          parent_execution_id: null,
-          execution_mode,
-          input: body.input ?? null,
-          idempotency_key: idempotencyKey,
-        });
-      } catch (err) {
-        if (isIdempotencyConflict(err)) {
-          const replayed = await replay();
-          if (replayed) return replayed;
-        }
-        throw err;
-      }
-      const trace_id = c.get("trace_id") ?? null;
-      const job: ExecutionRunJob = {
-        tenant_id: principal.tenant_id,
-        workflow_id: resolved.workflow_id,
-        execution_id,
-        input: body.input ?? null,
-        request_source: body.request_source ?? "api",
-        trace_id,
-        execution_mode,
-      };
-      // The execution row and the pg-boss job are two separate writes. If
-      // the enqueue fails the row would strand as `queued` with no worker
-      // ever picking it up. Compensate by finalizing it to `failed` so the
-      // caller's 202 contract isn't violated by a silently-stuck run.
-      try {
-        await (c.get("boss") ?? getBoss()).send(EXECUTION_RUN_QUEUE, job);
-      } catch (err) {
-        await finalizeExecution(db, principal.tenant_id, execution_id, "failed", null, {
-          step_id: null,
-          error_code: "enqueue_failed",
-          error_message: err instanceof Error ? err.message : String(err),
-        });
-        throw err;
-      }
-      return c.json({ execution_id, status: "queued" }, 202);
-    }
-
     try {
       const result = await runExecution({
         db,
@@ -381,14 +320,14 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           principal,
           execution_mode,
           idempotency_key: idempotencyKey,
-          ...(body.source !== "saved" && body.hold_writes
-            ? { hold_writes: true, self_healing: { enabled: false } }
-            : {}),
+          hold_writes: true,
+          self_healing: { enabled: false },
         },
       });
       return c.json(
         {
           execution_id: result.execution_id,
+          hold_writes: true,
           status: result.status,
           output: result.output,
           error: result.error,
@@ -401,10 +340,6 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
         200,
       );
     } catch (err) {
-      if (isIdempotencyConflict(err)) {
-        const replayed = await replay();
-        if (replayed) return replayed;
-      }
       const code = (err as { code?: string }).code;
       const details = (err as { details?: unknown }).details;
       if (
@@ -412,15 +347,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
         code === "draft_invalid" ||
         code === "step_invalid"
       ) {
-        // Remediation hint: a schema violation on a saved run is almost
-        // always "the caller didn't know the expected input shape" —
-        // point at the endpoint that prints it.
-        const hint =
-          code === "input_schema_violation" && body.source === "saved"
-            ? `the workflow declares an input schema — inspect it with GET /v1/workflows/${body.workflow_id}/input-schema (or sk workflows get ${body.workflow_id})`
-            : undefined;
         throw HttpError.withEnvelope(400, "bad_request", (err as Error).message, {
-          ...(hint ? { hint } : {}),
           details: {
             code,
             ...(details ? { details } : {}),

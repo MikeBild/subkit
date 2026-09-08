@@ -301,7 +301,8 @@ function materialize(
 
 /** CLI-side pref defaults, used whenever the engine cannot supply prefs
  *  (older engines without /v1/sk/bootstrap, unreachable engine during a
- *  profile switch) so the REPL still has an opinion. */
+ *  profile switch). Stay conservative when no current server policy is known;
+ *  a reachable new engine supplies its autonomous-preparation default. */
 export const DEFAULT_SK_PREFS: SkBootstrapWireResponse["prefs"] = {
   permissionMode: "ask",
   theme: "auto",

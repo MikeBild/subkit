@@ -10,9 +10,9 @@ Nothing imports it. It is law, carried by copy.
 
 ## What this is, and what it is deliberately not
 
-ContentKit and WatchKit are separate products. Separate servers, separate
-databases, separate OIDC clients, separate binaries, separate releases. That does
-not change and this contract does not ask it to.
+WorkKit, CodeKit, SubKit, ContentKit, WikiKit and WatchKit are separate products:
+separate servers, databases, identity clients, binaries and releases. This
+contract shares presentation rules, not runtime authority or product state.
 
 What they share is a **look, a user flow and a design system** — and until this
 file existed they shared it by coincidence. Two `index.css` files declared 75
@@ -23,21 +23,27 @@ look like two products.
 
 So: three files are shared, all of them text, none of them code.
 
-| | |
-|---|---|
-| `contract/COCKPIT-UI.md` | this file — the rules, each with an ID |
-| `contract/cockpit-ui.css` | the token bytes |
-| `contract/RITUAL.md` | how a change to either one travels |
+|                           |                                        |
+| ------------------------- | -------------------------------------- |
+| `contract/COCKPIT-UI.md`  | this file — the rules, each with an ID |
+| `contract/cockpit-ui.css` | the token bytes                        |
+| `contract/RITUAL.md`      | how a change to either one travels     |
 
 There is **no shared package, no shared component, no shared build and no shared
 deployment.** A product implements this contract with its own code. Where the
 product genuinely needs to differ, it differs, and says so in its own
-`apps/cockpit/UI-UX.md`.
+Cockpit documentation and `contract/conformance.*` records. Stricter local
+rules remain in force; sharing this baseline does not weaken them.
+
+`BOUNDED-AUTONOMY.md` defines decision semantics, localization and safe defaults.
+An automatic observation is not a pending approval; external effects require
+the executing product's own authority. Supported locale choices remain local,
+and human-facing approval text is translated in every supported locale.
 
 This file **never names a test.** Enforcement is per-product and lives in
 `contract/conformance.cockpit-ui.json`, which maps each rule ID to the local
 test that holds it — or to nothing, with a stated reason. That file is
-deliberately *not* identical between products: it is the honest record of what
+deliberately _not_ identical between products: it is the honest record of what
 each one actually enforces, and an empty `enforced_by` with a real `why` is a
 truthful entry, not a gap to be papered over.
 
@@ -49,10 +55,10 @@ truthful entry, not a gap to be papered over.
 - **CUI-TOKEN-2** — The names declared in `tokens-light` are exactly the names
   listed below.
 - **CUI-TOKEN-3** — A custom property declared outside the sentinels carries the
-  product's prefix (`--ck-`, `--wt-`). The type stack of §2 is the only exception.
+  product's prefix (for example `--ck-`, `--wt-`, `--wk-`). The type stack of §2 is the only exception.
 
 The tokens are shadcn's **names** with the family's **values**, so a component
-pasted from the registry works unmodified in either console and still looks like
+pasted from the registry works unmodified in each console and still looks like
 it belongs there.
 
 ### Names
@@ -123,7 +129,7 @@ added name and a removed name alike — and the wave lands together.
 - **CUI-MARK-2** — The shell's outermost element carries `data-cockpit-ui`.
 
 No test inside one repository can prove its bytes match an absent sibling's. The
-derived digest is what makes divergence *visible* instead: two products serving
+derived digest is what makes divergence _visible_ instead: two products serving
 different bytes announce different strings, in the DOM, in every screenshot.
 
 ## 6. What a page is
@@ -151,7 +157,7 @@ different bytes announce different strings, in the DOM, in every screenshot.
 ## 8. Words
 
 - **CUI-WORDS-1** — Each surface carries the length it is for: a page description
-  is one sentence about what the page is *for*; a field description is what must
+  is one sentence about what the page is _for_; a field description is what must
   be known before acting; a tooltip is a definition, a unit or a shorthand; a
   popover is a paragraph; an alert is a consequence.
 - **CUI-WORDS-2** — A native `title=` attribute is not a tooltip. It is invisible
@@ -226,10 +232,10 @@ different bytes announce different strings, in the DOM, in every screenshot.
 
 ## Ledger
 
-Every change to `contract/cockpit-ui.css` appends a row here, in both products,
+Every change to `contract/cockpit-ui.css` appends a row here, in all six products,
 in the same wave.
 
-| Date | Digest | Change |
-|---|---|---|
-| 2026-08-05 | `sha256:2974e7b7` | Contract established from the bytes both consoles already shipped. No value changed. |
+| Date       | Digest            | Change                                                                                                                                          |
+| ---------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-05 | `sha256:2974e7b7` | Contract established from the bytes both consoles already shipped. No value changed.                                                            |
 | 2026-08-06 | `sha256:4ca18a25` | Dropped the version number: the sentinels lose their `-v1`, so the file's bytes change and no token value does. The digest is the identity now. |

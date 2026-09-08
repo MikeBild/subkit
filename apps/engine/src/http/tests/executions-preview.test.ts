@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { apiKeys, roles, users, workflows } from "../../db/schema/index.ts";
+import { eq } from "drizzle-orm";
+import { apiKeys, roles, users, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../execution/tests/setup.ts";
 import { grantResource } from "../../rbac/grants.ts";
 import { RunResponseSchema } from "../routes/executions/schemas.ts";
@@ -132,13 +133,94 @@ describe("HTTP temporary execution previews", () => {
     expect(hits.filter((path) => path === "/read")).toHaveLength(1);
   });
 
-  test("rejects a preview flag on a saved run instead of silently starting it live", async () => {
+  test("a saved preview still rejects an unknown workflow", async () => {
     const response = await post({
       source: "saved",
       workflow_id: ctx.tenantId,
       hold_writes: true,
     });
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(404);
+  });
+
+  test("a saved workflow without authority is durably held, including explicit preview and rerun", async () => {
+    const [workflow] = await ctx.db
+      .insert(workflows)
+      .values({
+        tenant_id: ctx.tenantId,
+        slug: "held-saved",
+        name: "Held saved",
+        lifecycle: "active",
+      })
+      .returning();
+    if (!workflow) throw new Error("workflow fixture missing");
+    const [version] = await ctx.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenantId,
+        workflow_id: workflow.id,
+        version: 1,
+        dag: {
+          name: "Held saved",
+          steps: [
+            { id: "send", kind: "request", method: "POST", url: `${upstream.baseUrl}/saved-held` },
+          ],
+        },
+      })
+      .returning();
+    if (!version) throw new Error("version fixture missing");
+    await ctx.db
+      .update(workflows)
+      .set({ current_version_id: version.id })
+      .where(eq(workflows.id, workflow.id));
+    for (const options of [{}, { hold_writes: true }]) {
+      const response = await post({ source: "saved", workflow_id: workflow.id, ...options });
+      expect(response.status).toBe(200);
+      const result = RunResponseSchema.parse(await response.json());
+      expect(result.steps?.find((step) => step.step_key === "send")?.held).toBe(true);
+      const detail = await fetch(`${ctx.baseUrl}/v1/executions/${result.execution_id}`, {
+        headers: { authorization: `Bearer ${ctx.apiKey}` },
+      });
+      expect(await detail.json()).toMatchObject({
+        hold_writes: true,
+        execution_authority_id: null,
+        workflow_version_id: version.id,
+      });
+      const rerun = await fetch(`${ctx.baseUrl}/v1/executions/${result.execution_id}/rerun`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" },
+        body: "{}",
+      });
+      expect(rerun.status).toBe(200);
+      expect(
+        RunResponseSchema.parse(await rerun.json()).steps?.find((step) => step.step_key === "send")
+          ?.held,
+      ).toBe(true);
+    }
+    const live = await post({ source: "saved", workflow_id: workflow.id, hold_writes: false });
+    expect(live.status).toBe(409);
+    expect(hits).not.toContain("/saved-held");
+  });
+
+  test("omitting the preview flag on temporary definitions never enables writes", async () => {
+    for (const source of ["step", "draft"] as const) {
+      const step = {
+        id: "send",
+        kind: "request",
+        method: "POST",
+        url: `${upstream.baseUrl}/default-held`,
+      };
+      const response = await post({
+        source,
+        ...(source === "step" ? { step } : { definition: { name: "Default held", steps: [step] } }),
+      });
+      expect(response.status).toBe(200);
+      expect(
+        RunResponseSchema.parse(await response.json()).steps?.find(
+          (entry) => entry.step_key === "send",
+        )?.held,
+      ).toBe(true);
+    }
+    expect(hits).not.toContain("/default-held");
   });
 
   test("preview cannot bypass authentication", async () => {

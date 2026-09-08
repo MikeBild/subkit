@@ -30,6 +30,9 @@ export async function bindExistingRun(
       code: "execution_boundary_mismatch",
     });
   if (!row) throw mismatch();
+  if (row.hold_writes) {
+    options = { ...options, hold_writes: true, self_healing: { enabled: false } };
+  }
   if (row.source_kind !== "saved" && source.kind !== "saved") return { source, options };
   if (
     row.source_kind !== "saved" ||
