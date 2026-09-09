@@ -165,18 +165,13 @@ export function envelopeToMcpResponse(envelope: ToolEnvelope): {
     };
   }
   if (envelope.status === "needs_confirm") {
-    // Unreachable on the MCP surface. `policyDecide` collapses
-    // `confirm_before_execution` to `proceed` for `surface:"mcp"` (see
-    // tools/policy.ts): the client's native `destructiveHint` dialog is the
-    // human gate, and every MCP-reachable confirm-capable tool advertises it
-    // (mcp/capabilities/tool-meta.ts, pinned by tools-list.test.ts). If this
-    // ever fires, a confirm-capable tool reached MCP WITHOUT an annotation gate
-    // — a governance regression to fix at the source, not a renderable state
-    // (there is no in-band grant channel over MCP to point a caller at).
-    throw new Error(
-      `MCP dispatch returned needs_confirm for ${envelope.confirm.tool}: MCP writes are gated ` +
-        "by the client's destructiveHint dialog, not a server confirm — this tool must advertise it.",
-    );
+    return {
+      isError: false,
+      content: [
+        { type: "text", text: JSON.stringify({ status: "needs_confirm", ...envelope.confirm }) },
+      ],
+      _meta: { subkit: { confirm: envelope.confirm } },
+    };
   }
   if (envelope.status === "paused") {
     return {
@@ -245,13 +240,8 @@ export function buildMcpStubCtx(opts: { db: Db; principal: ResolvedPrincipal }):
  *  Wraps the dispatcher and renders the envelope to the MCP response
  *  shape.
  *
- *  Human-in-the-loop over MCP is the CLIENT's native `destructiveHint` dialog:
- *  a trusted client (claude.ai, ChatGPT) renders a blocking, per-call approval
- *  BEFORE the call reaches the engine, so `policyDecide` takes no server-side
- *  confirm on `surface:"mcp"` (it would be redundant and has no in-band grant
- *  channel). Every MCP-reachable write advertises `destructiveHint:true`
- *  (mcp/capabilities/tool-meta.ts) so the client gate always fires; the adapter
- *  therefore never renders a `needs_confirm` envelope (see above).
+ *  The local portal records the human decision. Client annotations only
+ *  describe risk; confirm_tool_call can replay but never grant an approval.
  *
  *  The adapter itself makes no approval decision — it only renders. */
 export async function callToolViaDispatcher(opts: {
@@ -269,6 +259,7 @@ export async function callToolViaDispatcher(opts: {
       buildMcpStubCtx: () => buildMcpStubCtx({ db: opts.db, principal: opts.principal }),
       mcpMode: opts.mcpMode,
       readOnly: opts.readOnly,
+      permissionMode: "auto",
     },
     opts.invocation,
   );

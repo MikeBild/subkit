@@ -13,11 +13,11 @@
 // approval-decision (not credential-write) contract.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
-import { issueBrowserSession } from "../../auth/browser-session.ts";
+import { and, eq } from "drizzle-orm";
+import { browserSessionFromRequest, issueBrowserSession } from "../../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { setConfigKey } from "../../config/loader.ts";
-import { auditLog, toolApprovals } from "../../db/schema/index.ts";
+import { auditLog, sessions, toolApprovals } from "../../db/schema/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { requestApproval } from "../../tools/approval.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
@@ -29,6 +29,20 @@ const ONE_SECOND_AGO = new Date(1_699_999_999_000);
 
 let server: HttpTestServer;
 let requester: ResolvedPrincipal;
+let browserCookie: string;
+
+async function signIn(): Promise<string> {
+  const login = await issueBrowserSession({
+    db: server.db,
+    tenantId: server.tenantId,
+    userId: server.userId,
+    redirectTo: server.baseUrl,
+    via: "approval_portal_test",
+  });
+  const cookie = login.headers.get("set-cookie");
+  if (!cookie) throw new Error("browser session was not issued");
+  return cookie;
+}
 
 // A secret that lives ONLY in the domain args, never in the would_write
 // preview — proves the portal page never renders decrypted args.
@@ -37,6 +51,7 @@ const SECRET_ARG_VALUE = "TOTALLY-SECRET-ARG-VALUE-4f9c1e";
 beforeAll(async () => {
   server = await createHttpTestServer("tool-approvals-portal");
   await setConfigKey("server.public_base_url", server.baseUrl, { force: true });
+  browserCookie = await signIn();
   requester = {
     provider: "api_key",
     kind: "system_account",
@@ -96,9 +111,13 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
     // The preview is shown to a signed-in approver: the page names who is about
     // to release the write, so it needs to know who that is.
     const res = await fetch(approval_url, {
-      headers: { authorization: `Bearer ${server.apiKey}` },
+      headers: { cookie: browserCookie },
     });
     expect(res.status).toBe(200);
+    expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    expect(res.headers.get("content-security-policy")).toContain("form-action 'self'");
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     const html = await res.text();
 
     // The write preview IS rendered.
@@ -198,9 +217,7 @@ async function decide(
   opts: { authenticated?: boolean; csrf?: string } = {},
 ): Promise<Response> {
   const authenticated = opts.authenticated ?? true;
-  const headers: Record<string, string> = authenticated
-    ? { authorization: `Bearer ${server.apiKey}` }
-    : {};
+  const headers: Record<string, string> = authenticated ? { cookie: browserCookie } : {};
   let csrf = opts.csrf;
   if (csrf === undefined) {
     const page = await fetch(
@@ -217,6 +234,63 @@ async function decide(
 }
 
 describe("POST /v1/tool-approvals/decide", () => {
+  test("a user-owned API key cannot render or submit a human approval", async () => {
+    const { approval_id, approval_url } = await seedApproval();
+    const headers = { authorization: `Bearer ${server.apiKey}` };
+    const page = await fetch(approval_url, { headers, redirect: "manual" });
+    expect(page.status).toBe(302);
+    expect(page.headers.get("location")).toContain("/v1/identity/login/start");
+    expect(await page.text()).not.toContain('name="csrf_token"');
+    const response = await fetch(`${server.baseUrl}/v1/tool-approvals/decide`, {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant: grantParam(approval_url),
+        decision: "approve",
+        csrf_token: "",
+      }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("Sign in");
+    expect((await approvalRow(approval_id))?.granted_at).toBeNull();
+  });
+
+  for (const invalidation of ["revoked", "expired"] as const) {
+    test(`a ${invalidation} browser session cannot fall back to a user API key`, async () => {
+      const { approval_id, approval_url } = await seedApproval();
+      const cookie = await signIn();
+      const headers = { cookie, authorization: `Bearer ${server.apiKey}` };
+      const page = await fetch(approval_url, { headers });
+      expect(page.status).toBe(200);
+      const csrf = /name="csrf_token" value="([^"]+)"/.exec(await page.text())?.[1];
+      expect(csrf).toBeTruthy();
+      const session = await browserSessionFromRequest(new Request(approval_url, { headers }));
+      if (!session) throw new Error("signed browser session did not resolve");
+      await server.db
+        .update(sessions)
+        .set(
+          invalidation === "revoked"
+            ? { revoked_at: ONE_SECOND_AGO }
+            : { absolute_expires_at: ONE_SECOND_AGO },
+        )
+        .where(and(eq(sessions.tenant_id, server.tenantId), eq(sessions.id, session.session_id)));
+      const response = await fetch(`${server.baseUrl}/v1/tool-approvals/decide`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant: grantParam(approval_url),
+          decision: "approve",
+          csrf_token: csrf ?? "",
+        }),
+      });
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain("Sign in");
+      expect((await approvalRow(approval_id))?.granted_at).toBeNull();
+      const reopened = await fetch(approval_url, { headers, redirect: "manual" });
+      expect(reopened.status).toBe(302);
+    });
+  }
+
   test("approve grants once, and the token dies — a second decision on the same token is refused", async () => {
     const { approval_id, approval_url } = await seedApproval();
     const grant = grantParam(approval_url);
@@ -311,7 +385,7 @@ describe("POST /v1/tool-approvals/decide", () => {
 
     const page = await fetch(
       `${server.baseUrl}/v1/tool-approvals/decide?grant=${encodeURIComponent(firstGrant)}`,
-      { headers: { authorization: `Bearer ${server.apiKey}` } },
+      { headers: { cookie: browserCookie } },
     );
     const stolen = /name="csrf_token" value="([^"]+)"/.exec(await page.text())?.[1] ?? "";
 

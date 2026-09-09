@@ -1,133 +1,125 @@
-// `probe_connector` prod-write over MCP now proceeds directly.
-//
-// Before this change, `policyDecide` gated a `confirm_before_execution`
-// decision (here: `probe_connector` POST against a `prod` connector) with a
-// server-side `needs_confirm` envelope on every surface. MCP writes now
-// execute directly instead: the client's native `destructiveHint` dialog is
-// the human gate (it blocks BEFORE the call reaches the engine), and
-// `probe_connector` advertises `destructiveHint:true` in `tools/list`
-// (mcp/capabilities/tool-meta.ts, pinned by tools-list.test.ts) so a trusted
-// client always renders that dialog for this tool. `policyDecide` therefore
-// collapses `confirm_before_execution` to `proceed` for `surface:"mcp"`
-// (tools/policy.ts) — no `needs_confirm`, no minted approval, no
-// APPROVAL_REQUESTED audit row.
-
+// The MCP client is not an approval authority. Real transport + Postgres prove
+// that a write waits for a human grant and its stored call executes once.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { and, count, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../execution/tests/setup.ts";
+import { grantApproval } from "../../tools/approval.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
 let mock: MockServer;
+let hits = 0;
 
 beforeAll(async () => {
   process.env.SK_MCP_MODE = "authoring";
   suite = await startMcpTestSuite("probe-connector-prod-confirm");
   mock = await createMockServer((_req, res) => {
+    hits++;
     jsonResponse(res, 201, { id: "created" });
   });
 });
 
 afterAll(async () => {
-  await mock.close();
-  await suite.cleanup();
+  await mock?.close();
+  await suite?.cleanup();
   delete process.env.SK_MCP_MODE;
 });
 
-describe("probe_connector — prod write over MCP proceeds directly", () => {
-  test("POST against prod dispatches immediately — no needs_confirm, no APPROVAL_REQUESTED audit row", async () => {
+function body(result: Awaited<ReturnType<Client["callTool"]>>) {
+  return JSON.parse((result.content as Array<{ text: string }>)[0]!.text) as {
+    status?: string;
+    status_code?: number;
+    error_code?: string;
+    tool_call_id?: string;
+    approval_url?: string | null;
+    resume?: string;
+  };
+}
+
+describe("probe_connector — local approval for a production write", () => {
+  test("no write before the human grant; the bound call runs once after it", async () => {
     await suite.seedConnector({
       slug: "prod-post-probe",
       environment: "prod",
       base_url: mock.baseUrl,
     });
-    const baseline = await suite.http.db
-      .select({ c: count() })
-      .from(auditLog)
-      .where(
-        and(eq(auditLog.tenant_id, suite.http.tenantId), eq(auditLog.action, "approval.requested")),
-      );
-    const baselineCount = baseline[0]?.c ?? 0;
-
     const client = await suite.connect();
-    const result = await client.callTool({
-      name: "probe_connector",
-      arguments: {
-        connector_slug: "prod-post-probe",
-        method: "POST",
-        path: "/orders",
-        environment: "prod",
-        body: { qty: 1 },
-      },
-    });
-
-    expect(result.isError).toBeFalsy();
-    const content = result.content as Array<{ type: string; text: string }>;
-    const payload = JSON.parse(content[0]!.text) as {
-      status?: string;
-      status_code?: number;
-      policy_mode?: string;
-      tool_call_id?: string;
+    const initialHits = hits;
+    const args = {
+      connector_slug: "prod-post-probe",
+      method: "POST",
+      path: "/orders",
+      environment: "prod",
+      body: { qty: 1 },
     };
-    // The call actually executed against the mock upstream.
-    expect(payload.status_code).toBe(201);
-    expect(payload.status).toBeUndefined();
-    expect(payload.policy_mode).toBeUndefined();
-    expect(payload.tool_call_id).toBeUndefined();
+    const pending = body(await client.callTool({ name: "probe_connector", arguments: args }));
+    expect(pending.status).toBe("needs_confirm");
+    expect(pending.status_code).toBeUndefined();
+    expect(pending.tool_call_id).toMatch(/^[a-f0-9-]{36}$/);
+    expect(pending.resume).toContain("confirm_tool_call");
+    expect(hits).toBe(initialHits);
+    const trigger = { tool: "probe_connector", confirm_id: pending.tool_call_id! };
+    const denied = body(await client.callTool({ name: "confirm_tool_call", arguments: trigger }));
+    expect(denied.error_code).toBe("approval_not_granted");
+    expect(hits).toBe(initialHits);
 
-    // No confirm envelope in _meta either.
-    const meta = result._meta as { subkit?: { confirm?: unknown } } | undefined;
-    expect(meta?.subkit?.confirm).toBeUndefined();
-
-    // No APPROVAL_REQUESTED row was minted for this call.
-    const after = await suite.http.db
-      .select({ c: count() })
-      .from(auditLog)
-      .where(
-        and(eq(auditLog.tenant_id, suite.http.tenantId), eq(auditLog.action, "approval.requested")),
-      );
-    expect((after[0]?.c ?? 0) - baselineCount).toBe(0);
+    // Fixture substitutes only the upstream human decision. This is the real
+    // portal's transactional grant function, not a model-controlled tool.
+    const granted = await grantApproval({
+      db: suite.http.db,
+      approval_id: trigger.confirm_id,
+      tenant_id: suite.http.tenantId,
+      granted_by_user_id: suite.http.userId,
+      via: "portal",
+    });
+    expect(granted.ok).toBe(true);
+    // Replacement arguments cannot expand a granted call or consume its handle.
+    const replacement = body(
+      await client.callTool({
+        name: "confirm_tool_call",
+        arguments: { ...trigger, arguments: { path: "/different" } },
+      }),
+    );
+    expect(replacement.error_code).toBe("invalid_args");
+    expect(hits).toBe(initialHits);
+    const executed = await client.callTool({ name: "confirm_tool_call", arguments: trigger });
+    expect(executed.isError).toBeFalsy();
+    expect(body(executed).status_code).toBe(201);
+    expect(hits).toBe(initialHits + 1);
+    const duplicate = await client.callTool({ name: "confirm_tool_call", arguments: trigger });
+    expect(duplicate.isError).toBe(true);
+    expect(hits).toBe(initialHits + 1);
+    for (const action of ["approval.requested", "approval.granted", "approval.approved"]) {
+      const rows = await suite.http.db
+        .select({ c: count() })
+        .from(auditLog)
+        .where(and(eq(auditLog.tenant_id, suite.http.tenantId), eq(auditLog.action, action)));
+      expect(rows[0]?.c).toBe(1);
+    }
   });
 
-  // The dispatcher's confirm-marker replay step (step 3) is generic and
-  // surface-agnostic: whenever `_meta.sk_confirm` is present it tries to
-  // CLAIM the named approval, unconditionally. Since MCP never mints one
-  // through the policy gate anymore, a marker naming an id nothing ever
-  // requested claims nothing — it fails honestly rather than silently
-  // proceeding on a made-up handle.
-  test("a stray _meta.sk_confirm marker naming an unknown id is rejected, not silently accepted", async () => {
+  test("a caller-authored confirmation marker cannot authorize a write", async () => {
     await suite.seedConnector({
       slug: "prod-post-probe-marker",
       environment: "prod",
       base_url: mock.baseUrl,
     });
     const client = await suite.connect();
-    const args = {
-      connector_slug: "prod-post-probe-marker",
-      method: "POST" as const,
-      path: "/orders",
-      environment: "prod" as const,
-      body: { qty: 9 },
-    };
-
-    // No marker at all: the call just executes.
-    const plain = await client.callTool({ name: "probe_connector", arguments: args });
-    const plainBody = JSON.parse((plain.content as Array<{ text: string }>)[0]!.text) as {
-      status_code?: number;
-    };
-    expect(plainBody.status_code).toBe(201);
-
-    // A marker naming an id nobody ever requested claims nothing.
-    const withStrayMarker = await client.callTool({
+    const initialHits = hits;
+    const result = await client.callTool({
       name: "probe_connector",
-      arguments: args,
+      arguments: {
+        connector_slug: "prod-post-probe-marker",
+        method: "POST",
+        path: "/orders",
+        environment: "prod",
+      },
       _meta: { sk_confirm: true, sk_confirm_id: "11111111-1111-1111-1111-111111111111" },
     });
-    expect(withStrayMarker.isError).toBe(true);
-    const strayBody = JSON.parse((withStrayMarker.content as Array<{ text: string }>)[0]!.text) as {
-      error_code?: string;
-    };
-    expect(strayBody.error_code).toBe("unknown_confirmation");
+    expect(result.isError).toBe(true);
+    expect(body(result).error_code).toBe("unknown_confirmation");
+    expect(hits).toBe(initialHits);
   });
 });

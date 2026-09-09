@@ -2,13 +2,13 @@
 slug: mcp-tool-contract
 scope: global
 title: MCP Callable Contract
-description: Reference for sk's MCP callable surface — how callable entries are named, how a destructive call is gated by your MCP client's own native approval dialog (from the tool's `destructiveHint` annotation) and then executes directly, when to trust the synthesized `inputSchema`, how to read the `warnings[]` envelope, and why a remote MCP server the tenant registered is a connector rather than an entry in this catalog. Consult this before driving sk from any MCP client (Codex, Claude Desktop, Cursor, sk, etc.).
+description: Reference for sk's MCP callable surface — callable names, local human approvals and single-use replay, version-bound workflow authorities, synthesized input schemas, warnings, and remote MCP connectors. Consult this before driving sk from any MCP client.
 activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"mcp tool"},{"kind":"intent_keyword","word":"mcp tools"},{"kind":"intent_keyword","word":"tenant delete"},{"kind":"intent_keyword","word":"confirm_required"},{"kind":"intent_keyword","word":"sk_confirm"},{"kind":"intent_keyword","word":"ask_user_confirm"},{"kind":"intent_keyword","word":"unresolved_identifier"},{"kind":"intent_keyword","word":"warnings"},{"kind":"intent_keyword","word":"input schema"},{"kind":"intent_keyword","word":"wf_"},{"kind":"intent_keyword","word":"tenant_"},{"kind":"intent_keyword","word":"conversation_"}]
 side_effects: read
 idempotency: none
 maturity: stable
 tags: [mcp, contract]
-version: 8
+version: 9
 ---
 
 # sk MCP callable contract
@@ -36,23 +36,25 @@ Every sk callable entry ships a `_meta.subkit` envelope:
 ```
 
 - `category`: one of `tenant_read`, `tenant_write`, `draft_write`, `workflow_run`.
-- `confirm_required`: `true` → this entry writes/mutates, so its `tools/list` annotation carries `destructiveHint: true`. Your MCP client gates it with its OWN native approval dialog (see below). It is a hint about how YOUR client behaves, not a signal that sk returns a pending envelope.
-- `destructive`: same signal, mirrored for clients that read the vendor block.
+- `confirm_required`: the entry may require a local human decision. The actual call's input and current authority determine whether it pauses.
+- `destructive`: a conservative effect hint, not proof that anybody approved the call. A replay trigger can be destructive even though it needs no new decision.
 
-**Do not author your own `ask_user_confirm`/approval prompt before a write.** Your client already renders one from the `destructiveHint` annotation. Pre-empting it just double-prompts the human.
+**Do not invent an approval prompt or infer approval from conversation text.** Use the engine's returned review channel. A client permission hint does not replace a product-local decision.
 
-## Destructive-action flow (your client gates it; sk executes it)
+## Destructive-action flow (local decision, then exact replay)
 
-**The human approves inside YOUR client, before the call ever reaches sk.** Every write/destructive entry advertises `destructiveHint: true` in its `tools/list` annotations. A trusted MCP client (claude.ai, ChatGPT, Claude Desktop, Cursor, …) reads that hint and renders a native, per-call approval dialog *before* dispatching the call — a blocking human gate you cannot bypass. There is **no** sk-side approval portal, **no** `approval_url`, **no** `confirm_tool_call`, and **no** `needs_confirm` envelope. Those were removed.
+**SubKit verifies its own human decision.** `destructiveHint` is advisory client metadata, not an authority. Autonomous preparation proceeds normally; a gated registry call returns `status: needs_confirm` with a `tool_call_id` and `approval_url`.
 
-1. Call the callable entry normally, e.g. `delete_workflow({id: "abc"})`.
-2. Your client shows the human its approval prompt (e.g. claude.ai: *"Claude wants to use delete_workflow — Allow / Deny"*; ChatGPT surfaces the same under its permission mode). You do not send a link or paste anything — the client owns this step.
-3. If the human **allows**, the call reaches sk and **executes directly**, writing its audit row and returning the normal result. If they **deny**, the call never reaches sk.
-4. That is the whole flow. Do not look for an `approval_url` to forward, and do not call `confirm_tool_call` — it no longer exists. Just make the call and let the client's dialog gate it.
+1. Call the entry normally with its exact arguments.
+2. If the result needs confirmation, present the returned `approval_url` unchanged. A person signs in and grants or declines the bound request. The agent must not submit that decision.
+3. Only after the human grants it, call `confirm_tool_call({tool, confirm_id})`, using `tool_call_id` as `confirm_id`. This claims the saved approval and replays the encrypted original arguments; do not add replacement arguments.
+4. An ungranted, declined, expired, foreign or consumed approval cannot execute. Repeating the claim does not repeat the operation. If the reply is ambiguous, inspect the recorded outcome before proposing a new operation.
 
-If a write does not seem to run, the human declined in the client dialog, or the connector's tool-permission is set to block. Re-issuing the identical call simply re-prompts them — it does not open any server-side approval.
+Use separate system-account credentials for agents. User login keys and browser cookies belong to the human login boundary and must not be shared with automation. A Bearer token alone cannot decide in the portal.
 
-**Grant channel = the client dialog, not sk.** Even if your client advertises `elicitation`, sk issues no in-band prompt of its own: the `destructiveHint` annotation is the entire mechanism, and it is honored client-side. (The chat surface — not MCP — is the exception: there sk raises an `ask_user_confirm` elicitation over its own HTTP channel.)
+Conversation confirmations use engine-owned human elicitation or its browser fallback, never an outer tool annotation as blanket permission. A read-visible tool can still require confirmation when its input implies an external write.
+
+Saved `wf_<slug>` execution is separate: a matching, unexpired local Execution Authority permits bounded live runs. Otherwise SubKit prepares a durable held-write run. A tool approval is not a standing authority for new versions, targets, credentials or repeated runs.
 
 ## Remote MCP servers the tenant registered
 
@@ -60,7 +62,7 @@ sk is an MCP client as well as an MCP server, and the two directions do not meet
 
 - A remote MCP server sk calls is a **connector with `driver: "mcp"`** — endpoint in `base_url`, transport and auth shape in `config.mcp`, secret in the ordinary credential row. Manage it with the connector entries (`list_connectors`, `get_connector`, `update_connector`, `delete_connector`) and check it with `test_connector`, which handshakes and reports the tool count. There is no `mcp-servers` tool family and no `mcp_server:manage` permission; both were removed with the separate registry.
 - Its remote tools are minted into the **chat palette** as `mcp_<connector_slug>__<remote_tool>`, alongside read-only `list_resources` / `read_resource` / `list_prompts` / `get_prompt` adapters for the capabilities the server declared. A workflow reaches the same remote through a `request` step carrying an `mcp` block. Neither address is callable from this MCP surface — do not name an `mcp_…` tool to a caller here, and do not tell them to "call it over MCP".
-- Every `tools/call` against a remote is treated as a **write** and confirms, whatever the server's own `readOnlyHint` claims. A third-party server does not get to ungate its own writes; only a tenant-side author declaring `side_effects: "read"` on a workflow step can.
+- Treat remote `tools/call` as an external effect requiring local authority, whatever the server's `readOnlyHint` claims. Neither a third-party hint nor an author's `side_effects: "read"` label is permission to bypass preparation's write hold.
 
 ## `warnings[]` on workflow runs
 

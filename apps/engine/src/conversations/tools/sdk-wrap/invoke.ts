@@ -18,10 +18,7 @@
 import type { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
 import { and, eq } from "drizzle-orm";
-import {
-  recordToolPolicyConfirmationRequired,
-  recordToolPolicyConfirmCollapsedMcp,
-} from "../../../audit/recorders/index.ts";
+import { recordToolPolicyConfirmationRequired } from "../../../audit/recorders/index.ts";
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
 import { log, logger } from "../../../logging/logger.ts";
@@ -777,8 +774,8 @@ export function wrapOne(
         // The ONE confirm-gate decision — the same pure rule `policyDecide`
         // (`tools/policy.ts`) evaluates for the dispatcher surfaces, so all
         // of them pause or proceed IDENTICALLY for the same tool/args.
-        // Biased to pause: reads auto-run; a write proceeds only on a fresh
-        // durable `priorApproval` the engine verified.
+        // Resolved preparation auto-runs. A required confirm proceeds only on
+        // a fresh durable `priorApproval`, even for a read-visible connector.
         const confirmDecision = decideConfirm({
           resolvedMode,
           priorApproval,
@@ -808,33 +805,6 @@ export function wrapOne(
             ...(intentKindForCurrentTool ? { intent_kind: intentKindForCurrentTool } : {}),
           });
         }
-        // MCP-origin collapse audit — the pause was deliberately collapsed
-        // because the client's destructiveHint dialog on the outer
-        // conversation_* call was the human gate. Durable sibling of the
-        // tool_policy.confirmation_required row above (which keeps firing),
-        // so an operator can tell a collapsed gate from an answered one.
-        // Best-effort; never blocks dispatch on a failed insert.
-        if (confirmDecision.reason === "mcp_client_dialog_gate") {
-          await recordToolPolicyConfirmCollapsedMcp({
-            tenant_id: ctx.tenant_id,
-            actor_id: ctx.actor_id ?? null,
-            executor: db,
-            conversation_id: ctx.conversation_id,
-            tool: inner.name,
-            mode: resolvedMode,
-            resolver_reason: policyDecision.rule,
-          }).catch((err: unknown) => {
-            logger.warn({
-              module: "conversation_loop",
-              action: "tool_policy.audit_failed",
-              msg: "failed to record tool_policy.confirm_collapsed_mcp audit",
-              conversation_id: ctx.conversation_id,
-              tool: inner.name,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
-        }
-
         // yolo audit: when the resolver short-circuits a dangerous
         // tool because the operator armed yolo, emit a forensic-grade
         // log line so an operator can later answer "did anyone click

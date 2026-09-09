@@ -156,13 +156,8 @@ describe("mcp tools/list", () => {
     }
   });
 
-  // MCP writes execute directly (no server-side confirm gate) — the client's
-  // native `destructiveHint` dialog is the ONLY human gate left, so it must
-  // fire for `probe_connector`: its prod path can POST against the vendor's
-  // own surface (tool-policies.ts escalates a prod probe to
-  // confirm_before_execution). If it ever advertised `readOnlyHint:true` or
-  // `destructiveHint:false`, a trusted client would file it under "always
-  // allow" and a model could fire a live prod write with no human in the loop.
+  // Client annotations must truthfully describe the possible vendor write.
+  // They complement, but never replace, the server's local approval gate.
   test("probe_connector advertises readOnlyHint:false + destructiveHint:true", async () => {
     const { plaintext: adminKey } = await suite.issueApiKey(["*", "mcp:admin"]);
     const client = await suite.connectWithApiKey(adminKey);

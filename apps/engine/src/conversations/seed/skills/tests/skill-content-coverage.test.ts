@@ -13,6 +13,22 @@ function read(name: string): string {
   return readFileSync(join(SKILLS, name), "utf-8");
 }
 
+describe("mcp-tool-contract.md · local approval boundary", () => {
+  test("teaches human review and exact replay, never approval from client hints", () => {
+    const body = read("mcp-tool-contract.md");
+    expect(body).toContain("status: needs_confirm");
+    expect(body).toContain("approval_url");
+    expect(body).toContain("confirm_tool_call({tool, confirm_id})");
+    expect(body).toContain("The agent must not submit that decision");
+    expect(body).toContain("not an authority");
+    expect(body).toContain("Execution Authority");
+    expect(body).toContain("durable held-write run");
+    expect(body).not.toContain("executes directly");
+    expect(body).not.toContain("Those were removed");
+    expect(body).not.toContain("client dialog, not sk");
+  });
+});
+
 describe("s3-connectors.md · field coverage", () => {
   const body = read("s3-connectors.md");
   test('documents `parse_as: "bytes"` mode', () => {

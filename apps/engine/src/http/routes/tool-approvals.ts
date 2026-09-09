@@ -46,7 +46,7 @@
 import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
-import { type ResolvedPrincipal, signLoginState } from "../../auth/index.ts";
+import { signLoginState } from "../../auth/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { buildCallbackPageHtml, escapeHtml } from "../../connectors/index.ts";
 import { completeApprovalBackedElicitation } from "../../conversations/index.ts";
@@ -112,6 +112,10 @@ const HTML_HEADERS = {
   "content-type": "text/html; charset=utf-8",
   "cache-control": "no-store",
   "referrer-policy": "no-referrer",
+  "content-security-policy":
+    "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
 } as const;
 
 /** One page for unknown, malformed, and expired tokens. Which approvals exist is
@@ -148,23 +152,20 @@ interface ApprovalApprover {
 /**
  * The human who decided, or null when we cannot name one.
  *
- * A user principal in THIS approval's tenant is the approver. Anything else —
+ * A live browser session in THIS approval's tenant names the approver. Anything else —
  * an anonymous browser, an API key, a system account, a user from another
  * tenant — is null. Recording the requesting machine as the approver would
  * describe a decision nobody made.
  *
- * Two sources, both legitimate:
- *   - the auth middleware's principal (a Bearer/`?token=` caller, and now also
- *     the `subkit_session` cookie via the browser-session provider), and
- *   - the session cookie read directly, which is what a browser that just came
- *     back from the login funnel carries. Read as a fallback so the portal does
- *     not depend on which providers a deployment happens to register.
+ * Read the signed session cookie directly so the portal does not depend on
+ * which auth providers a deployment registers. A user-owned API key still
+ * authenticates a machine caller; it cannot substitute a browser decision.
  *
  * The session row is re-checked for liveness, so a revoked session cannot
  * approve on the strength of a still-valid cookie signature.
  */
 async function resolveApprovalApprover(
-  c: { get: (k: "principal") => ResolvedPrincipal | undefined; req: { raw: Request } },
+  c: { req: { raw: Request } },
   db: Db,
   tenant_id: string,
 ): Promise<ApprovalApprover | null> {
@@ -194,17 +195,6 @@ async function resolveApprovalApprover(
     };
   }
 
-  const principal = c.get("principal");
-  if (principal?.kind === "user" && principal.tenant_id === tenant_id) {
-    // A token-authenticated approver (the shape the route's own tests use) has
-    // no browser session; bind the CSRF token to the principal instead so the
-    // check stays meaningful rather than being skipped.
-    return {
-      user_id: principal.id,
-      session_id: principal.session_id ?? `principal:${principal.id}`,
-      email: principal.email ?? "an authenticated account",
-    };
-  }
   return null;
 }
 

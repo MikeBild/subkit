@@ -25,9 +25,17 @@ Every inbound surface funnels through a single governance gate before it ever re
 Common RBAC applies on every surface. Chat confirmations use engine-owned human
 elicitation. MCP `destructiveHint` annotations describe risk but are not proof
 that a human approved anything. Saved `wf_<slug>` calls therefore verify a local
-Execution Authority before live writes; see below. Legacy named MCP tools still
-retain their client-handled confirmation path while those entry points are
-migrated. Do not interpret their annotations as a server-enforced human grant.
+Execution Authority before live writes; see below. Named MCP tools use the
+same local policy: preparation runs automatically, while a material effect
+returns `status: needs_confirm`, a `tool_call_id`, and an `approval_url` for a
+person. After that person grants it, `confirm_tool_call` accepts only `tool`
+and `confirm_id` (the returned `tool_call_id`). It replays the server's
+encrypted arguments and rechecks access; it cannot grant a decision or
+replace the arguments. Ungranted, expired, foreign-principal and already
+consumed handles do not execute. A plain client confirmation marker is not
+authority. A missing portal URL is a configuration problem, never permission
+to bypass the gate. This one-shot path does not replace finite Execution
+Authorities for repeated workflow runs.
 
 ```mermaid
 flowchart LR
@@ -264,6 +272,20 @@ surface continues to use its masked in-terminal form.
 *Standalone tool calls.* The first call returns a `needs_confirm` envelope — `{status: "needs_confirm", tool, pending_output, tool_call_id, approval_url}` — and an `approval.requested` audit row that persists the encrypted arguments and the `would_write` preview. The approval is minted UNGRANTED. A person opens `approval_url`, sees exactly what will be written, and grants or declines (`approval.granted` / `approval.declined`). Only then does `confirm_tool_call({tool, confirm_id})` succeed: the engine claims that single-use approval under a CAS, replays the arguments it already holds, emits `approval.approved`, and executes. Before the human decides, the same call answers `approval_not_granted`.
 
 `confirm_tool_call` is therefore a **trigger**, not a gate — it performs a call a human already approved and can approve nothing itself. It is offered to every client, with no capability-based refusal, because there is nothing left for one to protect.
+
+The portal requires a live, signed browser session in the approval's tenant and
+a form token bound to that session and approval. A Bearer API key, including a
+user-owned key, cannot substitute for the browser decision. Revoked or expired
+sessions cannot fall back to a token principal. Use separate system-account
+credentials for automation: user-owned login keys and browser cookies are human
+login credentials and must not be shared with an agent. The default API-key
+login remains available for operators; it does not prove physical human
+presence when someone else possesses those login credentials.
+
+Conversation calls follow the same resolved confirmation rule on every
+transport. A catalogue's read category does not override input-derived danger,
+and an outer MCP tool hint does not approve nested calls. In `auto`, safe
+preparation still runs without routine confirmations.
 
 *Conversation clients that advertise form elicitation.* A policy gate reached
 inside `conversation_*` is persisted by the worker and delivered by the next

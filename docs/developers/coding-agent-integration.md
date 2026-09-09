@@ -126,9 +126,11 @@ sk learnings list             # what is waiting
 sk learnings review           # interactive: approve / edit / reject / skip
 ```
 
-You can also approve without leaving the coding session: tell the agent to
-approve the candidate and confirm your client's native dialog — that click is
-the explicit operator approval (requires `skill:write`).
+You can also request review from the coding session: the agent prepares the
+candidate approval, and a person decides at SubKit's returned `approval_url`
+(requires `skill:write`). After that decision, the agent may trigger the
+stored call with `confirm_tool_call`. A client's own warning dialog alone
+does not grant SubKit authority.
 
 Approving promotes the learning to an **active skill carrying the domain
 tags** — the very next session briefing in that domain includes it. Rejecting
