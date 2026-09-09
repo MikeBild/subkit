@@ -582,7 +582,7 @@ describe("gate and workflows", () => {
       // Exact, not `length > 0`: a reader that silently stopped finding anything
       // would make every assertion in the loop above vacuous, which is the
       // failure mode this whole file exists against.
-      expect(needing.sort()).toEqual(["konvention", "quality"]);
+      expect(needing.sort()).toEqual(["konvention", "quality", "test-shards"]);
     },
     WALK_BUDGET_MS,
   );

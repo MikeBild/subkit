@@ -12,8 +12,8 @@
 //
 // Dispatch contract mirrors MCP's `tools/call` for `wf_<slug>`:
 //   1. `gateWorkflowRunRbac` enforces `workflow:run` before anything runs.
-//   2. Preview-then-operator-commit. EVERY call through this tool holds its
-//      writes. When the run comes back carrying the mandatory
+//   2. Durable admission reserves an existing local execution authority, or
+//      holds the writes. When the run comes back carrying the mandatory
 //      `held_preview_no_writes` warning we mint an UNGRANTED approval over
 //      exactly that call's inputs and PAUSE THE TURN on an `ask_user_confirm`
 //      elicitation. The turn ending is the gate. A PERSON's answer resumes the
@@ -49,6 +49,7 @@ import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
 import { runExecution } from "../../../execution/engine.ts";
 import { HELD_PREVIEW_WARNING_CODE } from "../../../execution/types.ts";
+import { admitWorkflowRun } from "../../../execution/workflow-run-admission.ts";
 import { logger } from "../../../logging/logger.ts";
 import { recordConversationToolCall } from "../../../observability/instrumentation.ts";
 import { requestApproval, stripConfirmMarkers } from "../../../tools/approval.ts";
@@ -59,6 +60,7 @@ import {
 import { gateWorkflowRunRbac } from "../../../workflows/rbac.ts";
 import { createElicitation } from "../../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
+import { decideToolMode, type PermissionMode, type ToolPolicies } from "../../tool-policies.ts";
 import type { TurnEvent } from "../../types.ts";
 import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { WORKFLOW_TOOL_PREFIX as TOOL_PREFIX } from "../authoring-palette.ts";
@@ -73,6 +75,8 @@ export interface BuildSyntheticWorkflowToolsParams {
   ctx: ToolContext;
   signals: TurnSignals;
   events: TurnEvent[];
+  permissionMode?: PermissionMode | null;
+  toolPolicies?: ToolPolicies;
 }
 
 /**
@@ -104,7 +108,7 @@ function buildOneSyntheticWorkflowTool(
   return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
     // AI SDK 7: coerce tool output to JSON-safe for the model (see json-safe-output.ts).
     toModelOutput: jsonSafeModelOutput,
-    description: `${entry.description} — saved workflow, runs in dev. Dispatches /workflows run ${entry.slug}. Write steps resolve but never dispatch: the run is a PREVIEW. If it reports writes_held, nothing was written and the turn pauses for the operator — the engine performs the writes itself once they approve. Do not re-run to "perform" them.`,
+    description: `${entry.description} — saved workflow, runs in dev. Dispatches /workflows run ${entry.slug}. Uses a matching local execution authority when one exists and respects stricter approval settings; otherwise write steps resolve without dispatching. If it reports writes_held, nothing was written and the turn pauses for the operator. Do not re-run to bypass that decision.`,
     // The workflow's authored schema, verbatim. No confirm marker: the operator
     // — not the model — releases the held writes, through the elicitation this
     // tool raises. A model-settable approval slot would be the escape hatch.
@@ -184,15 +188,9 @@ async function executeSyntheticRun(
     });
     return { ok: false, data: output };
   }
-  // Writes are held on EVERY call through this tool. The model has no
-  // confirm marker to set (see the published schema) and the engine reads
-  // none off the args: the held-preview elicitation below is the only path
-  // to a released write, and the harness — not the model — walks it. In dev
-  // `run_workflow` resolves to `no_confirm`, so a pre-execution gate would
-  // never pause here; an unconfirmed chat `wf_<slug>` would dispatch real
-  // sends silently, the exact way an MCP `wf_<slug>` once mailed stale
-  // snapshots during a live authoring session. `stripConfirmMarkers` drops a
-  // marker the model volunteered anyway — it must never reach the executor.
+  // A model-supplied marker cannot create authority. Admission below reserves
+  // a matching human-granted boundary or persists held preparation. The older
+  // one-shot review path is separate; it never extends the standing grant.
   const workflowInput = stripConfirmMarkers(rawArgs);
 
   // Anchor an assistant message + tool-call row so this synthetic
@@ -232,17 +230,42 @@ async function executeSyntheticRun(
 
   ctx.onLog?.("info", `running workflow ${entry.slug} in env=dev`);
   try {
+    const policies = p.toolPolicies ?? {};
+    const specificPolicy = policies[name] ?? policies.run_workflow;
+    const decision = decideToolMode({
+      tool: "run_workflow",
+      category: "tenant_write",
+      input: { environment: "dev" },
+      overrides: specificPolicy ? { run_workflow: specificPolicy } : {},
+      permission_mode: p.permissionMode ?? ctx.permission_mode ?? null,
+    });
+    const admitted = await admitWorkflowRun(
+      {
+        tenant_id: ctx.tenant_id,
+        workflow_id: entry.workflow_id,
+        execution_environment: "dev",
+        request_source: "chat",
+        input: inputForRun,
+        ...(decision.mode !== "no_confirm" ? { hold_writes: true } : {}),
+      },
+      db,
+    );
     const result = await runExecution({
       db,
       tenant_id: ctx.tenant_id,
-      source: { kind: "saved", workflow_id: entry.workflow_id },
-      input: inputForRun,
+      source: {
+        kind: "saved",
+        workflow_id: entry.workflow_id,
+        version_id: admitted.workflow_version_id,
+      },
+      input: admitted.input,
       options: {
         request_source: "chat",
         trace_id: null,
         principal,
         execution_mode: "dev",
-        hold_writes: true,
+        existing_execution_id: admitted.execution_id,
+        hold_writes: admitted.hold_writes,
       },
     });
     // Mirror run-workflow.ts:306-329 per-step log emission so the user
@@ -347,6 +370,9 @@ async function executeSyntheticRun(
       ok: heldPreview ? false : ok,
       status: result.status,
       execution_id: result.execution_id,
+      workflow_version_id: admitted.workflow_version_id,
+      execution_authority_id: admitted.execution_authority_id,
+      hold_writes: admitted.hold_writes,
       workflow_id: entry.workflow_id,
       workflow_slug: entry.slug,
       output: result.output,
@@ -490,7 +516,8 @@ async function executeSyntheticRun(
       workflow_id: entry.workflow_id,
       status: result.status,
       preview: heldPreview !== undefined,
-      writes_held: true,
+      writes_held: heldPreview !== undefined,
+      execution_authority_id: admitted.execution_authority_id,
       paused_for_operator: pause !== undefined,
     });
     // Mirror run-workflow.ts so chat-via-`wf_<slug>` and
@@ -516,6 +543,10 @@ async function executeSyntheticRun(
           tool: name,
           environment: "dev",
           final_status: result.status,
+          workflow_version_id: admitted.workflow_version_id,
+          execution_authority_id: admitted.execution_authority_id,
+          hold_writes: admitted.hold_writes,
+          writes_held: heldPreview !== undefined,
         },
       },
       db,

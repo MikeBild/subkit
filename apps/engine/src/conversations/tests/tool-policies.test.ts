@@ -159,14 +159,14 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     expect(decision.mode).toBe("no_confirm");
   });
 
-  it("run_workflow environment=prod requires confirm", () => {
+  it("run_workflow in prod delegates ordinary starts to bounded admission", () => {
     const mode = resolveToolMode({
       tool: "run_workflow",
       category: "tenant_write",
       input: { workflow_id: "x", environment: "prod" },
       overrides: {},
     });
-    expect(mode).toBe("confirm_before_execution");
+    expect(mode).toBe("no_confirm");
   });
 
   it("per-conversation override beats dynamic compute", () => {

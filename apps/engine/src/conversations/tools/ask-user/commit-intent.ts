@@ -161,6 +161,20 @@ export function approvalHandleFromElicitationInput(input: unknown): string | nul
   return typeof handle === "string" && handle.length > 0 ? handle : null;
 }
 
+/** Missing workflow inputs are data, not a new grant. Handle-bearing legacy
+ * forms still represent decisions and must retain their approval semantics. */
+export function isWorkflowInputForm(toolName: string, input: unknown): boolean {
+  if (toolName !== "ask_user_form" || approvalHandleFromElicitationInput(input)) return false;
+  if (!input || typeof input !== "object" || Array.isArray(input)) return false;
+  const intent = (input as { commit_intent?: unknown }).commit_intent;
+  return (
+    !!intent &&
+    typeof intent === "object" &&
+    !Array.isArray(intent) &&
+    (intent as { kind?: unknown }).kind === "run_workflow"
+  );
+}
+
 /**
  * A shape-specific commit intent with the approval handle attached.
  *

@@ -382,16 +382,10 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
       const obj = asObj(input);
       // a live write run (execute_writes:true) ALWAYS confirms, even
       // in dev: dispatching real sends/writes must be human-approved.
-      // Default runs hold writes (no dispatch), so they need no confirm.
+      // Ordinary starts discover local authority or hold writes; the
+      // environment alone is not a reason to ask again for an existing grant.
       if (obj.execute_writes === true) return "confirm_before_execution";
-      // Dev-environment runs hold their writes and touch no production
-      // system, so they run unattended. A prod run confirms. The ONLY
-      // relaxation is the client's declared `permission_mode`, which
-      // `decideToolMode` applies above this hook — this predicate never
-      // reads transport metadata: `input` is the args canonicalized
-      // through this tool's own Zod schema, and an out-of-band
-      // auto-approve flag would be an escape hatch around the operator.
-      return obj.environment === "dev" ? "no_confirm" : "confirm_before_execution";
+      return "no_confirm";
     },
     // Makes the "ALWAYS confirms" above true. Without this, a live write run is
     // per-call hazardous but not *named* dangerous, so the

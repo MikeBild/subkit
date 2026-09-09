@@ -48,16 +48,13 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
 import { signLoginState } from "../../auth/index.ts";
 import { getConfig } from "../../config/loader.ts";
-import { buildCallbackPageHtml, escapeHtml } from "../../connectors/index.ts";
 import { completeApprovalBackedElicitation } from "../../conversations/index.ts";
 import type { Db } from "../../db/client.ts";
 import { users } from "../../db/schema/index.ts";
-import { logger, scrubString } from "../../logging/index.ts";
+import { logger } from "../../logging/index.ts";
 import { enqueueApprovalElicitationResume, getBoss } from "../../queue/index.ts";
 import {
   APPROVAL_PORTAL_PATH,
-  type ApprovalDecisionDenialCode,
-  type ApprovalPortalView,
   declineApproval,
   grantApproval,
   resolveApprovalPortalToken,
@@ -71,6 +68,13 @@ import {
   signCsrfToken,
   verifyCsrfToken,
 } from "./oauth/shared.ts";
+import { resolveAuthLocale } from "./oauth/ui.ts";
+import { approvalCopy, approvalDenialCopy } from "./tool-approval-copy.ts";
+import {
+  alreadyDecidedPage,
+  approvalStatusPage,
+  buildApprovalDecisionHtml,
+} from "./tool-approval-ui.ts";
 
 /** sha256 hex — binds a CSRF token to the exact grant it was minted for without
  *  putting the plaintext token into the signed payload. */
@@ -117,29 +121,6 @@ const HTML_HEADERS = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
 } as const;
-
-/** One page for unknown, malformed, and expired tokens. Which approvals exist is
- *  not an anonymous browser's to learn. */
-const LINK_DEAD_PAGE = {
-  kind: "error",
-  title: "Approval link expired",
-  message:
-    "This approval link has expired or was already used. Nothing has been approved. Ask the assistant to re-issue the request to get a fresh link.",
-} as const;
-
-/** Browser copy for a decision that lost the CAS. Rewritten rather than
- *  forwarded: `ApprovalDecisionResult.message` names the approval id, which is
- *  the model's `confirm_id` and must never be rendered where a human can copy it
- *  back out. The id still reaches the structured log and the audit row. */
-const DECISION_REFUSED_COPY: Record<ApprovalDecisionDenialCode, string> = {
-  approval_not_found: "This approval no longer exists. Nothing has been approved.",
-  approval_already_granted:
-    "This request was already approved. The assistant will carry it out — there is nothing left to decide.",
-  approval_already_declined: "This request was already declined. Declining is final.",
-  approval_already_used: "This request was already approved and carried out.",
-  approval_expired:
-    "This request expired before anyone decided on it, so nothing ran. Ask the assistant to re-issue it.",
-};
 
 /** The signed-in human deciding on an approval, with the session their CSRF
  *  token is bound to. */
@@ -198,110 +179,6 @@ async function resolveApprovalApprover(
   return null;
 }
 
-function environmentLabel(view: ApprovalPortalView): string {
-  return view.execution_mode ?? "not environment-scoped";
-}
-
-/**
- * Render the `would_write` rows.
- *
- * `url` is the only field that can carry a secret — a query-mode connector puts
- * its credential in the query string — so it is the only one passed through
- * `scrubString`. `step` is a step key and `method` an HTTP verb; running the
- * generic high-entropy matcher over them buys nothing and has corrupted
- * legitimate identifiers before.
- */
-function buildWouldWriteHtml(view: ApprovalPortalView): string {
-  const rows = view.preview?.would_write ?? [];
-  if (rows.length === 0) {
-    return '<p class="empty">This call holds no external writes the engine could preview. Approving releases the tool call named above.</p>';
-  }
-  const body = rows
-    .map(
-      (w) =>
-        `<tr><td>${escapeHtml(w.step)}</td><td>${escapeHtml(w.method ?? "—")}</td><td>${escapeHtml(
-          w.url ? scrubString(w.url) : "—",
-        )}</td></tr>`,
-    )
-    .join("");
-  return `<table><thead><tr><th>Step</th><th>Method</th><th>URL</th></tr></thead><tbody>${body}</tbody></table>`;
-}
-
-function pageShell(title: string, main: string): string {
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="referrer" content="no-referrer" />
-  <title>${escapeHtml(title)}</title>
-  <style>
-    body { font-family: system-ui, sans-serif; background: #fafafa; color: #111; }
-    main { max-width: 720px; margin: 64px auto; padding: 32px; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-    h1 { margin: 0 0 8px; font-size: 22px; }
-    p.sub { color: #555; margin: 0 0 24px; }
-    dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 0 0 24px; font-size: 14px; }
-    dt { color: #555; }
-    dd { margin: 0; font-family: ui-monospace, monospace; }
-    table { width: 100%; border-collapse: collapse; margin: 0 0 24px; font-size: 13px; }
-    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; word-break: break-all; }
-    th { color: #555; font-weight: 600; }
-    td { font-family: ui-monospace, monospace; }
-    p.empty { color: #555; font-size: 14px; margin: 0 0 24px; }
-    .actions { display: flex; gap: 12px; }
-    button { padding: 10px 18px; font-size: 14px; border: none; border-radius: 6px; cursor: pointer; }
-    button.approve { background: #16a34a; color: #fff; }
-    button.decline { background: #fff; color: #dc2626; border: 1px solid #dc2626; }
-  </style>
-</head>
-<body>
-  <main>${main}</main>
-</body>
-</html>`;
-}
-
-/**
- * Render the decision form. The plaintext grant token is placed ONLY in the
- * hidden `grant` field so the browser round-trips it on submit; it must never
- * appear anywhere else in this response. The approval id appears nowhere at all.
- *
- * `csrf_token` is bound to the approver's session, so a cross-site form post
- * cannot release a write using a link someone forwarded them.
- */
-function buildApprovalDecisionHtml(
-  view: ApprovalPortalView,
-  grant: string,
-  approver: { email: string },
-  csrfToken: string,
-): string {
-  const target = view.workflow_slug
-    ? `<dt>Workflow</dt><dd>${escapeHtml(view.workflow_slug)}</dd>`
-    : "";
-  return pageShell(
-    "Approve this action?",
-    `
-    <h1>Approve this action?</h1>
-    <p class="sub">An assistant asked to perform the write below and paused. Nothing has run. This link is single-use and expires shortly.</p>
-    <dl>
-      <dt>Tool</dt><dd>${escapeHtml(view.tool)}</dd>
-      ${target}
-      <dt>Environment</dt><dd>${escapeHtml(environmentLabel(view))}</dd>
-      <dt>Requested via</dt><dd>${escapeHtml(view.surface)}</dd>
-    </dl>
-    <h2 style="font-size:15px;margin:0 0 12px;">What will be written</h2>
-    ${buildWouldWriteHtml(view)}
-    <p class="sub">Signed in as ${escapeHtml(approver.email)} — your decision is recorded against this account.</p>
-    <form method="POST" action="${APPROVAL_PORTAL_PATH}">
-      <input type="hidden" name="grant" value="${escapeHtml(grant)}" />
-      <input type="hidden" name="csrf_token" value="${escapeHtml(csrfToken)}" />
-      <div class="actions">
-        <button class="approve" type="submit" name="decision" value="approve">Approve</button>
-        <button class="decline" type="submit" name="decision" value="decline">Decline</button>
-      </div>
-    </form>`,
-  );
-}
-
 /** Send an unidentified browser through the provider-neutral login funnel and
  *  back to this same approval link.
  *
@@ -319,37 +196,14 @@ async function redirectToSignIn(grant: string, publicBaseUrl: string): Promise<R
   return Response.redirect(loginUrl.toString(), 302);
 }
 
-/** A token replayed after its decision. It can produce no second decision, so
- *  the page reports the outcome and withholds the write list. */
-function alreadyDecidedPage(view: ApprovalPortalView): { html: string; status: 200 | 400 } {
-  switch (view.state) {
-    case "declined":
-      return buildCallbackPageHtml({
-        kind: "error",
-        title: "Already declined",
-        message: `The request to run "${view.tool}" was declined. Nothing ran, and this decision is final.`,
-      });
-    case "consumed":
-      return buildCallbackPageHtml({
-        kind: "success",
-        title: "Already approved",
-        message: `The request to run "${view.tool}" was approved and has already been carried out. There is nothing left to decide.`,
-      });
-    default:
-      return buildCallbackPageHtml({
-        kind: "success",
-        title: "Already approved",
-        message: `The request to run "${view.tool}" was approved. The assistant will carry it out. You can close this tab.`,
-      });
-  }
-}
-
 export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
   // ── GET /v1/tool-approvals/decide?grant=skag_… ────────────────────────────
   // Unauthenticated browser-grant path. RESOLVES ONLY — does not decide.
   app.openapi(approvalPortalPageRoute, async (c) => {
     const db = c.get("db");
     const { grant } = c.req.valid("query");
+    const locale = resolveAuthLocale(c.req.header("accept-language"));
+    const copy = approvalCopy(locale);
 
     const view = await resolveApprovalPortalToken(db, grant);
     if (!view) {
@@ -359,12 +213,12 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
         action: "approval.portal.invalid_grant",
         msg: "approval grant not found or expired — a browser opened a dead link",
       });
-      const { html, status } = buildCallbackPageHtml(LINK_DEAD_PAGE);
+      const { html, status } = approvalStatusPage(locale, copy.deadTitle, copy.deadMessage);
       return c.body(html, status, HTML_HEADERS);
     }
 
     if (view.state !== "pending") {
-      const { html, status } = alreadyDecidedPage(view);
+      const { html, status } = alreadyDecidedPage(view, locale);
       return c.body(html, status, HTML_HEADERS);
     }
 
@@ -380,7 +234,11 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
       session_id: approver.session_id,
       grant_sha256: sha256Hex(grant),
     });
-    return c.body(buildApprovalDecisionHtml(view, grant, approver, csrfToken), 200, HTML_HEADERS);
+    return c.body(
+      buildApprovalDecisionHtml(view, grant, approver, csrfToken, locale),
+      200,
+      HTML_HEADERS,
+    );
   });
 
   // ── POST /v1/tool-approvals/decide ────────────────────────────────────────
@@ -393,14 +251,17 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
     const form = await parseFormBody(c.req.raw);
     const grant = form.get("grant") ?? "";
     const decision = form.get("decision") ?? "";
+    const language = z.enum(["de", "en"]).safeParse(form.get("language"));
+    const locale = language.success
+      ? language.data
+      : resolveAuthLocale(c.req.header("accept-language"));
+    const copy = approvalCopy(locale);
 
-    if (!grant || (decision !== "approve" && decision !== "decline")) {
-      const { html, status } = buildCallbackPageHtml({
-        kind: "error",
-        title: "Invalid approval submission",
-        message:
-          "This form was submitted without a valid link or decision. Nothing has been approved.",
-      });
+    if (
+      !grant ||
+      (decision !== "approve" && decision !== "decline" && !(decision === "" && language.success))
+    ) {
+      const { html, status } = approvalStatusPage(locale, copy.invalidTitle, copy.invalidMessage);
       return c.body(html, status, HTML_HEADERS);
     }
 
@@ -412,7 +273,7 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
         msg: "approval grant not found or expired at decision time",
         decision,
       });
-      const { html, status } = buildCallbackPageHtml(LINK_DEAD_PAGE);
+      const { html, status } = approvalStatusPage(locale, copy.deadTitle, copy.deadMessage);
       return c.body(html, status, HTML_HEADERS);
     }
 
@@ -434,12 +295,7 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: view.tenant_id,
         decision,
       });
-      const { html, status } = buildCallbackPageHtml({
-        kind: "error",
-        title: "Sign in to decide",
-        message:
-          "Approving a write records who released it, so this decision needs a signed-in account. Open the approval link again and sign in — nothing has been approved.",
-      });
+      const { html, status } = approvalStatusPage(locale, copy.signTitle, copy.signMessage);
       return c.body(html, status, HTML_HEADERS);
     }
     const granted_by_user_id = approver.user_id;
@@ -462,13 +318,22 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
         user_id: approver.user_id,
         decision,
       });
-      const { html, status } = buildCallbackPageHtml({
-        kind: "error",
-        title: "Could not verify this submission",
-        message:
-          "This decision form could not be verified as yours. Open the approval link again and decide from that page. Nothing has been approved.",
-      });
+      const { html, status } = approvalStatusPage(locale, copy.csrfTitle, copy.csrfMessage);
       return c.body(html, status, HTML_HEADERS);
+    }
+
+    // A language selection only renders the same authenticated request. It does
+    // not grant, decline, consume, extend expiry or enqueue a continuation.
+    if (decision === "") {
+      if (view.state !== "pending") {
+        const { html, status } = alreadyDecidedPage(view, locale);
+        return c.body(html, status, HTML_HEADERS);
+      }
+      return c.body(
+        buildApprovalDecisionHtml(view, grant, approver, form.get("csrf_token") ?? "", locale),
+        200,
+        HTML_HEADERS,
+      );
     }
 
     // The CAS inside these two is what makes the decision single-use: two tabs
@@ -502,11 +367,11 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
         decision,
         error_code: result.code,
       });
-      const { html, status } = buildCallbackPageHtml({
-        kind: "error",
-        title: "Nothing to decide",
-        message: `${DECISION_REFUSED_COPY[result.code]}\n\nNothing was changed by this submission.`,
-      });
+      const { html, status } = approvalStatusPage(
+        locale,
+        copy.refusedTitle,
+        `${approvalDenialCopy(result.code, locale)} ${copy.unchanged}`,
+      );
       return c.body(html, status, HTML_HEADERS);
     }
 
@@ -549,26 +414,16 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
       elicitations_resumed: completion.resumed,
     });
 
-    // Say only what is true. A resumed conversation really will carry the call
-    // out; an approval with no paused conversation (a direct tool dispatch, a
-    // chat fast-path run, a relayed external-MCP call) is now merely CLAIMABLE,
-    // and promising "the assistant will carry it out" there would invent a
-    // completion no code performs.
+    // Queueing continuation is not evidence that execution has started.
     const { html, status } =
       decision === "approve"
-        ? buildCallbackPageHtml({
-            kind: "success",
-            title: "Approved",
-            message:
-              completion.resumed > 0
-                ? `"${result.tool}" is approved and is being carried out now. You can close this tab — the assistant reports back when it finishes.`
-                : `"${result.tool}" is approved. The assistant can now carry it out; ask it to continue if it does not pick this up on its own. You can close this tab.`,
-          })
-        : buildCallbackPageHtml({
-            kind: "success",
-            title: "Declined",
-            message: `"${result.tool}" was declined. Nothing ran, and nothing will. You can close this tab.`,
-          });
+        ? approvalStatusPage(
+            locale,
+            copy.approvedTitle,
+            completion.resumed > 0 ? copy.queuedMessage : copy.approvedMessage,
+            200,
+          )
+        : approvalStatusPage(locale, copy.declinedTitle, copy.declinedMessage, 200);
     return c.body(html, status, HTML_HEADERS);
   });
 }

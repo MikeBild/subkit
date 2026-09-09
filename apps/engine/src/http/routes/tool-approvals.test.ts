@@ -105,6 +105,54 @@ async function approvalRow(approval_id: string) {
 }
 
 describe("GET /v1/tool-approvals/decide?grant=…", () => {
+  for (const locale of ["de", "en"] as const) {
+    test(`renders a finite, truthful decision boundary in ${locale}`, async () => {
+      const { approval_id, approval_url } = await seedApproval();
+      const response = await fetch(approval_url, {
+        headers: { cookie: browserCookie, "accept-language": locale },
+      });
+      const html = await response.text();
+      expect(response.status).toBe(200);
+      expect(html).toContain(`<html lang="${locale}">`);
+      expect(html).toContain('data-approval-product="subkit"');
+      expect(html).toContain("mcp-auth-ui-contract");
+      expect(html).toContain("10");
+      expect(html).toContain("UTC");
+      expect(html).toContain(locale === "de" ? "Handlungsgrenze" : "Decision boundary");
+      expect(html).not.toContain("Nothing has run");
+      expect(html).not.toContain("expires shortly");
+      expect(html).not.toContain(approval_id);
+      expect(html).not.toContain("<script");
+      expect((await approvalRow(approval_id))?.granted_at).toBeNull();
+    });
+  }
+
+  test("language switching preserves the pending decision and its expiry", async () => {
+    const { approval_id, approval_url } = await seedApproval();
+    const page = await fetch(approval_url, { headers: { cookie: browserCookie } });
+    const csrf = /name="csrf_token" value="([^"]+)"/.exec(await page.text())?.[1] ?? "";
+    const before = await approvalRow(approval_id);
+    for (const language of ["de", "en"]) {
+      const response = await fetch(`${server.baseUrl}/v1/tool-approvals/decide`, {
+        method: "POST",
+        headers: { cookie: browserCookie, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant: grantParam(approval_url), csrf_token: csrf, language }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain(`<html lang="${language}">`);
+    }
+    const after = await approvalRow(approval_id);
+    expect(after?.expires_at).toEqual(before?.expires_at);
+    expect(after?.granted_at).toBeNull();
+    expect(after?.declined_at).toBeNull();
+    expect(after?.consumed_at).toBeNull();
+    const decisions = await server.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, server.tenantId), eq(auditLog.resource_id, approval_id)));
+    expect(decisions.map((row) => row.action)).toEqual(["approval.requested"]);
+  });
+
   test("renders would_write, and never the decrypted args or the ciphertext", async () => {
     const { approval_id, approval_url } = await seedApproval();
 
