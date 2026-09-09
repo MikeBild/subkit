@@ -519,7 +519,7 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
     // Every other write pauses, and no argument the MODEL emits changes that.
 
     // (a) A prior resolved run_workflow confirm does NOT dedup the
-    // pre-confirm anymore — run_workflow in prod still PAUSES.
+    // pre-confirm anymore — an explicit one-shot write still PAUSES.
     {
       const conversation_id = await freshConversation();
       await ctx.testDb.db.insert(conversationElicitations).values({
@@ -566,7 +566,11 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
 
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
       const result = await (wrapped.run_workflow!.execute as any)(
-        { workflow_id: "00000000-0000-0000-0000-000000000000", environment: "prod" },
+        {
+          workflow_id: "00000000-0000-0000-0000-000000000000",
+          environment: "prod",
+          execute_writes: true,
+        },
         { toolCallId: "no-generic-dedup-call", messages: [] },
       );
       // Deterministic: no marker, not the save path → PAUSE.
@@ -620,6 +624,7 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
         {
           workflow_id: "00000000-0000-0000-0000-000000000000",
           environment: "prod",
+          execute_writes: true,
           __policy_confirmed: true,
         },
         { toolCallId: "marker-inert-call", messages: [] },

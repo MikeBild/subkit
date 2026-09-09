@@ -254,8 +254,31 @@ Submitting a workflow input form uses the same admission boundary. An
 `execute_writes` field cannot create authority, and explicitly selecting
 preparation preserves the available live-run allowance. The resumed activity
 records the supplied input and exact execution binding, not a new approval.
-Other legacy chat tool-approval paths still require separate convergence; a
-queue, form or fast-path check does not prove those paths.
+The generated missing-input form retains an explicit preparation restriction.
+Requesting and supplying those values are conversation activity, not approval
+events; legacy forms carrying an actual approval handle remain decisions.
+The ordinary `run_workflow` tool also discovers local authority when
+`execute_writes` is omitted; explicit false preserves preparation. Synthetic
+`wf_<slug>` chat tools reserve matching authority without opening another
+decision. Both paths persist the exact admitted version and share run limits
+with the other entry points. Production is checked by the same local admission
+boundary, not an extra routine tool gate. Explicit `ask`/`plan` modes and stricter
+workflow-tool preferences retain held preparation and a separate decision, even
+when a standing grant is available. Explicit one-shot tool approvals and held-write
+replay still require separate boundary convergence; standing-authority admission
+does not prove those legacy approval paths.
+
+The single-use tool-approval portal uses SubKit's local family UI palette and
+supports German and English without client-side scripts or new configuration.
+The browser language supplies the default; the authenticated language buttons
+only re-render the pending request and do not decide, consume or extend it.
+It shows the recorded target, environment, decision deadline in UTC, one-use
+limit and the ten-minute post-decision claim window. Claiming is not proof that
+execution started or succeeded; queueing a conversation continuation is reported
+as queueing, not as execution. Expired links do not establish past outcomes.
+Missing previews, version bindings or prior-boundary comparisons are disclosed,
+not fabricated. Those disclosures do not close the legacy one-shot binding gaps.
+Raw inputs, credentials and sensitive URL components are not rendered.
 
 The resolver currently supports static HTTP targets and the single GraphQL
 endpoint. HTTP paths use the same joining rules as dispatch. A different resolved
@@ -271,8 +294,9 @@ Reads show remaining runs and distinguish future, approved, expired, revoked,
 exhausted, invalidated and temporarily unavailable boundaries. A changed connector
 target is shown as invalidated, not as approved. Authority approval is separate
 from workflow activation and is not a report of a successful run.
-The compiler is not yet a public grant endpoint: server resolution, human review
-and run admission must be connected before it can authorize executions.
+The compiler alone grants nothing. The human-bound API combines server resolution
+and review to store the exact authority; admission reserves it, and dispatch
+rechecks it. A manifest or preview response is never an execution grant.
 
 ### The authoring critic
 

@@ -109,10 +109,11 @@ async function runLoopTool(
 }
 
 describe("confirm gate — loop surface follows the deterministic rule", () => {
-  it("run_workflow in prod (write, no marker/approval) PAUSES and does not execute", async () => {
+  it("an explicit one-shot write in prod PAUSES without human approval", async () => {
     const { result, events } = await runLoopTool("run_workflow", {
       workflow: "render-upload-slides",
       environment: "prod",
+      execute_writes: true,
       input: '{"markdown":"# Slides","filename":"slides.html"}',
     });
 
@@ -165,10 +166,11 @@ describe("confirm gate — loop surface follows the deterministic rule", () => {
     expect(result.pause).toBeUndefined();
   });
 
-  it("run_workflow in prod WITH a model-supplied __policy_confirmed still PAUSES (the marker is inert)", async () => {
+  it("an explicit one-shot write with __policy_confirmed still PAUSES (the marker is inert)", async () => {
     const { result } = await runLoopTool("run_workflow", {
       workflow_id: "00000000-0000-0000-0000-000000000002",
       environment: "prod",
+      execute_writes: true,
       __policy_confirmed: true,
     });
     // The gate reads no marker off the args. One tool call carrying it must not
@@ -201,16 +203,17 @@ describe("confirm gate — loop surface follows the deterministic rule", () => {
 describe("confirm gate — both surfaces require locally verifiable human approval", () => {
   // The presentation differs (conversation card or approval portal), but
   // neither surface accepts a client annotation as proof of human consent.
-  it("run_workflow prod: chat pauses and MCP requires the same decision", async () => {
+  it("one-shot prod writes: chat pauses and MCP requires the same decision", async () => {
     const { result: loop } = await runLoopTool("run_workflow", {
       workflow: "render-upload-slides",
       environment: "prod",
+      execute_writes: true,
     });
     const mcp = policyDecide({
       tool: "run_workflow",
       category: "tenant_write",
       surface: "mcp",
-      args: { workflow: "render-upload-slides", environment: "prod" },
+      args: { workflow: "render-upload-slides", environment: "prod", execute_writes: true },
     });
     expect(Boolean(loop.pause)).toBe(true);
     expect(mcp.kind).toBe("needs_confirm");
@@ -218,20 +221,22 @@ describe("confirm gate — both surfaces require locally verifiable human approv
     expect(buildToolAnnotations("workflow_run", "run_workflow").destructiveHint).toBe(true);
   });
 
-  it("run_workflow dev: both surfaces proceed (no gate on either)", async () => {
-    const { result: loop } = await runLoopTool("run_workflow", {
-      workflow_id: "00000000-0000-0000-0000-000000000001",
-      environment: "dev",
+  for (const environment of ["dev", "prod"] as const) {
+    it(`ordinary ${environment} workflow starts reach admission on both surfaces`, async () => {
+      const { result: loop } = await runLoopTool("run_workflow", {
+        workflow_id: "00000000-0000-0000-0000-000000000001",
+        environment,
+      });
+      const mcp = policyDecide({
+        tool: "run_workflow",
+        category: "tenant_write",
+        surface: "mcp",
+        args: { environment },
+      });
+      expect(Boolean(loop.pause)).toBe(false);
+      expect(mcp.kind).not.toBe("needs_confirm");
     });
-    const mcp = policyDecide({
-      tool: "run_workflow",
-      category: "tenant_write",
-      surface: "mcp",
-      args: { environment: "dev" },
-    });
-    expect(Boolean(loop.pause)).toBe(false);
-    expect(mcp.kind).not.toBe("needs_confirm");
-  });
+  }
 
   it("run_workflow dev with execute_writes: both surfaces gate the live request", async () => {
     // `execute_writes:true` is a request for the operator's approval, not an

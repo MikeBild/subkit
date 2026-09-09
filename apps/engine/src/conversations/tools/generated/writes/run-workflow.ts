@@ -7,6 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { conversations, workflowVersions } from "../../../../db/schema/index.ts";
 import { runExecution } from "../../../../execution/engine.ts";
 import { findExecutionByIdempotencyKey } from "../../../../execution/state.ts";
+import { admitWorkflowRun } from "../../../../execution/workflow-run-admission.ts";
 import { logger } from "../../../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../../../observability/instrumentation.ts";
 import { resolveWorkflowInputContract } from "../../../../workflows/input-schema-synth.ts";
@@ -26,44 +27,8 @@ import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.
 import type { ConversationTool } from "../../index.ts";
 import { buildRawStepResults } from "../../step-results.ts";
 import { sampleWorkflowOutputForLlm, truncateStepPreviewForLlm } from "../../truncate.ts";
-import { normalizeWorkflowInput } from "../../workflow-input-normalize.ts";
+import { workflowInputSlot } from "../../workflow-input-normalize.ts";
 import { detectRepairLoop } from "./repair-loop-history.ts";
-
-/**
- * The workflow's `$input` map. Typed as an OBJECT on the wire — a bare
- * `z.unknown()` emits the empty JSON Schema `{}`, which tells a client
- * nothing and therefore invites it to serialize the map into a string.
- *
- * The union accepts a stringified object too, but only as a TOLERANCE: the
- * transform normalizes it back to a record, and the `.pipe()` re-validates
- * so the emitted output-side schema (mcp/json-schema.ts uses
- * `pipeStrategy: "output"`) is a plain object — never a `{}`, never an
- * `anyOf` that reads as "a string is fine here". Same shape as the
- * `policyMarkerSchema` union+transform in sdk-wrap/invoke.ts: accept both
- * representations at the boundary, hand exactly one downstream.
- *
- * A string that is not a JSON object literal is a hallucinated input map
- * (`input: "tomorrow"`), and is rejected here rather than travelling to the
- * execution engine to fail as `$input: required field '<k>' is missing`.
- */
-const workflowInputSlot = z
-  .union([z.record(z.string(), z.unknown()), z.string()])
-  .transform((raw, ctx) => {
-    const normalized = normalizeWorkflowInput(raw);
-    if (normalized !== null && typeof normalized === "object" && !Array.isArray(normalized)) {
-      return normalized as Record<string, unknown>;
-    }
-    // `input: ""` unambiguously means "no input" — treat it as the empty map
-    // instead of failing the call.
-    if (typeof normalized === "string" && normalized.trim() === "") return {};
-    ctx.addIssue({
-      code: "custom",
-      message:
-        'input must be the workflow\'s input map (a JSON object), e.g. {"city":"Berlin"} — not a bare string',
-    });
-    return z.NEVER;
-  })
-  .pipe(z.record(z.string(), z.unknown()));
 
 const Input = z
   .object({
@@ -99,17 +64,15 @@ const Input = z
      */
     include_step_results: z.boolean().optional(),
     /**
-     * side-effect safety. By DEFAULT a `run_workflow` from the
-     * authoring surface HOLDS write-classified steps (sends, POST/PUT/
-     * DELETE, non-SELECT SQL/GraphQL mutations): they are fully resolved
-     * (URL/headers/body materialized) but NOT dispatched, so verifying a
-     * saved workflow during authoring can never fire a real email/write.
+     * An omitted flag discovers an existing local execution authority,
+     * otherwise writes stay held. Explicit false always prepares without
+     * spending a live run. Held steps resolve URL/headers/body but do not
+     * dispatch external writes.
      * Set `execute_writes: true` ONLY when the user explicitly asked for a
      * real, live run. It is a request for the operator's approval, not an
      * approval: the call pauses on a confirmation the operator answers, and
      * the engine performs the writes itself. It is never a way to run them
-     * yourself. The scheduler and the HTTP run endpoint are unaffected (they
-     * never route through this tool), so production runs still send.
+     * yourself. Scheduler and HTTP execution use their own admission paths.
      */
     execute_writes: z.boolean().optional(),
   })
@@ -148,7 +111,7 @@ function withStatus(
 export const runWorkflowTool: ConversationTool = {
   name: "run_workflow",
   description:
-    "FALLBACK for executing an ALREADY-SAVED workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. WRITE-classified steps (email sends, posts, publishes) are HELD by default — resolved but NOT dispatched — so a run is side-effect-safe; the envelope reports `writes_held` + `held_step_ids`. A live send is the operator's decision: pass `execute_writes: true` only when the user explicitly asked for one, and understand that it raises an approval the operator answers rather than performing the writes. To verify a DRAFT, use `dry_run_workflow`, never `run_workflow`. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `author_workflow` (then `edit_workflow_patch` for edits).",
+    "FALLBACK for executing an ALREADY-SAVED workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. Omitting execute_writes uses an existing local execution authority if one matches; otherwise writes are HELD and the envelope reports writes_held + held_step_ids. Use execute_writes: false for preparation without spending a live run. An explicitly requested one-shot live send remains the operator's decision: execute_writes: true raises a separate approval and never creates a standing authority. To verify a DRAFT, use `dry_run_workflow`, never `run_workflow`. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `author_workflow` (then `edit_workflow_patch` for edits).",
   inputSchema: Input,
   category: "tenant_write",
   // A workflow *run*, not a config mutation — consistent with the `wf_`
@@ -337,6 +300,10 @@ export const runWorkflowTool: ConversationTool = {
                 workflow_slug: wf.slug,
                 environment: args.environment,
                 input_partial: suppliedMap,
+                // Asking for missing values must not widen an explicit
+                // preparation request. A true flag is deliberately not
+                // forwarded: supplying inputs never grants live authority.
+                ...(args.execute_writes === false ? { execute_writes: false } : {}),
               },
               description: `Run workflow "${wf.slug}" with the submitted input`,
             },
@@ -470,17 +437,32 @@ export const runWorkflowTool: ConversationTool = {
         "info",
         `running workflow ${wf.slug} (v${wf.current_version}) in env=${args.environment}`,
       );
-      // hold write-classified steps unless the caller explicitly opted
-      // into a live run. The engine resolves writes (materializes the
-      // would-be request) but does not dispatch them, so an authoring-time
-      // verification of a saved workflow cannot fire a real send.
-      const holdWrites = args.execute_writes !== true;
+      // Ordinary starts discover a previously granted local boundary. Explicit
+      // preparation never spends it. The legacy explicitly confirmed one-shot
+      // path remains separate and must not manufacture a standing authority.
+      const admitted =
+        args.execute_writes === true
+          ? null
+          : await admitWorkflowRun(
+              {
+                tenant_id: ctx.tenant_id,
+                workflow_id: workflowId,
+                workflow_version_id: wf.current_version_id,
+                execution_environment: args.environment,
+                request_source: "chat",
+                input: suppliedInput ?? null,
+                ...(args.idempotency_key ? { idempotency_key: args.idempotency_key } : {}),
+                ...(args.execute_writes === false ? { hold_writes: true } : {}),
+              },
+              ctx.db,
+            );
+      const holdWrites = admitted?.hold_writes ?? false;
       if (args.idempotency_key) {
-        const existing = await findExecutionByIdempotencyKey(
-          ctx.db,
-          ctx.tenant_id,
-          args.idempotency_key,
-        );
+        const existing = admitted
+          ? admitted.replayed
+            ? { id: admitted.execution_id, status: admitted.status }
+            : null
+          : await findExecutionByIdempotencyKey(ctx.db, ctx.tenant_id, args.idempotency_key);
         if (existing) {
           return {
             ok: true,
@@ -488,6 +470,13 @@ export const runWorkflowTool: ConversationTool = {
               {
                 execution_id: existing.id,
                 execution_status: existing.status,
+                ...(admitted
+                  ? {
+                      workflow_version_id: admitted.workflow_version_id,
+                      execution_authority_id: admitted.execution_authority_id,
+                      hold_writes: admitted.hold_writes,
+                    }
+                  : {}),
                 idempotent_replay: true,
                 message: `nothing new was started — execution ${existing.id} already ran under idempotency key '${args.idempotency_key}' (status: ${existing.status}); inspect it with get_execution`,
               },
@@ -501,13 +490,18 @@ export const runWorkflowTool: ConversationTool = {
         tenant_id: ctx.tenant_id,
         // Use the exact version whose contract and authoring binding we just
         // checked. A concurrent activation must not silently swap the DAG.
-        source: { kind: "saved", workflow_id: workflowId, version_id: wf.current_version_id },
-        input: suppliedInput ?? null,
+        source: {
+          kind: "saved",
+          workflow_id: workflowId,
+          version_id: admitted?.workflow_version_id ?? wf.current_version_id,
+        },
+        input: admitted ? admitted.input : (suppliedInput ?? null),
         options: {
           request_source: "chat",
           trace_id: null,
           principal: ctx.principal,
           execution_mode: args.environment,
+          ...(admitted ? { existing_execution_id: admitted.execution_id } : {}),
           ...(args.idempotency_key ? { idempotency_key: args.idempotency_key } : {}),
           ...(holdWrites ? { hold_writes: true } : {}),
         },
@@ -567,7 +561,8 @@ export const runWorkflowTool: ConversationTool = {
           // a held run vs a live (writes-dispatched) run must be
           // distinguishable in the audit log so "did this run actually
           // send?" is answerable.
-          execute_writes: args.execute_writes === true,
+          execute_writes: !holdWrites,
+          execution_authority_id: admitted?.execution_authority_id ?? null,
           ...(heldStepIds.length > 0 ? { held_step_ids: heldStepIds } : {}),
         },
       });
@@ -864,6 +859,8 @@ export const runWorkflowTool: ConversationTool = {
             workflow_id: workflowId,
             workflow_version_id: wf.current_version_id,
             workflow_version: wf.current_version,
+            execution_authority_id: admitted?.execution_authority_id ?? null,
+            hold_writes: holdWrites,
             // make the held writes unmistakable to the agent so it
             // never reads a verification run as a real send (a live session
             // once mailed stale snapshots this way). State, then affordance —

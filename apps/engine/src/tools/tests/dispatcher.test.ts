@@ -946,12 +946,9 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
   });
 
   test("input as a JSON STRING vs an OBJECT produce the SAME args_hash on the paused approval", async () => {
-    // `environment: "prod"` forces run_workflow's confirm_before_execution
-    // mode (no execute_writes / auto-approve), so the canonical args are
-    // captured off the persisted APPROVAL_REQUESTED audit row's
-    // `metadata.args_hash` instead of the executor. Surface is CHAT: on MCP
-    // this same call collapses straight to `proceed` (`policyDecide`,
-    // tools/policy.ts) — no approval is minted there to compare hashes on.
+    // Explicit one-shot writes require a decision on either surface. Production
+    // alone does not: ordinary starts use local authority admission. Compare
+    // the canonical args on the persisted APPROVAL_REQUESTED audit rows.
     const principal = dbPrincipal();
     const registry = buildRegistry([runWorkflowStub(() => {})]);
     const inputObject = { city: "Berlin" };
@@ -961,7 +958,12 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
       {
         surface: "chat",
         name: "run_workflow",
-        args: { workflow: "invoice-export", environment: "prod", input: inputObject },
+        args: {
+          workflow: "invoice-export",
+          environment: "prod",
+          input: inputObject,
+          execute_writes: true,
+        },
       },
     );
     const stringEnvelope = await dispatchTool(
@@ -973,6 +975,7 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
           workflow: "invoice-export",
           environment: "prod",
           input: JSON.stringify(inputObject),
+          execute_writes: true,
         },
       },
     );
@@ -998,10 +1001,8 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
   test("run_workflow WITHOUT an explicit environment resolves to the 'dev' default BEFORE policyDecide runs", async () => {
     // Regression lock: canonicalizeArgs() must apply the Zod
     // `.default("dev")` BEFORE policyDecide() reads `args.environment`.
-    // If policy ever saw the raw (environment-less) args again, run_workflow's
-    // computeModeFromInput would fall through to its `else` branch and
-    // demand a spurious confirm_before_execution for every dev-intent call
-    // that simply omitted the field.
+    // Omission must remain the documented dev environment at execution, even
+    // though ordinary dev and prod calls now share local authority admission.
     const received: Array<Record<string, unknown>> = [];
     const registry = buildRegistry([runWorkflowStub((args) => received.push(args))]);
     const envelope = await dispatchTool(

@@ -93,6 +93,22 @@ describe("bounded auto authoring policy", () => {
     ).toBe("confirm_before_execution");
   });
 
+  test("standing-authority discovery preserves stricter workflow preferences in both environments", () => {
+    for (const environment of ["dev", "prod"] as const) {
+      for (const permission_mode of ["auto", "ask", "plan"] as const) {
+        expect(
+          decideToolMode({
+            tool: "run_workflow",
+            category: "tenant_write",
+            input: { environment },
+            overrides: { run_workflow: "confirm_before_execution" },
+            permission_mode,
+          }).mode,
+        ).toBe("confirm_before_execution");
+      }
+    }
+  });
+
   test("mislabelled GraphQL writes cannot inherit an autonomous read policy", () => {
     for (const query of [
       "mutation Remove { remove { id } }",

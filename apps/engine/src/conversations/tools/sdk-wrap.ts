@@ -105,6 +105,8 @@ export async function wrapTools(
       ctx,
       signals,
       events,
+      permissionMode,
+      toolPolicies,
     });
     for (const [name, tool] of Object.entries(synthetic)) {
       out[name] = tool;

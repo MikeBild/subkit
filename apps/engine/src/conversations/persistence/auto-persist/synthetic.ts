@@ -4,7 +4,7 @@
 // conversation timeline so the LLM's next turn sees a regular
 // tool-result with `source: "harness_auto_persist"`.
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
 import { conversationToolCalls } from "../../../db/schema/index.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
@@ -27,6 +27,22 @@ export interface SyntheticToolResult {
   message?: string;
   next_best_actions?: string[];
   source: "harness_auto_persist";
+}
+
+/** A completed preparation is successful activity, not a completed write.
+ * Keep the audit and conversation timeline on the same interpretation. */
+export function isCompletedWorkflowPreparation(kind: unknown, data: unknown): boolean {
+  return (
+    kind === "run_workflow" &&
+    data !== null &&
+    typeof data === "object" &&
+    "preview" in data &&
+    data.preview === true &&
+    "writes_held" in data &&
+    data.writes_held === true &&
+    "status" in data &&
+    data.status === "succeeded"
+  );
 }
 
 export function extractCommitIntent(input: unknown): CommitIntent | null {
@@ -212,23 +228,14 @@ export async function injectSyntheticToolCall(p: {
   });
   // The harness states the outcome of the write it performed; `p.synthetic`
   // is an envelope it built, not a `ToolResult` a classifier could read.
-  const data = p.synthetic.data;
-  const prepared =
-    commitIntentKind === "run_workflow" &&
-    data !== null &&
-    typeof data === "object" &&
-    "preview" in data &&
-    data.preview === true &&
-    "status" in data &&
-    data.status === "succeeded";
+  const prepared = isCompletedWorkflowPreparation(commitIntentKind, p.synthetic.data);
   await updateToolCallOutput(
     p.db,
     callId,
     p.synthetic,
     p.synthetic.ok || prepared ? "ok" : "error",
   );
-  // Confirmation-state column carries `confirmed` so the read path
-  // and observability dashboards can filter on harness-driven writes.
+  // Input submission is neither approval nor rejection of an external effect.
   await p.db
     .update(conversationToolCalls)
     .set({
@@ -237,7 +244,9 @@ export async function injectSyntheticToolCall(p: {
         commitIntentKind === "run_workflow" ? null : p.synthetic.ok ? "confirmed" : "declined",
       confirmation_data: { source: "harness_auto_persist", commit_intent_kind: commitIntentKind },
     })
-    .where(eq(conversationToolCalls.id, callId));
+    .where(
+      and(eq(conversationToolCalls.tenant_id, p.tenant_id), eq(conversationToolCalls.id, callId)),
+    );
   await appendMessage(p.db, p.tenant_id, p.conversation_id, "tool", {
     tool: p.synthetic.tool,
     output: p.synthetic,

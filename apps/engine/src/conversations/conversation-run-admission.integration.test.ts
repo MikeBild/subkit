@@ -13,11 +13,19 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { EngineClient } from "../engine-client/index.ts";
 import { databaseNow } from "../test-helpers/database-clock.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
+import { createEmptyDraftDocument } from "./authoring-state.ts";
+import { resolveElicitationAndReactivate } from "./elicitations.ts";
 import { type FastPathParams, tryFastPath } from "./fast-path.ts";
 import { maybeAutoPersistFromElicitation } from "./persistence/auto-persist.ts";
+import { decideToolMode, type ToolPolicies } from "./tool-policies.ts";
+import { runWorkflowTool } from "./tools/generated/writes/run-workflow.ts";
+import type { ToolContext } from "./tools/index.ts";
+import type { TurnSignals } from "./tools/sdk-wrap/state.ts";
+import { buildSyntheticWorkflowTools } from "./tools/sdk-wrap/synthetic-workflow-tools.ts";
 
 let tdb: TestDb;
 let remote: MockServer;
@@ -34,7 +42,16 @@ afterAll(async () => {
   await tdb.cleanup();
 });
 
-async function fixture(options: { maxRuns?: number; expired?: boolean; readLabel?: boolean } = {}) {
+async function fixture(
+  options: {
+    maxRuns?: number;
+    expired?: boolean;
+    readLabel?: boolean;
+    inputRequired?: boolean;
+    environment?: "dev" | "prod";
+  } = {},
+) {
+  const environment = options.environment ?? "dev";
   const slug = `fast-boundary-${++sequence}`;
   const [tenant] = await tdb.db.insert(tenants).values({ slug, display_name: slug }).returning();
   if (!tenant) throw new Error("missing tenant");
@@ -48,6 +65,15 @@ async function fixture(options: { maxRuns?: number; expired?: boolean; readLabel
   const definition = {
     name: slug,
     slug,
+    ...(options.inputRequired
+      ? {
+          input_schema: {
+            type: "object",
+            required: ["title"],
+            properties: { title: { type: "string" } },
+          },
+        }
+      : {}),
     steps: [
       {
         id: "send",
@@ -75,7 +101,7 @@ async function fixture(options: { maxRuns?: number; expired?: boolean; readLabel
         tenant_id: tenant.id,
         workflow_id: workflow.id,
         workflow_version_id: version.id,
-        execution_environment: "dev",
+        execution_environment: environment,
       },
       tdb.db,
     );
@@ -91,7 +117,7 @@ async function fixture(options: { maxRuns?: number; expired?: boolean; readLabel
         workflow_version_id: version.id,
         effect_manifest_digest: preview.digest,
         effect_manifest: { ...preview.manifest },
-        execution_environment: "dev",
+        execution_environment: environment,
         target_constraints: {
           targets: preview.manifest.effects.flatMap((effect) =>
             effect.target ? [effect.target] : [],
@@ -136,6 +162,64 @@ async function fixture(options: { maxRuns?: number; expired?: boolean; readLabel
       .from(executions)
       .where(and(eq(executions.tenant_id, tenantId), eq(executions.workflow_id, workflowId)));
   }
+  async function runTool(
+    kind: "generic" | "synthetic",
+    executeWrites?: boolean,
+    policy: { permissionMode?: "auto" | "ask" | "plan"; toolPolicies?: ToolPolicies } = {},
+  ) {
+    const [conversation] = await tdb.db
+      .insert(conversations)
+      .values({ tenant_id: tenantId, status: "active" })
+      .returning();
+    if (!conversation) throw new Error("missing tool conversation");
+    const ctx: ToolContext = {
+      db: tdb.db,
+      tenant_id: tenantId,
+      conversation_id: conversation.id,
+      actor_id: null,
+      connector_id: null,
+      workflow_id: workflowId,
+      principal,
+      permission_mode: policy.permissionMode ?? null,
+      engineClient: new EngineClient({ tenant_id: tenantId, actor_id: actorId, db: tdb.db }),
+      getDraft: () => createEmptyDraftDocument(),
+      setDraft: async () => {},
+      onLog: () => {},
+    };
+    if (kind === "generic") {
+      return runWorkflowTool.execute(ctx, {
+        workflow: workflowId,
+        environment,
+        ...(executeWrites === undefined ? {} : { execute_writes: executeWrites }),
+      });
+    }
+    const signals: TurnSignals = {
+      step: 0,
+      toolChain: Promise.resolve(),
+      toolInvocationCount: new Map(),
+      toolLastErrorHash: new Map(),
+      toolArgsRepeat: new Map(),
+      toolValidationFingerprint: new Map(),
+      toolErrorCodeRepeat: new Map(),
+      totalLoopWarnings: 0,
+      consecutiveFailures: 0,
+      lastAssistantText: "",
+      lastExecutionSuccess: null,
+      pendingChildToolCallIds: [],
+      pendingChildElicitationIds: [],
+    };
+    const tools = await buildSyntheticWorkflowTools({
+      db: tdb.db,
+      principal,
+      ctx,
+      signals,
+      events: [],
+      ...policy,
+    });
+    const execute = tools[`wf_${slug}`]?.execute;
+    if (!execute) throw new Error("missing synthetic workflow tool");
+    return execute({}, { toolCallId: "bounded-tool-run", messages: [], context: {} });
+  }
   async function submitInput(executeWrites: boolean) {
     const [conversation] = await tdb.db
       .insert(conversations)
@@ -172,6 +256,45 @@ async function fixture(options: { maxRuns?: number; expired?: boolean; readLabel
       elicitation_output: elicitation.output,
     });
   }
+  async function submitGeneratedInput() {
+    const [elicitation] = await tdb.db
+      .select()
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.tenant_id, tenantId));
+    if (!elicitation) throw new Error("missing generated input form");
+    const output = { values: { title: "Report" } };
+    const resolution = await resolveElicitationAndReactivate(
+      {
+        tenant_id: tenantId,
+        conversation_id: elicitation.conversation_id,
+        id: elicitation.id,
+        output,
+        decided_by: null,
+      },
+      tdb.db,
+    );
+    expect(resolution.kind).toBe("resolved");
+    const [resolved] = await tdb.db
+      .select()
+      .from(conversationElicitations)
+      .where(
+        and(
+          eq(conversationElicitations.tenant_id, tenantId),
+          eq(conversationElicitations.id, elicitation.id),
+        ),
+      );
+    if (!resolved) throw new Error("missing resolved input form");
+    return maybeAutoPersistFromElicitation({
+      db: tdb.db,
+      tenant_id: tenantId,
+      conversation_id: resolved.conversation_id,
+      actor_id: null,
+      principal,
+      answer_actor: { kind: "human", user_id: actorId, via: "chat" },
+      elicitation: resolved,
+      elicitation_output: output,
+    });
+  }
   async function reserved() {
     if (!authority) throw new Error("no authority in fixture");
     const [row] = await tdb.db
@@ -205,8 +328,149 @@ async function fixture(options: { maxRuns?: number; expired?: boolean; readLabel
     reserved,
     activity,
     submitInput,
+    submitGeneratedInput,
+    runTool,
   };
 }
+
+for (const kind of ["generic", "synthetic"] as const) {
+  test(`${kind} workflow tool cannot use an expired local authority`, async () => {
+    const f = await fixture({ maxRuns: 1, expired: true });
+    const before = remote.callCount();
+    await f.runTool(kind);
+    expect(remote.callCount()).toBe(before);
+    expect(await f.reserved()).toBe(0);
+    expect((await f.rows())[0]).toMatchObject({
+      hold_writes: true,
+      execution_authority_id: null,
+      workflow_version_id: f.version.id,
+    });
+  });
+
+  test(`${kind} workflow tool automatically reserves a matching local authority`, async () => {
+    const f = await fixture({ maxRuns: 2 });
+    const before = remote.callCount();
+    for (let index = 0; index < 2; index++) {
+      const result = await f.runTool(kind);
+      expect(result).toMatchObject({ ok: true });
+    }
+    expect(remote.callCount() - before).toBe(2);
+    expect(await f.reserved()).toBe(2);
+    expect((await f.rows()).every((row) => row.execution_authority_id === f.authority?.id)).toBe(
+      true,
+    );
+    const decisions = await tdb.db
+      .select()
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.tenant_id, f.tenant.id));
+    expect(decisions).toHaveLength(0);
+    if (kind === "synthetic") {
+      const audit = await tdb.db.select().from(auditLog).where(eq(auditLog.tenant_id, f.tenant.id));
+      const runs = audit.filter(
+        (row) =>
+          row.metadata !== null &&
+          typeof row.metadata === "object" &&
+          "via_action" in row.metadata &&
+          row.metadata.via_action === "conversation.run_workflow",
+      );
+      expect(runs).toHaveLength(2);
+      for (const run of runs) {
+        expect(run.metadata).toMatchObject({
+          workflow_version_id: f.version.id,
+          execution_authority_id: f.authority?.id,
+          hold_writes: false,
+          writes_held: false,
+        });
+      }
+    }
+  });
+}
+
+test("production tool policy admits an existing local grant without a second gate", async () => {
+  const f = await fixture({ maxRuns: 1, environment: "prod" });
+  expect(
+    decideToolMode({
+      tool: "run_workflow",
+      category: "tenant_write",
+      input: { workflow: f.workflow.id, environment: "prod" },
+      overrides: {},
+      permission_mode: "auto",
+    }).mode,
+  ).toBe("no_confirm");
+  const before = remote.callCount();
+  await f.runTool("generic");
+  expect(remote.callCount() - before).toBe(1);
+  expect(await f.reserved()).toBe(1);
+  expect((await f.rows())[0]).toMatchObject({
+    execution_mode: "prod",
+    execution_authority_id: f.authority?.id,
+  });
+});
+
+test("an ordinary production tool start without authority remains held", async () => {
+  const f = await fixture({ environment: "prod" });
+  const before = remote.callCount();
+  await f.runTool("generic");
+  expect(remote.callCount()).toBe(before);
+  expect((await f.rows())[0]).toMatchObject({
+    execution_mode: "prod",
+    hold_writes: true,
+    execution_authority_id: null,
+  });
+});
+
+for (const permissionMode of ["ask", "plan"] as const) {
+  test(`synthetic tools preserve ${permissionMode} despite an available standing grant`, async () => {
+    const f = await fixture({ maxRuns: 1 });
+    const before = remote.callCount();
+    await f.runTool("synthetic", undefined, {
+      permissionMode,
+      toolPolicies: { [`wf_${f.workflow.slug}`]: "no_confirm" },
+    });
+    expect(remote.callCount()).toBe(before);
+    expect(await f.reserved()).toBe(0);
+    expect((await f.rows())[0]).toMatchObject({ hold_writes: true, execution_authority_id: null });
+    const pending = await tdb.db
+      .select()
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.tenant_id, f.tenant.id));
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.status).toBe("pending");
+  });
+}
+
+test("synthetic tools preserve an explicit per-workflow approval preference", async () => {
+  const f = await fixture({ maxRuns: 1 });
+  const before = remote.callCount();
+  await f.runTool("synthetic", undefined, {
+    permissionMode: "auto",
+    toolPolicies: { [`wf_${f.workflow.slug}`]: "confirm_before_execution" },
+  });
+  expect(remote.callCount()).toBe(before);
+  expect(await f.reserved()).toBe(0);
+  expect((await f.rows())[0]?.hold_writes).toBe(true);
+});
+
+test("generic, synthetic and fast-path starts share the same last-run reservation", async () => {
+  const f = await fixture({ maxRuns: 1 });
+  const before = remote.callCount();
+  await Promise.all([f.runTool("generic"), f.runTool("synthetic"), f.run()]);
+  expect(remote.callCount() - before).toBe(1);
+  expect(await f.reserved()).toBe(1);
+  const rows = await f.rows();
+  expect(rows).toHaveLength(3);
+  expect(rows.filter((row) => row.execution_authority_id === f.authority?.id)).toHaveLength(1);
+  expect(rows.filter((row) => row.hold_writes)).toHaveLength(2);
+});
+
+test("generic workflow tool preserves an explicit preparation despite an available grant", async () => {
+  const f = await fixture({ maxRuns: 1 });
+  const before = remote.callCount();
+  await f.runTool("generic", false);
+  expect(remote.callCount()).toBe(before);
+  expect(await f.reserved()).toBe(0);
+  expect((await f.rows())[0]?.hold_writes).toBe(true);
+});
 
 for (const surface of ["chat", "mcp"] as const) {
   test(`${surface}: unapproved writes are durably held, including an author-supplied read label`, async () => {
@@ -337,6 +601,16 @@ test("a submitted input form cannot authorize writes through execute_writes=true
     .from(auditLog)
     .where(and(eq(auditLog.tenant_id, f.tenant.id), eq(auditLog.action, "approval.approved")));
   expect(approvalEvents).toHaveLength(0);
+  const resumedEvents = await tdb.db
+    .select()
+    .from(auditLog)
+    .where(and(eq(auditLog.tenant_id, f.tenant.id), eq(auditLog.action, "conversation.resumed")));
+  expect(resumedEvents).toHaveLength(1);
+  expect(resumedEvents[0]).toMatchObject({
+    result: "success",
+    reason: "workflow_input_submitted",
+    metadata: { ok: false, preparation: true },
+  });
   const calls = await tdb.db
     .select()
     .from(conversationToolCalls)
@@ -364,4 +638,34 @@ test("an explicit preparation form does not spend an available live run", async 
   expect(result.synthetic_result?.data).toMatchObject({ preview: true, writes_held: true });
   expect(remote.callCount()).toBe(before);
   expect(await f.reserved()).toBe(0);
+});
+
+test("a generated missing-input form preserves an explicit preparation request", async () => {
+  const f = await fixture({ maxRuns: 1, inputRequired: true });
+  const before = remote.callCount();
+  await f.runTool("generic", false);
+  expect(await f.rows()).toHaveLength(0);
+  const result = await f.submitGeneratedInput();
+  expect(result.synthetic_result?.data).toMatchObject({ preview: true, writes_held: true });
+  expect(remote.callCount()).toBe(before);
+  expect(await f.reserved()).toBe(0);
+  expect((await f.rows())[0]).toMatchObject({ hold_writes: true, execution_authority_id: null });
+});
+
+test("a generated missing-input form keeps ordinary local authority discovery", async () => {
+  const f = await fixture({ maxRuns: 1, inputRequired: true });
+  const before = remote.callCount();
+  await f.runTool("generic");
+  expect(await f.rows()).toHaveLength(0);
+  const result = await f.submitGeneratedInput();
+  expect(result.synthetic_result?.data).toMatchObject({
+    execution_authority_id: f.authority?.id,
+    execute_writes: true,
+  });
+  expect(remote.callCount() - before).toBe(1);
+  expect(await f.reserved()).toBe(1);
+  const audit = await tdb.db.select().from(auditLog).where(eq(auditLog.tenant_id, f.tenant.id));
+  expect(audit.filter((row) => row.action.startsWith("approval."))).toHaveLength(0);
+  expect(audit.filter((row) => row.reason === "workflow_input_requested")).toHaveLength(1);
+  expect(audit.filter((row) => row.reason === "workflow_input_resolved")).toHaveLength(1);
 });

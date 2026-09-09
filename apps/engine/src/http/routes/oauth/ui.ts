@@ -23,6 +23,9 @@ const TOKENS = `
   /*mcp-auth:end*/
 `;
 
+/** Reuse the family palette for other script-free human decision pages. */
+export const AUTH_UI_STYLES = TOKENS;
+
 /**
  * The contract marker, derived from the bytes it describes.
  *
