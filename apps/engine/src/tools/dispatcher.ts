@@ -550,6 +550,13 @@ export async function dispatchTool(
                 db: deps.db,
                 principal: deps.principal,
                 registry: deps.registry,
+                resumeApproval: (tool, approvalId) =>
+                  dispatchTool(deps, {
+                    surface: invocation.surface,
+                    name: tool,
+                    args: {},
+                    meta: { [SK_CONFIRM_META_KEY]: true, [SK_CONFIRM_ID_META_KEY]: approvalId },
+                  }),
                 ...(deps.mcpMode !== undefined ? { mcpMode: deps.mcpMode } : {}),
                 ...(deps.readOnly !== undefined ? { readOnly: deps.readOnly } : {}),
               },

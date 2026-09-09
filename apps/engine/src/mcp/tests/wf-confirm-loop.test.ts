@@ -1,4 +1,4 @@
-// Preparation does not fabricate an approval or bring back confirm_tool_call.
+// Preparation does not fabricate an approval. The replay tool cannot grant one.
 // A saved workflow needs its own finite local authority for live writes;
 // client annotations are advisory and cannot supply that authority.
 
@@ -110,22 +110,21 @@ describe("mcp wf_<slug> preparation without invented approvals", () => {
     expect(await approvalRequestedCountForTool("wf_read-only-probe")).toBe(0);
   });
 
-  test("confirm_tool_call no longer exists as an MCP tool — calling it returns a terminal unknown-tool envelope", async () => {
+  test("confirm_tool_call cannot execute an invented approval", async () => {
     const client = await suite.connect();
     const listed = await client.listTools();
-    expect(listed.tools.some((t) => t.name === "confirm_tool_call")).toBe(false);
+    expect(listed.tools.some((t) => t.name === "confirm_tool_call")).toBe(true);
 
     const result = await client.callTool({
       name: "confirm_tool_call",
       arguments: {
-        tool: "wf_direct-write-probe",
-        confirm_id: "11111111-1111-1111-1111-111111111111",
+        tool: "run_workflow",
+        confirm_id: "11111111-1111-4111-8111-111111111111",
       },
     });
     expect(result.isError).toBe(true);
     const content = result.content as Array<{ type: string; text: string }>;
     const body = JSON.parse(content[0]!.text) as { status?: string; error_code?: string };
-    expect(body.status).toBe("cannot_help");
-    expect(body.error_code).toBe("unknown_tool");
+    expect(body.error_code).toBe("unknown_confirmation");
   });
 });

@@ -7,9 +7,24 @@
 
 import { describe, expect, test } from "bun:test";
 import { listConversationTools } from "./conversations.ts";
-import { buildToolAnnotations, buildWorkflowToolAnnotations } from "./tool-meta.ts";
+import {
+  buildConversationToolMeta,
+  buildToolAnnotations,
+  buildWorkflowToolAnnotations,
+} from "./tool-meta.ts";
 
 describe("buildToolAnnotations", () => {
+  test("approval replay advertises its possible external write without a second decision", () => {
+    expect(buildToolAnnotations("tenant_read", "confirm_tool_call")).toEqual({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    });
+    expect(
+      buildConversationToolMeta("tenant_read", "confirm_tool_call").subkit.confirm_required,
+    ).toBe(false);
+  });
   test("read tools advertise readOnly + idempotent, not destructive", () => {
     const a = buildToolAnnotations("tenant_read", "get_workflow");
     expect(a.readOnlyHint).toBe(true);

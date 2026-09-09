@@ -35,10 +35,9 @@ export interface SubkitToolMetaEnvelope {
  *   - authenticate / self_healing_scan — change state (reauth / repair scan).
  *   - probe_connector / probe_connector_draft — a prod probe can POST against
  *     the vendor surface (`tool-policies.ts` escalates prod probes to
- *     `confirm_before_execution`). They are advertised destructive so the
- *     client's native gate secures that call — the server no longer confirms
- *     on MCP (see `policyDecide`'s MCP shortcut in `tools/policy.ts`), so the
- *     annotation IS the gate. This keeps the invariant "every MCP-reachable
+ *     `confirm_before_execution`). Their destructive annotation informs the
+ *     client, while the server verifies its own human-granted approval.
+ *     This keeps the invariant "every MCP-reachable
  *     `confirm_before_execution` tool advertises `destructiveHint:true`" whole;
  *     `mcp/tests/confirm-gate-invariant.test.ts` pins it across the whole
  *     registry (`tools-list.test.ts` only spot-checks named tools).
@@ -46,6 +45,9 @@ export interface SubkitToolMetaEnvelope {
  * (tool-policies.ts); this set keeps the STATIC manifest honest in lockstep.
  */
 const WRITE_DESPITE_READ_CATEGORY: ReadonlySet<string> = new Set([
+  // Replays an already granted action, which may write to an external system.
+  // Claiming the approval is not another human decision, but is not a read.
+  "confirm_tool_call",
   "call_connector",
   "authenticate",
   "self_healing_scan",
@@ -90,6 +92,8 @@ function advertisedDestructive(category: ToolCategory | "workflow_run", toolName
 
 /** Conservative "could this ever need confirm?" probe. */
 function couldRequireConfirmation(category: ToolCategory, toolName: string): boolean {
+  // The target's approval must already be granted; this tool only consumes it.
+  if (toolName === "confirm_tool_call") return false;
   // call_connector/authenticate/self_healing_scan are tenant_read for
   // visibility but can write — so they CAN require confirm on the write path.
   if (WRITE_DESPITE_READ_CATEGORY.has(toolName)) return true;
@@ -119,6 +123,7 @@ function couldRequireConfirmation(category: ToolCategory, toolName: string): boo
  * listed operates only on subkit-internal state.
  */
 const EXTERNAL_REACHING_TOOLS: ReadonlySet<string> = new Set([
+  "confirm_tool_call",
   "call_connector",
   "probe_connector",
   "probe_connector_draft",

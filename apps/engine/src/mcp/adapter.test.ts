@@ -1,13 +1,6 @@
 // Unit tests for the MCP adapter's envelope rendering.
 //
-// `needs_confirm` is UNREACHABLE on the MCP surface: `policyDecide` collapses
-// `confirm_before_execution` to `proceed` for `surface:"mcp"` (see
-// tools/policy.ts) — the client's native `destructiveHint` dialog is the
-// human gate. If a `needs_confirm` envelope ever reaches the adapter it means
-// a confirm-capable tool reached MCP WITHOUT that annotation gate, which is a
-// governance regression, not a renderable state — so the adapter throws
-// rather than silently rendering a dead-end prompt with no in-band grant
-// channel.
+// A pending approval is an actionable portal link, not successful execution.
 
 import { describe, expect, test } from "bun:test";
 import type { ToolResultPause } from "../conversations/tools/index.ts";
@@ -24,10 +17,13 @@ const confirm: ConfirmEnvelope = {
   approval_url: "https://engine.example.test/v1/tool-approvals/decide?grant=skag_test",
 };
 
-describe("envelopeToMcpResponse — needs_confirm is unreachable on MCP", () => {
-  test("throws naming the tool, rather than rendering a dead-end prompt", () => {
+describe("envelopeToMcpResponse — locally verifiable approval", () => {
+  test("renders the pending boundary and human portal link without claiming execution", () => {
     const envelope: ToolEnvelope = { status: "needs_confirm", confirm };
-    expect(() => envelopeToMcpResponse(envelope)).toThrow(/call_connector/);
+    const response = envelopeToMcpResponse(envelope);
+    expect(response.isError).toBe(false);
+    expect(JSON.parse(response.content[0]!.text)).toEqual({ status: "needs_confirm", ...confirm });
+    expect(response._meta?.subkit).toEqual({ confirm });
   });
 });
 

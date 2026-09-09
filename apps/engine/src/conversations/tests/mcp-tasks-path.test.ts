@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Task } from "@modelcontextprotocol/sdk/types.js";
 import { CallToolResultSchema, CreateTaskResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { and, eq } from "drizzle-orm";
+import { issueBrowserSession } from "../../auth/browser-session.ts";
 import { setConfigKey } from "../../config/loader.ts";
 import { connectors, mcpTasks } from "../../db/schema/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
@@ -101,7 +102,15 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
   }
 
   async function decideApproval(approvalUrl: string, decision: "approve" | "decline") {
-    const headers = { authorization: `Bearer ${suite.http.apiKey}` };
+    const login = await issueBrowserSession({
+      db: suite.http.db,
+      tenantId: suite.http.tenantId,
+      userId: suite.http.userId,
+      redirectTo: approvalUrl,
+      via: "mcp_tasks_browser_test",
+    });
+    const headers = { cookie: login.headers.get("set-cookie") ?? "" };
+    expect(headers.cookie).not.toBe("");
     const page = await fetch(approvalUrl, { headers });
     const html = await page.text();
     const csrfToken = /name="csrf_token" value="([^"]+)"/.exec(html)?.[1] ?? "";

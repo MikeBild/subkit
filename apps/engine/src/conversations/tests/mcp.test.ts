@@ -10,6 +10,7 @@
 //   conversation_commit           → returns the committed workflow id
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { issueBrowserSession } from "../../auth/browser-session.ts";
 import { setConfigKey } from "../../config/loader.ts";
 import { connectors } from "../../db/schema/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
@@ -130,7 +131,15 @@ describe("mcp conversation tools", () => {
     // A model-facing tool must not relay the human decision. The browser
     // portal owns approval and enqueues the background resume turn.
     const approvalUrl = settled.input?.approval_url ?? "";
-    const headers = { authorization: `Bearer ${suite.http.apiKey}` };
+    const login = await issueBrowserSession({
+      db: suite.http.db,
+      tenantId: suite.http.tenantId,
+      userId: suite.http.userId,
+      redirectTo: approvalUrl,
+      via: "mcp_conversation_browser_test",
+    });
+    const headers = { cookie: login.headers.get("set-cookie") ?? "" };
+    expect(headers.cookie).not.toBe("");
     const page = await fetch(approvalUrl, { headers });
     expect(page.status).toBe(200);
     const html = await page.text();

@@ -363,12 +363,7 @@ describe("resolveToolMode — yolo mode", () => {
       overrides: {},
     });
     expect(overwrite.mode).toBe("confirm_before_execution");
-    // The RULE matters as much as the mode. The MCP-origin collapse
-    // (`MCP_TURN_COLLAPSIBLE_WRITE_TOOLS`) drops the pause for confirms that
-    // came from a STATIC default — and save_workflow_draft is in that set. A
-    // danger flag alone resolves to `tool_default` and would therefore still
-    // collapse on exactly the surface this incident came from. Only a
-    // `computed_from_input` confirm survives it.
+    // The audit explains the actual overwrite, not merely a tool default.
     expect(overwrite.rule).toBe("computed_from_input");
 
     // `force_commit` overrules a preview that was NOT green — same class.

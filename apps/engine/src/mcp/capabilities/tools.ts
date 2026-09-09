@@ -323,12 +323,8 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           args: args as Record<string, unknown>,
           ...(callMeta ? { meta: callMeta } : {}),
         };
-        // Human-in-the-loop over MCP is the CLIENT's native `destructiveHint`
-        // dialog: every MCP-reachable write advertises the annotation and a
-        // trusted client gates the call BEFORE it reaches the engine (see
-        // adapter.ts#callToolViaDispatcher). No server-side confirm participates
-        // on this surface — `policyDecide` collapses confirm to proceed for
-        // `surface:"mcp"` (tools/policy.ts).
+        // The dispatcher enforces local human approval for a material effect.
+        // Client annotations cannot replace the portal's durable decision.
         //
         // Bound the dispatch so a stalled call (e.g. event-loop pressure or a
         // slow downstream) returns a clear "engine busy" error instead of

@@ -7,6 +7,8 @@
 // prefix aliases were removed — every tool surfaces under its bare name.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { z } from "zod";
+import { issueBrowserSession } from "../../apps/engine/src/auth/browser-session.ts";
 import { skills } from "../../apps/engine/src/db/schema/index.ts";
 import { getTestNow } from "../../apps/engine/src/test-helpers/determinism/clock.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
@@ -232,7 +234,7 @@ describe("MCP tool surface", () => {
     });
   }, 30_000);
 
-  test("destructive call executes directly — the client's destructiveHint dialog is the gate, no server confirm", async () => {
+  test("destructive call waits for a local human decision and replays the exact call once", async () => {
     // Seed a workflow so the delete has a real target. Driving the full
     // authoring surface is out of scope here, so create one via the API.
     const createRes = await fetch(`${env.baseUrl}/v1/workflows`, {
@@ -266,15 +268,8 @@ describe("MCP tool surface", () => {
       clientInfo: { name: "e2e-test", version: "0.0.0" },
     });
 
-    // `delete_workflow` advertises `destructiveHint:true` (pinned in
-    // `mcp/tests/tools-list.test.ts`), so over MCP a trusted client (claude.ai,
-    // ChatGPT) renders a blocking human approval dialog BEFORE the call reaches
-    // the engine. The server therefore takes NO confirm on the MCP surface
-    // (`tools/policy.ts` collapses `confirm_before_execution` → `proceed`): a
-    // second server gate is redundant and has no in-band grant channel. So a raw
-    // MCP `tools/call` (which bypasses the client dialog) EXECUTES the delete
-    // directly — no `needs_confirm`, no `approval_url`, no `confirm_tool_call`
-    // dance, no minted approval.
+    // A transport hint is not a human decision. The real endpoint must preserve
+    // the target until the separate browser session submits its bound form.
     const call = await session.call("tools/call", {
       name: "delete_workflow",
       arguments: { id: workflowId },
@@ -283,18 +278,65 @@ describe("MCP tool surface", () => {
       isError?: boolean;
       content?: Array<{ type: string; text: string }>;
     };
-    // Executed, not gated: no ConfirmEnvelope, no approval_url.
     expect(callResult.isError).toBeFalsy();
-    const payload = JSON.parse(callResult.content![0]!.text) as Record<string, unknown>;
-    expect(payload).toBeTruthy();
-    expect(payload.policy_mode).toBeUndefined();
-    expect(payload.approval_url).toBeUndefined();
+    const payload = z
+      .object({
+        status: z.literal("needs_confirm"),
+        tool_call_id: z.uuid(),
+        approval_url: z.url(),
+      })
+      .parse(JSON.parse(callResult.content![0]!.text));
 
-    // The write actually happened: the workflow is gone.
-    const getRes = await fetch(`${env.baseUrl}/v1/workflows/${workflowId}`, {
-      headers: { authorization: `Bearer ${env.personas.admin.apiKey}` },
+    const readTarget = () =>
+      fetch(`${env.baseUrl}/v1/workflows/${workflowId}`, {
+        headers: { authorization: `Bearer ${env.personas.admin.apiKey}` },
+      });
+    expect((await readTarget()).status).toBe(200);
+    const resume = () =>
+      session.call("tools/call", {
+        name: "confirm_tool_call",
+        arguments: { tool: "delete_workflow", confirm_id: payload.tool_call_id },
+      });
+    const premature = await resume();
+    expect((premature.result as { isError?: boolean }).isError).toBe(true);
+    expect(JSON.stringify(premature.result)).toContain("approval_not_granted");
+    expect((await readTarget()).status).toBe(200);
+
+    // The fixture replaces only upstream login; the page, CSRF, decision CAS
+    // and subsequent MCP replay all use the live engine and real database.
+    const login = await issueBrowserSession({
+      db: env.db,
+      tenantId: env.tenantId,
+      userId: env.personas.admin.userId,
+      redirectTo: payload.approval_url,
+      via: "mcp_surface_e2e",
     });
-    expect(getRes.status).toBe(404);
+    const cookie = login.headers.get("set-cookie") ?? "";
+    expect(cookie).not.toBe("");
+    const page = await fetch(payload.approval_url, { headers: { cookie } });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain("delete_workflow");
+    const csrf = /name="csrf_token" value="([^"]+)"/.exec(html)?.[1];
+    expect(csrf).toBeTruthy();
+    const decision = await fetch(`${env.baseUrl}/v1/tool-approvals/decide`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant: new URL(payload.approval_url).searchParams.get("grant") ?? "",
+        decision: "approve",
+        csrf_token: csrf ?? "",
+      }),
+    });
+    expect(decision.status).toBe(200);
+    expect((await readTarget()).status).toBe(200);
+    const replay = await resume();
+    expect((replay.result as { isError?: boolean }).isError).toBeFalsy();
+
+    expect((await readTarget()).status).toBe(404);
+    const duplicate = await resume();
+    expect((duplicate.result as { isError?: boolean }).isError).toBe(true);
+    expect((await readTarget()).status).toBe(404);
   }, 60_000);
 
   test("get_engine_status call returns a JSON summary", async () => {

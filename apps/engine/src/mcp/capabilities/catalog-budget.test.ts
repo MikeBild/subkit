@@ -10,9 +10,8 @@
 //      product publishes, plus the tools that BUILD definitions — the
 //      conversation cluster and everything declaring `authoring_only`.
 //      Product is the read-and-execute tier: reads plus the run tools.
-//   2. `confirm_tool_call` is GONE from the catalog: MCP writes execute
-//      directly, gated by the client's own `destructiveHint` dialog, never
-//      by a server-side confirm responder (`tools/policy.ts`).
+//   2. `confirm_tool_call` can trigger only an already human-granted local
+//      approval; its presence does not let a model approve its own work.
 
 import { describe, expect, test } from "bun:test";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
@@ -115,14 +114,14 @@ describe("mode hierarchy is monotone · authoring ⊇ product", () => {
   });
 });
 
-describe("confirm_tool_call is gone from the MCP catalog", () => {
-  test("neither product nor authoring publishes a confirm_tool_call tool", () => {
+describe("the approval replay handle is discoverable", () => {
+  test("product and authoring publish the existing-approval trigger", () => {
     for (const mode of ["product", "authoring"] as const) {
-      expect(namesFor(mode).has("confirm_tool_call")).toBe(false);
+      expect(namesFor(mode).has("confirm_tool_call")).toBe(true);
     }
   });
 
-  test("the search-first floor (MCP_CORE_TOOL_NAMES) no longer names confirm_tool_call", () => {
-    expect(MCP_CORE_TOOL_NAMES.has("confirm_tool_call")).toBe(false);
+  test("the search-first floor retains the approval replay tool", () => {
+    expect(MCP_CORE_TOOL_NAMES.has("confirm_tool_call")).toBe(true);
   });
 });

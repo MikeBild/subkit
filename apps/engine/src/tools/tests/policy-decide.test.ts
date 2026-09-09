@@ -115,26 +115,18 @@ describe("tools/policy.policyDecide (active parity)", () => {
     ).toEqual({ kind: "proceed" });
   });
 
-  // MCP writes execute directly: the client's native `destructiveHint` dialog
-  // gates the call BEFORE it reaches the engine, so `policyDecide` collapses
-  // confirm_before_execution to `proceed` on `surface:"mcp"` — with or
-  // without a confirm marker. There is no server-side confirm gate left on
-  // this surface (see `tools/policy.ts`).
-  test("MCP tenant_write WITHOUT any confirm marker → proceed (client destructiveHint dialog is the gate)", () => {
+  test("MCP tenant_write without a local approval requires confirmation", () => {
     expect(
       policyDecide({
         tool: "imaginary_tenant_write_tool",
         category: "tenant_write",
         surface: "mcp",
         args: {},
-      }),
-    ).toEqual({ kind: "proceed" });
+      }).kind,
+    ).toBe("needs_confirm");
   });
 
-  // The invariant this repo must never regress: a tool that WOULD resolve to
-  // confirm_before_execution on chat collapses to proceed on MCP — never the
-  // reverse (chat must not go looser than the enforcement table).
-  test("a confirm_before_execution decision collapses to proceed on surface:mcp, but still confirms on chat", () => {
+  test("a destructive operation requires confirmation on both surfaces", () => {
     const args = {
       connector_id: "c",
       method: "DELETE" as const,
@@ -153,7 +145,8 @@ describe("tools/policy.policyDecide (active parity)", () => {
       args,
     });
     expect(chat.kind).toBe("needs_confirm");
-    expect(mcp).toEqual({ kind: "proceed" });
+    expect(mcp.kind).toBe("needs_confirm");
+    if (mcp.kind === "needs_confirm") expect(mcp.envelope.resume).toContain("confirm_tool_call");
   });
 
   test("chat tenant_write without confirm → needs_confirm with chat-shaped resume hint", () => {
@@ -220,17 +213,7 @@ describe("tools/policy.policyDecide (active parity)", () => {
     }
   });
 
-  // probe_connector POST against prod still classifies as
-  // confirm_before_execution in `decideToolMode` on BOTH surfaces (the
-  // enforcement table does not know about surfaces) — but `policyDecide`
-  // renders that decision differently per surface: chat gates it with
-  // `needs_confirm` (the HTTP `ask_user_confirm` elicitation); MCP collapses
-  // it to `proceed`, because `probe_connector` advertises
-  // `destructiveHint:true` (mcp/capabilities/tool-meta.ts) so the client's own
-  // dialog gates the call before it ever reaches the engine.
-  // probe-connector-prod-confirm.test.ts covers this end-to-end via the live
-  // MCP transport; this unit test pins the same decision at the policy layer.
-  test("probe_connector POST against prod: chat gates it, MCP proceeds (client destructiveHint dialog is the gate)", () => {
+  test("probe_connector POST against prod requires local approval on chat and MCP", () => {
     const args = {
       connector_slug: "demo",
       method: "POST" as const,
@@ -251,7 +234,7 @@ describe("tools/policy.policyDecide (active parity)", () => {
       args,
     });
     expect(chat.kind).toBe("needs_confirm");
-    expect(mcp).toEqual({ kind: "proceed" });
+    expect(mcp.kind).toBe("needs_confirm");
   });
 });
 
@@ -262,12 +245,8 @@ describe("tools/policy.policyDecide (active parity)", () => {
 // (no_confirm). These pin the classifier fix: gate on the ACTUAL side
 // effect, and don't let permission_mode=auto auto-approve a write.
 //
-// The classifier assertions below run on the CHAT surface, where a
-// confirm_before_execution decision is actually observable as
-// `needs_confirm`. On MCP the collapse-to-proceed rule (`policyDecide`)
-// applies regardless of the classified side effect — pinned separately at
-// the end of this describe block — because the client's own
-// `destructiveHint` dialog is the gate there, not a second server-side one.
+// Both surfaces enforce the same classification. Client hints cannot replace
+// the durable approval consumed by the dispatcher.
 describe("tools/policy.policyDecide — call_connector gates on real side effect", () => {
   const read = (extra: Record<string, unknown>) => ({ connector_id: "c", ...extra });
 
@@ -284,7 +263,7 @@ describe("tools/policy.policyDecide — call_connector gates on real side effect
     }
   });
 
-  test("regression — POST/PATCH/DELETE writes confirm on chat; proceed on MCP (client dialog gates it there)", () => {
+  test("POST/PATCH/PUT/DELETE writes confirm on chat and MCP", () => {
     for (const method of ["POST", "PATCH", "PUT", "DELETE"]) {
       const chatDecision = policyDecide({
         tool: "call_connector",
@@ -304,12 +283,12 @@ describe("tools/policy.policyDecide — call_connector gates on real side effect
           category: "tenant_read",
           surface: "mcp",
           args: read({ method, path: "/x" }),
-        }),
-      ).toEqual({ kind: "proceed" });
+        }).kind,
+      ).toBe("needs_confirm");
     }
   });
 
-  test("postgres SELECT proceeds; non-SELECT / allow_writes confirms on chat, proceeds on MCP", () => {
+  test("postgres SELECT proceeds; non-SELECT / allow_writes confirms on both surfaces", () => {
     expect(
       policyDecide({
         tool: "call_connector",
@@ -340,11 +319,11 @@ describe("tools/policy.policyDecide — call_connector gates on real side effect
         category: "tenant_read",
         surface: "mcp",
         args: read({ sql: "DELETE FROM t" }),
-      }),
-    ).toEqual({ kind: "proceed" });
+      }).kind,
+    ).toBe("needs_confirm");
   });
 
-  test("graphql query proceeds; mutation confirms on chat, proceeds on MCP", () => {
+  test("graphql query proceeds; mutation confirms on both surfaces", () => {
     expect(
       policyDecide({
         tool: "call_connector",
@@ -367,11 +346,11 @@ describe("tools/policy.policyDecide — call_connector gates on real side effect
         category: "tenant_read",
         surface: "mcp",
         args: read({ body: { operation: "mutation", query: "mutation { x }" } }),
-      }),
-    ).toEqual({ kind: "proceed" });
+      }).kind,
+    ).toBe("needs_confirm");
   });
 
-  test("S3 LIST is a read (proceeds); PUT confirms on chat, proceeds on MCP", () => {
+  test("S3 LIST proceeds; PUT confirms on both surfaces", () => {
     expect(
       policyDecide({
         tool: "call_connector",
@@ -394,8 +373,8 @@ describe("tools/policy.policyDecide — call_connector gates on real side effect
         category: "tenant_read",
         surface: "mcp",
         args: read({ method: "PUT", path: "/k" }),
-      }),
-    ).toEqual({ kind: "proceed" });
+      }).kind,
+    ).toBe("needs_confirm");
   });
 
   test("a write still confirms under permission_mode=auto (ordering fix)", () => {

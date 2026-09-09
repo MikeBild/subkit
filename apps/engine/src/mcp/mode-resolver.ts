@@ -110,6 +110,7 @@ export function modeFlags(mode: McpMode, readOnly: boolean): McpModeFlags {
  *  inspect recipes. The per-workflow `wf_` palette (capped to its Top-N) rides
  *  alongside this floor. */
 export const MCP_CORE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "confirm_tool_call",
   "find_workflow",
   "run_workflow",
   "authenticate",
