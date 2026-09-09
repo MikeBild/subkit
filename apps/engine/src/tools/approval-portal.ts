@@ -52,6 +52,10 @@ import { sha256Hex } from "../identity/api-key.ts";
 // case, and is a DNS hostname rather than a raw address.
 import { engineUrlFromConfig } from "../llm/runtime-context.ts";
 import { logger } from "../logging/logger.ts";
+import {
+  type PreparedWorkflowBinding,
+  PreparedWorkflowBindingSchema,
+} from "./prepared-workflow-approval.ts";
 
 /** Browser-facing decision page. One route, no approval id in the URL: the
  *  token identifies the approval, and the id is a value the MODEL already
@@ -98,6 +102,7 @@ export interface ApprovalWouldWrite {
 /** What the engine can honestly tell a human will happen if they approve. */
 export interface ApprovalPreview {
   readonly would_write: readonly ApprovalWouldWrite[];
+  readonly prepared_workflow?: PreparedWorkflowBinding;
 }
 
 function asStringOrNull(value: unknown): string | null {
@@ -257,7 +262,7 @@ export function workflowSlugFromToolName(tool: string): string | null {
   return tool.startsWith(WORKFLOW_TOOL_PREFIX) ? tool.slice(WORKFLOW_TOOL_PREFIX.length) : null;
 }
 
-function decryptPreview(row: {
+export function decryptPreview(row: {
   id: string;
   tenant_id: string;
   preview_ciphertext: Uint8Array | null;
@@ -271,8 +276,12 @@ function decryptPreview(row: {
       { ciphertext: preview_ciphertext, iv: preview_iv, auth_tag: preview_auth_tag },
       previewAad(row.tenant_id, row.id),
     );
-    const parsed = JSON.parse(plaintext) as { would_write?: unknown };
-    return { would_write: normalizeWouldWrite(parsed.would_write) };
+    const parsed = JSON.parse(plaintext) as { would_write?: unknown; prepared_workflow?: unknown };
+    const binding = PreparedWorkflowBindingSchema.safeParse(parsed.prepared_workflow);
+    return {
+      would_write: normalizeWouldWrite(parsed.would_write),
+      ...(binding.success ? { prepared_workflow: binding.data } : {}),
+    };
   } catch (err) {
     // The page still renders — an undecryptable preview must not block a human
     // from declining. It withholds the write list and says so.

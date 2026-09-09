@@ -86,10 +86,15 @@ import { logger } from "../logging/logger.ts";
 import {
   type ApprovalPreview,
   buildApprovalPreview,
+  decryptPreview,
   encryptApprovalPreview,
   mintApprovalGrantUrl,
 } from "./approval-portal.ts";
 import { ARGS_CONFIRM_ID_KEY, ARGS_CONFIRM_KEY } from "./policy.ts";
+import {
+  capturePreparedWorkflowBinding,
+  type PreparedWorkflowBinding,
+} from "./prepared-workflow-approval.ts";
 import type { ConfirmReason, ToolSurface } from "./types.ts";
 
 /** How long an approval lives, from mint to decision. It must cover the WHOLE
@@ -176,6 +181,7 @@ export interface ClaimedApproval {
   readonly ok: true;
   readonly approval_id: string;
   readonly args: Record<string, unknown>;
+  readonly prepared_workflow?: PreparedWorkflowBinding;
   /** The tool the approval was GRANTED for, read back off the claimed row. Equal
    *  to the `tool` the claim passed — the CAS predicate says so — but callers
    *  that derive an EXECUTION TARGET from the tool name must read it from here.
@@ -283,6 +289,8 @@ function lifecycleMetadata(p: {
 }
 
 export interface RequestApprovalInput {
+  /** Internal held-run provenance, not accepted from tool arguments. */
+  readonly prepared_execution_id?: string;
   readonly db: Db;
   readonly principal: ResolvedPrincipal;
   /** The `tool_call_id` the policy gate minted; becomes `tool_approvals.id`
@@ -330,7 +338,20 @@ export async function requestApproval(input: RequestApprovalInput): Promise<Requ
   const args = stripConfirmMarkers(input.args);
   const args_hash = hashToolArgs(args);
   const enc = encryptSecret(JSON.stringify(args), aadFor(principal.tenant_id, approval_id));
-  const preview: ApprovalPreview | null = buildApprovalPreview(input.preview);
+  const prepared = input.prepared_execution_id
+    ? await capturePreparedWorkflowBinding({
+        db,
+        tenant_id: principal.tenant_id,
+        execution_id: input.prepared_execution_id,
+        tool,
+        execution_mode,
+        args,
+      })
+    : undefined;
+  const visiblePreview = buildApprovalPreview(input.preview);
+  const preview: ApprovalPreview | null = prepared
+    ? { would_write: visiblePreview?.would_write ?? [], prepared_workflow: prepared }
+    : visiblePreview;
   const encPreview = preview
     ? encryptApprovalPreview(principal.tenant_id, approval_id, preview)
     : null;
@@ -400,6 +421,12 @@ export async function requestApproval(input: RequestApprovalInput): Promise<Requ
           portal_link_issued: minted.ok,
           // Answers "what was the human shown?". The list itself is ciphertext.
           preview_write_count: preview?.would_write.length ?? 0,
+          ...(prepared
+            ? {
+                prepared_execution_id: prepared.execution_id,
+                prepared_workflow_version_id: prepared.workflow_version_id,
+              }
+            : {}),
         },
       },
       tx,
@@ -947,6 +974,9 @@ export async function consumeApproval(input: ConsumeApprovalInput): Promise<Cons
           args_iv: toolApprovals.args_iv,
           args_auth_tag: toolApprovals.args_auth_tag,
           args_hash: toolApprovals.args_hash,
+          preview_ciphertext: toolApprovals.preview_ciphertext,
+          preview_iv: toolApprovals.preview_iv,
+          preview_auth_tag: toolApprovals.preview_auth_tag,
         });
 
       const row = claimed[0];
@@ -981,10 +1011,16 @@ export async function consumeApproval(input: ConsumeApprovalInput): Promise<Cons
         return await denyClaim(claimInput, tx, environmentMismatch(approval_id, stored));
       }
 
+      const binding = decryptPreview({
+        ...row,
+        id: approval_id,
+        tenant_id: principal.tenant_id,
+      })?.prepared_workflow;
       return {
         ok: true,
         approval_id,
         args,
+        ...(binding ? { prepared_workflow: binding } : {}),
         tool: row.tool,
         surface: row.surface === "mcp" ? "mcp" : "chat",
         execution_mode: stored,

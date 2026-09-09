@@ -353,6 +353,7 @@ async function executeSyntheticRun(
         // The synthetic chat palette always runs in dev (see runExecution above).
         execution_mode: "dev",
         args: workflowInput,
+        prepared_execution_id: result.execution_id,
         // Chat reaches a human in-band, so the portal is a fallback here rather
         // than the only channel — but an approval is approvable from either, and
         // both must show the same writes.
