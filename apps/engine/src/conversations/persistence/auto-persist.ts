@@ -110,6 +110,7 @@ import {
   extractCommitIntent,
   injectSyntheticToolCall,
   intentToolName,
+  isCompletedWorkflowPreparation,
   type SyntheticToolResult,
 } from "./auto-persist/synthetic.ts";
 import { commitWorkflowAtomic } from "./commit-workflow.ts";
@@ -1428,6 +1429,7 @@ export async function maybeAutoPersistFromElicitation(
   // Using `"denied"` here would conflate dispatcher failures with
   // operator declines (the genuine `"denied"` path lives in
   // buildDeclineSynthetic / approval.declined).
+  const prepared = isCompletedWorkflowPreparation(intent.kind, result.data);
   await auditAwait(
     {
       tenant_id: p.tenant_id,
@@ -1439,7 +1441,7 @@ export async function maybeAutoPersistFromElicitation(
           : AuditAction.APPROVAL_APPROVED,
       resource_type: "conversation_elicitation",
       resource_id: p.elicitation.id,
-      result: result.ok ? "success" : "error",
+      result: result.ok || prepared ? "success" : "error",
       reason:
         intent.kind === "run_workflow"
           ? "workflow_input_submitted"
@@ -1448,8 +1450,9 @@ export async function maybeAutoPersistFromElicitation(
         commit_intent_kind: intent.kind,
         tool: toolName,
         ok: result.ok,
+        ...(prepared ? { preparation: true } : {}),
         conversation_id: p.conversation_id,
-        ...(result.ok ? {} : { error_code: result.error_code ?? null }),
+        ...(result.ok || prepared ? {} : { error_code: result.error_code ?? null }),
       },
     },
     p.db,

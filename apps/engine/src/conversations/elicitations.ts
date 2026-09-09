@@ -20,7 +20,10 @@ import {
 } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { APPROVAL_TTL_MS } from "../tools/approval.ts";
-import { approvalHandleFromElicitationInput } from "./tools/ask-user/commit-intent.ts";
+import {
+  approvalHandleFromElicitationInput,
+  isWorkflowInputForm,
+} from "./tools/ask-user/commit-intent.ts";
 import { redactElicitationOutput } from "./tools/ask-user/redact-answer.ts";
 
 export type ElicitationStatus = "pending" | "resolved" | "cancelled" | "timeout";
@@ -348,7 +351,10 @@ async function insertElicitation(
       tenant_id: p.tenant_id,
       actor_type: "system",
       actor_id: p.actor_id,
-      action: AuditAction.APPROVAL_REQUESTED,
+      action: isWorkflowInputForm(p.tool_name, p.input)
+        ? AuditAction.CONVERSATION_UPDATED
+        : AuditAction.APPROVAL_REQUESTED,
+      ...(isWorkflowInputForm(p.tool_name, p.input) ? { reason: "workflow_input_requested" } : {}),
       resource_type: "conversation_elicitation",
       resource_id: inserted.id,
       result: "success",
@@ -711,18 +717,22 @@ export async function resolveElicitation(
       tenant_id: p.tenant_id,
       actor_type: p.decided_by ? "user" : "system",
       actor_id: p.decided_by,
-      // `timeout` is neither an approval nor a rejection — nobody decided.
-      // A distinct action keeps SIEM queries over APPROVAL_REJECTED honest.
+      // Missing workflow values are data, not a grant. Timeout likewise is
+      // neither approval nor rejection: nobody decided.
       action:
-        status === "resolved"
-          ? AuditAction.APPROVAL_APPROVED
-          : status === "timeout"
-            ? AuditAction.ELICITATION_EXPIRED
-            : AuditAction.APPROVAL_REJECTED,
+        status === "timeout"
+          ? AuditAction.ELICITATION_EXPIRED
+          : isWorkflowInputForm(row.tool_name, row.input)
+            ? AuditAction.CONVERSATION_UPDATED
+            : status === "resolved"
+              ? AuditAction.APPROVAL_APPROVED
+              : AuditAction.APPROVAL_REJECTED,
       resource_type: "conversation_elicitation",
       resource_id: row.id,
       result: "success",
-      reason: p.reason ?? null,
+      reason:
+        p.reason ??
+        (isWorkflowInputForm(row.tool_name, row.input) ? `workflow_input_${status}` : null),
       metadata,
     },
     exec,

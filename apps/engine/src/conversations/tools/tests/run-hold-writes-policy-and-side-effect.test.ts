@@ -50,10 +50,8 @@ describe("resolveToolMode for run_workflow (enforcement table)", () => {
     );
   });
 
-  it("execute_writes omitted in prod → confirm (env rule fires as fallback)", () => {
-    expect(runWorkflowMode({ workflow: "my-wf", environment: "prod" })).toBe(
-      "confirm_before_execution",
-    );
+  it("execute_writes omitted in prod delegates to local admission (otherwise held)", () => {
+    expect(runWorkflowMode({ workflow: "my-wf", environment: "prod" })).toBe("no_confirm");
   });
 
   it("execute_writes:true in prod → confirm (execute_writes rule wins before env check)", () => {
@@ -62,8 +60,8 @@ describe("resolveToolMode for run_workflow (enforcement table)", () => {
     );
   });
 
-  it("no environment named → confirm (the table never defaults the environment)", () => {
-    expect(runWorkflowMode({ workflow: "my-wf" })).toBe("confirm_before_execution");
+  it("omitted environment leaves default resolution and authority checking to admission", () => {
+    expect(runWorkflowMode({ workflow: "my-wf" })).toBe("no_confirm");
   });
 });
 

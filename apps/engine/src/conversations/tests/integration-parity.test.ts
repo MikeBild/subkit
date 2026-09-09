@@ -3,7 +3,7 @@
 // mock-provider shim so no postgres is required.
 //
 // Covers:
-//   - resolveToolMode honors env=dev vs env=prod for run_workflow
+//   - ordinary workflow starts reach bounded admission in dev and prod
 //   - interaction_log splicing into rehydrated tool-result messages
 //   - filterBySkillGate hides gated tools until their skill loads
 //   - loop's sink still appends events (non-streaming baseline)
@@ -23,14 +23,14 @@ describe("tool-policy wiring", () => {
     expect(mode).toBe("no_confirm");
   });
 
-  it("run_workflow with environment=prod → confirm_before_execution", () => {
+  it("run_workflow with environment=prod delegates to bounded admission", () => {
     const mode = resolveToolMode({
       tool: "run_workflow",
       category: "tenant_write",
       input: { workflow_id: "x", environment: "prod" },
       overrides: {},
     });
-    expect(mode).toBe("confirm_before_execution");
+    expect(mode).toBe("no_confirm");
   });
 
   it("approve_patch_candidate always confirm by default", () => {

@@ -188,7 +188,9 @@ describe("approval portal — the decision owns its effect", () => {
     // The approver gets a receipt, not a held connection. The LLM turn runs in
     // the worker; inline it would have blocked this response for minutes.
     expect(elapsed_ms).toBeLessThan(5_000);
-    expect(await res.text()).toContain("being carried out");
+    const receipt = await res.text();
+    expect(receipt).toContain("continuation was queued");
+    expect(receipt).not.toContain("being carried out");
 
     // 1. The grant is durable, and a grant OPENS a claim window rather than
     //    inheriting whatever was left of the human's deliberation time.
@@ -337,7 +339,7 @@ describe("approval portal — the decision owns its effect", () => {
     const res = await decide(grant, "approve");
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(body).toContain("approved");
+    expect(body).toContain("<h1>Approved</h1>");
     expect(body).not.toContain("being carried out");
     expect(sent).toHaveLength(0);
   });
