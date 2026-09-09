@@ -8,6 +8,7 @@ import {
   conversationToolCalls,
   executions,
   tenants,
+  toolApprovals,
   workflowExecutionAuthorities,
   workflows,
   workflowVersions,
@@ -16,6 +17,7 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { EngineClient } from "../engine-client/index.ts";
 import { databaseNow } from "../test-helpers/database-clock.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
+import { capturePreparedWorkflowBinding } from "../tools/prepared-workflow-approval.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
 import { createEmptyDraftDocument } from "./authoring-state.ts";
 import { resolveElicitationAndReactivate } from "./elicitations.ts";
@@ -317,6 +319,28 @@ async function fixture(
       .from(conversationToolCalls)
       .where(eq(conversationToolCalls.tenant_id, tenantId));
   }
+  async function confirmPrepared() {
+    const [elicitation] = await tdb.db
+      .select()
+      .from(conversationElicitations)
+      .where(
+        and(
+          eq(conversationElicitations.tenant_id, tenantId),
+          eq(conversationElicitations.tool_name, "ask_user_confirm"),
+        ),
+      );
+    if (!elicitation) throw new Error("missing prepared approval");
+    return maybeAutoPersistFromElicitation({
+      db: tdb.db,
+      tenant_id: tenantId,
+      conversation_id: elicitation.conversation_id,
+      actor_id: actorId,
+      principal,
+      answer_actor: { kind: "human", user_id: actorId, via: "chat" },
+      elicitation,
+      elicitation_output: { confirmed: true },
+    });
+  }
   return {
     tenant,
     workflow,
@@ -330,8 +354,106 @@ async function fixture(
     submitInput,
     submitGeneratedInput,
     runTool,
+    confirmPrepared,
   };
 }
+
+test("a held chat approval replays its exact prepared version once", async () => {
+  const f = await fixture();
+  const before = remote.callCount();
+  await f.runTool("synthetic");
+  expect(remote.callCount()).toBe(before);
+  const result = await f.confirmPrepared();
+  expect(result.synthetic_result?.ok).toBe(true);
+  expect(remote.callCount()).toBe(before + 1);
+  const rows = await f.rows();
+  expect(rows).toHaveLength(2);
+  expect(rows.every((run) => run.workflow_version_id === f.version.id)).toBe(true);
+  await f.confirmPrepared();
+  expect(remote.callCount()).toBe(before + 1);
+});
+
+test("activation after a held preview invalidates the chat approval without dispatch", async () => {
+  const f = await fixture();
+  await f.runTool("synthetic");
+  const [version] = await tdb.db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: f.tenant.id,
+      workflow_id: f.workflow.id,
+      version: 2,
+      dag: { ...f.definition, description: "Unreviewed replacement" },
+    })
+    .returning();
+  if (!version) throw new Error("missing replacement version");
+  await tdb.db
+    .update(workflows)
+    .set({ current_version_id: version.id })
+    .where(and(eq(workflows.tenant_id, f.tenant.id), eq(workflows.id, f.workflow.id)));
+  const before = remote.callCount();
+  const result = await f.confirmPrepared();
+  expect(result.synthetic_result?.error_code).toBe("prepared_workflow_changed");
+  expect(remote.callCount()).toBe(before);
+  expect(await f.rows()).toHaveLength(1);
+  const denied = await tdb.db
+    .select()
+    .from(auditLog)
+    .where(
+      and(eq(auditLog.tenant_id, f.tenant.id), eq(auditLog.reason, "prepared_workflow_changed")),
+    );
+  expect(denied).toHaveLength(1);
+});
+
+test("a legacy or unreadable held approval cannot inherit the latest version", async () => {
+  const f = await fixture();
+  await f.runTool("synthetic");
+  await tdb.db
+    .update(toolApprovals)
+    .set({ preview_ciphertext: null, preview_iv: null, preview_auth_tag: null })
+    .where(eq(toolApprovals.tenant_id, f.tenant.id));
+  const before = remote.callCount();
+  expect((await f.confirmPrepared()).synthetic_result?.error_code).toBe(
+    "prepared_workflow_changed",
+  );
+  expect(remote.callCount()).toBe(before);
+});
+
+test("prepared provenance rejects different tenant, input, environment and live runs", async () => {
+  const f = await fixture();
+  await f.runTool("synthetic");
+  const [run] = await f.rows();
+  if (!run) throw new Error("missing preparation");
+  const params = {
+    db: tdb.db,
+    tenant_id: f.tenant.id,
+    execution_id: run.id,
+    tool: `wf_${f.workflow.slug}`,
+    execution_mode: "dev" as const,
+    args: {},
+  };
+  expect((await capturePreparedWorkflowBinding(params)).workflow_version_id).toBe(f.version.id);
+  const other = await fixture();
+  for (const changed of [
+    { tenant_id: other.tenant.id },
+    { args: { recipient: "other" } },
+    { execution_mode: "prod" as const },
+    { tool: `wf_${other.workflow.slug}` },
+  ]) {
+    await expect(capturePreparedWorkflowBinding({ ...params, ...changed })).rejects.toThrow();
+  }
+  const live = await fixture({ maxRuns: 1 });
+  await live.runTool("synthetic");
+  const [liveRun] = await live.rows();
+  if (!liveRun) throw new Error("missing live run");
+  await expect(
+    capturePreparedWorkflowBinding({
+      ...params,
+      tenant_id: live.tenant.id,
+      execution_id: liveRun.id,
+      tool: `wf_${live.workflow.slug}`,
+    }),
+  ).rejects.toThrow();
+});
 
 for (const kind of ["generic", "synthetic"] as const) {
   test(`${kind} workflow tool cannot use an expired local authority`, async () => {

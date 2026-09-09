@@ -2633,6 +2633,17 @@ when a standing grant is available. Explicit one-shot tool approvals and held-wr
 replay still require separate boundary convergence; standing-authority admission
 does not prove those legacy approval paths.
 
+Held `wf_<slug>` chat previews now retain version/input provenance from their
+completed, persisted preparation run inside the encrypted approval. Confirmation
+checks the workflow, active version, environment and input digest before running
+that exact version, with reactive repair disabled. A changed version or an older
+approval without this provenance requires a fresh preview and human decision.
+The held execution is not reopened as a live execution. This protection is local
+to this chat replay path: it does not yet establish materialized request,
+connector-permission or response-derived recipient binding, nor does it prove the
+other one-shot tool entry points. An attempted replay is not evidence of a
+successful external effect.
+
 The single-use tool-approval portal uses SubKit's local family UI palette and
 supports German and English without client-side scripts or new configuration.
 The browser language supplies the default; the authenticated language buttons

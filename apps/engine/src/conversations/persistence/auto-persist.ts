@@ -69,6 +69,7 @@ import {
   recordApprovalApproved,
   recordApprovalUnfulfilled,
 } from "../../tools/approval.ts";
+import { preparedWorkflowMatches } from "../../tools/prepared-workflow-approval.ts";
 import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../../workflows/lookup.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
@@ -951,6 +952,32 @@ export async function maybeAutoPersistFromElicitation(
         }
         const workflowId = resolved.id;
         // A grant can be revoked between the preview and the approval.
+        const binding = claim.prepared_workflow;
+        if (
+          !preparedWorkflowMatches(binding, {
+            workflow_id: workflowId,
+            workflow_version_id: resolved.current_version_id,
+            execution_mode: claim.execution_mode,
+            args: claim.args,
+          })
+        ) {
+          await recordApprovalUnfulfilled({
+            db: p.db,
+            principal: p.principal,
+            claim,
+            tool: approvedTool,
+            via: "chat",
+            reason: "prepared_workflow_changed",
+          });
+          result = {
+            ok: false,
+            error_code: "prepared_workflow_changed",
+            message:
+              "The reviewed workflow version or input is missing or changed. Create a fresh preview and obtain a new decision; nothing was written by this attempt.",
+            data: { workflow_id: workflowId },
+          };
+          break;
+        }
         const rbac = await gateWorkflowRunRbac({
           db: p.db,
           principal: p.principal,
@@ -992,7 +1019,11 @@ export async function maybeAutoPersistFromElicitation(
         const heldRun = await runExecution({
           db: p.db,
           tenant_id: p.tenant_id,
-          source: { kind: "saved", workflow_id: workflowId },
+          source: {
+            kind: "saved",
+            workflow_id: workflowId,
+            version_id: binding.workflow_version_id,
+          },
           input: replayInput,
           options: {
             request_source: "chat",
@@ -1002,6 +1033,7 @@ export async function maybeAutoPersistFromElicitation(
             // `consumeApproval` rejects a claim that contradicts the stored
             // environment — so the replay runs where the preview ran.
             execution_mode: "dev",
+            self_healing: { enabled: false },
           },
         });
         await p.db
