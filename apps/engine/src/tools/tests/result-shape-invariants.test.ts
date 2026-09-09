@@ -164,10 +164,8 @@ describe("tools/result-shape — envelope union invariants", () => {
         data: {},
       })),
     ]);
-    // tenant_write without sk_confirm → needs_confirm on CHAT. On MCP the same
-    // call would `proceed` — `policyDecide` collapses confirm_before_execution
-    // to `proceed` for `surface:"mcp"` (see tools/policy.ts), because the
-    // client's own destructiveHint dialog gates it there instead.
+    // A tenant write without a locally granted approval needs confirmation
+    // on both surfaces. This fixture checks the chat rendering envelope.
     const envelope = await dispatchTool(
       { registry: reg, db: DB_STUB, principal: PRINCIPAL },
       { surface: "chat", name: "_writes", args: {} },

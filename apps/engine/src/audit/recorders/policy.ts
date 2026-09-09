@@ -62,14 +62,9 @@ export interface RecordToolPolicyConfirmCollapsedMcpParams extends RecorderBase 
 }
 
 /**
- * Emitted by `conversations/tools/sdk-wrap/invoke.ts` when the resolver
- * decided `confirm_before_execution` but the turn was submitted over MCP
- * and the tool is in the enumerated collapsible-write set
- * (`MCP_TURN_COLLAPSIBLE_WRITE_TOOLS`), so no server pause was minted —
- * the MCP client's `destructiveHint` dialog on the outer `conversation_*`
- * call was the human gate. Pairs with the `tool_policy.confirmation_required`
- * row the same call already wrote, so an operator can tell a collapsed
- * gate from an answered one.
+ * @deprecated Historical audit compatibility only. Runtime dispatch no longer
+ * treats an MCP client hint as an approval and never emits this event. Keep the
+ * event shape readable for installations with older audit records.
  */
 export async function recordToolPolicyConfirmCollapsedMcp(
   p: RecordToolPolicyConfirmCollapsedMcpParams,

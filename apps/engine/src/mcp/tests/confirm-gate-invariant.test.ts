@@ -1,13 +1,5 @@
-// The safety invariant that makes the MCP confirm-collapse sound.
-//
-// `policyDecide` (tools/policy.ts) collapses `confirm_before_execution` to
-// `proceed` for `surface:"mcp"` on the theory that the CLIENT's own
-// `destructiveHint` dialog already gated the call before it reached the
-// engine. That theory only holds if every tool the enforcement table
-// (`decideToolMode` / `TOOL_POLICIES`, conversations/tool-policies.ts) can
-// ever resolve to `confirm_before_execution` also advertises
-// `destructiveHint:true` in `tools/list` (the annotation the client's dialog
-// keys on).
+// Client annotations must truthfully describe risk. They are not authority;
+// the dispatcher independently verifies its own human-granted approval.
 //
 // This test drives the REAL policy table with representative inputs (prod
 // environment, `execute_writes:true`, a write-method `call_connector` call,
@@ -15,8 +7,7 @@
 // exposes over MCP, and asserts the annotation for every one that can ever
 // resolve to `confirm_before_execution`. If a future tool becomes
 // confirm-capable while staying advertised as read-only or non-destructive,
-// this test fails BEFORE that hole ships — the client would never gate it,
-// and MCP has no second, server-side confirm to fall back on.
+// this test fails before the misleading client presentation ships.
 //
 // Exclusions:
 //   - `draft_write` tools: blocked on MCP via `not_available_on_surface`
@@ -27,6 +18,7 @@
 import { describe, expect, test } from "bun:test";
 import { decideToolMode } from "../../conversations/tool-policies.ts";
 import { getUnifiedRegistry } from "../../tools/index.ts";
+import { policyDecide } from "../../tools/policy.ts";
 import type { ToolCategory } from "../../tools/types.ts";
 import { buildToolAnnotations, buildWorkflowToolAnnotations } from "../capabilities/tool-meta.ts";
 
@@ -85,6 +77,20 @@ describe("confirm-gate invariant — every MCP-reachable confirm-capable tool ad
     const violations: string[] = [];
     for (const [name, category] of seen) {
       if (!isConfirmCapable(name, category)) continue;
+      for (const args of REPRESENTATIVE_INPUTS) {
+        const mode = decideToolMode({
+          tool: name,
+          category,
+          input: args,
+          overrides: {},
+          permission_mode: null,
+        });
+        if (mode.mode === "confirm_before_execution") {
+          expect(policyDecide({ tool: name, category, surface: "mcp", args }).kind).toBe(
+            "needs_confirm",
+          );
+        }
+      }
       const annotations = buildToolAnnotations(category, name);
       if (annotations.destructiveHint !== true) {
         violations.push(

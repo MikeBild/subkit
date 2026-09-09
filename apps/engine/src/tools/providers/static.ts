@@ -8,6 +8,7 @@
 //                        has inspect_recipe but not list_recipes.
 //   self_healing.scan  — admin-only LLM repair trigger; MCP-only.
 //   subkit_settings / subkit_update_setting — admin runtime config parity.
+//   confirm_tool_call — single-use replay of a local HUMAN-GRANTED call.
 //
 // All other "MCP-native" handlers are duplicates of conversation tools
 // with the same name; the conversation versions win and serve both
@@ -40,6 +41,7 @@
 // oversight.
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import {
@@ -85,6 +87,8 @@ export interface StaticExecuteCtx {
   readonly mcpMode?: "product" | "authoring" | "admin";
   /** Read-only flag of this dispatch (mode + deployment `mcp.read_only`). */
   readonly readOnly?: boolean;
+  /** Re-enters the same dispatcher with its original principal and visibility. */
+  readonly resumeApproval: (tool: string, approvalId: string) => Promise<ToolEnvelope>;
 }
 
 export type StaticInvoke = (
@@ -124,6 +128,40 @@ function envelopeForError(error_code: string, message: string, details?: unknown
 }
 
 const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
+  {
+    tool: {
+      name: "confirm_tool_call",
+      description:
+        "Execute one previously HUMAN-GRANTED SubKit tool approval. This tool does not approve anything. First show approval_url to the person and wait for their decision. Pass only the tool name and tool_call_id returned by needs_confirm; the server replays its stored arguments, rechecks access and consumes the approval once.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          tool: { type: "string", minLength: 1 },
+          confirm_id: { type: "string", format: "uuid" },
+        },
+        required: ["tool", "confirm_id"],
+        additionalProperties: false,
+      },
+    },
+    visibleInMcpModes: null,
+    visibleOnChat: false,
+    // This is a claim, not a new decision. The target's own RBAC and policy
+    // are evaluated inside the dispatcher after the bound approval is claimed.
+    category: "tenant_read",
+    async invoke(ctx, args) {
+      const parsed = z
+        .object({ tool: z.string().min(1), confirm_id: z.string().uuid() })
+        .strict()
+        .safeParse(args);
+      if (!parsed.success || parsed.data.tool === "confirm_tool_call") {
+        return envelopeForError(
+          "invalid_args",
+          "Pass an original tool name and its approval UUID, with no replacement arguments.",
+        );
+      }
+      return ctx.resumeApproval(parsed.data.tool, parsed.data.confirm_id);
+    },
+  },
   {
     tool: operationalOverviewMcpTool,
     visibleInMcpModes: null,

@@ -350,8 +350,11 @@ persist their confirmation and end the turn; a later `conversation_get` or
 `elicitation/create(mode: form)` request. That delivery is leased, the answer is
 stamped `human/in_band_elicitation`, and only then may the harness grant and claim
 the held call. A model relay through `conversation_respond_elicitation` is still
-refused for approval-bearing rows. Standalone registry/workflow calls retain the
+refused for approval-bearing rows. Standalone registry calls retain the
 approval-portal flow because they have no persisted conversation task to resume.
+MCP `wf_<slug>` calls instead use version-bound Execution Authorities: an
+existing matching local authority permits the run; otherwise writes remain held
+as preparation. A client confirmation alone never creates that authority.
 
 **No path re-sends the arguments.** `confirm_tool_call` publishes no `arguments`
 property at all, and on the `_meta` path the dispatcher discards whatever the client

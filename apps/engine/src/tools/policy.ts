@@ -199,21 +199,9 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
 
   if (decision.mode !== "confirm_before_execution") return { kind: "proceed" };
 
-  // MCP: the CLIENT's native `destructiveHint` dialog is the human gate.
-  // Every MCP-reachable tool that can resolve to `confirm_before_execution`
-  // advertises `destructiveHint:true` (`mcp/capabilities/tool-meta.ts`; pinned
-  // exhaustively by `mcp/tests/confirm-gate-invariant.test.ts`, which sweeps
-  // the whole registry — `tools-list.test.ts` only spot-checks a few tools),
-  // so a trusted client (claude.ai,
-  // ChatGPT) renders a blocking, per-call, model-unbypassable approval BEFORE
-  // the call reaches the engine — empirically verified against both clients.
-  // A second server-side confirm would be redundant AND has no in-band grant
-  // channel over MCP (elicitation is advertised-but-unfulfilled), so it could
-  // only dead-end the write. Chat is unaffected: it carries a real user
-  // principal and gates via the HTTP `ask_user_confirm` elicitation route.
-  if (input.surface === "mcp") return { kind: "proceed" };
-
-  // The caller already confirmed (or yolo'd around) the gate.
+  // Client annotations are advisory, not locally verifiable human authority.
+  // On either surface the dispatcher consumes the human-granted, single-use
+  // record before forwarding a confirmation marker to this pure policy.
   if (isConfirmed(input.args, input.meta)) return { kind: "proceed" };
 
   // The envelope carries a structured preview of what the call will do,
@@ -229,12 +217,10 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
       policy_mode: "confirm_before_execution",
       reason: decision.rule,
       tool_call_id: crypto.randomUUID(),
-      // Only the chat surface reaches this envelope: MCP collapses to `proceed`
-      // above (the client's destructiveHint dialog is the gate). Chat gates via
-      // the emitted `ask_user_confirm` HTTP elicitation, answered by the real
-      // user principal; the engine then performs the call itself.
       resume:
-        "The operator answers the emitted ask_user_confirm; the engine then performs the call itself.",
+        input.surface === "mcp"
+          ? "A person must grant the approval at approval_url. Only then call confirm_tool_call with tool and confirm_id = tool_call_id. This triggers the stored call; it cannot approve it."
+          : "The operator answers the emitted ask_user_confirm; the engine then performs the call itself.",
     },
   };
 }

@@ -135,13 +135,9 @@ describe("tools/dispatcher (active)", () => {
     }
   });
 
-  // MCP writes execute directly — the client's own destructiveHint dialog
-  // gates the call before it reaches the engine, so `policyDecide` collapses
-  // confirm_before_execution to `proceed` on `surface:"mcp"` (see
-  // tools/policy.ts). No approval is ever minted for this call; contrast with
-  // the "needs_confirm path" chat test right below, which proves chat is
-  // unaffected.
-  test("MCP tenant_write proceeds directly — no confirm gate, no minted approval", async () => {
+  // A client annotation cannot establish authority. The real database must
+  // contain a pending decision before a gated MCP call can execute.
+  test("MCP tenant_write waits for a local human approval before invoking the executor", async () => {
     let executed = false;
     const watchedDescriptor: ToolDescriptor = {
       name: "_test_mcp_write_proceeds",
@@ -169,14 +165,16 @@ describe("tools/dispatcher (active)", () => {
     };
     const registry = buildRegistry([watchedProvider]);
     const envelope = await dispatchTool(
-      { registry, db: DB_STUB, principal: PRINCIPAL, conversationCtx: {} as never },
+      { registry, db: testDb.db, principal: dbPrincipal(), conversationCtx: {} as never },
       { surface: "mcp", name: "_test_mcp_write_proceeds", args: {} },
     );
-    expect(envelope.status).toBe("ok");
-    if (envelope.status === "ok") {
-      expect(envelope.data).toEqual({ ran: true });
+    expect(envelope.status).toBe("needs_confirm");
+    if (envelope.status === "needs_confirm") {
+      const rows = await approvalAuditRows(envelope.confirm.tool_call_id);
+      expect(rows.filter((row) => row.action === AuditAction.APPROVAL_REQUESTED)).toHaveLength(1);
+      expect(rows.filter((row) => row.action === AuditAction.APPROVAL_APPROVED)).toHaveLength(0);
     }
-    expect(executed).toBe(true);
+    expect(executed).toBe(false);
   });
 
   test("needs_confirm path → returns envelope without invoking executor", async () => {
@@ -666,16 +664,8 @@ describe("tools/dispatcher — MCP confirmation + APPROVAL_APPROVED lifecycle (r
   // it actually received — the property under test throughout this block
   // is WHICH args reach the executor, not what the caller sent.
   //
-  // NOTE on surface: MCP no longer mints an approval through the normal
-  // policy path — `policyDecide` collapses confirm_before_execution to
-  // `proceed` on `surface:"mcp"`, so `gateConfirm` never fires there
-  // (see the "MCP tenant_write proceeds directly" test above). The tests
-  // below seed an approval directly via `requestApproval` (bypassing
-  // `gateConfirm`/`policyDecide` entirely) to exercise the dispatcher's
-  // generic confirm-marker claim mechanism — the same code path chat's
-  // `ask_user_confirm` resolution drives operationally today. The `surface`
-  // field on the approval is just part of the CAS predicate
-  // (`consumeApproval`); it is not evidence that MCP still gates writes.
+  // These fixtures isolate the single-use claim from the initial request.
+  // The real MCP transport suite covers the full request/grant/replay chain.
   function tenantWriteProvider(
     name: string,
     onExecute?: (args: Record<string, unknown>) => void,

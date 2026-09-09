@@ -1,23 +1,5 @@
-// MCP-origin confirm collapse — the enumerated write-tool gate, end to end.
-//
-// A conversation turn submitted over MCP runs with `surface: "mcp"` on the
-// `ToolContext`. The inner confirm gate (`decideConfirm`) collapses the
-// server pause for the ENUMERATED additive/reversible write tools only:
-// the MCP client's destructiveHint dialog on the outer `conversation_*`
-// call was the human gate, and a server pause on this path mints an
-// approval no human can reach. Destructive tools keep pausing.
-//
-// This suite drives the real loop gate (`wrapOne`, the same wrapper
-// `wrapTools` installs for every turn) with a mock LLM test context and
-// pins:
-//   - mcp + create_knowledge_source → EXECUTES: tool output present, no
-//     elicitation row, conversation stays active, and the
-//     tool_policy.confirm_collapsed_mcp audit row lands.
-//   - mcp + delete_workflow → PAUSES: pending ask_user_confirm elicitation.
-//   - chat + create_knowledge_source → PAUSES exactly like before.
-//   - INVARIANT: every confirm-capable tool in the conversation palette is
-//     classified in exactly one of MCP_TURN_COLLAPSIBLE_WRITE_TOOLS /
-//     MCP_TURN_KEEP_PAUSE_WRITE_TOOLS — an unclassified new tool fails here.
+// Conversation gates use local decisions on every transport. Catalogue hints
+// never grant a call; auto preparation remains autonomous through the resolver.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { and, eq } from "drizzle-orm";
@@ -26,12 +8,9 @@ import type { Db } from "../../db/client.ts";
 import { auditLog, conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
-import {
-  MCP_TURN_COLLAPSIBLE_WRITE_TOOLS,
-  MCP_TURN_KEEP_PAUSE_WRITE_TOOLS,
-  TOOL_POLICIES,
-} from "../tool-policies.ts";
+import type { PermissionMode } from "../tool-policies.ts";
 import { getTool, listTools, type ToolContext } from "../tools/index.ts";
+import { decideConfirm } from "../tools/sdk-wrap/confirm-decision.ts";
 import { wrapOne } from "../tools/sdk-wrap/invoke.ts";
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
@@ -102,6 +81,7 @@ async function runGatedTool(
   surface: ToolContext["surface"],
   tool: string,
   args: Record<string, unknown>,
+  permissionMode: PermissionMode | null = null,
 ): Promise<{ result: { ok: boolean; pause?: unknown; data?: unknown }; events: TurnEvent[] }> {
   const inner = getTool(tool);
   expect(inner).toBeDefined();
@@ -114,7 +94,7 @@ async function runGatedTool(
     events,
     ctx.testDb.db as unknown as Db,
     {},
-    null,
+    permissionMode,
     [],
   );
   // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
@@ -134,36 +114,20 @@ async function pendingElicitations(conversation_id: string) {
     );
 }
 
-describe("mcp-origin turn — enumerated collapse executes the write", () => {
-  it("create_knowledge_source over mcp EXECUTES: output present, no elicitation, collapse audit row", async () => {
+describe("conversation confirmation — no transport bypass", () => {
+  it("create_knowledge_source over MCP pauses when policy requires confirmation", async () => {
     const conversation_id = await newConversation();
     const { result, events } = await runGatedTool(
       conversation_id,
       "mcp",
       "create_knowledge_source",
-      {
-        mode: "inline",
-        name: "MCP Collapse Probe",
-        content: "# Probe\n\nA small inline knowledge source used to pin the MCP collapse gate.",
-      },
+      { mode: "inline", name: "Pending source", content: "# Pending" },
     );
-
-    // The gate collapsed — no pause envelope, the inner tool RAN and its
-    // output is present on the tool result.
-    expect(result.pause).toBeUndefined();
-    expect(result.ok).toBe(true);
-    expect(result.data).toMatchObject({ created: true });
-    expect(events.find((e) => e.type === "elicit_request")).toBeUndefined();
-
-    // No elicitation row was minted, and the conversation stayed active.
-    expect(await pendingElicitations(conversation_id)).toHaveLength(0);
-    const [conv] = await ctx.testDb.db
-      .select({ status: conversations.status })
-      .from(conversations)
-      .where(eq(conversations.id, conversation_id));
-    expect(conv?.status).toBe("active");
-
-    // The durable collapse trail: tool_policy.confirm_collapsed_mcp.
+    expect(result.ok).toBe(false);
+    expect(result.pause).toBeDefined();
+    expect(result.data).not.toMatchObject({ created: true });
+    expect(events.find((event) => event.type === "elicit_request")).toBeDefined();
+    expect(await pendingElicitations(conversation_id)).toHaveLength(1);
     const audits = await ctx.testDb.db
       .select()
       .from(auditLog)
@@ -174,15 +138,26 @@ describe("mcp-origin turn — enumerated collapse executes the write", () => {
           eq(auditLog.resource_id, conversation_id),
         ),
       );
-    expect(audits).toHaveLength(1);
-    expect(audits[0]?.result).toBe("success");
-    expect(audits[0]?.reason).toBe("mcp_client_dialog_gate");
-    expect(audits[0]?.metadata).toMatchObject({
-      tool: "create_knowledge_source",
-      mode: "confirm_before_execution",
-      gate: "mcp_client_destructive_hint_dialog",
-    });
+    expect(audits).toHaveLength(0);
   });
+
+  for (const surface of ["mcp", "chat"] as const) {
+    it(`auto preparation creates a source without an approval over ${surface}`, async () => {
+      const conversation_id = await newConversation();
+      const { result, events } = await runGatedTool(
+        conversation_id,
+        surface,
+        "create_knowledge_source",
+        { mode: "inline", name: `Auto source ${surface}`, content: "# Preparation" },
+        "auto",
+      );
+      expect(result.ok).toBe(true);
+      expect(result.pause).toBeUndefined();
+      expect(result.data).toMatchObject({ created: true });
+      expect(events.find((event) => event.type === "elicit_request")).toBeUndefined();
+      expect(await pendingElicitations(conversation_id)).toHaveLength(0);
+    });
+  }
 
   it("delete_workflow over mcp still PAUSES on a pending ask_user_confirm", async () => {
     const conversation_id = await newConversation();
@@ -228,54 +203,23 @@ describe("mcp-origin turn — enumerated collapse executes the write", () => {
   });
 });
 
-describe("invariant — every confirm-capable palette tool is classified", () => {
-  // A tool can resolve to confirm_before_execution when its category
-  // defaults there (tenant_write), its per-tool default pins it, or a
-  // computeModeFromInput hook can upgrade it. Every such tool MUST be in
-  // exactly one of the two MCP-collapse sets — fail-closed: adding a new
-  // confirm-capable write tool without classifying it fails this test.
-  function isConfirmCapable(name: string, category: string): boolean {
-    if (category === "tenant_write") return true;
-    const def = TOOL_POLICIES[name];
-    if (!def) return false;
-    if (def.defaultMode === "confirm_before_execution") return true;
-    return typeof def.computeModeFromInput === "function";
-  }
-
-  it("classifies every confirm-capable tool in exactly one set", () => {
-    for (const tool of listTools()) {
-      if (!isConfirmCapable(tool.name, tool.category)) continue;
-      const collapsible = MCP_TURN_COLLAPSIBLE_WRITE_TOOLS.has(tool.name);
-      const keepPause = MCP_TURN_KEEP_PAUSE_WRITE_TOOLS.has(tool.name);
-      // Exactly one — neither (unclassified) and both (contradictory)
-      // each fail with the offending tool named.
-      expect(`${tool.name}: collapsible=${collapsible} keep_pause=${keepPause}`).toBe(
-        `${tool.name}: collapsible=${collapsible} keep_pause=${!collapsible}`,
-      );
-      expect(collapsible || keepPause).toBe(true);
+describe("invariant — every palette tool respects its resolved confirmation", () => {
+  it("catalogue category and MCP transport never substitute for approval", () => {
+    for (const entry of listTools()) {
+      expect(
+        decideConfirm({
+          tool: entry.name,
+          category: entry.category,
+          surface: "mcp",
+          resolverRule: "category_default",
+          resolvedMode: "confirm_before_execution",
+          priorApproval: false,
+        }),
+      ).toEqual({ pause: true, reason: "confirm_required" });
     }
   });
 
-  it("both sets contain only real palette tool names", () => {
-    const palette = new Set(listTools().map((t) => t.name));
-    for (const name of MCP_TURN_COLLAPSIBLE_WRITE_TOOLS) {
-      expect(`${name}: ${palette.has(name)}`).toBe(`${name}: true`);
-    }
-    for (const name of MCP_TURN_KEEP_PAUSE_WRITE_TOOLS) {
-      expect(`${name}: ${palette.has(name)}`).toBe(`${name}: true`);
-    }
-  });
-
-  it("the sets are disjoint", () => {
-    for (const name of MCP_TURN_COLLAPSIBLE_WRITE_TOOLS) {
-      expect(MCP_TURN_KEEP_PAUSE_WRITE_TOOLS.has(name)).toBe(false);
-    }
-  });
-
-  it("the collapsed gate is reachable through the full wrapTools palette (not just wrapOne)", async () => {
-    // Sanity: the enumerated tools are actually part of the assembled
-    // authoring palette an MCP-origin turn wraps — a collapse set naming
-    // tools the palette never exposes would be dead configuration.
+  it("the policy boundary is wired into the full authoring palette", async () => {
     const conversation_id = await newConversation();
     const wrapped = await wrapTools(
       toolCtxFor(conversation_id, "mcp"),

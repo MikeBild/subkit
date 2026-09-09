@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/index.ts";
 import { auditLog } from "../../db/schema/audit.ts";
+import { replayHumanGrantedMcpCall } from "./approved-call-fixture.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
@@ -45,10 +46,10 @@ describe("mcp settings tools", () => {
     });
   });
 
-  test("MCP hot write is immediately visible over REST and audited as MCP", async () => {
+  test("a human-approved MCP hot write is visible over REST and audited as MCP", async () => {
     const { plaintext } = await suite.issueApiKey(["mcp:admin", "settings:read", "settings:write"]);
     const client = await suite.connectWithApiKey(plaintext);
-    const updated = await client.callTool({
+    const pending = await client.callTool({
       name: "subkit_update_setting",
       arguments: {
         path: "tokens.monthly_budget",
@@ -56,6 +57,8 @@ describe("mcp settings tools", () => {
         tenant_id: suite.http.tenantId,
       },
     });
+    expect(textBody(pending).status).toBe("needs_confirm");
+    const updated = await replayHumanGrantedMcpCall(suite, client, pending);
     expect(updated.isError).toBeFalsy();
     expect(textBody(updated)).toMatchObject({
       path: "tokens.monthly_budget",
@@ -105,10 +108,12 @@ describe("mcp settings tools", () => {
         tenant_slug: "default",
       },
     ];
-    const updated = await client.callTool({
+    const pending = await client.callTool({
       name: "subkit_update_setting",
       arguments: { path: "auth.providers", value: providers },
     });
+    expect(textBody(pending).status).toBe("needs_confirm");
+    const updated = await replayHumanGrantedMcpCall(suite, client, pending);
     expect(updated.isError).toBeFalsy();
     expect(textBody(updated)).toMatchObject({
       path: "auth.providers",

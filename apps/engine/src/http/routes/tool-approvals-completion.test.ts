@@ -19,6 +19,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { issueBrowserSession } from "../../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { setConfigKey } from "../../config/loader.ts";
 import {
@@ -36,6 +37,7 @@ const nextApprovalId = createDeterministicUuidFactory(0x63706c);
 
 let server: HttpTestServer;
 let requester: ResolvedPrincipal;
+let browserCookie: string;
 
 /** Jobs the route handed to pg-boss. A stub, so the test needs no queue runtime
  *  and can assert the envelope the worker will actually receive. */
@@ -58,6 +60,15 @@ beforeAll(async () => {
     },
   });
   await setConfigKey("server.public_base_url", server.baseUrl, { force: true });
+  const login = await issueBrowserSession({
+    db: server.db,
+    tenantId: server.tenantId,
+    userId: server.userId,
+    redirectTo: server.baseUrl,
+    via: "approval_portal_completion_test",
+  });
+  browserCookie = login.headers.get("set-cookie") ?? "";
+  if (!browserCookie) throw new Error("browser session was not issued");
   requester = {
     provider: "api_key",
     kind: "system_account",
@@ -137,7 +148,7 @@ async function seedParkedCall(): Promise<{
  *  it minted, then submit. Grant possession scopes WHICH approval; a signed-in
  *  account supplies WHO decides. */
 async function decide(grant: string, decision: "approve" | "decline"): Promise<Response> {
-  const headers = { authorization: `Bearer ${server.apiKey}` };
+  const headers = { cookie: browserCookie };
   const page = await fetch(
     `${server.baseUrl}/v1/tool-approvals/decide?grant=${encodeURIComponent(grant)}`,
     { headers },

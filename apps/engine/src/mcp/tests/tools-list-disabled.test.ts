@@ -59,10 +59,16 @@ describe("mcp tools/list — draft_write omitted (authoring mode)", () => {
     expect(names.has("conversation_start")).toBe(true);
   });
 
-  test("confirm_tool_call is NOT listed — MCP writes execute directly", async () => {
+  test("confirm_tool_call is discoverable and cannot accept replacement arguments", async () => {
     const client = await suite.connect();
     const result = await client.listTools();
-    expect(result.tools.some((t) => t.name === "confirm_tool_call")).toBe(false);
+    const replay = result.tools.find((t) => t.name === "confirm_tool_call");
+    expect(replay).toBeDefined();
+    expect(replay?.description).toContain("does not approve anything");
+    expect(replay?.inputSchema.required).toEqual(["tool", "confirm_id"]);
+    expect(replay?.inputSchema.additionalProperties).toBe(false);
+    expect(replay?.annotations?.readOnlyHint).toBe(false);
+    expect(replay?.annotations?.openWorldHint).toBe(true);
   });
 
   test("no tenant_* alias remains in the catalog", async () => {
