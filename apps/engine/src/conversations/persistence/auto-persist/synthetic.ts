@@ -212,13 +212,29 @@ export async function injectSyntheticToolCall(p: {
   });
   // The harness states the outcome of the write it performed; `p.synthetic`
   // is an envelope it built, not a `ToolResult` a classifier could read.
-  await updateToolCallOutput(p.db, callId, p.synthetic, p.synthetic.ok ? "ok" : "error");
+  const data = p.synthetic.data;
+  const prepared =
+    commitIntentKind === "run_workflow" &&
+    data !== null &&
+    typeof data === "object" &&
+    "preview" in data &&
+    data.preview === true &&
+    "status" in data &&
+    data.status === "succeeded";
+  await updateToolCallOutput(
+    p.db,
+    callId,
+    p.synthetic,
+    p.synthetic.ok || prepared ? "ok" : "error",
+  );
   // Confirmation-state column carries `confirmed` so the read path
   // and observability dashboards can filter on harness-driven writes.
   await p.db
     .update(conversationToolCalls)
     .set({
-      confirmation_state: p.synthetic.ok ? "confirmed" : "declined",
+      // An input form did not grant (or decline) live execution authority.
+      confirmation_state:
+        commitIntentKind === "run_workflow" ? null : p.synthetic.ok ? "confirmed" : "declined",
       confirmation_data: { source: "harness_auto_persist", commit_intent_kind: commitIntentKind },
     })
     .where(eq(conversationToolCalls.id, callId));

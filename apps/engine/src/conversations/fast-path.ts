@@ -28,6 +28,8 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversationToolCalls, executionSteps, executions } from "../db/schema/index.ts";
 import { runExecution } from "../execution/engine.ts";
+import { HELD_PREVIEW_WARNING_CODE } from "../execution/types.ts";
+import { admitWorkflowRun } from "../execution/workflow-run-admission.ts";
 import { logger } from "../logging/logger.ts";
 import { recordConversationToolCall } from "../observability/instrumentation.ts";
 import { can } from "../rbac/evaluator.ts";
@@ -98,11 +100,9 @@ export interface FastPathParams {
   answer_actor: AnswerActor;
   /**
    * Surface the turn runs on — mirrors `RunConversationTurnParams.surface`.
-   * Drives the confirm-gate surface for the `run <slug>` branch: an
-   * MCP-origin turn collapses the server pause inside `policyDecide`
-   * (the client's destructiveHint dialog is the human gate there);
-   * everything else gates as `chat`. Defaults to `chat` when absent —
-   * the fail-closed direction.
+   * Scopes local confirmation handles, never creates permission through the
+   * transport. All starts additionally use durable workflow-run admission.
+   * Defaults to `chat` when absent.
    */
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
 }
@@ -390,7 +390,7 @@ async function executeRunWorkflow(
   p: FastPathParams,
   resolution: RunFastPathResolution,
   input: unknown,
-): Promise<RenderPayload> {
+): Promise<RenderPayload & { outcome: ToolCallOutcome }> {
   // Authenticated production calls always carry both principal AND
   // actor_id together (both come from the same auth resolution). If a
   // principal made it this far but actor_id is null, an upstream caller
@@ -410,19 +410,43 @@ async function executeRunWorkflow(
   }
   const wf = resolution.workflow;
   try {
+    // A known slug or an affirmation is not a live execution authority. Use
+    // the same admission boundary as REST: reserve a matching local grant,
+    // otherwise persist a held preparation. Bind the version resolved above
+    // so concurrent activation cannot substitute a different DAG.
+    const admitted = await admitWorkflowRun(
+      {
+        tenant_id: p.tenant_id,
+        workflow_id: wf.id,
+        workflow_version_id: wf.current_version_id ?? undefined,
+        execution_environment: "dev",
+        request_source: "chat",
+        input: input ?? null,
+      },
+      p.db,
+    );
     const result = await runExecution({
       db: p.db,
       tenant_id: p.tenant_id,
-      source: { kind: "saved", workflow_id: wf.id },
-      input: input ?? null,
+      source: {
+        kind: "saved",
+        workflow_id: wf.id,
+        version_id: admitted.workflow_version_id,
+      },
+      input: admitted.input,
       options: {
         request_source: "chat",
         trace_id: null,
         principal: p.principal,
         execution_mode: "dev",
+        existing_execution_id: admitted.execution_id,
+        hold_writes: admitted.hold_writes,
       },
     });
-    const ok = result.status === "succeeded";
+    const heldPreview = result.warnings?.find(
+      (warning) => warning.code === HELD_PREVIEW_WARNING_CODE,
+    );
+    const ok = result.status === "succeeded" && !heldPreview;
     const warningCount = result.warnings?.length ?? 0;
     const warningLine =
       warningCount > 0
@@ -434,7 +458,12 @@ async function executeRunWorkflow(
         : null;
 
     let reply: string;
-    if (ok) {
+    if (heldPreview) {
+      const german = /^(?:starte|f[uü]hre|ja|jo|los|bestätigt)\b/i.test(p.user_message.trim());
+      reply = german
+        ? `Vorschau für ${wf.slug}: Es wurde nichts geschrieben. Prüfe vor einem Live-Lauf die Ausführungsfreigabe des Workflows.`
+        : `Preview of ${wf.slug}: Nothing was written. Review the workflow's execution authority before a live run.`;
+    } else if (ok) {
       // Lead with the actual result, not a step-by-step execution trace —
       // a chat user asked for the outcome, not a CI-style log. The full
       // step list still rides in the `data` payload for anyone who wants
@@ -455,12 +484,19 @@ async function executeRunWorkflow(
     }
     return {
       ok,
+      // A completed preparation is normal activity, not a failed call or a
+      // newly opened approval. The output still says no external action ran.
+      outcome: result.status === "succeeded" ? "ok" : "error",
       reply,
       data: {
         status: result.status,
         execution_id: result.execution_id,
         workflow_id: wf.id,
         workflow_slug: wf.slug,
+        workflow_version_id: admitted.workflow_version_id,
+        execution_authority_id: admitted.execution_authority_id,
+        hold_writes: admitted.hold_writes,
+        ...(heldPreview ? { preview: true, writes_held: true } : {}),
         output: result.output,
         warnings: result.warnings ?? [],
         suggested_command: `/workflows run ${wf.slug}`,
@@ -474,6 +510,7 @@ async function executeRunWorkflow(
     const msg = err instanceof Error ? err.message : String(err);
     return {
       ok: false,
+      outcome: "error",
       reply: `Run of ${wf.slug} failed: ${msg}`,
       data: { status: "failed", workflow_id: wf.id, error: msg },
     };
@@ -497,10 +534,8 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
   const text = p.user_message.trim();
   if (text.length === 0) return null;
   // The confirm-gate surface for this turn. `policyDecide`, `requestApproval`,
-  // and `consumeApproval` speak `ToolSurface` ("chat" | "mcp"): an MCP-origin
-  // turn threads "mcp" so `policyDecide` collapses the server pause (the
-  // client's destructiveHint dialog is the human gate on that path); every
-  // other caller — and an absent surface — gates as "chat".
+  // and `consumeApproval` speak `ToolSurface` ("chat" | "mcp"). This scopes
+  // local approval handles; neither surface bypasses durable run admission.
   const gateSurface: ToolSurface = p.surface === "mcp" ? "mcp" : "chat";
 
   // List intents — always emit a deterministic answer.
@@ -870,7 +905,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         { workflow: resolved.slug, environment: "dev" },
         { ok: payload.ok, ...payload.data, skipped_llm: true },
         payload.reply,
-        payload.ok ? "ok" : "error",
+        payload.outcome,
       );
       // `runExecution` already emits its own execution audit row.
       // We previously stamped a CONVERSATION_COMMITTED row here, but
@@ -880,7 +915,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
       recordConversationToolCall({
         category: "tenant_write",
         tool: "run_workflow",
-        outcome: payload.ok ? "ok" : "error",
+        outcome: payload.outcome,
         duration_ms: 0,
       });
       logger.info({
@@ -1138,12 +1173,12 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         replayArgs,
         { ok: payload.ok, ...payload.data, skipped_llm: true },
         payload.reply,
-        payload.ok ? "ok" : "error",
+        payload.outcome,
       );
       recordConversationToolCall({
         category: "tenant_write",
         tool: "run_workflow",
-        outcome: payload.ok ? "ok" : "error",
+        outcome: payload.outcome,
         duration_ms: 0,
       });
       logger.info({
