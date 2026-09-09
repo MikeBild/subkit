@@ -161,9 +161,8 @@ export async function runConversationTurn(
       principal: p.principal,
       user_message: p.user_message,
       answer_actor: p.answer_actor,
-      // Thread the turn's surface so the matcher's confirm gate runs on
-      // the real channel (MCP collapses inside policyDecide) instead of
-      // silently defaulting every caller to chat.
+      // Scope local confirmation handles to the real channel. Both channels
+      // independently require durable workflow-run admission before effects.
       ...(p.surface ? { surface: p.surface } : {}),
     });
     if (hit) {

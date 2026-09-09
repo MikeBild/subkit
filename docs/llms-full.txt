@@ -2608,8 +2608,19 @@ without an admitted execution, or with a legacy row carrying neither authority
 nor an explicit preparation boundary, are rejected before any step dispatch.
 Start a new preparation or authorize a new run; old queued writes do not gain
 authority during an upgrade. Scheduler and inbound-webhook producers already
-reserve their local authority before enqueue. Legacy chat tool-approval paths
-still require separate convergence; a queue check does not prove those paths.
+reserve their local authority before enqueue. The deterministic chat `run <slug>`
+fast path also uses durable admission, including MCP-origin conversation turns:
+a matching local authority is reserved, otherwise writes stay held. A completed
+held preparation remains ordinary activity, not a new approval or a successful
+external action. Its result identifies the exact version and stored authority
+(or its absence). Expired, revoked, exhausted or version-mismatched grants cannot
+release its writes, and concurrent starts cannot overspend the final allowance.
+Submitting a workflow input form uses the same admission boundary. An
+`execute_writes` field cannot create authority, and explicitly selecting
+preparation preserves the available live-run allowance. The resumed activity
+records the supplied input and exact execution binding, not a new approval.
+Other legacy chat tool-approval paths still require separate convergence; a
+queue, form or fast-path check does not prove those paths.
 
 The resolver currently supports static HTTP targets and the single GraphQL
 endpoint. HTTP paths use the same joining rules as dispatch. A different resolved

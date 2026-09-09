@@ -58,6 +58,8 @@ import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { runExecution } from "../../execution/engine.ts";
+import { HELD_PREVIEW_WARNING_CODE } from "../../execution/types.ts";
+import { admitWorkflowRun } from "../../execution/workflow-run-admission.ts";
 import { logger } from "../../logging/logger.ts";
 import {
   approvalAuditResource,
@@ -783,26 +785,50 @@ export async function maybeAutoPersistFromElicitation(
           }
         }
         const environment = readEnvironment(intent);
-        const executeWrites = intent.payload.execute_writes === true;
+        // Supplying workflow input is not an execution approval. Even an
+        // execute_writes flag in the form intent must use existing local
+        // authority; without one the materialized writes stay durably held.
+        const admitted = await admitWorkflowRun(
+          {
+            tenant_id: p.tenant_id,
+            workflow_id: workflowId,
+            workflow_version_id: resolved.current_version_id ?? undefined,
+            execution_environment: environment,
+            request_source: "chat",
+            input,
+            ...(intent.payload.execute_writes === false ? { hold_writes: true } : {}),
+          },
+          p.db,
+        );
         const run = await runExecution({
           db: p.db,
           tenant_id: p.tenant_id,
-          source: { kind: "saved", workflow_id: workflowId },
-          input,
+          source: {
+            kind: "saved",
+            workflow_id: workflowId,
+            version_id: admitted.workflow_version_id,
+          },
+          input: admitted.input,
           options: {
             request_source: "chat",
             trace_id: null,
             principal: p.principal,
             execution_mode: environment,
-            ...(executeWrites ? {} : { hold_writes: true }),
+            existing_execution_id: admitted.execution_id,
+            hold_writes: admitted.hold_writes,
           },
         });
         await p.db
           .update(conversations)
           .set({ target_workflow_id: workflowId, updated_at: new Date() })
-          .where(eq(conversations.id, p.conversation_id));
+          .where(
+            and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
+          );
+        const heldPreview = run.warnings?.find(
+          (warning) => warning.code === HELD_PREVIEW_WARNING_CODE,
+        );
         result = {
-          ok: run.status === "succeeded",
+          ok: run.status === "succeeded" && !heldPreview,
           data: {
             status: run.status,
             execution_id: run.execution_id,
@@ -810,7 +836,18 @@ export async function maybeAutoPersistFromElicitation(
             workflow_slug: workflowSlug,
             input,
             output: run.output,
-            execute_writes: executeWrites,
+            execute_writes: !admitted.hold_writes,
+            hold_writes: admitted.hold_writes,
+            workflow_version_id: admitted.workflow_version_id,
+            execution_authority_id: admitted.execution_authority_id,
+            ...(heldPreview
+              ? {
+                  preview: true,
+                  writes_held: true,
+                  message:
+                    "Nothing was written. The supplied input does not authorize external effects.",
+                }
+              : {}),
             ...(run.warnings && run.warnings.length > 0 ? { warnings: run.warnings } : {}),
           },
         };
@@ -1396,11 +1433,17 @@ export async function maybeAutoPersistFromElicitation(
       tenant_id: p.tenant_id,
       actor_type: p.actor_id ? "user" : "system",
       actor_id: p.actor_id,
-      action: AuditAction.APPROVAL_APPROVED,
+      action:
+        intent.kind === "run_workflow"
+          ? AuditAction.CONVERSATION_RESUMED
+          : AuditAction.APPROVAL_APPROVED,
       resource_type: "conversation_elicitation",
       resource_id: p.elicitation.id,
       result: result.ok ? "success" : "error",
-      reason: "auto_persist_on_confirmation",
+      reason:
+        intent.kind === "run_workflow"
+          ? "workflow_input_submitted"
+          : "auto_persist_on_confirmation",
       metadata: {
         commit_intent_kind: intent.kind,
         tool: toolName,
