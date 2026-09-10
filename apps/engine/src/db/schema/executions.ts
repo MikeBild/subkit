@@ -57,6 +57,13 @@ export const executions = pgTable(
       onDelete: "cascade",
     }),
     execution_authority_id: uuid("execution_authority_id"),
+    // Approval secrets have shorter retention than run history. Missing proof
+    // fails closed; this marker must never be cleared by retention cleanup.
+    tool_approval_id: uuid("tool_approval_id"),
+    tool_approval_dispatches: jsonb("tool_approval_dispatches")
+      .$type<Record<string, { digest: string; attempts: number; step_key: string }>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     // A queued preview must not become live because a worker omitted an option.
     hold_writes: boolean("hold_writes").notNull().default(false),
     source_kind: text("source_kind").notNull().default("saved"),
@@ -85,6 +92,15 @@ export const executions = pgTable(
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
+    uniqueIndex("executions_single_tool_approval_uidx")
+      .on(t.tool_approval_id)
+      .where(sql`${t.tool_approval_id} IS NOT NULL`),
+    check(
+      "executions_tool_approval_shape_check",
+      sql`${t.tool_approval_id} IS NULL OR
+      (${t.source_kind} = 'saved' AND ${t.workflow_id} IS NOT NULL AND
+       ${t.workflow_version_id} IS NOT NULL AND ${t.execution_authority_id} IS NULL AND NOT ${t.hold_writes})`,
+    ),
     index("executions_authority_idx").on(t.tenant_id, t.execution_authority_id),
     foreignKey({
       name: "executions_exact_authority_fk",

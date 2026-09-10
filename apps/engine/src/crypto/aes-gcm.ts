@@ -18,6 +18,7 @@ import {
   createCipheriv,
   createDecipheriv,
   createHash,
+  createHmac,
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
@@ -105,6 +106,14 @@ export interface EncryptedPayload {
  */
 export function encryptSecret(plaintext: string, aad?: string): EncryptedPayload {
   return encryptSecretWithKey(getKey(), plaintext, aad);
+}
+
+/** A domain-separated comparison proof, not an authorization token. Unlike a
+ * plain digest it does not expose low-entropy secret payloads to guessing. */
+export function secretComparisonProof(domain: string, plaintext: string): string {
+  return createHmac("sha256", getKey())
+    .update(JSON.stringify([domain, plaintext]))
+    .digest("hex");
 }
 
 /**

@@ -63,6 +63,9 @@ export const toolApprovals = pgTable(
     // or a system account), so no FK. Scoping the CAS on this column stops
     // principal A from consuming principal B's approval inside a tenant.
     principal_id: uuid("principal_id").notNull(),
+    // Survives deletion of the run until approval-secret retention expires.
+    // A consumed decision must never bind a second execution.
+    claimed_execution_id: uuid("claimed_execution_id"),
     tool: text("tool").notNull(),
     // "chat" | "mcp" — the surface the approval was requested on. Part of the
     // CAS predicate: a chat-minted approval is not claimable over MCP.

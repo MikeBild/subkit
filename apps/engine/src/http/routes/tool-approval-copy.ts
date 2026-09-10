@@ -33,6 +33,21 @@ const en = {
     "No external-request preview is recorded for this tool call. That does not establish that the operation is read-only or has no external effect.",
   limitations:
     "The saved preview does not establish immutable workflow-version or connector-permission binding. Review the requested action before deciding.",
+  version: "Prepared version ID",
+  versionOnlyHelp:
+    "The prepared version, inputs and environment are recorded. A verified materialized-request review is missing; version binding alone does not establish an external-effect boundary.",
+  boundHelp:
+    "These prepared HTTP requests are bound to this workflow version, input, environment, primary connector configuration and permission revision. Changed requests stop before dispatch. Additional credential references are not fully covered yet; this is not a blanket workflow authorization.",
+  attempts: "Allowed dispatch attempts",
+  attemptsValue: "At most {count} for this prepared request",
+  attemptsHelp:
+    "A run can contain several requests. Each limit includes retries; a reserved attempt may already have reached the external system. No exactly-once effect or automatic rollback is guaranteed.",
+  requestContent: "Prepared request content",
+  contentHelp:
+    "Sensitive fields and header values are hidden. Content is shown as text, never executed.",
+  contentTruncated: "Content is truncated. This is not a complete content review.",
+  opaqueContent: "An opaque payload is not displayed. Its content cannot be reviewed here.",
+  missingReview: "No verified content review is available for this prepared request.",
   step: "Step",
   method: "Operation",
   target: "Target (sensitive URL parts hidden)",
@@ -104,6 +119,22 @@ const de: typeof en = {
     "Für diesen Tool-Aufruf ist keine Vorschau externer Anfragen hinterlegt. Das bedeutet nicht, dass die Operation nur liest oder keine externe Wirkung hat.",
   limitations:
     "Die gespeicherte Vorschau belegt keine unveränderliche Bindung an Workflow-Version oder Connector-Berechtigungen. Prüfe die angeforderte Aktion vor der Entscheidung.",
+  version: "ID der vorbereiteten Version",
+  versionOnlyHelp:
+    "Vorbereitete Version, Eingaben und Umgebung sind hinterlegt. Eine verifizierte Ansicht der fertigen Anfragen fehlt; die Versionsbindung allein legt noch keine Grenze für externe Wirkungen fest.",
+  boundHelp:
+    "Diese vorbereiteten HTTP-Anfragen sind an Workflow-Version, Eingaben, Umgebung sowie die primäre Connector-Konfiguration und Berechtigungsrevision gebunden. Geänderte Anfragen stoppen vor dem Versand. Zusätzliche Credential-Referenzen sind noch nicht vollständig abgedeckt; dies ist keine pauschale Workflow-Freigabe.",
+  attempts: "Erlaubte Sendeversuche",
+  attemptsValue: "Höchstens {count} für diese vorbereitete Anfrage",
+  attemptsHelp:
+    "Ein Lauf kann mehrere Anfragen enthalten. Das jeweilige Limit schließt Wiederholungen ein; ein reservierter Versuch kann das Fremdsystem bereits erreicht haben. Genau eine externe Wirkung oder automatisches Rückgängigmachen wird nicht zugesagt.",
+  requestContent: "Vorbereiteter Anfrageinhalt",
+  contentHelp:
+    "Sensible Felder und Header-Werte sind verborgen. Inhalte werden nur als Text angezeigt, nie ausgeführt.",
+  contentTruncated: "Der Inhalt ist gekürzt. Dies ist keine vollständige Inhaltsprüfung.",
+  opaqueContent:
+    "Ein nicht strukturiertes Payload wird nicht angezeigt. Sein Inhalt kann hier nicht geprüft werden.",
+  missingReview: "Für diese vorbereitete Anfrage liegt keine verifizierte Inhaltsansicht vor.",
   step: "Schritt",
   method: "Operation",
   target: "Ziel (sensible URL-Bestandteile verborgen)",

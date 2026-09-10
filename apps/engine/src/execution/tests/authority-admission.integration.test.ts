@@ -22,6 +22,7 @@ import { createSecretVersion } from "../../runtime-config/service.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createMockServer, jsonResponse } from "../../test-helpers/mock-http.ts";
 import { authorityConnectorDigest } from "../../workflows/authority-configuration.ts";
 import { previewWorkflowAuthority } from "../../workflows/execution-authorities.ts";
@@ -590,11 +591,18 @@ test("switching the active version blocks a queued old-version run", async () =>
 });
 
 test("expiry after admission still blocks dispatch", async () => {
-  const expires = new Date(Date.now() + 3_000); // allow-wall-clock: real database expiry, not a JS fake clock
+  const expires = new Date((await databaseNow(ctx.db)).getTime() + 3_000);
   const f = await fixture(1, undefined, expires);
   const run = await admitAuthorizedWorkflowExecution(f.params, ctx.db);
   await assertExecutionAuthorityCurrent(ctx.db, f.params.tenant_id, run.execution_id);
-  await Bun.sleep(Math.max(0, expires.getTime() - Date.now()) + 10); // allow-wall-clock: cross the actual PostgreSQL deadline
+  // The database owns expiry. A host-clock sleep with a 10 ms margin can
+  // finish before PostgreSQL crosses the boundary (VM clock/timer skew).
+  // Observe that prerequisite directly, then assert denial independently.
+  await waitFor(async () => (await databaseNow(ctx.db)).getTime() >= expires.getTime(), {
+    tries: 200,
+    sleepMs: 25,
+    label: "PostgreSQL crosses the immutable authority deadline",
+  });
   await expect(
     assertExecutionAuthorityCurrent(ctx.db, f.params.tenant_id, run.execution_id),
   ).rejects.toMatchObject({ code: "execution_authority_unavailable" });

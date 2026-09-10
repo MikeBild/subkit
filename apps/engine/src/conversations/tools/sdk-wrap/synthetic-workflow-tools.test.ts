@@ -11,6 +11,7 @@
 // write-classified steps, so they never mint an approval.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { createServer } from "node:http";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
@@ -27,6 +28,9 @@ import { buildSyntheticWorkflowTools } from "./synthetic-workflow-tools.ts";
 let tdb: TestDb;
 let tenantId: string;
 let conversationId: string;
+let server: ReturnType<typeof createServer>;
+let requestUrl: string;
+let requests = 0;
 
 function makePrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrincipal {
   return {
@@ -85,14 +89,26 @@ beforeAll(async () => {
     .returning();
   if (!t) throw new Error("tenant seed failed");
   tenantId = t.id;
+  // Exercise the real HTTP driver without depending on a public network endpoint.
+  server = createServer((_request, response) => {
+    requests += 1;
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("fixture address missing");
+  requestUrl = `http://127.0.0.1:${address.port}/read`;
 });
 
 afterAll(async () => {
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   await tdb.cleanup();
 });
 
 beforeEach(async () => {
   resetMockProvider();
+  requests = 0;
   // Fresh conversation per test
   const [conv] = await tdb.db
     .insert(conversations)
@@ -129,7 +145,7 @@ async function seedTool(slug: string): Promise<{ id: string }> {
       tenant_id: tenantId,
       workflow_id: wf.id,
       version: 1,
-      dag: { name: slug, slug, steps: [{ id: "s1", kind: "request", url: "https://example.com" }] },
+      dag: { name: slug, slug, steps: [{ id: "s1", kind: "request", url: requestUrl }] },
     })
     .returning();
   if (!v) throw new Error("version seed failed");
@@ -241,6 +257,8 @@ describe("buildSyntheticWorkflowTools — execute happy path", () => {
     const output = (result as { ok: boolean; data: Record<string, unknown> }).data;
     // suggested_command should be present
     expect(output?.suggested_command).toBe("/workflows run suggest-test");
+    expect(requests).toBe(1);
+    expect((result as { ok: boolean }).ok).toBe(true);
   });
 
   test("execute emits tool_call_start and tool_result events", async () => {
