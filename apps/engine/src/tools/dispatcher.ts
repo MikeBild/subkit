@@ -347,6 +347,7 @@ export async function dispatchTool(
     const confirmed = isConfirmedRequest(invocation.args, invocation.meta);
     let halted = false;
     let execArgs: Record<string, unknown> = invocation.args;
+    let canonicalizedForResource = false;
     // Set once the confirm step burned a handle. From here on the call is
     // CLAIMED, not yet approved: it still has to survive rbac + policy, and
     // every denial in between anchors its audit row on this approval.
@@ -390,9 +391,35 @@ export async function dispatchTool(
     //    re-evaluated on that replay too — a grant can be revoked between request
     //    and approval.
     if (!halted && entry.descriptor.rbac) {
-      const resource = entry.descriptor.rbac.resource
+      let resource = entry.descriptor.rbac.resource
         ? entry.descriptor.rbac.resource(execArgs)
         : undefined;
+      const executor = entry.executor;
+      if (isConversationExecutor(executor) && executor.tool?.permission?.resolveResourceId) {
+        // Resolve the same defaults the executor receives (especially the
+        // environment). Invalid input still gets the ordinary permission
+        // check below before the validation error is exposed. Confirmed args
+        // are already canonical and must not be transformed a second time.
+        const canonical = claimed
+          ? { ok: true as const, args: execArgs as Record<string, unknown> }
+          : canonicalizeArgs(entry.descriptor.inputSchema, execArgs);
+        if (canonical.ok) {
+          execArgs = canonical.args;
+          canonicalizedForResource = true;
+          const ctx =
+            invocation.surface === "chat"
+              ? deps.conversationCtx
+              : (deps.buildMcpStubCtx?.(entry.descriptor.name) ?? deps.conversationCtx);
+          if (!ctx)
+            throw new Error("dispatcher missing conversation ctx for resource authorization");
+          const permission = executor.tool.permission;
+          const id = await permission.resolveResourceId?.(
+            { ...ctx, principal: deps.principal },
+            canonical.args,
+          );
+          resource = id ? { type: permission.resourceType, id } : undefined;
+        }
+      }
       const decision = await can(deps.db, {
         tenant_id: deps.principal.tenant_id,
         principal: deps.principal,
@@ -442,7 +469,7 @@ export async function dispatchTool(
     //    second time on their own output — safe only for transforms that happen
     //    to be idempotent, and a silent rewrite of the approved payload for any
     //    that are not.
-    if (!halted && claimed === null) {
+    if (!halted && claimed === null && !canonicalizedForResource) {
       const canonical = canonicalizeArgs(entry.descriptor.inputSchema, execArgs);
       if (!canonical.ok) {
         envelope = {
@@ -542,7 +569,7 @@ export async function dispatchTool(
             if (!ctx) {
               throw new Error("dispatcher missing conversation ctx for tool execution");
             }
-            const result = await executor.execute(ctx, execArgs);
+            const result = await executor.execute({ ...ctx, principal: deps.principal }, execArgs);
             envelope = normalizeConversationResult(result);
           } else if (isStaticExecutor(executor)) {
             envelope = await executor.invoke(

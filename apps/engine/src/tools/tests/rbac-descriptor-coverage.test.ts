@@ -80,7 +80,6 @@ const UNGATED_BY_DESIGN: Readonly<Record<string, readonly string[]>> = {
     "propose_schema_migration",
     "inspect_authoring_context",
     "load_skill",
-    "probe_connector",
   ],
 
   // KNOWN GAP — tenant reads and writes with no permission on the MCP path.
@@ -179,8 +178,8 @@ describe("MCP RBAC descriptor coverage", () => {
   // LOCAL-SK-DESKRIPTOR-ZAHL-ZU-HOCH — the published count was prose, and
   // prose drifts. This makes it arithmetic instead: the list above IS the
   // inventory, so its size must equal what the provider actually reports as
-  // ungated, split into the two groups the header names (20 deliberate, 41
-  // known gap = 61). Adding a properly gated tool leaves all three numbers
+  // ungated (19 deliberate, 41 known gaps = 60 after gating persisted probes).
+  // Adding a properly gated tool leaves all three numbers
   // alone; adding an ungated one moves them together with the list, so the
   // header can never again quote a figure the code does not produce.
   test("the documented ungated count is the one the provider reports", () => {
@@ -189,11 +188,11 @@ describe("MCP RBAC descriptor coverage", () => {
       .flatMap(([, names]) => names);
     const knownGap = UNGATED_BY_DESIGN["known gap — needs a permission"] ?? [];
 
-    expect(byDesign.length, "deliberate exemptions").toBe(20);
+    expect(byDesign.length, "deliberate exemptions").toBe(19);
     expect(knownGap.length, "known gaps still needing a permission").toBe(41);
-    expect(ALLOWED.size, "the list has no duplicates across groups").toBe(61);
-    expect(ungatedIn("admin").length, "admin catalog, ungated").toBe(61);
-    expect(ungatedIn("product").length, "product catalog, ungated").toBe(41);
+    expect(ALLOWED.size, "the list has no duplicates across groups").toBe(60);
+    expect(ungatedIn("admin").length, "admin catalog, ungated").toBe(60);
+    expect(ungatedIn("product").length, "product catalog, ungated").toBe(40);
   });
 
   test("the audit trail is gated on MCP exactly as it is over HTTP", () => {
@@ -206,6 +205,15 @@ describe("MCP RBAC descriptor coverage", () => {
       expect(byName.get(name)?.rbac?.permission, `${name} must require audit:read`).toBe(
         "audit:read",
       );
+    }
+  });
+
+  test("persisted connector probes require connector read permission on MCP", () => {
+    for (const mcpMode of ["product", "authoring", "admin"] as const) {
+      const probe = conversationToolProvider
+        .list({ surface: "mcp", mcpMode })
+        .find((descriptor) => descriptor.name === "probe_connector");
+      expect(probe?.rbac?.permission).toBe("connector:read");
     }
   });
 });

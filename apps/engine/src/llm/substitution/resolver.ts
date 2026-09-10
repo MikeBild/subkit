@@ -31,10 +31,19 @@ import type { Db } from "../../db/client.ts";
 import { connectors, credentials } from "../../db/schema/connectors.ts";
 import { logger } from "../../logging/logger.ts";
 import { can } from "../../rbac/evaluator.ts";
+import { authorityConnectorDigest } from "../../workflows/authority-configuration.ts";
 import { suggestClosest } from "../../workflows/levenshtein.ts";
 import { type Placeholder, parsePlaceholders } from "./parser.ts";
 
 export type Environment = "dev" | "prod";
+
+/** Metadata from the rows actually read; never credential plaintext. */
+export interface ResolvedAuthorityReference {
+  connector_id: string;
+  configuration_digest: string;
+  credential_id: string | null;
+  credential_revision: number | null;
+}
 
 export interface ResolverContext {
   tenant_id: string;
@@ -47,6 +56,7 @@ export interface ResolverContext {
    *  the resolver falls back to a tenant-admin equivalent; only callers that
    *  run as the tenant itself (background jobs) should leave this undefined. */
   principal?: ResolvedPrincipal;
+  onAuthorityReference?: (reference: ResolvedAuthorityReference) => void;
 }
 
 export type UnresolvedCode =
@@ -462,6 +472,12 @@ async function resolveCred(tok: Placeholder, ctx: ResolverContext): Promise<OneR
       message: `credential field '${tok.field}' not present on connector '${tok.slug}' (mode=${credential.mode})`,
     };
   }
+  ctx.onAuthorityReference?.({
+    connector_id: row.id,
+    configuration_digest: authorityConnectorDigest(row),
+    credential_id: credential.id,
+    credential_revision: credential.authority_revision,
+  });
   return { ok: true, value: v };
 }
 
@@ -481,6 +497,12 @@ async function resolveConnectorUrl(tok: Placeholder, ctx: ResolverContext): Prom
   if (!row.base_url) {
     return { ok: false, code: "key_not_found", message: "connector has no base_url" };
   }
+  ctx.onAuthorityReference?.({
+    connector_id: row.id,
+    configuration_digest: authorityConnectorDigest(row),
+    credential_id: null,
+    credential_revision: null,
+  });
   return { ok: true, value: row.base_url };
 }
 
@@ -499,7 +521,15 @@ async function resolveConnectorConfig(tok: Placeholder, ctx: ResolverContext): P
   if (!(await checkRbac(ctx, row.id, tok))) {
     return { ok: false, code: "rbac_denied", message: "connector:read denied" };
   }
-  return resolveJsonPath(row.config ?? {}, tok.path, `connector.${tok.slug}.config`);
+  const result = resolveJsonPath(row.config ?? {}, tok.path, `connector.${tok.slug}.config`);
+  if (result.ok)
+    ctx.onAuthorityReference?.({
+      connector_id: row.id,
+      configuration_digest: authorityConnectorDigest(row),
+      credential_id: null,
+      credential_revision: null,
+    });
+  return result;
 }
 
 function resolveJsonPath(root: unknown, path: string[], diagnosticRoot: string): OneResult {

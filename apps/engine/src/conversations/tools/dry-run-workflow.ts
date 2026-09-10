@@ -59,7 +59,7 @@ const inputSchema = z
       .boolean()
       .optional()
       .describe(
-        `Execute write-classified steps for real instead of holding them. Default false: previews resolve writes (URL/headers/body materialized for inspection and the judge) but never dispatch them. Set true ONLY when the user explicitly confirmed a live preview.`,
+        "Legacy preference retained for compatibility. Draft previews always hold writes, even when true. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval.",
       ),
     include_step_results: z
       .boolean()
@@ -73,7 +73,7 @@ const inputSchema = z
 export const dryRunWorkflowTool: ConversationTool = {
   name: "dry_run_workflow",
   description:
-    "Run the entire draft workflow via runExecution (source=draft). Produces an executions row with source_kind=draft, no workflow_id / workflow_version_id persisted. Read steps execute for real; WRITE steps (sends, publishes, mutations) are HELD by default — fully resolved (URL/headers/body materialized as the step artifact) but never dispatched, so previews cannot publish. Pass execute_writes: true only after the user explicitly confirmed a live preview. External destinations (recipients, channels, webhook URLs) must come from the user, never fabricated placeholders.",
+    "Run the entire draft workflow via runExecution (source=draft), producing an auditable executions row. Read steps execute for real; WRITE steps are always HELD — resolved for inspection but never dispatched, even with execute_writes:true. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval. External destinations must come from the user, never fabricated placeholders.",
   inputSchema,
   category: "draft_write" as const,
   authoring_resource: "workflow",
@@ -412,12 +412,9 @@ export const dryRunWorkflowTool: ConversationTool = {
           options: {
             request_source: "chat",
             execution_mode: effectiveEnvironment,
-            // Previews are side-effect-safe by default: write-classified
-            // steps are fully resolved (the judge reads the would-be
-            // payload) but never dispatched. `execute_writes: true` is
-            // the explicit full-live escape for shapes that genuinely
-            // need the write's response recorded.
-            hold_writes: !args.execute_writes,
+            // Mutable draft state has no immutable execution authority.
+            // Resolve writes for review, but do not release them via a flag.
+            hold_writes: true,
             ...(signal ? { signal } : {}),
             ...(prefixReplayCount > 0 ? { step_output_fixtures: stepOutputFixtures } : {}),
           },

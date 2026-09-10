@@ -946,15 +946,14 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
   });
 
   test("input as a JSON STRING vs an OBJECT produce the SAME args_hash on the paused approval", async () => {
-    // Explicit one-shot writes require a decision on either surface. Production
-    // alone does not: ordinary starts use local authority admission. Compare
-    // the canonical args on the persisted APPROVAL_REQUESTED audit rows.
+    // An explicit ask mode pauses starts; ordinary starts delegate to durable
+    // authority admission. Compare canonical args on the requested audit rows.
     const principal = dbPrincipal();
     const registry = buildRegistry([runWorkflowStub(() => {})]);
     const inputObject = { city: "Berlin" };
 
     const objectEnvelope = await dispatchTool(
-      { registry, db: testDb.db, principal, conversationCtx: {} as never },
+      { registry, db: testDb.db, principal, conversationCtx: {} as never, permissionMode: "ask" },
       {
         surface: "chat",
         name: "run_workflow",
@@ -967,7 +966,7 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
       },
     );
     const stringEnvelope = await dispatchTool(
-      { registry, db: testDb.db, principal, conversationCtx: {} as never },
+      { registry, db: testDb.db, principal, conversationCtx: {} as never, permissionMode: "ask" },
       {
         surface: "chat",
         name: "run_workflow",

@@ -32,6 +32,7 @@ import { resolvePlaceholders } from "../../llm/substitution/resolver.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { resolveConversationPrincipal } from "./permission-gate.ts";
 import { pickProbeRecoveryActions } from "./probe-recovery.ts";
 import { truncateForLlm } from "./truncate.ts";
 
@@ -217,6 +218,20 @@ export const probeConnectorTool: ConversationTool = {
   },
   inputSchema: ProbeInput,
   category: "tenant_read",
+  permission: {
+    action: "connector:read",
+    resourceType: "connector",
+    resolveResourceId: async (ctx, rawArgs) => {
+      const args = ProbeInput.parse(rawArgs);
+      const connector = await lookupConnectorBySlug(
+        ctx.db,
+        ctx.tenant_id,
+        args.connector_slug,
+        rawArgs.environment === undefined ? null : args.environment,
+      );
+      return connector?.id ?? null;
+    },
+  },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = ProbeInput.parse(rawArgs);
 
@@ -296,6 +311,7 @@ export const probeConnectorTool: ConversationTool = {
 
     // Resolve placeholders in every string field of headers/query/body.
     // Unresolved placeholders are fatal — we do not dispatch partial auth.
+    const principal = ctx.principal ?? (await resolveConversationPrincipal(ctx));
     const resolved = await resolvePlaceholders(
       {
         path: args.path,
@@ -307,6 +323,7 @@ export const probeConnectorTool: ConversationTool = {
         tenant_id: ctx.tenant_id,
         environment,
         db: ctx.db,
+        ...(principal ? { principal } : {}),
       },
     );
     if (resolved.unresolved.length > 0) {

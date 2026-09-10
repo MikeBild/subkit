@@ -8,6 +8,7 @@ import type { RequestDispatchPolicy } from "../connectors/drivers/http.ts";
 import type { ConnectionAuthorityIdentity } from "../credentials/authority-metadata.ts";
 import type { Db } from "../db/client.ts";
 import type { RunLlmBudget } from "../llm/accounting/index.ts";
+import type { ResolvedAuthorityReference } from "../llm/substitution/resolver.ts";
 // The single canonical RequestSource, derived from the Zod RequestSourceSchema.
 import type { RequestSource } from "../observability/service-metadata.ts";
 import type { StepDef, WorkflowDef } from "../workflows/types.ts";
@@ -39,6 +40,7 @@ export type StepStatus =
 export type ExecutionStatus = Exclude<StepStatus, "skipped">;
 
 export interface RequestAuthoritySnapshot {
+  referenced_authorities?: ResolvedAuthorityReference[];
   step_row_id?: string;
   connector_id?: string | null;
   requires_review?: boolean;

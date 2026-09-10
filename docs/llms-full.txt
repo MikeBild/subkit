@@ -2670,14 +2670,39 @@ requests, additional pages or writes not materialized in the preparation fail
 closed on this bound path until they have supported proofs. Rotating the master
 key, or changing materialized authorization headers during token refresh,
 requires a fresh preparation/decision. No new configuration or central service
-is needed. Additional `${cred...}` references outside the primary connector still
-need revision-provenance convergence; binding their resulting request bytes alone
-does not establish every referenced credential's permission revision. Earlier
+is needed. Direct `${cred...}` and `${connector...}` request placeholders now
+record the connector configuration and credential revision actually read during
+resolution. Those references participate in the keyed proof and are checked
+again before dispatch. Changing a referenced credential and restoring its old
+value does not restore the old authority. This does not yet establish provenance
+for credentials carried indirectly through earlier step outputs. Earlier
 external effects are not rolled back if a later step is
 blocked; a successful attempted replay is not an exactly-once guarantee.
 A bound single-use parent also refuses a `call` step: its proof does not authorize
 a newly resolved child workflow. If earlier approved requests already completed,
 the result remains partial rather than claiming no external effect occurred.
+
+Generic `run_workflow` starts always use durable local admission, including
+`execute_writes: true` and replayed tool confirmations. Without matching authority
+writes remain held; explicit `false` prepares without spending a run. The live-run
+flag never bypasses version, environment, input or idempotency checks. Use the
+prepared `wf_<slug>` flow for an exact one-shot human decision.
+
+`dry_run_workflow` and `dry_run_step` always hold draft writes, including when
+legacy callers send `execute_writes: true`. A mutable draft or a generic tool
+confirmation is not an immutable execution boundary. Read-only preparation and
+bounded transient read retries remain automatic. To perform live writes, save
+and activate the exact workflow version, then use its execution authority or
+prepared single-run decision. No legacy flag upgrades draft state to live access.
+
+Connector probes classify possible writes in development as well as production;
+the development label cannot suppress a decision for a write. Production probes
+retain their explicit gate. Read-only development checks stay automatic.
+Persisted connector probes declare their target's `connector:read` permission
+at the central tool boundary. Credential and connector placeholders retain the
+calling principal's resource restrictions instead of using a background-job
+fallback. These checks do not yet bind a direct connector tool's later execution
+to the configuration and credential revision present during its approval.
 
 The single-use tool-approval portal uses SubKit's local family UI palette and
 supports German and English without client-side scripts or new configuration.
