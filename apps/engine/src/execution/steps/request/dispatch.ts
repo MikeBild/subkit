@@ -61,6 +61,7 @@ import {
   parseLlmUsage,
 } from "../../../llm/accounting/index.ts";
 import {
+  type ResolvedAuthorityReference,
   resolvePlaceholders,
   resolvePlaceholdersTypePreserving,
   resolveStringPlaceholders,
@@ -720,6 +721,7 @@ export interface RunRequestStepParams {
 
 export async function runRequestStep(p: RunRequestStepParams): Promise<StepResult> {
   const start = Date.now();
+  const referencedAuthorities: ResolvedAuthorityReference[] = [];
   let configurationDigest = authorityConnectorDigest(null);
   let credentialSnapshot: Pick<
     ResolvedConnectorCredential,
@@ -730,6 +732,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     connection_authority: null,
   };
   const authoritySnapshot = (credential = credentialSnapshot) => ({
+    ...(referencedAuthorities.length ? { referenced_authorities: referencedAuthorities } : {}),
     step_id: p.step.id,
     step_row_id: p.ctx.step_row_id,
     connector_id: p.step.connector_id ?? null,
@@ -855,6 +858,18 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // `${item.id}` flows into `new URL()` and ends up URL-encoded as
   // `%24%7Bitem.id%7D`, causing the API to 404 on a non-existent id.
   const resolverCtx = {
+    onAuthorityReference: (reference: ResolvedAuthorityReference) => {
+      if (
+        !referencedAuthorities.some(
+          (existing) =>
+            existing.connector_id === reference.connector_id &&
+            existing.configuration_digest === reference.configuration_digest &&
+            existing.credential_id === reference.credential_id &&
+            existing.credential_revision === reference.credential_revision,
+        )
+      )
+        referencedAuthorities.push(reference);
+    },
     tenant_id: p.ctx.tenant_id,
     environment: p.ctx.execution_mode,
     db: p.ctx.db,

@@ -53,20 +53,23 @@ describe("bounded auto authoring policy", () => {
       ).toBe("no_confirm");
     }
   });
-  test("a held development run uses its dynamic preparation policy", () => {
-    expect(
-      decideToolMode({
-        tool: "run_workflow",
-        category: "tenant_write",
-        input: { environment: "dev" },
-        overrides: {},
-        permission_mode: "auto",
-      }).mode,
-    ).toBe("no_confirm");
+  test("generic starts delegate write authorization to durable admission, not a flag gate", () => {
+    for (const execute_writes of [undefined, false, true]) {
+      expect(
+        decideToolMode({
+          tool: "run_workflow",
+          category: "tenant_write",
+          input: { environment: "dev", execute_writes },
+          overrides: {},
+          permission_mode: "auto",
+        }).mode,
+      ).toBe("no_confirm");
+    }
   });
   test("live writes and destructive operations cannot be downgraded by a stored tool override", () => {
     for (const [tool, input] of [
-      ["run_workflow", { environment: "dev", execute_writes: true }],
+      ["call_connector", { method: "POST", path: "/publish" }],
+      ["probe_connector", { environment: "dev", method: "DELETE" }],
       ["delete_workflow", {}],
       ["save_workflow_draft", { force_commit: true }],
     ] as const) {

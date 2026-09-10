@@ -11,10 +11,14 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { desc, eq } from "drizzle-orm";
 import { upsertCredential } from "../../../credentials/service.ts";
-import { auditLog, connectors, tenants } from "../../../db/schema/index.ts";
+import { auditLog, connectors, roles, tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { dispatchTool } from "../../../tools/dispatcher.ts";
+import { conversationToolProvider } from "../../../tools/providers/conversation.ts";
+import { buildRegistry } from "../../../tools/registry.ts";
 import type { ToolContext } from "../index.ts";
+import { checkToolPermission } from "../permission-gate.ts";
 import { probeConnectorTool, resetProbeRateLimit } from "../probe-connector.ts";
 
 interface CapturedReq {
@@ -170,6 +174,132 @@ function makeToolContext(env: { tenant_id: string; conversation_id: string }): T
 }
 
 describe("probe_connector — dispatch + credential substitution", () => {
+  test("MCP rejects an excluded probe target before approval or network dispatch", async () => {
+    const env = await seedProbeConnector({ slug: "mcp_excluded_probe" });
+    const tctx = makeToolContext(env);
+    const principal = {
+      provider: "test",
+      kind: "user" as const,
+      id: "11111111-1111-4111-8111-111111111111",
+      tenant_id: env.tenant_id,
+      roles: ["admin"],
+      scopes: ["connector:read"],
+      allowed_connectors: [],
+    };
+    const result = await dispatchTool(
+      {
+        registry: buildRegistry([conversationToolProvider]),
+        db: ctx.db,
+        principal,
+        mcpMode: "authoring",
+        buildMcpStubCtx: () => tctx,
+      },
+      {
+        surface: "mcp",
+        name: "probe_connector",
+        args: { connector_slug: "mcp_excluded_probe", environment: "dev", method: "POST" },
+      },
+    );
+    expect(result.status).toBe("error");
+    if (result.status === "error") expect(result.error_code).toBe("policy_denied");
+    expect(captured).toHaveLength(0);
+    const rows = await ctx.db.select().from(auditLog).where(eq(auditLog.tenant_id, env.tenant_id));
+    expect(rows.some((row) => row.action === "policy.denied")).toBe(true);
+    expect(rows.some((row) => row.action === "approval.requested")).toBe(false);
+
+    // The chat gate must retain the same credential ceiling, even when its
+    // engine context has no actor (as on a transport-created tool context).
+    const permission = probeConnectorTool.permission;
+    if (!permission) throw new Error("probe permission missing");
+    const decision = await checkToolPermission({ ...tctx, principal }, permission, {
+      connector_slug: "mcp_excluded_probe",
+      environment: "dev",
+    });
+    expect(decision.allow).toBe(false);
+    const allowed = await dispatchTool(
+      {
+        registry: buildRegistry([conversationToolProvider]),
+        db: ctx.db,
+        principal: { ...principal, allowed_connectors: [env.connector_id] },
+        mcpMode: "authoring",
+        buildMcpStubCtx: () => tctx,
+      },
+      {
+        surface: "mcp",
+        name: "probe_connector",
+        args: { connector_slug: "mcp_excluded_probe", method: "GET" },
+      },
+    );
+    expect(allowed.status).toBe("ok");
+    expect(captured).toHaveLength(1);
+  });
+
+  test("the central permission gate rejects a principal without access to the probe target", async () => {
+    const env = await seedProbeConnector({ slug: "probe_target_rbac" });
+    const [role] = await ctx.db
+      .insert(roles)
+      .values({
+        tenant_id: env.tenant_id,
+        name: "probe-no-access",
+        description: "No connector permissions",
+      })
+      .returning();
+    const [user] = await ctx.db
+      .insert(users)
+      .values({
+        tenant_id: env.tenant_id,
+        email: "probe-no-access@example.test",
+        role: "enduser",
+        role_id: role!.id,
+      })
+      .returning();
+    const tctx = makeToolContext(env);
+    tctx.actor_id = user!.id;
+    tctx.engineClient = new EngineClient({
+      tenant_id: env.tenant_id,
+      actor_id: user!.id,
+      actor_type: "user",
+      db: ctx.db,
+    });
+    const permission = probeConnectorTool.permission;
+    if (!permission) throw new Error("probe target permission descriptor is missing");
+    const decision = await checkToolPermission(tctx, permission, {
+      connector_slug: "probe_target_rbac",
+      environment: "dev",
+      method: "GET",
+    });
+    expect(decision.allow).toBe(false);
+    expect(captured).toHaveLength(0);
+    const rows = await ctx.db.select().from(auditLog).where(eq(auditLog.tenant_id, env.tenant_id));
+    expect(rows.some((row) => row.action === "policy.denied" && row.result === "denied")).toBe(
+      true,
+    );
+  });
+
+  test("a credential reference preserves the caller's connector restrictions", async () => {
+    const env = await seedProbeConnector({ slug: "restricted_probe", tokenValue: CANARY });
+    const tctx = makeToolContext(env);
+    tctx.principal = {
+      provider: "test",
+      kind: "user",
+      id: "11111111-1111-4111-8111-111111111111",
+      tenant_id: env.tenant_id,
+      roles: [],
+      scopes: [],
+    };
+    const result = await probeConnectorTool.execute(tctx, {
+      connector_slug: "restricted_probe",
+      method: "GET",
+      path: "/v1/customers",
+      headers: { "x-custom-token": `\${cred.restricted_probe.token}` },
+      environment: "dev",
+    });
+    expect(result.ok).toBe(false);
+    expect(JSON.stringify(result.data)).toContain("rbac_denied");
+    expect(JSON.stringify(result.data)).not.toContain(CANARY);
+    expect(captured).toHaveLength(0);
+  });
+
   test("happy path: GET dispatches, resolves cred token, returns truncated body", async () => {
     const env = await seedProbeConnector({ slug: "stripe_mock", tokenValue: CANARY });
     const tctx = makeToolContext(env);

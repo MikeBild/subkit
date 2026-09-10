@@ -34,7 +34,7 @@ const inputSchema = z
       .boolean()
       .optional()
       .describe(
-        "Execute a write-classified step for real instead of holding it. Default false: the preview resolves the request (URL/headers/body materialized) but never dispatches. Set true ONLY when the user explicitly confirmed a live single-step run.",
+        "Legacy preference retained for compatibility. Draft previews always hold writes, even when true. For live writes, save and activate an immutable workflow version and use its bounded execution or prepared one-shot approval.",
       ),
   })
   .openapi("DryRunStepToolInput");
@@ -42,7 +42,7 @@ const inputSchema = z
 export const dryRunStepTool: ConversationTool = {
   name: "dry_run_step",
   description:
-    "Run a single draft step in isolation through the real driver pipeline. Produces an executions row (source_kind=step) so the run is auditable and traceable. Read steps execute for real; a WRITE step (send/publish/mutation) is HELD by default — resolved but never dispatched — same cannot-publish contract as dry_run_workflow. Pass execute_writes: true only after explicit user confirmation.",
+    "Run a single draft step in isolation through the real driver pipeline. Produces an auditable executions row (source_kind=step). Read steps execute for real; WRITE steps are always HELD and never dispatched, even with execute_writes:true. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval.",
   inputSchema,
   category: "draft_write" as const,
   authoring_resource: "workflow",
@@ -105,7 +105,7 @@ export const dryRunStepTool: ConversationTool = {
       db: ctx.db,
       tenant_id: ctx.tenant_id,
       step,
-      hold_writes: !args.execute_writes,
+      hold_writes: true,
       input: args.input ?? null,
       ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
       ...(args.environment ? { environment: args.environment } : {}),
@@ -136,7 +136,7 @@ export const dryRunStepTool: ConversationTool = {
         db: ctx.db,
         tenant_id: ctx.tenant_id,
         step,
-        hold_writes: !args.execute_writes,
+        hold_writes: true,
         input: args.input ?? null,
         ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
         ...(args.environment ? { environment: args.environment } : {}),

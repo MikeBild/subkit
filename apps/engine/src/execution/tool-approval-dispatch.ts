@@ -5,7 +5,13 @@ import { AuditAction } from "../audit/types.ts";
 import type { RequestDispatchPolicy } from "../connectors/drivers/http.ts";
 import { loadConnectorSystem } from "../connectors/system.ts";
 import type { Db } from "../db/client.ts";
-import { executionSteps, executions, toolApprovals, workflows } from "../db/schema/index.ts";
+import {
+  credentials,
+  executionSteps,
+  executions,
+  toolApprovals,
+  workflows,
+} from "../db/schema/index.ts";
 import { decryptPreview } from "../tools/approval-portal.ts";
 import { preparedInputDigest } from "../tools/prepared-workflow-approval.ts";
 import { authorityConnectorDigest } from "../workflows/authority-configuration.ts";
@@ -167,6 +173,36 @@ export async function assertToolApprovalDispatch(
             )
           )
             denied("prepared_credential_changed");
+        }
+      }
+      for (const reference of snapshot.referenced_authorities ?? []) {
+        const system = await loadConnectorSystem(
+          tenant,
+          reference.connector_id,
+          run.execution_mode,
+          tx,
+        );
+        if (
+          !system ||
+          authorityConnectorDigest(system.connector) !== reference.configuration_digest
+        )
+          denied("prepared_reference_connector_changed");
+        if (reference.credential_id) {
+          const [credential] = await tx
+            .select({ revision: credentials.authority_revision })
+            .from(credentials)
+            .where(
+              and(
+                eq(credentials.tenant_id, tenant),
+                eq(credentials.id, reference.credential_id),
+                eq(credentials.connector_id, reference.connector_id),
+                eq(credentials.environment, run.execution_mode),
+                isNull(credentials.deleted_at),
+              ),
+            )
+            .limit(1);
+          if (!credential || credential.revision !== reference.credential_revision)
+            denied("prepared_reference_credential_changed");
         }
       }
       const attempts = run.tool_approval_dispatches;

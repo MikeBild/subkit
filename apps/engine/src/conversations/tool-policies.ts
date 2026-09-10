@@ -377,22 +377,10 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     neverGate: true,
   },
   run_workflow: {
-    defaultMode: "confirm_before_execution",
-    computeModeFromInput: (input) => {
-      const obj = asObj(input);
-      // a live write run (execute_writes:true) ALWAYS confirms, even
-      // in dev: dispatching real sends/writes must be human-approved.
-      // Ordinary starts discover local authority or hold writes; the
-      // environment alone is not a reason to ask again for an existing grant.
-      if (obj.execute_writes === true) return "confirm_before_execution";
-      return "no_confirm";
-    },
-    // Makes the "ALWAYS confirms" above true. Without this, a live write run is
-    // per-call hazardous but not *named* dangerous, so the
-    // `permission_mode: auto` short-circuit returned `no_confirm` before
-    // `computeModeFromInput` was ever consulted — dispatching real sends with
-    // no human. `yolo` still honours the user's explicitly-armed override.
-    computeDangerFromInput: (input) => asObj(input).execute_writes === true,
+    // All generic starts now use local admission; a flag cannot grant writes.
+    // Explicit stricter user policies still apply through the normal resolver.
+    defaultMode: "no_confirm",
+    computeModeFromInput: () => "no_confirm",
     buildPendingOutput: (input) => {
       const obj = asObj(input);
       return {
@@ -489,25 +477,8 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   dry_run_transform: { defaultMode: "no_confirm" },
   dry_run_workflow: {
     defaultMode: "no_confirm",
-    computeModeFromInput: (input) => {
-      // A dry run HOLDS its writes: `hold_writes: !execute_writes` in
-      // `dry-run-workflow.ts`, so every WRITE step is fully resolved but never
-      // dispatched. `execute_writes: true` is the ONLY input that makes this
-      // tool touch a live system, so it is the only one that needs a human.
-      //
-      // Gating on `environment === "prod"` instead (the previous rule) paused a
-      // preview that dispatches nothing — observed in production, where a
-      // 2-page probe against a held-write prod dry run demanded an approval and
-      // then died unapproved. Same rationale as `run_workflow` above: "Default
-      // runs hold writes (no dispatch), so they need no confirm."
-      if (asObj(input).execute_writes === true) return "confirm_before_execution";
-      return "no_confirm";
-    },
-    // A live write run is per-call dangerous, so the permission_mode
-    // auto/ask/plan short-circuits must not auto-approve it before
-    // `computeModeFromInput` is ever consulted (same shape as call_connector's
-    // write case). `yolo` still honours the user's explicitly-armed override.
-    computeDangerFromInput: (input) => asObj(input).execute_writes === true,
+    // Both draft preview tools always hold writes; flags grant no authority.
+    computeModeFromInput: () => "no_confirm",
   },
   validate_draft: { defaultMode: "no_confirm" },
   save_workflow_draft: {
@@ -622,24 +593,27 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   },
   // web_search leaves the tenant perimeter — confirm by default.
   web_search: { defaultMode: "confirm_before_execution" },
-  // probe_connector is a diagnostic call against the vendor's surface. Confirm
-  // keys on the *environment*, not the HTTP method: many read APIs require POST
-  // (search endpoints, GraphQL, RPC), so a method-based gate confirm-blocks
-  // harmless reads while still rubber-stamping a POST that happens to write.
-  // Prod probes require confirm; dev probes (the authoring sandbox) auto-run.
+  // Development is an environment, not proof that a probe has no effect.
+  // Preserve the production gate and classify possible writes in every env.
   probe_connector: {
     defaultMode: "no_confirm",
     computeModeFromInput: (input) => {
       const env = asObj(input).environment;
-      return env === "prod" ? "confirm_before_execution" : "no_confirm";
+      return env === "prod" || callConnectorSideEffect(input) === "write"
+        ? "confirm_before_execution"
+        : "no_confirm";
     },
+    computeDangerFromInput: (input) => callConnectorSideEffect(input) === "write",
   },
   probe_connector_draft: {
     defaultMode: "no_confirm",
     computeModeFromInput: (input) => {
       const env = asObj(input).environment;
-      return env === "prod" ? "confirm_before_execution" : "no_confirm";
+      return env === "prod" || callConnectorSideEffect(input) === "write"
+        ? "confirm_before_execution"
+        : "no_confirm";
     },
+    computeDangerFromInput: (input) => callConnectorSideEffect(input) === "write",
   },
 };
 
