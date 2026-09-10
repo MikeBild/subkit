@@ -28,6 +28,22 @@ const materializedRequestSchema = z
 
 export const PreparedDispatchSnapshotSchema = z
   .object({
+    referenced_authorities: z
+      .array(
+        z
+          .object({
+            connector_id: z.string().uuid(),
+            configuration_digest: z.string().regex(/^[a-f0-9]{64}$/),
+            credential_id: z.string().uuid().nullable(),
+            credential_revision: z.number().int().positive().nullable(),
+          })
+          .strict()
+          .refine(
+            (value) => (value.credential_id === null) === (value.credential_revision === null),
+          ),
+      )
+      .max(1000)
+      .optional(),
     step_id: z.string().min(1),
     step_row_id: z.string().uuid(),
     connector_id: z.string().uuid().nullable(),

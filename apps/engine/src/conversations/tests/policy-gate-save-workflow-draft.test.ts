@@ -508,7 +508,7 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
     expect(data.error_code).toBe("no_prior_approval");
   });
 
-  test("non-save writes get NO generic elicitation dedup, and no model-supplied marker clears them", async () => {
+  test("explicitly guarded non-save calls get no elicitation dedup or model-marker bypass", async () => {
     // The fuzzy generic 20-row elicitation scan is DELETED. A
     // non-`save_workflow_draft` write no longer proceeds just because a
     // prior resolved `ask_user_confirm` for the same (or a different)
@@ -516,7 +516,7 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
     // stale rows is exactly the class of heuristic the deterministic
     // `decideConfirm` gate removes. The ONLY thing that clears a write is,
     // for the save path alone, a fresh `findPriorSaveWorkflowApproval`.
-    // Every other write pauses, and no argument the MODEL emits changes that.
+    // Explicitly guarded calls pause, and no model argument changes that.
 
     // (a) A prior resolved run_workflow confirm does NOT dedup the
     // pre-confirm anymore — an explicit one-shot write still PAUSES.
@@ -561,7 +561,7 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
         events,
         ctx.testDb.db,
         ["workflow-authoring"],
-        {},
+        { run_workflow: "confirm_before_execution" },
       );
 
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
@@ -616,7 +616,7 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
         events,
         ctx.testDb.db,
         ["workflow-authoring"],
-        {},
+        { run_workflow: "confirm_before_execution" },
       );
 
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic

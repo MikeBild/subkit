@@ -26,6 +26,42 @@ describe("tool-policies resolver", () => {
 });
 
 describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
+  it("development probes cannot disguise writes as automatic preparation", () => {
+    for (const tool of ["probe_connector", "probe_connector_draft"]) {
+      for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+        for (const permission_mode of ["auto", "ask", "plan"] as const) {
+          expect(
+            decideToolMode({
+              tool,
+              category: tool === "probe_connector" ? "tenant_read" : "draft_write",
+              input: { environment: "dev", method },
+              overrides: { [tool]: "no_confirm" },
+              permission_mode,
+            }).mode,
+          ).toBe("confirm_before_execution");
+        }
+      }
+      expect(
+        decideToolMode({
+          tool,
+          category: "tenant_read",
+          input: { environment: "dev", method: "GET" },
+          overrides: {},
+          permission_mode: "auto",
+        }).mode,
+      ).toBe("no_confirm");
+      expect(
+        decideToolMode({
+          tool,
+          category: "tenant_read",
+          input: { environment: "prod", method: "GET" },
+          overrides: {},
+          permission_mode: "auto",
+        }).mode,
+      ).toBe("confirm_before_execution");
+    }
+  });
+
   it("run_workflow environment=dev auto-confirms (no_confirm)", () => {
     const mode = resolveToolMode({
       tool: "run_workflow",
@@ -97,11 +133,8 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     expect(withoutPermissionMode.rule).toBe("conversation_override");
   });
 
-  it("dry_run_workflow gates on execute_writes, not on environment", () => {
-    // A dry run HOLDS its writes (`hold_writes: !execute_writes`), so a prod
-    // dry run that dispatches nothing must not demand a human approval — the
-    // production incident that stranded a 2-page probe. Only a live write run
-    // touches a real system, and only that needs a human.
+  it("dry_run_workflow remains preparation regardless of legacy flags or environment", () => {
+    // Draft writes stay held even when a caller requests live execution.
     const heldWritesProd = decideToolMode({
       tool: "dry_run_workflow",
       category: "draft_write",
@@ -116,9 +149,9 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
       input: { environment: "prod", execute_writes: true },
       overrides: {},
     });
-    expect(liveWriteRun.mode).toBe("confirm_before_execution");
+    expect(liveWriteRun.mode).toBe("no_confirm");
 
-    // …and a live write run still confirms under a permissive client mode.
+    // Auto does not need a redundant decision over a held preview.
     const liveWriteRunAuto = decideToolMode({
       tool: "dry_run_workflow",
       category: "draft_write",
@@ -126,14 +159,10 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
       overrides: {},
       permission_mode: "auto",
     });
-    expect(liveWriteRunAuto.mode).toBe("confirm_before_execution");
+    expect(liveWriteRunAuto.mode).toBe("no_confirm");
   });
 
-  it("a live write run confirms even under permission_mode=auto", () => {
-    // TOOL_POLICIES says a live write run "ALWAYS confirms, even in dev". It did
-    // not: `execute_writes: true` is per-call hazardous but not a *named*
-    // dangerous tool, so the auto short-circuit returned no_confirm before
-    // computeModeFromInput ran — dispatching real sends with no human.
+  it("generic starts use bounded admission and draft previews always hold writes", () => {
     for (const tool of ["run_workflow", "dry_run_workflow"]) {
       const decision = decideToolMode({
         tool,
@@ -142,7 +171,7 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
         overrides: {},
         permission_mode: "auto",
       });
-      expect(decision.mode).toBe("confirm_before_execution");
+      expect(decision.mode).toBe("no_confirm");
     }
   });
 

@@ -2,8 +2,7 @@
 // side_effect label (unit layer, no DB).
 //
 // Coverage:
-//   C. Policy gate: `run_workflow` with execute_writes:true → confirm_before_execution
-//      even in dev; without it in dev → no_confirm.
+//   C. Generic workflow starts delegate to durable admission for every flag.
 //   D. inspect_workflow_draft marks POST/send steps side_effect:"write" and
 //      GET/transform steps side_effect:"read".
 
@@ -28,16 +27,14 @@ function runWorkflowMode(input: Record<string, unknown>) {
 }
 
 describe("resolveToolMode for run_workflow (enforcement table)", () => {
-  it("execute_writes:true always demands confirmation, even in dev", () => {
+  it("execute_writes:true delegates to bounded admission in dev", () => {
     expect(runWorkflowMode({ workflow: "my-wf", execute_writes: true, environment: "dev" })).toBe(
-      "confirm_before_execution",
+      "no_confirm",
     );
   });
 
-  it("execute_writes:true with no environment still demands confirmation", () => {
-    expect(runWorkflowMode({ workflow: "my-wf", execute_writes: true })).toBe(
-      "confirm_before_execution",
-    );
+  it("execute_writes:true with no environment delegates to bounded admission", () => {
+    expect(runWorkflowMode({ workflow: "my-wf", execute_writes: true })).toBe("no_confirm");
   });
 
   it("execute_writes omitted in dev → no_confirm (hold-writes is the default)", () => {
@@ -54,9 +51,9 @@ describe("resolveToolMode for run_workflow (enforcement table)", () => {
     expect(runWorkflowMode({ workflow: "my-wf", environment: "prod" })).toBe("no_confirm");
   });
 
-  it("execute_writes:true in prod → confirm (execute_writes rule wins before env check)", () => {
+  it("execute_writes:true in prod delegates to bounded admission", () => {
     expect(runWorkflowMode({ workflow: "my-wf", execute_writes: true, environment: "prod" })).toBe(
-      "confirm_before_execution",
+      "no_confirm",
     );
   });
 

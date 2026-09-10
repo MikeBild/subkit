@@ -394,10 +394,9 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
  *  on chat, false on MCP. Deriving here makes ONE declaration cover both
  *  surfaces, and it can only ever ADD a `can()` call where there was none.
  *
- *  `resolveResourceId` is deliberately not honoured: it is async (slug -> uuid
- *  needs a DB round-trip) and this extractor is sync. Such a tool falls back
- *  to the tenant-scoped check, the same shape `restore_workflow_version`
- *  documents for its slug-only case. */
+ *  Async `resolveResourceId` declarations need the execution context and are
+ *  resolved by the dispatcher before its RBAC check. The catalog descriptor
+ *  records the permission; it does not replace that exact-resource check. */
 function derivedRbac(t: ConversationTool): NonNullable<ToolDescriptor["rbac"]> | undefined {
   const p = t.permission;
   if (!p) return undefined;

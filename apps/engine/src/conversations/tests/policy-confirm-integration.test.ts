@@ -21,6 +21,7 @@ import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
 import { buildToolAnnotations } from "../../mcp/capabilities/tool-meta.ts";
 import { policyDecide } from "../../tools/policy.ts";
 import { getElicitation } from "../elicitations.ts";
+import type { ToolPolicies } from "../tool-policies.ts";
 import {
   APPROVAL_HANDLE_KEY as _APPROVAL_HANDLE_KEY,
   approvalHandleFromElicitationInput,
@@ -90,6 +91,7 @@ function toolCtxFor(): ToolContext {
 async function runLoopTool(
   tool: string,
   args: Record<string, unknown>,
+  overrides: ToolPolicies = {},
 ): Promise<{ result: { ok: boolean; pause?: unknown; data?: unknown }; events: TurnEvent[] }> {
   const events: TurnEvent[] = [];
   const signals = freshSignals();
@@ -99,7 +101,7 @@ async function runLoopTool(
     events,
     ctx.testDb.db as unknown as Db,
     ["workflow-authoring"],
-    {},
+    overrides,
   );
   const t = wrapped[tool];
   expect(t).toBeDefined();
@@ -109,13 +111,17 @@ async function runLoopTool(
 }
 
 describe("confirm gate — loop surface follows the deterministic rule", () => {
-  it("an explicit one-shot write in prod PAUSES without human approval", async () => {
-    const { result, events } = await runLoopTool("run_workflow", {
-      workflow: "render-upload-slides",
-      environment: "prod",
-      execute_writes: true,
-      input: '{"markdown":"# Slides","filename":"slides.html"}',
-    });
+  it("an explicitly guarded prod start PAUSES without human approval", async () => {
+    const { result, events } = await runLoopTool(
+      "run_workflow",
+      {
+        workflow: "render-upload-slides",
+        environment: "prod",
+        execute_writes: true,
+        input: '{"markdown":"# Slides","filename":"slides.html"}',
+      },
+      { run_workflow: "confirm_before_execution" },
+    );
 
     // Deterministic pause — the inner tool never ran (no workflow_not_found
     // 404 came back).
@@ -166,13 +172,17 @@ describe("confirm gate — loop surface follows the deterministic rule", () => {
     expect(result.pause).toBeUndefined();
   });
 
-  it("an explicit one-shot write with __policy_confirmed still PAUSES (the marker is inert)", async () => {
-    const { result } = await runLoopTool("run_workflow", {
-      workflow_id: "00000000-0000-0000-0000-000000000002",
-      environment: "prod",
-      execute_writes: true,
-      __policy_confirmed: true,
-    });
+  it("an explicitly guarded start with __policy_confirmed still PAUSES (the marker is inert)", async () => {
+    const { result } = await runLoopTool(
+      "run_workflow",
+      {
+        workflow_id: "00000000-0000-0000-0000-000000000002",
+        environment: "prod",
+        execute_writes: true,
+        __policy_confirmed: true,
+      },
+      { run_workflow: "confirm_before_execution" },
+    );
     // The gate reads no marker off the args. One tool call carrying it must not
     // become a live prod run with no elicitation, no approval row, no human.
     expect(result.ok).toBe(false);
@@ -203,17 +213,22 @@ describe("confirm gate — loop surface follows the deterministic rule", () => {
 describe("confirm gate — both surfaces require locally verifiable human approval", () => {
   // The presentation differs (conversation card or approval portal), but
   // neither surface accepts a client annotation as proof of human consent.
-  it("one-shot prod writes: chat pauses and MCP requires the same decision", async () => {
-    const { result: loop } = await runLoopTool("run_workflow", {
-      workflow: "render-upload-slides",
-      environment: "prod",
-      execute_writes: true,
-    });
+  it("explicitly guarded prod starts: chat and MCP require the same decision", async () => {
+    const { result: loop } = await runLoopTool(
+      "run_workflow",
+      {
+        workflow: "render-upload-slides",
+        environment: "prod",
+        execute_writes: true,
+      },
+      { run_workflow: "confirm_before_execution" },
+    );
     const mcp = policyDecide({
       tool: "run_workflow",
       category: "tenant_write",
       surface: "mcp",
       args: { workflow: "render-upload-slides", environment: "prod", execute_writes: true },
+      overrides: { run_workflow: "confirm_before_execution" },
     });
     expect(Boolean(loop.pause)).toBe(true);
     expect(mcp.kind).toBe("needs_confirm");
@@ -238,9 +253,9 @@ describe("confirm gate — both surfaces require locally verifiable human approv
     });
   }
 
-  it("run_workflow dev with execute_writes: both surfaces gate the live request", async () => {
-    // `execute_writes:true` is a request for the operator's approval, not an
-    // approval. Both surfaces wait for the actual human decision.
+  it("run_workflow dev with execute_writes reaches admission on both surfaces", async () => {
+    // The flag is not an execution grant. Durable admission reserves matching
+    // authority or holds writes; real DB/HTTP admission tests prove that fence.
     const { result: loop } = await runLoopTool("run_workflow", {
       workflow_id: "00000000-0000-0000-0000-000000000003",
       environment: "dev",
@@ -252,8 +267,8 @@ describe("confirm gate — both surfaces require locally verifiable human approv
       surface: "mcp",
       args: { environment: "dev", execute_writes: true },
     });
-    expect(Boolean(loop.pause)).toBe(true);
-    expect(mcp.kind).toBe("needs_confirm");
+    expect(Boolean(loop.pause)).toBe(false);
+    expect(mcp.kind).not.toBe("needs_confirm");
     expect(buildToolAnnotations("workflow_run", "run_workflow").destructiveHint).toBe(true);
   });
 });

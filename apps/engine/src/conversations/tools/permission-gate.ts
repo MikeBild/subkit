@@ -138,7 +138,9 @@ export async function checkToolPermission(
   rawArgs: Record<string, unknown>,
   approval?: ApprovalAuditResource,
 ): Promise<ToolPermissionResult> {
-  const principal = await resolveConversationPrincipal(ctx);
+  // Authenticated transport principals carry credential ceilings that a role
+  // lookup cannot reconstruct (including per-connector restrictions).
+  const principal = ctx.principal ?? (await resolveConversationPrincipal(ctx));
   if (!principal) return { allow: true };
 
   let resourceId: string;

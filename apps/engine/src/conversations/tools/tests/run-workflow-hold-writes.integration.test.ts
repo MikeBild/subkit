@@ -9,9 +9,8 @@
 //      carries writes_held:true + held_step_ids; audit row metadata has
 //      execute_writes:false.
 //
-//   B. Opt-in (execute_writes:true): same workflow, same surface, but
-//      execute_writes:true → the POST step actually dispatches (held
-//      is absent); audit metadata execute_writes:true, held_step_ids absent.
+//   B. execute_writes:true is only a request: without local authority,
+//      the same write remains held and its actual held state is audited.
 //
 //   Negative: wrong-tenant principal → cross-tenant isolation at the
 //   workflow lookup layer means the wrong tenant sees workflow_not_found.
@@ -203,37 +202,37 @@ describe.skipIf(skip)("run_workflow (A: default holds write steps, does not disp
   }, 60_000);
 });
 
-describe.skipIf(skip)("run_workflow (B: execute_writes:true dispatches all steps)", () => {
-  test("execute_writes:true — POST step dispatches live, no held markers, audit execute_writes:true", async () => {
+describe.skipIf(skip)("run_workflow (B: execute_writes:true cannot grant authority)", () => {
+  test("execute_writes:true — POST remains held without authority and audit reflects no writes", async () => {
     hits.length = 0;
     const workflow_id = await seedTwoStepWorkflow("rw-execute-writes-true");
     const conversation_id = await seedConversation();
     const principal = makePrincipal(convCtx.tenant_id, convCtx.user_id);
     const toolCtx = makeCtx({ conversation_id, principal });
 
-    // Run WITH execute_writes:true — real dispatch expected.
+    // The live-run preference is not a version-bound grant.
     const result = await runWorkflowTool.execute(toolCtx, {
       workflow: workflow_id,
       environment: "dev",
       execute_writes: true,
     });
 
-    // Both the GET and the POST must have hit the mock server.
+    // Preparation reads run; unapproved writes do not.
     expect(hits.filter((h) => h.url.startsWith("/data"))).toHaveLength(1);
-    expect(hits.filter((h) => h.url.startsWith("/send"))).toHaveLength(1);
+    expect(hits.filter((h) => h.url.startsWith("/send"))).toHaveLength(0);
 
-    // No hold signals in the envelope.
+    // Hold signals remain explicit in the envelope.
     const data = result.data as Record<string, unknown>;
-    expect(data.writes_held).toBeUndefined();
-    expect(data.held_step_ids).toBeUndefined();
-    expect(data.writes_held_note).toBeUndefined();
+    expect(data.writes_held).toBe(true);
+    expect(data.held_step_ids).toContain("send_email");
+    expect(typeof data.writes_held_note).toBe("string");
 
-    // Audit row must record execute_writes:true with no held_step_ids.
+    // Audit records actual behavior, not the requested flag.
     const auditRow = await latestRunWorkflowAuditRow();
     expect(auditRow).not.toBeNull();
     const meta = auditRow?.metadata as Record<string, unknown>;
-    expect(meta?.execute_writes).toBe(true);
-    expect(meta?.held_step_ids).toBeUndefined();
+    expect(meta?.execute_writes).toBe(false);
+    expect(meta?.held_step_ids).toContain("send_email");
   }, 60_000);
 });
 

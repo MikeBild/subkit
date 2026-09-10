@@ -6,15 +6,16 @@
 // tripwire is the mock upstream's request log: a held write must leave
 // ZERO entries. The result envelope carries the explicit `held` marker
 // (top level + step_traces) with the materialized `held_request`
-// artifact, and the `execute_writes: true` escape hatch dispatches the
-// same step for real (its tool policy gates that path behind
-// confirm_before_execution — pinned in tool-policies.test.ts).
+// artifact. Legacy execute_writes:true cannot release mutable draft state.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { executions } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { dryRunStepTool } from "../tools/dry-run-step.ts";
+import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
@@ -91,6 +92,22 @@ interface HeldEnvelope {
 }
 
 describe("dry_run_step · hold-writes", () => {
+  test("whole draft preview also holds writes when the legacy flag is true", async () => {
+    hits.length = 0;
+    const result = await dryRunWorkflowTool.execute(makeCtx(writeStepDraft()), {
+      execute_writes: true,
+    });
+    expect(hitsFor("/send")).toHaveLength(0);
+    const rows = await ctx.testDb.db
+      .select()
+      .from(executions)
+      .where(eq(executions.tenant_id, ctx.tenant_id));
+    const run = rows.find((row) => row.source_kind === "draft");
+    expect(run).toBeDefined();
+    expect(run?.hold_writes).toBe(true);
+    expect(JSON.stringify(result.data)).toContain("held");
+  });
+
   test("write-classified step is HELD by default — zero egress, result carries the held marker", async () => {
     hits.length = 0;
     const result = await dryRunStepTool.execute(makeCtx(writeStepDraft()), {
@@ -109,7 +126,7 @@ describe("dry_run_step · hold-writes", () => {
     expect(data.held_request?.body).toEqual({ subject: "Welcome" });
   });
 
-  test("execute_writes: true dispatches the same step for real", async () => {
+  test("execute_writes: true cannot release a mutable draft step", async () => {
     hits.length = 0;
     const result = await dryRunStepTool.execute(makeCtx(writeStepDraft()), {
       step_id: "send",
@@ -117,9 +134,9 @@ describe("dry_run_step · hold-writes", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(hitsFor("/send")).toHaveLength(1);
+    expect(hitsFor("/send")).toHaveLength(0);
     const data = result.data as HeldEnvelope;
-    expect(data.held).toBeUndefined();
-    expect(data.held_request).toBeUndefined();
+    expect(data.held).toBe(true);
+    expect(data.held_request?.method).toBe("POST");
   });
 });

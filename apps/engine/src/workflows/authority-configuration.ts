@@ -4,9 +4,7 @@ import { workflowJsonDigest } from "./canonical-json.ts";
 type AuthorityConnector = Pick<
   ConnectorView,
   | "id"
-  | "driver"
   | "environment"
-  | "auth_type"
   | "base_url"
   | "dsn"
   | "config"
@@ -14,7 +12,11 @@ type AuthorityConnector = Pick<
   | "template_source"
   | "template_version"
   | "template_snapshot"
->;
+> & {
+  // Hash the actual stored discriminator, including legacy credential modes.
+  auth_type: string;
+  driver: string;
+};
 
 /** Shared by human review and dispatch. Hash the connector actually loaded for
  * the request, not a later database reread that can hide an A → B → A change.

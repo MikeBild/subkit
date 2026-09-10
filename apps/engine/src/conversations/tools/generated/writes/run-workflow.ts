@@ -6,7 +6,6 @@ import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { conversations, workflowVersions } from "../../../../db/schema/index.ts";
 import { runExecution } from "../../../../execution/engine.ts";
-import { findExecutionByIdempotencyKey } from "../../../../execution/state.ts";
 import { admitWorkflowRun } from "../../../../execution/workflow-run-admission.ts";
 import { logger } from "../../../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../../../observability/instrumentation.ts";
@@ -68,11 +67,9 @@ const Input = z
      * otherwise writes stay held. Explicit false always prepares without
      * spending a live run. Held steps resolve URL/headers/body but do not
      * dispatch external writes.
-     * Set `execute_writes: true` ONLY when the user explicitly asked for a
-     * real, live run. It is a request for the operator's approval, not an
-     * approval: the call pauses on a confirmation the operator answers, and
-     * the engine performs the writes itself. It is never a way to run them
-     * yourself. Scheduler and HTTP execution use their own admission paths.
+     * True requests a live run but still requires matching local authority.
+     * Without one, writes remain held. For a one-shot human decision use the
+     * prepared wf_<slug> tool; this flag is never proof of that decision.
      */
     execute_writes: z.boolean().optional(),
   })
@@ -111,7 +108,7 @@ function withStatus(
 export const runWorkflowTool: ConversationTool = {
   name: "run_workflow",
   description:
-    "FALLBACK for executing an ALREADY-SAVED workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. Omitting execute_writes uses an existing local execution authority if one matches; otherwise writes are HELD and the envelope reports writes_held + held_step_ids. Use execute_writes: false for preparation without spending a live run. An explicitly requested one-shot live send remains the operator's decision: execute_writes: true raises a separate approval and never creates a standing authority. To verify a DRAFT, use `dry_run_workflow`, never `run_workflow`. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `author_workflow` (then `edit_workflow_patch` for edits).",
+    "FALLBACK for executing an ALREADY-SAVED workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. Every start requires matching local execution authority; otherwise writes are HELD and the envelope reports writes_held + held_step_ids. Use execute_writes: false for preparation without spending a live run. Setting execute_writes: true does not grant authority or bypass limits. For an exact one-shot human decision, use the prepared `wf_<slug>` tool. To verify a DRAFT, use `dry_run_workflow`, never `run_workflow`. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `author_workflow` (then `edit_workflow_patch` for edits).",
   inputSchema: Input,
   category: "tenant_write",
   // A workflow *run*, not a config mutation — consistent with the `wf_`
@@ -437,32 +434,27 @@ export const runWorkflowTool: ConversationTool = {
         "info",
         `running workflow ${wf.slug} (v${wf.current_version}) in env=${args.environment}`,
       );
-      // Ordinary starts discover a previously granted local boundary. Explicit
-      // preparation never spends it. The legacy explicitly confirmed one-shot
-      // path remains separate and must not manufacture a standing authority.
-      const admitted =
-        args.execute_writes === true
-          ? null
-          : await admitWorkflowRun(
-              {
-                tenant_id: ctx.tenant_id,
-                workflow_id: workflowId,
-                workflow_version_id: wf.current_version_id,
-                execution_environment: args.environment,
-                request_source: "chat",
-                input: suppliedInput ?? null,
-                ...(args.idempotency_key ? { idempotency_key: args.idempotency_key } : {}),
-                ...(args.execute_writes === false ? { hold_writes: true } : {}),
-              },
-              ctx.db,
-            );
-      const holdWrites = admitted?.hold_writes ?? false;
+      // A live-run flag (even in confirmed tool arguments) is not a version-
+      // bound authority. Every generic start uses the same durable admission.
+      // Exact one-shot execution remains the prepared wf_<slug> approval path.
+      const admitted = await admitWorkflowRun(
+        {
+          tenant_id: ctx.tenant_id,
+          workflow_id: workflowId,
+          workflow_version_id: wf.current_version_id,
+          execution_environment: args.environment,
+          request_source: "chat",
+          input: suppliedInput ?? null,
+          ...(args.idempotency_key ? { idempotency_key: args.idempotency_key } : {}),
+          ...(args.execute_writes === false ? { hold_writes: true } : {}),
+        },
+        ctx.db,
+      );
+      const holdWrites = admitted.hold_writes;
       if (args.idempotency_key) {
-        const existing = admitted
-          ? admitted.replayed
-            ? { id: admitted.execution_id, status: admitted.status }
-            : null
-          : await findExecutionByIdempotencyKey(ctx.db, ctx.tenant_id, args.idempotency_key);
+        const existing = admitted.replayed
+          ? { id: admitted.execution_id, status: admitted.status }
+          : null;
         if (existing) {
           return {
             ok: true,
@@ -871,7 +863,7 @@ export const runWorkflowTool: ConversationTool = {
               ? {
                   writes_held: true,
                   held_step_ids: heldStepIds,
-                  writes_held_note: `${heldStepIds.length} write step(s) were resolved but NOT dispatched. Nothing was written or sent, so this run is safe for verification. A live run is the operator's decision, not yours: only if the user explicitly asks for one, re-issue run_workflow with execute_writes:true — that call does NOT perform the writes either, it puts the approval in front of the operator, and the engine performs them itself once they answer. Never set execute_writes on your own initiative, and never approve on the user's behalf.`,
+                  writes_held_note: `${heldStepIds.length} write step(s) were resolved but NOT dispatched. No held write was sent. Use the prepared wf_${wf.slug} tool for an exact one-shot human decision, or obtain a bounded execution authority for this version. Setting execute_writes:true cannot release held writes or bypass an expired, revoked or exhausted authority. Never approve on the user's behalf.`,
                 }
               : {}),
             ...(failureStepKey ? { failure_step_key: failureStepKey } : {}),

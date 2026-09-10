@@ -1,11 +1,14 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
+import { upsertCredential } from "../credentials/service.ts";
 import {
   auditLog,
+  connectors,
   conversationElicitations,
   conversations,
   conversationToolCalls,
+  credentials,
   executionSteps,
   executions,
   tenants,
@@ -59,6 +62,7 @@ async function fixture(
     container?: "loop" | "parallel";
     loopRecipients?: boolean;
     inlineEach?: boolean;
+    auxiliaryCredential?: boolean;
   } = {},
 ) {
   const environment = options.environment ?? "dev";
@@ -72,6 +76,35 @@ async function fixture(
   if (!workflow) throw new Error("missing workflow");
   const tenantId = tenant.id;
   const workflowId = workflow.id;
+  const [auxiliary] = options.auxiliaryCredential
+    ? await tdb.db
+        .insert(connectors)
+        .values({
+          tenant_id: tenantId,
+          slug: "auxiliary",
+          display_name: "Auxiliary",
+          driver: "http",
+          environment,
+          auth_type: "bearer",
+          base_url: remote.baseUrl,
+        })
+        .returning()
+    : [];
+  async function rotateAuxiliary(token: string) {
+    if (!auxiliary) throw new Error("missing auxiliary connector");
+    await upsertCredential(
+      {
+        tenant_id: tenantId,
+        connector_id: auxiliary.id,
+        environment,
+        mode: "bearer",
+        value: { mode: "bearer", token },
+        actor_id: null,
+      },
+      tdb.db,
+    );
+  }
+  if (auxiliary) await rotateAuxiliary("reviewed-test-token");
   const definition = {
     name: slug,
     slug,
@@ -108,6 +141,7 @@ async function fixture(
         kind: "request",
         method: "POST",
         url: `${remote.baseUrl}/messages`,
+        ...(auxiliary ? { headers: { Authorization: "Bearer ${cred.auxiliary.token}" } } : {}),
         ...(options.inlineEach
           ? { for_each: "(sourceData) => sourceData.lookup.data.recipients" }
           : {}),
@@ -391,8 +425,115 @@ async function fixture(
     submitGeneratedInput,
     runTool,
     confirmPrepared,
+    rotateAuxiliary,
+    auxiliary,
   };
 }
+
+for (const maxRuns of [undefined, 1]) {
+  test(`generic explicit live-run flag ${maxRuns ? "uses local authority once" : "cannot bypass authority"}`, async () => {
+    const f = await fixture(maxRuns === undefined ? {} : { maxRuns });
+    const before = remote.callCount();
+    await f.runTool("generic", true);
+    expect(remote.callCount()).toBe(before + (maxRuns ? 1 : 0));
+    const [run] = await f.rows();
+    expect(run?.hold_writes).toBe(!maxRuns);
+    if (maxRuns) {
+      expect(run?.execution_authority_id).toBe(f.authority?.id);
+      await f.runTool("generic", true);
+      expect(remote.callCount()).toBe(before + 1);
+    }
+  });
+}
+
+for (const rotated of [false, true]) {
+  test(`auxiliary credential ${rotated ? "A-to-B-to-A requires reapproval" : "unchanged permits the exact approved dispatch"}`, async () => {
+    const f = await fixture({ auxiliaryCredential: true });
+    const before = remote.callCount();
+    await f.runTool("synthetic");
+    expect(remote.callCount()).toBe(before);
+    if (rotated) {
+      await f.rotateAuxiliary("changed-test-token");
+      await f.rotateAuxiliary("reviewed-test-token");
+    }
+    const result = await f.confirmPrepared();
+    expect(result.synthetic_result?.ok).toBe(!rotated);
+    expect(remote.callCount()).toBe(before + (rotated ? 0 : 1));
+    if (rotated) {
+      const events = await tdb.db
+        .select({ reason: auditLog.reason })
+        .from(auditLog)
+        .where(
+          and(eq(auditLog.tenant_id, f.tenant.id), eq(auditLog.action, "approval.dispatch_denied")),
+        );
+      expect(events.some((event) => event.reason === "prepared_request_changed")).toBe(true);
+    }
+  });
+}
+
+test("auxiliary credential revision is rechecked after materialization before dispatch", async () => {
+  const f = await fixture({ auxiliaryCredential: true });
+  if (!f.auxiliary) throw new Error("missing auxiliary");
+  const [credential] = await tdb.db
+    .select()
+    .from(credentials)
+    .where(
+      and(eq(credentials.tenant_id, f.tenant.id), eq(credentials.connector_id, f.auxiliary.id)),
+    );
+  if (!credential) throw new Error("missing credential");
+  await f.runTool("synthetic");
+  await f.confirmPrepared();
+  const run = (await f.rows()).find((row) => row.tool_approval_id);
+  if (!run) throw new Error("missing run");
+  const stepId = Object.keys(run.tool_approval_dispatches)[0];
+  if (!stepId) throw new Error("missing step");
+  await tdb.db
+    .update(executions)
+    .set({ status: "running" })
+    .where(and(eq(executions.tenant_id, f.tenant.id), eq(executions.id, run.id)));
+  await tdb.db
+    .update(executionSteps)
+    .set({ status: "running" })
+    .where(and(eq(executionSteps.tenant_id, f.tenant.id), eq(executionSteps.id, stepId)));
+  const key = `${run.id}:${stepId}:0`;
+  const snapshot: RequestAuthoritySnapshot = {
+    step_id: "send",
+    step_row_id: stepId,
+    connector_id: null,
+    requires_review: true,
+    request_max_attempts: 5,
+    principal_id: actorId,
+    configuration_digest: authorityConnectorDigest(null),
+    credential_id: null,
+    credential_revision: null,
+    connection_authority: null,
+    referenced_authorities: [
+      {
+        connector_id: f.auxiliary.id,
+        configuration_digest: authorityConnectorDigest(f.auxiliary),
+        credential_id: credential.id,
+        credential_revision: credential.authority_revision,
+      },
+    ],
+    request: {
+      method: "POST",
+      url: `${remote.baseUrl}/messages`,
+      headers: { Authorization: "Bearer reviewed-test-token", "Idempotency-Key": key },
+      body: { recipient: "reviewed@example.test" },
+      generated_idempotency: { key, page: 0 },
+    },
+  };
+  await f.rotateAuxiliary("changed-test-token");
+  await f.rotateAuxiliary("reviewed-test-token");
+  const before = remote.callCount();
+  await expect(
+    assertToolApprovalDispatch(tdb.db, f.tenant.id, run.id, snapshot),
+  ).rejects.toMatchObject({ code: "prepared_reference_credential_changed" });
+  expect(remote.callCount()).toBe(before);
+  expect(
+    (await f.rows()).find((row) => row.id === run.id)?.tool_approval_dispatches[stepId]?.attempts,
+  ).toBe(1);
+});
 
 test("a held chat approval replays its exact prepared version once", async () => {
   const f = await fixture();
