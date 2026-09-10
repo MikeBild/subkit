@@ -23,6 +23,11 @@ const view: ApprovalPortalView = {
 };
 
 test("display targets omit credentials, all query values and fragments", () => {
+  expect(
+    approvalDisplayTarget(
+      "postgresql://user:private@database.example.test:5432/ledger?sslpassword=hidden",
+    ),
+  ).toBe("postgresql://database.example.test:5432/ledger");
   expect(approvalDisplayTarget("s3://test-bucket/reports?credential=hidden")).toBe(
     "s3://test-bucket/reports",
   );
@@ -34,6 +39,47 @@ test("display targets omit credentials, all query values and fragments", () => {
 });
 
 for (const locale of ["de", "en"] as const) {
+  test(`${locale} direct decisions show the recorded connector environment and target`, () => {
+    const copy = approvalCopy(locale);
+    const html = buildApprovalDecisionHtml(
+      {
+        ...view,
+        tool: "call_connector",
+        preview: {
+          would_write: [{ step: "untrusted", method: "GET", url: "https://wrong.example.test" }],
+          direct_connector: {
+            schema_version: 1,
+            tool: "call_connector",
+            references: [],
+            target: {
+              connector_id: "00000000-0000-4000-8000-000000000001",
+              environment: "prod",
+              configuration_digest: "a".repeat(64),
+              credential_binding_digest: null,
+              credential_id: null,
+              credential_revision: null,
+              connection_authority: null,
+            },
+            review: {
+              step: "call_connector: ledger (prod)",
+              method: "POST",
+              url: "https://ledger.example.test/entries",
+            },
+          },
+        },
+      },
+      "grant",
+      { email: "operator@example.test" },
+      "csrf",
+      locale,
+    );
+    expect(html).toContain(copy.prod);
+    expect(html).toContain(copy.directBoundHelp);
+    expect(html).toContain(copy.directEffectsHelp);
+    expect(html).toContain("ledger.example.test/entries");
+    expect(html).not.toContain("wrong.example.test");
+    expect(html).not.toContain(copy.limitations);
+  });
   test(`${locale} shows persisted prepared content, version and retry limits without trusting caller prose`, () => {
     const copy = approvalCopy(locale);
     const version = "00000000-0000-4000-8000-000000000003";

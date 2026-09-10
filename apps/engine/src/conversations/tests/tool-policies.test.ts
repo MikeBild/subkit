@@ -27,7 +27,7 @@ describe("tool-policies resolver", () => {
 
 describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
   it("development probes cannot disguise writes as automatic preparation", () => {
-    for (const tool of ["probe_connector", "probe_connector_draft"]) {
+    for (const tool of ["probe_connector"]) {
       for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
         for (const permission_mode of ["auto", "ask", "plan"] as const) {
           expect(
@@ -60,6 +60,18 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
         }).mode,
       ).toBe("confirm_before_execution");
     }
+  });
+
+  it("held draft writes do not create a routine development approval", () => {
+    expect(
+      decideToolMode({
+        tool: "probe_connector_draft",
+        category: "draft_write",
+        input: { environment: "dev", method: "POST" },
+        overrides: {},
+        permission_mode: "auto",
+      }).mode,
+    ).toBe("no_confirm");
   });
 
   it("run_workflow environment=dev auto-confirms (no_confirm)", () => {

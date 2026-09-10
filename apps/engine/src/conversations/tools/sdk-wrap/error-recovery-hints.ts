@@ -30,6 +30,8 @@ import {
  * the cap surfaces only the generic "ask the user" hint.
  */
 export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
+  draft_write_held:
+    "the draft probe held an external write before credential lookup or dispatch. Validate the draft with a read-only probe, save the connector, then use call_connector for the exact write with human approval. Do not retry the write through a draft probe or bypass the approval gate.",
   workflow_activation_required:
     "the saved draft is not the active workflow version. Saving did not authorize a live run. Inspect and preview the draft with inspect_workflow_draft / dry_run_workflow; request human review of the exact version and effects before activation. Do not run an older active version as a substitute or retry with execute_writes.",
   draft_base_not_observed:

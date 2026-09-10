@@ -19,6 +19,7 @@ import {
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { EngineClient } from "../engine-client/index.ts";
+import { capturePreparedWorkflowReferences } from "../execution/prepared-workflow-references.ts";
 import { assertToolApprovalDispatch } from "../execution/tool-approval-dispatch.ts";
 import type { RequestAuthoritySnapshot } from "../execution/types.ts";
 import { databaseNow } from "../test-helpers/database-clock.ts";
@@ -26,6 +27,7 @@ import { createMockServer, jsonResponse, type MockServer } from "../test-helpers
 import { capturePreparedWorkflowBinding } from "../tools/prepared-workflow-approval.ts";
 import { authorityConnectorDigest } from "../workflows/authority-configuration.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
+import { WorkflowDefSchema } from "../workflows/types.ts";
 import { createEmptyDraftDocument } from "./authoring-state.ts";
 import { resolveElicitationAndReactivate } from "./elicitations.ts";
 import { type FastPathParams, tryFastPath } from "./fast-path.ts";
@@ -63,6 +65,7 @@ async function fixture(
     loopRecipients?: boolean;
     inlineEach?: boolean;
     auxiliaryCredential?: boolean;
+    upstreamCredential?: boolean;
   } = {},
 ) {
   const environment = options.environment ?? "dev";
@@ -76,20 +79,21 @@ async function fixture(
   if (!workflow) throw new Error("missing workflow");
   const tenantId = tenant.id;
   const workflowId = workflow.id;
-  const [auxiliary] = options.auxiliaryCredential
-    ? await tdb.db
-        .insert(connectors)
-        .values({
-          tenant_id: tenantId,
-          slug: "auxiliary",
-          display_name: "Auxiliary",
-          driver: "http",
-          environment,
-          auth_type: "bearer",
-          base_url: remote.baseUrl,
-        })
-        .returning()
-    : [];
+  const [auxiliary] =
+    options.auxiliaryCredential || options.upstreamCredential
+      ? await tdb.db
+          .insert(connectors)
+          .values({
+            tenant_id: tenantId,
+            slug: "auxiliary",
+            display_name: "Auxiliary",
+            driver: "http",
+            environment,
+            auth_type: "bearer",
+            base_url: remote.baseUrl,
+          })
+          .returning()
+      : [];
   async function rotateAuxiliary(token: string) {
     if (!auxiliary) throw new Error("missing auxiliary connector");
     await upsertCredential(
@@ -118,6 +122,17 @@ async function fixture(
         }
       : {}),
     steps: [
+      ...(options.upstreamCredential
+        ? [
+            {
+              id: "credential_read",
+              kind: "request",
+              method: "GET",
+              url: `${remote.baseUrl}/credential-read`,
+              headers: { Authorization: "Bearer ${cred.auxiliary.token}" },
+            },
+          ]
+        : []),
       ...(options.lookupRecipient
         ? [{ id: "lookup", kind: "request", method: "GET", url: `${remote.baseUrl}/recipient` }]
         : []),
@@ -141,7 +156,9 @@ async function fixture(
         kind: "request",
         method: "POST",
         url: `${remote.baseUrl}/messages`,
-        ...(auxiliary ? { headers: { Authorization: "Bearer ${cred.auxiliary.token}" } } : {}),
+        ...(options.auxiliaryCredential
+          ? { headers: { Authorization: "Bearer ${cred.auxiliary.token}" } }
+          : {}),
         ...(options.inlineEach
           ? { for_each: "(sourceData) => sourceData.lookup.data.recipients" }
           : {}),
@@ -153,6 +170,7 @@ async function fixture(
               : "reviewed@example.test",
         },
         ...(options.lookupRecipient ? { depends_on: ["lookup"] } : {}),
+        ...(options.upstreamCredential ? { depends_on: ["credential_read"] } : {}),
         ...(options.readLabel ? { side_effects: "read" } : {}),
       },
     ],
@@ -471,6 +489,24 @@ for (const rotated of [false, true]) {
   });
 }
 
+for (const rotated of [false, true]) {
+  test(`credential used only by an earlier read ${rotated ? "requires a new decision after rotation" : "allows an unchanged write"}`, async () => {
+    const f = await fixture({ upstreamCredential: true });
+    const before = remote.callCount();
+    await f.runTool("synthetic");
+    expect(remote.callCount()).toBe(before + 1);
+    if (rotated) {
+      await f.rotateAuxiliary("changed-test-token");
+      await f.rotateAuxiliary("reviewed-test-token");
+    }
+    const result = await f.confirmPrepared();
+    expect(result.synthetic_result?.ok).toBe(!rotated);
+    // The upstream read returns the same data with both tokens. That does not
+    // allow its new access revision to inherit the previous write decision.
+    expect(remote.callCount()).toBe(before + (rotated ? 2 : 3));
+  });
+}
+
 test("auxiliary credential revision is rechecked after materialization before dispatch", async () => {
   const f = await fixture({ auxiliaryCredential: true });
   if (!f.auxiliary) throw new Error("missing auxiliary");
@@ -507,14 +543,12 @@ test("auxiliary credential revision is rechecked after materialization before di
     credential_id: null,
     credential_revision: null,
     connection_authority: null,
-    referenced_authorities: [
-      {
-        connector_id: f.auxiliary.id,
-        configuration_digest: authorityConnectorDigest(f.auxiliary),
-        credential_id: credential.id,
-        credential_revision: credential.authority_revision,
-      },
-    ],
+    referenced_authorities: await capturePreparedWorkflowReferences(
+      tdb.db,
+      f.tenant.id,
+      "dev",
+      WorkflowDefSchema.parse(f.definition),
+    ),
     request: {
       method: "POST",
       url: `${remote.baseUrl}/messages`,

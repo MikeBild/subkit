@@ -37,7 +37,11 @@ const en = {
   versionOnlyHelp:
     "The prepared version, inputs and environment are recorded. A verified materialized-request review is missing; version binding alone does not establish an external-effect boundary.",
   boundHelp:
-    "These prepared HTTP requests are bound to this workflow version, input, environment, primary connector configuration and permission revision. Changed requests stop before dispatch. Additional credential references are not fully covered yet; this is not a blanket workflow authorization.",
+    "These prepared HTTP requests are bound to the workflow version, inputs, environment and identified connector access, including credential references in earlier steps. Changed requests or access require a new decision. This is not a blanket workflow authorization.",
+  directBoundHelp:
+    "This single-use connector action is bound to its saved configuration, environment and credential permissions. Changes require a new decision; this is not permission for later calls or other targets.",
+  directEffectsHelp:
+    "This action is planned against the saved connector below. Requesting approval has not sent it. Credentials are hidden.",
   attempts: "Allowed dispatch attempts",
   attemptsValue: "At most {count} for this prepared request",
   attemptsHelp:
@@ -123,7 +127,11 @@ const de: typeof en = {
   versionOnlyHelp:
     "Vorbereitete Version, Eingaben und Umgebung sind hinterlegt. Eine verifizierte Ansicht der fertigen Anfragen fehlt; die Versionsbindung allein legt noch keine Grenze für externe Wirkungen fest.",
   boundHelp:
-    "Diese vorbereiteten HTTP-Anfragen sind an Workflow-Version, Eingaben, Umgebung sowie die primäre Connector-Konfiguration und Berechtigungsrevision gebunden. Geänderte Anfragen stoppen vor dem Versand. Zusätzliche Credential-Referenzen sind noch nicht vollständig abgedeckt; dies ist keine pauschale Workflow-Freigabe.",
+    "Diese vorbereiteten HTTP-Anfragen sind an Workflow-Version, Eingaben, Umgebung und ermittelte Connector-Zugriffe gebunden, einschließlich der Zugangsdaten aus früheren Schritten. Geänderte Anfragen oder Zugriffsrechte benötigen eine neue Entscheidung. Dies ist keine pauschale Workflow-Freigabe.",
+  directBoundHelp:
+    "Diese einmalige Connector-Aktion ist an die gespeicherte Konfiguration, Umgebung und Zugriffsrechte der Zugangsdaten gebunden. Änderungen benötigen eine neue Entscheidung. Die Freigabe gilt nicht für spätere Aufrufe oder andere Ziele.",
+  directEffectsHelp:
+    "Diese Aktion ist für den unten genannten gespeicherten Connector vorgesehen. Die Freigabeanfrage hat sie noch nicht ausgeführt. Zugangsdaten sind verborgen.",
   attempts: "Erlaubte Sendeversuche",
   attemptsValue: "Höchstens {count} für diese vorbereitete Anfrage",
   attemptsHelp:

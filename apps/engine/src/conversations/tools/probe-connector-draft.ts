@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
+import { classifyHttpSideEffect } from "@shared/index.ts";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { probeGraphQLConnector } from "../../connectors/drivers/graphql.ts";
@@ -184,6 +185,59 @@ export const probeConnectorDraftTool: ConversationTool = {
       };
     }
     const effectiveDriver = connector.driver ?? "http";
+    // A mutable draft is not an immutable write boundary. Hold before reading
+    // or minting credentials; a generic tool confirmation cannot release it.
+    if (effectiveDriver === "http" && classifyHttpSideEffect({ method: args.method }) !== "read") {
+      const summary =
+        "Write probe held. Validate with a read-only development probe, save the connector, then review the exact write with call_connector.";
+      const latest_probe = {
+        ok: false,
+        method: args.method,
+        path: args.path,
+        environment: args.environment ?? connector.environment ?? "dev",
+        duration_ms: 0,
+        summary,
+        failure_code: "draft_write_held",
+        probed_at: new Date().toISOString(),
+      };
+      const nextDraft = withConnectorProbe(
+        currentDraft,
+        { ...connector, validation, latest_probe },
+        false,
+        summary,
+        "connector_probe_blocked",
+      );
+      await ctx.setDraft(nextDraft);
+      await auditAwait(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_type: ctx.actor_id ? "user" : "system",
+          actor_id: ctx.actor_id,
+          action: AuditAction.CONVERSATION_PROBE_CONNECTOR,
+          resource_type: "conversation",
+          resource_id: ctx.conversation_id,
+          result: "denied",
+          reason: "draft_write_held",
+          metadata: {
+            request_source: "chat",
+            driver: effectiveDriver,
+            environment: latest_probe.environment,
+            draft_only: true,
+            held: true,
+          },
+        },
+        ctx.db,
+      );
+      return {
+        ok: false,
+        data: buildLifecyclePayload(nextDraft, {
+          held: true,
+          error_code: "draft_write_held",
+          latest_probe,
+          recommended_next: ["probe_connector_draft", "save_connector_draft", "call_connector"],
+        }),
+      };
+    }
     // Once the draft is bound to a saved connector, probe under that
     // connector's real id so the drivers resolve its credential from the
     // encrypted vault. A fresh (unsaved) draft keeps the synthetic id —

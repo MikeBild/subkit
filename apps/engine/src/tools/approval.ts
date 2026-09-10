@@ -90,6 +90,11 @@ import {
   encryptApprovalPreview,
   mintApprovalGrantUrl,
 } from "./approval-portal.ts";
+import {
+  captureDirectConnectorBinding,
+  type DirectConnectorBinding,
+  isDirectConnectorTool,
+} from "./direct-connector-binding.ts";
 import { ARGS_CONFIRM_ID_KEY, ARGS_CONFIRM_KEY } from "./policy.ts";
 import {
   capturePreparedWorkflowBinding,
@@ -182,6 +187,7 @@ export interface ClaimedApproval {
   readonly approval_id: string;
   readonly args: Record<string, unknown>;
   readonly prepared_workflow?: PreparedWorkflowBinding;
+  readonly direct_connector?: DirectConnectorBinding;
   /** The tool the approval was GRANTED for, read back off the claimed row. Equal
    *  to the `tool` the claim passed — the CAS predicate says so — but callers
    *  that derive an EXECUTION TARGET from the tool name must read it from here.
@@ -349,9 +355,17 @@ export async function requestApproval(input: RequestApprovalInput): Promise<Requ
       })
     : undefined;
   const visiblePreview = buildApprovalPreview(input.preview);
-  const preview: ApprovalPreview | null = prepared
-    ? { would_write: visiblePreview?.would_write ?? [], prepared_workflow: prepared }
-    : visiblePreview;
+  const direct = isDirectConnectorTool(tool)
+    ? await captureDirectConnectorBinding({ db, tenant_id: principal.tenant_id, tool, args })
+    : null;
+  const preview: ApprovalPreview | null =
+    prepared || direct
+      ? {
+          would_write: visiblePreview?.would_write ?? (direct ? [direct.review] : []),
+          ...(prepared ? { prepared_workflow: prepared } : {}),
+          ...(direct ? { direct_connector: direct } : {}),
+        }
+      : visiblePreview;
   const encPreview = preview
     ? encryptApprovalPreview(principal.tenant_id, approval_id, preview)
     : null;
@@ -1011,16 +1025,18 @@ export async function consumeApproval(input: ConsumeApprovalInput): Promise<Cons
         return await denyClaim(claimInput, tx, environmentMismatch(approval_id, stored));
       }
 
-      const binding = decryptPreview({
+      const preview = decryptPreview({
         ...row,
         id: approval_id,
         tenant_id: principal.tenant_id,
-      })?.prepared_workflow;
+      });
+      const binding = preview?.prepared_workflow;
       return {
         ok: true,
         approval_id,
         args,
         ...(binding ? { prepared_workflow: binding } : {}),
+        ...(preview?.direct_connector ? { direct_connector: preview.direct_connector } : {}),
         tool: row.tool,
         surface: row.surface === "mcp" ? "mcp" : "chat",
         execution_mode: stored,

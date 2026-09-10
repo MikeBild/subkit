@@ -54,6 +54,7 @@ import {
   recordApprovalUnfulfilled,
   requestApproval,
 } from "./approval.ts";
+import { isDirectConnectorTool } from "./direct-connector-binding.ts";
 import {
   confirmIdFromArgs,
   DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON,
@@ -569,7 +570,23 @@ export async function dispatchTool(
             if (!ctx) {
               throw new Error("dispatcher missing conversation ctx for tool execution");
             }
-            const result = await executor.execute({ ...ctx, principal: deps.principal }, execArgs);
+            const result = await executor.execute(
+              {
+                ...ctx,
+                principal: deps.principal,
+                ...(claimed && isDirectConnectorTool(claimed.tool)
+                  ? {
+                      direct_connector_approval: {
+                        approval_id: claimed.approval_id,
+                        surface: claimed.surface,
+                        tool: claimed.tool,
+                        binding: claimed.direct_connector ?? null,
+                      },
+                    }
+                  : {}),
+              },
+              execArgs,
+            );
             envelope = normalizeConversationResult(result);
           } else if (isStaticExecutor(executor)) {
             envelope = await executor.invoke(

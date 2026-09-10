@@ -6,6 +6,35 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 6.45.0 — 2026-09-10
+
+### Added
+
+- Bounded workflow execution authorities: immutable version and effect bindings,
+  finite run limits, expiry, withdrawal, transactional admission and dispatch
+  checks across API, queue, schedules, webhooks, MCP and conversation entry points.
+- Product-local cockpit review of targets, effects, credentials, validity and
+  remaining runs; German/English single-use approval pages distinguish a human
+  decision from actual delivery. Existing active versions receive no automatic
+  live-run grant and existing explicit interaction preferences remain intact.
+- New authoring conversations default to autonomous preparation. Draft versions,
+  previews and ordinary correction loops stay separate from live execution.
+
+### Fixed
+
+- Exact prepared HTTP decisions bind resolved requests, occurrence/retry limits,
+  primary and referenced credential revisions, including dependencies in earlier
+  reads and transforms. Rotation and restoration of an old token cannot restore
+  its old authority. Unsupported effects remain held or fail closed.
+- Direct connector decisions bind configuration and credential/connection
+  metadata before resolution and again at dispatch. Legacy unbound decisions
+  require a fresh review. Bound HTTP, GraphQL and S3 object calls cannot transfer
+  their permission through a redirect.
+- Mutable HTTP draft probes hold writes before credential lookup or token minting.
+  Queue retries, concurrent version changes and final-run reservations cannot
+  silently widen an approved boundary. No exactly-once external delivery or
+  automatic rollback of completed external effects is promised.
+
 ## 6.43.0 — 2026-09-04
 
 ### Fixed
