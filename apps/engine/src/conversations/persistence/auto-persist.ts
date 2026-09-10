@@ -1174,7 +1174,23 @@ export async function maybeAutoPersistFromElicitation(
           { db: p.db, tenant_id: p.tenant_id },
           new Map(),
         );
-        result = await gatedTool.execute(ctx, replayArgs);
+        result = await gatedTool.execute(
+          {
+            ...ctx,
+            principal: approver,
+            ...(claim.tool === "call_connector" || claim.tool === "probe_connector"
+              ? {
+                  direct_connector_approval: {
+                    approval_id: claim.approval_id,
+                    surface: claim.surface,
+                    tool: claim.tool,
+                    binding: claim.direct_connector ?? null,
+                  },
+                }
+              : {}),
+          },
+          replayArgs,
+        );
         break;
       }
       case "grant_relayed_tool_call": {

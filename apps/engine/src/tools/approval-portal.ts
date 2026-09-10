@@ -53,6 +53,10 @@ import { sha256Hex } from "../identity/api-key.ts";
 import { engineUrlFromConfig } from "../llm/runtime-context.ts";
 import { logger } from "../logging/logger.ts";
 import {
+  type DirectConnectorBinding,
+  DirectConnectorBindingSchema,
+} from "./direct-connector-binding.ts";
+import {
   type PreparedWorkflowBinding,
   PreparedWorkflowBindingSchema,
 } from "./prepared-workflow-approval.ts";
@@ -103,6 +107,7 @@ export interface ApprovalWouldWrite {
 export interface ApprovalPreview {
   readonly would_write: readonly ApprovalWouldWrite[];
   readonly prepared_workflow?: PreparedWorkflowBinding;
+  readonly direct_connector?: DirectConnectorBinding;
 }
 
 function asStringOrNull(value: unknown): string | null {
@@ -276,11 +281,17 @@ export function decryptPreview(row: {
       { ciphertext: preview_ciphertext, iv: preview_iv, auth_tag: preview_auth_tag },
       previewAad(row.tenant_id, row.id),
     );
-    const parsed = JSON.parse(plaintext) as { would_write?: unknown; prepared_workflow?: unknown };
+    const parsed = JSON.parse(plaintext) as {
+      would_write?: unknown;
+      prepared_workflow?: unknown;
+      direct_connector?: unknown;
+    };
     const binding = PreparedWorkflowBindingSchema.safeParse(parsed.prepared_workflow);
+    const direct = DirectConnectorBindingSchema.safeParse(parsed.direct_connector);
     return {
       would_write: normalizeWouldWrite(parsed.would_write),
       ...(binding.success ? { prepared_workflow: binding.data } : {}),
+      ...(direct.success ? { direct_connector: direct.data } : {}),
     };
   } catch (err) {
     // The page still renders — an undecryptable preview must not block a human

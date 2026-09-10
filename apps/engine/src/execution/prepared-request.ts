@@ -36,6 +36,15 @@ export const PreparedDispatchSnapshotSchema = z
             configuration_digest: z.string().regex(/^[a-f0-9]{64}$/),
             credential_id: z.string().uuid().nullable(),
             credential_revision: z.number().int().positive().nullable(),
+            credential_binding_digest: z
+              .string()
+              .regex(/^[a-f0-9]{64}$/)
+              .optional(),
+            connection_authority: z
+              .object({ id: z.string().uuid(), revision: z.number().int().positive() })
+              .strict()
+              .nullable()
+              .optional(),
           })
           .strict()
           .refine(

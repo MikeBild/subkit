@@ -16,6 +16,7 @@ import { validateConnectorDraftTool } from "../validate-connector-draft.ts";
 let ctx: ConversationTestCtx;
 let server: ReturnType<typeof Bun.serve>;
 let baseUrl: string;
+let probeRequests = 0;
 
 beforeAll(async () => {
   ctx = await createConversationTestCtx("connector_draft_tools");
@@ -24,6 +25,7 @@ beforeAll(async () => {
     // Pinned: the suite dials 127.0.0.1, so the server must bind it too.
     hostname: "127.0.0.1",
     async fetch(req) {
+      probeRequests++;
       const url = new URL(req.url);
       if (url.pathname === "/health") {
         return Response.json({ ok: true, service: "local-probe", path: url.pathname });
@@ -89,6 +91,28 @@ async function createToolCtx() {
 }
 
 describe("connector draft tools", () => {
+  for (const environment of ["dev", "prod"] as const) {
+    test(`mutable ${environment} HTTP writes stay held before credentials or network`, async () => {
+      const toolCtx = await createToolCtx();
+      await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+        name: `held-${environment}`,
+        driver: "http",
+        environment,
+        base_url: baseUrl,
+        auth_type: "bearer",
+      });
+      const before = probeRequests;
+      const result = await probeConnectorDraftTool.execute(toolCtx.base, {
+        method: "POST",
+        path: "/health",
+        environment,
+      });
+      expect(result.ok).toBe(false);
+      expect(result.data).toMatchObject({ held: true, error_code: "draft_write_held" });
+      expect(probeRequests).toBe(before);
+      expect(toolCtx.getDraft().connector?.latest_probe?.failure_code).toBe("draft_write_held");
+    });
+  }
   test("suggest_connector_templates returns optional matches", async () => {
     const toolCtx = await createToolCtx();
     const res = await suggestConnectorTemplatesTool.execute(toolCtx.base, {

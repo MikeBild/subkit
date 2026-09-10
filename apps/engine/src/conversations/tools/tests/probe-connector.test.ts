@@ -14,6 +14,7 @@ import { upsertCredential } from "../../../credentials/service.ts";
 import { auditLog, connectors, roles, tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { grantApproval } from "../../../tools/approval.ts";
 import { dispatchTool } from "../../../tools/dispatcher.ts";
 import { conversationToolProvider } from "../../../tools/providers/conversation.ts";
 import { buildRegistry } from "../../../tools/registry.ts";
@@ -174,6 +175,74 @@ function makeToolContext(env: { tenant_id: string; conversation_id: string }): T
 }
 
 describe("probe_connector — dispatch + credential substitution", () => {
+  for (const tool of ["call_connector", "probe_connector"] as const) {
+    for (const rotate of [false, true]) {
+      test(`${tool} confirmed MCP call ${rotate ? "refuses changed credentials" : "uses the exact approved credentials"}`, async () => {
+        const slug = `bound_${tool}_${rotate}`;
+        const env = await seedProbeConnector({ slug });
+        const principal = {
+          provider: "test",
+          kind: "user" as const,
+          id: "11111111-1111-4111-8111-111111111111",
+          tenant_id: env.tenant_id,
+          roles: ["admin"],
+        };
+        const deps = {
+          registry: buildRegistry([conversationToolProvider]),
+          db: ctx.db,
+          principal,
+          mcpMode: "authoring" as const,
+          buildMcpStubCtx: () => makeToolContext(env),
+        };
+        const pending = await dispatchTool(deps, {
+          surface: "mcp",
+          name: tool,
+          args: {
+            ...(tool === "call_connector"
+              ? { connector_id: env.connector_id }
+              : { connector_slug: slug, environment: "dev" }),
+            method: "POST",
+            path: "/orders",
+            body: { item: "book" },
+          },
+        });
+        expect(pending.status).toBe("needs_confirm");
+        if (pending.status !== "needs_confirm") throw new Error("approval missing");
+        expect(captured).toHaveLength(0);
+        const granted = await grantApproval({
+          db: ctx.db,
+          tenant_id: env.tenant_id,
+          approval_id: pending.confirm.tool_call_id,
+          granted_by_user_id: principal.id,
+          via: "portal",
+        });
+        expect(granted.ok).toBe(true);
+        if (rotate)
+          await upsertCredential(
+            {
+              tenant_id: env.tenant_id,
+              connector_id: env.connector_id,
+              environment: "dev",
+              mode: "bearer",
+              value: { mode: "bearer", token: "replacement-private-token" },
+              actor_id: null,
+            },
+            ctx.db,
+          );
+        const result = await dispatchTool(deps, {
+          surface: "mcp",
+          name: tool,
+          args: {},
+          meta: { sk_confirm: true, sk_confirm_id: pending.confirm.tool_call_id },
+        });
+        expect(result.status).toBe(rotate ? "error" : "ok");
+        expect(captured).toHaveLength(rotate ? 0 : 1);
+        if (rotate) expect(JSON.stringify(result)).toContain("connector_authority_changed");
+        expect(JSON.stringify(result)).not.toContain(CANARY);
+      });
+    }
+  }
+
   test("MCP rejects an excluded probe target before approval or network dispatch", async () => {
     const env = await seedProbeConnector({ slug: "mcp_excluded_probe" });
     const tctx = makeToolContext(env);

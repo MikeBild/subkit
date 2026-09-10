@@ -76,6 +76,8 @@ import { validateDraftTool } from "./validate-draft.ts";
  * introspect and mutate tenant state without reimplementing RBAC/audit.
  */
 export interface ToolContext {
+  /** Server-owned consumed decision. Never accepted from tool arguments. */
+  direct_connector_approval?: import("../../tools/direct-connector-binding.ts").DirectConnectorApproval;
   db: Db;
   tenant_id: string;
   conversation_id: string;

@@ -55,6 +55,9 @@ export interface RequestAuthoritySnapshot {
 }
 
 export interface ExecutionContext {
+  /** Server-captured metadata for every static credential/connector dependency,
+   * including earlier reads and transforms in a prepared single-run flow. */
+  prepared_workflow_references?: ResolvedAuthorityReference[];
   /** Server-owned guard, repeated after credential resolution and before each
    * outbound request attempt. Never part of an authored workflow definition. */
   before_external_request?: (

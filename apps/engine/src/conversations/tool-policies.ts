@@ -607,13 +607,10 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   },
   probe_connector_draft: {
     defaultMode: "no_confirm",
-    computeModeFromInput: (input) => {
-      const env = asObj(input).environment;
-      return env === "prod" || callConnectorSideEffect(input) === "write"
-        ? "confirm_before_execution"
-        : "no_confirm";
-    },
-    computeDangerFromInput: (input) => callConnectorSideEffect(input) === "write",
+    // Mutable HTTP writes are held by the tool before credential resolution.
+    // Keep the existing stricter production-read preference, not a write grant.
+    computeModeFromInput: (input) =>
+      asObj(input).environment === "prod" ? "confirm_before_execution" : "no_confirm",
   },
 };
 

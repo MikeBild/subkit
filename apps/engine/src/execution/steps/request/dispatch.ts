@@ -721,7 +721,9 @@ export interface RunRequestStepParams {
 
 export async function runRequestStep(p: RunRequestStepParams): Promise<StepResult> {
   const start = Date.now();
-  const referencedAuthorities: ResolvedAuthorityReference[] = [];
+  const referencedAuthorities: ResolvedAuthorityReference[] = [
+    ...(p.ctx.prepared_workflow_references ?? []),
+  ];
   let configurationDigest = authorityConnectorDigest(null);
   let credentialSnapshot: Pick<
     ResolvedConnectorCredential,
