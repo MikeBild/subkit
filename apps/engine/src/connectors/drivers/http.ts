@@ -470,6 +470,14 @@ export interface RequestDispatchPolicy {
   redirect: "manual";
 }
 
+export interface HttpDispatchObservation {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body: unknown;
+  unsupported_body?: boolean;
+}
+
 export class AuthorityDispatchError extends Error {
   readonly code = "authority_invalid";
   constructor() {
@@ -986,7 +994,9 @@ export async function buildMultipartBody(parts: ResolvedFilePart[]): Promise<For
 }
 
 export async function executePlannedHttpRequest(params: {
-  before_dispatch?: () => Promise<RequestDispatchPolicy | undefined>;
+  before_dispatch?: (
+    request: HttpDispatchObservation,
+  ) => Promise<RequestDispatchPolicy | undefined>;
   tenant_id: string;
   method: string;
   url: URL;
@@ -1059,7 +1069,13 @@ export async function executePlannedHttpRequest(params: {
       credential: params.sigv4.credential,
     });
   }
-  const dispatchPolicy = await params.before_dispatch?.();
+  const dispatchPolicy = await params.before_dispatch?.({
+    method: params.method,
+    url: params.url.toString(),
+    headers: params.headers,
+    body: params.body ?? null,
+    ...(params.multipartBody ? { unsupported_body: true } : {}),
+  });
   if (dispatchPolicy) init.redirect = dispatchPolicy.redirect;
   const res = await instrument({
     module: "connector",

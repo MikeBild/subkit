@@ -11,6 +11,7 @@ import type { RunLlmBudget } from "../llm/accounting/index.ts";
 // The single canonical RequestSource, derived from the Zod RequestSourceSchema.
 import type { RequestSource } from "../observability/service-metadata.ts";
 import type { StepDef, WorkflowDef } from "../workflows/types.ts";
+import type { MaterializedRequest } from "./prepared-request.ts";
 
 /** Discriminates how the execution definition was sourced.
  *  Persisted verbatim into `executions.source_kind`. */
@@ -38,6 +39,12 @@ export type StepStatus =
 export type ExecutionStatus = Exclude<StepStatus, "skipped">;
 
 export interface RequestAuthoritySnapshot {
+  step_row_id?: string;
+  connector_id?: string | null;
+  requires_review?: boolean;
+  request_max_attempts?: number;
+  principal_id?: string | null;
+  request?: MaterializedRequest;
   step_id: string;
   configuration_digest: string;
   credential_id: string | null;
@@ -465,6 +472,8 @@ export interface RunOptions {
    * new one.
    */
   existing_execution_id?: string;
+  /** Server-owned consumed approval; never exposed as a model/API run option. */
+  tool_approval_id?: string;
   /**
    * Caller-chosen key that makes this trigger safe to repeat. Persisted on
    * the execution row under a per-tenant unique index; the HTTP layer turns

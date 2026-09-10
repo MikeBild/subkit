@@ -20,6 +20,7 @@ dt{color:var(--muted-foreground);font-size:.85rem;margin-bottom:6px}dd{margin:0;
 .approval-details{border:1px solid var(--border);border-radius:var(--radius-lg);margin:24px 0}.approval-details summary{cursor:pointer;padding:14px 16px;min-height:44px}.approval-details>div{padding:16px;border-top:1px solid var(--border)}
 .approval-language{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.approval-language button{flex:none;font-size:.85rem;padding:8px 12px;background:var(--card);color:var(--foreground);border-color:var(--border)}.approval-language button[aria-pressed=true]{background:var(--muted)}
 .approval-actions{border-top:1px solid var(--border);padding-top:20px}.mono{font-family:ui-monospace,monospace}.approval-footer{margin-top:24px;font-size:.8rem;color:var(--muted-foreground)}
+.approval-payload{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;background:var(--muted);padding:16px;border-radius:var(--radius-md);font-size:.8rem;line-height:1.5}.approval-review{margin-top:16px;border-top:1px solid var(--border);padding-top:16px}
 @media(max-width:600px){.approval-card{margin:8px auto;padding:20px}.approval-grid{grid-template-columns:1fr}.approval-effect dl{grid-template-columns:1fr;gap:4px}.approval-effect dd{margin-bottom:8px}}
 `;
 
@@ -97,9 +98,11 @@ export function buildApprovalDecisionHtml(
       : view.execution_mode === "prod"
         ? copy.prod
         : copy.unspecified;
+  const binding = view.preview?.prepared_workflow;
   const summary = [
     [copy.tool, scrubString(view.tool)],
     ...(view.workflow_slug ? [[copy.workflow, scrubString(view.workflow_slug)]] : []),
+    ...(binding ? [[copy.version, binding.workflow_version_id]] : []),
     [copy.environment, environment],
     [copy.scope, copy.once],
     [copy.expiry, date],
@@ -110,16 +113,26 @@ export function buildApprovalDecisionHtml(
         `<div><dt>${escapeHtml(label ?? "")}</dt><dd>${escapeHtml(value ?? "")}</dd></div>`,
     )
     .join("");
-  const writes = view.preview?.would_write ?? [];
+  const reviews = binding?.request_reviews ?? [];
+  // Persisted request projections take precedence over a caller's summary.
+  // Keep unmatched legacy entries visible, without inventing a proof/limit.
+  const writes = [
+    ...reviews,
+    ...(view.preview?.would_write ?? []).filter(
+      (write) => !reviews.some((review) => review.step === write.step),
+    ),
+  ];
   const effects = writes.length
     ? `<p class="muted">${copy.effectsHelp}</p><ul class="approval-effects">${writes
-        .map(
-          (write) => `<li class="approval-effect"><dl>
+        .map((write) => {
+          const review = reviews.find((candidate) => candidate === write);
+          return `<li class="approval-effect"><dl>
 <dt>${copy.step}</dt><dd class="mono">${visible(write.step)}</dd>
 <dt>${copy.method}</dt><dd class="mono">${visible(write.method ?? copy.unspecified)}</dd>
 <dt>${copy.target}</dt><dd class="mono">${escapeHtml(approvalDisplayTarget(write.url) ?? copy.unspecified)}</dd>
-</dl></li>`,
-        )
+${review ? `<dt>${copy.attempts}</dt><dd>${escapeHtml(copy.attemptsValue.replace("{count}", String(review.max_attempts)))}</dd>` : ""}
+</dl>${review ? `<section class="approval-review"><h3>${copy.requestContent}</h3><p class="muted">${copy.contentHelp}</p>${review.request_review_truncated ? `<p role="note">${copy.contentTruncated}</p>` : ""}${review.opaque_payload_omitted ? `<p role="note">${copy.opaqueContent}</p>` : ""}<pre class="approval-payload">${visible(review.redacted_request_json)}</pre></section>` : binding ? `<p class="muted">${copy.missingReview}</p>` : ""}</li>`;
+        })
         .join("")}</ul>`
     : `<p class="muted">${copy.missing}</p>`;
   // POSTing a language choice is a read-only render action. Keep the grant out
@@ -134,7 +147,7 @@ export function buildApprovalDecisionHtml(
     `<header class="approval-header"><strong>SubKit · ${copy.context}</strong>${language}<span class="approval-status">${copy.pending}</span></header>
 <h1>${copy.title}</h1><p class="muted">${copy.intro}</p>
 <section aria-labelledby="boundary-title"><h2 id="boundary-title">${copy.summary}</h2><dl class="approval-grid">${summary}</dl></section>
-<section aria-labelledby="effects-title"><h2 id="effects-title">${copy.effects}</h2>${effects}<p class="muted">${copy.limitations}</p></section>
+<section aria-labelledby="effects-title"><h2 id="effects-title">${copy.effects}</h2>${effects}<p class="muted">${reviews.length > 0 ? copy.boundHelp : binding ? copy.versionOnlyHelp : copy.limitations}</p>${reviews.length > 0 ? `<p class="muted">${copy.attemptsHelp}</p>` : ""}</section>
 <details class="approval-details"><summary>${copy.details}</summary><div>
 <h2>${copy.why}</h2><p>${copy.whyHelp}</p><h2>${copy.changes}</h2><p>${copy.changesHelp}</p><p>${copy.via}: <span class="mono">${visible(view.surface)}</span></p></div></details>
 <section class="approval-note" aria-labelledby="outcome-title"><h2 id="outcome-title">${copy.outcome}</h2><p class="muted">${copy.outcomeHelp}</p></section>

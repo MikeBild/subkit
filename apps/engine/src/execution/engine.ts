@@ -19,7 +19,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../connectors/service.ts";
 import type { Db } from "../db/client.ts";
-import { workflows } from "../db/schema/index.ts";
+import { executions, workflows } from "../db/schema/index.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { parsePlaceholders } from "../llm/substitution/parser.ts";
 import { resolvePlaceholdersTypePreserving } from "../llm/substitution/resolver.ts";
@@ -69,7 +69,7 @@ import {
   insertStepRow,
   markExecutionRunning,
 } from "./state.ts";
-import { runStep } from "./step-runner.ts";
+import { type RunStepOutcome, runStep } from "./step-runner.ts";
 import { classifyRequestStepSideEffects } from "./steps/request/side-effects.ts";
 import { MAX_CALL_DEPTH, WORKFLOW_TIMEOUT_DEFAULT_MS } from "./timeouts.ts";
 import {
@@ -217,6 +217,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         source_kind: resolved.source_kind,
         source_ref: resolved.source_ref,
         hold_writes: opts.hold_writes ?? false,
+        tool_approval_id: opts.tool_approval_id ?? null,
         request_source,
         parent_execution_id,
         execution_mode,
@@ -501,6 +502,23 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       persist_workflow_refs: resolved.persist_workflow_refs,
       ...(opts.hold_writes ? { hold_writes: true } : {}),
     };
+    let childHeld = false;
+    const recordHeldChild = (key: string, child: StepRunContext, result: RunStepOutcome) => {
+      if (!result.result.held) return;
+      childHeld = true;
+      stepSummaries.push({
+        step_key: key,
+        step_index: i,
+        kind: child.step.kind,
+        status: result.result.status,
+        duration_ms: result.result.duration_ms ?? null,
+        retry_count: result.result.retry_count ?? 0,
+        error: result.result.error ?? null,
+        request_meta: result.result.request_meta ?? null,
+        held: true,
+        ...(result.result.held_request ? { held_request: result.result.held_request } : {}),
+      });
+    };
 
     // for_each inline iteration: resolve the JS selector to an array,
     // then run THIS SAME step once per item with a child scope that
@@ -760,6 +778,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                 runCallStep(db, cctx, cstep as CallStep, cscope),
             ),
         });
+        recordHeldChild(`${step.id}[${itemIdx}]`, iterCtx, iterOutcome);
         // Retain $item + $loop_index on the scope for downstream
         // string/JSONata refs within this iteration. The child scope
         // already has them; the parent scope's step.id key carries the
@@ -807,6 +826,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       // Compact away any slots left empty by an abort; completed
       // iterations keep their original relative order.
       const iterationResults: unknown[] = slots.filter((s) => s !== undefined);
+      if (childHeld) heldOrSkippedStepIds.add(step.id);
       recordForEachExecution({
         tenant_id,
         step_kind: step.kind,
@@ -1092,6 +1112,8 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               kind: bodyStep.kind,
             });
             const bodyCtx: import("./types.ts").StepRunContext = {
+              before_external_request: (snapshot) =>
+                assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot),
               db,
               tenant_id,
               execution_id,
@@ -1156,6 +1178,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             // is replaced by a reference to its already-persisted
             // storage_uri (no second write), bounding loop memory.
             childScope[bodyStep.id] = envelopeFor(bodyOutcome);
+            recordHeldChild(`${bodyStep.id}[${itemIdx}]`, bodyCtx, bodyOutcome);
             bodyResults[bodyStep.id] = bodyEnvelopeForLoopAccumulator(bodyOutcome);
             // Hold-writes: per-iteration held tracking — siblings later
             // in THIS iteration's body skip explicitly. The envelopes
@@ -1210,6 +1233,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           duration_ms: outcome.result.duration_ms ?? 0,
           error: null,
         });
+        if (childHeld) heldOrSkippedStepIds.add(step.id);
         lastOutput = iterationResults;
         // Empty-loop-body detection (P2): the loop driver produced N
         // items, every body step "succeeded", but no iteration's body
@@ -1318,6 +1342,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     // Parallel fan-out: run each branch concurrently via Promise.all.
     if (step.kind === "parallel" && outcome.result.status === "succeeded") {
       const parallelStep = step as ParallelStep;
+      let branchFailure: RunStepOutcome | null = null;
       const branchResults = await instrument({
         module: "execution",
         action: "parallel",
@@ -1369,6 +1394,8 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                   kind: branchStepDef.kind,
                 });
                 const branchCtx: import("./types.ts").StepRunContext = {
+                  before_external_request: (snapshot) =>
+                    assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot),
                   db,
                   tenant_id,
                   execution_id,
@@ -1410,9 +1437,17 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                     ),
                 });
                 branchScope[branchStepId] = envelopeFor(branchOutcome);
+                recordHeldChild(branchStepId, branchCtx, branchOutcome);
                 branchOutput[branchStepId] = envelopeFor(branchOutcome);
                 if (branchOutcome.result.held) {
                   branchHeldIds.add(branchStepId);
+                }
+                if (
+                  branchOutcome.result.status !== "succeeded" &&
+                  (branchStepDef.on_error ?? "fail") === "fail"
+                ) {
+                  branchFailure ??= branchOutcome;
+                  break;
                 }
               }
               return branchOutput;
@@ -1425,6 +1460,20 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         error: null,
       });
       lastOutput = branchResults;
+      if (childHeld) heldOrSkippedStepIds.add(step.id);
+      const failure = branchFailure as RunStepOutcome | null;
+      if (failure)
+        outcome = {
+          ...outcome,
+          result: {
+            ...outcome.result,
+            status: failure.result.status,
+            error: failure.result.error ?? {
+              code: "parallel_branch_failed",
+              message: "a parallel branch failed",
+            },
+          },
+        };
     }
 
     // Capture an output preview for this step. For request/transform/
@@ -2034,6 +2083,43 @@ async function runCallStep(
   scope: Record<string, unknown>,
 ): Promise<StepResult> {
   const start = Date.now();
+  const [parent] = await db
+    .select({ approval: executions.tool_approval_id })
+    .from(executions)
+    .where(and(eq(executions.tenant_id, ctx.tenant_id), eq(executions.id, ctx.execution_id)))
+    .limit(1);
+  // The parent's prepared HTTP proof does not cover a newly resolved child DAG.
+  // Never drop a single-use boundary while crossing an internal call step.
+  if (parent?.approval) {
+    await auditAwait(
+      {
+        tenant_id: ctx.tenant_id,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.APPROVAL_DISPATCH_DENIED,
+        resource_type: "execution",
+        resource_id: ctx.execution_id,
+        result: "denied",
+        reason: "prepared_call_unsupported",
+        metadata: {
+          approval_id: parent.approval,
+          step_id: step.id,
+          request_source: ctx.request_source,
+        },
+      },
+      db,
+    );
+    return {
+      status: "failed",
+      retry_count: 0,
+      duration_ms: Date.now() - start,
+      error: {
+        code: "prepared_call_unsupported",
+        message:
+          "A prepared parent approval does not authorize a child workflow. Review the child boundary separately.",
+      },
+    };
+  }
   if (ctx.depth + 1 > MAX_CALL_DEPTH) {
     return {
       status: "failed",

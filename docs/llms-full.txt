@@ -2638,11 +2638,46 @@ completed, persisted preparation run inside the encrypted approval. Confirmation
 checks the workflow, active version, environment and input digest before running
 that exact version, with reactive repair disabled. A changed version or an older
 approval without this provenance requires a fresh preview and human decision.
-The held execution is not reopened as a live execution. This protection is local
-to this chat replay path: it does not yet establish materialized request,
-connector-permission or response-derived recipient binding, nor does it prove the
-other one-shot tool entry points. An attempted replay is not evidence of a
-successful external effect.
+The held execution is not reopened as a live execution. For ordinary HTTP writes,
+this chat replay also binds the materialized method, URL, headers, body, connector
+configuration and primary connector credential identity/revision. A keyed comparison proof is
+captured before preview redaction; raw secret request data is not stored in step
+metadata. A changed response-derived recipient requires a fresh decision.
+Engine-generated idempotency keys vary between preparation and live execution;
+their internal provenance and page number are bound instead. Caller-supplied
+headers are not generally excluded from the comparison.
+
+The live execution stores its single-use approval identity immutably. Each
+outbound attempt reserves a durable per-step counter under a database row lock,
+bounded by the prepared retry limit. Deleting and recreating an execution does
+not make its consumed approval reusable. Current expiry, withdrawal, workflow
+version and credential metadata are checked before dispatch. Binding, attempt
+reservations and denials have separate audit events. A reservation is not proof
+of successful delivery: results distinguish no dispatch, completed requests,
+partial completion and uncertain external outcome. A non-idempotent HTTP 5xx is
+not retried unless the workflow explicitly opts into that status.
+
+Loop bodies, inline `for_each` iterations and parallel branches use the same
+dispatch guard. Held child writes contribute their own preview entries; a failed
+parallel branch fails its container unless it explicitly permits continuation.
+The encrypted proof binds the persisted step key, including the loop occurrence,
+so swapping dynamically loaded recipients between iterations is not authorized.
+Repeated identical reviewed occurrences retain separate finite attempt counters.
+
+This is still a product-local, partial convergence step. Other one-shot ingress
+paths are not covered by this chat replay change. Non-HTTP writes, multipart/file
+requests, additional pages or writes not materialized in the preparation fail
+closed on this bound path until they have supported proofs. Rotating the master
+key, or changing materialized authorization headers during token refresh,
+requires a fresh preparation/decision. No new configuration or central service
+is needed. Additional `${cred...}` references outside the primary connector still
+need revision-provenance convergence; binding their resulting request bytes alone
+does not establish every referenced credential's permission revision. Earlier
+external effects are not rolled back if a later step is
+blocked; a successful attempted replay is not an exactly-once guarantee.
+A bound single-use parent also refuses a `call` step: its proof does not authorize
+a newly resolved child workflow. If earlier approved requests already completed,
+the result remains partial rather than claiming no external effect occurred.
 
 The single-use tool-approval portal uses SubKit's local family UI palette and
 supports German and English without client-side scripts or new configuration.
@@ -2655,6 +2690,18 @@ as queueing, not as execution. Expired links do not establish past outcomes.
 Missing previews, version bindings or prior-boundary comparisons are disclosed,
 not fabricated. Those disclosures do not close the legacy one-shot binding gaps.
 Raw inputs, credentials and sensitive URL components are not rendered.
+
+For prepared HTTP chat requests, the portal additionally displays the persisted
+version ID, redacted materialized request content and the finite attempt limit
+for each prepared occurrence. These projections are captured beside the request
+proof, not reconstructed from a caller's summary. They reuse the existing
+authority-review masking: credential-named fields and all header values are
+hidden, JSON string bodies are parsed for key-aware masking, and opaque string
+bodies are omitted explicitly. Large projections are marked truncated. Content
+is escaped plain text; it cannot render active HTML. The page distinguishes
+run count from per-request retries and discloses incomplete credential-reference
+coverage. These display improvements do not authorize additional ingress paths
+or remove the remaining proof limitations described above.
 
 The resolver currently supports static HTTP targets and the single GraphQL
 endpoint. HTTP paths use the same joining rules as dispatch. A different resolved

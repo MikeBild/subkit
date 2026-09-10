@@ -19,6 +19,7 @@ import { JsonValueSchema, WorkflowDefSchema } from "../workflows/types.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { validateAgainstJsonSchema } from "./engine/envelope.ts";
 import { createExecution } from "./state.ts";
+import { assertToolApprovalDispatch } from "./tool-approval-dispatch.ts";
 import type { RequestAuthoritySnapshot } from "./types.ts";
 
 const requestSnapshotSchema = z
@@ -217,6 +218,8 @@ export async function assertExecutionAuthorityCurrent(
     .where(and(eq(executions.tenant_id, tenant_id), eq(executions.id, execution_id)))
     .limit(1);
   if (!execution) fail("execution_boundary_mismatch", "execution unavailable");
+  if (execution.tool_approval_id)
+    return assertToolApprovalDispatch(db, tenant_id, execution_id, snapshot);
   if (!execution.execution_authority_id) return;
   if (execution.abort_requested_at || !["queued", "running"].includes(execution.status))
     fail(
@@ -251,7 +254,16 @@ export async function assertExecutionAuthorityCurrent(
     fail("execution_authority_unavailable", "the reserved execution authority is no longer live");
   const boundary = authority.workflow_execution_authorities;
   if (snapshot !== undefined) {
-    const parsed = requestSnapshotSchema.safeParse(snapshot);
+    const {
+      request: _request,
+      requires_review: _review,
+      step_row_id: _row,
+      connector_id: _connector,
+      request_max_attempts: _attempts,
+      principal_id: _principal,
+      ...authoritySnapshot
+    } = snapshot;
+    const parsed = requestSnapshotSchema.safeParse(authoritySnapshot);
     const manifest = WorkflowEffectManifestSchema.safeParse(boundary.effect_manifest);
     const effect =
       parsed.success && manifest.success
