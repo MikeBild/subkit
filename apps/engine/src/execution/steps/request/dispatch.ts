@@ -86,6 +86,11 @@ import {
   readPaginationCheckpoint,
   writePaginationCheckpoint,
 } from "../../pagination.ts";
+import {
+  type MaterializedRequest,
+  preparedRequestProof,
+  preparedRequestReview,
+} from "../../prepared-request.ts";
 import { applyResponseFilters, ResponseFilterFailError } from "../../response-filter.ts";
 import type {
   ConnectorResolutionSummary,
@@ -116,6 +121,7 @@ import {
 import { checkRequired, deriveAuthMethodFromAuthType, extractModelHint } from "./shape.ts";
 import {
   classifyRequestStepSideEffects,
+  type HeldStepResultParams,
   heldStepResult,
   requestRequiresPreparationHold,
 } from "./side-effects.ts";
@@ -281,7 +287,7 @@ async function fetchOnce(
   tenant_id: string,
   multipartBody?: FormData,
   captureBinary?: boolean,
-  beforeDispatch?: () => Promise<RequestDispatchPolicy | undefined>,
+  beforeDispatch?: (request: MaterializedRequest) => Promise<RequestDispatchPolicy | undefined>,
 ): Promise<FetchAttemptResult> {
   // Pagination cursors and `${item.…}` resolution sometimes produce a
   // URL the placeholder validator missed. Without a typed guard,
@@ -338,7 +344,7 @@ async function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 interface DoOnePageParams {
-  before_dispatch?: () => Promise<RequestDispatchPolicy | undefined>;
+  before_dispatch?: (request: MaterializedRequest) => Promise<RequestDispatchPolicy | undefined>;
   url: string;
   method: string;
   headers: Record<string, string>;
@@ -629,6 +635,9 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
       }
       if (err instanceof RequestError) {
         if (err.cause_kind === "http_4xx") throw err;
+        // Allowed HTTP retries continue in the response branch above. A thrown
+        // 5xx is terminal; catching it must not retry a non-idempotent write.
+        if (err.cause_kind === "http_5xx") throw err;
         if (err.cause_kind === "abort") throw err;
         if (err.cause_kind === "filter_fail") throw err;
         if (err.cause_kind === "request_invalid") throw err;
@@ -720,23 +729,92 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     credential_revision: null,
     connection_authority: null,
   };
-  const beforeDispatch = async (credential = credentialSnapshot) => {
+  const authoritySnapshot = (credential = credentialSnapshot) => ({
+    step_id: p.step.id,
+    step_row_id: p.ctx.step_row_id,
+    connector_id: p.step.connector_id ?? null,
+    requires_review: requestRequiresPreparationHold(p.step, activeConnector?.driver),
+    request_max_attempts: max_attempts,
+    principal_id: p.ctx.principal?.id ?? null,
+    configuration_digest: configurationDigest,
+    credential_id: credential.credential_id,
+    credential_revision: credential.credential_revision,
+    connection_authority: credential.connection_authority ?? null,
+  });
+  const beforeDispatch = async (credential = credentialSnapshot, request?: MaterializedRequest) => {
     try {
       return await p.ctx.before_external_request?.({
-        step_id: p.step.id,
-        configuration_digest: configurationDigest,
-        credential_id: credential.credential_id,
-        credential_revision: credential.credential_revision,
-        connection_authority: credential.connection_authority ?? null,
+        ...authoritySnapshot(credential),
+        ...(request ? { request } : {}),
       });
     } catch (error) {
       throw new RequestError(
-        "Execution authority could not be verified; review the current boundary.",
+        `Execution authority could not be verified: ${(error as { code?: string }).code ?? "authority_check_failed"}; review the current boundary.`,
         "authority_invalid",
         undefined,
         { reason: (error as { code?: string }).code ?? "authority_check_failed" },
       );
     }
+  };
+  const beforeHttpDispatch = (request: MaterializedRequest) => {
+    const key = request.headers["Idempotency-Key"];
+    const suffix =
+      idempotencyBase && key?.startsWith(`${idempotencyBase}:`)
+        ? key.slice(idempotencyBase.length + 1)
+        : null;
+    return beforeDispatch(credentialSnapshot, {
+      ...request,
+      ...(key !== undefined && suffix !== null && /^(0|[1-9][0-9]*)$/.test(suffix)
+        ? { generated_idempotency: { key, page: Number(suffix) } }
+        : {}),
+    });
+  };
+  const heldHttpResult = (held: HeldStepResultParams) => {
+    const proof = held.url
+      ? preparedRequestProof(
+          p.ctx.tenant_id,
+          authoritySnapshot(),
+          {
+            method: held.method,
+            url: held.url,
+            headers: {
+              ...held.headers,
+              ...(idempotencyBase ? { "Idempotency-Key": `${idempotencyBase}:0` } : {}),
+            },
+            body: held.body,
+            ...(idempotencyBase
+              ? { generated_idempotency: { key: `${idempotencyBase}:0`, page: 0 } }
+              : {}),
+            ...(p.resolved_multipart || p.resolved_body_file ? { unsupported_body: true } : {}),
+          },
+          max_attempts,
+        )
+      : null;
+    const review =
+      proof && held.url
+        ? preparedRequestReview({
+            method: held.method,
+            url: held.url,
+            headers: held.headers ?? {},
+            body: held.body,
+          })
+        : null;
+    const metadata = held.request_meta ?? {
+      driver: "connectorless" as const,
+      method: held.method,
+      url: held.url,
+    };
+    return heldStepResult({
+      ...held,
+      request_meta: {
+        ...metadata,
+        extras: {
+          ...held.request_meta?.extras,
+          ...(proof ? { prepared_request_proof: proof } : {}),
+          ...(review ? { prepared_request_review: review } : {}),
+        },
+      },
+    });
   };
   // Hold-writes preview (Fix G): when the run was started with
   // `hold_writes`, a write or unknown-effect step is fully RESOLVED (every
@@ -2025,7 +2103,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // explicit `extras.held` marker.
   if (holdThisStep) {
     clearTimeout(timer);
-    return heldStepResult({
+    return heldHttpResult({
       start,
       method: p.step.method ?? "GET",
       url: heldRequestUrl,
@@ -2109,7 +2187,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       }
       const callDoOnePage = () =>
         doOnePage({
-          before_dispatch: beforeDispatch,
+          before_dispatch: beforeHttpDispatch,
           url: baseUrl.toString(),
           method: p.step.method,
           headers,
@@ -2471,7 +2549,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       }
       const callPage = () =>
         doOnePage({
-          before_dispatch: beforeDispatch,
+          before_dispatch: beforeHttpDispatch,
           url: next.url,
           method: p.step.method,
           headers,

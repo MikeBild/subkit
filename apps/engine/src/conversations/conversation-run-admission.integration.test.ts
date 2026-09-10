@@ -6,6 +6,7 @@ import {
   conversationElicitations,
   conversations,
   conversationToolCalls,
+  executionSteps,
   executions,
   tenants,
   toolApprovals,
@@ -15,9 +16,12 @@ import {
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { EngineClient } from "../engine-client/index.ts";
+import { assertToolApprovalDispatch } from "../execution/tool-approval-dispatch.ts";
+import type { RequestAuthoritySnapshot } from "../execution/types.ts";
 import { databaseNow } from "../test-helpers/database-clock.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
 import { capturePreparedWorkflowBinding } from "../tools/prepared-workflow-approval.ts";
+import { authorityConnectorDigest } from "../workflows/authority-configuration.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
 import { createEmptyDraftDocument } from "./authoring-state.ts";
 import { resolveElicitationAndReactivate } from "./elicitations.ts";
@@ -51,6 +55,10 @@ async function fixture(
     readLabel?: boolean;
     inputRequired?: boolean;
     environment?: "dev" | "prod";
+    lookupRecipient?: boolean;
+    container?: "loop" | "parallel";
+    loopRecipients?: boolean;
+    inlineEach?: boolean;
   } = {},
 ) {
   const environment = options.environment ?? "dev";
@@ -77,12 +85,40 @@ async function fixture(
         }
       : {}),
     steps: [
+      ...(options.lookupRecipient
+        ? [{ id: "lookup", kind: "request", method: "GET", url: `${remote.baseUrl}/recipient` }]
+        : []),
+      ...(options.container
+        ? [
+            {
+              id: "group",
+              kind: options.container,
+              ...(options.container === "loop"
+                ? {
+                    over: options.loopRecipients ? "$scope.lookup.data.recipients" : "[1]",
+                    body: ["send"],
+                  }
+                : { branches: [["send"]] }),
+              ...(options.lookupRecipient ? { depends_on: ["lookup"] } : {}),
+            },
+          ]
+        : []),
       {
         id: "send",
         kind: "request",
         method: "POST",
         url: `${remote.baseUrl}/messages`,
-        body: { recipient: "reviewed@example.test" },
+        ...(options.inlineEach
+          ? { for_each: "(sourceData) => sourceData.lookup.data.recipients" }
+          : {}),
+        body: {
+          recipient: options.loopRecipients
+            ? "${item.recipient}"
+            : options.lookupRecipient
+              ? "${scope.lookup.data.recipient}"
+              : "reviewed@example.test",
+        },
+        ...(options.lookupRecipient ? { depends_on: ["lookup"] } : {}),
         ...(options.readLabel ? { side_effects: "read" } : {}),
       },
     ],
@@ -369,9 +405,319 @@ test("a held chat approval replays its exact prepared version once", async () =>
   const rows = await f.rows();
   expect(rows).toHaveLength(2);
   expect(rows.every((run) => run.workflow_version_id === f.version.id)).toBe(true);
+  const events = await tdb.db
+    .select({ action: auditLog.action })
+    .from(auditLog)
+    .where(eq(auditLog.tenant_id, f.tenant.id));
+  expect(events.filter((event) => event.action === "approval.execution_bound")).toHaveLength(1);
+  expect(events.filter((event) => event.action === "approval.dispatch_reserved")).toHaveLength(1);
   await f.confirmPrepared();
   expect(remote.callCount()).toBe(before + 1);
 });
+
+for (const container of [undefined, "loop", "parallel"] as const) {
+  for (const changed of [false, true]) {
+    test(`held approval ${changed ? "rejects a changed" : "accepts an unchanged"} recipient from a live lookup (${container ?? "direct"})`, async () => {
+      let recipient = "reviewed@example.test";
+      let writes = 0;
+      remote.setHandler((request, response) => {
+        if (request.method === "POST") writes += 1;
+        jsonResponse(response, 200, { recipient, sent: true });
+      });
+      try {
+        const f = await fixture({ lookupRecipient: true, ...(container ? { container } : {}) });
+        await f.runTool("synthetic");
+        expect(writes).toBe(0);
+        const [preparedRun] = await f.rows();
+        if (!preparedRun) throw new Error("missing held run");
+        const prepared = await capturePreparedWorkflowBinding({
+          db: tdb.db,
+          tenant_id: f.tenant.id,
+          execution_id: preparedRun.id,
+          tool: `wf_${f.workflow.slug}`,
+          execution_mode: "dev",
+          args: {},
+        });
+        expect(prepared.request_reviews).toHaveLength(1);
+        expect(prepared.request_reviews?.[0]?.redacted_request_json).toContain(
+          "reviewed@example.test",
+        );
+        expect(prepared.request_reviews?.[0]?.max_attempts).toBe(5);
+        expect(prepared.request_reviews?.[0]?.step).toBe(prepared.request_proofs?.[0]?.step_key);
+        if (changed) recipient = "unreviewed@example.test";
+        const result = await f.confirmPrepared();
+        expect(result.synthetic_result?.ok).toBe(!changed);
+        expect(result.synthetic_result?.data).toMatchObject({
+          writes_executed: !changed,
+          write_outcome: changed ? "not_dispatched" : "completed",
+          write_attempts_reserved: changed ? 0 : 1,
+        });
+        expect(writes).toBe(changed ? 0 : 1);
+        const failures = await tdb.db
+          .select({ error: executionSteps.error })
+          .from(executionSteps)
+          .where(
+            and(eq(executionSteps.tenant_id, f.tenant.id), eq(executionSteps.status, "failed")),
+          );
+        if (changed) expect(failures.length).toBeGreaterThanOrEqual(1);
+        else expect(failures).toHaveLength(0);
+        if (changed) expect(failures[0]?.error).toMatchObject({ code: "authority_invalid" });
+      } finally {
+        remote.setHandler((_, response) => jsonResponse(response, 200, { sent: true }));
+      }
+    });
+  }
+}
+
+for (const invalidation of ["expired", "declined"] as const) {
+  test(`a ${invalidation} approval between lookup and write stops the outbound write`, async () => {
+    const f = await fixture({ lookupRecipient: true });
+    let invalidate = false;
+    let writes = 0;
+    remote.setHandler(async (request, response) => {
+      if (request.method === "POST") writes += 1;
+      if (invalidate && request.method === "GET") {
+        const now = await databaseNow(tdb.db);
+        await tdb.db
+          .update(toolApprovals)
+          .set(invalidation === "expired" ? { expires_at: now } : { declined_at: now })
+          .where(eq(toolApprovals.tenant_id, f.tenant.id));
+      }
+      jsonResponse(response, 200, { recipient: "reviewed@example.test" });
+    });
+    try {
+      await f.runTool("synthetic");
+      invalidate = true;
+      const result = await f.confirmPrepared();
+      expect(result.synthetic_result?.ok).toBe(false);
+      expect(result.synthetic_result?.data).toMatchObject({
+        writes_executed: false,
+        write_outcome: "not_dispatched",
+      });
+      expect(writes).toBe(0);
+    } finally {
+      remote.setHandler((_, response) => jsonResponse(response, 200, { sent: true }));
+    }
+  });
+}
+
+test("single-use execution identity and reservation counters cannot be rewritten", async () => {
+  const f = await fixture();
+  await f.runTool("synthetic");
+  await f.confirmPrepared();
+  const run = (await f.rows()).find((row) => row.tool_approval_id);
+  if (!run) throw new Error("missing approved execution");
+  const boundary = and(eq(executions.tenant_id, f.tenant.id), eq(executions.id, run.id));
+  const [stepId, reservation] = Object.entries(run.tool_approval_dispatches)[0] ?? [];
+  if (!stepId || !reservation) throw new Error("missing dispatch reservation");
+  for (const change of [
+    { tool_approval_id: null },
+    { input: { unreviewed: true } },
+    { tool_approval_dispatches: {} },
+    { tool_approval_dispatches: { [stepId]: { ...reservation, attempts: 0 } } },
+    { tool_approval_dispatches: { [stepId]: { ...reservation, digest: "b".repeat(64) } } },
+  ])
+    await expect(tdb.db.update(executions).set(change).where(boundary).execute()).rejects.toThrow();
+  const { id: _id, ...copy } = run;
+  const replacement = { ...copy, status: "queued" as const, tool_approval_dispatches: {} };
+  await expect(tdb.db.insert(executions).values(replacement).execute()).rejects.toThrow();
+  await expect(
+    tdb.db
+      .update(toolApprovals)
+      .set({ claimed_execution_id: null })
+      .where(
+        and(
+          eq(toolApprovals.tenant_id, f.tenant.id),
+          eq(toolApprovals.id, run.tool_approval_id as string),
+        ),
+      )
+      .execute(),
+  ).rejects.toThrow();
+  await tdb.db.delete(executions).where(boundary);
+  const [recreated] = await tdb.db.insert(executions).values(replacement).returning();
+  if (!recreated) throw new Error("missing recreated execution");
+  await expect(assertToolApprovalDispatch(tdb.db, f.tenant.id, recreated.id)).rejects.toMatchObject(
+    { code: "tool_approval_already_bound" },
+  );
+});
+
+test("parallel dispatch reservations cannot exceed the prepared retry limit", async () => {
+  const f = await fixture();
+  await f.runTool("synthetic");
+  await f.confirmPrepared();
+  const run = (await f.rows()).find((row) => row.tool_approval_id);
+  if (!run) throw new Error("missing approved execution");
+  const stepId = Object.keys(run.tool_approval_dispatches)[0];
+  if (!stepId) throw new Error("missing dispatch reservation");
+  // Simulate a resumed worker; the persisted counter, not process memory, is authoritative.
+  await tdb.db
+    .update(executions)
+    .set({ status: "running" })
+    .where(and(eq(executions.tenant_id, f.tenant.id), eq(executions.id, run.id)));
+  const key = `${run.id}:${stepId}:0`;
+  await tdb.db
+    .update(executionSteps)
+    .set({ status: "running" })
+    .where(and(eq(executionSteps.tenant_id, f.tenant.id), eq(executionSteps.id, stepId)));
+  const snapshot: RequestAuthoritySnapshot = {
+    step_id: "send",
+    step_row_id: stepId,
+    connector_id: null,
+    requires_review: true,
+    request_max_attempts: 5,
+    principal_id: actorId,
+    configuration_digest: authorityConnectorDigest(null),
+    credential_id: null,
+    credential_revision: null,
+    connection_authority: null,
+    request: {
+      method: "POST",
+      url: `${remote.baseUrl}/messages`,
+      headers: { "Idempotency-Key": key },
+      body: { recipient: "reviewed@example.test" },
+      generated_idempotency: { key, page: 0 },
+    },
+  };
+  const before = remote.callCount();
+  const reservations = await Promise.allSettled(
+    Array.from({ length: 6 }, () =>
+      assertToolApprovalDispatch(tdb.db, f.tenant.id, run.id, snapshot),
+    ),
+  );
+  expect(reservations.filter((result) => result.status === "fulfilled")).toHaveLength(4);
+  const rejections = reservations.filter((result) => result.status === "rejected");
+  expect(rejections).toHaveLength(2);
+  for (const result of rejections)
+    if (result.status === "rejected")
+      expect(result.reason).toMatchObject({ code: "prepared_effect_exhausted" });
+  expect(
+    (await f.rows()).find((row) => row.id === run.id)?.tool_approval_dispatches[stepId]?.attempts,
+  ).toBe(5);
+  expect(remote.callCount()).toBe(before);
+});
+
+test("an unsuccessful dispatched write reports an uncertain external outcome", async () => {
+  const f = await fixture();
+  await f.runTool("synthetic");
+  remote.setHandler((_, response) => jsonResponse(response, 503, { unavailable: true }));
+  try {
+    const result = await f.confirmPrepared();
+    expect(result.synthetic_result?.ok).toBe(false);
+    expect(result.synthetic_result?.data).toMatchObject({
+      writes_executed: null,
+      write_outcome: "unknown",
+      write_attempts_reserved: 1,
+    });
+  } finally {
+    remote.setHandler((_, response) => jsonResponse(response, 200, { sent: true }));
+  }
+});
+
+test("a parent one-shot approval cannot escape through an unbound child workflow", async () => {
+  const f = await fixture();
+  const [child] = await tdb.db
+    .insert(workflows)
+    .values({ tenant_id: f.tenant.id, slug: "child-send", name: "child-send", lifecycle: "active" })
+    .returning();
+  if (!child) throw new Error("missing child workflow");
+  const [childVersion] = await tdb.db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: f.tenant.id,
+      workflow_id: child.id,
+      version: 1,
+      dag: { name: "child-send", steps: f.definition.steps },
+    })
+    .returning();
+  if (!childVersion) throw new Error("missing child version");
+  await tdb.db
+    .update(workflows)
+    .set({ current_version_id: childVersion.id })
+    .where(and(eq(workflows.tenant_id, f.tenant.id), eq(workflows.id, child.id)));
+  const [parentVersion] = await tdb.db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: f.tenant.id,
+      workflow_id: f.workflow.id,
+      version: 2,
+      dag: {
+        ...f.definition,
+        steps: [...f.definition.steps, { id: "call_child", kind: "call", workflow_id: child.id }],
+      },
+    })
+    .returning();
+  if (!parentVersion) throw new Error("missing parent version");
+  await tdb.db
+    .update(workflows)
+    .set({ current_version_id: parentVersion.id })
+    .where(and(eq(workflows.tenant_id, f.tenant.id), eq(workflows.id, f.workflow.id)));
+  const before = remote.callCount();
+  await f.runTool("synthetic");
+  expect(remote.callCount()).toBe(before);
+  const result = await f.confirmPrepared();
+  expect(result.synthetic_result?.ok).toBe(false);
+  expect(remote.callCount()).toBe(before + 1);
+  expect(result.synthetic_result?.data).toMatchObject({
+    writes_executed: true,
+    write_outcome: "partially_completed",
+  });
+  const denials = await tdb.db
+    .select({ reason: auditLog.reason })
+    .from(auditLog)
+    .where(
+      and(eq(auditLog.tenant_id, f.tenant.id), eq(auditLog.reason, "prepared_call_unsupported")),
+    );
+  expect(denials).toHaveLength(1);
+});
+
+for (const inlineEach of [false, true]) {
+  for (const scenario of ["unchanged", "swapped", "duplicate", "partially_changed"] as const) {
+    test(`${inlineEach ? "for_each" : "loop"} approvals bind occurrence order (${scenario})`, async () => {
+      let recipients = [
+        { recipient: "first@example.test" },
+        { recipient: scenario === "duplicate" ? "first@example.test" : "second@example.test" },
+      ];
+      let writes = 0;
+      remote.setHandler((request, response) => {
+        if (request.method === "POST") writes += 1;
+        jsonResponse(response, 200, { recipients });
+      });
+      try {
+        const f = await fixture({
+          lookupRecipient: true,
+          loopRecipients: true,
+          ...(inlineEach ? { inlineEach: true } : { container: "loop" }),
+        });
+        await f.runTool("synthetic");
+        expect(writes).toBe(0);
+        if (scenario === "swapped") recipients = [...recipients].reverse();
+        if (scenario === "partially_changed")
+          recipients = [
+            { recipient: "first@example.test" },
+            { recipient: "unreviewed@example.test" },
+          ];
+        const result = await f.confirmPrepared();
+        expect(result.synthetic_result?.ok).toBe(
+          scenario === "unchanged" || scenario === "duplicate",
+        );
+        expect(writes).toBe(scenario === "swapped" ? 0 : scenario === "partially_changed" ? 1 : 2);
+        expect(result.synthetic_result?.data).toMatchObject({
+          writes_executed: scenario !== "swapped",
+          write_attempts_reserved:
+            scenario === "swapped" ? 0 : scenario === "partially_changed" ? 1 : 2,
+          write_outcome:
+            scenario === "swapped"
+              ? "not_dispatched"
+              : scenario === "partially_changed"
+                ? "partially_completed"
+                : "completed",
+        });
+      } finally {
+        remote.setHandler((_, response) => jsonResponse(response, 200, { sent: true }));
+      }
+    });
+  }
+}
 
 test("activation after a held preview invalidates the chat approval without dispatch", async () => {
   const f = await fixture();

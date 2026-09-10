@@ -23,6 +23,7 @@ export interface CreateExecutionParams {
   /** Only the server admission path supplies this. The database reserves one
    * run atomically with insertion and binds the exact version/environment. */
   execution_authority_id?: string | null;
+  tool_approval_id?: string | null;
   hold_writes?: boolean;
   /** NULL for draft and step runs — those have no persisted workflow row. */
   workflow_id: string | null;
@@ -96,6 +97,7 @@ export async function createExecution(
       .values({
         tenant_id: params.tenant_id,
         execution_authority_id: params.execution_authority_id ?? null,
+        tool_approval_id: params.tool_approval_id ?? null,
         hold_writes: params.hold_writes ?? false,
         workflow_id: params.workflow_id,
         workflow_version_id: params.workflow_version_id,

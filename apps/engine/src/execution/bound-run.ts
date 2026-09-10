@@ -33,6 +33,21 @@ export async function bindExistingRun(
   if (row.hold_writes) {
     options = { ...options, hold_writes: true, self_healing: { enabled: false } };
   }
+  if (row.tool_approval_id) {
+    if (
+      options.hold_writes ||
+      options.self_healing?.enabled ||
+      options.step_output_fixtures !== undefined ||
+      (options.tool_approval_id && options.tool_approval_id !== row.tool_approval_id)
+    )
+      throw mismatch();
+    await assertExecutionAuthorityCurrent(db, tenant_id, row.id);
+    options = {
+      ...options,
+      tool_approval_id: row.tool_approval_id,
+      self_healing: { enabled: false },
+    };
+  }
   if (row.source_kind !== "saved" && source.kind !== "saved") return { source, options };
   if (
     row.source_kind !== "saved" ||

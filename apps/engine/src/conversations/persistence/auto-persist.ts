@@ -58,6 +58,7 @@ import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { runExecution } from "../../execution/engine.ts";
+import { approvedDispatchOutcome } from "../../execution/tool-approval-dispatch.ts";
 import { HELD_PREVIEW_WARNING_CODE } from "../../execution/types.ts";
 import { admitWorkflowRun } from "../../execution/workflow-run-admission.ts";
 import { logger } from "../../logging/logger.ts";
@@ -1034,6 +1035,7 @@ export async function maybeAutoPersistFromElicitation(
             // environment — so the replay runs where the preview ran.
             execution_mode: "dev",
             self_healing: { enabled: false },
+            tool_approval_id: claim.approval_id,
           },
         });
         await p.db
@@ -1050,7 +1052,7 @@ export async function maybeAutoPersistFromElicitation(
             workflow_id: workflowId,
             workflow_slug: resolved.slug,
             output: heldRun.output,
-            writes_executed: true,
+            ...(await approvedDispatchOutcome(p.db, p.tenant_id, heldRun.execution_id)),
             ...(heldRun.warnings && heldRun.warnings.length > 0
               ? { warnings: heldRun.warnings }
               : {}),

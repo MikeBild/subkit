@@ -5,8 +5,11 @@ import { type Browser, chromium } from "playwright";
 import { issueBrowserSession } from "../../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { setConfigKey } from "../../config/loader.ts";
-import { toolApprovals } from "../../db/schema/index.ts";
+import { toolApprovals, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { runExecution } from "../../execution/engine.ts";
+import { approvedDispatchOutcome } from "../../execution/tool-approval-dispatch.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { consumeApproval, requestApproval } from "../../tools/approval.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
@@ -15,9 +18,11 @@ let server: HttpTestServer;
 let browser: Browser;
 let requester: ResolvedPrincipal;
 let cookie: { name: string; value: string };
+let remote: MockServer;
 
 beforeAll(async () => {
   server = await createHttpTestServer("approval-portal-browser");
+  remote = await createMockServer((_, response) => jsonResponse(response, 200, { sent: true }));
   await setConfigKey("server.public_base_url", server.baseUrl, { force: true });
   const login = await issueBrowserSession({
     db: server.db,
@@ -43,6 +48,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await browser?.close();
+  await remote?.close();
   await server?.cleanup();
 });
 
@@ -58,22 +64,81 @@ for (const locale of ["de", "en"] as const) {
   for (const width of [390, 1280]) {
     test(`real portal ${locale}/${width}: language, keyboard, decision and reload`, async () => {
       const id = nextId();
+      const slug = `ledger-${id}`;
+      const [workflow] = await server.db
+        .insert(workflows)
+        .values({
+          tenant_id: server.tenantId,
+          slug,
+          name: slug,
+          lifecycle: "active",
+          is_tool: true,
+        })
+        .returning();
+      if (!workflow) throw new Error("missing browser workflow");
+      const [version] = await server.db
+        .insert(workflowVersions)
+        .values({
+          tenant_id: server.tenantId,
+          workflow_id: workflow.id,
+          version: 1,
+          dag: {
+            name: slug,
+            steps: [
+              {
+                id: "post_entries",
+                kind: "request",
+                method: "POST",
+                url: `${remote.baseUrl}/entries?token=hidden-value`,
+                headers: { "X-Private": "private-header-value" },
+                body: {
+                  recipient: "reviewed@example.test",
+                  message: "<script>not executable</script>",
+                  password: "private-body-value",
+                },
+              },
+            ],
+          },
+        })
+        .returning();
+      if (!version) throw new Error("missing browser workflow version");
+      await server.db
+        .update(workflows)
+        .set({ current_version_id: version.id })
+        .where(and(eq(workflows.tenant_id, server.tenantId), eq(workflows.id, workflow.id)));
+      const args = { confidential: "must-not-render" };
+      const dispatchCountBefore = remote.callCount();
+      const preparation = await runExecution({
+        db: server.db,
+        tenant_id: server.tenantId,
+        source: { kind: "saved", workflow_id: workflow.id, version_id: version.id },
+        input: args,
+        options: {
+          hold_writes: true,
+          execution_mode: "dev",
+          principal: requester,
+          self_healing: { enabled: false },
+        },
+      });
+      expect(preparation.status).toBe("succeeded");
+      expect(remote.callCount()).toBe(dispatchCountBefore);
       const result = await requestApproval({
         db: server.db,
         principal: requester,
         approval_id: id,
-        tool: "wf_ledger_example",
+        tool: `wf_${slug}`,
         surface: "mcp",
         via: "mcp",
         reason: "held_writes",
         execution_mode: "dev",
-        args: { confidential: "must-not-render" },
+        args,
+        prepared_execution_id: preparation.execution_id,
         preview: {
           would_write: [
             {
               step: "post_entries",
               method: "POST",
-              url: "https://ledger.example.test/entries?token=hidden-value",
+              url: "https://caller-summary.example.test/entries",
             },
           ],
         },
@@ -98,7 +163,16 @@ for (const locale of ["de", "en"] as const) {
         expect(await page.locator("html").getAttribute("lang")).toBe(locale);
         expect(await page.locator("body").innerText()).not.toContain("must-not-render");
         expect(await page.locator("body").innerText()).not.toContain("hidden-value");
-        expect(await page.locator("body").innerText()).toContain("ledger.example.test/entries");
+        expect(await page.locator("body").innerText()).not.toContain("private-body-value");
+        expect(await page.locator("body").innerText()).not.toContain("private-header-value");
+        expect(await page.locator("body").innerText()).not.toContain("caller-summary.example.test");
+        expect(await page.locator("body").innerText()).toContain(`${remote.baseUrl}/entries`);
+        expect(await page.locator("body").innerText()).toContain("reviewed@example.test");
+        expect(await page.locator("body").innerText()).toContain(version.id);
+        expect(await page.locator("body").innerText()).toContain(
+          locale === "de" ? "Höchstens 5" : "At most 5",
+        );
+        expect(await page.locator("script").count()).toBe(0);
         expect(
           await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
         ).toBe(true);
@@ -144,12 +218,34 @@ for (const locale of ["de", "en"] as const) {
           db: server.db,
           principal: requester,
           approval_id: id,
-          tool: "wf_ledger_example",
+          tool: `wf_${slug}`,
           surface: "mcp",
           via: "mcp",
           execution_mode: "dev",
         });
         expect(claimed.ok).toBe(true);
+        if (!claimed.ok) throw new Error("browser approval was not claimable");
+        const executed = await runExecution({
+          db: server.db,
+          tenant_id: server.tenantId,
+          source: { kind: "saved", workflow_id: workflow.id, version_id: version.id },
+          input: claimed.args,
+          options: {
+            tool_approval_id: id,
+            execution_mode: "dev",
+            principal: requester,
+            self_healing: { enabled: false },
+          },
+        });
+        expect(executed.status).toBe("succeeded");
+        expect(remote.callCount()).toBe(dispatchCountBefore + 1);
+        expect(
+          await approvedDispatchOutcome(server.db, server.tenantId, executed.execution_id),
+        ).toMatchObject({
+          writes_executed: true,
+          write_outcome: "completed",
+          write_attempts_reserved: 1,
+        });
         await page.reload();
         expect(await page.locator("h1").innerText()).toBe(
           locale === "de"
@@ -157,7 +253,7 @@ for (const locale of ["de", "en"] as const) {
             : "Approval consumed — outcome unknown",
         );
         expect(await page.locator("form").count()).toBe(0);
-        expect(await page.locator("body").innerText()).not.toContain("ledger.example.test");
+        expect(await page.locator("body").innerText()).not.toContain("reviewed@example.test");
         expect(
           await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
         ).toBe(true);
