@@ -21,8 +21,10 @@ import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
+import type { RequestDispatchPolicy, ResolvedConnectorCredential } from "./http.ts";
 import type { DriverProbeResult } from "./index.ts";
 import { classifyS3ProbeError } from "./probe-classify.ts";
+import { executeBoundS3Request } from "./s3-bound-dispatch.ts";
 
 export interface S3ConnectorConfig {
   region: string;
@@ -102,7 +104,11 @@ async function resolveS3Credentials(
   /** Stands in for the persisted row when the connector is not saved yet.
    *  `undefined` keeps the lookup; `null` means "no credential". */
   override?: DecryptedCredential | null,
-): Promise<{ creds: S3Credentials | null; credential_id: string | null }> {
+): Promise<{
+  creds: S3Credentials | null;
+  credential_id: string | null;
+  credential_revision: number | null;
+}> {
   const cfg = (connector.config ?? {}) as Record<string, unknown>;
   if (connector.auth_type === "none") {
     // Anonymous / public-bucket path: accept inline keys on config only when
@@ -117,16 +123,19 @@ async function resolveS3Credentials(
         secret_access_key: cfg.secret_access_key,
       };
       if (typeof cfg.session_token === "string") out.session_token = cfg.session_token;
-      return { creds: out, credential_id: null };
+      return { creds: out, credential_id: null, credential_revision: null };
     }
-    return { creds: null, credential_id: null };
+    return { creds: null, credential_id: null, credential_revision: null };
   }
   // auth_type !== "none": credentials come from the encrypted store, or from
   // the caller when probing a connector that has not been saved yet. The
   // override is never written anywhere — it signs this one request.
   const row =
     override !== undefined
-      ? override && { value: override, row: { id: null as string | null } }
+      ? override && {
+          value: override,
+          row: { id: null as string | null, authority_revision: null as number | null },
+        }
       : await getCredentialForConnector(tenant_id, connector.id, connector.environment, db);
   if (!row) {
     throw new S3CredentialError(
@@ -141,7 +150,11 @@ async function resolveS3Credentials(
       secret_access_key: v.secret_access_key,
     };
     if (v.session_token) out.session_token = v.session_token;
-    return { creds: out, credential_id: row.row.id };
+    return {
+      creds: out,
+      credential_id: row.row.id,
+      credential_revision: row.row.authority_revision,
+    };
   }
   if (v.mode !== "header") {
     throw new S3CredentialError(
@@ -161,7 +174,7 @@ async function resolveS3Credentials(
   const out: S3Credentials = { access_key_id: id, secret_access_key: secret };
   const sess = headers["x-session-token"] ?? headers["X-Session-Token"];
   if (sess) out.session_token = sess;
-  return { creds: out, credential_id: row.row.id };
+  return { creds: out, credential_id: row.row.id, credential_revision: row.row.authority_revision };
 }
 
 /**
@@ -207,6 +220,14 @@ function headersFromResponse(res: Response): Record<string, string> {
  * driver-shared `{status, headers, body}` envelope.
  */
 export async function executeS3Request(p: {
+  before_dispatch?: (
+    credential: Pick<
+      ResolvedConnectorCredential,
+      "credential_id" | "credential_revision" | "connection_authority"
+    >,
+  ) => Promise<RequestDispatchPolicy | undefined>;
+  signal?: AbortSignal;
+  timeout_ms?: number;
   db: Db;
   tenant_id: string;
   connector: ConnectorView;
@@ -241,13 +262,18 @@ export async function executeS3Request(p: {
    *  supplies instead of the stored row, for a connector that is not saved yet. */
   credential_override?: DecryptedCredential | null;
 }): Promise<S3Response> {
-  const { creds: credentials, credential_id } = await resolveS3Credentials(
-    p.db,
-    p.tenant_id,
-    p.connector,
-    p.credential_override,
-  );
+  const {
+    creds: credentials,
+    credential_id,
+    credential_revision,
+  } = await resolveS3Credentials(p.db, p.tenant_id, p.connector, p.credential_override);
   const client = buildS3Client({ connector: p.connector, credentials });
+  if (p.before_dispatch)
+    return executeBoundS3Request({
+      client,
+      params: p,
+      credential: { credential_id, credential_revision, connection_authority: null },
+    });
   const key = trimKey(p.path);
   const method = p.method.toUpperCase() as S3Method;
   logger.debug({

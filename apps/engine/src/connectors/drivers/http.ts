@@ -1129,6 +1129,12 @@ export async function executePlannedHttpRequest(params: {
 }
 
 export async function executeConnectorHttpRequest(params: {
+  before_dispatch?: (
+    credential: Pick<
+      ResolvedConnectorCredential,
+      "credential_id" | "credential_revision" | "connection_authority"
+    >,
+  ) => Promise<RequestDispatchPolicy | undefined>;
   db: Db;
   tenant_id: string;
   connector: ConnectorView;
@@ -1185,6 +1191,7 @@ export async function executeConnectorHttpRequest(params: {
     sigv4Args = { region, service, credential: plan.credential };
   }
 
+  const beforeDispatch = params.before_dispatch;
   return await executePlannedHttpRequest({
     tenant_id: params.tenant_id,
     method: params.method,
@@ -1193,6 +1200,16 @@ export async function executeConnectorHttpRequest(params: {
     body: params.body,
     signal,
     ...(sigv4Args ? { sigv4: sigv4Args } : {}),
+    ...(beforeDispatch
+      ? {
+          before_dispatch: () =>
+            beforeDispatch({
+              credential_id: plan.credential_id,
+              credential_revision: plan.credential_revision,
+              connection_authority: plan.connection_authority ?? null,
+            }),
+        }
+      : {}),
   });
 }
 

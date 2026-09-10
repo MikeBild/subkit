@@ -60,6 +60,7 @@ import { buildLoopChildScope, resolveForEachCollection } from "./loop-scope.ts";
 import { isOffloadRef, maybeOffload, previewOf } from "./offload.ts";
 import { deepResolveOffloadRefs, previewOffloadRefs } from "./offload-rehydrate.ts";
 import { checkOutputContract, summarizeViolations } from "./output-contract.ts";
+import { capturePreparedWorkflowReferences } from "./prepared-workflow-references.ts";
 import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
 import { applyResponseFilters } from "./response-filter.ts";
 import {
@@ -192,6 +193,20 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   const request_source: RequestSource = opts.request_source ?? "api";
   const parent_execution_id = opts.parent_execution_id ?? null;
   const execution_mode = opts.execution_mode ?? "dev";
+  const preparedReferences =
+    resolved.source_kind === "saved" && (opts.hold_writes || opts.tool_approval_id)
+      ? await capturePreparedWorkflowReferences(db, tenant_id, execution_mode, def)
+      : undefined;
+  if (
+    preparedReferences &&
+    opts.step_output_fixtures &&
+    Object.keys(opts.step_output_fixtures).length
+  ) {
+    throw Object.assign(
+      new Error("Prepared single-run decisions require fresh upstream reads, not cached fixtures."),
+      { code: "prepared_fixture_unsupported" },
+    );
+  }
 
   // Single execution instant: persisted as the row's `started_at` (via
   // markExecutionRunning) AND reused as the one clock every sandbox reads —
@@ -476,6 +491,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       kind: step.kind,
     });
     const ctx: StepRunContext = {
+      ...(preparedReferences ? { prepared_workflow_references: preparedReferences } : {}),
       before_external_request: (snapshot) =>
         assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot),
       db,
@@ -1112,6 +1128,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               kind: bodyStep.kind,
             });
             const bodyCtx: import("./types.ts").StepRunContext = {
+              ...(preparedReferences ? { prepared_workflow_references: preparedReferences } : {}),
               before_external_request: (snapshot) =>
                 assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot),
               db,
@@ -1394,6 +1411,9 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                   kind: branchStepDef.kind,
                 });
                 const branchCtx: import("./types.ts").StepRunContext = {
+                  ...(preparedReferences
+                    ? { prepared_workflow_references: preparedReferences }
+                    : {}),
                   before_external_request: (snapshot) =>
                     assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot),
                   db,

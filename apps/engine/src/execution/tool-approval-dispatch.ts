@@ -15,6 +15,7 @@ import {
 import { decryptPreview } from "../tools/approval-portal.ts";
 import { preparedInputDigest } from "../tools/prepared-workflow-approval.ts";
 import { authorityConnectorDigest } from "../workflows/authority-configuration.ts";
+import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import { PreparedDispatchSnapshotSchema, preparedRequestProof } from "./prepared-request.ts";
 import type { RequestAuthoritySnapshot } from "./types.ts";
 
@@ -183,7 +184,8 @@ export async function assertToolApprovalDispatch(
           tx,
         );
         if (
-          !system ||
+          !system?.connector.enabled ||
+          system.connector.needs_reauth ||
           authorityConnectorDigest(system.connector) !== reference.configuration_digest
         )
           denied("prepared_reference_connector_changed");
@@ -203,6 +205,23 @@ export async function assertToolApprovalDispatch(
             .limit(1);
           if (!credential || credential.revision !== reference.credential_revision)
             denied("prepared_reference_credential_changed");
+          if (reference.connection_authority !== undefined) {
+            const metadata = await system.getAuthorityMetadata();
+            const connection = metadata.binding.connection;
+            if (
+              reference.credential_binding_digest &&
+              workflowJsonDigest(metadata.binding) !== reference.credential_binding_digest
+            )
+              denied("prepared_reference_credential_changed");
+            if (
+              !metadata.available ||
+              !isDeepStrictEqual(
+                connection ? { id: connection.id, revision: connection.revision } : null,
+                reference.connection_authority,
+              )
+            )
+              denied("prepared_reference_connection_changed");
+          }
         }
       }
       const attempts = run.tool_approval_dispatches;

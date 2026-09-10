@@ -33,8 +33,10 @@ export function approvalDisplayTarget(value: string | null): string | null {
   if (!value) return null;
   try {
     const url = new URL(value);
-    if (!["https:", "http:", "s3:"].includes(url.protocol)) return null;
-    const origin = url.protocol === "s3:" ? `s3://${url.host}` : url.origin;
+    if (!["https:", "http:", "s3:", "postgres:", "postgresql:"].includes(url.protocol)) return null;
+    const origin = ["s3:", "postgres:", "postgresql:"].includes(url.protocol)
+      ? `${url.protocol}//${url.host}`
+      : url.origin;
     return scrubString(`${origin}${url.pathname}`);
   } catch {
     return null;
@@ -92,12 +94,9 @@ export function buildApprovalDecisionHtml(
     timeStyle: "long",
     timeZone: "UTC",
   }).format(view.expires_at);
+  const executionMode = view.preview?.direct_connector?.target.environment ?? view.execution_mode;
   const environment =
-    view.execution_mode === "dev"
-      ? copy.dev
-      : view.execution_mode === "prod"
-        ? copy.prod
-        : copy.unspecified;
+    executionMode === "dev" ? copy.dev : executionMode === "prod" ? copy.prod : copy.unspecified;
   const binding = view.preview?.prepared_workflow;
   const summary = [
     [copy.tool, scrubString(view.tool)],
@@ -114,16 +113,18 @@ export function buildApprovalDecisionHtml(
     )
     .join("");
   const reviews = binding?.request_reviews ?? [];
+  const direct = view.preview?.direct_connector;
   // Persisted request projections take precedence over a caller's summary.
   // Keep unmatched legacy entries visible, without inventing a proof/limit.
   const writes = [
     ...reviews,
+    ...(direct ? [direct.review] : []),
     ...(view.preview?.would_write ?? []).filter(
-      (write) => !reviews.some((review) => review.step === write.step),
+      (write) => !direct && !reviews.some((review) => review.step === write.step),
     ),
   ];
   const effects = writes.length
-    ? `<p class="muted">${copy.effectsHelp}</p><ul class="approval-effects">${writes
+    ? `<p class="muted">${direct ? copy.directEffectsHelp : copy.effectsHelp}</p><ul class="approval-effects">${writes
         .map((write) => {
           const review = reviews.find((candidate) => candidate === write);
           return `<li class="approval-effect"><dl>
@@ -147,7 +148,7 @@ ${review ? `<dt>${copy.attempts}</dt><dd>${escapeHtml(copy.attemptsValue.replace
     `<header class="approval-header"><strong>SubKit · ${copy.context}</strong>${language}<span class="approval-status">${copy.pending}</span></header>
 <h1>${copy.title}</h1><p class="muted">${copy.intro}</p>
 <section aria-labelledby="boundary-title"><h2 id="boundary-title">${copy.summary}</h2><dl class="approval-grid">${summary}</dl></section>
-<section aria-labelledby="effects-title"><h2 id="effects-title">${copy.effects}</h2>${effects}<p class="muted">${reviews.length > 0 ? copy.boundHelp : binding ? copy.versionOnlyHelp : copy.limitations}</p>${reviews.length > 0 ? `<p class="muted">${copy.attemptsHelp}</p>` : ""}</section>
+<section aria-labelledby="effects-title"><h2 id="effects-title">${copy.effects}</h2>${effects}<p class="muted">${reviews.length > 0 ? copy.boundHelp : binding ? copy.versionOnlyHelp : view.preview?.direct_connector ? copy.directBoundHelp : copy.limitations}</p>${reviews.length > 0 ? `<p class="muted">${copy.attemptsHelp}</p>` : ""}</section>
 <details class="approval-details"><summary>${copy.details}</summary><div>
 <h2>${copy.why}</h2><p>${copy.whyHelp}</p><h2>${copy.changes}</h2><p>${copy.changesHelp}</p><p>${copy.via}: <span class="mono">${visible(view.surface)}</span></p></div></details>
 <section class="approval-note" aria-labelledby="outcome-title"><h2 id="outcome-title">${copy.outcome}</h2><p class="muted">${copy.outcomeHelp}</p></section>

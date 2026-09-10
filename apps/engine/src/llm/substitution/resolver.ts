@@ -43,6 +43,9 @@ export interface ResolvedAuthorityReference {
   configuration_digest: string;
   credential_id: string | null;
   credential_revision: number | null;
+  /** Present for execution-wide references that use an outbound connection. */
+  connection_authority?: { id: string; revision: number } | null;
+  credential_binding_digest?: string;
 }
 
 export interface ResolverContext {

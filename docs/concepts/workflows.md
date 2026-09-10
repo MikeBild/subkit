@@ -264,9 +264,8 @@ decision. Both paths persist the exact admitted version and share run limits
 with the other entry points. Production is checked by the same local admission
 boundary, not an extra routine tool gate. Explicit `ask`/`plan` modes and stricter
 workflow-tool preferences retain held preparation and a separate decision, even
-when a standing grant is available. Explicit one-shot tool approvals and held-write
-replay still require separate boundary convergence; standing-authority admission
-does not prove those legacy approval paths.
+when a standing grant is available. Standing-authority admission and the exact
+single-run decision below are separate boundaries; neither implies the other.
 
 Held `wf_<slug>` chat previews now retain version/input provenance from their
 completed, persisted preparation run inside the encrypted approval. Confirmation
@@ -299,8 +298,7 @@ The encrypted proof binds the persisted step key, including the loop occurrence,
 so swapping dynamically loaded recipients between iterations is not authorized.
 Repeated identical reviewed occurrences retain separate finite attempt counters.
 
-This is still a product-local, partial convergence step. Other one-shot ingress
-paths are not covered by this chat replay change. Non-HTTP writes, multipart/file
+This is a product-local, deliberately bounded single-run path. Non-HTTP writes, multipart/file
 requests, additional pages or writes not materialized in the preparation fail
 closed on this bound path until they have supported proofs. Rotating the master
 key, or changing materialized authorization headers during token refresh,
@@ -309,8 +307,13 @@ is needed. Direct `${cred...}` and `${connector...}` request placeholders now
 record the connector configuration and credential revision actually read during
 resolution. Those references participate in the keyed proof and are checked
 again before dispatch. Changing a referenced credential and restoring its old
-value does not restore the old authority. This does not yet establish provenance
-for credentials carried indirectly through earlier step outputs. Earlier
+value does not restore the old authority. A metadata-only snapshot taken before
+the run additionally binds every statically identified connector and credential
+reference in the workflow, including earlier reads and transforms. Its primary,
+OAuth-client and connection permission revisions participate in the later write
+proof and are rechecked before dispatch. Identical upstream response data does
+not make changed access inherit an older decision. Cached step fixtures are not
+accepted for this prepared single-run path. Earlier
 external effects are not rolled back if a later step is
 blocked; a successful attempted replay is not an exactly-once guarantee.
 A bound single-use parent also refuses a `call` step: its proof does not authorize
@@ -330,14 +333,25 @@ bounded transient read retries remain automatic. To perform live writes, save
 and activate the exact workflow version, then use its execution authority or
 prepared single-run decision. No legacy flag upgrades draft state to live access.
 
-Connector probes classify possible writes in development as well as production;
-the development label cannot suppress a decision for a write. Production probes
-retain their explicit gate. Read-only development checks stay automatic.
+Persisted connector probes classify possible writes in development as well as
+production; the development label cannot suppress a decision for a write.
+Mutable HTTP draft writes are held before credential lookup or token exchange,
+without a routine development approval. Use a read-only probe to validate and
+save the connector, then review the exact saved-connector action. Production
+probes retain their explicit gate. Read-only development checks stay automatic.
 Persisted connector probes declare their target's `connector:read` permission
 at the central tool boundary. Credential and connector placeholders retain the
 calling principal's resource restrictions instead of using a background-job
-fallback. These checks do not yet bind a direct connector tool's later execution
-to the configuration and credential revision present during its approval.
+fallback. Single-use `call_connector` and `probe_connector` decisions now retain
+their connector configuration, environment, primary/client credential and
+connection binding in the encrypted approval. Metadata is checked before secret
+resolution and the actual loaded credentials are checked again before dispatch.
+Probe placeholders also bind the references actually resolved. Legacy decisions
+without this binding require a new review. HTTP/GraphQL and supported S3 object
+calls do not follow redirects under this authority; a redirect is not a grant
+for another target. Bound S3 supports single-object GET, HEAD, PUT and DELETE;
+unsupported streaming, listing or multipart variants fail closed. No new table,
+central approval service or operator configuration is needed for these bindings.
 
 The single-use tool-approval portal uses SubKit's local family UI palette and
 supports German and English without client-side scripts or new configuration.
@@ -348,7 +362,7 @@ limit and the ten-minute post-decision claim window. Claiming is not proof that
 execution started or succeeded; queueing a conversation continuation is reported
 as queueing, not as execution. Expired links do not establish past outcomes.
 Missing previews, version bindings or prior-boundary comparisons are disclosed,
-not fabricated. Those disclosures do not close the legacy one-shot binding gaps.
+not fabricated. A missing legacy binding cannot authorize a new bound dispatch.
 Raw inputs, credentials and sensitive URL components are not rendered.
 
 For prepared HTTP chat requests, the portal additionally displays the persisted
@@ -359,8 +373,8 @@ authority-review masking: credential-named fields and all header values are
 hidden, JSON string bodies are parsed for key-aware masking, and opaque string
 bodies are omitted explicitly. Large projections are marked truncated. Content
 is escaped plain text; it cannot render active HTML. The page distinguishes
-run count from per-request retries and discloses incomplete credential-reference
-coverage. These display improvements do not authorize additional ingress paths
+run count from per-request retries and identifies the supported binding scope.
+These display improvements do not authorize additional ingress paths
 or remove the remaining proof limitations described above.
 
 The resolver currently supports static HTTP targets and the single GraphQL

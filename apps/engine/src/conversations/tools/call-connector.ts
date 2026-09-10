@@ -60,6 +60,11 @@ import { callConnectorDriverRefusal } from "../../connectors/services/call-conne
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
+import {
+  DirectConnectorBindingError,
+  type LoadedConnectorCredential,
+} from "../../tools/direct-connector-binding.ts";
+import { directConnectorGuard, preflightDirectConnector } from "./direct-connector-guard.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { truncateForLlm } from "./truncate.ts";
 
@@ -271,6 +276,19 @@ export const callConnectorTool: ConversationTool = {
       );
     }
 
+    const guard = directConnectorGuard(ctx, connector);
+    try {
+      await preflightDirectConnector(ctx, connector);
+    } catch (error) {
+      if (error instanceof DirectConnectorBindingError)
+        return structuredError(error.code, error.message);
+      throw error;
+    }
+    let loadedCredential: LoadedConnectorCredential = {
+      credential_id: null,
+      credential_revision: null,
+      connection_authority: null,
+    };
     // Credential check — required for all auth_type !== "none" connectors.
     if (connector.auth_type !== "none") {
       const cred = await getCredentialForConnector(
@@ -294,6 +312,11 @@ export const callConnectorTool: ConversationTool = {
           { next_best_actions: ["ask_user_form", "save_connector_draft"] },
         );
       }
+      loadedCredential = {
+        credential_id: cred.row.id,
+        credential_revision: cred.row.authority_revision,
+        connection_authority: cred.connection_authority ?? null,
+      };
     }
 
     // Driver routing.
@@ -377,6 +400,7 @@ export const callConnectorTool: ConversationTool = {
     let responseHeaders: Record<string, string> = {};
     let usedHost = "";
     let errorDetail: string | null = null;
+    let authorityChanged = false;
     // What we record in audit metadata. NEVER the full SQL or full body.
     let auditMethod = args.method ?? "";
     let auditPathSummary = args.path ?? "";
@@ -408,18 +432,12 @@ export const callConnectorTool: ConversationTool = {
             "graphql connectors require body: {query, variables}",
           );
         }
-        const opArg: {
-          db: typeof ctx.db;
-          tenant_id: string;
-          connector: typeof connector;
-          query: string;
-          variables?: Record<string, unknown>;
-          operation?: "query" | "mutation" | "subscription";
-        } = {
+        const opArg: Parameters<typeof graphqlQuery>[0] = {
           db: ctx.db,
           tenant_id: ctx.tenant_id,
           connector,
           query: b.query,
+          ...(guard ? { before_dispatch: guard } : {}),
         };
         if (b.variables && typeof b.variables === "object") {
           opArg.variables = b.variables as Record<string, unknown>;
@@ -444,6 +462,7 @@ export const callConnectorTool: ConversationTool = {
           method: args.method ?? "GET",
           path_or_url: args.path ?? "",
           timeout_ms: args.timeout_ms,
+          ...(guard ? { before_dispatch: guard } : {}),
         };
         if (args.headers) execArgs.headers = args.headers;
         if (args.query) execArgs.query = args.query;
@@ -465,6 +484,7 @@ export const callConnectorTool: ConversationTool = {
         if (!allowWrites && !SQL_HAS_LIMIT_RE.test(finalSql)) {
           finalSql = `${finalSql} LIMIT ${rowLimit}`;
         }
+        await guard?.(loadedCredential);
         const res = await pgQueryWithCount({
           connector,
           sql: finalSql,
@@ -494,6 +514,8 @@ export const callConnectorTool: ConversationTool = {
           method,
           path,
           body: s3Body,
+          ...(guard ? { before_dispatch: guard, timeout_ms: args.timeout_ms } : {}),
+          ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
         });
         status = res.status;
         responseHeaders = res.headers;
@@ -501,6 +523,7 @@ export const callConnectorTool: ConversationTool = {
         usedHost = hostOf(connector.base_url ?? "") || "s3";
       }
     } catch (err) {
+      authorityChanged = err instanceof DirectConnectorBindingError;
       errorDetail = err instanceof Error ? err.message : String(err);
     }
 
@@ -546,9 +569,13 @@ export const callConnectorTool: ConversationTool = {
         latency_ms,
         error: errorDetail,
       });
-      return structuredError("call_failed", errorDetail, {
-        latency_ms,
-      });
+      return structuredError(
+        authorityChanged ? "connector_authority_changed" : "call_failed",
+        errorDetail,
+        {
+          latency_ms,
+        },
+      );
     }
 
     // Successful calls record the observed top-level shape against

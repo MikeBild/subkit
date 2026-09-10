@@ -57,6 +57,15 @@ describe("buildCapAlternatives", () => {
 });
 
 describe("ERROR_CODE_ALTERNATIVES · authoring-gate recovery recipes", () => {
+  it("draft_write_held explains the read-only preparation and approved saved-connector path", () => {
+    const hint = ERROR_CODE_ALTERNATIVES.draft_write_held;
+    expect(hint).toContain("before credential lookup or dispatch");
+    expect(hint).toContain("read-only probe");
+    expect(hint).toContain("save the connector");
+    expect(hint).toContain("call_connector");
+    expect(hint).toContain("human approval");
+    expect(hint).toContain("Do not retry");
+  });
   // The gates are fingerprint-keyed now: evidence survives edits to
   // OTHER steps and blocks only when the referenced step's own
   // definition changed since the last dry-run. The hints must teach

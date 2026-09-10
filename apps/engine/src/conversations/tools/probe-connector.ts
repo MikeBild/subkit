@@ -28,9 +28,12 @@ import type { ConnectorView } from "../../connectors/types.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { connectors as connectorsTable } from "../../db/schema/index.ts";
+import type { ResolvedAuthorityReference } from "../../llm/substitution/resolver.ts";
 import { resolvePlaceholders } from "../../llm/substitution/resolver.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
+import { DirectConnectorBindingError } from "../../tools/direct-connector-binding.ts";
+import { directConnectorGuard, preflightDirectConnector } from "./direct-connector-guard.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { resolveConversationPrincipal } from "./permission-gate.ts";
 import { pickProbeRecoveryActions } from "./probe-recovery.ts";
@@ -276,6 +279,13 @@ export const probeConnectorTool: ConversationTool = {
     // connector's own. All credential + dispatch + audit downstream uses
     // this value so they stay in lockstep.
     const environment = explicitEnv ? args.environment : connector.environment;
+    try {
+      await preflightDirectConnector(ctx, connector);
+    } catch (error) {
+      if (error instanceof DirectConnectorBindingError)
+        return denyResult(error.code, error.message);
+      throw error;
+    }
 
     // Credential pre-gate — mirror call_connector. For auth_type !== "none"
     // connectors, refuse to dispatch when there is no saved credential, or
@@ -312,6 +322,7 @@ export const probeConnectorTool: ConversationTool = {
     // Resolve placeholders in every string field of headers/query/body.
     // Unresolved placeholders are fatal — we do not dispatch partial auth.
     const principal = ctx.principal ?? (await resolveConversationPrincipal(ctx));
+    const references: ResolvedAuthorityReference[] = [];
     const resolved = await resolvePlaceholders(
       {
         path: args.path,
@@ -324,6 +335,9 @@ export const probeConnectorTool: ConversationTool = {
         environment,
         db: ctx.db,
         ...(principal ? { principal } : {}),
+        onAuthorityReference: (reference: ResolvedAuthorityReference) => {
+          references.push(reference);
+        },
       },
     );
     if (resolved.unresolved.length > 0) {
@@ -357,13 +371,16 @@ export const probeConnectorTool: ConversationTool = {
     let status = 0;
     let responseBody: unknown = null;
     let errorDetail: string | null = null;
+    let authorityChanged = false;
     let usedHost = "";
 
     try {
+      const guard = directConnectorGuard(ctx, connector, references);
       const execution = await executeConnectorHttpRequest({
         db: ctx.db,
         tenant_id: ctx.tenant_id,
         connector,
+        ...(guard ? { before_dispatch: guard } : {}),
         method: args.method,
         path_or_url: resolvedValue.path,
         ...(resolvedValue.headers ? { headers: resolvedValue.headers } : {}),
@@ -376,6 +393,7 @@ export const probeConnectorTool: ConversationTool = {
       status = execution.status;
       responseBody = execution.body;
     } catch (err) {
+      authorityChanged = err instanceof DirectConnectorBindingError;
       errorDetail = err instanceof Error ? err.message : String(err);
       logger.warn({
         module: "conversation.probe_connector",
@@ -421,7 +439,11 @@ export const probeConnectorTool: ConversationTool = {
 
     if (errorDetail) {
       const timeout = isTimeoutError(errorDetail);
-      const failure_code = timeout ? "probe_timeout" : "probe_fetch_failed";
+      const failure_code = authorityChanged
+        ? "connector_authority_changed"
+        : timeout
+          ? "probe_timeout"
+          : "probe_fetch_failed";
       return {
         ok: false,
         data: {
