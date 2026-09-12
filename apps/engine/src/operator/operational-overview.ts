@@ -1,6 +1,8 @@
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
+import { patchCandidates } from "../db/schema/index.ts";
 import { getMetrics } from "../observability/index.ts";
+import { readPatchReadinessBatch } from "../self-healing/index.ts";
 
 export const OPERATIONAL_SCHEMA_VERSION = "operational-overview.v1" as const;
 export const FAMILY_CONTRACT_VERSION = "2.1" as const;
@@ -144,16 +146,28 @@ function rowsOf<T>(result: unknown): T[] {
 
 async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverview> {
   const generatedAt = new Date().toISOString();
+  const candidates = await db
+    .select()
+    .from(patchCandidates)
+    .where(and(eq(patchCandidates.tenant_id, tenantId), eq(patchCandidates.status, "proposed")));
+  const readiness = await readPatchReadinessBatch(tenantId, candidates, db);
+  const readyIds = candidates
+    .filter((_, index) => readiness[index]?.reviewable)
+    .map((candidate) => candidate.id);
+  const readyPatches = readyIds.length
+    ? sql`id IN (${sql.join(
+        readyIds.map((id) => sql`${id}::uuid`),
+        sql`, `,
+      )})`
+    : sql`FALSE`;
+
   const result = await db.execute<SnapshotRow>(sql`
     WITH decisions AS (
-      SELECT created_at, TRUE AS blocking FROM conversations
-       WHERE tenant_id = ${tenantId} AND status = 'awaiting_input'
-      UNION ALL
       SELECT created_at, FALSE AS blocking FROM patch_candidates
-       WHERE tenant_id = ${tenantId} AND status = 'proposed'
+       WHERE tenant_id = ${tenantId} AND status = 'proposed' AND ${readyPatches}
       UNION ALL
       SELECT created_at, FALSE AS blocking FROM skill_candidates
-       WHERE tenant_id = ${tenantId} AND status = 'proposed'
+       WHERE tenant_id = ${tenantId} AND status = 'proposed' AND pattern_kind NOT IN ('failure_pattern', 'authoring_capability')
     ), finished AS (
       SELECT status, source_kind, request_source FROM executions
        WHERE tenant_id = ${tenantId} AND finished_at >= now() - interval '24 hours'

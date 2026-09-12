@@ -10,6 +10,7 @@ import {
 import {
   apiKeys,
   connectors,
+  patchCandidates,
   sessions,
   tenants,
   users,
@@ -56,7 +57,7 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function fixture(baseUrl = "https://example.test/api") {
+async function fixture(baseUrl = "https://example.test/api", repairable = false) {
   const slug = `authority-http-${++counter}`;
   const [connector] = await ctx.db
     .insert(connectors)
@@ -86,6 +87,7 @@ async function fixture(baseUrl = "https://example.test/api") {
         steps: [
           {
             id: "send",
+            ...(repairable ? { data_selector: "data.id" } : {}),
             kind: "request",
             connector_id: connector.id,
             method: "POST",
@@ -654,4 +656,110 @@ test("history cursors preserve PostgreSQL microseconds and same-timestamp id ord
     expect(page.next_cursor).toBe(index === ids.length - 1 ? null : id);
     cursor = id;
   }
+});
+
+test("repair review and finite authority apply atomically and remain settled after reload", async () => {
+  const f = await fixture(undefined, true);
+  await ctx.db
+    .update(workflows)
+    .set({ current_version_id: f.version.id, lifecycle: "active" })
+    .where(eq(workflows.id, f.workflow.id));
+  const [candidate] = await ctx.db
+    .insert(patchCandidates)
+    .values({
+      tenant_id: ctx.tenantId,
+      workflow_id: f.workflow.id,
+      classification: "safe",
+      status: "proposed",
+      diff: {
+        workflow_step_id: "send",
+        proposal: {
+          kind: "update_field_path",
+          classification: "safe",
+          description: "Read moved identifier",
+          reasoning: "Response field moved",
+          patch: { path: "data.id", value: "data.result.id" },
+        },
+      },
+    })
+    .returning();
+  if (!candidate) throw new Error("missing candidate");
+  const beforeOverview = await app.request("/v1/operational-overview", { headers: browserHeaders });
+  expect(beforeOverview.status).toBe(200);
+  expect((await beforeOverview.json()).core.other_decisions.value).toBe(1);
+  const base = `/v1/patch-candidates/${candidate.id}`;
+  const getPreview = await app.request(`${base}/preview`, { headers: browserHeaders });
+  expect(getPreview.status).toBe(200);
+  const preview = await getPreview.json();
+  expect(preview.reviewable).toBe(true);
+  const invalid = await app.request(`${base}/approve`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify({}),
+  });
+  expect(invalid.status).toBe(400);
+  const preparedResponse = await app.request(`${base}/prepare`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify({ expected_review_digest: preview.review_digest }),
+  });
+  expect(preparedResponse.status).toBe(200);
+  const prepared = await preparedResponse.json();
+  const authorityResponse = await app.request(
+    `${f.base}/versions/${prepared.workflow_version_id}/authority-preview`,
+    { headers: browserHeaders },
+  );
+  expect(authorityResponse.status).toBe(200);
+  const authority = await authorityResponse.json();
+  const body = {
+    expected_review_digest: preview.review_digest,
+    execution_authority: {
+      workflow_version_id: prepared.workflow_version_id,
+      execution_environment: "dev",
+      expected_manifest_digest: authority.digest,
+      ...authority.suggested_bounds,
+    },
+  };
+  const denied = await app.request(`${base}/approve`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  expect(denied.status).toBe(403);
+  const [stillOriginal] = await ctx.db
+    .select()
+    .from(workflows)
+    .where(eq(workflows.id, f.workflow.id));
+  expect(stillOriginal?.current_version_id).toBe(f.version.id);
+  const approved = await app.request(`${base}/approve`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify(body),
+  });
+  expect(approved.status).toBe(200);
+  expect(await approved.json()).toMatchObject({
+    applied: true,
+    workflow_version_id: prepared.workflow_version_id,
+  });
+  const reload = await app.request(
+    `/v1/patch-candidates?status=proposed&workflow_id=${f.workflow.id}`,
+    { headers: browserHeaders },
+  );
+  expect(await reload.json()).toMatchObject({ total: 0, reviewable_total: 0, items: [] });
+  const afterOverview = await app.request("/v1/operational-overview", { headers: browserHeaders });
+  expect((await afterOverview.json()).core.other_decisions.value).toBe(0);
+  const grants = await app.request(`${f.base}/execution-authorities`, { headers: browserHeaders });
+  const loaded = await grants.json();
+  expect(loaded.items).toHaveLength(1);
+  expect(loaded.items[0]).toMatchObject({
+    workflow_version_id: prepared.workflow_version_id,
+    state: "approved",
+    active_version: true,
+  });
+  const retry = await app.request(`${base}/approve`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify(body),
+  });
+  expect(retry.status).toBe(409);
 });

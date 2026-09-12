@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { apiRequest } from "@/api/client";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -33,9 +33,15 @@ import {
 export function GrantWorkflowAuthority({
   workflowId,
   versionId,
+  prepareVersion,
+  onGrant,
+  reviewContent,
 }: {
   workflowId: string;
   versionId: string;
+  prepareVersion?: () => Promise<string>;
+  onGrant?: (input: NonNullable<ReturnType<typeof authorityGrantInput>>) => Promise<unknown>;
+  reviewContent?: ReactNode;
 }) {
   const { t, dateTime } = useI18n();
   const client = useQueryClient();
@@ -43,12 +49,16 @@ export function GrantWorkflowAuthority({
   const [environment, setEnvironment] = useState<"dev" | "prod">("dev");
   const [runs, setRuns] = useState("");
   const [hours, setHours] = useState("");
+  const [reviewVersionId, setReviewVersionId] = useState(versionId);
   const [review, setReview] = useState<WorkflowAuthorityPreview | null>(null);
   const prepare = useMutation({
-    mutationFn: (env: "dev" | "prod") =>
-      apiRequest<WorkflowAuthorityPreview>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(versionId)}/authority-preview?environment=${env}`,
-      ),
+    mutationFn: async (env: "dev" | "prod") => {
+      const targetVersion = prepareVersion ? await prepareVersion() : versionId;
+      setReviewVersionId(targetVersion);
+      return apiRequest<WorkflowAuthorityPreview>(
+        `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(targetVersion)}/authority-preview?environment=${env}`,
+      );
+    },
     onSuccess: (review) => {
       setRuns(String(review.suggested_bounds.max_runs));
       setHours(
@@ -61,7 +71,7 @@ export function GrantWorkflowAuthority({
       setReview(review);
     },
   });
-  const expected = { workflowId, versionId, environment };
+  const expected = { workflowId, versionId: reviewVersionId, environment };
   const input = review ? authorityGrantInput(review, expected, runs, hours, Date.now()) : null;
   const grant = useMutation({
     mutationFn: () => {
@@ -69,6 +79,7 @@ export function GrantWorkflowAuthority({
         ? authorityGrantInput(review, expected, runs, hours, Date.now())
         : null;
       if (!checked) throw new Error("authority_review_incomplete");
+      if (onGrant) return onGrant(checked);
       return apiRequest<WorkflowAuthority>(
         `/v1/workflows/${encodeURIComponent(workflowId)}/execution-authorities`,
         {
@@ -79,6 +90,9 @@ export function GrantWorkflowAuthority({
     },
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["workflow-authorities", workflowId] });
+      await client.invalidateQueries({ queryKey: ["decisions"] });
+      await client.invalidateQueries({ queryKey: ["operational-overview"] });
+      await client.invalidateQueries({ queryKey: ["patch-candidate"] });
       setOpen(false);
     },
   });
@@ -98,7 +112,7 @@ export function GrantWorkflowAuthority({
     <Dialog open={open} onOpenChange={openDialog}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" data-testid="authority-grant-open">
-          {t("authority.grantOpen")}
+          {t(onGrant ? "decisions.applyAndAuthorize" : "authority.grantOpen")}
         </Button>
       </DialogTrigger>
       <DialogContent
@@ -106,10 +120,15 @@ export function GrantWorkflowAuthority({
         className="flex max-h-[85svh] flex-col overflow-hidden sm:max-w-2xl"
       >
         <DialogHeader className="shrink-0">
-          <DialogTitle>{t("authority.grantOpen")}</DialogTitle>
-          <DialogDescription>{t("authority.grantDescription")}</DialogDescription>
+          <DialogTitle>
+            {t(onGrant ? "decisions.applyAndAuthorize" : "authority.grantOpen")}
+          </DialogTitle>
+          <DialogDescription>
+            {t(onGrant ? "decisions.applyAndAuthorizeDescription" : "authority.grantDescription")}
+          </DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
+          {reviewContent}
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="authority-environment">{t("authority.environment")}</FieldLabel>
@@ -293,9 +312,11 @@ export function GrantWorkflowAuthority({
             {t(
               grant.isPending
                 ? "authority.granting"
-                : Number(runs) === 1
-                  ? "authority.grantConfirmOne"
-                  : "authority.grantConfirm",
+                : onGrant
+                  ? "decisions.applyAndAuthorize"
+                  : Number(runs) === 1
+                    ? "authority.grantConfirmOne"
+                    : "authority.grantConfirm",
               { count: runs },
             )}
           </Button>

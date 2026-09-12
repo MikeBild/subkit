@@ -287,7 +287,7 @@ const RESUME_SUMMARY = {
 const CONVERSATION_TOTAL = AWAITING_CONVERSATIONS.length + 2;
 
 /** The number every surface must show: the engine's own counts, summed. */
-const QUEUE_TOTAL = PATCH_CANDIDATES.length + SKILL_CANDIDATES.length + CONVERSATION_TOTAL;
+const QUEUE_TOTAL = PATCH_CANDIDATES.length - 1 + SKILL_CANDIDATES.length;
 
 /**
  * The positions the QUEUE holds — the ones this page can decide.
@@ -303,10 +303,10 @@ const QUEUE_TOTAL = PATCH_CANDIDATES.length + SKILL_CANDIDATES.length + CONVERSA
  * answers total=1. What the fixture is for is the rule, which holds at any
  * size: a position with no consequence here is not a decision here.
  */
-const DECIDABLE_TOTAL = PATCH_CANDIDATES.length + SKILL_CANDIDATES.length;
+const DECIDABLE_TOTAL = QUEUE_TOTAL;
 
 /** The number of distinct decidable positions the queue can actually render. */
-const QUEUE_SHOWN = PATCH_CANDIDATES.length + SKILL_CANDIDATES.length;
+const QUEUE_SHOWN = QUEUE_TOTAL;
 
 /**
  * What the patch endpoint hands over: the three candidates, one of them twice.
@@ -645,8 +645,8 @@ function overviewMetric(id, value, path, severity = "information") {
 
 function operationalOverview(gateOpen) {
   const generatedAt = new Date(NOW).toISOString();
-  const blocked = gateOpen ? 2 : 0;
-  const overdue = gateOpen ? 3 : 0;
+  const blocked = 0;
+  const overdue = gateOpen ? 2 : 0;
   const other = gateOpen ? Math.max(QUEUE_TOTAL - blocked - overdue, 0) : 0;
   return {
     schema_version: "operational-overview.v1",
@@ -735,13 +735,28 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
           )
         : items;
       return json(route, {
-        items: presented,
+        items: presented.map((candidate) => ({
+          ...candidate,
+          reviewable: candidate.id !== "patch-2",
+          review_reason: candidate.id === "patch-2" ? "no_step_anchor" : null,
+          review_digest: candidate.id === "patch-2" ? null : "a".repeat(64),
+          base_version_id: ID,
+        })),
+        reviewable_total: gateOpen ? PATCH_CANDIDATES.length - 1 : 0,
         total: gateOpen ? PATCH_CANDIDATES.length : 0,
       });
     }
     if (path === "/v1/skill-candidates") {
       const items = gateOpen && status === "proposed" ? SKILL_CANDIDATES : [];
-      return json(route, { items, total: items.length });
+      return json(route, {
+        items: items.map((candidate) => ({
+          ...candidate,
+          reviewable: true,
+          review_digest: "b".repeat(64),
+        })),
+        total: items.length,
+        reviewable_total: items.length,
+      });
     }
     if (path === `/v1/skill-candidates/${ID}/evidence`) return json(route, { items: [] });
 
@@ -2702,13 +2717,12 @@ async function checkCounterCoherence(page, surfaces) {
       "/decisions · decisions-queue",
       `the queue claims ${queueTotal}, the decidable endpoints report ${DECIDABLE_TOTAL}`,
     );
-  // The fixture delivers fewer positions than the engine counts, so the page
-  // must say so rather than let the badge and the column disagree in silence.
-  if (rendered.capped !== "true")
+  // The cap indicator must agree with the actual distinct decision count.
+  if (rendered.capped !== String(rendered.positions < queueTotal))
     breach(
       "§8.1",
       "/decisions · decisions-queue",
-      `${rendered.positions} of ${queueTotal} shown, but not declared as capped`,
+      `${rendered.positions} of ${queueTotal} shown, but the cap indicator disagrees`,
     );
 }
 

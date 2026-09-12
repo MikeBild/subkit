@@ -21,6 +21,7 @@ import {
   type DecisionItem,
   decisionKey,
   hasOverdue,
+  isDecidable,
   type OpenDecisions,
   patchChangeKind,
   patchDecision,
@@ -146,8 +147,8 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
         // row, and one position is one decision on every surface that shows it.
         items: [...new Map(items.map((item) => [decisionKey(item), item])).values()],
         totals: {
-          patch: patches?.total ?? 0,
-          skill: skills?.total ?? 0,
+          patch: patches?.reviewable_total ?? 0,
+          skill: skills?.reviewable_total ?? 0,
           conversation: conversations?.total ?? 0,
         },
       };
@@ -161,7 +162,7 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
     names: nameIndex,
     canReadRuns: permissions.includes("execution:read"),
     open: query.data ? countOpenDecisions({ items, totals: query.data.totals, nowMs: now }) : null,
-    overdue: hasOverdue(items, now),
+    overdue: hasOverdue(items.filter(isDecidable), now),
     isPending: query.isPending,
     isFetching: query.isFetching,
     // React Query keeps retrying before `error` becomes final. Showing the

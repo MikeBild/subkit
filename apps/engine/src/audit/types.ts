@@ -187,6 +187,7 @@ export const AuditAction = {
   SKILL_ARCHIVED: "skill.archived",
   SKILL_DELETED: "skill.deleted",
 
+  PATCH_CANDIDATE_PREPARED: "patch_candidate.prepared",
   PATCH_CANDIDATE_PROPOSED: "patch_candidate.proposed",
   PATCH_CANDIDATE_AUTO_APPLIED: "patch_candidate.auto_applied",
   PATCH_CANDIDATE_APPROVED: "patch_candidate.approved",

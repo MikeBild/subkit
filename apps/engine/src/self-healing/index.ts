@@ -5,7 +5,16 @@
 // Wire shape embedded in the candidate preview response — re-exported
 // so route files can stay on the subsystem entry point (route_layering).
 export { PatchProposalSchema } from "../llm/flows/repair.ts";
-export { approvePatchCandidate, rejectPatchCandidate } from "./candidate-decision.ts";
+export {
+  approvePatchCandidate,
+  PatchDecisionError,
+  rejectPatchCandidate,
+} from "./candidate-decision.ts";
+export {
+  PatchReadinessSchema,
+  readPatchReadiness,
+  readPatchReadinessBatch,
+} from "./candidate-readiness.ts";
 export * from "./candidate-review.ts";
 export type { RateLimitPatchCandidate } from "./classifier.ts";
 export { classifyPatch, classifyRateLimitFromTemplate } from "./classifier.ts";
@@ -35,6 +44,7 @@ export {
   resolvePolicy,
   shouldAutoApply,
 } from "./policy.ts";
+export { preparePatchCandidate } from "./prepare-candidate.ts";
 export type {
   ProactiveScanFilters,
   ScannedSignal,

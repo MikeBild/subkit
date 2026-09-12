@@ -972,12 +972,31 @@ const EN = {
     "These positions are stopped, or their deadline passed unanswered. Both are resolved in the decision queue.",
   "overview.incident.open": "Decide now",
   "overview.incident.openTotal": "{count} decisions are waiting for you",
+  "decisions.reason.noAnchor":
+    "No matching workflow step is recorded. Inspect the workflow and prepare a concrete correction.",
+  "decisions.reason.noChange": "This proposal no longer changes the current workflow.",
+  "decisions.reason.missingWorkflow": "The workflow or its current version is unavailable.",
+  "decisions.section.decisions": "Approvals",
+  "decisions.section.suggestions": "Suggestions and observations",
+  "decisions.section.questions": "Questions",
+  "decisions.separateHint": "These items are not counted as pending approvals.",
+  "decisions.notApplicable":
+    "This proposal cannot currently change the workflow. It needs a supported correction and a valid target.",
+  "decisions.advisory":
+    "An observation or description, not a ready correction. Review it before creating reusable guidance.",
+  "decisions.openQuestion": "Open conversation",
+  "decisions.activateSkill": "Adopt and activate",
+  "decisions.loadMore": "Load more approvals",
+  "decisions.applyAndAuthorize": "Apply correction and authorize runs",
+  "decisions.applyAndAuthorizeDescription":
+    "Approve the displayed correction and allow the repaired version to run within these limits. Both changes are saved together.",
+  "decisions.reviewChanged": "The reviewed change is no longer current. Reload the preview.",
   "decisions.description":
     "What is waiting to be decided: proposed fixes and skill candidates. A question asked inside a conversation is answered there.",
   "decisions.kind.patch": "Fix",
   "decisions.kind.skill": "Skill candidate",
   "decisions.effect.patch": "Approving writes a new workflow version.",
-  "decisions.effect.skill": "Approving promotes the candidate into a skill.",
+  "decisions.effect.skill": "Approving activates this knowledge for future assistance.",
   "decisions.queueSummary": "{count} open decision(s), most urgent first.",
   "decisions.age.today": "Waiting since today",
   "decisions.age.day": "Waiting 1 day",
@@ -2408,12 +2427,33 @@ const DE: Record<TranslationKey, string> = {
     "Diese Positionen stehen still, oder ihre Frist ist ohne Antwort verstrichen. Beides wird in der Entscheidungs-Queue aufgelöst.",
   "overview.incident.open": "Jetzt entscheiden",
   "overview.incident.openTotal": "{count} Entscheidungen warten auf dich",
+  "decisions.reason.noAnchor":
+    "Es ist kein passender Workflow-Schritt hinterlegt. Prüfe den Workflow und bereite eine konkrete Korrektur vor.",
+  "decisions.reason.noChange": "Dieser Vorschlag verändert den aktuellen Workflow nicht mehr.",
+  "decisions.reason.missingWorkflow":
+    "Der Workflow oder seine aktuelle Version ist nicht verfügbar.",
+  "decisions.section.decisions": "Freigaben",
+  "decisions.section.suggestions": "Vorschläge und Hinweise",
+  "decisions.section.questions": "Rückfragen",
+  "decisions.separateHint": "Diese Einträge zählen nicht als ausstehende Freigaben.",
+  "decisions.notApplicable":
+    "Dieser Vorschlag kann den Ablauf derzeit nicht ändern. Er benötigt eine ausführbare Korrektur und ein gültiges Ziel.",
+  "decisions.advisory":
+    "Eine Beobachtung oder Beschreibung, noch keine fertige Korrektur. Vor einer Übernahme als Wissen muss sie geprüft werden.",
+  "decisions.openQuestion": "Unterhaltung öffnen",
+  "decisions.activateSkill": "Übernehmen und aktivieren",
+  "decisions.loadMore": "Weitere Freigaben laden",
+  "decisions.applyAndAuthorize": "Korrektur anwenden und Ausführungen freigeben",
+  "decisions.applyAndAuthorizeDescription":
+    "Bestätige die angezeigte Korrektur und erlaube Ausführungen der korrigierten Version innerhalb dieser Grenzen. Beides wird gemeinsam gespeichert.",
+  "decisions.reviewChanged":
+    "Die geprüfte Änderung ist nicht mehr aktuell. Lade die Vorschau erneut.",
   "decisions.description":
     "Was auf eine Entscheidung wartet: vorgeschlagene Korrekturen und Skill-Kandidaten. Eine Rückfrage aus einer Unterhaltung wird dort beantwortet.",
   "decisions.kind.patch": "Korrektur",
   "decisions.kind.skill": "Skill-Kandidat",
   "decisions.effect.patch": "Eine Freigabe schreibt eine neue Workflow-Version.",
-  "decisions.effect.skill": "Eine Freigabe macht aus dem Kandidaten einen Skill.",
+  "decisions.effect.skill": "Eine Freigabe aktiviert dieses Wissen für zukünftige Unterstützung.",
   "decisions.queueSummary": "{count} offene Entscheidung(en), die dringendsten zuerst.",
   "decisions.age.today": "Wartet seit heute",
   "decisions.age.day": "Wartet 1 Tag",

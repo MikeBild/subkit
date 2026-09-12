@@ -25,6 +25,8 @@ import {
 } from "../../db/schema/index.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { approvePatchCandidate, rejectPatchCandidate } from "../candidate-decision.ts";
+import { previewPatchCandidate } from "../candidate-review.ts";
+import { preparePatchCandidate } from "../prepare-candidate.ts";
 import { runSelfHealingLoop } from "../service.ts";
 import {
   createSelfHealingCtx,
@@ -88,6 +90,94 @@ async function seedProposedCandidate(): Promise<string> {
 }
 
 describe("approvePatchCandidate", () => {
+  test("preparation is inert and idempotent; approval activates exactly the reviewed version", async () => {
+    const candidateId = await seedProposedCandidate();
+    const db = ctx.testDb.db;
+    const preview = await previewPatchCandidate(ctx.tenant_id, candidateId, db);
+    if (!preview?.review_digest) throw new Error("expected executable preview");
+    const params = {
+      tenant_id: ctx.tenant_id,
+      candidate_id: candidateId,
+      actor_id: null,
+      expected_review_digest: preview.review_digest,
+    };
+    const prepared = await preparePatchCandidate(params, db);
+    expect(await preparePatchCandidate(params, db)).toEqual(prepared);
+    const [before] = await db.select().from(workflows).where(eq(workflows.id, ctx.workflow_id));
+    expect(before?.current_version_id).toBe(preview.base_version_id);
+    const [candidate] = await db
+      .select()
+      .from(patchCandidates)
+      .where(eq(patchCandidates.id, candidateId));
+    expect(candidate?.status).toBe("proposed");
+    expect(
+      await approvePatchCandidate(
+        { ...params, prepared_version_id: prepared.workflow_version_id },
+        db,
+      ),
+    ).toBe(prepared.workflow_version_id);
+    const after = await previewPatchCandidate(ctx.tenant_id, candidateId, db);
+    expect(after?.reviewable).toBe(false);
+    expect(after?.review_reason).toBe("already_decided");
+    const [workflow] = await db.select().from(workflows).where(eq(workflows.id, ctx.workflow_id));
+    expect(workflow?.current_version_id).toBe(prepared.workflow_version_id);
+  });
+
+  test("stale review cannot change the workflow and the refusal is audited", async () => {
+    const candidateId = await seedProposedCandidate();
+    const db = ctx.testDb.db;
+    await expect(
+      approvePatchCandidate(
+        {
+          tenant_id: ctx.tenant_id,
+          candidate_id: candidateId,
+          actor_id: null,
+          expected_review_digest: "0".repeat(64),
+        },
+        db,
+      ),
+    ).rejects.toThrow("review_changed");
+    const [candidate] = await db
+      .select()
+      .from(patchCandidates)
+      .where(eq(patchCandidates.id, candidateId));
+    expect(candidate?.status).toBe("proposed");
+    const rows = await db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, ctx.tenant_id), eq(auditLog.resource_id, candidateId)));
+    expect(rows.some((row) => row.result === "error" && row.reason === "review_changed")).toBe(
+      true,
+    );
+  });
+
+  test("concurrent approvals create only one active version", async () => {
+    const candidateId = await seedProposedCandidate();
+    const db = ctx.testDb.db;
+    const preview = await previewPatchCandidate(ctx.tenant_id, candidateId, db);
+    if (!preview?.review_digest) throw new Error("expected executable preview");
+    const params = {
+      tenant_id: ctx.tenant_id,
+      candidate_id: candidateId,
+      actor_id: null,
+      expected_review_digest: preview.review_digest,
+    };
+    const before = await db
+      .select()
+      .from(workflowVersions)
+      .where(eq(workflowVersions.workflow_id, ctx.workflow_id));
+    const results = await Promise.all([
+      approvePatchCandidate(params, db),
+      approvePatchCandidate(params, db),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    const after = await db
+      .select()
+      .from(workflowVersions)
+      .where(eq(workflowVersions.workflow_id, ctx.workflow_id));
+    expect(after).toHaveLength(before.length + 1);
+  });
+
   test("flips status to applied, writes a new workflow_versions row, audits", async () => {
     const candidateId = await seedProposedCandidate();
     const db = ctx.testDb.db;
@@ -163,11 +253,12 @@ describe("approvePatchCandidate", () => {
       .from(workflowVersions)
       .where(eq(workflowVersions.workflow_id, ctx.workflow_id));
 
-    const applied = await approvePatchCandidate(
-      { tenant_id: ctx.tenant_id, candidate_id: candidateId, actor_id: null },
-      db,
-    );
-    expect(applied).toBeNull();
+    await expect(
+      approvePatchCandidate(
+        { tenant_id: ctx.tenant_id, candidate_id: candidateId, actor_id: null },
+        db,
+      ),
+    ).rejects.toThrow("no_step_anchor");
 
     const versionsAfter = await db
       .select()

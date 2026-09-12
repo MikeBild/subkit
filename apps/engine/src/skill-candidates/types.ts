@@ -48,6 +48,8 @@ export const SkillCandidateSchema = z
     confidence: SkillCandidateConfidenceSchema,
     status: SkillCandidateStatusSchema,
     promoted_skill_id: z.string().nullable(),
+    reviewable: z.boolean().optional(),
+    review_digest: z.string().optional(),
     fingerprint: z.string(),
     version: z.number().int(),
     tags: z.array(z.string()).default([]),
@@ -114,6 +116,7 @@ export function computeConfidence(
 export interface ListSkillCandidatesParams {
   tenant_id: string;
   status?: SkillCandidateStatus;
+  reviewable?: boolean;
   scope?: "global" | "connector" | "workflow";
   connector_id?: string;
   workflow_id?: string;
@@ -124,6 +127,7 @@ export interface ListSkillCandidatesParams {
 }
 
 export interface ApproveSkillCandidateParams {
+  expected_review_digest?: string;
   tenant_id: string;
   candidate_id: string;
   actor_id: string | null;

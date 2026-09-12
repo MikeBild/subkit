@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/index.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
@@ -23,13 +23,55 @@ export function candidateDriftFingerprint(
   candidate: typeof patchCandidates.$inferSelect,
 ): string | null {
   const diff = candidate.diff as { drift_signal?: unknown } | null;
-  return diff?.drift_signal == null ? null : stableStringify(diff.drift_signal);
+  return diff?.drift_signal == null ? null : signalFingerprint(diff.drift_signal as DriftSignal);
 }
 
 /** Fingerprint of a live drift signal — the same canonical form candidates
  *  store, so a candidate and a fresh signal are directly comparable. */
 export function signalFingerprint(signal: DriftSignal): string {
-  return stableStringify(signal);
+  switch (signal.kind) {
+    case "http_status_new_shape":
+    case "endpoint_contract":
+      return stableStringify({ ...signal, request: driftRequestIdentity(signal.request) });
+    case "jsonata_path_miss":
+      return stableStringify({
+        kind: signal.kind,
+        expression: signal.expression,
+        missing_path: signal.missing_path,
+      });
+    case "validation_failed":
+      return stableStringify({ kind: signal.kind, expression: signal.expression });
+    case "schema_diff":
+      return stableStringify({
+        ...signal,
+        added: [...signal.added].sort(),
+        removed: [...signal.removed].sort(),
+        widened: [...signal.widened].sort(),
+      });
+    default:
+      return stableStringify(signal);
+  }
+}
+
+function driftRequestIdentity(
+  request: Extract<DriftSignal, { kind: "http_status_new_shape" }>["request"],
+) {
+  let origin: string | null = null;
+  let path = request.path ?? null;
+  if (request.url) {
+    try {
+      const url = new URL(request.url);
+      origin = url.origin;
+      path ??= url.pathname;
+    } catch {
+      path ??= request.url;
+    }
+  }
+  return {
+    method: request.method?.toUpperCase() ?? null,
+    origin,
+    path: path?.split(/[?#]/)[0] ?? null,
+  };
 }
 
 export function candidateProposal(candidate: typeof patchCandidates.$inferSelect): PatchProposal {
@@ -50,9 +92,11 @@ export async function findMatchingTerminalEndpointCandidate(
   params: {
     tenant_id: string;
     workflow_id: string;
-    connector_id: string;
-    endpoint_key: string;
+    connector_id: string | null;
+    endpoint_key: string | null;
     signal: DriftSignal;
+    base_version_id?: string | null;
+    workflow_step_id?: string | null;
   },
 ) {
   const rows = await exec
@@ -62,32 +106,40 @@ export async function findMatchingTerminalEndpointCandidate(
       and(
         eq(patchCandidates.tenant_id, params.tenant_id),
         eq(patchCandidates.workflow_id, params.workflow_id),
-        eq(patchCandidates.connector_id, params.connector_id),
-        eq(patchCandidates.endpoint_key, params.endpoint_key),
+        params.connector_id
+          ? eq(patchCandidates.connector_id, params.connector_id)
+          : isNull(patchCandidates.connector_id),
+        params.endpoint_key
+          ? eq(patchCandidates.endpoint_key, params.endpoint_key)
+          : isNull(patchCandidates.endpoint_key),
         inArray(patchCandidates.status, ["rejected", "superseded"]),
       ),
     )
-    .orderBy(desc(patchCandidates.created_at))
-    .limit(10);
-  const fingerprint = stableStringify(params.signal);
-  return rows.find((r) => candidateDriftFingerprint(r) === fingerprint) ?? null;
+    .orderBy(desc(patchCandidates.created_at));
+  const fingerprint = signalFingerprint(params.signal);
+  return (
+    rows.find(
+      (r) => matchesCandidateBoundary(r, params) && candidateDriftFingerprint(r) === fingerprint,
+    ) ?? null
+  );
 }
 
 /**
  * Find an already-active patch candidate (status proposed|applied) for
  * the same endpoint anchor, newest first. The proactive scan uses this
  * to refresh-or-skip instead of inserting a fresh row every cadence
- * tick — the patch_candidates flood fix. Returns null when the signal
- * has no endpoint anchor (workflow-scoped drift) or none is active.
+ * tick — including workflow-scoped signals whose endpoint fields are null.
  */
 export async function findActiveEndpointCandidate(
   exec: Executor,
   params: {
     tenant_id: string;
     workflow_id: string;
-    connector_id: string;
-    endpoint_key: string;
+    connector_id: string | null;
+    endpoint_key: string | null;
     signal: DriftSignal;
+    base_version_id?: string | null;
+    workflow_step_id?: string | null;
   },
 ) {
   // return the active candidate that heals THIS drift's fingerprint,
@@ -105,20 +157,46 @@ export async function findActiveEndpointCandidate(
       and(
         eq(patchCandidates.tenant_id, params.tenant_id),
         eq(patchCandidates.workflow_id, params.workflow_id),
-        eq(patchCandidates.connector_id, params.connector_id),
-        eq(patchCandidates.endpoint_key, params.endpoint_key),
+        params.connector_id
+          ? eq(patchCandidates.connector_id, params.connector_id)
+          : isNull(patchCandidates.connector_id),
+        params.endpoint_key
+          ? eq(patchCandidates.endpoint_key, params.endpoint_key)
+          : isNull(patchCandidates.endpoint_key),
         inArray(patchCandidates.status, ["proposed", "applied"]),
       ),
     )
-    .orderBy(desc(patchCandidates.created_at))
-    .limit(10);
+    .orderBy(desc(patchCandidates.created_at));
   const fingerprint = signalFingerprint(params.signal);
-  const match = rows.find((r) => candidateDriftFingerprint(r) === fingerprint);
+  const match = rows.find(
+    (r) => matchesCandidateBoundary(r, params) && candidateDriftFingerprint(r) === fingerprint,
+  );
   if (match) return match;
+  if (!params.connector_id || !params.endpoint_key) return null;
   // No fingerprint match. A legacy candidate (created before drift_signal was
   // stored) carries no fingerprint to compare — dedup against it to preserve
   // the old endpoint-only behaviour and avoid re-proposal flood for those
   // rows. If every active candidate is fingerprinted and none match, this is
   // a NEW drift → return null so it gets a fresh proposal.
-  return rows.find((r) => candidateDriftFingerprint(r) === null) ?? null;
+  return (
+    rows.find(
+      (r) => matchesCandidateBoundary(r, params) && candidateDriftFingerprint(r) === null,
+    ) ?? null
+  );
+}
+
+function matchesCandidateBoundary(
+  candidate: typeof patchCandidates.$inferSelect,
+  params: { base_version_id?: string | null; workflow_step_id?: string | null },
+): boolean {
+  const diff = candidate.diff as Record<string, unknown>;
+  return (
+    (!params.base_version_id ||
+      !diff.base_version_id ||
+      diff.base_version_id === params.base_version_id ||
+      (candidate.status === "applied" && diff.applied_version_id === params.base_version_id)) &&
+    (!params.workflow_step_id ||
+      !diff.workflow_step_id ||
+      diff.workflow_step_id === params.workflow_step_id)
+  );
 }

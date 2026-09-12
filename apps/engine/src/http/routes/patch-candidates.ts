@@ -13,16 +13,25 @@
 // context stays in one place.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { AuditAction, auditAwait } from "../../audit/index.ts";
+import type { Db } from "../../db/client.ts";
 import { patchCandidates, workflows } from "../../db/schema/index.ts";
+import { invalidateOperationalOverview } from "../../operator/index.ts";
 import {
   approvePatchCandidate,
   dryRunPatchCandidate,
+  PatchDecisionError,
   PatchProposalSchema,
+  PatchReadinessSchema,
+  preparePatchCandidate,
   previewPatchCandidate,
+  readPatchReadiness,
+  readPatchReadinessBatch,
   rejectPatchCandidate,
 } from "../../self-healing/index.ts";
+import { GrantWorkflowAuthoritySchema, grantWorkflowAuthority } from "../../workflows/index.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -47,6 +56,7 @@ const PatchCandidateSchema = z
     diff: z.unknown(),
     created_at: z.string(),
     updated_at: z.string(),
+    ...PatchReadinessSchema.partial().shape,
   })
   .openapi("PatchCandidate");
 
@@ -56,6 +66,7 @@ const ListResponse = z
     // True matching-row count for the applied filters (ignores limit)
     // — clients rendering counts must not derive them from a capped page.
     total: z.number().int().min(0),
+    reviewable_total: z.number().int().min(0),
   })
   .openapi("PatchCandidateListResponse");
 
@@ -63,6 +74,8 @@ const ListQuery = z
   .object({
     status: z.enum(["proposed", "applied", "rejected", "superseded"]).optional(),
     workflow_id: z.string().uuid().optional(),
+    reviewable: z.enum(["true", "false"]).optional(),
+    offset: z.coerce.number().int().min(0).default(0),
     limit: z.coerce.number().int().positive().max(200).optional(),
     // `asc` keeps the oldest candidate inside the page — the decisions
     // queue reviews stalest-first.
@@ -120,7 +133,21 @@ const approveRoute = createRoute({
   tags: ["patch-candidates"],
   summary: "Approve and apply a patch candidate",
   security: [{ bearerAuth: [] }],
-  request: { params: IdParam },
+  request: {
+    params: IdParam,
+    body: {
+      content: {
+        "application/json": {
+          schema: z
+            .object({
+              expected_review_digest: z.string().regex(/^[a-f0-9]{64}$/),
+              execution_authority: GrantWorkflowAuthoritySchema.optional(),
+            })
+            .openapi("ApprovePatchCandidateBody"),
+        },
+      },
+    },
+  },
   responses: {
     200: {
       description: "Applied",
@@ -157,6 +184,7 @@ const PreviewResponse = z
     before_step: StepShapeSchema.nullable(),
     after_step: StepShapeSchema.nullable(),
     changed_paths: z.array(z.string()),
+    ...PatchReadinessSchema.shape,
   })
   .openapi("PatchCandidatePreview");
 
@@ -224,6 +252,38 @@ const rejectRoute = createRoute({
   },
 });
 
+const prepareRoute = createRoute({
+  method: "post",
+  path: "/v1/patch-candidates/{id}/prepare",
+  tags: ["patch-candidates"],
+  summary: "Prepare an immutable repaired version without activation or execution authority",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: IdParam,
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({ expected_review_digest: z.string().regex(/^[a-f0-9]{64}$/) }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Prepared",
+      content: {
+        "application/json": {
+          schema: z.object({ workflow_version_id: z.string(), review_digest: z.string() }),
+        },
+      },
+    },
+    409: {
+      description: "Review changed",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
 export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
   // Patch candidates are workflow-scoped so we gate on workflow:read /
   // workflow:write — they modify a concrete workflow version.
@@ -241,6 +301,28 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/patch-candidates/:id/reject", async (c, next) => {
     return requirePermission("workflow:write")(c, next);
   });
+  app.use("/v1/patch-candidates/:id/prepare", requirePermission("workflow:write"));
+  app.openapi(prepareRoute, async (c) => {
+    const principal = requireAuth(c);
+    try {
+      return c.json(
+        await preparePatchCandidate(
+          {
+            tenant_id: principal.tenant_id,
+            actor_id: principal.id,
+            candidate_id: c.req.valid("param").id,
+            expected_review_digest: c.req.valid("json").expected_review_digest,
+          },
+          c.get("db"),
+        ),
+        200,
+      );
+    } catch (error) {
+      if (error instanceof PatchDecisionError)
+        throw new HttpError(409, error.code, "The repair preview is no longer applicable");
+      throw error;
+    }
+  });
   // Preview + dry-run are read-side: neither mutates the candidate.
   app.use("/v1/patch-candidates/:id/preview", async (c, next) => {
     return requirePermission("workflow:read")(c, next);
@@ -256,25 +338,39 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const tenantConds = [eq(patchCandidates.tenant_id, principal.tenant_id)];
     if (q.status) tenantConds.push(eq(patchCandidates.status, q.status));
     if (q.workflow_id) tenantConds.push(eq(patchCandidates.workflow_id, q.workflow_id));
-    const [rows, countRows] = await Promise.all([
-      db
-        .select({ candidate: patchCandidates, workflow_name: workflows.name })
-        .from(patchCandidates)
-        .leftJoin(workflows, eq(workflows.id, patchCandidates.workflow_id))
-        .where(and(...tenantConds))
-        .orderBy(
-          q.order === "asc" ? asc(patchCandidates.created_at) : desc(patchCandidates.created_at),
-        )
-        .limit(q.limit ?? 50),
-      db
-        .select({ cnt: count() })
-        .from(patchCandidates)
-        .where(and(...tenantConds)),
-    ]);
+    const rows = await db
+      .select({ candidate: patchCandidates, workflow_name: workflows.name })
+      .from(patchCandidates)
+      .leftJoin(
+        workflows,
+        and(
+          eq(workflows.id, patchCandidates.workflow_id),
+          eq(workflows.tenant_id, principal.tenant_id),
+        ),
+      )
+      .where(and(...tenantConds))
+      .orderBy(
+        q.order === "asc" ? asc(patchCandidates.created_at) : desc(patchCandidates.created_at),
+        asc(patchCandidates.id),
+      );
+    const readiness = await readPatchReadinessBatch(
+      principal.tenant_id,
+      rows.map((row) => row.candidate),
+      db,
+    );
+    const items = rows.map((row, index) => ({
+      ...serialize(row.candidate, row.workflow_name),
+      ...readiness[index]!,
+    }));
+    const filtered =
+      q.reviewable === undefined
+        ? items
+        : items.filter((item) => item.reviewable === (q.reviewable === "true"));
     return c.json(
       {
-        items: rows.map((r) => serialize(r.candidate, r.workflow_name)),
-        total: Number(countRows[0]?.cnt ?? 0),
+        items: filtered.slice(q.offset, q.offset + (q.limit ?? 50)),
+        total: filtered.length,
+        reviewable_total: items.filter((item) => item.reviewable).length,
       },
       200,
     );
@@ -287,12 +383,24 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const rows = await db
       .select({ candidate: patchCandidates, workflow_name: workflows.name })
       .from(patchCandidates)
-      .leftJoin(workflows, eq(workflows.id, patchCandidates.workflow_id))
+      .leftJoin(
+        workflows,
+        and(
+          eq(workflows.id, patchCandidates.workflow_id),
+          eq(workflows.tenant_id, principal.tenant_id),
+        ),
+      )
       .where(and(eq(patchCandidates.tenant_id, principal.tenant_id), eq(patchCandidates.id, id)))
       .limit(1);
     const row = rows[0];
     if (!row) throw new NotFoundError("patch_candidate");
-    return c.json(serialize(row.candidate, row.workflow_name), 200);
+    return c.json(
+      {
+        ...serialize(row.candidate, row.workflow_name),
+        ...(await readPatchReadiness(principal.tenant_id, row.candidate, db)),
+      },
+      200,
+    );
   });
 
   app.openapi(previewRoute, async (c) => {
@@ -360,11 +468,95 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
         },
       );
     }
-    const versionId = await approvePatchCandidate(
-      { tenant_id: principal.tenant_id, candidate_id: id, actor_id: principal.id },
-      db,
-    );
-    return c.json({ applied: !!versionId, workflow_version_id: versionId }, 200);
+    let versionId: string | null;
+    try {
+      const body = c.req.valid("json");
+      versionId = !body.execution_authority
+        ? await approvePatchCandidate(
+            {
+              tenant_id: principal.tenant_id,
+              candidate_id: id,
+              actor_id: principal.id,
+              expected_review_digest: body.expected_review_digest,
+            },
+            db,
+          )
+        : await db.transaction(async (tx) => {
+            if (body.execution_authority) {
+              const prepared = await preparePatchCandidate(
+                {
+                  tenant_id: principal.tenant_id,
+                  candidate_id: id,
+                  actor_id: principal.id,
+                  expected_review_digest: body.expected_review_digest,
+                },
+                tx as unknown as Db,
+              );
+              if (prepared.workflow_version_id !== body.execution_authority.workflow_version_id)
+                throw new PatchDecisionError("review_changed");
+              await grantWorkflowAuthority(row.workflow_id, body.execution_authority, {
+                principal,
+                request: c.req.raw,
+                db: tx as unknown as Db,
+              });
+            }
+            const applied = await approvePatchCandidate(
+              {
+                tenant_id: principal.tenant_id,
+                candidate_id: id,
+                actor_id: principal.id,
+                expected_review_digest: body.expected_review_digest,
+                ...(body.execution_authority
+                  ? { prepared_version_id: body.execution_authority.workflow_version_id }
+                  : {}),
+              },
+              tx as unknown as Db,
+            );
+            if (!applied) throw new PatchDecisionError("already_decided");
+            return applied;
+          });
+    } catch (error) {
+      if (c.req.valid("json").execution_authority) {
+        await auditAwait(
+          {
+            tenant_id: principal.tenant_id,
+            actor_type: "user",
+            actor_id: principal.id,
+            action: AuditAction.PATCH_CANDIDATE_APPROVED,
+            resource_type: "patch_candidate",
+            resource_id: id,
+            result: "error",
+            reason:
+              error instanceof PatchDecisionError ? error.code : "execution_authority_not_granted",
+            metadata: { workflow_id: row.workflow_id, combined_review: true },
+          },
+          db,
+        );
+      }
+      if (error instanceof PatchDecisionError)
+        throw HttpError.withEnvelope(409, error.code, "The reviewed repair cannot be applied", {
+          hint: "Load the candidate preview to inspect its current state and reason.",
+        });
+      if (error instanceof HttpError) throw error;
+      const code = (error as { code?: string }).code;
+      if (code)
+        throw new HttpError(
+          [
+            "human_session_required",
+            "human_session_expired",
+            "csrf_rejected",
+            "authority_permission_denied",
+          ].includes(code)
+            ? 403
+            : 409,
+          code,
+          "The reviewed execution boundary could not be granted",
+        );
+      throw error;
+    }
+    if (!versionId) throw new HttpError(409, "already_decided", "Candidate is no longer proposed");
+    invalidateOperationalOverview(principal.tenant_id);
+    return c.json({ applied: true, workflow_version_id: versionId }, 200);
   });
 
   app.openapi(rejectRoute, async (c) => {
@@ -398,6 +590,7 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
+    invalidateOperationalOverview(principal.tenant_id);
     return c.json({ rejected: ok }, 200);
   });
 }
