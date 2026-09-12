@@ -47,6 +47,7 @@ import { runFilesCleanup } from "./files-cleanup-runner.ts";
 import { runMcpOAuthCleanup } from "./mcp-oauth-cleanup-runner.ts";
 import { runNotificationInboxRetention } from "./notification-inbox-retention-runner.ts";
 import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts";
+import { logScheduleFireFailure } from "./schedule-fire-failure.ts";
 import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner.ts";
 import { runToolApprovalsCleanup } from "./tool-approvals-cleanup-runner.ts";
 
@@ -671,13 +672,16 @@ export class SchedulerReconciler {
       if (prior) clearInterval(prior);
       const timer = setInterval(() => {
         void this.fireEvery(key, def).catch((err) => {
-          logger.error({
-            module: "scheduler",
-            action: "schedule.fire_failed",
-            msg: "every-schedule enqueue failed",
-            schedule_key: key,
-            ...errorFields(err),
-          });
+          logScheduleFireFailure(
+            err,
+            {
+              tenant_id: def.payload.tenant_id,
+              workflow_id: def.payload.workflow_id,
+              schedule_id: def.schedule_id,
+              schedule_key: key,
+            },
+            "schedule.fire_failed",
+          );
         });
       }, def.seconds * 1000);
       (timer as unknown as { unref?: () => void }).unref?.();
@@ -929,13 +933,15 @@ export class SchedulerReconciler {
           occurrence_after: dueBaseline,
         });
       } catch (err) {
-        logger.error({
-          module: "scheduler",
-          action: "schedule.fanout_failed",
-          msg: "workflow schedule fan-out enqueue failed",
-          schedule_id: schedule.id,
-          ...errorFields(err),
-        });
+        logScheduleFireFailure(
+          err,
+          {
+            tenant_id: wf.tenant_id,
+            workflow_id: wf.id,
+            schedule_id: schedule.id,
+          },
+          "schedule.fanout_failed",
+        );
         // Compensate: we stamped last_enqueued_at = now BEFORE firing, but
         // the fire threw (e.g. transient boss.send / DB blip). Without this,
         // the occurrence is stamped "fired" yet never ran — silently lost

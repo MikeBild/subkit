@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 8.0.1 — 2026-09-12
+
+### Fixed
+
+- Scheduled runs awaiting concrete review or a live execution authority are
+  reported as held admissions, with tenant, workflow and schedule context.
+  They remain unqueued and retryable after approval; technical failures keep
+  their error severity and cadence recovery behavior.
+
 ## 8.0.0 — 2026-09-12
 
 ### Fixed
