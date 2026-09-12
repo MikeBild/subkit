@@ -4,6 +4,7 @@ import { CircleCheck, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { ApiError } from "@/api/client";
 import {
   approvePatchCandidate,
   approveSkillCandidate,
@@ -31,16 +32,7 @@ import {
   partitionByUrgency,
 } from "./decisions-model";
 
-/**
- * The kinds this page decides. A waiting conversation is not one of them.
- *
- * Measured on 21.08.2026: the page reported "35 offen · Korrekturen 2 ·
- * Skill-Vorschläge 1 · Unterhaltungen 32" — and 32 of those 35 positions
- * carried no approve and no reject, because a question asked inside a
- * conversation is answered inside that conversation. The navigation badge
- * still counts them, while this page only shows positions that can be decided
- * here (§8.5a, §8.5b).
- */
+// Only actionable patches and knowledge activations belong in the decision count.
 const KINDS: DecidableKind[] = ["patch", "skill"];
 const KIND_LABEL: Record<DecidableKind, TranslationKey> = {
   patch: "decisions.kind.patch",
@@ -84,10 +76,12 @@ export function DecisionsPage() {
   const queryClient = useQueryClient();
   const queue = useDecisionQueue(session.permissions);
   const [preferences, setPreferences] = useState<Preferences>(() => readPreferences());
-  const [decided, setDecided] = useState<string[]>([]);
+  const [section, setSection] = useState<"decisions" | "suggestions" | "questions">("decisions");
+  const [visibleCount, setVisibleCount] = useState(25);
   const [busyId, setBusyId] = useState<string | null>(null);
   const canDecidePatches = session.permissions.includes("workflow:write");
-  const canDecideSkills = session.permissions.includes("skill:write");
+  const canDecideSkills =
+    session.permissions.includes("skill:write") && session.permissions.includes("skill:activate");
   const title = t("nav.decisions");
 
   function persist(next: Preferences): void {
@@ -96,38 +90,43 @@ export function DecisionsPage() {
   }
 
   const decide = useMutation({
-    mutationFn: async (input: { item: DecisionItem; approve: boolean; reason: string }) => {
+    mutationFn: async (input: {
+      item: DecisionItem;
+      approve: boolean;
+      reason: string;
+      reviewDigest?: string;
+    }) => {
       if (input.item.kind === "patch") {
         return input.approve
-          ? approvePatchCandidate(input.item.id)
+          ? approvePatchCandidate(input.item.id, input.reviewDigest ?? "")
           : rejectPatchCandidate(input.item.id, input.reason);
       }
       return input.approve
-        ? approveSkillCandidate(input.item.id)
+        ? approveSkillCandidate(input.item.id, input.item.reviewDigest ?? "")
         : rejectSkillCandidate(input.item.id, input.reason);
     },
     onMutate: (input) => {
       setBusyId(input.item.id);
-      setDecided((ids) => [...ids, input.item.id]);
     },
-    onSuccess: (_result, input) => {
+    onSuccess: async (_result, input) => {
       toast.success(t(input.approve ? "decisions.approved" : "decisions.rejected"));
-      void queryClient.invalidateQueries({ queryKey: ["decisions"] });
-      void queryClient.invalidateQueries({ queryKey: ["overview"] });
+      await queryClient.invalidateQueries({ queryKey: ["decisions"] });
+      await queryClient.invalidateQueries({ queryKey: ["operational-overview"] });
+      await queryClient.invalidateQueries({ queryKey: ["patch-candidate"] });
     },
-    onError: (_error, input) => {
-      setDecided((ids) => ids.filter((id) => id !== input.item.id));
-      toast.error(t("decisions.decisionFailed"));
+    onError: (error) => {
+      toast.error(t(decisionFailureKey(error)));
+      void queryClient.invalidateQueries({ queryKey: ["decisions"] });
+      void queryClient.invalidateQueries({ queryKey: ["patch-candidate"] });
     },
     onSettled: () => setBusyId(null),
   });
 
   // Only what can be decided reaches the queue. `queue.items` still carries the
-  // waiting conversations, because the counter and the incident banner are
-  // about them — but they have no card here.
-  const open = queue.items.filter(isDecidable).filter((item) => !decided.includes(item.id));
+  // waiting conversations and diagnostics for their separate sections.
+  const open = queue.items.filter(isDecidable);
   const filtered = filterByKinds(open, preferences.kinds) as DecidableItem[];
-  const initial = filtered.slice(0, 25);
+  const initial = filtered.slice(0, visibleCount);
   const urgency = partitionByUrgency(initial, Date.now());
   const { current, aged } = urgency.deferred;
   const isFiltered = preferences.kinds.length > 0 && open.length > filtered.length;
@@ -156,7 +155,9 @@ export function DecisionsPage() {
         priority={priority}
         busy={busyId === item.id}
         canDecide={item.kind === "patch" ? canDecidePatches : canDecideSkills}
-        onApprove={(target) => decide.mutate({ item: target, approve: true, reason: "" })}
+        onApprove={(target, reviewDigest) =>
+          decide.mutate({ item: target, approve: true, reason: "", reviewDigest })
+        }
         onReject={(target, reason) => decide.mutate({ item: target, approve: false, reason })}
       />
     ));
@@ -182,155 +183,218 @@ export function DecisionsPage() {
       }
     >
       <div className="grid gap-6">
-        <div data-family-slot="filters">
-          <div
-            className="flex flex-wrap items-center gap-2"
-            data-testid="decisions-toolbar"
-            data-family-slot="kind-filters"
-          >
+        <fieldset className="flex flex-wrap gap-2" aria-label={t("nav.decisions")}>
+          {(["decisions", "suggestions", "questions"] as const).map((value) => (
             <Button
-              variant={preferences.kinds.length === 0 ? "default" : "outline"}
-              size="sm"
-              data-testid="decisions-chip-all"
-              onClick={() => persist({ ...preferences, kinds: [] })}
+              key={value}
+              data-testid={`decisions-section-${value}`}
+              variant={section === value ? "default" : "outline"}
+              aria-pressed={section === value}
+              onClick={() => setSection(value)}
             >
-              {t("decisions.chip.all")}
+              {t(`decisions.section.${value}`)}
             </Button>
-            {/* Art-Chips only. §8.5 forbids a chip that puts the queue into a past
-              STATE — decided, discarded, deferred — and there is none: this list
-              is closed over the two kinds the page can act on. */}
-            {KINDS.map((kind, index) => (
-              <Button
-                key={kind}
-                variant={preferences.kinds.includes(kind) ? "default" : "outline"}
-                size="sm"
-                data-testid={`decisions-chip-${index}`}
-                onClick={() =>
-                  persist({
-                    ...preferences,
-                    kinds: preferences.kinds.includes(kind)
-                      ? preferences.kinds.filter((entry) => entry !== kind)
-                      : [...preferences.kinds, kind],
-                  })
-                }
-              >
-                {t(KIND_LABEL[kind])}
-              </Button>
-            ))}
+          ))}
+        </fieldset>
+        {section !== "decisions" && (
+          <div className="grid gap-3">
+            <p className="text-sm text-muted-foreground">{t("decisions.separateHint")}</p>
+            {queue.items
+              .filter((item) =>
+                section === "questions"
+                  ? item.kind === "conversation"
+                  : item.kind !== "conversation" && !isDecidable(item),
+              )
+              .map((item) => (
+                <Alert key={`${item.kind}:${item.id}`}>
+                  <AlertTitle>{item.title}</AlertTitle>
+                  <AlertDescription>
+                    <p>{item.summary}</p>
+                    <p>
+                      {t(
+                        item.kind === "patch"
+                          ? patchSuggestionReason(item.reviewReason)
+                          : "decisions.advisory",
+                      )}
+                    </p>
+                    {item.kind === "conversation" && (
+                      <Link
+                        data-testid={`decision-question-${item.id}`}
+                        to="/chat/$conversationId"
+                        params={{ conversationId: item.id }}
+                      >
+                        {t("decisions.openQuestion")}
+                      </Link>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              ))}
           </div>
-        </div>
-
-        <p className="text-sm text-muted-foreground" data-family-slot="queue-summary">
-          {t("decisions.queueSummary", {
-            count: String(queue.open?.decidable ?? open.length),
-          })}
-        </p>
-
-        <div className="grid gap-5" data-family-slot="queue">
-          {queue.isPending && !queue.failed ? (
-            <div
-              className="grid gap-2"
-              role="status"
-              aria-label={t("common.loading")}
-              aria-busy="true"
-              data-family-slot="data-state"
-              data-family-state="loading"
-            >
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          ) : queue.failed ? (
-            <Alert
-              variant="destructive"
-              data-testid="decisions-error"
-              data-family-slot="data-state"
-              data-family-state="error"
-            >
-              <AlertTitle>{t("resource.loadFailed", { resource: title })}</AlertTitle>
-              <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-3"
-                data-testid="decisions-retry"
-                onClick={() => queue.refetch()}
-              >
-                {t("session.retry")}
-              </Button>
-            </Alert>
-          ) : filtered.length === 0 ? (
-            isFiltered ? (
+        )}
+        {section === "decisions" && (
+          <>
+            <div data-family-slot="filters">
               <div
-                className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
-                data-testid="decisions-empty-filtered"
-                data-family-slot="data-state"
-                data-family-state="filtered-empty"
+                className="flex flex-wrap items-center gap-2"
+                data-testid="decisions-toolbar"
+                data-family-slot="kind-filters"
               >
-                <p className="text-sm font-medium">{t("decisions.emptyFiltered")}</p>
                 <Button
-                  variant="outline"
+                  variant={preferences.kinds.length === 0 ? "default" : "outline"}
                   size="sm"
-                  className="mt-3"
-                  data-testid="decisions-show-all"
+                  data-testid="decisions-chip-all"
                   onClick={() => persist({ ...preferences, kinds: [] })}
                 >
-                  {t("decisions.showAll")}
+                  {t("decisions.chip.all")}
                 </Button>
+                {/* Art-Chips only. §8.5 forbids a chip that puts the queue into a past
+              STATE — decided, discarded, deferred — and there is none: this list
+              is closed over the two kinds the page can act on. */}
+                {KINDS.map((kind, index) => (
+                  <Button
+                    key={kind}
+                    variant={preferences.kinds.includes(kind) ? "default" : "outline"}
+                    size="sm"
+                    data-testid={`decisions-chip-${index}`}
+                    onClick={() =>
+                      persist({
+                        ...preferences,
+                        kinds: preferences.kinds.includes(kind)
+                          ? preferences.kinds.filter((entry) => entry !== kind)
+                          : [...preferences.kinds, kind],
+                      })
+                    }
+                  >
+                    {t(KIND_LABEL[kind])}
+                  </Button>
+                ))}
               </div>
-            ) : (
-              <div
-                className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
-                data-testid="decisions-empty"
-                data-family-slot="data-state"
-                data-family-state="empty"
-              >
-                <CircleCheck
-                  aria-hidden="true"
-                  className="mx-auto size-6 text-emerald-600 dark:text-emerald-400"
-                />
-                <p className="mt-2 text-sm font-medium">{t("decisions.emptyTitle")}</p>
-                <p className="text-sm text-muted-foreground">{t("decisions.emptyDescription")}</p>
-              </div>
-            )
-          ) : (
-            // Keep the queue count machine-readable so the shared parity check
-            // can compare the visible rows with the navigation badge.
-            <div
-              className="grid gap-5"
-              data-testid="decisions-queue"
-              data-total={String(queue.open?.decidable ?? 0)}
-              data-capped={String(queue.open?.capped ?? false)}
-            >
-              {/* §8.2 names this rubric, and it is a rubric of its own rather
+            </div>
+
+            <p className="text-sm text-muted-foreground" data-family-slot="queue-summary">
+              {t("decisions.queueSummary", {
+                count: String(queue.open?.decidable ?? open.length),
+              })}
+            </p>
+
+            <div className="grid gap-5" data-family-slot="queue">
+              {queue.isPending && !queue.failed ? (
+                <div
+                  className="grid gap-2"
+                  role="status"
+                  aria-label={t("common.loading")}
+                  aria-busy="true"
+                  data-family-slot="data-state"
+                  data-family-state="loading"
+                >
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : queue.failed ? (
+                <Alert
+                  variant="destructive"
+                  data-testid="decisions-error"
+                  data-family-slot="data-state"
+                  data-family-state="error"
+                >
+                  <AlertTitle>{t("resource.loadFailed", { resource: title })}</AlertTitle>
+                  <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    data-testid="decisions-retry"
+                    onClick={() => queue.refetch()}
+                  >
+                    {t("session.retry")}
+                  </Button>
+                </Alert>
+              ) : filtered.length === 0 ? (
+                isFiltered ? (
+                  <div
+                    className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
+                    data-testid="decisions-empty-filtered"
+                    data-family-slot="data-state"
+                    data-family-state="filtered-empty"
+                  >
+                    <p className="text-sm font-medium">{t("decisions.emptyFiltered")}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3"
+                      data-testid="decisions-show-all"
+                      onClick={() => persist({ ...preferences, kinds: [] })}
+                    >
+                      {t("decisions.showAll")}
+                    </Button>
+                  </div>
+                ) : (
+                  <div
+                    className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
+                    data-testid="decisions-empty"
+                    data-family-slot="data-state"
+                    data-family-state="empty"
+                  >
+                    <CircleCheck
+                      aria-hidden="true"
+                      className="mx-auto size-6 text-emerald-600 dark:text-emerald-400"
+                    />
+                    <p className="mt-2 text-sm font-medium">{t("decisions.emptyTitle")}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {t("decisions.emptyDescription")}
+                    </p>
+                  </div>
+                )
+              ) : (
+                // Keep the queue count machine-readable so the shared parity check
+                // can compare the visible rows with the navigation badge.
+                <div
+                  className="grid gap-5"
+                  data-testid="decisions-queue"
+                  data-total={String(queue.open?.decidable ?? 0)}
+                  data-capped={String(queue.open?.capped ?? false)}
+                >
+                  {/* §8.2 names this rubric, and it is a rubric of its own rather
                 than a sub-heading inside another one: it used to sit under
                 a section headed "Kann warten", which is the product
                 deciding on the reader's behalf what it has no way to know. */}
-              {aged.length > 0 && (
-                <DecisionSection
-                  testId="decisions-aged"
-                  title={t("decisions.agedTitle")}
-                  hint={t("decisions.agedHint")}
-                  count={aged.length}
-                  bucket="overdue"
-                >
-                  {renderGroups(aged as DecidableItem[], "decision-aged", "urgent")}
-                </DecisionSection>
-              )}
-              {current.length > 0 && (
-                <DecisionSection
-                  testId="decisions-current"
-                  title={t("operational.core.other")}
-                  hint={t("decisions.section.deferredHint")}
-                  count={current.length}
-                  bucket="other"
-                >
-                  {renderGroups(current as DecidableItem[], "decision-deferred", "normal")}
-                </DecisionSection>
+                  {aged.length > 0 && (
+                    <DecisionSection
+                      testId="decisions-aged"
+                      title={t("decisions.agedTitle")}
+                      hint={t("decisions.agedHint")}
+                      count={aged.length}
+                      bucket="overdue"
+                    >
+                      {renderGroups(aged as DecidableItem[], "decision-aged", "urgent")}
+                    </DecisionSection>
+                  )}
+                  {current.length > 0 && (
+                    <DecisionSection
+                      testId="decisions-current"
+                      title={t("operational.core.other")}
+                      hint={t("decisions.section.deferredHint")}
+                      count={current.length}
+                      bucket="other"
+                    >
+                      {renderGroups(current as DecidableItem[], "decision-deferred", "normal")}
+                    </DecisionSection>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
 
+            {filtered.length > visibleCount && (
+              <Button
+                data-testid="decisions-load-more"
+                variant="outline"
+                onClick={() => setVisibleCount((count) => count + 25)}
+              >
+                {t("decisions.loadMore")}
+              </Button>
+            )}
+          </>
+        )}
         <HistoryLink />
       </div>
     </PageFrame>
@@ -344,6 +408,34 @@ export function DecisionsPage() {
  * history it points at is complete because the audit log is append-only; what
  * the log does NOT cover is said on that page rather than implied here.
  */
+function patchSuggestionReason(reason?: string | null): TranslationKey {
+  if (reason === "no_step_anchor" || reason === "step_not_found")
+    return "decisions.reason.noAnchor";
+  if (reason === "no_change") return "decisions.reason.noChange";
+  if (reason === "workflow_missing" || reason === "version_missing")
+    return "decisions.reason.missingWorkflow";
+  return "decisions.notApplicable";
+}
+
+function decisionFailureKey(error: unknown): TranslationKey {
+  if (error instanceof ApiError) {
+    if (error.code === "review_changed") return "decisions.reviewChanged";
+    if (
+      [
+        "no_step_anchor",
+        "step_not_found",
+        "patch_not_applicable",
+        "no_change",
+        "workflow_missing",
+        "invalid_proposal",
+        "unsupported_step_kind",
+      ].includes(error.code ?? "")
+    )
+      return "decisions.notApplicable";
+  }
+  return "decisions.decisionFailed";
+}
+
 function HistoryLink() {
   const { t } = useI18n();
   const session = useSession();

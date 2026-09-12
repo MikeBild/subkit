@@ -2,13 +2,18 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import type { Db } from "../../db/client.ts";
-import { workflowExecutionAuthorities, workflows } from "../../db/schema/index.ts";
+import {
+  workflowExecutionAuthorities,
+  workflows,
+  workflowsSchedules,
+} from "../../db/schema/index.ts";
 import {
   AuthorityExecutionShapeSchema,
   GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
   previewWorkflowAuthority,
   revokeWorkflowAuthority,
+  suggestAuthorityBounds,
   WorkflowEffectManifestSchema,
 } from "../../workflows/index.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
@@ -364,15 +369,23 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
       const clock = await c.get("db").execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
       const now = clock.rows[0]?.now;
       if (!now) throw new Error("database clock unavailable");
+      const schedules = await c
+        .get("db")
+        .select({ cron: workflowsSchedules.cron, timezone: workflowsSchedules.timezone })
+        .from(workflowsSchedules)
+        .where(
+          and(
+            eq(workflowsSchedules.tenant_id, principal.tenant_id),
+            eq(workflowsSchedules.workflow_id, id),
+            eq(workflowsSchedules.paused, false),
+            eq(workflowsSchedules.execution_mode, c.req.valid("query").environment),
+          ),
+        );
       return c.json(
         {
           ...result,
           execution_shape: result.execution_shape,
-          suggested_bounds: {
-            valid_from: new Date(now).toISOString(),
-            valid_until: new Date(new Date(now).getTime() + 24 * 60 * 60_000).toISOString(),
-            max_runs: 1,
-          },
+          suggested_bounds: suggestAuthorityBounds(new Date(now), schedules),
         },
         200,
       );

@@ -9414,6 +9414,7 @@ export interface paths {
                     connector_id?: string;
                     workflow_id?: string;
                     pattern_kind?: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning";
+                    reviewable?: "true" | "false";
                     confidence?: "low" | "medium" | "high";
                     limit?: number;
                     offset?: number | null;
@@ -12368,6 +12369,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/patch-candidates/{id}/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare an immutable repaired version without activation or execution authority */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        expected_review_digest: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Prepared */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            workflow_version_id: string;
+                            review_digest: string;
+                        };
+                    };
+                };
+                /** @description Review changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/patch-candidates": {
         parameters: {
             query?: never;
@@ -12381,6 +12438,8 @@ export interface paths {
                 query?: {
                     status?: "proposed" | "applied" | "rejected" | "superseded";
                     workflow_id?: string;
+                    reviewable?: "true" | "false";
+                    offset?: number | null;
                     limit?: number;
                     order?: "asc" | "desc";
                 };
@@ -12581,7 +12640,11 @@ export interface paths {
                 };
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ApprovePatchCandidateBody"];
+                };
+            };
             responses: {
                 /** @description Applied */
                 200: {
@@ -19294,6 +19357,7 @@ export interface components {
         };
         SkillCandidateListResponse: {
             items: components["schemas"]["SkillCandidate"][];
+            reviewable_total: number;
             total: number;
         };
         SkillCandidate: {
@@ -19322,6 +19386,8 @@ export interface components {
             /** @enum {string} */
             status: "proposed" | "approved" | "rejected" | "superseded";
             promoted_skill_id: string | null;
+            reviewable?: boolean;
+            review_digest?: string;
             fingerprint: string;
             version: number;
             /** @default [] */
@@ -19347,6 +19413,7 @@ export interface components {
             body?: string;
             /** @enum {string} */
             status?: "draft" | "active";
+            expected_review_digest?: string;
         };
         RejectSkillCandidateBody: {
             reason?: string;
@@ -20048,6 +20115,7 @@ export interface components {
         PatchCandidateListResponse: {
             items: components["schemas"]["PatchCandidate"][];
             total: number;
+            reviewable_total: number;
         };
         PatchCandidate: {
             id: string;
@@ -20064,6 +20132,10 @@ export interface components {
             diff?: unknown;
             created_at: string;
             updated_at: string;
+            reviewable?: boolean;
+            review_reason?: string | null;
+            review_digest?: string | null;
+            base_version_id?: string | null;
         };
         PatchCandidatePreview: {
             candidate_id: string;
@@ -20081,6 +20153,10 @@ export interface components {
             before_step: components["schemas"]["PatchCandidateStepShape"];
             after_step: components["schemas"]["PatchCandidateStepShape"];
             changed_paths: string[];
+            reviewable: boolean;
+            review_reason: string | null;
+            review_digest: string | null;
+            base_version_id: string | null;
         };
         PatchProposal: {
             /** @enum {string} */
@@ -20106,6 +20182,21 @@ export interface components {
             value_preview?: unknown;
             /** @enum {string} */
             fixture_source: "recorded" | "synthesized";
+        };
+        ApprovePatchCandidateBody: {
+            expected_review_digest: string;
+            execution_authority?: {
+                /** Format: uuid */
+                workflow_version_id: string;
+                expected_manifest_digest: string;
+                /** @enum {string} */
+                execution_environment: "dev" | "prod";
+                /** Format: date-time */
+                valid_from: string;
+                /** Format: date-time */
+                valid_until: string;
+                max_runs: number;
+            };
         };
         RejectPatchCandidateBody: {
             reason?: string;

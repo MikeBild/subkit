@@ -4,7 +4,7 @@
 // explicit human gate (conversation approval or REST API).
 
 import { createHash } from "node:crypto";
-import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -19,11 +19,13 @@ import {
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { createSkill } from "../skills/service.ts";
 import { now } from "../utils/clock.ts";
+import { skillReviewDigest, toView } from "./candidate-view.ts";
 import {
   detectFailurePatterns,
   detectRepairPatterns,
   detectSuccessPatterns,
 } from "./detectors/index.ts";
+import { evidenceIdentity, uniqueEvidence } from "./evidence-identity.ts";
 import type {
   AnalysisResult,
   ApproveSkillCandidateParams,
@@ -40,36 +42,6 @@ const MAX_EVIDENCE_PER_CANDIDATE = 50;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Convert a DB row to a view. evidence_count defaults to 0 — callers that
- *  need the real count should query the relational evidence table. */
-function toView(row: typeof skillCandidates.$inferSelect, evidenceCount = 0): SkillCandidateView {
-  const blob = (row.examples ?? {}) as Record<string, unknown>;
-  return {
-    id: row.id,
-    tenant_id: row.tenant_id,
-    scope: row.scope,
-    connector_id: row.connector_id,
-    endpoint_key: row.endpoint_key,
-    workflow_id: row.workflow_id,
-    pattern_kind: row.pattern_kind,
-    title: row.title,
-    body: row.body,
-    examples: (blob.examples as string[]) ?? [],
-    best_practices: (blob.best_practices as string[]) ?? [],
-    pitfalls: (blob.pitfalls as string[]) ?? [],
-    doc_refs: (blob.doc_refs as string[]) ?? [],
-    evidence_count: evidenceCount,
-    confidence: row.confidence,
-    status: row.status,
-    promoted_skill_id: row.promoted_skill_id,
-    fingerprint: row.fingerprint,
-    version: row.version,
-    tags: row.tags ?? [],
-    created_at: row.created_at.toISOString(),
-    updated_at: row.updated_at.toISOString(),
-  };
-}
-
 /** Batch-fetch evidence counts for a set of candidate IDs. */
 async function getEvidenceCounts(
   candidateIds: string[],
@@ -81,7 +53,7 @@ async function getEvidenceCounts(
   const rows = await db
     .select({
       candidate_id: skillCandidateEvidence.skill_candidate_id,
-      cnt: count(),
+      cnt: sql<number>`count(distinct (${skillCandidateEvidence.evidence_type}, ${skillCandidateEvidence.execution_id}, ${skillCandidateEvidence.patch_candidate_id}, CASE WHEN ${skillCandidateEvidence.execution_id} IS NULL AND ${skillCandidateEvidence.patch_candidate_id} IS NULL THEN ${skillCandidateEvidence.summary} ELSE NULL END))`,
     })
     .from(skillCandidateEvidence)
     .where(
@@ -104,6 +76,15 @@ async function getEvidenceCounts(
 function listFilterConds(p: ListSkillCandidatesParams) {
   const tenantConds = [eq(skillCandidates.tenant_id, p.tenant_id)];
   if (p.status) tenantConds.push(eq(skillCandidates.status, p.status));
+  if (p.reviewable !== undefined)
+    tenantConds.push(
+      p.reviewable
+        ? and(
+            eq(skillCandidates.status, "proposed"),
+            notInArray(skillCandidates.pattern_kind, ["failure_pattern", "authoring_capability"]),
+          )!
+        : inArray(skillCandidates.pattern_kind, ["failure_pattern", "authoring_capability"]),
+    );
   if (p.scope) tenantConds.push(eq(skillCandidates.scope, p.scope));
   if (p.connector_id) tenantConds.push(eq(skillCandidates.connector_id, p.connector_id));
   if (p.workflow_id) tenantConds.push(eq(skillCandidates.workflow_id, p.workflow_id));
@@ -278,7 +259,7 @@ export async function getSkillCandidateEvidence(
     .where(eq(skillCandidateEvidence.skill_candidate_id, candidate_id))
     .orderBy(desc(skillCandidateEvidence.captured_at));
 
-  return rows.map((r) => ({
+  return uniqueEvidence(rows).map((r) => ({
     id: r.id,
     skill_candidate_id: r.skill_candidate_id,
     execution_id: r.execution_id,
@@ -473,6 +454,9 @@ export async function upsertFromSignal(
   exec: Db,
 ): Promise<{ action: "proposed" | "updated" | "skipped"; candidate_id: string | null }> {
   return await exec.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`skill-candidates:${tenant_id}`}, 0))`,
+    );
     // Check for existing candidate with same fingerprint
     const existing = await tx
       .select()
@@ -520,22 +504,21 @@ export async function upsertFromSignal(
         });
         return { action: "skipped" as const, candidate_id: row.id };
       }
-      // Update the existing candidate (bump version, update confidence).
-      // Session learnings ALSO refresh their content and — when the row
-      // was superseded by a newer authoring revision — revive: their
-      // fingerprints can be title-only (proposeLearning), so keeping the
-      // old body while reporting "updated" would silently drop what the
-      // user just re-taught. Detector kinds keep their original text
-      // (their bodies are regenerated templates; first write wins).
-      // `updated_at` is stamped with the DB clock everywhere the
-      // retirement pass orders by it — mixing the app clock with
-      // defaultNow() inserts would let NTP skew break that ordering.
+      // Refresh the snapshot without reopening a concurrent human decision.
       const updatedRows = await tx
         .update(skillCandidates)
         .set({
           confidence: signal.confidence,
           version: row.version + 1,
           evidence: signal.evidence,
+          title: signal.title,
+          body: signal.body,
+          examples: {
+            examples: signal.examples,
+            best_practices: signal.best_practices,
+            pitfalls: signal.pitfalls,
+            doc_refs: signal.doc_refs,
+          },
           updated_at: sql`now()`,
           ...(signal.pattern_kind === "session_learning"
             ? {
@@ -578,7 +561,10 @@ export async function upsertFromSignal(
 
       const remaining = MAX_EVIDENCE_PER_CANDIDATE - existingEvidence.length;
       if (remaining > 0) {
-        const newEvidence = signal.evidence.slice(0, remaining);
+        const existingKeys = new Set(existingEvidence.map(evidenceIdentity));
+        const newEvidence = uniqueEvidence(signal.evidence)
+          .filter((e) => !existingKeys.has(evidenceIdentity(e)))
+          .slice(0, remaining);
         if (newEvidence.length > 0) {
           await tx.insert(skillCandidateEvidence).values(
             newEvidence.map((e) => ({
@@ -615,27 +601,7 @@ export async function upsertFromSignal(
       return { action: "updated" as const, candidate_id: row.id };
     }
 
-    // Cross-fingerprint supersede ("the pattern evolved → retire the stale
-    // proposal") only applies to patterns whose coarse entity (workflow /
-    // connector) IS their identity — failure/success/chained. For those, a new
-    // fingerprint on the same entity means the prior proposal is stale.
-    //
-    // Endpoint-scoped repair patterns are different: the fingerprint
-    // (repair:connector:endpoint:kind) IS the full identity. Two distinct
-    // fingerprints on one connector are genuinely distinct interface
-    // conventions — different endpoints, or different repair kinds on one
-    // endpoint (a field-path fix and a header add are both real, both needed).
-    // They must COEXIST; cross-superseding them silently drops a valid,
-    // evidence-backed candidate (a bug connector-scoping can introduce).
-    // Same-fingerprint recurrence is already handled by the dedup/update branch
-    // above; a stale repair candidate is retired through the operator gate, not
-    // by another endpoint/kind appearing. So we skip supersede entirely when
-    // the signal is endpoint-scoped, and the `isNull(endpoint_key)` guard stops
-    // a non-endpoint signal from superseding an endpoint-scoped candidate.
-    //
-    // Session learnings are fingerprint-identified the same way: every
-    // distilled learning is its own proposal and distinct learnings must
-    // COEXIST in the review queue — a new one never retires the others.
+    // Endpoint patterns and independent session learnings must coexist.
     let supersededCount = 0;
     if (!signal.endpoint_key && signal.pattern_kind !== "session_learning") {
       const tenantSupersedeScope = [
@@ -660,7 +626,13 @@ export async function upsertFromSignal(
         await tx
           .update(skillCandidates)
           .set({ status: "superseded", updated_at: new Date() })
-          .where(eq(skillCandidates.id, s.id));
+          .where(
+            and(
+              eq(skillCandidates.tenant_id, tenant_id),
+              eq(skillCandidates.id, s.id),
+              eq(skillCandidates.status, "proposed"),
+            ),
+          );
         await auditAwait(
           {
             tenant_id,
@@ -710,13 +682,15 @@ export async function upsertFromSignal(
     // Insert evidence
     if (signal.evidence.length > 0) {
       await tx.insert(skillCandidateEvidence).values(
-        signal.evidence.slice(0, MAX_EVIDENCE_PER_CANDIDATE).map((e) => ({
-          skill_candidate_id: row.id,
-          execution_id: e.execution_id ?? null,
-          patch_candidate_id: e.patch_candidate_id ?? null,
-          evidence_type: e.evidence_type,
-          summary: e.summary,
-        })),
+        uniqueEvidence(signal.evidence)
+          .slice(0, MAX_EVIDENCE_PER_CANDIDATE)
+          .map((e) => ({
+            skill_candidate_id: row.id,
+            execution_id: e.execution_id ?? null,
+            patch_candidate_id: e.patch_candidate_id ?? null,
+            evidence_type: e.evidence_type,
+            summary: e.summary,
+          })),
       );
     }
 
@@ -816,6 +790,9 @@ export async function approveSkillCandidate(
   const db = exec ?? (getDb() as Db);
 
   const out = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`skill-candidates:${p.tenant_id}`}, 0))`,
+    );
     const rows = await tx
       .select()
       .from(skillCandidates)
@@ -826,10 +803,13 @@ export async function approveSkillCandidate(
           eq(skillCandidates.status, "proposed"),
         ),
       )
+      .for("update")
       .limit(1);
 
     if (!rows[0]) return null;
     const row = rows[0];
+    if (p.expected_review_digest && p.expected_review_digest !== skillReviewDigest(row))
+      return null;
     const blob = (row.examples ?? {}) as Record<string, unknown>;
 
     // Create a skill from the candidate

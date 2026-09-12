@@ -17,6 +17,7 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 import { type PatchProposal, PatchProposalSchema } from "../llm/flows/repair.ts";
+import { type PatchReadiness, readPatchReadiness } from "./candidate-readiness.ts";
 import { runFixtureDryRun } from "./fixture-runner.ts";
 import { applyPatchToWorkflowDag } from "./patch-apply.ts";
 import { buildDryRunStep, loadStepSnapshot, resolveCandidateStepKey } from "./step-snapshot.ts";
@@ -89,7 +90,7 @@ async function loadTargetStep(
   return { dag, step_key };
 }
 
-export interface PatchCandidatePreview {
+export interface PatchCandidatePreview extends PatchReadiness {
   candidate_id: string;
   workflow_id: string;
   classification: "safe" | "unsafe";
@@ -141,6 +142,7 @@ export async function previewPatchCandidate(
   }
 
   return {
+    ...(await readPatchReadiness(tenant_id, row, db)),
     candidate_id: row.id,
     workflow_id: row.workflow_id,
     classification: row.classification,

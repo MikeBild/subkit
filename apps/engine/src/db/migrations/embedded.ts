@@ -76,6 +76,8 @@ import sql0055UnknownGreenGoblin from "./0055_unknown_green_goblin.sql" with { t
 import sql0056NastyChampions from "./0056_nasty_champions.sql" with { type: "text" };
 import sql0057ShortZemo from "./0057_short_zemo.sql" with { type: "text" };
 import sql0058CalmNightThrasher from "./0058_calm_night_thrasher.sql" with { type: "text" };
+import sql0059DecisionEvidenceCleanup from "./0059_decision_evidence_cleanup.sql" with { type: "text" };
+import sql0060DecisionEvidenceIdentity from "./0060_decision_evidence_identity.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -159,6 +161,8 @@ const SQL_BY_TAG: Record<string, string> = {
   "0056_nasty_champions": sql0056NastyChampions,
   "0057_short_zemo": sql0057ShortZemo,
   "0058_calm_night_thrasher": sql0058CalmNightThrasher,
+  "0059_decision_evidence_cleanup": sql0059DecisionEvidenceCleanup,
+  "0060_decision_evidence_identity": sql0060DecisionEvidenceIdentity,
 };
 
 const journal = journalMeta as unknown as Journal;

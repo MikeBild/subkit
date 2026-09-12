@@ -40,7 +40,7 @@
 // from pg-boss telemetry alone. Audit rows are written for the four
 // enumerated lifecycle events in docs/19.
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -61,17 +61,18 @@ import {
   recordSelfHealingRepairRetried,
 } from "../observability/instrumentation.ts";
 import { getLatestShape } from "../schema-versions/service.ts";
+import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { autoApplyPatch, logPatchNotApplied } from "./auto-apply.ts";
 import { classifyPatch } from "./classifier.ts";
 import { analyzeStepFailure, type FailingStepSnapshot, renderDriftDiff } from "./drift-detector.ts";
 import { runFixtureDryRun } from "./fixture-runner.ts";
+import { resolvePathRewrite } from "./patch-apply.ts";
 import { resolvePolicy, shouldAutoApply } from "./policy.ts";
 import { buildDryRunStep, loadStepSnapshot } from "./step-snapshot.ts";
 import {
   candidateProposal,
   findActiveEndpointCandidate,
   findMatchingTerminalEndpointCandidate,
-  signalFingerprint,
 } from "./terminal-dedup.ts";
 import type { DriftSignal, DryRunStep, WorkflowRepairJob } from "./types.ts";
 
@@ -407,56 +408,76 @@ export async function processDriftSignal(
   exec?: Db,
 ): Promise<ProcessSignalResult> {
   const db = exec ?? getDb();
+  return db.transaction(async (tx) => {
+    const workflow = await lockWorkflowForVersionWrite(tx, ctx.tenant_id, ctx.workflow_id);
+    return processDriftSignalLocked(
+      signal,
+      ctx,
+      options,
+      tx as unknown as Db,
+      workflow?.current_version_id ?? null,
+    );
+  });
+}
 
+async function processDriftSignalLocked(
+  signal: DriftSignal,
+  ctx: SignalContext,
+  options: ProcessSignalOptions,
+  db: Db,
+  baseVersionId: string | null,
+): Promise<ProcessSignalResult> {
   // Endpoint idempotency guard — for EVERY source. Proactive scans
   // re-fire on a cadence against unchanged recorded state; reactive
   // failures re-fire on every scheduled run of a still-broken workflow
   // (a sustained outage is one drift, not one drift per failure). The
   // fingerprint match inside both lookups lets a genuinely NEW drift
   // shape on the same endpoint fall through to a fresh proposal.
-  if (ctx.connector_id && ctx.endpoint_key) {
-    const existing = await findActiveEndpointCandidate(db, {
+  const existing = await findActiveEndpointCandidate(db, {
+    tenant_id: ctx.tenant_id,
+    workflow_id: ctx.workflow_id,
+    connector_id: ctx.connector_id ?? null,
+    endpoint_key: ctx.endpoint_key ?? null,
+    signal,
+    base_version_id: baseVersionId,
+    workflow_step_id: ctx.workflow_step_id ?? null,
+  });
+  if (existing) {
+    const dedup = await refreshOrSkipExistingCandidate(db, existing, ctx, options);
+    if (dedup) return dedup;
+  }
+  const terminal = await findMatchingTerminalEndpointCandidate(db, {
+    tenant_id: ctx.tenant_id,
+    workflow_id: ctx.workflow_id,
+    connector_id: ctx.connector_id ?? null,
+    endpoint_key: ctx.endpoint_key ?? null,
+    signal,
+    base_version_id: baseVersionId,
+    workflow_step_id: ctx.workflow_step_id ?? null,
+  });
+  if (terminal) {
+    const policy = await resolvePolicy(ctx.tenant_id, ctx.workflow_id, db);
+    logger.info({
+      module: "self-healing",
+      action: "patch.terminal_dedup",
+      msg: "skipping proactive drift repair because a terminal candidate already covers the same drift fingerprint",
       tenant_id: ctx.tenant_id,
       workflow_id: ctx.workflow_id,
-      connector_id: ctx.connector_id,
-      endpoint_key: ctx.endpoint_key,
-      signal,
+      patch_candidate_id: terminal.id,
+      terminal_status: terminal.status,
+      classification: terminal.classification,
+      source: ctx.source,
     });
-    if (existing) {
-      const dedup = await refreshOrSkipExistingCandidate(db, existing, ctx, options);
-      if (dedup) return dedup;
-    }
-    const terminal = await findMatchingTerminalEndpointCandidate(db, {
-      tenant_id: ctx.tenant_id,
-      workflow_id: ctx.workflow_id,
-      connector_id: ctx.connector_id,
-      endpoint_key: ctx.endpoint_key,
-      signal,
-    });
-    if (terminal) {
-      const policy = await resolvePolicy(ctx.tenant_id, ctx.workflow_id, db);
-      logger.info({
-        module: "self-healing",
-        action: "patch.terminal_dedup",
-        msg: "skipping proactive drift repair because a terminal candidate already covers the same drift fingerprint",
-        tenant_id: ctx.tenant_id,
-        workflow_id: ctx.workflow_id,
-        patch_candidate_id: terminal.id,
-        terminal_status: terminal.status,
-        classification: terminal.classification,
-        source: ctx.source,
-      });
-      return {
-        candidate_id: terminal.id,
-        classification: terminal.classification,
-        status: terminal.status,
-        auto_applied: false,
-        dry_run_passed: null,
-        proposal: candidateProposal(terminal),
-        policy,
-        created: false,
-      };
-    }
+    return {
+      candidate_id: terminal.id,
+      classification: terminal.classification,
+      status: terminal.status,
+      auto_applied: false,
+      dry_run_passed: null,
+      proposal: candidateProposal(terminal),
+      policy,
+      created: false,
+    };
   }
 
   const diff = renderDriftDiff(signal);
@@ -577,10 +598,12 @@ export async function processDriftSignal(
 
     const classifierOk = decision.classification === "safe";
     const fixtureOk = !fixture || !ctx.dry_run_step || dryRunOk;
-    if (classifierOk && fixtureOk) break;
+    const executable = resolvePathRewrite(proposal) !== null;
+    if (classifierOk && fixtureOk && executable) break;
 
-    const reason =
-      !classifierOk && !fixtureOk
+    const reason = !executable
+      ? "No executable patch: use update_field_path with an exact old path and new path value; schema descriptions cannot change a workflow."
+      : !classifierOk && !fixtureOk
         ? `unsafe classification (${decision.reasons.join("; ") || "no reasons"}) and fixture dry-run failed (${dryRunError ?? "unknown"})`
         : !classifierOk
           ? `unsafe classification: ${decision.reasons.join("; ") || "no reasons"}`
@@ -649,6 +672,7 @@ export async function processDriftSignal(
         // dry-run-validated.
         ...(fixture && ctx.dry_run_step ? { fixture_id: fixture.id } : {}),
         diff: {
+          base_version_id: baseVersionId,
           drift_signal: signal,
           drift_diff: diff,
           proposal,

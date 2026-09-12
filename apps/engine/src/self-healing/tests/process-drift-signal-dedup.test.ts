@@ -349,3 +349,32 @@ describe("processDriftSignal — terminal proactive endpoint dedup", () => {
     }
   });
 });
+
+test("workflow-scoped observations deduplicate without an endpoint anchor", async () => {
+  const { signalCtx, options } = proactiveCtx(false);
+  const workflowContext = { ...signalCtx, connector_id: null, endpoint_key: null };
+  const signal = {
+    kind: "jsonata_path_miss" as const,
+    expression: "data.id",
+    missing_path: "data.id",
+    prior_value: 1,
+  };
+  const first = await processDriftSignal(signal, workflowContext, options, ctx.testDb.db);
+  const repeated = await processDriftSignal(
+    { ...signal, prior_value: 2 },
+    workflowContext,
+    options,
+    ctx.testDb.db,
+  );
+  expect(first.created).toBe(true);
+  expect(repeated.created).toBe(false);
+  expect(repeated.candidate_id).toBe(first.candidate_id);
+  const changed = await processDriftSignal(
+    { ...signal, missing_path: "data.other" },
+    workflowContext,
+    options,
+    ctx.testDb.db,
+  );
+  expect(changed.created).toBe(true);
+  expect(changed.candidate_id).not.toBe(first.candidate_id);
+});

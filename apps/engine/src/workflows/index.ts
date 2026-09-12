@@ -3,6 +3,7 @@
 // route_layering check at apps/engine/scripts/audit-invariants.ts.
 
 export { AuthorityExecutionShapeSchema } from "./authority-execution-shape.ts";
+export { suggestAuthorityBounds } from "./authority-suggestions.ts";
 export * from "./catalog-view.ts";
 export * from "./categorize.ts";
 export * from "./connector-refs.ts";

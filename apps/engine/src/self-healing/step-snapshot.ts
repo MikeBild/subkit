@@ -3,6 +3,7 @@
 // (candidate-review.ts).
 
 import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 import type { Executor } from "../db/client.ts";
 import { executionSteps } from "../db/schema/index.ts";
 import { RequestMetaSchema } from "../execution/request-meta-schema.ts";
@@ -92,6 +93,7 @@ export async function loadWorkflowStepKey(
   execution_step_id: string,
   exec: Executor,
 ): Promise<string | null> {
+  if (!isExecutionStepId(execution_step_id)) return null;
   const rows = await exec
     .select({ step_key: executionSteps.step_key })
     .from(executionSteps)
@@ -142,4 +144,9 @@ export async function loadStepSnapshot(
     request_meta: parsePersistedRequestMeta(row.request_meta),
     output_preview: row.output_preview,
   };
+}
+
+const ExecutionStepId = z.string().uuid();
+export function isExecutionStepId(value: unknown): value is string {
+  return ExecutionStepId.safeParse(value).success;
 }

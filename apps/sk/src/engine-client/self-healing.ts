@@ -2,6 +2,7 @@
 // digest, patch candidates, and self-healing scans. Method group merged
 // into `EngineClient` by `../engine-client.ts`.
 
+import { EngineError } from "@cli-core/errors.ts";
 import type { EngineClient } from "../engine-client.ts";
 
 // Operator health digest — mirrors apps/engine/src/operator/health-digest.ts.
@@ -75,8 +76,27 @@ export const selfHealingMethods = {
   getPatchCandidate(this: EngineClient, id: string): Promise<Record<string, unknown>> {
     return this.request("GET", `/v1/patch-candidates/${encodeURIComponent(id)}`);
   },
-  approvePatchCandidate(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/patch-candidates/${encodeURIComponent(id)}/approve`);
+  async approvePatchCandidate(
+    this: EngineClient,
+    id: string,
+    expected_review_digest: string,
+  ): Promise<Record<string, unknown>> {
+    const result = await this.request<Record<string, unknown>>(
+      "POST",
+      `/v1/patch-candidates/${encodeURIComponent(id)}/approve`,
+      { expected_review_digest },
+    );
+    if (
+      result.applied !== true ||
+      typeof result.workflow_version_id !== "string" ||
+      !result.workflow_version_id
+    ) {
+      throw new EngineError(409, {
+        code: "patch_not_applicable",
+        message: "The repair was not applied. Reload the candidate preview before approving.",
+      });
+    }
+    return result;
   },
   rejectPatchCandidate(
     this: EngineClient,

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { apiRequest } from "@/api/client";
 import {
   dryRunPatchCandidate,
   getPatchCandidatePreview,
@@ -31,6 +32,7 @@ import type {
   DecisionOrigin,
 } from "@/pages/decisions-model";
 import { ageInDays, decisionKey } from "@/pages/decisions-model";
+import { GrantWorkflowAuthority } from "./grant-workflow-authority";
 
 /**
  * Only the two kinds this card can decide.
@@ -422,7 +424,7 @@ export interface DecisionCardProps {
   canDecide: boolean;
   busy: boolean;
   compact?: boolean;
-  onApprove: (item: DecisionItem) => void;
+  onApprove: (item: DecisionItem, reviewDigest?: string) => void;
   onReject: (item: DecisionItem, reason: string) => void;
   testIdPrefix?: string;
   /** Resolves the ids on this decision to names. Without it the context columns
@@ -491,7 +493,7 @@ export function DecisionCard({
       data-family-decision-priority={priority}
     >
       <div
-        className="flex min-w-0 items-start justify-between gap-2"
+        className="flex min-w-0 flex-col gap-2 @sm:flex-row @sm:items-start @sm:justify-between"
         data-family-slot="decision-meta"
       >
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -508,7 +510,7 @@ export function DecisionCard({
             </Badge>
           )}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 text-xs text-muted-foreground @sm:justify-end">
           <span data-family-slot="decision-source">{t(ORIGIN_LABEL[item.origin])}</span>
           <span data-testid={`${testId}-age`}>
             {age === 0
@@ -597,12 +599,58 @@ export function DecisionCard({
               )}
               <Button
                 size="sm"
-                disabled={busy || rejecting}
+                disabled={
+                  busy ||
+                  rejecting ||
+                  !expanded ||
+                  (item.kind === "skill" && !item.reviewDigest) ||
+                  (item.kind === "patch" &&
+                    (!preview.data?.reviewable || !preview.data?.review_digest))
+                }
                 data-testid={`${testId}-approve`}
-                onClick={() => onApprove(item)}
+                onClick={() => onApprove(item, preview.data?.review_digest ?? undefined)}
               >
-                {t("decisions.approve")}
+                {t(item.kind === "skill" ? "decisions.activateSkill" : "decisions.approve")}
               </Button>
+              {item.kind === "patch" &&
+                expanded &&
+                preview.data?.reviewable &&
+                preview.data.base_version_id && (
+                  <GrantWorkflowAuthority
+                    workflowId={preview.data.workflow_id}
+                    versionId={preview.data.base_version_id}
+                    reviewContent={
+                      <pre className="overflow-auto text-xs">
+                        {JSON.stringify(
+                          { before: preview.data.before_step, after: preview.data.after_step },
+                          null,
+                          2,
+                        )}
+                      </pre>
+                    }
+                    prepareVersion={async () => {
+                      const prepared = await apiRequest<{ workflow_version_id: string }>(
+                        `/v1/patch-candidates/${encodeURIComponent(item.id)}/prepare`,
+                        {
+                          method: "POST",
+                          body: JSON.stringify({
+                            expected_review_digest: preview.data?.review_digest,
+                          }),
+                        },
+                      );
+                      return prepared.workflow_version_id;
+                    }}
+                    onGrant={(input) =>
+                      apiRequest(`/v1/patch-candidates/${encodeURIComponent(item.id)}/approve`, {
+                        method: "POST",
+                        body: JSON.stringify({
+                          expected_review_digest: preview.data?.review_digest,
+                          execution_authority: input,
+                        }),
+                      })
+                    }
+                  />
+                )}
             </>
           ) : null}
         </div>

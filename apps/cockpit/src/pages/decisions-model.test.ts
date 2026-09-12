@@ -454,7 +454,7 @@ describe("countOpenDecisions", () => {
       totals: { patch: 118, skill: 0, conversation: 1 },
       nowMs: NOW,
     });
-    expect(open.total).toBe(119);
+    expect(open.total).toBe(118);
     expect(open.byKind).toEqual({ patch: 118, skill: 0, conversation: 1 });
     expect(open.capped).toBe(true);
   });
@@ -489,13 +489,13 @@ describe("countOpenDecisions", () => {
     expect(open.oldestAgeDays).toBe(19);
   });
 
-  test("without engine totals it counts what it holds rather than guessing", () => {
+  test("without engine totals it counts approvals separately from questions", () => {
     const open = countOpenDecisions({
       items: [item("patch", 1), item("conversation", 2)],
       totals: null,
       nowMs: NOW,
     });
-    expect(open.total).toBe(2);
+    expect(open.total).toBe(1);
     expect(open.byKind).toEqual({ patch: 1, skill: 0, conversation: 1 });
     expect(open.capped).toBe(false);
   });

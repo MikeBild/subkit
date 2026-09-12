@@ -10,7 +10,7 @@ const IdInput = z.object({ candidate_id: z.string().uuid() }).openapi("Candidate
 export const approveSkillCandidateTool: ConversationTool = {
   name: "approve_skill_candidate",
   description:
-    "Approve a skill candidate and promote it to a tenant skill. Writes audit. Idempotent — already-approved candidates return ok=false.",
+    "Approve a skill candidate and create a draft tenant skill. Activation is a separate permissioned action. Writes audit. Idempotent — already-approved candidates return ok=false.",
   inputSchema: IdInput,
   category: "tenant_write",
   // Closes the capture loop IN the coding session: the client's native
@@ -18,11 +18,7 @@ export const approveSkillCandidateTool: ConversationTool = {
   // `skill:write` stays the hard boundary. Without this, the loop's last
   // mile forces a surface switch to `sk learnings review` per approval.
   visible_when_readonly: true,
-  // …but approval PRODUCES a skill — an active definition the engine then
-  // grounds itself on. `save_learning` files the candidate and is harmless
-  // without this step; this step is the one that changes what the tenant
-  // knows. So it rides with the authoring tiers, and a read-and-execute
-  // credential approves through `sk skill-candidates approve` instead.
+  // Promotion creates a draft; this tool never implies active knowledge.
   authoring_only: true,
   async execute(ctx, args: z.infer<typeof IdInput>) {
     const out = await approveSkillCandidate(
@@ -47,22 +43,33 @@ export const approveSkillCandidateTool: ConversationTool = {
       result: "success",
       metadata: { conversation_id: ctx.conversation_id, skill_id: out.skill_id },
     });
-    return { ok: true, data: { candidate: out.candidate, skill_id: out.skill_id } };
+    return {
+      ok: true,
+      data: { candidate: out.candidate, skill_id: out.skill_id, skill_status: "draft" },
+    };
   },
 };
+
+const PatchApprovalInput = IdInput.extend({
+  expected_review_digest: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .describe("Digest from preview_patch_candidate reviewed by the human"),
+});
 
 export const approvePatchCandidateTool: ConversationTool = {
   name: "approve_patch_candidate",
   description: "Apply a proposed patch candidate, creating a new workflow version. Writes audit.",
-  inputSchema: IdInput,
+  inputSchema: PatchApprovalInput,
   category: "tenant_write",
-  async execute(ctx, args: z.infer<typeof IdInput>) {
+  async execute(ctx, args: z.infer<typeof PatchApprovalInput>) {
     try {
       const newVersionId = await approvePatchCandidate(
         {
           tenant_id: ctx.tenant_id,
           candidate_id: args.candidate_id,
           actor_id: ctx.actor_id,
+          expected_review_digest: args.expected_review_digest,
         },
         ctx.db,
       );

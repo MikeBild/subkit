@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
+import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
 import { verifyWorkflowAuthorities } from "./lib/cockpit-workflow-authorities.mjs";
 import { verifyWorkflowPreview } from "./lib/cockpit-workflow-preview.mjs";
@@ -535,6 +536,7 @@ async function mockApi(route) {
         "knowledge:write",
         "skill:read",
         "skill:write",
+        "skill:activate",
         "file:read",
         "file:write",
         "notification:read",
@@ -1355,10 +1357,15 @@ async function mockApi(route) {
   if (path === "/v1/patch-candidates")
     return json(route, {
       total: 2,
+      reviewable_total: 1,
       items: [
         {
           id: uuid,
           tenant_id: uuid,
+          reviewable: true,
+          review_reason: null,
+          review_digest: "a".repeat(64),
+          base_version_id: uuid,
           workflow_id: uuid,
           workflow_name: "Monatsreport",
           connector_id: uuid,
@@ -1391,6 +1398,10 @@ async function mockApi(route) {
           // diff card says "this proposal changes nothing". It belongs in a
           // screenshot, not in production.
           id: "patch-2",
+          reviewable: false,
+          review_reason: "no_step_anchor",
+          review_digest: null,
+          base_version_id: uuid,
           tenant_id: uuid,
           workflow_id: uuid,
           workflow_name: "Umsatzrollup",
@@ -1424,6 +1435,10 @@ async function mockApi(route) {
   if (path === `/v1/patch-candidates/${uuid}/preview`)
     return json(route, {
       candidate_id: uuid,
+      reviewable: true,
+      review_reason: null,
+      review_digest: "a".repeat(64),
+      base_version_id: uuid,
       workflow_id: uuid,
       classification: "safe",
       status: "proposed",
@@ -1471,10 +1486,15 @@ async function mockApi(route) {
   if (path === "/v1/skill-candidates")
     return json(route, {
       total: 1,
+      reviewable_total: 1,
       items: [
         {
           id: uuid,
           tenant_id: uuid,
+          reviewable: true,
+          review_reason: null,
+          review_digest: "a".repeat(64),
+          base_version_id: uuid,
           scope: "workflow",
           connector_id: null,
           workflow_id: uuid,
@@ -2086,6 +2106,9 @@ for (const locale of variants) {
       shoot(page, `${locale.artifact}-${viewport.name}-workflow-authority-${state}`, {
         fullPage: false,
       }),
+    );
+    await verifyDecisionLifecycle(page, stand, uuid, locale.name, (state) =>
+      shoot(page, `${locale.artifact}-${viewport.name}-decisions-${state}`, { fullPage: false }),
     );
     if (viewport.name === "desktop") {
       for (const resource of ["workflows", "connectors", "knowledge", "skills", "files"]) {
