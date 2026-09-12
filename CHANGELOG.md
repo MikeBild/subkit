@@ -8,6 +8,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Container deployments and S3 integration tests pull the pinned object-store
+  images from the upstream registry after their former image source became unavailable.
 - Decision counts include applicable repairs and knowledge activations; diagnostic
   suggestions and conversation questions remain available separately. Failed or
   stale approvals stay visible with an error instead of briefly looking completed.
