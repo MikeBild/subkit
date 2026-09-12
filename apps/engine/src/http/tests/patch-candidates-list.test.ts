@@ -22,11 +22,14 @@ interface CandidateItem {
   connector_id: string | null;
   endpoint_key: string | null;
   created_at: string;
+  reviewable: boolean;
+  review_reason: string | null;
 }
 
 interface ListBody {
   items: CandidateItem[];
   total: number;
+  reviewable_total: number;
 }
 
 let srv: HttpTestServer;
@@ -67,7 +70,7 @@ beforeAll(async () => {
         classification: "safe" as const,
         status: "proposed" as const,
         created_at: new Date(now - (i + 1) * 60_000),
-        diff: { proposal: { description: `Fix ${i}` } },
+        diff: { step_id: "missing-legacy-anchor", proposal: { description: `Fix ${i}` } },
       })),
     )
     .returning();
@@ -139,6 +142,26 @@ function headers() {
 }
 
 describe("GET /v1/patch-candidates", () => {
+  test("non-applicable historical proposals remain visible without inflating the approval count", async () => {
+    const response = await fetch(`${srv.baseUrl}/v1/patch-candidates?limit=200`, {
+      headers: headers(),
+    });
+    const body = (await response.json()) as ListBody;
+    expect(body.total).toBe(7);
+    expect(body.reviewable_total).toBe(0);
+    expect(body.items.every((item) => !item.reviewable && item.review_reason)).toBe(true);
+    const actionable = await fetch(`${srv.baseUrl}/v1/patch-candidates?reviewable=true`, {
+      headers: headers(),
+    });
+    expect(await actionable.json()).toMatchObject({ items: [], total: 0, reviewable_total: 0 });
+    const page = await fetch(`${srv.baseUrl}/v1/patch-candidates?order=asc&limit=2&offset=2`, {
+      headers: headers(),
+    });
+    const paged = (await page.json()) as ListBody;
+    expect(paged.items).toHaveLength(2);
+    expect(paged.items.some((item) => item.id === oldestId)).toBe(false);
+    expect(paged.total).toBe(7);
+  });
   test("total is the exact count beyond the returned page", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/patch-candidates?limit=2`, { headers: headers() });
     expect(res.status).toBe(200);

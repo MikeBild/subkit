@@ -4,7 +4,27 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 7.0.0 — 2026-09-12
+
+### Fixed
+
+- Decision counts include applicable repairs and knowledge activations; diagnostic
+  suggestions and conversation questions remain available separately. Failed or
+  stale approvals stay visible with an error instead of briefly looking completed.
+- Repair approval binds the reviewed proposal and current workflow version. An
+  optional combined review activates an immutable prepared repair and grants its
+  exact finite execution boundary atomically. Scheduled bounds suggest 30 days of
+  occurrences, capped by the existing authority limits.
+- Repeated drift observations respect completed repair boundaries; skill evidence
+  is deduplicated on insertion and migrated with a consolidation audit. Concurrent
+  approvals cannot create duplicate versions or skills. Cockpit knowledge approval
+  explicitly activates the skill and requires activation permission.
+
+### Changed
+
+- Patch approval requests require `expected_review_digest` from the preview;
+  `sk patch-candidates approve` requires `--review-digest`. Existing completed
+  decisions, draft skills and workflow execution authorities are preserved.
 
 ## 6.45.0 — 2026-09-10
 

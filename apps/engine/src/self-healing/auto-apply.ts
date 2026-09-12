@@ -12,6 +12,7 @@ import type { Executor } from "../db/client.ts";
 import { patchCandidates, workflows, workflowVersions } from "../db/schema/index.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
 import { log } from "../logging/logger.ts";
+import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { applyPatchToWorkflowDag, type PatchApplyFailure } from "./patch-apply.ts";
 import { resolveCandidateStepKey } from "./step-snapshot.ts";
@@ -62,6 +63,7 @@ export async function autoApplyPatch(
     workflow_id: string;
     candidate_id: string;
     proposal: PatchProposal;
+    prepared_version_id?: string;
   },
 ): Promise<AutoApplyResult> {
   const wf = await lockWorkflowForVersionWrite(tx, params.tenant_id, params.workflow_id);
@@ -101,19 +103,39 @@ export async function autoApplyPatch(
 
   // The workflow row lock serializes this allocation with every other version
   // writer. A MAX subquery inside INSERT alone does not serialize transactions.
-  const [inserted] = await tx
-    .insert(workflowVersions)
-    .values({
-      tenant_id: params.tenant_id,
-      workflow_id: params.workflow_id,
-      version: sql<number>`(SELECT COALESCE(MAX(${workflowVersions.version}), 0) + 1
+  const [prepared] = params.prepared_version_id
+    ? await tx
+        .select()
+        .from(workflowVersions)
+        .where(
+          and(
+            eq(workflowVersions.tenant_id, params.tenant_id),
+            eq(workflowVersions.workflow_id, params.workflow_id),
+            eq(workflowVersions.id, params.prepared_version_id),
+          ),
+        )
+        .limit(1)
+    : [];
+  if (
+    params.prepared_version_id &&
+    (!prepared || workflowJsonDigest(prepared.dag) !== workflowJsonDigest(patched.dag))
+  )
+    return { applied: false, reason: "patch_not_applicable" };
+  const [inserted] = prepared
+    ? [prepared]
+    : await tx
+        .insert(workflowVersions)
+        .values({
+          tenant_id: params.tenant_id,
+          workflow_id: params.workflow_id,
+          version: sql<number>`(SELECT COALESCE(MAX(${workflowVersions.version}), 0) + 1
          FROM ${workflowVersions}
         WHERE ${workflowVersions.tenant_id} = ${params.tenant_id}
           AND ${workflowVersions.workflow_id} = ${params.workflow_id})`,
-      dag: newDag,
-      note: `self-healing auto-apply of patch ${params.candidate_id}`,
-    })
-    .returning();
+          dag: newDag,
+          note: `self-healing auto-apply of patch ${params.candidate_id}`,
+        })
+        .returning();
   if (!inserted) return { applied: false, reason: "version_missing" };
 
   await tx
@@ -123,7 +145,11 @@ export async function autoApplyPatch(
 
   await tx
     .update(patchCandidates)
-    .set({ status: "applied", updated_at: new Date() })
+    .set({
+      status: "applied",
+      diff: sql`${patchCandidates.diff} || jsonb_build_object('applied_version_id', ${inserted.id}::text)`,
+      updated_at: new Date(),
+    })
     .where(
       and(
         eq(patchCandidates.tenant_id, params.tenant_id),

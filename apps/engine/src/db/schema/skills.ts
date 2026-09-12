@@ -204,7 +204,16 @@ export const skillCandidateEvidence = pgTable(
     summary: text("summary").notNull(),
     captured_at: timestamp("captured_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index("skill_candidate_evidence_candidate_idx").on(t.skill_candidate_id)],
+  (t) => [
+    index("skill_candidate_evidence_candidate_idx").on(t.skill_candidate_id),
+    uniqueIndex("skill_candidate_evidence_identity_idx").on(
+      t.skill_candidate_id,
+      t.evidence_type,
+      sql`coalesce(${t.execution_id}::text, '')`,
+      sql`coalesce(${t.patch_candidate_id}::text, '')`,
+      sql`(CASE WHEN ${t.execution_id} IS NULL AND ${t.patch_candidate_id} IS NULL THEN ${t.summary} ELSE '' END)`,
+    ),
+  ],
 );
 
 export const skillEffectiveness = pgTable(

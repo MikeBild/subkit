@@ -11,6 +11,7 @@ import { deleteSkill, getSkill } from "../../skills/service.ts";
 import {
   approveSkillCandidate,
   getSkillCandidate,
+  getSkillCandidateEvidence,
   listSkillCandidates,
   rejectSkillCandidate,
 } from "../service.ts";
@@ -125,5 +126,33 @@ describe.skipIf(skip)("session_learning capture loop", () => {
     expect(skill?.status).toBe("active");
     expect(skill?.tags?.sort()).toEqual(["domain:blog-de", "domain:infra"]);
     expect(skill?.source).toBe("candidate");
+  });
+  test("repeated observations retain one evidence row and approval cannot duplicate active knowledge", async () => {
+    const first = await propose("Concurrent reviewed rule");
+    for (let i = 0; i < 5; i++) await propose("Concurrent reviewed rule");
+    const candidateId = first.candidate_id ?? "";
+    const candidate = await getSkillCandidate(tenantId, candidateId, db);
+    expect(candidate?.evidence_count).toBe(1);
+    expect(await getSkillCandidateEvidence(tenantId, candidateId, db)).toHaveLength(1);
+    if (!candidate?.review_digest) throw new Error("missing review digest");
+    const params = {
+      tenant_id: tenantId,
+      candidate_id: candidateId,
+      actor_id: null,
+      expected_review_digest: candidate.review_digest,
+      overrides: { status: "active" as const },
+    };
+    expect(
+      await approveSkillCandidate({ ...params, expected_review_digest: "0".repeat(64) }, db),
+    ).toBeNull();
+    const results = await Promise.all([
+      approveSkillCandidate(params, db),
+      approveSkillCandidate(params, db),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    const approved = results.find(Boolean);
+    const skill = await getSkill(tenantId, approved?.skill_id ?? "", db);
+    expect(skill?.status).toBe("active");
+    expect((await propose("Concurrent reviewed rule")).action).toBe("skipped");
   });
 });

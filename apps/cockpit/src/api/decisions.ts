@@ -1,4 +1,4 @@
-import { apiRequest } from "./client";
+import { ApiError, apiRequest } from "./client";
 import type { components } from "./schema";
 
 export type PatchCandidate = components["schemas"]["PatchCandidate"];
@@ -14,8 +14,25 @@ const QUEUE_LIMIT = 200;
 
 // Oldest first: the queue must never hide the position that has waited longest,
 // and the page cap would otherwise drop exactly those rows.
+async function allDecisionPages<T>(
+  path: string,
+): Promise<{ items: T[]; total: number; reviewable_total: number }> {
+  const first = await apiRequest<{ items: T[]; total: number; reviewable_total: number }>(
+    `${path}&limit=${QUEUE_LIMIT}`,
+  );
+  const items = [...first.items];
+  while (items.length < first.total) {
+    const page = await apiRequest<{ items: T[] }>(
+      `${path}&limit=${QUEUE_LIMIT}&offset=${items.length}`,
+    );
+    if (!page.items.length) break;
+    items.push(...page.items);
+  }
+  return { ...first, items };
+}
+
 export function listProposedPatchCandidates(): Promise<PatchCandidateList> {
-  return apiRequest(`/v1/patch-candidates?status=proposed&order=asc&limit=${QUEUE_LIMIT}`);
+  return allDecisionPages<PatchCandidate>("/v1/patch-candidates?status=proposed&order=asc");
 }
 
 export function listPatchCandidatesByStatus(
@@ -25,7 +42,7 @@ export function listPatchCandidatesByStatus(
 }
 
 export function listProposedSkillCandidates(): Promise<SkillCandidateList> {
-  return apiRequest(`/v1/skill-candidates?status=proposed&limit=${QUEUE_LIMIT}`);
+  return allDecisionPages<SkillCandidate>("/v1/skill-candidates?status=proposed");
 }
 
 export function listSkillCandidatesByStatus(
@@ -50,8 +67,16 @@ export function dryRunPatchCandidate(id: string): Promise<PatchCandidateDryRun> 
 
 export function approvePatchCandidate(
   id: string,
+  expected_review_digest: string,
 ): Promise<{ applied: boolean; workflow_version_id: string | null }> {
-  return apiRequest(`/v1/patch-candidates/${encodeURIComponent(id)}/approve`, { method: "POST" });
+  return apiRequest<{ applied: boolean; workflow_version_id: string | null }>(
+    `/v1/patch-candidates/${encodeURIComponent(id)}/approve`,
+    { method: "POST", body: JSON.stringify({ expected_review_digest }) },
+  ).then((result) => {
+    if (!result.applied || !result.workflow_version_id)
+      throw new ApiError(409, { code: "patch_not_applicable" }, null);
+    return result;
+  });
 }
 
 export function rejectPatchCandidate(id: string, reason: string): Promise<{ rejected: boolean }> {
@@ -61,10 +86,13 @@ export function rejectPatchCandidate(id: string, reason: string): Promise<{ reje
   });
 }
 
-export function approveSkillCandidate(id: string): Promise<unknown> {
+export function approveSkillCandidate(
+  id: string,
+  expected_review_digest: string,
+): Promise<unknown> {
   return apiRequest(`/v1/skill-candidates/${encodeURIComponent(id)}/approve`, {
     method: "POST",
-    body: JSON.stringify({}),
+    body: JSON.stringify({ status: "active", expected_review_digest }),
   });
 }
 

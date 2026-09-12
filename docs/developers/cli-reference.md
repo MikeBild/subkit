@@ -49,7 +49,7 @@ every API call.
 | `sk ls` | — | List cached conversation sessions for the active profile | — |
 | `sk mcp` | — | Run a stdio MCP server proxied to the engine | — |
 | `sk notifications` | `notification:read` | Manage notification channels, rules, deliveries, and the inbox | `channels`, `deliveries`, `inbox`, `rules` |
-| `sk patch-candidates` | `workflow:read` | Manage patch candidates | `approve`, `get`, `list`, `reject` |
+| `sk patch-candidates` | `workflow:read` | Manage patch candidates | `approve`, `get`, `list`, `preview`, `reject` |
 | `sk portal-tokens` | `portal_token:read` | Manage portal tokens | `create`, `list`, `revoke` |
 | `sk profile` | — | Manage named profiles (environments) | `add`, `delete`, `list`, `show`, `use` |
 | `sk rbac` | `rbac:read` | Manage RBAC roles, permissions, grants, groups, and hooks | `can`, `grants`, `groups`, `permissions`, `request-hooks`, `roles`, `users`, `whatcan` |
@@ -1033,6 +1033,7 @@ Manage patch candidates
 Approve a patch candidate
 
 - `<id>` (positional, required) — Patch candidate id
+- `--review-digest` (string, required) — Digest from the reviewed candidate preview
 
 #### `sk patch-candidates get`
 
@@ -1046,6 +1047,12 @@ List patch candidates
 
 - `--limit` (string, default: 20) — Max rows
 - `--json` (default: false) — JSON output
+
+#### `sk patch-candidates preview`
+
+Review the exact repair diff and approval digest
+
+- `<id>` (positional, required) — Patch candidate id
 
 #### `sk patch-candidates reject`
 

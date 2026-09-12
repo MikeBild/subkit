@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "6.45.0",
+    "version": "7.0.0",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -12914,6 +12914,10 @@
               "$ref": "#/components/schemas/SkillCandidate"
             }
           },
+          "reviewable_total": {
+            "type": "integer",
+            "minimum": 0
+          },
           "total": {
             "type": "integer",
             "minimum": 0
@@ -12921,6 +12925,7 @@
         },
         "required": [
           "items",
+          "reviewable_total",
           "total"
         ]
       },
@@ -13029,6 +13034,12 @@
               "string",
               "null"
             ]
+          },
+          "reviewable": {
+            "type": "boolean"
+          },
+          "review_digest": {
+            "type": "string"
           },
           "fingerprint": {
             "type": "string"
@@ -13141,6 +13152,10 @@
               "draft",
               "active"
             ]
+          },
+          "expected_review_digest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
           }
         }
       },
@@ -16185,11 +16200,16 @@
           "total": {
             "type": "integer",
             "minimum": 0
+          },
+          "reviewable_total": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
           "items",
-          "total"
+          "total",
+          "reviewable_total"
         ]
       },
       "PatchCandidate": {
@@ -16250,6 +16270,27 @@
           },
           "updated_at": {
             "type": "string"
+          },
+          "reviewable": {
+            "type": "boolean"
+          },
+          "review_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "review_digest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "base_version_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -16321,6 +16362,27 @@
             "items": {
               "type": "string"
             }
+          },
+          "reviewable": {
+            "type": "boolean"
+          },
+          "review_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "review_digest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "base_version_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -16334,7 +16396,11 @@
           "proposal_dry_run",
           "before_step",
           "after_step",
-          "changed_paths"
+          "changed_paths",
+          "reviewable",
+          "review_reason",
+          "review_digest",
+          "base_version_id"
         ]
       },
       "PatchProposal": {
@@ -16433,6 +16499,60 @@
           "ok",
           "error",
           "fixture_source"
+        ]
+      },
+      "ApprovePatchCandidateBody": {
+        "type": "object",
+        "properties": {
+          "expected_review_digest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "execution_authority": {
+            "type": "object",
+            "properties": {
+              "workflow_version_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "expected_manifest_digest": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "execution_environment": {
+                "type": "string",
+                "enum": [
+                  "dev",
+                  "prod"
+                ]
+              },
+              "valid_from": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "valid_until": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "max_runs": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+              }
+            },
+            "required": [
+              "workflow_version_id",
+              "expected_manifest_digest",
+              "execution_environment",
+              "valid_from",
+              "valid_until",
+              "max_runs"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "expected_review_digest"
         ]
       },
       "RejectPatchCandidateBody": {
@@ -32406,6 +32526,18 @@
             "schema": {
               "type": "string",
               "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "reviewable",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
                 "low",
                 "medium",
                 "high"
@@ -35805,6 +35937,82 @@
         }
       }
     },
+    "/v1/patch-candidates/{id}/prepare": {
+      "post": {
+        "tags": [
+          "patch-candidates"
+        ],
+        "summary": "Prepare an immutable repaired version without activation or execution authority",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expected_review_digest": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                },
+                "required": [
+                  "expected_review_digest"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Prepared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "workflow_version_id": {
+                      "type": "string"
+                    },
+                    "review_digest": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "workflow_version_id",
+                    "review_digest"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Review changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/patch-candidates": {
       "get": {
         "tags": [
@@ -35838,6 +36046,31 @@
             },
             "required": false,
             "name": "workflow_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "reviewable",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "default": 0
+            },
+            "required": false,
+            "name": "offset",
             "in": "query"
           },
           {
@@ -36048,6 +36281,15 @@
             "in": "path"
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovePatchCandidateBody"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Applied",

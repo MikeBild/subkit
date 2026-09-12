@@ -60,3 +60,31 @@ flowchart LR
 
 - [Observability & resource limits](./observability.md) — the metrics and risk signals that flag drift early.
 - [Workflows](../concepts/workflows.md) — the execution model and the self-healing repair loop (Run → Drift → Patch Candidate → Skill Candidate) in full.
+
+
+## Reviewing the decision queue
+
+The cockpit counts a repair only when it can change the current workflow. Missing
+step references, unsupported repairs and repairs that no longer change anything
+remain under Suggestions, with no approval button. Conversation questions have
+their own section. Knowledge approval uses **Adopt and activate** and requires
+permission to activate skills; previously created draft skills remain drafts.
+
+Open a repair to review its before/after changes. Approval submits the preview's
+`review_digest` as `expected_review_digest`; changed proposals or workflow versions
+require a fresh preview. The CLI exposes the preview through
+`sk patch-candidates preview <id>` and accepts the digest with
+`sk patch-candidates approve <id> --review-digest <digest>`.
+An unsuccessful application returns a conflict and does not close the decision.
+
+**Apply and authorize** prepares an immutable version for review, then applies
+that correction and grants its exact execution boundary in one transaction.
+Preparation alone does not activate or run anything. Review the environment,
+targets, effects, expiry and run limit. Active schedules suggest their occurrences
+for the next 30 days, capped at 10,000 runs; without schedules the suggestion is
+one run within 24 hours. Existing authorities never transfer to a changed version.
+
+Repeated observations update the existing finding within its artifact and step
+boundary. Evidence from the same execution or repair counts once. The upgrade
+consolidates duplicate evidence and records the consolidation in the audit log;
+it does not approve historical proposals or activate existing draft skills.

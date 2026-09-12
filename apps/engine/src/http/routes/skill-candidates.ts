@@ -6,6 +6,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { invalidateOperationalOverview } from "../../operator/index.ts";
 import * as svc from "../../skill-candidates/index.ts";
 import {
   type ApproveSkillCandidateParams,
@@ -13,7 +14,7 @@ import {
   SkillCandidatePatternSchema,
   SkillCandidateSchema,
 } from "../../skill-candidates/index.ts";
-import { NotFoundError } from "../errors.ts";
+import { HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -23,6 +24,7 @@ const SkillCandidateListResponse = z
     items: z.array(SkillCandidateSchema),
     // True matching-row count for the applied filters (ignores limit/offset)
     // — clients rendering counts must not derive them from a capped page.
+    reviewable_total: z.number().int().min(0),
     total: z.number().int().min(0),
   })
   .openapi("SkillCandidateListResponse");
@@ -43,6 +45,7 @@ const listRoute = createRoute({
         // The canonical pattern enum — a hand-copied subset here silently
         // 400s filters for newer kinds (session_learning fell through).
         pattern_kind: SkillCandidatePatternSchema.optional(),
+        reviewable: z.enum(["true", "false"]).optional(),
         confidence: z.enum(["low", "medium", "high"]).optional(),
         limit: z.coerce.number().int().positive().max(500).optional(),
         offset: z.coerce.number().int().min(0).optional(),
@@ -113,6 +116,10 @@ const approveRoute = createRoute({
               title: z.string().optional(),
               body: z.string().optional(),
               status: z.enum(["draft", "active"]).optional(),
+              expected_review_digest: z
+                .string()
+                .regex(/^[a-f0-9]{64}$/)
+                .optional(),
             })
             .openapi("ApproveSkillCandidateBody"),
         },
@@ -212,6 +219,7 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const q = c.req.valid("query");
     const params = {
       tenant_id: principal.tenant_id,
+      ...(q.reviewable !== undefined ? { reviewable: q.reviewable === "true" } : {}),
       ...(q.status ? { status: q.status } : {}),
       ...(q.scope ? { scope: q.scope } : {}),
       ...(q.connector_id ? { connector_id: q.connector_id } : {}),
@@ -221,11 +229,12 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(q.limit !== undefined ? { limit: q.limit } : {}),
       ...(q.offset !== undefined ? { offset: q.offset } : {}),
     };
-    const [items, total] = await Promise.all([
+    const [items, total, reviewable_total] = await Promise.all([
       svc.listSkillCandidates(params, db),
       svc.countSkillCandidates(params, db),
+      svc.countSkillCandidates({ ...params, reviewable: true }, db),
     ]);
-    return c.json({ items, total }, 200);
+    return c.json({ items, total, reviewable_total }, 200);
   });
 
   app.openapi(getRoute, async (c) => {
@@ -264,13 +273,26 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         candidate_id: id,
         actor_id: principal.id,
+        ...(body.expected_review_digest
+          ? { expected_review_digest: body.expected_review_digest }
+          : {}),
         ...(Object.keys(overrides).length > 0
           ? { overrides: overrides as ApproveSkillCandidateParams["overrides"] }
           : {}),
       },
       db,
     );
-    if (!result) throw new NotFoundError("skill_candidate");
+    if (!result) {
+      const candidate = await svc.getSkillCandidate(principal.tenant_id, id, db);
+      if (candidate)
+        throw new HttpError(
+          409,
+          "review_changed",
+          "The skill candidate changed or was already decided",
+        );
+      throw new NotFoundError("skill_candidate");
+    }
+    invalidateOperationalOverview(principal.tenant_id);
     return c.json(result, 200);
   });
 
@@ -289,6 +311,7 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
     if (!rejected) throw new NotFoundError("skill_candidate");
+    invalidateOperationalOverview(principal.tenant_id);
     return c.json({ rejected: true }, 200);
   });
 }

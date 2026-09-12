@@ -44,16 +44,37 @@ const getCommand = defineCommand({
   },
 });
 
+const previewCommand = defineCommand({
+  meta: { name: "preview", description: "Review the exact repair diff and approval digest" },
+  args: { id: { type: "positional", required: true, description: "Patch candidate id" } },
+  async run({ args }) {
+    const { engine_url, api_key, active_tenant_id } = resolveProfile();
+    const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+    try {
+      printJson(
+        await client.request("GET", `/v1/patch-candidates/${encodeURIComponent(args.id)}/preview`),
+      );
+    } catch (err) {
+      reportCommandError(err);
+    }
+  },
+});
+
 const approveCommand = defineCommand({
   meta: { name: "approve", description: "Approve a patch candidate" },
   args: {
     id: { type: "positional", required: true, description: "Patch candidate id" },
+    "review-digest": {
+      type: "string",
+      required: true,
+      description: "Digest from the reviewed candidate preview",
+    },
   },
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
-      await client.approvePatchCandidate(args.id);
+      await client.approvePatchCandidate(args.id, args["review-digest"]);
       process.stdout.write(`${pc.green("approved")}\n`);
     } catch (err) {
       reportCommandError(err);
@@ -86,6 +107,7 @@ export const patchCandidatesCommand = defineCommand({
   subCommands: {
     list: listCommand,
     get: getCommand,
+    preview: previewCommand,
     approve: approveCommand,
     reject: rejectCommand,
   },

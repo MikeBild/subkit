@@ -31,6 +31,9 @@ export type DecisionOrigin =
 export type DecisionUrgency = "expired" | "expiring" | "blocking" | "deferred";
 
 export interface DecisionItem {
+  reviewable?: boolean;
+  reviewDigest?: string | null;
+  reviewReason?: string | null;
   kind: DecisionKind;
   /** Domain id used for the decision call — never rendered. */
   id: string;
@@ -96,7 +99,9 @@ export type DecidableItem = Omit<DecisionItem, "kind" | "detail"> & {
 };
 
 export function isDecidable(item: DecisionItem): item is DecidableItem {
-  return item.kind !== "conversation" && item.detail.kind !== "conversation";
+  return (
+    item.kind !== "conversation" && item.detail.kind !== "conversation" && item.reviewable !== false
+  );
 }
 
 /** The four lists a proposed skill carries beside its body. */
@@ -156,6 +161,9 @@ export function patchDecision(candidate: PatchCandidate, title: string): Decisio
   const envelope = readDiffEnvelope(candidate.diff);
   return {
     kind: "patch",
+    reviewable: candidate.reviewable === true,
+    reviewDigest: candidate.review_digest,
+    reviewReason: candidate.review_reason,
     id: candidate.id,
     title,
     target: candidate.workflow_name ?? null,
@@ -201,6 +209,9 @@ export function skillDecision(
 ): DecisionItem {
   return {
     kind: "skill",
+    reviewable: candidate.reviewable === true,
+    reviewDigest: candidate.review_digest,
+    reviewReason: candidate.reviewable ? null : "advisory",
     id: candidate.id,
     title: candidate.title,
     // `scope` is an enum word — rendering it made the card say "workflow" where
@@ -562,18 +573,19 @@ export function countOpenDecisions(input: {
     ? { ...input.totals }
     : unique.reduce(
         (counts, item) => {
-          counts[item.kind] += 1;
+          if (item.kind === "conversation" || item.reviewable !== false) counts[item.kind] += 1;
           return counts;
         },
         { patch: 0, skill: 0, conversation: 0 } as DecisionTotals,
       );
-  const total = counted.patch + counted.skill + counted.conversation;
+  const total = counted.patch + counted.skill;
   const subsets: OpenDecisionSubsets = { blocking: 0, overdue: 0, aging: 0 };
   let oldestAgeDays = 0;
   for (const item of unique) {
+    if (item.kind !== "conversation" && !isDecidable(item)) continue;
     const urgency = decisionUrgency(item, input.nowMs);
     const age = ageInDays(item.waitingSince, input.nowMs);
-    if (age > oldestAgeDays) oldestAgeDays = age;
+    if (isDecidable(item) && age > oldestAgeDays) oldestAgeDays = age;
     if (urgency === "expired") subsets.overdue += 1;
     else if (urgency === "blocking" || urgency === "expiring") subsets.blocking += 1;
     else if (age >= AGED_AFTER_DAYS) subsets.aging += 1;
@@ -584,7 +596,7 @@ export function countOpenDecisions(input: {
     byKind: { patch: counted.patch, skill: counted.skill, conversation: counted.conversation },
     subsets,
     oldestAgeDays,
-    capped: unique.length < total,
+    capped: unique.filter(isDecidable).length < total,
   };
 }
 
