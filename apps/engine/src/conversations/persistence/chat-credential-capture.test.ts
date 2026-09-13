@@ -11,6 +11,7 @@
 //     cache write (db-free for bearer/basic/header/query drafts).
 
 import { afterEach, describe, expect, it } from "bun:test";
+
 import type { Db } from "../../db/client.ts";
 import { findSecretSpans } from "../../logging/scrub-secrets.ts";
 import {

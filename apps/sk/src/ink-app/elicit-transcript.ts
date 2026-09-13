@@ -7,6 +7,7 @@
 // component.
 
 import type { PendingElicitation } from "@cli-core/index.ts";
+
 import { describeConfirmationPayload } from "../repl/approval/describe-confirmation.ts";
 
 export const PENDING_NOTICE_PREFIX = "Waiting for input:";

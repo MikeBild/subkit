@@ -23,4 +23,4 @@ export {
   resetAllDeterministicIds,
 } from "./ids.ts";
 export { createSeededRandom, type SeededRandom, seedFromEnv } from "./random.ts";
-export { flush, type WaitForOpts, waitFor, waitForJson, waitForResource } from "./wait.ts";
+export { flush, waitFor, waitForJson, type WaitForOpts, waitForResource } from "./wait.ts";

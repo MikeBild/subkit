@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { releaseVersionWasUsed } from "../release-history.ts";
 
 describe("immutable release workflow history", () => {

@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
+
 import {
   EstateReplayManifestSchema,
   replayEstateCase,
@@ -20,6 +22,31 @@ describe("estate migration replay verifier", () => {
     expect(report.failed).toBe(0);
     expect(report.passed).toBe(report.total);
     expect(report.cases.every((result) => result.output_equal)).toBe(true);
+  });
+
+  test("compares nested JSON values regardless of record prototype or key order", async () => {
+    const base = {
+      id: "nested-json",
+      kind: "step_transform" as const,
+      old_jsonata: { expression: '{ "a": { "n": 1 }, "b": [true, null] }', data: {} },
+    };
+    const equal = await replayEstateCase({
+      ...base,
+      new_javascript: {
+        code: "return { b: [true, null], a: { n: 1 } };",
+        input: {},
+      },
+    });
+    expect(equal.passed).toBe(true);
+    const different = await replayEstateCase({
+      ...base,
+      new_javascript: {
+        code: 'return { b: [true, null], a: { n: "1" } };',
+        input: {},
+      },
+    });
+    expect(different.output_equal).toBe(false);
+    expect(different.passed).toBe(false);
   });
 
   test("fails when JavaScript output differs from the JSONata output", async () => {

@@ -26,6 +26,7 @@ import {
   useRef,
   useState,
 } from "react";
+
 import {
   Command,
   CommandEmpty,
@@ -1258,7 +1259,7 @@ export type PromptInputTabLabelProps = HTMLAttributes<HTMLHeadingElement>;
 
 export const PromptInputTabLabel = ({ className, ...props }: PromptInputTabLabelProps) => (
   // Content provided via children in props
-  // oxlint-disable-next-line eslint-plugin-jsx-a11y(heading-has-content)
+  // eslint-disable-next-line jsx-a11y/heading-has-content -- The wrapper forwards its accessible children through props.
   <h3 className={cn("mb-2 px-3 font-medium text-muted-foreground text-xs", className)} {...props} />
 );
 

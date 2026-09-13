@@ -7,12 +7,14 @@
 // so the smaller surface keeps tests honest about what the route does
 // and does not touch.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import type { AppEnv } from "../openapi.ts";
 import { _internal, registerInstallBinaryRoute } from "./install-binary.ts";
 

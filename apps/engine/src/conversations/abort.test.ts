@@ -10,10 +10,11 @@
 // reopen either race without flagging a unit-test failure.
 
 import { afterEach, describe, expect, test } from "bun:test";
+
 import {
   __hasConversationAbort,
-  CONVERSATION_CANCELLED_REASON,
   cancelConversationAbort,
+  CONVERSATION_CANCELLED_REASON,
   registerConversationAbort,
   unregisterConversationAbort,
 } from "./abort.ts";

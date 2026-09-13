@@ -4,6 +4,7 @@
 // `init.test.ts` — no real engine, no disk.
 
 import { describe, expect, test } from "bun:test";
+
 import { EngineClient, type UserInviteIssuedWire } from "../../engine-client.ts";
 import { formatInviteIssued, usersCommand } from "../users.ts";
 

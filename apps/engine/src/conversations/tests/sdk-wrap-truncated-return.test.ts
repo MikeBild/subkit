@@ -16,6 +16,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
+
 import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
@@ -106,7 +107,7 @@ async function invokeWrapped(payload: unknown): Promise<Record<string, unknown>>
     [],
   );
   toolCallSeq += 1;
-  // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
   return (await (wrapped.execute as any)(
     {},
     { toolCallId: `t-${toolCallSeq}`, messages: [] },

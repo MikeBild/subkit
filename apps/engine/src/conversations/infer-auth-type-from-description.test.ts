@@ -9,6 +9,7 @@
 // template's auth_options or the operator decides.
 
 import { describe, expect, it } from "bun:test";
+
 import { inferAuthTypeFromDescription } from "./connector-template-intelligence.ts";
 
 describe("inferAuthTypeFromDescription", () => {

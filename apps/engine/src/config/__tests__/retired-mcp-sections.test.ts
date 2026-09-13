@@ -15,10 +15,12 @@
 // pin both halves: the refusal where something is at stake, the boot where
 // nothing is.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { _resetConfigForTests, ConfigLoaderError, getConfig, loadConfig } from "../loader.ts";
 
 let dir: string;

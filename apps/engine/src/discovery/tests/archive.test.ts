@@ -2,13 +2,6 @@
 // Builds a tiny zip in-memory using yazl, then round-trips through the
 // extractor to verify filtering + entry caps.
 
-import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import yauzl from "yauzl";
-import { extractCodebaseArchive } from "../archive.ts";
-
 // Minimal zip writer — we don't need a library to produce a valid zip
 // with a handful of stored (uncompressed) entries. But yauzl can read
 // deflate/store equally, so the easiest path is to use node's native
@@ -16,14 +9,20 @@ import { extractCodebaseArchive } from "../archive.ts";
 // for one test and also shell out to `zip` if available. To keep the
 // test hermetic we produce fixtures programmatically via yazl when
 // available, falling back to a minimal hand-crafted approach.
-
 // Since yazl isn't installed, use a pragmatic workaround: build the
 // archive with `child_process.spawn` against the system `zip` binary
 // available on macOS / Linux CI. If the binary is missing, skip the
 // test with a clear message.
-
 import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
+import yauzl from "yauzl";
+
+import { extractCodebaseArchive } from "../archive.ts";
 
 function makeZip(entries: Record<string, string>): Buffer {
   const dir = mkdtempSync(join(tmpdir(), "archive-test-"));

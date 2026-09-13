@@ -8,6 +8,7 @@
 // same external helpers (`autoApplyPatch`, audit, metrics).
 
 import { and, eq } from "drizzle-orm";
+
 import { audit, auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";

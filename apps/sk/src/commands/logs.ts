@@ -22,6 +22,7 @@ import { printJson } from "@cli-core/format";
 import { colorizeLogLevel } from "@cli-core/log-levels";
 import { defineCommand } from "citty";
 import pc from "picocolors";
+
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 

@@ -21,6 +21,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { _drainAuditWritesForTests } from "../../audit/index.ts";
 import { SkCliAdapter } from "../../chat/sk-cli/adapter.ts";
 import { auditLog } from "../../db/schema/audit.ts";

@@ -11,14 +11,15 @@
 // capability registration directly with a stubbed MCP `Server` so we
 // can swap principals freely.
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type {
   ListResourcesRequest,
   ListResourcesResult,
   ReadResourceRequest,
   SubscribeRequest,
 } from "@modelcontextprotocol/sdk/types.js";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { tenants } from "../../db/schema/identity.ts";

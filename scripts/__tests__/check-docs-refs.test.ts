@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { extractAnchors, slugify } from "../check-docs-refs.ts";
 
 describe("slugify", () => {

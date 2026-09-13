@@ -3,6 +3,7 @@
 // partial application is never persisted.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { editWorkflowPatchTool } from "../tools/edit-workflow-patch.ts";
@@ -67,7 +68,7 @@ function makeDraft(): DraftDocument {
         },
       ],
     },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
   } as any;
 }
 

@@ -43,12 +43,13 @@
 // pool address the same id and there is no second registry to keep in
 // step with it.
 //
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: `${item.…}` /
+/* eslint-disable no-template-curly-in-string -- `${item.…}` / */
 // `${input.…}` are workflow placeholder tokens the steps below are meant to
 // carry verbatim — a template literal would resolve them in the test.
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { closeDb } from "../../db/client.ts";
 import { connectors, executions } from "../../db/schema/index.ts";
 import {

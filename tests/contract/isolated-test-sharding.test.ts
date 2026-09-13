@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import path from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const repoRoot = path.resolve(import.meta.dir, "../..");
 const runner = path.join(repoRoot, "scripts/test-files-isolated.ts");

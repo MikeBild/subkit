@@ -8,10 +8,12 @@
 // every deploy, so a version that still decrypts must come back untouched;
 // the second must refuse outright while any replica is still serving.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, test } from "bun:test";
+
 import {
   parseVaultCliArgs,
   runVaultCli,

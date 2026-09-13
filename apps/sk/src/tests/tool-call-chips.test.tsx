@@ -9,12 +9,14 @@
 //     chip shortcut MUST NOT fire while the operator is typing
 //     (e.g. partial slash arg, port number, free-text reply).
 
-import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import type { TurnEvent } from "@cli-core/index.ts";
+import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
+
 import { extractNextBestActions, InkApp, type InkAppProps } from "../ink-app.tsx";
 import type { PersonaProbe } from "../slash.ts";
 

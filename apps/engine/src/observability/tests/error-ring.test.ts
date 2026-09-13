@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { type CapturedError, createErrorRing } from "../error-ring.ts";
 

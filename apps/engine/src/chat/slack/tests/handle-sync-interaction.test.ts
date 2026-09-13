@@ -7,9 +7,10 @@
 // confirms the cross-tenant case takes the "not found" branch and does
 // not call `views.open`.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { serve } from "@hono/node-server";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
+
 import {
   type ConversationTestCtx,
   createConversationTestCtx,

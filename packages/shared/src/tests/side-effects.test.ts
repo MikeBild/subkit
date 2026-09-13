@@ -5,6 +5,7 @@
 // POST is a WRITE unless the author marks it `override: "read"`.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   classifyHttpSideEffect,
   classifyMcpToolSideEffect,

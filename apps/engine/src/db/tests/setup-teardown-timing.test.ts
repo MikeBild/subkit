@@ -12,6 +12,7 @@
 // contention", not "teardown takes X ms".
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
+
 import { createTestDb, type TestDb } from "./setup.ts";
 
 let ctx: TestDb;

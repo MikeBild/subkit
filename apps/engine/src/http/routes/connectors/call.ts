@@ -9,12 +9,13 @@
 // workflow-step authoring.
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import {
   ConnectorCallRequestSchema,
   ConnectorCallResponseSchema,
 } from "../../../api/connector-schemas.ts";
-import { type CallConnectorMethod, callConnector } from "../../../connectors/index.ts";
+import { callConnector, type CallConnectorMethod } from "../../../connectors/index.ts";
 import { NotFoundError, UnprocessableEntityError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";

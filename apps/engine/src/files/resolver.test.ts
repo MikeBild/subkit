@@ -8,6 +8,7 @@
 // mock that returns rows by (tenant_id, fid) lookup.
 
 import { describe, expect, test } from "bun:test";
+
 import { FileNotFoundError, type ResolvedFile, storageKey, walkAndResolve } from "./resolver.ts";
 
 // ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 //   POST /v1/connectors/{id}/test
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import { computeConnectorScopeDiff, probeConnector } from "../../../connectors/index.ts";

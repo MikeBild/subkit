@@ -18,7 +18,7 @@ export const BUNDLE_MAX_FILES = 500;
 const SKIPPED_DIRS = new Set(["node_modules", ".git"]);
 
 /**
- * Recursively collect `**​/*.md` under `dir` (dot-directories like `.git`
+ * Recursively collect Markdown files recursively under `dir` (dot-directories like `.git`
  * and `.obsidian` are skipped). Paths are bundle-relative with a leading
  * `/` and forward slashes — the form the engine stores on each chunk.
  */
@@ -69,7 +69,7 @@ export function collectBundleFiles(dir: string): CollectedBundle {
 export function defaultBundleName(dir: string, files: CollectedBundle["files"]): string {
   const index = files.find((f) => f.path === "/index.md");
   if (index) {
-    const body = index.content.replace(/^﻿?---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+    const body = index.content.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
     let inFence = false;
     for (const line of body.split(/\r?\n/)) {
       if (/^(```|~~~)/.test(line)) {

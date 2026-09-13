@@ -4,9 +4,10 @@
 // gating, inspect-before-patching). Drift on any of these brings back
 // the trial-and-error patch loops the contract is designed to prevent.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const ROOT = join(import.meta.dir, "..");
 const workflowAuthoring = readFileSync(join(ROOT, "workflow-authoring.md"), "utf-8");

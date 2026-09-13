@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { evaluateHook } from "../../../auth/hooks.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { requestHooks, tenants } from "../../../db/schema/index.ts";

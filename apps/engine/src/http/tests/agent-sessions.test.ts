@@ -5,6 +5,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { desc, eq } from "drizzle-orm";
+
 import { auditLog } from "../../db/schema/index.ts";
 import type { AgentSessionAnalyzeJob } from "../../queue/handlers/agent-session-analyze.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";

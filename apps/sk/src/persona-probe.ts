@@ -11,6 +11,7 @@
 // `apps/sk/src/index.ts`.
 
 import type { UX_GATING_PERMISSIONS, UxGatingPermission } from "@shared/ux-gating.ts";
+
 import { type ResolvedProfile, saveProfile } from "./config.ts";
 import type { EngineClient } from "./engine-client.ts";
 import type { PersonaProbe } from "./slash.ts";

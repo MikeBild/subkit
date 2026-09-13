@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import { gzipSync } from "node:zlib";
+
+import { describe, expect, test } from "bun:test";
+
 import {
   buildDocxFixture,
   buildPdfFixture,

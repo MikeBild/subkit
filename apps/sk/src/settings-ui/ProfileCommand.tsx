@@ -10,6 +10,7 @@
 // the pane — matching the SettingsModal Config tab behavior.
 
 import type React from "react";
+
 import type { EngineClient } from "../engine-client.ts";
 import { SinglePane } from "./SinglePane.tsx";
 import { type ProfileAction, ProfileTab } from "./tabs/ProfileTab.tsx";

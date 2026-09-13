@@ -11,6 +11,7 @@
 //   - POST / PUT / PATCH / DELETE: retry only on 429 + connection errors
 
 import { and, eq, sql } from "drizzle-orm";
+
 import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import { evaluateHook } from "../../../auth/hooks.ts";
@@ -74,16 +75,16 @@ import { recordSuccessShape } from "../../../schema-versions/service.ts";
 import { authorityConnectorDigest } from "../../../workflows/authority-configuration.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
 import { combineSignals } from "../../abort.ts";
-import { type ExpectedRowCount, evaluateExpectedRowCount } from "../../expected-row-count.ts";
+import { evaluateExpectedRowCount, type ExpectedRowCount } from "../../expected-row-count.ts";
 import { resolveScopeForJsonata } from "../../jsonata-bindings.ts";
 import {
-  MAX_PAGES,
   makeStrategy,
+  MAX_PAGES,
   PAGE_PROGRESS_INTERVAL,
   PAGINATION_CHECKPOINT_INTERVAL,
   type PaginationCheckpoint,
-  type PaginationSpec,
   paginationSignature,
+  type PaginationSpec,
   readPaginationCheckpoint,
   writePaginationCheckpoint,
 } from "../../pagination.ts";
@@ -115,15 +116,15 @@ import {
   backoffMs,
   isIdempotent,
   parseRetryAfter,
-  type RetryPolicy,
   requestMaxAttempts,
   resolveRetryPolicy,
+  type RetryPolicy,
 } from "./retry.ts";
 import { checkRequired, deriveAuthMethodFromAuthType, extractModelHint } from "./shape.ts";
 import {
   classifyRequestStepSideEffects,
-  type HeldStepResultParams,
   heldStepResult,
+  type HeldStepResultParams,
   requestRequiresPreparationHold,
 } from "./side-effects.ts";
 
@@ -2148,8 +2149,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             tenant_id: p.ctx.tenant_id,
             actor_id: p.ctx.principal?.id ?? null,
             actor_type: (p.ctx.principal?.kind === "system_account" ? "system_account" : "user") as
-              | "user"
-              | "system_account",
+              "user" | "system_account",
             connector_id: activeConnector.id,
             connector_slug: activeConnector.slug,
             driver: "http" as const,
@@ -2592,8 +2592,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             tenant_id: p.ctx.tenant_id,
             actor_id: p.ctx.principal?.id ?? null,
             actor_type: (p.ctx.principal?.kind === "system_account" ? "system_account" : "user") as
-              | "user"
-              | "system_account",
+              "user" | "system_account",
             connector_id: activeConnector.id,
             connector_slug: activeConnector.slug,
             driver: "http" as const,

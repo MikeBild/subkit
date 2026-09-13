@@ -22,6 +22,7 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useMemo, useState } from "react";
+
 import { useTheme } from "../theme/Provider.tsx";
 import { ControlledTextField } from "./ControlledTextField.tsx";
 
@@ -130,7 +131,7 @@ function isPrintable(input: string, key: { ctrl: boolean; meta: boolean }): bool
 // Built via `new RegExp` with a unicode escape so the source file
 // doesn't embed a literal ESC (0x1b) byte that lint flags as a control
 // char in regex-literal syntax.
-// biome-ignore lint/suspicious/noControlCharactersInRegex: literal ESC byte is exactly what we strip — RegExp(...) constructor triggers the opposite "prefer literal" rule.
+// eslint-disable-next-line no-control-regex -- literal ESC byte is exactly what we strip — RegExp(...) constructor triggers the opposite "prefer literal" rule.
 const BRACKETED_PASTE_RE = /\[20[01]~/g;
 
 function sanitizePasteChunk(raw: string, singleLine: boolean): string {

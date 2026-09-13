@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { collectReferencedResources } from "./chat-references";
 
 describe("collectReferencedResources", () => {

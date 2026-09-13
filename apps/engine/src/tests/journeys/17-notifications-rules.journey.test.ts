@@ -15,6 +15,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import type { ChatAdapter } from "../../chat/adapter.ts";
 import type { ApprovalCard, ChatDelivery, ChatEvent, VerifiedEvent } from "../../chat/types.ts";
 import {

@@ -1,6 +1,7 @@
 // Token-bucket rate limiter tests.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { __peekBucket, __resetRateLimiter, tryAcquire } from "../rate-limit.ts";
 
 beforeEach(() => {

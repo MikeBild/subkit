@@ -14,10 +14,12 @@
 // the resolution function directly without triggering loadConfig()'s
 // side effects (file write of the auto-generated session secret).
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { _defaultConfigPathForTests } from "../loader.ts";
 
 let dirA: string;

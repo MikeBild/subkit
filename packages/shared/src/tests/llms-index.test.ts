@@ -5,6 +5,7 @@
 // the llmstxt.org spec, and that `linkFor` actually drives the hrefs.
 
 import { describe, expect, test } from "bun:test";
+
 import { type LlmsPage, OPTIONAL_PATHS, renderLlmsIndex } from "../llms-index.ts";
 
 function page(over: Partial<LlmsPage> & Pick<LlmsPage, "audience" | "path" | "title">): LlmsPage {

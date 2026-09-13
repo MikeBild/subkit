@@ -8,6 +8,7 @@
 // what to build next.
 
 import { z } from "@hono/zod-openapi";
+
 import { listCapabilityGaps } from "../../discovery/service.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 

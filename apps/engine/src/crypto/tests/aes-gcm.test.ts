@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { AES_IV_BYTES, decryptSecret, encryptSecret, secureEqual } from "../aes-gcm.ts";
 
 describe("aes-gcm", () => {

@@ -25,6 +25,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { conversationElicitations, conversations, workflows } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
@@ -103,7 +104,7 @@ function stubToolCtx(conversationId: string, draft: DraftDocument): ToolContext 
     connector_id: null,
     workflow_id: null,
     permission_mode: null,
-    // biome-ignore lint/suspicious/noExplicitAny: stub for gate test
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub for gate test
     engineClient: {} as any,
     getDraft: () => live,
     setDraft: async (next) => {
@@ -229,9 +230,8 @@ describe("commit gate · warnings_unacknowledged", () => {
 describe("run_workflow · withStatus contract on gate paths", () => {
   test("workflow_not_persisted gate returns data with status=failed", async () => {
     const conversationId = await freshConversation();
-    const { runWorkflowTool } = await import(
-      "../../conversations/tools/generated/writes/run-workflow.ts"
-    );
+    const { runWorkflowTool } =
+      await import("../../conversations/tools/generated/writes/run-workflow.ts");
     const draft: DraftDocument = {
       mode: "workflow_authoring",
       workflow: { name: "no-target", steps: [] },
@@ -245,7 +245,7 @@ describe("run_workflow · withStatus contract on gate paths", () => {
       connector_id: null,
       workflow_id: null,
       permission_mode: null,
-      // biome-ignore lint/suspicious/noExplicitAny: minimal engineClient stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal engineClient stub
       engineClient: {} as any,
       getDraft: () => live,
       setDraft: async (next) => {
@@ -316,9 +316,8 @@ describe("inspect_execution_step", () => {
       duration_ms: 17,
     });
 
-    const { inspectExecutionStepTool } = await import(
-      "../../conversations/tools/inspect-execution-step.ts"
-    );
+    const { inspectExecutionStepTool } =
+      await import("../../conversations/tools/inspect-execution-step.ts");
     const conversationId = await freshConversation();
     const draft: DraftDocument = {
       mode: "workflow_authoring",
@@ -332,7 +331,7 @@ describe("inspect_execution_step", () => {
       connector_id: null,
       workflow_id: null,
       permission_mode: null,
-      // biome-ignore lint/suspicious/noExplicitAny: minimal engineClient stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal engineClient stub
       engineClient: {} as any,
       getDraft: () => draft,
       setDraft: async () => {},
@@ -374,9 +373,8 @@ describe("inspect_execution_step", () => {
       kind: "request",
       status: "succeeded",
     });
-    const { inspectExecutionStepTool } = await import(
-      "../../conversations/tools/inspect-execution-step.ts"
-    );
+    const { inspectExecutionStepTool } =
+      await import("../../conversations/tools/inspect-execution-step.ts");
     const conversationId = await freshConversation();
     const draft: DraftDocument = {
       mode: "workflow_authoring",
@@ -390,7 +388,7 @@ describe("inspect_execution_step", () => {
       connector_id: null,
       workflow_id: null,
       permission_mode: null,
-      // biome-ignore lint/suspicious/noExplicitAny: minimal engineClient stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal engineClient stub
       engineClient: {} as any,
       getDraft: () => draft,
       setDraft: async () => {},
@@ -424,9 +422,8 @@ describe("inspect_execution_step", () => {
       })
       .returning({ id: executions.id });
     if (!otherExec) throw new Error("seed other execution failed");
-    const { inspectExecutionStepTool } = await import(
-      "../../conversations/tools/inspect-execution-step.ts"
-    );
+    const { inspectExecutionStepTool } =
+      await import("../../conversations/tools/inspect-execution-step.ts");
     const conversationId = await freshConversation();
     const draft: DraftDocument = {
       mode: "workflow_authoring",
@@ -440,7 +437,7 @@ describe("inspect_execution_step", () => {
       connector_id: null,
       workflow_id: null,
       permission_mode: null,
-      // biome-ignore lint/suspicious/noExplicitAny: minimal engineClient stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal engineClient stub
       engineClient: {} as any,
       getDraft: () => draft,
       setDraft: async () => {},

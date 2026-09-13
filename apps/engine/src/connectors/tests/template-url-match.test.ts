@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { matchTemplateByUrl, matchTemplatesByUrl } from "../template-url-match.ts";
 
 describe("matchTemplateByUrl", () => {

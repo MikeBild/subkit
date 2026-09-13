@@ -5,10 +5,12 @@
 // Covers: crypto roundtrip + AAD binding, tenant isolation, audit success
 // and audit failure paths.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { decryptSecret, encryptSecret } from "../../../crypto/aes-gcm.ts";
 import { auditLog, connectors, credentials, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
@@ -449,9 +451,8 @@ describe("dynamic registration — audit failure path", () => {
     const tenantId = t!.id;
     const connectorId = await seedConnector(tenantId, "dr-audit-fail-connector");
 
-    const { recordOAuthClientRegistrationFailed } = await import(
-      "../../../audit/recorders/credential.ts"
-    );
+    const { recordOAuthClientRegistrationFailed } =
+      await import("../../../audit/recorders/credential.ts");
     await recordOAuthClientRegistrationFailed({
       tenant_id: tenantId,
       actor_id: null,

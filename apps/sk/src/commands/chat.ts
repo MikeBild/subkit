@@ -14,13 +14,14 @@ import * as prompts from "@clack/prompts";
 import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
+
 import { resolveProfile } from "../config.ts";
+import { EngineClient } from "../engine-client.ts";
 import type {
   ChatPlatform,
   InstallChatWorkspaceBody,
   PendingChatSpaceWire,
 } from "../engine-client/chat.ts";
-import { EngineClient } from "../engine-client.ts";
 import { pickId } from "../lib/pick.ts";
 
 function makeClient() {
@@ -142,7 +143,7 @@ const installSpaceCommand = defineCommand({
           message: "Slack bot token (xoxb-…)",
           validate: (v) => (v?.startsWith("xoxb-") ? undefined : "expected an xoxb- token"),
         });
-        if (prompts.isCancel(entered)) throw new Error("bot_token is required for slack");
+        if (typeof entered !== "string") throw new Error("bot_token is required for slack");
         botToken = entered;
       }
 

@@ -6,12 +6,13 @@
 
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
+
 import { Spinner } from "./spinner.tsx";
 
 function snapshot(s: ReturnType<typeof render>): string {
   // ink-testing-library's lastFrame returns the rendered text. We
   // strip ANSI codes so assertions don't need to know about colour.
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escapes
+  // eslint-disable-next-line no-control-regex -- stripping ANSI escapes
   return (s.lastFrame() ?? "").replace(/\[[0-9;]*m/g, "");
 }
 

@@ -12,10 +12,12 @@
 // a permanent error look retryable and every build three times slower before it
 // fails anyway). These cases hold the boundary.
 
-import { describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
+
 import { download, isTransient } from "../fetch-embedding-assets.ts";
 
 describe("isTransient", () => {

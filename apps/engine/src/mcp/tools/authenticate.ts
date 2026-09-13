@@ -15,6 +15,7 @@
 // subsequent `/v1/oauth/callback` roundtrip can complete.
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";

@@ -3,6 +3,7 @@
 // context populated upstream by traceMiddleware + authMiddleware.
 
 import type { MiddlewareHandler } from "hono";
+
 import { errorFields, log } from "../../logging/logger.ts";
 import type { AppEnv } from "../openapi.ts";
 

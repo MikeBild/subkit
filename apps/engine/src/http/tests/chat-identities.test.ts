@@ -3,9 +3,11 @@
 // emits the right audit action and that link rejects a body.user_id
 // that belongs to another tenant.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import {
   apiKeys,
   auditLog,

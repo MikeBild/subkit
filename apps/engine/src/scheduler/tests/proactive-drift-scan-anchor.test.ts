@@ -9,6 +9,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
+
 import { patchCandidates, schemaVersions } from "../../db/schema/index.ts";
 import { driftSignalContext } from "../../self-healing/proactive-scanner.ts";
 import {

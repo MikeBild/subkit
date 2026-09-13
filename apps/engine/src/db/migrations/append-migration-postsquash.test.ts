@@ -19,6 +19,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
+
 import { detectDrift, runMigrations } from "../migrate.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./embedded.ts";

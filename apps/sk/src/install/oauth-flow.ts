@@ -50,7 +50,7 @@ export async function runEngineOAuthFlow(
       await sleep(POLL_INTERVAL_MS);
       if (await hasCredential(client, connectorId)) return;
     }
-    throw new Error("OAuth timed out — check your browser and try again");
+    throw new Error("OAuth timed out — check your browser and try again", { cause: err });
   }
   // Subscription is live — safe to send the operator to the browser.
   openBrowser(oauth_url);

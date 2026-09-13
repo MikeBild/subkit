@@ -1,14 +1,15 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
+
 import { getConnectorForEnvironment } from "../../connectors/service.ts";
 import { secretNames } from "../../credentials/connections/service.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import {
   connectors,
   credentials,
-  executionSteps,
   executions,
+  executionSteps,
   outboundConnections,
   tenants,
   workflowExecutionAuthorities,

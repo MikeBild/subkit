@@ -12,6 +12,7 @@
 // Spec refs: plan docs — §2d BRANCH STEP: Actual Control Flow
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;

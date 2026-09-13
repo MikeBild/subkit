@@ -14,8 +14,9 @@
 // refactor of that spread cannot quietly disconnect the wiring without
 // failing CI.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { tenantLlmSettings } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";

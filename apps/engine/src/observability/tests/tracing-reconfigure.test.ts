@@ -22,10 +22,12 @@
 // logs` both read from it — so asserting via `logRing.tail` tests
 // the same surface operators consume in production.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { logRing } from "../log-ring.ts";
 import { isTracingStarted, reconfigureTracing } from "../tracing.ts";

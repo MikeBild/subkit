@@ -10,6 +10,7 @@
 // and a release that refused on it would refuse to boot on its own history.
 
 import { describe, expect, test } from "bun:test";
+
 import { ConfigSchema } from "../../config/schema.ts";
 import {
   identityFinding,

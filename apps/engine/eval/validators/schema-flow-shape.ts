@@ -42,7 +42,7 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
   };
   const model = new AiSdkModel({
     defaultModel: "claude-sonnet-4-5",
-    // biome-ignore lint/suspicious/noExplicitAny: eval spy
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- eval spy
     generateTextFn: spy as any,
   });
 

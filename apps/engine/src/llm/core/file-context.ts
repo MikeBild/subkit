@@ -176,7 +176,6 @@ export async function buildFileContentBlocks(
         continue;
       }
       // Byte read failed — fall through to text_extract placeholder.
-      strategy = "text_extract";
     }
 
     // text_extract — always the safe fallback. The block helper caps
@@ -264,7 +263,7 @@ async function assembleTextExtractBlock(
   );
 
   let bytes: Uint8Array;
-  let truncated = false;
+  let truncated: boolean;
   try {
     const stream = await resolved.openRead();
     const read = await collectStreamWithLimit(stream, perFileLimit);

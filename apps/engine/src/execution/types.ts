@@ -26,13 +26,7 @@ export type { RequestSource };
 export type ExecutionMode = "dev" | "prod";
 
 export type StepStatus =
-  | "queued"
-  | "running"
-  | "succeeded"
-  | "failed"
-  | "aborted"
-  | "timed_out"
-  | "skipped";
+  "queued" | "running" | "succeeded" | "failed" | "aborted" | "timed_out" | "skipped";
 
 /** Top-level execution status persisted to `executions.status` (DB enum).
  *  Excludes `"skipped"` — an entire execution is never skipped, only

@@ -10,6 +10,7 @@
 import { useTheme } from "@chat-ui/index.ts";
 import { Box } from "ink";
 import { useMemo } from "react";
+
 import { VirtualTranscript } from "../../shell/VirtualTranscript.tsx";
 
 export interface TranscriptItem {

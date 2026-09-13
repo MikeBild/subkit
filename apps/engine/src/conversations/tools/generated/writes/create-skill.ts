@@ -14,6 +14,7 @@
 // instead of being silently dropped — the reviewer adds them on approve.
 
 import { z } from "@hono/zod-openapi";
+
 import { createCandidateFromAuthoring } from "../../../../skill-candidates/service.ts";
 import type { ConversationTool, ToolResult } from "../../index.ts";
 

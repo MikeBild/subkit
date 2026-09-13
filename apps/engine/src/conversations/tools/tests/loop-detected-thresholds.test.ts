@@ -12,9 +12,10 @@
 // We assert source-level wiring of the adaptive shape; the integration
 // tests in tool-loop-envelope.test.ts cover the runtime dispatch.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 // The loop-breaker code lives in `tools/sdk-wrap/invoke.ts`; the
 // top-level `sdk-wrap.ts` is a thin barrel re-exporting `wrapTools`

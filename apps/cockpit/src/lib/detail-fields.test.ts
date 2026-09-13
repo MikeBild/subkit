@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { DETAIL_FIELDS, detailEntries } from "@/lib/detail-fields";
 import { CATALOGS } from "@/lib/i18n";
 

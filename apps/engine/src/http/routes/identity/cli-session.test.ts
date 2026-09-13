@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { AuditAction } from "../../../audit/index.ts";
 import { generateAccessToken, generateRefreshToken } from "../../../auth/oauth/tokens.ts";
 import { getConfig, setConfigKey } from "../../../config/loader.ts";

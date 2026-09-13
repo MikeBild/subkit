@@ -8,6 +8,7 @@
 //   - mandatory ask_user_choice when a finite option set exists
 
 import { describe, expect, test } from "bun:test";
+
 import errorRecoveryAndRbac from "./content/error-recovery-and-rbac.md" with { type: "text" };
 
 describe("error-recovery skill body — hard-rule pins", () => {

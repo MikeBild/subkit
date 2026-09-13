@@ -10,6 +10,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { users } from "../../../../db/schema/index.ts";
 import { issueApiKey } from "../../../../identity/service.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../tests/setup.ts";

@@ -4,6 +4,7 @@
 //   DELETE /v1/rbac/grants/:id
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import * as grantsSvc from "../../../rbac/index.ts";

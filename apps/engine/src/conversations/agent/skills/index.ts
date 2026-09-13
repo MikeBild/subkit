@@ -18,9 +18,7 @@ import confirmationDiscipline from "./content/confirmation-discipline.md" with {
 import conversationalAuthoring from "./content/conversational-authoring.md" with { type: "text" };
 import errorRecoveryAndRbac from "./content/error-recovery-and-rbac.md" with { type: "text" };
 import placeholderRules from "./content/placeholder-rules.md" with { type: "text" };
-import tenantCleanupAndProductHelp from "./content/tenant-cleanup-and-product-help.md" with {
-  type: "text",
-};
+import tenantCleanupAndProductHelp from "./content/tenant-cleanup-and-product-help.md" with { type: "text" };
 import turnOneDiscipline from "./content/turn-one-discipline.md" with { type: "text" };
 import turnRhythmAndLanguage from "./content/turn-rhythm-and-language.md" with { type: "text" };
 import workflowStepKinds from "./content/workflow-step-kinds.md" with { type: "text" };

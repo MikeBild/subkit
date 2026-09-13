@@ -2,6 +2,7 @@
 // stats. Gated by `stats:read`.
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
   aggregateExecutions,

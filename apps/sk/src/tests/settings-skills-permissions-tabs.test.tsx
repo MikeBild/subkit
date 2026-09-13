@@ -4,6 +4,7 @@
 
 import { describe, expect, mock, test } from "bun:test";
 import type React from "react";
+
 import type { EngineClient } from "../engine-client.ts";
 import { ConsentPrompt } from "../repl/components/ConsentPrompt.tsx";
 import { SettingsModal } from "../settings-ui/SettingsModal.tsx";

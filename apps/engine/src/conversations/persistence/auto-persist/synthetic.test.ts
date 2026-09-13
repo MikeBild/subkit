@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { isCompletedWorkflowPreparation } from "./synthetic.ts";
 
 test("only a completed held workflow preparation counts as successful preparation", () => {

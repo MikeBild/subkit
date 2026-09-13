@@ -8,6 +8,7 @@
 // below pin that contract.
 
 import { describe, expect, test } from "bun:test";
+
 import type { AuthoringSummary, DraftDocument } from "../../types.ts";
 import {
   CHAT_READONLY_TOOLS,

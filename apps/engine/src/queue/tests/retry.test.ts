@@ -5,6 +5,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Job, PgBoss } from "pg-boss";
+
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createBoss, disposeBoss } from "../boss.ts";
 

@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { List, MessageSquarePlus, PanelRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+
 import {
   apiRequest,
+  cancelConversation,
   type Conversation,
   type ConversationReference,
-  cancelConversation,
   getConversation,
   listConversations,
   renameConversation,
@@ -92,6 +93,7 @@ import { patchCandidateId, toolPartVerdict } from "@/lib/tool-parts";
 import { isStaleCall, toolLabel, toolOutcomeKey } from "@/lib/tool-presentation";
 import { cn } from "@/lib/utils";
 import { useMentionCandidates } from "@/queries/mention-sources";
+
 import { ConversationList } from "./chat-conversation-list";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";

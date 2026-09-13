@@ -3,6 +3,7 @@
 // provider-side storage). No I/O, no LLM calls.
 
 import { describe, expect, test } from "bun:test";
+
 import { toAiSdkParts } from "./persist.ts";
 
 describe("toAiSdkParts — file_part and text_extract", () => {

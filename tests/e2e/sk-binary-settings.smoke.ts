@@ -13,10 +13,11 @@
 // non-interactive guardrail keeps `sk settings configure` usable in
 // pipelines / containers without a TTY.
 
-import { describe, expect, test } from "bun:test";
-import { type SpawnSyncReturns, spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const REPO_ROOT = resolve(import.meta.dir, "..", "..");
 const BINARY = resolve(REPO_ROOT, "dist", "sk");

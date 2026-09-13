@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
+/* eslint-disable no-template-curly-in-string -- literal `${...}` placeholder tokens are part of the tested grammar. */
 //
 // Fix G — hold-writes mode (`RunOptions.hold_writes`): side-effect-safe
 // previews. Write-classified steps are fully RESOLVED (URL, headers,
@@ -14,6 +14,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { closeAllPools } from "../../connectors/drivers/postgres.ts";
 import { connectors, executionSteps } from "../../db/schema/index.ts";
 import { runExecution } from "../engine.ts";

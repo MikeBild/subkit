@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+
 import { ConnectorPromotionError } from "../../../../connectors/index.ts";
 import type { ConversationTool } from "../../index.ts";
 

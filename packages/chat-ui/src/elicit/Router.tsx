@@ -9,6 +9,7 @@
 import type { PendingElicitation } from "@cli-core/index.ts";
 import { Box, Text } from "ink";
 import type React from "react";
+
 import { useTheme } from "../theme/Provider.tsx";
 import { type ChoiceOption, ChoicePrompt } from "./ChoicePrompt.tsx";
 import { type ConfirmKind, ConfirmPrompt } from "./ConfirmPrompt.tsx";

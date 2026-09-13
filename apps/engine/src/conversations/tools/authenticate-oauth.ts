@@ -38,6 +38,7 @@ import {
   OAuthApprovalInputSchema,
 } from "@shared/elicitation-constants.ts";
 import { and, desc, eq, gt } from "drizzle-orm";
+
 import { getConnector } from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import { startAuthorizationCode } from "../../credentials/oauth2/client.ts";

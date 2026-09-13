@@ -23,6 +23,7 @@ import { createRoute, z } from "@hono/zod-openapi";
 // Header names + allowed values come from the shared package directly
 // — the engine's audit/audit-source.ts only adds the Zod wrappers.
 import { AUDIT_SOURCE_HEADER, DEPLOY_VERSION_HEADER } from "@shared/audit-source.ts";
+
 import { ErrorSchema } from "../../api/common-schemas.ts";
 // `@shared` is a separate package, so importing the constants above
 // satisfies the route_layering invariant. The engine-side Zod
@@ -30,8 +31,8 @@ import { ErrorSchema } from "../../api/common-schemas.ts";
 // barrel `index.ts` per AGENTS.md.
 import {
   AuditAction,
-  AuditSourceEnum,
   auditAwait,
+  AuditSourceEnum,
   DeployVersionSchema,
   SYSTEM_TENANT_ID,
 } from "../../audit/index.ts";

@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+
 import { withMcpConfigDefaults } from "../../connectors/config-schemas.ts";
 import type { RecognizedAuth } from "../../connectors/discovery/recognize-auth.ts";
 import { recognizeAuthFromSchemes } from "../../connectors/discovery/recognize-auth.ts";

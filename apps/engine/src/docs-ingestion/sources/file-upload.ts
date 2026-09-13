@@ -21,18 +21,11 @@ import {
   parseMarkdownChunks,
 } from "../../knowledge/parsers.ts";
 import { byteLen } from "../chunker.ts";
-import { type BinaryFormat, PDF_PAGE_SEPARATOR, parseBinaryFile } from "../parsers/index.ts";
+import { type BinaryFormat, parseBinaryFile, PDF_PAGE_SEPARATOR } from "../parsers/index.ts";
 import type { RawChunk } from "../types.ts";
 
 export type FileUploadFormat =
-  | "json"
-  | "yaml"
-  | "csv"
-  | "xml"
-  | "markdown"
-  | "html"
-  | "plaintext"
-  | BinaryFormat;
+  "json" | "yaml" | "csv" | "xml" | "markdown" | "html" | "plaintext" | BinaryFormat;
 
 export class UnsupportedFileUploadError extends Error {
   constructor(format: string) {
@@ -191,7 +184,6 @@ export function parseSimpleYaml(text: string): Record<string, unknown> {
     if (key === undefined || value === undefined) continue;
     if (currentKey && currentList) {
       out[currentKey] = currentList;
-      currentList = null;
     }
     if (value === "") {
       currentKey = key;

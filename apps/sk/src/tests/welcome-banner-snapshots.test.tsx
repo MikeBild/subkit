@@ -8,6 +8,7 @@
 // test).
 
 import { describe, expect, test } from "bun:test";
+
 import type { EngineClient } from "../engine-client.ts";
 import { WelcomeBanner } from "../repl/welcome-banner.tsx";
 import { SettingsModal } from "../settings-ui/SettingsModal.tsx";

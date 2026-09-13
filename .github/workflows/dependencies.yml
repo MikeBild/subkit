@@ -1,0 +1,65 @@
+name: Dependency baseline
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.21.0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: node scripts/check-dependency-baseline.mjs
+      - run: bun run check:ai-sdk
+      - run: git diff --exit-code
+  native-build:
+    name: Native build and execution
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
+          - os: macos-14
+          - os: macos-15-intel
+          - os: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.21.0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bun run build:all
+      - name: Execute the native artifacts
+        run: ./dist/sk --version && ./dist/engine --version
+      - name: Build and execute the Linux image
+        if: runner.os == 'Linux'
+        run: "docker build --tag dependency-verification .
+
+          docker run --rm --entrypoint /usr/local/bin/engine.bin dependency-verification --version
+
+          "
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-${{ matrix.os }}
+          path: dist/
+          if-no-files-found: error
+"on":
+  pull_request: null
+  push:
+    branches:
+      - main
+  workflow_dispatch: null

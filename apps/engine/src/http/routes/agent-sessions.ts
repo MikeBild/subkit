@@ -5,10 +5,11 @@
 // queue and every learning lands as a `proposed` skill candidate.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { DOMAIN_SLUG_RE } from "../../agent/briefing.ts";
 import { TRANSCRIPT_MAX_CHARS } from "../../agent/sessions.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
-import { AuditAction, audit } from "../../audit/index.ts";
+import { audit, AuditAction } from "../../audit/index.ts";
 import type { AgentSessionAnalyzeJob } from "../../queue/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

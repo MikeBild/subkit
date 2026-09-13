@@ -44,6 +44,7 @@
 // be made safely while the list is unexamined.
 
 import { describe, expect, test } from "bun:test";
+
 import { conversationToolProvider } from "../index.ts";
 import type { ToolListFilter } from "../registry.ts";
 

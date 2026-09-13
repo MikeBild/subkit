@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { CATALOGS, type TranslationKey, translate } from "@/lib/i18n";
+
+import { describe, expect, test } from "bun:test";
+
+import { CATALOGS, translate, type TranslationKey } from "@/lib/i18n";
 import {
   createLocaleStore,
   LOCALE_STORAGE_KEY,

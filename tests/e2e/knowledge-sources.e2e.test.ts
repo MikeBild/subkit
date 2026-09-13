@@ -9,6 +9,7 @@
 // LLM: mock — embeddings/search run through the mock provider.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { uniqueSuffix } from "./_helpers/factories.ts";
 import { apiClient } from "./_helpers/http.ts";
 import { pollUntil } from "./_helpers/poll.ts";

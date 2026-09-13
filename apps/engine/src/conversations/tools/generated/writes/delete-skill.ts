@@ -10,6 +10,7 @@
 // not route through the dispatcher's descriptor.rbac yet.
 
 import { z } from "@hono/zod-openapi";
+
 import type { ConversationTool, ToolResult } from "../../index.ts";
 
 const DeleteSkillInput = z.object({ id: z.string().uuid() }).openapi("DeleteSkillToolInput");

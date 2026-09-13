@@ -45,7 +45,7 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           # Pinned to match ci.yml + release.yml.
-          bun-version: 1.3.12
+          bun-version: 1.4.2
 
       - name: Cache Bun install
         uses: actions/cache@v6

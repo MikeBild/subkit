@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 
 const NOW = Date.parse("2026-08-18T12:00:00.000Z");

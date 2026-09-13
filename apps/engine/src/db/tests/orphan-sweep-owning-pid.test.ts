@@ -15,6 +15,7 @@
 // leftover of a process that is gone. These cases pin that predicate.
 
 import { describe, expect, test } from "bun:test";
+
 import { isPidAlive, owningPidFromTestDbName } from "./setup.ts";
 
 describe("orphan sweep — owning pid", () => {

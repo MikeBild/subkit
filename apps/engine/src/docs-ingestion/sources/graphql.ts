@@ -189,6 +189,7 @@ export async function fetchIntrospection(
   } catch (err) {
     throw new Error(
       `graphql introspection parse failed: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
   if (parsed.errors) {

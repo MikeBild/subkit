@@ -18,6 +18,7 @@ import { reportCommandError } from "@cli-core/errors.ts";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
+
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { runSettingsApp } from "../settings-ui/index.ts";

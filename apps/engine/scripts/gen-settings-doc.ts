@@ -53,8 +53,7 @@ function renderSection(section: string, leaves: ConfigLeaf[]): string {
           def?: { shape?: Record<string, { description?: string; meta?: () => unknown }> };
         }
       ).def?.shape?.[section] as
-        | { description?: string; meta?: () => { description?: string } | undefined }
-        | undefined
+        { description?: string; meta?: () => { description?: string } | undefined } | undefined
     )?.meta?.()?.description ?? "";
 
   const sortedLeaves = [...leaves].sort((a, b) => dottedPath(a).localeCompare(dottedPath(b)));

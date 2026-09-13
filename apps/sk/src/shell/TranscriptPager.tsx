@@ -15,6 +15,7 @@ import type { ToolCallState } from "@cli-core/index.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { memo, useState } from "react";
+
 import { DiffCard } from "../repl/diff-cell.tsx";
 import { detectPlanSteps, PlanCard } from "../repl/plan-cell.tsx";
 import { VirtualTranscript } from "./VirtualTranscript.tsx";

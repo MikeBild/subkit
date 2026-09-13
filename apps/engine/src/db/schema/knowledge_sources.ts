@@ -24,6 +24,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+
 import { tenantId, timestamps } from "./_common.ts";
 import { files } from "./files.ts";
 import { tenants } from "./identity.ts";
@@ -68,7 +69,10 @@ export const knowledgeSources = pgTable(
     // Auto-generated topical/routing tags (or operator-supplied). REPLACE
     // semantics in the service guard against array-doubling; the GIN index
     // below powers the `&&` overlap tag filter in `searchKnowledge`.
-    tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+    tags: text("tags")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     scope: knowledgeSourceScopeEnum("scope").notNull().default("global"),
     workflow_id: uuid("workflow_id").references(() => workflows.id, { onDelete: "set null" }),
     status: knowledgeSourceStatusEnum("status").notNull().default("active"),

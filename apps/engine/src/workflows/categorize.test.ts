@@ -1,6 +1,7 @@
 // Unit tests for the derived catalog categories. Pure functions — no DB.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   deriveCategories,
   groupByCategory,

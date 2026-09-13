@@ -2,6 +2,7 @@
 // files instead of being UTF-8-decoded. Pure decision matrix, no I/O.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   filenameFromResponse,
   PROMOTE_SIZE_THRESHOLD_BYTES,

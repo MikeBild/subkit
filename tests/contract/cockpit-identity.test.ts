@@ -20,13 +20,15 @@
 //
 // tests/contract/ because CI's shard job runs `apps packages` only
 // (LOCAL-SK-SCRIPTS-TESTS-NICHT-IN-CI). `bun run test:contract` runs this.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { type Browser, chromium } from "playwright";
+
 import {
   expectedIdentity,
   IDENTITY_META,

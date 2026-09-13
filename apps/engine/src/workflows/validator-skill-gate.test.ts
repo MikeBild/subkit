@@ -5,6 +5,7 @@
 // integration suite. This file pins just the shape comparison.
 
 import { describe, expect, test } from "bun:test";
+
 import { validateOutputSchemaSuperset } from "./validator.ts";
 
 describe("validateOutputSchemaSuperset", () => {

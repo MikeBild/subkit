@@ -10,6 +10,7 @@
 // confirmation.
 
 import { describe, expect, test } from "bun:test";
+
 import { DANGEROUS_TOOLS } from "../dangerous-tools.ts";
 import { listTools } from "../tools/index.ts";
 

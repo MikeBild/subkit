@@ -5,6 +5,7 @@
 // retries safe. The unique PK constraint on `audit_log.id` enforces this.
 
 import { sql } from "drizzle-orm";
+
 import { scrubAuditEntry } from "../audit/scrub.ts";
 import type { AuditEntry } from "../audit/types.ts";
 import { logger } from "../logging/logger.ts";

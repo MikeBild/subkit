@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { upsertCredential } from "../credentials/service.ts";
 import {
@@ -9,8 +10,8 @@ import {
   conversations,
   conversationToolCalls,
   credentials,
-  executionSteps,
   executions,
+  executionSteps,
   tenants,
   toolApprovals,
   workflowExecutionAuthorities,

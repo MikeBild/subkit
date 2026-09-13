@@ -8,6 +8,7 @@
 // what we want.
 
 import { describe, expect, test } from "bun:test";
+
 import { resolveToolMode, type ToolPolicies } from "../../conversations/tool-policies.ts";
 
 const EMPTY_OVERRIDES: ToolPolicies = {};

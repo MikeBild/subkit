@@ -9,8 +9,10 @@
 // are encoded with Node's own base64url encoder so the decode path is
 // verified against an independent implementation.
 
-import { describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
+
+import { describe, expect, test } from "bun:test";
+
 import { runJs } from "../../runtime.ts";
 
 const run = <T>(code: string, input: unknown): Promise<T> =>

@@ -7,11 +7,12 @@
 // is capped at the horizon.
 
 import { describe, expect, test } from "bun:test";
+
 import { LlmProviderError } from "../../llm/errors.ts";
 import {
+  planProviderLimitPark,
   PROVIDER_LIMIT_PARK_MAX,
   PROVIDER_LIMIT_PARK_MAX_HORIZON_MS,
-  planProviderLimitPark,
   QUOTA_PARK_BASE_DELAY_MS,
   RATE_LIMIT_PARK_BASE_DELAY_MS,
 } from "./provider-limit-park.ts";

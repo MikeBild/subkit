@@ -9,6 +9,7 @@
 // pure classifier so failures are easy to pinpoint.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   detectEnvelopeResolution,
   detectMultiArtifactIntent,

@@ -7,6 +7,7 @@
 // the warning-code path is unchanged.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   REPAIR_LOOP_TRIP_THRESHOLD,
   type RepairSignalRow,

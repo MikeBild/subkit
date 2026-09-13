@@ -34,6 +34,7 @@
 // it takes a ChatAdapter at runtime so tests can plug in a fake.
 
 import { and, eq, like } from "drizzle-orm";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { principalOrigin } from "../auth/origin.ts";

@@ -15,11 +15,13 @@
 // A mock OIDC server backs `startAuthorizationCode` so no real provider
 // is contacted; the MCP `ElicitationBridge` is a structural stub.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import {
   type MockOAuthServer,

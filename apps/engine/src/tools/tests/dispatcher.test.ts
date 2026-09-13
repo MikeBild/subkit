@@ -10,6 +10,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { AuditAction, ToolDispatchPolicyDeniedMetadataSchema } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { runWorkflowTool } from "../../conversations/tools/generated/writes/run-workflow.ts";
@@ -38,7 +39,7 @@ const PRINCIPAL: ResolvedPrincipal = {
   permission_grants: [],
   role_ids: [],
   api_key_id: null,
-  // biome-ignore lint/suspicious/noExplicitAny: stub for tests
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub for tests
 } as any;
 
 // The dispatcher hits auditAwait() on confirm paths; we pass a stub `db`
@@ -50,13 +51,13 @@ const PRINCIPAL: ResolvedPrincipal = {
 // beforeAll/afterAll window (mcp-oauth audience tests) can set one
 // concurrently, so this stub must survive that path instead of exploding
 // with "db.update is not a function" depending on scheduling.
-// biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- drizzle chain shape
 const UPDATE_STUB: any = {
   set: () => UPDATE_STUB,
   where: () => UPDATE_STUB,
   returning: () => Promise.resolve([]),
 };
-// biome-ignore lint/suspicious/noExplicitAny: drizzle Db shape
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- drizzle Db shape
 const DB_STUB: any = {
   transaction: async (fn: (db: unknown) => unknown) => fn(DB_STUB),
   insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
@@ -90,7 +91,7 @@ afterAll(async () => {
  *  against. `principal_id` carries no FK (polymorphic), so only tenant_id
  *  needs to be real. */
 function dbPrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrincipal {
-  // biome-ignore lint/suspicious/noExplicitAny: mirrors the PRINCIPAL stub above
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors the PRINCIPAL stub above
   return { ...(PRINCIPAL as any), tenant_id: dbTenantId, ...overrides } as ResolvedPrincipal;
 }
 
@@ -506,7 +507,7 @@ describe("tools/dispatcher — RBAC denial path", () => {
       resource_id?: string | undefined;
       metadata?: Record<string, unknown> | undefined;
     }> = [];
-    // biome-ignore lint/suspicious/noExplicitAny: stub for tests
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub for tests
     const emptySelectChain: any = {
       from: () => emptySelectChain,
       where: () => emptySelectChain,
@@ -515,7 +516,7 @@ describe("tools/dispatcher — RBAC denial path", () => {
       limit: () => Promise.resolve([]),
       orderBy: () => Promise.resolve([]),
     };
-    // biome-ignore lint/suspicious/noExplicitAny: stub for tests
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub for tests
     const captureDb: any = {
       transaction: async (fn: (db: unknown) => unknown) => fn(captureDb),
       select: () => emptySelectChain,
@@ -596,7 +597,7 @@ describe("tools/dispatcher — RBAC denial path", () => {
     // A tenant_write tool with descriptor.rbac denied must not produce
     // an APPROVAL_REQUESTED audit row — only POLICY_DENIED.
     const captured: Array<{ action?: string | undefined }> = [];
-    // biome-ignore lint/suspicious/noExplicitAny: stub for tests
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub for tests
     const emptySelectChain: any = {
       from: () => emptySelectChain,
       where: () => emptySelectChain,
@@ -605,7 +606,7 @@ describe("tools/dispatcher — RBAC denial path", () => {
       limit: () => Promise.resolve([]),
       orderBy: () => Promise.resolve([]),
     };
-    // biome-ignore lint/suspicious/noExplicitAny: stub for tests
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub for tests
     const captureDb: any = {
       transaction: async (fn: (db: unknown) => unknown) => fn(captureDb),
       select: () => emptySelectChain,

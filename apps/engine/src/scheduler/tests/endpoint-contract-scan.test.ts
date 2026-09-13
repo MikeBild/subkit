@@ -17,6 +17,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { connectors, events, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
@@ -179,7 +180,7 @@ describe("endpoint-contract scan", () => {
 
   test("placeholdered paths are never probed", async () => {
     const connectorId = await seedConnector(tenantId, "contract-placeholder");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal placeholder syntax is the subject under test
+    // eslint-disable-next-line no-template-curly-in-string -- the literal placeholder syntax is the subject under test
     await seedCommittedWorkflow(tenantId, "wf-ph", connectorId, "/items/${input.id}");
     requestedPaths = [];
 

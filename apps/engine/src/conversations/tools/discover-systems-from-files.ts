@@ -24,8 +24,10 @@
 // how `discover_connector_endpoints` persists its index.
 
 import { createHash } from "node:crypto";
+
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+
 import { recordKnowledgeSourceCandidatesSynthesized } from "../../audit/recorders/index.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";

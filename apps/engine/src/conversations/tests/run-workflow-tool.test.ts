@@ -1,4 +1,3 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 // Side-effect import FIRST: initialize the conversation tool registry
 // before the direct run-workflow.ts import below. Entering the module
 // graph at run-workflow.ts trips the generated/writes/index.ts init
@@ -6,7 +5,10 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 // subset; going through the registry index loads the same modules in a
 // cycle-safe order.
 import "../tools/index.ts";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import {
   auditLog,
   conversations,
@@ -86,7 +88,7 @@ function buildToolCtx(params: {
   setDraft: (next: DraftDocument) => Promise<void>;
   afterWorkflowRead?: (id: string) => Promise<void>;
 }): ToolContext {
-  // biome-ignore lint/suspicious/noExplicitAny: minimal stub matching ToolContext
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub matching ToolContext
   const engineClientStub: any = {
     context: {
       actor_id: ctx.user_id,
@@ -773,9 +775,9 @@ describe("run_workflow tool", () => {
               multipart: [
                 {
                   name: "file",
-                  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
+                  // eslint-disable-next-line no-template-curly-in-string -- literal ${...} placeholder is the fixture under test.
                   value: "${input.markdown}",
-                  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
+                  // eslint-disable-next-line no-template-curly-in-string -- literal ${...} placeholder is the fixture under test.
                   filename: "${input.filename}",
                 },
               ],
@@ -870,9 +872,9 @@ describe("run_workflow tool", () => {
               id: "upload",
               kind: "request",
               method: "POST",
-              // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
+              // eslint-disable-next-line no-template-curly-in-string -- literal ${...} placeholder is the fixture under test.
               url: "https://files.example.test/upload/${input.filename}",
-              // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
+              // eslint-disable-next-line no-template-curly-in-string -- literal ${...} placeholder is the fixture under test.
               body: { content: "${input.markdown}" },
             },
           ],
@@ -959,7 +961,7 @@ describe("run_workflow tool", () => {
               kind: "request",
               method: "POST",
               url: "https://files.example.test/upload",
-              // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
+              // eslint-disable-next-line no-template-curly-in-string -- literal ${...} placeholder is the fixture under test.
               body: { content: "${input.markdown}" },
             },
           ],

@@ -33,6 +33,7 @@
 // end-to-end (unchanged, pg-boss-retried path).
 
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 import { chatWorkspaces } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
@@ -54,9 +55,7 @@ import type { ChatEvent, ChatPlatform } from "./types.ts";
  *               `{ ok:true }`. The queue worker owns the whole event.
  */
 export type ChatSyncResult =
-  | { deliver: "sync"; text: string }
-  | { deliver: "acked" }
-  | { deliver: "defer" };
+  { deliver: "sync"; text: string } | { deliver: "acked" } | { deliver: "defer" };
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

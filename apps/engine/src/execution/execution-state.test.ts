@@ -10,8 +10,9 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
-import { auditLog, executionSteps, executions, tenants } from "../db/schema/index.ts";
+import { auditLog, executions, executionSteps, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { runExecution } from "./engine.ts";

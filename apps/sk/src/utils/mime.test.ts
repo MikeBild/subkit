@@ -4,6 +4,7 @@
 // and case-insensitive matching.
 
 import { describe, expect, test } from "bun:test";
+
 import { detectMime, MIME_MAP } from "./mime.ts";
 
 describe("detectMime — common extensions", () => {

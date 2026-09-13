@@ -3,6 +3,7 @@
 // empty array and the assembled prompt simply omits the section.
 
 import { and, desc, eq } from "drizzle-orm";
+
 import { readDiscoveryIndexForBaseUrl } from "../../../connectors/discovery/service.ts";
 import type { ConnectorSelfDescription } from "../../../connectors/types.ts";
 import type { Executor } from "../../../db/client.ts";

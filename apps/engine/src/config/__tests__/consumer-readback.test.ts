@@ -6,10 +6,12 @@
 // the round-trip + on-disk file tests prove the storage path; this
 // test proves the read path.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import {
   _disableReadSamplingForTests,
   _enableReadSamplingForTests,
@@ -39,9 +41,8 @@ afterEach(() => {
 
 describe("consumer read-back per subsystem", () => {
   test("egress-guard sees egress.mode change without a re-import", async () => {
-    const { assertEgressAllowed, EgressBlockedError } = await import(
-      "../../connectors/egress-guard.ts"
-    );
+    const { assertEgressAllowed, EgressBlockedError } =
+      await import("../../connectors/egress-guard.ts");
     // Default mode is null → falls back to NODE_ENV. NODE_ENV=test
     // → permissive. A private host should pass.
     expect(() => assertEgressAllowed("http://10.0.0.1/x", {})).not.toThrow();
@@ -52,9 +53,8 @@ describe("consumer read-back per subsystem", () => {
   });
 
   test("egress-guard inverse: permissive mode allows what strict blocks", async () => {
-    const { assertEgressAllowed, EgressBlockedError } = await import(
-      "../../connectors/egress-guard.ts"
-    );
+    const { assertEgressAllowed, EgressBlockedError } =
+      await import("../../connectors/egress-guard.ts");
     // Pre-condition: flip to strict so the private host is currently blocked.
     await setConfigKey("egress.mode", "strict", { force: true });
     expect(() => assertEgressAllowed("http://10.0.0.2/y", {})).toThrow(EgressBlockedError);
@@ -330,7 +330,7 @@ describe("consumer read-back per subsystem", () => {
     const counter = _enableReadSamplingForTests();
     counter.clear();
     // Read once.
-    getConfig().llm.api_key;
+    void getConfig().llm.api_key;
     expect(counter.get("global") ?? 0).toBeGreaterThanOrEqual(1);
 
     // setConfigKey itself reads getConfig internally (for the

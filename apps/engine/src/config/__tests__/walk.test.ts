@@ -3,6 +3,7 @@
 // generator have full coverage.
 
 import { describe, expect, test } from "bun:test";
+
 import { dottedPath, findLeafByPath, listConfigLeaves } from "../walk.ts";
 
 describe("listConfigLeaves", () => {

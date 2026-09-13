@@ -6,14 +6,15 @@
 //   - soft-deleted files NOT in list_resources
 //   - unknown fid → read_resource throws (no cross-tenant leak)
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type {
   ListResourcesRequest,
   ListResourcesResult,
   ReadResourceRequest,
   ReadResourceResult,
 } from "@modelcontextprotocol/sdk/types.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { conversations, files } from "../../db/schema/index.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";

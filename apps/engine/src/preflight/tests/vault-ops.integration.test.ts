@@ -14,10 +14,12 @@
 // with its AAD intact — because a stored revision holds the literal
 // `secret://name/version` string and a new version would orphan it.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { _resetConfigForTests, getConfig, loadConfig } from "../../config/loader.ts";
 import { encryptSecretWithKey, parseMasterKeyHex } from "../../crypto/aes-gcm.ts";
 import { runtimeSecretVersions } from "../../db/schema/index.ts";

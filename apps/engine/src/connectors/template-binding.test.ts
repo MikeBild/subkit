@@ -9,6 +9,7 @@
 //                       garbled snapshot)
 
 import { describe, expect, test } from "bun:test";
+
 import {
   getConnectorCapabilities,
   getConnectorProbeEndpoint,

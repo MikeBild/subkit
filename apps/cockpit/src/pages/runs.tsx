@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import { Search } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
@@ -34,8 +35,8 @@ import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   formatRunDuration,
-  RUN_STATUSES,
   requestSourceLabel,
+  RUN_STATUSES,
   runAuthorityFacts,
   runDurationMs,
   runName,
@@ -44,7 +45,7 @@ import {
 
 // Re-exported so callers that already know these names keep working; the
 // definitions live in the pure model module beside its test.
-export { formatRunDuration, RUN_STATUSES, requestSourceLabel, runDurationMs, runName };
+export { formatRunDuration, requestSourceLabel, RUN_STATUSES, runDurationMs, runName };
 
 type Execution = components["schemas"]["Execution"];
 type ExecutionList = components["schemas"]["ExecutionListResponse"];

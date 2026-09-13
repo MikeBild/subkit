@@ -8,9 +8,11 @@
 //   - cross-tenant source conversation → 404
 //   - anchor message that doesn't exist → 404
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
+
 import {
   apiKeys,
   auditLog,

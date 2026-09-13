@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+
 import { flush, waitFor, waitForJson } from "../wait.ts";
 
 describe("wait", () => {

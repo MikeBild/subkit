@@ -7,6 +7,7 @@
 // without a real model.
 
 import { describe, expect, test } from "bun:test";
+
 import { EMBED_SUBBATCH, embedChunkTextsPaced } from "../local-provider.ts";
 
 /** A vector stand-in keyed by index so we can assert order is preserved. */

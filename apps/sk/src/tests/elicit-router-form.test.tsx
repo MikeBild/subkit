@@ -5,9 +5,9 @@
 // exposed: if Router drops or misshapes the `fields` payload, or if
 // FormPrompt regresses on Tab, the assertion here will fail.
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
 import { ElicitRouter } from "@chat-ui/index.ts";
 import type { PendingElicitation } from "@cli-core/index.ts";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 
 async function yieldTick(ms = 40): Promise<void> {

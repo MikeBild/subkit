@@ -3,6 +3,7 @@
 //   POST /v1/connectors/{id}/end-user-credentials    — end-user-scoped
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";

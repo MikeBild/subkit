@@ -21,8 +21,10 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+
 import * as prompts from "@clack/prompts";
 import { defineCommand } from "citty";
+
 import {
   configPath,
   DEFAULT_ENGINE_URL,

@@ -14,6 +14,7 @@
 //   6. /metrics exposes every new counter registered in observability
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { boot, cli, type E2EEnv, expectSuccess, shutdown } from "./setup.ts";
 
 let env: E2EEnv;

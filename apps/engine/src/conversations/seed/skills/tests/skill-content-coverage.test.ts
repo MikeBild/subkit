@@ -3,9 +3,10 @@
 // Whenever a new schema-level field lands, add a presence check here
 // so the doc isn't silently behind the schema.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const SKILLS = join(import.meta.dir, "..");
 

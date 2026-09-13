@@ -5,14 +5,15 @@
 // they touch. So this test holds the list against the routes actually
 // registered, and pins the two renderings.
 
-import { describe, expect, test } from "bun:test";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { ESSENTIAL_PATHS } from "@shared/llms-index.ts";
+import { describe, expect, test } from "bun:test";
+
 import type { AppEnv } from "../openapi.ts";
 import { COMPOSE_YAML, registerComposeRoute } from "./compose.ts";
 import { registerInstallSkillRoute } from "./install-skill.ts";
 import { registerLlmsTxtRoutes } from "./llms-txt.ts";
-import { ROOT_ENTRY_PATHS, registerRootRoute } from "./root.ts";
+import { registerRootRoute, ROOT_ENTRY_PATHS } from "./root.ts";
 
 async function get(path: string, headers: Record<string, string> = {}): Promise<Response> {
   const app = new OpenAPIHono<AppEnv>();

@@ -2,10 +2,11 @@
 // application container while no application volume or /data mount exists.
 
 import { beforeAll, describe, expect, test } from "bun:test";
+
 import {
-  type DockerEnv,
   dockerApi,
   dockerBoot,
+  type DockerEnv,
   engineMounts,
   replaceEngineContainer,
 } from "./_harness.ts";

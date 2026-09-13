@@ -3,6 +3,7 @@
 // counts; the returned ask is the closing paragraph, capped.
 
 import { describe, expect, test } from "bun:test";
+
 import { closingProseQuestion } from "../prose-question.ts";
 
 describe("closingProseQuestion", () => {

@@ -1,5 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
+
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { RequestDispatchPolicy } from "../connectors/drivers/http.ts";
@@ -7,8 +9,8 @@ import { loadConnectorSystem } from "../connectors/system.ts";
 import type { Db } from "../db/client.ts";
 import {
   credentials,
-  executionSteps,
   executions,
+  executionSteps,
   toolApprovals,
   workflows,
 } from "../db/schema/index.ts";

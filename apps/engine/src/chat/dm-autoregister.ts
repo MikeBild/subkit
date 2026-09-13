@@ -29,6 +29,7 @@
 // per-workspace token back).
 
 import { and, eq } from "drizzle-orm";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { encryptSecret } from "../crypto/aes-gcm.ts";
@@ -39,9 +40,7 @@ import { chatWorkspaceAad } from "./api.ts";
 import { type ChatEvent, PLATFORM_HAS_GLOBAL_USER_IDS } from "./types.ts";
 
 export type DmAutoRegistrationDenial =
-  | "not_dm_autoregistrable"
-  | "dm_sender_not_linked"
-  | "dm_sender_ambiguous";
+  "not_dm_autoregistrable" | "dm_sender_not_linked" | "dm_sender_ambiguous";
 
 export type DmAutoRegistrationResult =
   | { workspace: typeof chatWorkspaces.$inferSelect; user_id: string }

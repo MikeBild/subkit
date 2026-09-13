@@ -4,6 +4,7 @@
 //   - parse judge output deterministically into a structured verdict.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { invokeJudge, judgeEnabled, parseJudgeResponse, shouldInvokeJudge } from "../llm-judge.ts";
 
 describe("llm-judge", () => {

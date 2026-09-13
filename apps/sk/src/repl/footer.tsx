@@ -27,6 +27,7 @@ import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
+
 import { formatTokens } from "../render/format.ts";
 import type { PermissionMode } from "./status-line/render.ts";
 

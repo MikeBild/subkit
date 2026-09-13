@@ -6,6 +6,7 @@
 // EXECUTION_COMPLETED so the trail is consistent with full runs.
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import {

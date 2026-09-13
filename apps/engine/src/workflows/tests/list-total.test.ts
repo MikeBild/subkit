@@ -9,10 +9,11 @@
 // page as the universe.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { tenants, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
-import { listWorkflowSummaries, listWorkflows } from "../service.ts";
+import { listWorkflows, listWorkflowSummaries } from "../service.ts";
 
 let ctx: TestDb;
 let tenantA = "";

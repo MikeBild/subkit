@@ -4,6 +4,7 @@
 // CLI-friendly richer `completed` frame that carries usage.
 
 import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
+
 import { parseRenderableMessageContent, type RenderableMessagePart } from "./message-parts.ts";
 
 // The renderable-message parsing concern (persisted `content` payload →

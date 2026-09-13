@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of tested workflow definitions, not template literals.
+/* eslint-disable no-template-curly-in-string -- literal `${...}` placeholder tokens are part of tested workflow definitions, not template literals. */
 //
 // run_workflow hold-writes integration tests.
 //
@@ -17,6 +17,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { auditLog, conversations, workflows, workflowVersions } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";

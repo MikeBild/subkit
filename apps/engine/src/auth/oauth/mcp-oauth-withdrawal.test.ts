@@ -17,6 +17,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
 import { mcpOauthClients, users } from "../../db/schema/index.ts";
 import type { HttpTestServer } from "../../http/tests/setup.ts";

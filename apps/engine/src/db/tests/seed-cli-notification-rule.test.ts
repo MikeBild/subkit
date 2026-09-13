@@ -9,6 +9,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { notificationRules, tenants } from "../schema/index.ts";
 import { seedDefaultCliNotificationRule } from "../seed.ts";
 import { createTestDb, type TestDb } from "./setup.ts";

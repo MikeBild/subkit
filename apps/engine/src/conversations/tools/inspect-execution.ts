@@ -12,6 +12,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { desc, eq } from "drizzle-orm";
+
 import { executions } from "../../db/schema/index.ts";
 import { buildExecutionDiagnosis } from "./execution-diagnosis.ts";
 import type { ConversationTool } from "./index.ts";

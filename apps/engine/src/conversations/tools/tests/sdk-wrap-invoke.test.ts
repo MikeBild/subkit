@@ -5,6 +5,7 @@
 // surfaces.
 
 import { describe, expect, it } from "bun:test";
+
 import * as errorCodes from "../error-codes.ts";
 import { buildCapAlternatives, ERROR_CODE_ALTERNATIVES } from "../sdk-wrap/error-recovery-hints.ts";
 
@@ -203,7 +204,7 @@ describe("ERROR_CODE_ALTERNATIVES catalogue completeness", () => {
         ) {
           const src = fs.readFileSync(full, "utf8");
           let m: RegExpExecArray | null;
-          // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex loop
+          // eslint-disable-next-line no-cond-assign -- idiomatic regex loop
           while ((m = literalRe.exec(src)) !== null) {
             const code = m[1];
             if (code) literals.add(code);

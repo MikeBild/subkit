@@ -4,6 +4,7 @@
 // trigger blocks reject at parse time.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   ScheduleTriggerSchema,
   TriggerSchema,

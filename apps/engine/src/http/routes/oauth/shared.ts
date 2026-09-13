@@ -1,9 +1,11 @@
 // Shared helpers, constants, and schemas for MCP OAuth 2.1 route files.
 
 import { createHash } from "node:crypto";
+
 import { and, eq } from "drizzle-orm";
 import * as jose from "jose";
 import { z } from "zod";
+
 import type { ResolvedPrincipal } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import type { Db } from "../../../db/client.ts";

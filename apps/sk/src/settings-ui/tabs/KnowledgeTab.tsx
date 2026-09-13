@@ -10,9 +10,11 @@
 
 import { readFile, stat } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
+
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
+
 import type { EngineClient } from "../../engine-client.ts";
 import { ConsentPrompt } from "../../repl/components/ConsentPrompt.tsx";
 import { checkIngestGuard } from "../lib/knowledge-ingest-guard.ts";

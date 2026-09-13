@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { hasCommand, resolveSlashCommand } from "../repl/slash/hasCommand.ts";
 import type { PersonaProbe } from "../slash.ts";
 

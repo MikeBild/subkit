@@ -1,12 +1,13 @@
 // Single-object S3 calls use the client's signer, but retain control of the
 // actual dispatch so an approval cannot follow a redirect to a different target.
 import type { S3Client } from "@bradenmacdonald/s3-lite-client";
+
 import { assertEgressAllowedResolved } from "../egress-guard.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
 import {
   checkAuthorityRedirect,
-  type ResolvedConnectorCredential,
   readBodyBytesCapped,
+  type ResolvedConnectorCredential,
   resolveMaxResponseBytes,
 } from "./http.ts";
 import type { executeS3Request, S3Response } from "./s3.ts";

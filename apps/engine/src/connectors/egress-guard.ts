@@ -16,6 +16,7 @@
 
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+
 import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
 import { getRobots } from "./robots-cache.ts";

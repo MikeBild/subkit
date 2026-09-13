@@ -9,7 +9,8 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { executionSteps, executions, tenants } from "../db/schema/index.ts";
+
+import { executions, executionSteps, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";

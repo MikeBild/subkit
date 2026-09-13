@@ -5,6 +5,7 @@
 // report.
 
 import { describe, expect, test } from "bun:test";
+
 import { computeSlackSignature, verifySlackRequest } from "../verifier.ts";
 
 const SIGNING_SECRET = "subkit-test-secret";

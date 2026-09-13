@@ -3,6 +3,7 @@
 // audience and scope, not by the normal API RBAC middleware.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { readRequestSource } from "../../../audit/index.ts";
 import { consumeCliLoginToken } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";

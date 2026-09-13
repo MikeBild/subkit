@@ -8,6 +8,7 @@
 // This is deliberately stricter than "file exists". The content matters.
 
 import { describe, expect, test } from "bun:test";
+
 import { loadEmbeddedSkillSeeds, type SeededSkill } from "../seed.ts";
 
 function loadAll(): Map<string, SeededSkill> {

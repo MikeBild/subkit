@@ -1,6 +1,7 @@
 // Unit tests for the tool-ref scanner.
 
 import { describe, expect, it } from "bun:test";
+
 import { toolScanner } from "../scanners/tool.ts";
 
 const ctx = {};

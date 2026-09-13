@@ -4,6 +4,7 @@
 // These endpoints exist for SDK consumers, CI/CD pipelines, and admin tools.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as svc from "../../knowledge/index.ts";
 import {

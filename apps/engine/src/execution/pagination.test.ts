@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { makeStrategy, paginationSignature } from "./pagination.ts";
 
 const context = {

@@ -7,6 +7,7 @@
 // pins the per-mode happy + sad paths.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
@@ -29,7 +30,7 @@ function makeToolCtx(): ToolContext {
     connector_id: null,
     workflow_id: null,
     engineClient: new EngineClient({ tenant_id, actor_id, db: ctx.db }),
-    // biome-ignore lint/suspicious/noExplicitAny: minimal draft stub for unit tests
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal draft stub for unit tests
     getDraft: () => ({ workflow: { name: "t", steps: [] } }) as any,
     setDraft: async () => {},
   };

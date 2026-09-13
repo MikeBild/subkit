@@ -14,10 +14,12 @@
 //     `model_used` is the fallback model for judge/generate and the
 //     primary for chat-frequency flows.
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+
 import { getConfig, loadConfig } from "../../../config/loader.ts";
 import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";

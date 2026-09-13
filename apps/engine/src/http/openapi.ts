@@ -4,6 +4,7 @@
 import { VERSION } from "@cli-core/version.ts";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { PgBoss } from "pg-boss";
+
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import type { RequestSource, ServiceMetadata } from "../observability/service-metadata.ts";

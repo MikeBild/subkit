@@ -1,6 +1,7 @@
 // Unit tests for the outbound CommonMark -> platform-dialect formatter.
 
 import { describe, expect, test } from "bun:test";
+
 import { formatChatText } from "../outbound-format.ts";
 
 describe("formatChatText — google_chat dialect", () => {

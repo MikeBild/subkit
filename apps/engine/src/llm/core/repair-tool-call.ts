@@ -22,6 +22,7 @@ import type {
 } from "ai";
 import { generateObject, jsonSchema } from "ai";
 import type { ZodType } from "zod";
+
 import type { AuditActorType } from "../../audit/types.ts";
 import type { Executor } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";

@@ -14,6 +14,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { browserSessionFromRequest, issueBrowserSession } from "../../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { setConfigKey } from "../../config/loader.ts";

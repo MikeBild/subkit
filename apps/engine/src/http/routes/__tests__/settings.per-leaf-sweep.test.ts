@@ -14,11 +14,13 @@
 // Drift is keyed on listConfigLeaves() — a new leaf in the schema
 // automatically extends the sweep on the next bun test run.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { METRICS_SCOPE } from "../../../auth/scopes.ts";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../../config/loader.ts";
 import { type ConfigLeaf, dottedPath, listConfigLeaves } from "../../../config/walk.ts";

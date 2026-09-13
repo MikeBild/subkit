@@ -86,7 +86,7 @@ export function outputMatchesFormat(
       // A structured output is already JSON once serialised; the only miss is
       // a non-JSON string (e.g. a markdown table where JSON was asked for).
       const trimmed = rendered.trim();
-      let parsedObject = false;
+      let parsedObject: boolean;
       try {
         const v = JSON.parse(trimmed);
         parsedObject = typeof v === "object" && v !== null;

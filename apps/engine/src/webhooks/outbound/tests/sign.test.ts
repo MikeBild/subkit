@@ -10,8 +10,10 @@
 // base         = "msg_test_00000000000000000000000.1700000000.{\"type\":\"ping\"}"
 // expected     = base64(HMAC-SHA256(secret, base))
 
-import { describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
+
+import { describe, expect, test } from "bun:test";
+
 import { sign, signatureHeader, verifySignatureHeader } from "../signer.ts";
 
 const ID = "msg_test_00000000000000000000000";

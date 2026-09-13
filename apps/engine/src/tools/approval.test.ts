@@ -14,6 +14,7 @@
 // `requestApproval`'s encrypt-then-insert are not meaningfully mockable.
 
 import { describe, expect, test } from "bun:test";
+
 import type { Db } from "../db/client.ts";
 import { consumeApproval, hashToolArgs, stripConfirmMarkers } from "./approval.ts";
 import { makeTestPrincipal } from "./tests/_helpers.ts";

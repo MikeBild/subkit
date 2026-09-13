@@ -20,6 +20,7 @@
 // existing approval pause, so the pause contract stays compatible.
 
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+
 import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import { logger } from "../../../logging/logger.ts";

@@ -13,6 +13,7 @@
 // to their own verified identity — never raw SYSTEM audit rows.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ChatPlatformZodEnum, listPendingSpacesForPrincipal } from "../../chat/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

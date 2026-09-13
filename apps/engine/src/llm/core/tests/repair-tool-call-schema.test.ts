@@ -12,7 +12,8 @@
 // the contract cannot regress without flagging it before any LLM call.
 
 import { describe, expect, it } from "bun:test";
-import { type ZodType, z } from "zod";
+import { z, type ZodType } from "zod";
+
 import { zodToJsonSchema7 } from "../../../mcp/json-schema.ts";
 import { normalizeSchema } from "../schema-normalizer.ts";
 

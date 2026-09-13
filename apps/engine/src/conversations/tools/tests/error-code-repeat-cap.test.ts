@@ -13,14 +13,15 @@
 // requires a live DB for the DB writes in wrapOne.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../../llm/tests/setup.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
-import { MAX_ERROR_CODE_REPEAT } from "../sdk-wrap/state.ts";
 import { type TurnSignals, wrapTools } from "../sdk-wrap.ts";
+import { MAX_ERROR_CODE_REPEAT } from "../sdk-wrap/state.ts";
 
 let ctx: LlmTestCtx;
 let conversation_id: string;
@@ -148,7 +149,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
     // Calls 1–MAX_ERROR_CODE_REPEAT: inner tool runs and returns
     // patch_invalid. Each call uses a different id value to prove args vary.
     for (let i = 1; i <= MAX_ERROR_CODE_REPEAT; i++) {
-      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
       const result = await (editPatch!.execute as any)(badIdPatch(i), {
         toolCallId: `t${i}`,
         messages: [],
@@ -166,7 +167,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
     // Call MAX_ERROR_CODE_REPEAT+1: the breaker fires BEFORE the inner tool
     // runs. We confirm by checking the returned error_code is the breaker
     // code, not the inner gate code.
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const resultTrip = await (editPatch!.execute as any)(badIdPatch(MAX_ERROR_CODE_REPEAT + 1), {
       toolCallId: `t${MAX_ERROR_CODE_REPEAT + 1}`,
       messages: [],
@@ -203,14 +204,14 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
     // successful inspect_workflow call that resets consecutiveFailures but
     // must NOT reset the per-tool toolErrorCodeRepeat streak.
     for (let i = 1; i <= MAX_ERROR_CODE_REPEAT; i++) {
-      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
       await (editPatch!.execute as any)(badIdPatch(i), { toolCallId: `u${i}`, messages: [] });
       expect(signals.toolErrorCodeRepeat.get("edit_workflow_patch")?.count).toBe(i);
       expect(signals.consecutiveFailures).toBeGreaterThan(0);
 
       // Interleave: inspect_workflow succeeds. consecutiveFailures resets;
       // edit_workflow_patch's streak must survive.
-      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
       const inspectResult = await (inspectWorkflow!.execute as any)(
         { sections: ["instruction"] },
         { toolCallId: `insp${i}`, messages: [] },
@@ -224,7 +225,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
 
     // The streak is now at MAX_ERROR_CODE_REPEAT. The next call must trip
     // despite all the interleaved successful reads.
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result = await (editPatch!.execute as any)(badIdPatch(MAX_ERROR_CODE_REPEAT + 1), {
       toolCallId: `u${MAX_ERROR_CODE_REPEAT + 1}`,
       messages: [],
@@ -256,7 +257,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
 
     // Two failures with patch_invalid (code A).
     for (let i = 1; i <= 2; i++) {
-      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
       await (editPatch!.execute as any)(badIdPatch(i), { toolCallId: `ta${i}`, messages: [] });
     }
     expect(signals.toolErrorCodeRepeat.get("edit_workflow_patch")?.count).toBe(2);
@@ -264,7 +265,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
 
     // Reset the global consecutive-failures counter via a successful
     // inspect call so it doesn't interfere with the error_code streak.
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     await (inspectWorkflow!.execute as any)(
       { sections: ["instruction"] },
       { toolCallId: "ix", messages: [] },
@@ -274,7 +275,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
 
     // Now a call that produces a DIFFERENT error_code: an unsupported
     // placeholder → error_code: "workflow_unsupported_placeholder".
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const resultDiff = await (editPatch!.execute as any)(badPlaceholderPatch(1), {
       toolCallId: "tb1",
       messages: [],
@@ -289,12 +290,12 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
     // Accumulate the remaining failures with code B, interleaving inspects
     // to keep consecutiveFailures below the global cap.
     for (let i = 2; i <= MAX_ERROR_CODE_REPEAT; i++) {
-      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
       await (inspectWorkflow!.execute as any)(
         { sections: ["instruction"] },
         { toolCallId: `iy${i}`, messages: [] },
       );
-      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
       await (editPatch!.execute as any)(badPlaceholderPatch(i), {
         toolCallId: `tc${i}`,
         messages: [],
@@ -307,13 +308,13 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
     expect(signals.toolErrorCodeRepeat.get("edit_workflow_patch")?.code).toBe(CODE_B);
 
     // Reset global counter before the trip call.
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     await (inspectWorkflow!.execute as any)(
       { sections: ["instruction"] },
       { toolCallId: "iw", messages: [] },
     );
     // Next call with code B must trip on the error_code_repeat breaker.
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const resultTrip = await (editPatch!.execute as any)(badPlaceholderPatch("trip"), {
       toolCallId: "td1",
       messages: [],
@@ -361,7 +362,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
     );
     const askUserChoice = wrapped.ask_user_choice;
     expect(askUserChoice).toBeDefined();
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result = await (askUserChoice!.execute as any)(
       {
         question: "What should I do next?",
@@ -416,7 +417,7 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
     );
     const inspectWorkflow = wrapped.inspect_workflow;
     expect(inspectWorkflow).toBeDefined();
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result = await (inspectWorkflow!.execute as any)(
       { sections: ["instruction"] },
       { toolCallId: "insp1", messages: [] },

@@ -1,6 +1,7 @@
 // Unit tests for the placeholder scanner.
 
 import { describe, expect, it } from "bun:test";
+
 import { placeholderScanner } from "../scanners/placeholder.ts";
 
 const ctx = { engine_url: "https://subkit-api.acme.dev" };

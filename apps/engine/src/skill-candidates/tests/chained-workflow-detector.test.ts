@@ -4,6 +4,7 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { tenants } from "../../db/schema/identity.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

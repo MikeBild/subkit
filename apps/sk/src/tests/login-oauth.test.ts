@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { describe, expect, test } from "bun:test";
+
 import { EngineClient, type FetchLike } from "../engine-client.ts";
 import { CLI_LOGIN_SCOPE, runCliOAuthLogin } from "../login-oauth.ts";
 

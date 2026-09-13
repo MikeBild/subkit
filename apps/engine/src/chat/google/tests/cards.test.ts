@@ -5,6 +5,7 @@
 // branches, so the envelope JSON shapes are asserted exactly.
 
 import { describe, expect, test } from "bun:test";
+
 import type { ChatElicitation } from "../../types.ts";
 import {
   buildDialogCloseOk,

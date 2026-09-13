@@ -12,10 +12,12 @@
 // case in `valueFor` fails this test loudly — the leaf would never
 // be writable from sk settings configure or PUT /v1/settings.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { METRICS_SCOPE } from "../../auth/scopes.ts";
 import {
   _resetConfigForTests,

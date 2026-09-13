@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { translate } from "@/lib/i18n";
 import {
   formatRunDuration,

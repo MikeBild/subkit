@@ -1,6 +1,8 @@
-import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
+
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
+
 import { getTestNow } from "../../../../apps/engine/src/test-helpers/determinism/clock.ts";
 import { notifyIfUpdateAvailable } from "../update-notifier.ts";
 

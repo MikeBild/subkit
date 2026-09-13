@@ -13,9 +13,11 @@
 // time so row timestamps are predictable relative to the 30-day cutoff.
 // Tests that don't need boundary checks use wall-clock-relative timestamps.
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { executionSteps, executions } from "../../db/schema/executions.ts";
+
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+
+import { executions, executionSteps } from "../../db/schema/executions.ts";
 import { tenants } from "../../db/schema/identity.ts";
 import { workflows } from "../../db/schema/workflows.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

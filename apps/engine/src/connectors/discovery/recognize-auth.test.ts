@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { recognizeAuthFromSchemes } from "./recognize-auth.ts";
 import type { DiscoveredAuthScheme } from "./types.ts";
 

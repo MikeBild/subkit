@@ -13,6 +13,7 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
+
 import { configPath, loadConfig, type ResolvedProfile, saveProfile } from "../../config.ts";
 import type { EngineClient } from "../../engine-client.ts";
 
@@ -36,9 +37,7 @@ interface Props {
 }
 
 export type ProfileAction =
-  | { kind: "new-session" }
-  | { kind: "switch-tenant"; tenant_id: string }
-  | { kind: "sign-out" };
+  { kind: "new-session" } | { kind: "switch-tenant"; tenant_id: string } | { kind: "sign-out" };
 
 interface IdentitySnapshot {
   email: string | null;

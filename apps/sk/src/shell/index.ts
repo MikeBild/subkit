@@ -10,19 +10,19 @@
 
 export type { ThemeName, ThemeTokens } from "@chat-ui/index.ts";
 // Theme re-exports for callers that don't import directly from chat-ui.
+export type {
+  ConnectorTemplate,
+  IntegrationPickerProps,
+} from "../domain/connectors/IntegrationPicker.tsx";
 export {
   defaultTheme,
-  PALETTES,
   paletteFor,
+  PALETTES,
   shouldForceNoColor,
   ThemeProvider,
   useTheme,
   useThemeControl,
 } from "@chat-ui/index.ts";
-export type {
-  ConnectorTemplate,
-  IntegrationPickerProps,
-} from "../domain/connectors/IntegrationPicker.tsx";
 // Domain surfaces.
 export { IntegrationPicker } from "../domain/connectors/IntegrationPicker.tsx";
 export type { OAuthPollResponse, OAuthWaitViewProps } from "../domain/connectors/OAuthWaitView.tsx";
@@ -50,7 +50,7 @@ export type {
   DiffHunkLine,
 } from "../domain/workflows/DiffApprover.tsx";
 export { DiffApprover } from "../domain/workflows/DiffApprover.tsx";
-export type { RunSummary, RunsFilter, RunsTableProps } from "../domain/workflows/RunsTable.tsx";
+export type { RunsFilter, RunsTableProps, RunSummary } from "../domain/workflows/RunsTable.tsx";
 export { RunsTable } from "../domain/workflows/RunsTable.tsx";
 export type {
   StepCarouselProps,
@@ -66,10 +66,7 @@ export type { SlashDispatchPlan, SlashRouting } from "../repl/slash/dispatcher.t
 export { classifySlash } from "../repl/slash/dispatcher.ts";
 export type { SlashSpan } from "../repl/slash/findPositions.ts";
 // Slash + bootstrap.
-export {
-  findSlashCommandPositions,
-  spanAtCursor,
-} from "../repl/slash/findPositions.ts";
+export { findSlashCommandPositions, spanAtCursor } from "../repl/slash/findPositions.ts";
 export { hasCommand, resolveSlashCommand } from "../repl/slash/hasCommand.ts";
 export type { SlashSuggestProps } from "../repl/slash/SlashSuggest.tsx";
 export { SlashSuggest } from "../repl/slash/SlashSuggest.tsx";
@@ -92,10 +89,7 @@ export type {
   EngineSchemaSource,
 } from "../settings-ui/lib/engine-schema-loader.ts";
 // Engine schema loader (settings UI form mode).
-export {
-  loadEngineSchema,
-  materializeSchema,
-} from "../settings-ui/lib/engine-schema-loader.ts";
+export { loadEngineSchema, materializeSchema } from "../settings-ui/lib/engine-schema-loader.ts";
 export type {
   AuthPayload,
   EnginePayload,

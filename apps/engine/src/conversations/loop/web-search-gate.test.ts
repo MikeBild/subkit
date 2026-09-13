@@ -17,6 +17,7 @@
 // keys off provider + model regex + config flag — is computed correctly.
 
 import { describe, expect, test } from "bun:test";
+
 import { anthropicWebSearchApplies } from "../../llm/core/model-init.ts";
 
 // Exercise the REAL exported gate predicate (no re-implemented copy). The

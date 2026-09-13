@@ -10,6 +10,7 @@
 // at tests/e2e/_helpers/pty.ts.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 

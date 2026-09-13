@@ -11,6 +11,7 @@
 // LLM: mock (no model call on this path; mock just keeps boot hermetic).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { seedConnector } from "./_helpers/factories.ts";
 import { apiClient } from "./_helpers/http.ts";
 import { assertLogEvent } from "./_helpers/logs.ts";

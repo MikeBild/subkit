@@ -2,6 +2,7 @@
 // deterministic so these run with plain `bun test` — no ink or React.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   apply,
   buffer,

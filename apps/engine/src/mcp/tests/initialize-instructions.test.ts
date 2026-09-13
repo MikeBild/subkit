@@ -14,16 +14,18 @@
 // - `serverInfo.version` MUST equal `resolveEngineVersion()` — not the
 //   hardcoded "0.0.0" placeholder.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
 import { VERSION } from "@cli-core/version.ts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import {
   apiKeys,
-  executionSteps,
   executions,
+  executionSteps,
   users,
   workflows,
   workflowVersions,

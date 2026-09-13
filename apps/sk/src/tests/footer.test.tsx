@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 import type React from "react";
+
 import { engineHost, Footer, layoutFooterLines, MODE_LABELS } from "../repl/footer.tsx";
 
 function stripAnsi(frame: string): string {

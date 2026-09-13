@@ -9,6 +9,7 @@
 
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
+
 import type { PermissionMode } from "../repl/status-line/render.ts";
 
 const YOLO_MAX_TURNS = 10;

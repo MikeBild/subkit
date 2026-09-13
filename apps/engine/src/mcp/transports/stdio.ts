@@ -6,6 +6,7 @@
 // against the engine's own db pool — no remote-engine federation path.
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+
 import { closeDb, getDb } from "../../db/client.ts";
 import { newTraceId, withContext } from "../../logging/context.ts";
 import { logger } from "../../logging/logger.ts";

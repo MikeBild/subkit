@@ -7,6 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
+
 import type { EngineClient } from "../../engine-client.ts";
 import { SettingsModal } from "../SettingsModal.tsx";
 
@@ -42,7 +43,7 @@ function stubClient(): EngineClient {
   } as unknown as EngineClient;
 }
 
-// biome-ignore lint/suspicious/noControlCharactersInRegex: strip ANSI
+// eslint-disable-next-line no-control-regex -- strip ANSI
 const ANSI_RE = /[][[\]()#;?]*(?:(?:\d{1,4}(?:;\d{0,4})*)?[0-9A-PRZcf-nqry=><]|\w+)/g;
 const stripAnsi = (s: string): string => s.replace(ANSI_RE, "");
 

@@ -4,12 +4,14 @@
 // origin-tagged digest computed from real executions;
 // member role (lacks stats:read) → 403.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import {
   apiKeys,
-  executionSteps,
   executions,
+  executionSteps,
   patchCandidates,
   users,
   workflows,

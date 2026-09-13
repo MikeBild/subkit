@@ -7,6 +7,7 @@
 // non-trivial workflow without the mid-debug abort.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
@@ -86,7 +87,7 @@ describe("adaptive loop-breaker structured envelope", () => {
     // return its own typed error (execution_not_found), but never
     // tool_loop_detected.
     for (let i = 1; i <= 10; i++) {
-      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
       const result = await (inspect!.execute as any)(
         {
           execution_id: "00000000-0000-0000-0000-000000000000",
@@ -145,7 +146,7 @@ describe("adaptive loop-breaker structured envelope", () => {
       ],
     };
     for (let i = 1; i <= 2; i++) {
-      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
       const result = await (editPatch!.execute as any)(sameArgs, {
         toolCallId: `t${i}`,
         messages: [],
@@ -154,7 +155,7 @@ describe("adaptive loop-breaker structured envelope", () => {
       expect(data.error_code).not.toBe("tool_loop_detected");
     }
     // 3rd identical call trips.
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result3 = await (editPatch!.execute as any)(sameArgs, {
       toolCallId: "t3",
       messages: [],
@@ -206,7 +207,7 @@ describe("adaptive loop-breaker structured envelope", () => {
     // canonical incremental build. The args differ each time so no
     // repeat is detected.
     for (let i = 1; i <= 5; i++) {
-      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
       const result = await (editPatch!.execute as any)(
         {
           patches: [

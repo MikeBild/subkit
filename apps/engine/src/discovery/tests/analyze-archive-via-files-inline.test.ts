@@ -13,12 +13,14 @@
 // a run with `archive_file_id`, and assert the `files` + `file_links`
 // rows exist alongside the run.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
+
 import { tenants } from "../../db/schema/identity.ts";
 import { discoveryRuns, fileLinks, files } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

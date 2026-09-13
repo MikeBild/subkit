@@ -4,6 +4,7 @@
 // future edit can't silently re-introduce a divergent third variant.
 
 import { describe, expect, test } from "bun:test";
+
 import { computeStepBottlenecks, executionDurationMs, formatTokens, humanMs } from "./format.ts";
 
 describe("formatTokens", () => {

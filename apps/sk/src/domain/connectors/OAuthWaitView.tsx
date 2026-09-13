@@ -11,6 +11,7 @@ import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
+
 import { defaultOpenBrowser } from "../../lib/open-browser.ts";
 
 // Validate the engine→CLI poll response at the

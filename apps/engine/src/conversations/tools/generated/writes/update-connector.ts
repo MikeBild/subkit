@@ -10,6 +10,7 @@
 // update.
 
 import { z } from "@hono/zod-openapi";
+
 import { translateAutoPersistError } from "../../../persistence/auto-persist.ts";
 import type { ConversationTool } from "../../index.ts";
 
@@ -28,12 +29,12 @@ const UpdateConnectorInput = z
     (v) =>
       Boolean(
         v.name ||
-          v.base_url ||
-          v.dsn ||
-          v.auth_type ||
-          v.config ||
-          v.template_slug ||
-          v.clear_template_binding,
+        v.base_url ||
+        v.dsn ||
+        v.auth_type ||
+        v.config ||
+        v.template_slug ||
+        v.clear_template_binding,
       ),
     {
       message:

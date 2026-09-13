@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+
 import { normalizeSchema, unwrapResult } from "../schema-normalizer.ts";
 
 describe("normalizeSchema", () => {

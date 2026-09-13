@@ -12,6 +12,7 @@
 // single id.
 
 import type { MiddlewareHandler } from "hono";
+
 import type { AppEnv } from "../http/openapi.ts";
 import { logger } from "../logging/logger.ts";
 import {

@@ -13,6 +13,7 @@
 // boot and Ctrl+C; this file fills the rest.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { HAS_SK_BIN, runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
 import { boot, cli, type E2EEnv, expectSuccess, shutdown } from "./setup.ts";
 

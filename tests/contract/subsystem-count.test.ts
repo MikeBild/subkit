@@ -15,9 +15,10 @@
 //     the docs review process; rigid table-content tests churn on
 //     every cosmetic edit and pay back rarely.
 
-import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const REPO = join(import.meta.dir, "..", "..");
 

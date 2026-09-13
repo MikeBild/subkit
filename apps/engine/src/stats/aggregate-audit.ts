@@ -20,6 +20,7 @@
 // connector_id/driver/etc. can only narrow within the tenant.
 
 import { type SQL, sql } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 import type { BucketUnit } from "../http/routes/stats/bucket-window.ts";
 

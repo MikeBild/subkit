@@ -11,10 +11,12 @@
 // snake_case vs. dot drift). Boolean and number leaves go through their
 // respective string parsers; enum leaves pick a non-default member.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { _resetConfigForTests, getConfig, getDiagnostics, loadConfig } from "../loader.ts";
 import { type ConfigLeaf, dottedPath, listConfigLeaves } from "../walk.ts";
 

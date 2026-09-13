@@ -15,6 +15,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { roles, systemAccounts, users } from "../../db/schema/index.ts";
 import { compile as compileJsonata } from "../../execution/jsonata-engine.ts";

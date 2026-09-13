@@ -1,9 +1,10 @@
 // Teams adapter test — uses a mock Hono server for both the token
 // endpoint and the Bot Framework activities endpoint.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { serve } from "@hono/node-server";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
+
 import { TeamsAdapter } from "../adapter.ts";
 
 interface Hit {

@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import type React from "react";
+
 import { labelForPath } from "../lib/config-labels.ts";
 import type { FormField } from "../lib/zod-to-form-fields.ts";
 

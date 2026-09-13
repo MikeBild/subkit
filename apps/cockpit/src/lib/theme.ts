@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+
 import { createThemeStore, type Theme } from "./theme-store";
 
 const media = window.matchMedia("(prefers-color-scheme: dark)");

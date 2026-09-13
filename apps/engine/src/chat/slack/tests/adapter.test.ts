@@ -1,9 +1,10 @@
 // Slack adapter outbound HTTP test. A tiny Hono server stands in
 // for api.slack.com and records every call the WebClient makes.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { serve } from "@hono/node-server";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
+
 import { SlackAdapter } from "../adapter.ts";
 
 interface Recorded {

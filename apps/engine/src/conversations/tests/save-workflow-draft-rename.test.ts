@@ -13,10 +13,12 @@
 // engineering verb for that). The LLM and the operator never see
 // them directly.
 
-import { describe, expect, test } from "bun:test";
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
+
 import { saveWorkflowDraftRubric } from "../../llm/critic/rubrics/save-workflow-draft.ts";
 import { COMMIT_INTENT_KINDS, type CommitIntentKind } from "../tools/ask-user/commit-intent.ts";
 import { saveWorkflowDraftTool } from "../tools/save-workflow-draft.ts";
@@ -90,7 +92,7 @@ describe("save_workflow_draft vocabulary rename — repo-wide residue scan", () 
       "'*.json'",
       "'*.sql'",
     ].join(" ");
-    let output = "";
+    let output: string;
     try {
       output = execSync(cmd, { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] });
     } catch (err) {

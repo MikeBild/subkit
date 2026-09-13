@@ -11,6 +11,7 @@
 //     dry_run_workflow / save_workflow_draft.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
@@ -33,7 +34,7 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-// biome-ignore lint/suspicious/noExplicitAny: minimal draft stub for the gate test
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal draft stub for the gate test
 function makeCtx(draft: any): ToolContext {
   return {
     db: ctx.db,

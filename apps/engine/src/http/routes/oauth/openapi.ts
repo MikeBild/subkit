@@ -1,4 +1,5 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
+
 import type { AppEnv } from "../../openapi.ts";
 
 type RegistryRoute = Parameters<OpenAPIHono<AppEnv>["openAPIRegistry"]["registerPath"]>[0];

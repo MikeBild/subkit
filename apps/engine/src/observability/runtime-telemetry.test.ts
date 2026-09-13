@@ -1,5 +1,6 @@
 // Telemetry must not be able to break what it measures.
 import { afterEach, describe, expect, test } from "bun:test";
+
 import { instrument, sampleMemory } from "./runtime-telemetry.ts";
 
 const realMemoryUsage = process.memoryUsage;

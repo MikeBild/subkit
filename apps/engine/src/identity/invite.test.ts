@@ -6,6 +6,7 @@
 // both invariants.
 
 import { describe, expect, test } from "bun:test";
+
 import { sha256Hex } from "./api-key.ts";
 import {
   generateInviteToken,
@@ -51,9 +52,9 @@ describe("parseInviteToken", () => {
 
   test("rejects null, empty, and non-string inputs", () => {
     expect(parseInviteToken("")).toBeNull();
-    // biome-ignore lint/suspicious/noExplicitAny: probing the runtime guard
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- probing the runtime guard
     expect(parseInviteToken(null as any)).toBeNull();
-    // biome-ignore lint/suspicious/noExplicitAny: probing the runtime guard
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- probing the runtime guard
     expect(parseInviteToken(undefined as any)).toBeNull();
   });
 

@@ -13,6 +13,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+
 import { z } from "zod";
 
 // PREFS_DIR / PREFS_PATH are resolved lazily so test setup can override

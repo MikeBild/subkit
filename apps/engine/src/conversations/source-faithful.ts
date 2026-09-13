@@ -32,6 +32,7 @@
 // emitting drifted prose.
 
 import { and, eq, inArray } from "drizzle-orm";
+
 import type { Executor } from "../db/client.ts";
 import { connectorDocumentChunks } from "../db/schema/connector_docs.ts";
 import { knowledgeChunks } from "../db/schema/knowledge_sources.ts";
@@ -82,7 +83,7 @@ export function extractQuotedSpans(text: string): string[] {
   // Straight "..." and curly “...” pairs, non-greedy, no embedded newline.
   const re = /(?:"([^"\n]+)"|“([^”\n]+)”)/g;
   let m: RegExpExecArray | null;
-  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop
+  // eslint-disable-next-line no-cond-assign -- standard regex exec loop
   while ((m = re.exec(text)) !== null) {
     const raw = (m[1] ?? m[2] ?? "").replace(/\s+/g, " ").trim();
     if (raw.length < 8) continue;

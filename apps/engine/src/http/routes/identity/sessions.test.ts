@@ -11,12 +11,14 @@
 //   4. an unverified `email` claim cannot link to (hijack) another account;
 //   5. a verified email already bound to a different OIDC subject is refused.
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import {
   type MockOidcHandle,
   startMockOidc,

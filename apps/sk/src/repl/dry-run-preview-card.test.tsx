@@ -5,10 +5,11 @@
 // card reads from `step_outputs` and `last_step.output_preview` so the
 // produced data is always visible.
 
-import { describe, expect, test } from "bun:test";
 import type { ToolCallState } from "@cli-core/index.ts";
+import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import type { ReactElement } from "react";
+
 import { renderAuthoringCard } from "./authoring-cards.tsx";
 
 function snapshot(s: ReturnType<typeof render>): string {

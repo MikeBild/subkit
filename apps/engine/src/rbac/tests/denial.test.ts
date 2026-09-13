@@ -4,6 +4,7 @@
 // path, the generic path, and the missing-detail fallback.
 
 import { describe, expect, test } from "bun:test";
+
 import { denialDetails, denialHint } from "../denial.ts";
 import type { DenyDetail } from "../evaluator.ts";
 

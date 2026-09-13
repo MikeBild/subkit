@@ -13,6 +13,7 @@
 // witnesses: a probe that reached any driver would touch one of them.
 
 import { describe, expect, test } from "bun:test";
+
 import type { Db } from "../../db/client.ts";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import type { ConnectorView, DriverName } from "../types.ts";

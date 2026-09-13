@@ -6,10 +6,12 @@
 // than no route at all, because it would look authoritative and start the
 // wrong topology.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, test } from "bun:test";
+
 import { COMPOSE_YAML } from "./compose.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../../..");

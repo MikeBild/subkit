@@ -20,6 +20,7 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
+
 // Embedded at build time so the compiled binary serves it without a filesystem
 // dependency. A drift test asserts the served bytes equal the repository file.
 import composeYaml from "../../../../../docker-compose.yml" with { type: "text" };

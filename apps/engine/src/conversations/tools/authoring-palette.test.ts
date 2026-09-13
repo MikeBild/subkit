@@ -6,6 +6,7 @@
 // free text — that is what closes the negation-blind build-new hijack class.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   applyExecutionToolGate,
   collectSyntheticWorkflowSlugs,

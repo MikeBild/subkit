@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { filterSuggestion } from "./suggest-next-filter.ts";
 
 describe("filterSuggestion", () => {

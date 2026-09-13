@@ -3,12 +3,13 @@
 // `stats:read`.
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { AuditAction } from "../../../audit/index.ts";
 import {
+  aggregateAudit,
   type AuditGroupDim,
   type AuditOutcome,
-  aggregateAudit,
   type StatusClass,
 } from "../../../stats/aggregate-audit.ts";
 import { requireAuth } from "../../middleware/auth.ts";

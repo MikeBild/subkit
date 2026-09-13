@@ -4,6 +4,7 @@
 // in types.ts produces a test failure rather than silent audit-log drift.
 
 import { describe, expect, test } from "bun:test";
+
 import { AuditAction, FILE_AUDIT_ACTIONS } from "./types.ts";
 
 describe("FILE_* audit actions", () => {

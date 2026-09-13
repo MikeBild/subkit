@@ -8,6 +8,7 @@
 // let `sk.now()` silently read the epoch).
 
 import { describe, expect, test } from "bun:test";
+
 import { RunLlmBudget } from "../../../llm/accounting/index.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import type { StepRunContext } from "../../types.ts";
@@ -22,7 +23,7 @@ function ctx(scope: Record<string, unknown>): StepRunContext {
     // Empty DB stub: a non-offloaded transform scope never touches the DB.
     // If this stub starts crashing at runtime, the test is correctly telling
     // you runTransformStep now needs DB access — wire a real test DB then.
-    // biome-ignore lint/suspicious/noExplicitAny: minimal stub; no DB needed for a non-offloaded scope
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub; no DB needed for a non-offloaded scope
     db: {} as any,
     tenant_id: "t-transform",
     execution_id: EXECUTION_ID,
@@ -36,7 +37,7 @@ function ctx(scope: Record<string, unknown>): StepRunContext {
     workflow_slug: "test-wf",
     trace_id: null,
     execution_mode: "dev",
-    // biome-ignore lint/suspicious/noExplicitAny: minimal stub
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub
     step: {} as any,
     step_index: 0,
     step_row_id: "00000000-0000-0000-0000-000000000aaa",

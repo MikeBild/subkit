@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { formatDurationMs, usageRows, usageStatsEndpoint, usageTotals } from "@/pages/usage-model";
 
 describe("cockpit usage presentation", () => {

@@ -9,6 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+
 import { bytea, tenantId, timestamps } from "./_common.ts";
 import { conversations } from "./conversations.ts";
 import { tenants, users } from "./identity.ts";

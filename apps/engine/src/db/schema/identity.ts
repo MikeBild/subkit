@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+
 import { bytea, tenantId, timestamps } from "./_common.ts";
 
 // ----- enums ----------------------------------------------------------------

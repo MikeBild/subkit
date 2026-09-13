@@ -386,9 +386,9 @@ export function applyAuthMaterial(
       // unset so the request errors with a clear upstream 401 instead
       // of a malformed header.
       if (!credential.access_token) return;
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: header_template is operator-supplied and ${token} is a literal placeholder, not a JS template
+      // eslint-disable-next-line no-template-curly-in-string -- header_template is operator-supplied and ${token} is a literal placeholder, not a JS template
       const tpl = credential.header_template ?? "Bearer ${token}";
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: matches the literal placeholder above
+      // eslint-disable-next-line no-template-curly-in-string -- matches the literal placeholder above
       headers.Authorization = tpl.replaceAll("${token}", credential.access_token);
       return;
     }
@@ -1161,7 +1161,7 @@ export async function executeConnectorHttpRequest(params: {
   const plan = await buildRequestPlan(planArgs);
   const signals: AbortSignal[] = [];
   if (params.signal) signals.push(params.signal);
-  let timeoutSignal: AbortSignal | null = null;
+  let timeoutSignal: AbortSignal | null;
   if (params.timeout_ms !== undefined) {
     timeoutSignal = AbortSignal.timeout(params.timeout_ms);
     signals.push(timeoutSignal);

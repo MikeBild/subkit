@@ -26,6 +26,7 @@
 // deterministic.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+
 import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -38,8 +39,8 @@ import {
   buildJudgeDefinitionSummary,
   buildJudgeStepArtifacts,
   JUDGE_BREAKER_MAX_BLOCKS,
-  type JudgeStepArtifact,
   judgePreview,
+  type JudgeStepArtifact,
   workflowDefinitionFingerprint,
 } from "../preview-judge.ts";
 import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";
@@ -128,7 +129,7 @@ function wrongContentDraft(slug: string, goal: string | null): DraftDocument {
         },
       ],
     },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
   } as any;
 }
 

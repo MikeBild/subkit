@@ -25,8 +25,8 @@ import type { Db } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
 import {
   connectServerById,
-  type InvokeRemoteToolResult,
   invokeRemoteTool,
+  type InvokeRemoteToolResult,
   probeTransientMcpServer,
 } from "../../mcp/client/pool.ts";
 import { type McpConnectorRow, parseAuthConfig } from "../../mcp/client/registry.ts";

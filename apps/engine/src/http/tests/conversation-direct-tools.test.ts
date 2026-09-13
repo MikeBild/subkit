@@ -12,6 +12,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
+
 import { appendSnapshot, loadDraft } from "../../conversations/draft.ts";
 import { createElicitation, resolveElicitation } from "../../conversations/elicitations.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
@@ -55,7 +56,7 @@ function makeWorkflowDraft(): DraftDocument {
         { step_id: "shape", kind: "transform", status: "succeeded", output_preview: { shaped: 1 } },
       ],
     },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
   } as any;
 }
 

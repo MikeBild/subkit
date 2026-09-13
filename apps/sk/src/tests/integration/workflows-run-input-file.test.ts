@@ -7,10 +7,12 @@
 //
 // Uses a controlled fetchImpl so no real engine is needed.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { uploadPath } from "../../commands/files.ts";
 import { EngineClient } from "../../engine-client.ts";
 import { formatFileRef } from "../../utils/file-ref.ts";

@@ -12,14 +12,15 @@
 // 1 turn instead of looping. This test pins the contract.
 
 import { describe, expect, test } from "bun:test";
+
 import { translateAutoPersistError } from "./auto-persist.ts";
 
 function pgError(code: string, message: string, detail?: string): Error {
   const e = new Error(message);
-  // biome-ignore lint/suspicious/noExplicitAny: pg errors carry .code/.detail
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pg errors carry .code/.detail
   (e as any).code = code;
   if (detail) {
-    // biome-ignore lint/suspicious/noExplicitAny: pg errors carry .detail
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pg errors carry .detail
     (e as any).detail = detail;
   }
   return e;

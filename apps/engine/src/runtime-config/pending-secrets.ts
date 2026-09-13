@@ -16,6 +16,7 @@
 // the route returns says so.
 
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 import { runtimeSecretVersions } from "../db/schema/index.ts";
 import { RuntimeConfigNotFoundError } from "./contracts.ts";

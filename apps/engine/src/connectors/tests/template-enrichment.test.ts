@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { enrichConnectorFromTemplate } from "../template-enrichment.ts";
 import { getBuiltinTemplate } from "../templates.ts";
 

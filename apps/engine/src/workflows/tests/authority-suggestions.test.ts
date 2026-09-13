@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { suggestAuthorityBounds } from "../authority-suggestions.ts";
 

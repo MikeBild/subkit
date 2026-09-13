@@ -13,6 +13,7 @@
 // so failures are independent and parallelisable.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { boot, cli, type E2EEnv, parseJson, shutdown } from "./setup.ts";
 
 let env: E2EEnv;

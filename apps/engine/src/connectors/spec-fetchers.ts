@@ -5,6 +5,7 @@
 // SUBKIT_ALLOW_PRIVATE_SPEC_FETCH=1 is set.
 
 import { getIntrospectionQuery } from "graphql";
+
 import { getConfig } from "../config/loader.ts";
 import { getDriverFetch } from "./drivers/fetch-seam.ts";
 import {

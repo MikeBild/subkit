@@ -1,6 +1,7 @@
 // Log ring — basic capture, filtering, subscriber semantics.
 
 import { afterEach, describe, expect, test } from "bun:test";
+
 import { createLogRing } from "../log-ring.ts";
 
 describe("createLogRing", () => {

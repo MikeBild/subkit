@@ -3,6 +3,7 @@
 // constraint shared between loop.ts and step-router.ts.
 
 import { describe, expect, it } from "bun:test";
+
 import { resolveThinking } from "../core/thinking-policy.ts";
 
 describe("resolveThinking", () => {

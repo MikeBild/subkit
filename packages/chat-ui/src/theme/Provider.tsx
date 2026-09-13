@@ -7,6 +7,7 @@
 // dark/light/highContrast without restarting the REPL.
 
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
+
 import {
   defaultTheme,
   paletteFor,

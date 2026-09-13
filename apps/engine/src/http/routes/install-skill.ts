@@ -30,6 +30,7 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { ESSENTIAL_PATHS } from "@shared/llms-index.ts";
+
 // The source lives under agent-skills/ at the repository root, not skills/:
 // `skills` is an engine subsystem name, and the route-layering invariant
 // reads any import path containing it as a reach into that subsystem.

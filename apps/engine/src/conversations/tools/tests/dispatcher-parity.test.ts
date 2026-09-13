@@ -13,6 +13,7 @@
 // adapter.
 
 import { describe, expect, test } from "bun:test";
+
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { invokeForSdk } from "../dispatch-adapter.ts";
 import type { ToolContext, ToolResult } from "../index.ts";
@@ -26,10 +27,10 @@ const PRINCIPAL: ResolvedPrincipal = {
   permission_grants: [],
   role_ids: [],
   api_key_id: null,
-  // biome-ignore lint/suspicious/noExplicitAny: test stub
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test stub
 } as any;
 
-// biome-ignore lint/suspicious/noExplicitAny: test stub
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test stub
 const DB_STUB: any = {
   transaction: async (fn: (db: unknown) => unknown) => fn(DB_STUB),
   insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
@@ -43,7 +44,7 @@ function stubCtx(): ToolContext {
     actor_id: PRINCIPAL.id,
     connector_id: null,
     workflow_id: null,
-    // biome-ignore lint/suspicious/noExplicitAny: engine client stub
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- engine client stub
     engineClient: {} as any,
     getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},

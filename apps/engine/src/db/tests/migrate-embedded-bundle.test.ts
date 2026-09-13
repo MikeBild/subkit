@@ -9,10 +9,12 @@
 // suite started — which is the same FS the next `bun build --compile`
 // would see.
 
-import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+
+import { describe, expect, test } from "bun:test";
+
 import { listEmbeddedMigrations } from "../migrate.ts";
 
 const MIGRATIONS_DIR = path.resolve(import.meta.dir, "..", "migrations");

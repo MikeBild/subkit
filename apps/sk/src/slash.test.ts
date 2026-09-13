@@ -2,8 +2,9 @@
 // No I/O; no Ink; no engine client. Pure function tests.
 
 import { beforeEach, describe, expect, test } from "bun:test";
+
 import type { PersonaProbe } from "./slash.ts";
-import { SLASH_COMMANDS, searchSlashCommands } from "./slash.ts";
+import { searchSlashCommands, SLASH_COMMANDS } from "./slash.ts";
 
 const ALL: PersonaProbe = { allows: () => true };
 const NONE: PersonaProbe = { allows: () => false };

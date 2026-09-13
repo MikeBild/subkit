@@ -8,6 +8,7 @@
 // → probe — these tests pin that ordering.
 
 import { describe, expect, it } from "bun:test";
+
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import type { AuthoringSummary, ConnectorDraftDocument, WorkflowDraftDocument } from "../types.ts";
 import { createEmptyState } from "./normalize.ts";

@@ -9,6 +9,7 @@
 // membership (bare name advertised, no legacy alias) and the CALL contract.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;

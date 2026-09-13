@@ -3,6 +3,7 @@
 // fabricates a row when there is nothing to anchor to.
 
 import { describe, expect, test } from "bun:test";
+
 import { applyTurnEvent, type Citation, initialSessionState } from "./turn-event.ts";
 
 const CITE: Citation[] = [

@@ -6,6 +6,7 @@
 // follow-fetches and record exactly MAX_LINKS on the budget state.
 
 import { describe, expect, test } from "bun:test";
+
 import { createBudgetState, MAX_LINKS } from "../budgets.ts";
 import { collectExternalRefs, ingestOpenAPIUrl } from "../sources/openapi.ts";
 

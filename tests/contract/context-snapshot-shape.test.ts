@@ -8,9 +8,10 @@
 // client-contract.test.ts uses); `bun run check:openapi-drift` guards that
 // this file stays in sync with the engine's Zod schema.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const spec = JSON.parse(
   readFileSync(

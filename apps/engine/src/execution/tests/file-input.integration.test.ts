@@ -11,9 +11,11 @@
 // Tenant isolation: a file ID that does not exist in the executing tenant
 // resolves to FileNotFoundError, causing the step to fail.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { runExecution } from "../engine.ts";

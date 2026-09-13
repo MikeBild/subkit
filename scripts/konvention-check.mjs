@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+
 import { chromium } from "playwright";
+
 import { ALL_ROUTE_PATHS } from "../apps/cockpit/src/app/route-table.ts";
 import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
 // §7 keeps the six products from importing each other's rules; it says nothing
@@ -1362,17 +1364,17 @@ async function checkWordmark(page) {
       hasIcon: Boolean(iconEl),
       iconVisible: Boolean(
         box &&
-          box.width > 0 &&
-          box.height > 0 &&
-          iconStyle &&
-          iconStyle.visibility !== "hidden" &&
-          iconStyle.display !== "none" &&
-          Number(iconStyle.opacity) > 0,
+        box.width > 0 &&
+        box.height > 0 &&
+        iconStyle &&
+        iconStyle.visibility !== "hidden" &&
+        iconStyle.display !== "none" &&
+        Number(iconStyle.opacity) > 0,
       ),
       iconBeforeName: Boolean(
         iconEl &&
-          nameEl &&
-          (iconEl.compareDocumentPosition(nameEl) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+        nameEl &&
+        (iconEl.compareDocumentPosition(nameEl) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
       ),
     };
   });

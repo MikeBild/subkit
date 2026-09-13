@@ -7,6 +7,7 @@
 //   - window:     top-level `totals`   — the whole-window summary.
 
 import { z } from "@hono/zod-openapi";
+
 import { BUCKET_UNITS } from "./bucket-window.ts";
 
 // A query param may arrive as a single string or a repeated array. This

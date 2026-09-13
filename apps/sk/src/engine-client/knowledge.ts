@@ -4,6 +4,7 @@
 // `EngineClient` by `../engine-client.ts`.
 
 import { EngineError } from "@cli-core/errors.ts";
+
 import type { EngineClient } from "../engine-client.ts";
 import { parseResponseBody } from "./http.ts";
 

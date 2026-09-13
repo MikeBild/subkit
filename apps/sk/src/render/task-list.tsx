@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import type React from "react";
+
 import { PlanCard } from "../repl/plan-cell.tsx";
 import { SEPARATOR } from "./helpers.ts";
 import type { PlanStep } from "./types.ts";

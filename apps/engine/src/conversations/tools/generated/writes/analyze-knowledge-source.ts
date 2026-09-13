@@ -10,6 +10,7 @@
 // description is overwritten only when currently null OR force=true.
 
 import { z } from "@hono/zod-openapi";
+
 import type { ConversationTool } from "../../index.ts";
 
 const AnalyzeKnowledgeSourceInput = z

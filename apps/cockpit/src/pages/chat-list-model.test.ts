@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { clipTitle, conversationRow, TITLE_MAX } from "./chat-list-model";
 
 const labels = (excerpt: string | null) => ({

@@ -10,6 +10,7 @@
 // dispatch (Slack retries up to 3× on x-slack-retry-num).
 
 import { sql } from "drizzle-orm";
+
 import type { Executor } from "../db/client.ts";
 import { recordUsageEvent } from "../stats/usage-events.ts";
 

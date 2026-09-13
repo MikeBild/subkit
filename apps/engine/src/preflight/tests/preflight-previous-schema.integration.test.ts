@@ -9,11 +9,13 @@
 // `pending_bindings` to `runtime_secret_versions`, `connection_id` to
 // `credentials`, `client_uri` to `mcp_oauth_clients`, and two tables.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
+
 import { _resetConfigForTests, getConfig, loadConfig } from "../../config/loader.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { hasPendingSecretColumns } from "../../runtime-config/secret-columns.ts";

@@ -24,6 +24,7 @@
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { classifyMcpToolSideEffect, type SideEffect } from "@shared/index.ts";
+
 import {
   recordConnectorMcpHandshakeOk,
   recordMcpExternalToolInvoked,
@@ -65,8 +66,8 @@ import {
   type McpClientLike,
   type McpSessionFactories,
   type NegotiatedServerCapabilities,
-  type OpenMcpSessionResult,
   openMcpSession,
+  type OpenMcpSessionResult,
   setMcpSessionFactoriesForTests,
 } from "./session.ts";
 import { invalidateOAuth2TokenForServer, isUnauthorized } from "./session-auth.ts";

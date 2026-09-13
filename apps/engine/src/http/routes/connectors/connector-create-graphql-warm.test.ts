@@ -9,6 +9,7 @@
 // connectors do NOT warm, (c) a failing warm does not fail creation.
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+
 import * as discoveryModule from "../../../connectors/discovery/index.ts";
 import type { DiscoveryResult } from "../../../connectors/discovery/types.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";

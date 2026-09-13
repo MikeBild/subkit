@@ -14,7 +14,9 @@
 //     connectors have no browser dance; use beginConnectorOAuthDance directly.
 
 import { createHash, randomBytes } from "node:crypto";
+
 import { and, eq, gt, sql } from "drizzle-orm";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { buildOAuthRedirectUri, OAUTH_CALLBACK_PATH } from "../credentials/oauth2/redirect-uri.ts";
@@ -43,8 +45,7 @@ export function sha256Hex(value: string): string {
 }
 
 export type MintGrantError =
-  | { ok: false; error: "engine_public_url_missing" }
-  | { ok: false; error: "no_browser_flow" };
+  { ok: false; error: "engine_public_url_missing" } | { ok: false; error: "no_browser_flow" };
 
 export interface MintedGrant {
   ok: true;

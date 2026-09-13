@@ -5,8 +5,9 @@
 // status mapping). Component state transitions: launching → waiting
 // → connected (or failed).
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { ThemeProvider } from "@chat-ui/index.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import {
   type FakeOAuthServer,
   startFakeOAuthServer,

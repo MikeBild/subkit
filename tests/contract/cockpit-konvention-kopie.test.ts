@@ -37,11 +37,12 @@
 //
 // It lives in tests/contract/ because CI's shard job runs `apps packages` only
 // (LOCAL-SK-SCRIPTS-TESTS-NICHT-IN-CI). `bun run test:contract` runs this.
-import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, test } from "bun:test";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const KONVENTION = join(root, "COCKPIT-KONVENTION.md");

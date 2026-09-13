@@ -11,10 +11,12 @@
 //
 // LLM: mock — boot hermetic; the stable path makes no model call.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import type { ExpectStep } from "./_helpers/pty.ts";
 import { runPtyScenario, SKIP_PTY_WHEN_NO_EXPECT } from "./_helpers/pty.ts";
 import { exit, quickStartReady } from "./_helpers/pty-steps.ts";

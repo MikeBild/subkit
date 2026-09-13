@@ -5,6 +5,7 @@
 // affordances (sidebars, modals, "click", "Save Changes").
 
 import { describe, expect, test } from "bun:test";
+
 import type { AuthoringPromptHint } from "../../../llm/types.ts";
 import type { AuthoringSurfaceMode } from "../../types.ts";
 import { generateMainAgentSystemPrompt } from "../context.ts";
@@ -119,7 +120,7 @@ describe("install-grounding rule is surface-gated (chat/mcp/web), not in the aut
         authoring_hint: makeHint("workflow"),
       });
       expect(r.content).toContain("GROUNDING sk SELF-QUESTIONS");
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal grounding token asserted verbatim; the assembler substitutes it.
+      // eslint-disable-next-line no-template-curly-in-string -- literal grounding token asserted verbatim; the assembler substitutes it.
       expect(r.content).toContain("curl -fsSL ${engine_url}/install | bash");
       // Names the invented npm package only inside its negation, never as a path.
       expect(r.content).toContain("@subkit/cli");
@@ -239,7 +240,7 @@ describe("chat surface persona", () => {
     // P1: sk self-questions must be grounded, and the real install one-liner
     // must be named so the bot stops inventing @subkit/cli / docker-compose.
     expect(r.content).toContain("GROUNDING sk SELF-QUESTIONS");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal grounding token asserted verbatim; the assembler substitutes it.
+    // eslint-disable-next-line no-template-curly-in-string -- literal grounding token asserted verbatim; the assembler substitutes it.
     expect(r.content).toContain("curl -fsSL ${engine_url}/install | bash");
     expect(r.content).toContain("@subkit/cli");
     expect(r.content).toContain("docker-compose install step");
@@ -253,9 +254,9 @@ describe("chat surface persona", () => {
     // P3: connector-inspect answers must not print ${connector...} / ${cred...}
     // authoring template syntax to a read-only chat user.
     expect(r.content).toContain("NO AUTHORING PLACEHOLDERS ON CHAT");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal authoring placeholder syntax the persona rule must name verbatim.
+    // eslint-disable-next-line no-template-curly-in-string -- literal authoring placeholder syntax the persona rule must name verbatim.
     expect(r.content).toContain("${connector.<slug>...}");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal authoring placeholder syntax the persona rule must name verbatim.
+    // eslint-disable-next-line no-template-curly-in-string -- literal authoring placeholder syntax the persona rule must name verbatim.
     expect(r.content).toContain("${cred.<slug>...}");
   });
 

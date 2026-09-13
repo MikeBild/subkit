@@ -24,6 +24,7 @@
 
 import { Box } from "ink";
 import { useEffect, useMemo, useRef } from "react";
+
 import { HeightCache } from "../repl/transcript/height-cache.ts";
 
 export interface VirtualTranscriptProps<T> {

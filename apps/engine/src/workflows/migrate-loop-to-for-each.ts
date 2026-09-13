@@ -114,7 +114,7 @@ export function rewriteLoopsToForEach(def: WorkflowDef): WorkflowLoopToForEachRe
     if (!bodyStepId) continue;
 
     // Rule 2: determine the for_each expression.
-    let forEachExpr: string | null = null;
+    let forEachExpr: string | null;
     let selectorSource: "data_selector" | "over";
     if (loop.data_selector !== undefined) {
       // Already a JS arrow function — use directly.

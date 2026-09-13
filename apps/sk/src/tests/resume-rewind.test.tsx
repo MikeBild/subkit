@@ -4,8 +4,9 @@
 // that supplied turns render with selectable rows, and that Enter
 // invokes onForkFromTurn with the correct message_id.
 
-import { describe, expect, test } from "bun:test";
 import { type AssistantTurnRef, ConversationBrowser } from "@chat-ui/index.ts";
+import { describe, expect, test } from "bun:test";
+
 import { renderInk } from "./helpers/ink.tsx";
 
 const items = [

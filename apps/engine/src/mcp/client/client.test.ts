@@ -8,6 +8,7 @@
 // type-check together.
 
 import { describe, expect, test } from "bun:test";
+
 import { EgressBlockedError } from "../../connectors/egress-guard.ts";
 import { __mcpClientInternalsForTests, type RemoteToolDescriptor } from "./pool.ts";
 import {

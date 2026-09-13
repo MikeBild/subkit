@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
+
 import { parseTraceparent, traceMiddleware } from "../middleware/trace.ts";
 import type { AppEnv } from "../openapi.ts";
 

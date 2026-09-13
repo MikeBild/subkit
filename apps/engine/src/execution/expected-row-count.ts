@@ -8,10 +8,7 @@
 // `expected_row_count_mismatch` envelope.
 
 export type ExpectedRowCount =
-  | number
-  | readonly [number, number]
-  | [number, number]
-  | { min?: number; max?: number };
+  number | readonly [number, number] | [number, number] | { min?: number; max?: number };
 
 export function evaluateExpectedRowCount(
   expected: ExpectedRowCount,

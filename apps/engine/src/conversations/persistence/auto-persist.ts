@@ -49,6 +49,7 @@
 // `SyntheticToolResult` from this barrel.
 
 import { and, desc, eq } from "drizzle-orm";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";

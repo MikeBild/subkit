@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+
 import { type ConfirmationState, isTerminalState } from "../confirmation.ts";
 
 describe("confirmation state machine", () => {

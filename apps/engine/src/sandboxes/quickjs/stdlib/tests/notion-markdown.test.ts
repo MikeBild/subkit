@@ -8,6 +8,7 @@
 // transform-warnings. Tests run inside the real QuickJS sandbox.
 
 import { describe, expect, test } from "bun:test";
+
 import { runJs } from "../../runtime.ts";
 
 const run = <T>(code: string, input: unknown): Promise<T> =>

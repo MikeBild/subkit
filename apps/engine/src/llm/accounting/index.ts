@@ -14,15 +14,11 @@
 // and HTTP-fetch resource usage, not LLM tokens. They share the word
 // "budget" but not the logic.
 
-export {
-  type AccountParams,
-  type AccountResult,
-  account,
-} from "./accountant.ts";
+export { account, type AccountParams, type AccountResult } from "./accountant.ts";
 export { type ActorFields, actorFields } from "./actor.ts";
 export {
-  type CheckAndDecrementResult,
   checkAndDecrement,
+  type CheckAndDecrementResult,
   checkBudget,
   currentMonthBucket,
   monthlyUsage,

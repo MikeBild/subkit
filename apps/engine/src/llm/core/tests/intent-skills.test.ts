@@ -11,6 +11,7 @@
 // cover the DB path.
 
 import { describe, expect, it } from "bun:test";
+
 import { detectIntentSkills } from "../context-assembler.ts";
 
 // A minimal executor stub.  listAutoLoadSkills calls exec.select()…

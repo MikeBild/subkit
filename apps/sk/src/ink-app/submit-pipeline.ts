@@ -17,6 +17,7 @@
 import type { PendingElicitation, SkSessionState, TurnEvent } from "@cli-core/index.ts";
 import { applyTurnEvent, lastAssistantText } from "@cli-core/index.ts";
 import type React from "react";
+
 import { debugLog, serializeDebugError } from "../debug.ts";
 import { looksLikeAssistantConfirmRequest } from "../elicitation-intent.ts";
 import type { EngineClient } from "../engine-client.ts";
@@ -25,8 +26,8 @@ import { apply as applyInput, type InputBuffer } from "../repl/input-buffer.ts";
 import {
   inQuietHoursWindow,
   isOsDoNotDisturb,
-  NOTIFY_DEFAULTS,
   notify,
+  NOTIFY_DEFAULTS,
 } from "../repl/notifications/index.ts";
 import {
   type ExpandedPrompt,

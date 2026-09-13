@@ -22,6 +22,7 @@
 // catalog because the public payloads are platform-owned.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
+
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../../audit/index.ts";
 import {
   type ChatAdapter,

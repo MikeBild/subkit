@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+
 import type { Executor } from "../db/client.ts";
 import { connectorTemplates } from "../db/schema/index.ts";
 import {
@@ -96,13 +97,11 @@ export async function listResolvedConnectorTemplates(
   db: Executor,
   tenant_id: string,
 ): Promise<ResolvedConnectorTemplate[]> {
-  const builtins = loadBuiltinTemplates().map(
-    (template): ResolvedConnectorTemplate => ({
-      id: null,
-      source: "builtin",
-      template,
-    }),
-  );
+  const builtins = loadBuiltinTemplates().map((template): ResolvedConnectorTemplate => ({
+    id: null,
+    source: "builtin",
+    template,
+  }));
   const tenantRows = await db
     .select()
     .from(connectorTemplates)

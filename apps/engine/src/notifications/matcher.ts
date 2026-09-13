@@ -21,6 +21,7 @@
 // effects, no rate limiting, no breaker logic.
 
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 import { type NotificationRuleRow, notificationRules } from "../db/schema/notifications.ts";
 import type { RequestSource } from "../execution/types.ts";

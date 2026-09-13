@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { storedAuthoringMode } from "./chat-permission";
 
 describe("stored authoring mode", () => {

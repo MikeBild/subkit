@@ -4,6 +4,7 @@
 // approval URL is the fail-closed fallback the operator can always open.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { setConfigKey } from "../../config/loader.ts";
 import { conversationElicitations, conversations, toolApprovals } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";

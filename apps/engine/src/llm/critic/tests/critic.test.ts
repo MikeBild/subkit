@@ -1,6 +1,7 @@
 // Unit tests for the deterministic critic rubrics.
 
 import { describe, expect, it } from "bun:test";
+
 import { runCritic } from "../index.ts";
 
 describe("save_workflow_draft rubric", () => {

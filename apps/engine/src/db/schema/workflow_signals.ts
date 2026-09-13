@@ -13,6 +13,7 @@
 // deletion so a removed run cannot leave dangling signals.
 
 import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+
 import { tenantId, timestamps } from "./_common.ts";
 import { executions } from "./executions.ts";
 import { tenants } from "./identity.ts";

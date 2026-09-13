@@ -1,9 +1,11 @@
 // Integration tests for MCP OAuth server-provider state machine.
 // Uses a real disposable Postgres DB — no mocks.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import type { Config } from "../../config/schema.ts";
 import type { Db } from "../../db/client.ts";
 import {

@@ -27,6 +27,7 @@
 // DB-pause OAuth resume path can re-drive the tool safely.
 
 import { and, eq, isNull } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
 import { credentials } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";

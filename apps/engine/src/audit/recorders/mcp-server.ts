@@ -319,8 +319,7 @@ export async function recordConnectorMcpAuthorized(
   );
 }
 
-export interface RecordConnectorMcpAuthorizationFailedParams
-  extends RecordConnectorMcpAuthorizationParams {
+export interface RecordConnectorMcpAuthorizationFailedParams extends RecordConnectorMcpAuthorizationParams {
   /** Why the authorization failed (bad state, issuer mismatch, exchange error). */
   reason: string;
 }

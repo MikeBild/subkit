@@ -4,6 +4,7 @@
 // sites are real violations, which are not.
 
 import { describe, expect, test } from "bun:test";
+
 import { auditTenantFilterFromText } from "../audit/tenant-filter-ast.ts";
 
 const SAFE_QUERY = `

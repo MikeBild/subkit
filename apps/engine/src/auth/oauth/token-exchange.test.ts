@@ -1,11 +1,13 @@
 // Unit tests for the RFC 8693 token-exchange helpers: scope narrowing, TTL
 // cap, refusal codes, token shape and the CLI argument parser. No database.
 
-import { describe, expect, test } from "bun:test";
 import { unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 import * as jose from "jose";
+
 import {
   API_KEY_TOKEN_TYPE,
   applyTokenGrants,

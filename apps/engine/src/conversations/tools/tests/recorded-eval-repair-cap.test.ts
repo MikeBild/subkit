@@ -17,10 +17,12 @@
 // override) — no network, deterministic. We count `flow === "repair"`
 // mock calls to prove the fan-out bound.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+
 import { getConfig, loadConfig } from "../../../config/loader.ts";
 import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";

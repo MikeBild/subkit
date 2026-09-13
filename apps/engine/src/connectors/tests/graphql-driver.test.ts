@@ -6,11 +6,13 @@
 // mutation. The driver is then exercised through the connector layer so
 // the credential + auth path is also covered.
 
-import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+
 import { upsertCredential } from "../../credentials/service.ts";
-import { executionSteps, executions, tenants } from "../../db/schema/index.ts";
+import { executions, executionSteps, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { runRequestStep } from "../../execution/steps/request.ts";
 import type { StepRunContext } from "../../execution/types.ts";
@@ -19,9 +21,9 @@ import { logger } from "../../logging/logger.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import type { RequestStep } from "../../workflows/types.ts";
 import {
-  query as gqlQuery,
   graphqlErrorMessages,
   probeGraphQLConnector,
+  query as gqlQuery,
 } from "../drivers/graphql.ts";
 import { HttpRequestInvalidError } from "../drivers/http.ts";
 import { probeConnector } from "../drivers/index.ts";

@@ -5,6 +5,7 @@
 // large-block estimator (never BPE-encode something that stalls the loop).
 
 import { describe, expect, test } from "bun:test";
+
 import { countTokens } from "./count.ts";
 
 describe("countTokens hot-path protection", () => {

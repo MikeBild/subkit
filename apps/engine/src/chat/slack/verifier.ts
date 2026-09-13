@@ -22,8 +22,7 @@ export interface SlackVerifyInput {
 }
 
 export type SlackVerifyResult =
-  | { ok: true }
-  | { ok: false; reason: "missing_headers" | "stale" | "bad_signature" };
+  { ok: true } | { ok: false; reason: "missing_headers" | "stale" | "bad_signature" };
 
 export function computeSlackSignature(
   signingSecret: string,

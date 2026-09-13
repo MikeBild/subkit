@@ -6,6 +6,7 @@
 // auth-REQUIRING connector genuinely lacks a credential.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { resolveDryRunEnvironment } from "../service.ts";

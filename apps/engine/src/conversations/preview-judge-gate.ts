@@ -99,7 +99,7 @@ export async function runPreviewJudgeGate(p: {
   /** Turn/pipeline abort signal (P1) threaded into the judge call. */
   signal?: AbortSignal;
 }): Promise<PreviewJudgeGateResult> {
-  let judgeOutcome: PreviewJudgeOutcome | null = null;
+  let judgeOutcome: PreviewJudgeOutcome | null;
   let judgeBlocked = false;
   let nextJudgeBreaker: JudgeBreakerState | undefined;
   let doneSignal: PreviewJudgeGateResult["doneSignal"] = null;

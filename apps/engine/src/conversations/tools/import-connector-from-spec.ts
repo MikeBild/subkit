@@ -5,6 +5,7 @@
 // template; otherwise we fall back to a manual HTTP connector draft.
 
 import { z } from "@hono/zod-openapi";
+
 import {
   fetchGoogleDiscoverySpec,
   fetchGraphQLIntrospection,

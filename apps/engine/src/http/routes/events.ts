@@ -10,8 +10,9 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq, sql } from "drizzle-orm";
+
 import { ErrorSchema, paginatedResponse } from "../../api/common-schemas.ts";
-import { AuditAction, audit } from "../../audit/index.ts";
+import { audit, AuditAction } from "../../audit/index.ts";
 import { writeEvent } from "../../db/events.ts";
 import { events } from "../../db/schema/index.ts";
 import { getBoss } from "../../queue/index.ts";
@@ -163,8 +164,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
     // effect. If pg-boss isn't running (e.g. tests), skip silently.
     try {
       const bossOverride = (c as unknown as { get: (k: string) => unknown }).get("boss") as
-        | ReturnType<typeof getBoss>
-        | undefined;
+        ReturnType<typeof getBoss> | undefined;
       const boss = bossOverride ?? getBoss();
       await fanoutEvent({
         db,

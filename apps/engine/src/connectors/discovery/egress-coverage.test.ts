@@ -6,9 +6,10 @@
 // link-local) get the same RFC1918 reject as runtime drivers. This
 // test pins the coverage so a new strategy can't slip in unguarded.
 
-import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const DISCOVERY_DIR = join(import.meta.dir);
 

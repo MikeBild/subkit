@@ -7,8 +7,10 @@
 //   * A stored `verifier` outside {standard, github, stripe} must be
 //     denied with an actionable hint (not a bare "unknown_verifier").
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomUUID } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { webhooksInbound } from "../../../db/schema/index.ts";
 import { handleInbound } from "../service.ts";
 import { createInboundCtx, type InboundTestCtx } from "./setup.ts";

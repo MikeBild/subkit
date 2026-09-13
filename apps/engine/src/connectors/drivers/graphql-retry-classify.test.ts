@@ -2,6 +2,7 @@
 // Pure function — no database, no network.
 
 import { describe, expect, test } from "bun:test";
+
 import { classifyGraphqlSchemaError, isGraphqlRetryable } from "./graphql-retry-classify.ts";
 
 describe("isGraphqlRetryable · HTTP status", () => {

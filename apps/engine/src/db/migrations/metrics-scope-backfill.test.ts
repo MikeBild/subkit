@@ -13,6 +13,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { generateKey } from "../../identity/api-key.ts";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
 import { apiKeys, dataMigrations, systemAccounts, tenants, users } from "../schema/index.ts";

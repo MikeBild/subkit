@@ -13,6 +13,7 @@
 // `runBuiltinSlash` returns true when the command was handled here.
 
 import type React from "react";
+
 import { uploadPath } from "../commands/files.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { renderSuspiciousCodepoints, sanitizePathInput } from "../lib/path-input.ts";

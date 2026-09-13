@@ -6,6 +6,7 @@
 // incremented correctly and that an unknown code still collapses to "other".
 
 import { beforeEach, describe, expect, it } from "bun:test";
+
 import { recordAuthoringGateBlock } from "../instrumentation.ts";
 import { getMetrics, METRIC_NAMES, resetMetricsRegistryForTests } from "../metrics.ts";
 

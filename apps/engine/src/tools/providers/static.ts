@@ -42,6 +42,7 @@
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import {

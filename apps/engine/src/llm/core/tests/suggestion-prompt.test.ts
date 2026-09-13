@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { assembleSuggestionPrompt, SUGGESTION_SYSTEM_PROMPT } from "../suggestion-prompt.ts";
 
 describe("assembleSuggestionPrompt", () => {

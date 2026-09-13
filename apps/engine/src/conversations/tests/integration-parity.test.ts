@@ -9,6 +9,7 @@
 //   - loop's sink still appends events (non-streaming baseline)
 
 import { describe, expect, it } from "bun:test";
+
 import { resolveToolMode } from "../tool-policies.ts";
 import { filterBySkillGate, SKILL_GATED_TOOLS } from "../tools/gated.ts";
 

@@ -5,9 +5,10 @@
 // forced on (same discipline as the ConfirmPrompt hyperlink tests) and
 // the cache reset keeps detection deterministic.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetHyperlinkSupportCacheForTests } from "@chat-ui/index.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
+
 import { MessageContent } from "./message-content.tsx";
 
 const OSC8_START = "\x1b]8;;";
@@ -25,7 +26,7 @@ afterEach(() => {
 /** Every OSC 8 link target in `frame`, in order of appearance. */
 function linkTargets(frame: string): string[] {
   const targets: string[] = [];
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: matching ESC + BEL by design — OSC 8 sequences are literal control bytes.
+  // eslint-disable-next-line no-control-regex -- matching ESC + BEL by design — OSC 8 sequences are literal control bytes.
   const re = /\x1b\]8;;([^\x07]*)\x07/g;
   for (const m of frame.matchAll(re)) {
     if (m[1]) targets.push(m[1]); // closers carry an empty target

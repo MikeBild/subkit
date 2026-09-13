@@ -2,6 +2,7 @@
 //   GET /v1/rbac/permissions
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { loadPermissionCatalog } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";

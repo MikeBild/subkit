@@ -21,6 +21,7 @@
 import type { LanguageModel } from "ai";
 import { and, eq } from "drizzle-orm";
 import type { ZodType } from "zod";
+
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -51,7 +52,7 @@ import type { LlmFlow, LlmProviderKind, ModelRoute, UserTurn } from "../types.ts
 import { AiSdkModel } from "./ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "./base-types.ts";
 import { toSystemMessages } from "./cache-blocks.ts";
-import { type AssembledContext, assembleContext } from "./context-assembler.ts";
+import { assembleContext, type AssembledContext } from "./context-assembler.ts";
 import { maybeWrapForDevtools } from "./devtools-wrap.ts";
 import { detectConfiguredProvider, initializeModel, type ModelInitOptions } from "./model-init.ts";
 import { safeParseJson } from "./safe-json.ts";
@@ -652,15 +653,15 @@ async function dispatchReal<T>(
     ...(params.telemetry_metadata ?? {}),
   };
 
-  let text = "";
+  let text: string;
   let object: T | undefined;
-  let usage = {
-    input_tokens: 0,
-    output_tokens: 0,
-    cache_read_tokens: 0,
-    cache_creation_tokens: 0,
+  let usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_creation_tokens: number;
   };
-  let fell_back = false;
+  const fell_back = false;
 
   try {
     if (params.schema) {
@@ -701,7 +702,6 @@ async function dispatchReal<T>(
     }
   } catch (err) {
     if (isFallbackEligible(err) && !fell_back) {
-      fell_back = true;
       logger.warn({
         module: "llm",
         action: "fallback.triggered",

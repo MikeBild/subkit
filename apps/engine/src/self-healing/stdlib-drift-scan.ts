@@ -12,6 +12,7 @@
 // signals into PatchCandidate rows.
 
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
+
 import type { Db, Executor } from "../db/client.ts";
 import { requestHooks } from "../db/schema/request_hooks.ts";
 import { workflows, workflowVersions } from "../db/schema/workflows.ts";

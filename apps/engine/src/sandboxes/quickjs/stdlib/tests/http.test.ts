@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { runJs } from "../../runtime.ts";
 
 // Stdlib behavior is validated inside the QuickJS sandbox — not by

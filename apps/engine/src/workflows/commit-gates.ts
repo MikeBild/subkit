@@ -6,6 +6,7 @@
 // audit ceiling — same split rationale as `trigger-bindings.ts`.
 
 import { and, eq, inArray, isNull } from "drizzle-orm";
+
 import type { Executor } from "../db/client.ts";
 import { connectors, skills as skillsTable } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";

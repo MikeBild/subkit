@@ -54,6 +54,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { classifyMcpToolSideEffect } from "@shared/index.ts";
 import { and, eq, gt } from "drizzle-orm";
+
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import {
   readRequestSource,
@@ -69,9 +70,9 @@ import {
   connectServerById,
   evictServer,
   getMcpConnector,
+  makeMcpOAuthProvider,
   MCP_CREDENTIAL_ENVIRONMENT,
   MCP_OAUTH_CALLBACK_PATH,
-  makeMcpOAuthProvider,
   redactUpstreamDetail,
   sdkAuth,
 } from "../../../mcp/index.ts";

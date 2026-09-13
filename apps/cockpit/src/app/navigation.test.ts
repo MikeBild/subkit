@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { NAVIGATION, navigationItem, visibleNavigation } from "./navigation";
 
 describe("cockpit navigation contract", () => {

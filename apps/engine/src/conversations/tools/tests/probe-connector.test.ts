@@ -7,9 +7,11 @@
 // credentials arrive at the remote, while the audit row records only the
 // token NAMES, never values.
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { desc, eq } from "drizzle-orm";
+
 import { upsertCredential } from "../../../credentials/service.ts";
 import { auditLog, connectors, roles, tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";

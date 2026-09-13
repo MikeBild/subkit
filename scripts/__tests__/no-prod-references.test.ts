@@ -1,8 +1,9 @@
 // The repository must stay free of installation-specific domains. The needle
 // is assembled from fragments so this guard file never matches itself.
-import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const root = join(import.meta.dir, "../..");
 const self = "scripts/__tests__/no-prod-references.test.ts";
@@ -10,7 +11,7 @@ const self = "scripts/__tests__/no-prod-references.test.ts";
 describe("no installation-specific references", () => {
   test("the operator domain appears in no tracked file", () => {
     const needle = ["mikebild", "dev"].join("\\.");
-    let hits = "";
+    let hits: string;
     try {
       hits = execFileSync("git", ["grep", "-nIE", needle, "--", ".", `:!${self}`], {
         cwd: root,

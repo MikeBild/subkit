@@ -1,6 +1,7 @@
 // ask_user_text — ask the user for a free-form text answer.
 
 import { z } from "@hono/zod-openapi";
+
 import type { ConversationTool, ToolResult } from "../index.ts";
 import { pauseForUserInput } from "./common.ts";
 

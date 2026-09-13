@@ -1,6 +1,7 @@
 // `sk sessions search` — pure fuzzy-ranking logic over cached metadata.
 
 import { describe, expect, test } from "bun:test";
+
 import { rankSessions } from "../commands/sessions.ts";
 
 const ROWS = [

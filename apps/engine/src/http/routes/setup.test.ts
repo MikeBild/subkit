@@ -5,9 +5,10 @@
 // user, which would short-circuit the bootstrap-pending check we are
 // trying to exercise.
 
+import { serve, type ServerType } from "@hono/node-server";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { type ServerType, serve } from "@hono/node-server";
 import { eq } from "drizzle-orm";
+
 import { auditLog } from "../../db/schema/audit.ts";
 import { engineSettings, tenants } from "../../db/schema/identity.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

@@ -6,6 +6,7 @@
 // platform.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   checkIngestGuard,
   KNOWLEDGE_INGEST_MAX_BYTES,

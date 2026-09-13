@@ -4,6 +4,7 @@
 // Keeps the cli-core surface honest without bringing up React or Ink.
 
 import { describe, expect, test } from "bun:test";
+
 import { applyTurnEvent, initialSessionState } from "../turn-event.ts";
 
 describe("applyTurnEvent — tool-call lifecycle", () => {

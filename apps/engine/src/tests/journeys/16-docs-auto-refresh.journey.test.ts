@@ -7,10 +7,12 @@
 //   - AC4: connectors.last_ingested_at advances.
 // Spec refs: docs/authors/authoring-workflows.md, docs/concepts/connectors.md
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { connectorDocumentChunks, connectors } from "../../db/schema/index.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";

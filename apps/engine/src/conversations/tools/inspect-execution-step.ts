@@ -15,7 +15,8 @@
 
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
-import { executionSteps, executions } from "../../db/schema/index.ts";
+
+import { executions, executionSteps } from "../../db/schema/index.ts";
 import { OffloadResolutionError, resolveOffloaded } from "../../execution/offload.ts";
 import type { ConversationTool } from "./index.ts";
 

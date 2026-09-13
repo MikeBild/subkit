@@ -59,6 +59,7 @@
 // orphan blob in the bucket is preferable to wedging the cron.
 
 import { and, count, eq, inArray, isNull, lt, notInArray, sql } from "drizzle-orm";
+
 import {
   AuditAction,
   auditAwait,
@@ -66,7 +67,7 @@ import {
   FileScanCompletedMetadataSchema,
 } from "../audit/index.ts";
 import type { Db } from "../db/client.ts";
-import { executionSteps, executions, fileLinks, files } from "../db/schema/index.ts";
+import { executions, executionSteps, fileLinks, files } from "../db/schema/index.ts";
 import { storageKey } from "../files/resolver.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import {

@@ -11,6 +11,7 @@
 // credential actually granted the scopes it needs.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { computeConnectorScopeDiff, getConnector } from "../../../connectors/index.ts";
 import { connectorAccessLevel } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";

@@ -1,5 +1,5 @@
 import type { components } from "@/api/schema";
-import { LOCALE_TAGS, type Locale, type TranslationKey } from "@/lib/i18n";
+import { type Locale, LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 
 type Execution = components["schemas"]["Execution"];
 

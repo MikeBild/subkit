@@ -22,6 +22,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { auditTenantFilter } from "./audit/tenant-filter-ast.ts";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -562,7 +563,7 @@ function checkRegressionIsolation(): Result {
   // script in package.json. They run via `test:regression` and the
   // broader `bun test apps/` in verify, but never in the dev inner loop.
   const journeysDir = join(REPO, "apps/engine/src/tests/journeys");
-  let regressionFiles: string[] = [];
+  let regressionFiles: string[];
   try {
     regressionFiles = readdirSync(journeysDir).filter((n) => /regression.*\.test\.ts$/.test(n));
   } catch {

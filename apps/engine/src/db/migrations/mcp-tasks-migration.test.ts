@@ -10,6 +10,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
+
 import { conversations, mcpTasks, tenants } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
 

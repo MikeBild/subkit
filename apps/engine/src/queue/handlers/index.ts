@@ -1,6 +1,7 @@
 // Register all queue handlers against a running PgBoss instance.
 
 import type { PgBoss } from "pg-boss";
+
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import { registerOAuth2RefreshHandler } from "../../credentials/oauth2/refresh-worker.ts";
 import type { Db } from "../../db/client.ts";

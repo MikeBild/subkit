@@ -19,6 +19,7 @@
 // the caller emits the event exactly once, inside the same transaction.
 
 import { sql } from "drizzle-orm";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { buildOAuthRedirectUri, OAUTH_CALLBACK_PATH } from "../credentials/oauth2/redirect-uri.ts";

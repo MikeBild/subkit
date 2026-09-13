@@ -4,6 +4,7 @@
 // timeout is forced to win with timeoutMs=0 against a never-settling run.
 
 import { describe, expect, test } from "bun:test";
+
 import { raceInlineRun } from "./inline-timeout.ts";
 
 describe("raceInlineRun", () => {

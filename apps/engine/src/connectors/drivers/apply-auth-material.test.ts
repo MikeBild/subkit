@@ -14,6 +14,7 @@
 // interoperable across every provider.
 
 import { describe, expect, test } from "bun:test";
+
 import type { ConnectorView } from "../types.ts";
 import { applyAuthMaterial } from "./http.ts";
 
@@ -167,7 +168,7 @@ describe("applyAuthMaterial — oauth2 empty access_token guard (empty-Bearer re
       makeOauth2Connector(),
       {
         mode: "oauth2",
-        // biome-ignore lint/suspicious/noExplicitAny: testing null access_token at runtime boundary
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- testing null access_token at runtime boundary
         access_token: null as any,
         token_type: "Bearer",
         refresh_token: null,

@@ -7,6 +7,7 @@
 // which silently shifts event times while the run reports green.
 
 import { describe, expect, test } from "bun:test";
+
 import { runJs } from "../../runtime.ts";
 
 const run = <T>(code: string, input: unknown): Promise<T> =>

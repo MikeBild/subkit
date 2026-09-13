@@ -2,6 +2,7 @@
 //   POST /v1/connectors/from-template/{slug}
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
@@ -21,8 +22,8 @@ import {
   ConnectorResponseSchema,
   FromTemplateBody,
   requireAdmin,
-  SlugParam,
   serializeConnector,
+  SlugParam,
   templateAuthToConnectorAuth,
 } from "./schemas.ts";
 

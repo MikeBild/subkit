@@ -21,6 +21,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
@@ -134,7 +135,7 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
     // NO structured marker → the deterministic gate MUST pause. The
     // prior prose+yes is irrelevant; the heuristic that once read it is
     // gone.
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result = await (tool!.execute as any)(
       { id: "00000000-0000-0000-0000-000000000abc" },
       { toolCallId: "t-del-1", messages: [] },
@@ -162,7 +163,7 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
     // published schema declares none. A model that volunteers one gets the same
     // confirmation card as one that does not — the operator decides, and the
     // harness performs the delete once they answer.
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result = await (tool!.execute as any)(
       { id: "00000000-0000-0000-0000-000000000abc", __policy_confirmed: true },
       { toolCallId: "t-del-marker", messages: [] },
@@ -186,7 +187,7 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
     );
     const tool = wrapped.delete_connector;
     expect(tool).toBeDefined();
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result = await (tool!.execute as any)(
       { id: "00000000-0000-0000-0000-000000000def", __policy_confirmed: true },
       { toolCallId: "t-del-c-marker", messages: [] },
@@ -213,7 +214,7 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
       [],
       {},
     );
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result = await (wrapped.delete_connector!.execute as any)(
       { id: "00000000-0000-0000-0000-000000000fff" },
       { toolCallId: "t-mismatch", messages: [] },
@@ -234,7 +235,7 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
       [],
       {},
     );
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result = await (wrapped.delete_workflow!.execute as any)(
       { id: "00000000-0000-0000-0000-000000000bbb" },
       { toolCallId: "t-empty", messages: [] },

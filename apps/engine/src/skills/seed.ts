@@ -36,7 +36,9 @@
 //     <markdown body>
 
 import { createHash } from "node:crypto";
+
 import { and, eq } from "drizzle-orm";
+
 import { type Db, getDb } from "../db/client.ts";
 import { skills, tenants } from "../db/schema/index.ts";
 import { EMBEDDED_SKILL_SEEDS } from "./embedded-seeds.ts";

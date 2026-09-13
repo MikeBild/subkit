@@ -2,6 +2,7 @@
 // cache-hit + latency stats over `llm_usage`. Gated by `stats:read`.
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { can } from "../../../rbac/index.ts";
 import { aggregateLlm, type LlmGroupDim } from "../../../stats/aggregate-llm.ts";

@@ -3,6 +3,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { auditLog, conversationElicitations, conversations } from "../../db/schema/index.ts";
 import {
   withLatestPreview,
@@ -37,7 +38,7 @@ function toolCtx(
     actor_id: actorId,
     connector_id: null,
     workflow_id: null,
-    // biome-ignore lint/suspicious/noExplicitAny: stub for gate test
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub for gate test
     engineClient: {} as any,
     getDraft,
     setDraft: async () => {},

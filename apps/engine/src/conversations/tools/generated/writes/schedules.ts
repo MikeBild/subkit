@@ -5,6 +5,7 @@
 // MCP clients see these as `tenant.create_schedule` / `tenant.list_schedules` / etc.
 
 import { z } from "@hono/zod-openapi";
+
 import {
   createSchedule,
   deleteSchedule,

@@ -1,11 +1,13 @@
 // E2E tests for `sk profile` — multi-profile CRUD, switching,
 // resolution precedence, and slash command handler.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { initialSessionState } from "@cli-core/index.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { defaultConfig, loadConfig, resolveProfile, saveConfig, saveProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { handleSlash } from "../repl/slash/handler.ts";

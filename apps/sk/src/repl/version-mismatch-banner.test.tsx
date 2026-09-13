@@ -6,6 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
+
 import { classifyVersionSkew, VersionMismatchBanner } from "./version-mismatch-banner.tsx";
 
 describe("classifyVersionSkew", () => {

@@ -9,6 +9,7 @@
 //      so the series shape stays consistent.
 
 import { describe, expect, it } from "bun:test";
+
 import { MetricsRegistry } from "../metrics.ts";
 
 describe("MetricsRegistry label allow-list", () => {

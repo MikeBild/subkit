@@ -5,8 +5,8 @@
 // was inconsistent with the rest of the ask-user family. These tests
 // lock the new behavior in.
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
 import { TextPrompt } from "@chat-ui/index.ts";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 
 async function yieldTick(ms = 40): Promise<void> {

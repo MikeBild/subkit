@@ -13,6 +13,7 @@
 // stripped text; the on-disk file may be larger.
 
 import { describe, expect, test } from "bun:test";
+
 import { STDLIB_SOURCE } from "../index.ts";
 
 const SIZE_CEILING_BYTES = 30_000;

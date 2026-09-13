@@ -8,11 +8,7 @@ import type { TranslationKey } from "./i18n";
  * rather than being guessed.
  */
 export type ConnectorAuthState =
-  | "connected"
-  | "expired"
-  | "credentials_missing"
-  | "not_required"
-  | "unproven";
+  "connected" | "expired" | "credentials_missing" | "not_required" | "unproven";
 
 export interface ConnectorAuthInput {
   auth_type?: string | null;

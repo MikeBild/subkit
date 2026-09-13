@@ -21,9 +21,10 @@
 //   AC4. sk.conversation.list returns conversations owned by the
 //        caller (owner=me semantics).
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { EngineClient } from "../../../../sk/src/engine-client.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 

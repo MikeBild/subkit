@@ -5,6 +5,7 @@
 // is the same payload the LLM sees on the tool_result message.
 
 import { describe, expect, test } from "bun:test";
+
 import { makeStubCtx, makeStubDb, makeTestPrincipal } from "../../../tools/tests/_helpers.ts";
 import { inspectRecipeTool } from "../inspect-recipe.ts";
 

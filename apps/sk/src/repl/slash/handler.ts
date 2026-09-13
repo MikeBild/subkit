@@ -1,6 +1,4 @@
-// Shared slash-command handler reused by both the readline REPL
-// and the Ink REPL. Pure function in, side-effecting calls through
-// the provided EngineClient. Returns a string to display as a
+// Shared slash-command handler reused by both the readline REPL and the Ink REPL. Pure function in, side-effecting calls through the provided EngineClient. Returns a string to display as a
 // transient banner, or `null` when the command handled its own
 // output (e.g. `/clear` which resets the session).
 //
@@ -16,8 +14,10 @@
 import fs from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+
 import type { ConversationItem } from "@chat-ui/index.ts";
 import type { SkSessionState } from "@cli-core/index.ts";
+
 import { loadConfig, type ResolvedProfile, saveConfig } from "../../config.ts";
 import {
   debugLog,

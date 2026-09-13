@@ -5,8 +5,7 @@
 // Adopt one binary shape for pass/fail, one tristate for roundtrip.
 
 export type ValidationResult<P = void, E = ValidationIssue> =
-  | { valid: true; payload: P }
-  | { valid: false; errors: readonly E[] };
+  { valid: true; payload: P } | { valid: false; errors: readonly E[] };
 
 export interface ValidationIssue {
   code: string;

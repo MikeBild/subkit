@@ -37,9 +37,7 @@ export const turnLoopBudgetStopCondition = ({
  *  loop-budget short-circuit.
  */
 export type FallbackSynthesisReason =
-  | "next_prompt_from_tool"
-  | "loop_warnings_no_signal"
-  | "tool_results_summary";
+  "next_prompt_from_tool" | "loop_warnings_no_signal" | "tool_results_summary";
 
 function pickFreshestNextPrompt(events: ReadonlyArray<TurnEvent>): string | null {
   const latestEvent = [...events].reverse().find((ev) => ev.type === "tool_result");
@@ -326,7 +324,7 @@ function describeToolOutput(output: Record<string, unknown>): string {
       // tool-only turn; "output: org, count, repos" answers nothing while
       // the actual top rows sit one field away.
       if (output.output_sampled === true) {
-        let snippet = "";
+        let snippet: string;
         try {
           snippet = JSON.stringify(wfOutput) ?? "";
         } catch {

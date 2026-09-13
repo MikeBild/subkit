@@ -24,6 +24,7 @@
 // keep going with partially-resolved text (audit / log-only contexts).
 
 import { and, desc, eq, isNull } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { CredentialMode, DecryptedCredential } from "../../credentials/types.ts";
 import { decryptSecret } from "../../crypto/aes-gcm.ts";
@@ -33,7 +34,7 @@ import { logger } from "../../logging/logger.ts";
 import { can } from "../../rbac/evaluator.ts";
 import { authorityConnectorDigest } from "../../workflows/authority-configuration.ts";
 import { suggestClosest } from "../../workflows/levenshtein.ts";
-import { type Placeholder, parsePlaceholders } from "./parser.ts";
+import { parsePlaceholders, type Placeholder } from "./parser.ts";
 
 export type Environment = "dev" | "prod";
 
@@ -271,8 +272,7 @@ export async function describeConnectorPlaceholders(
 type OneResult = { ok: true; value: string } | { ok: false; code: UnresolvedCode; message: string };
 
 type OneRawResult =
-  | { ok: true; value: unknown }
-  | { ok: false; code: UnresolvedCode; message: string };
+  { ok: true; value: unknown } | { ok: false; code: UnresolvedCode; message: string };
 
 /**
  * Type-preserving counterpart of `resolveOne`. Returns the native

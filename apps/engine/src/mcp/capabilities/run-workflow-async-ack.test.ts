@@ -8,6 +8,7 @@
 // the discovery logic is verified without waiting out the 30s deadline.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { conversations, executions, workflows } from "../../db/schema/index.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { type McpTestSuite, startMcpTestSuite } from "../tests/setup.ts";

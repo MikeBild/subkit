@@ -27,7 +27,7 @@ packages. It is the **one place** where those surfaces agree on shape.
 
 ## Style
 
-- Biome (inherited).
+- ESLint + Prettier (inherited).
 - File naming: `kebab-case.ts`.
 - One concept per file when possible. Re-export through an `index.ts` only if
   the existing pattern does so.

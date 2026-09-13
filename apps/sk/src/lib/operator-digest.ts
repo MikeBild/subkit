@@ -9,6 +9,7 @@
 // Best-effort: any failure here must never block the REPL.
 
 import pc from "picocolors";
+
 import type {
   EngineClient,
   FailureOrigin,

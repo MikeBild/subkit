@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import type { ReactElement } from "react";
+
 import { STATUS_GLYPH } from "../repl/plan-cell.tsx";
 import { TaskList } from "./task-list.tsx";
 import type { PlanStep } from "./types.ts";

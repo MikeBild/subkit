@@ -12,9 +12,11 @@
 // override reaches a real socket rather than a stub — the failure mode being
 // guarded is a probe that reports success while sending no credential at all.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { connectors } from "../../../db/schema/index.ts";
 import { __setMcpPoolFactoriesForTests, type McpClientLike } from "../../../mcp/client/pool.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";

@@ -7,6 +7,7 @@
 // here so the rewrite cannot regress against the historical contract.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   type ActivationRecord,
   autoloadForToolCall,

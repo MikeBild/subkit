@@ -30,7 +30,7 @@ import type React from "react";
 
 /** Strip ANSI escape sequences. Small inline implementation — the
  *  standard npm `strip-ansi` package is overkill for our test surface. */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape stripping requires literal control bytes.
+// eslint-disable-next-line no-control-regex -- ANSI escape stripping requires literal control bytes.
 const ANSI_RE = /[\u001B\u009B][[\]()#;?]*(?:(?:\d{1,4}(?:;\d{0,4})*)?[0-9A-PRZcf-nqry=><]|\w+)/g;
 export function stripAnsi(s: string): string {
   return s.replace(ANSI_RE, "");

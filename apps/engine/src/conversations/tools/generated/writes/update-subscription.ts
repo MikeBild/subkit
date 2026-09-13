@@ -7,6 +7,7 @@
 // the existing `subscription.updated` action.
 
 import { z } from "@hono/zod-openapi";
+
 import type { ConversationTool } from "../../index.ts";
 
 const UpdateSubscriptionInput = z
@@ -22,10 +23,10 @@ const UpdateSubscriptionInput = z
     (v) =>
       Boolean(
         v.event_pattern ||
-          v.target_url ||
-          v.active !== undefined ||
-          v.secret ||
-          v.rotating_secret !== undefined,
+        v.target_url ||
+        v.active !== undefined ||
+        v.secret ||
+        v.rotating_secret !== undefined,
       ),
     {
       message:

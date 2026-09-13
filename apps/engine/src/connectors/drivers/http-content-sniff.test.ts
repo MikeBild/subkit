@@ -5,6 +5,7 @@
 // when the header is uninformative.
 
 import { describe, expect, test } from "bun:test";
+
 import { parseResponseBody, serializeXmlBody } from "./http.ts";
 
 describe("parseResponseBody · trusted-header fast path", () => {

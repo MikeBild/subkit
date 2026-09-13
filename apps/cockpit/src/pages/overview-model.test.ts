@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import type { FailureGroup } from "./overview-model";
 import { partitionFailures, recentRuns } from "./overview-model";
 

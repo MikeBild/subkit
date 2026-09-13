@@ -4,6 +4,7 @@
 // incident class, pinned in redaction-persist.integration.test.ts).
 
 import { describe, expect, test } from "bun:test";
+
 import { ELICITATION_REDACTED_MARKER as MARKER } from "../ask-user/redact-answer.ts";
 import { redactToolArgsForPersist } from "./redact-tool-args.ts";
 

@@ -26,6 +26,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+
 import { timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 

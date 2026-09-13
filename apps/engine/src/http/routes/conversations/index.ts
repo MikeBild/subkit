@@ -26,6 +26,7 @@
 //   POST   /v1/conversations/:id/draft/snapshots/restore   — restore a draft snapshot
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
+
 import { requireAnyPermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { registerCollectionRoutes } from "./collection.ts";

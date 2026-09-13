@@ -2,6 +2,7 @@ import type { Conversation } from "@/api/client";
 import type { PatchCandidate, SkillCandidate } from "@/api/decisions";
 import type { TranslationKey } from "@/lib/i18n";
 import { clipAtWord, conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
+
 import type { ConversationEvidence, PatchEvidence, SkillEvidence } from "./decisions-context";
 
 export type DecisionKind = "patch" | "skill" | "conversation";

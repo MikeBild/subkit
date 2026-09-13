@@ -5,6 +5,7 @@
 // invariant) cannot silently regress.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   formatConnectorRecipes,
   formatOperatorQuirks,

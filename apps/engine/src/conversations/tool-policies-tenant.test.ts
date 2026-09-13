@@ -10,6 +10,7 @@
 // the signature simpler" refactor cannot silently regress it.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { conversations, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { getToolPolicies, setToolPolicy, type ToolPolicyAuditCtx } from "./tool-policies.ts";

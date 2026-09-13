@@ -8,6 +8,7 @@
 //   - Tied scores keep the original input order.
 
 import { describe, expect, test } from "bun:test";
+
 import { scoreEndpoints } from "./endpoint-scorer.ts";
 import type { DiscoveredEndpoint } from "./types.ts";
 

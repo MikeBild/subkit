@@ -20,6 +20,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { browserSessionCookie, signBrowserSession } from "../../../auth/browser-session.ts";
 import { setConfigKey } from "../../../config/loader.ts";
 import { generateCredentialSetupGrant } from "../../../connectors/credential-setup-grant.ts";

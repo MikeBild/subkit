@@ -21,6 +21,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import type { ResolvedProfile } from "../../../../sk/src/config.ts";
 import { runHeadless } from "../../../../sk/src/headless.ts";
 import { auditLog } from "../../db/schema/index.ts";

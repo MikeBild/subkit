@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, test } from "bun:test";
 import type { TurnEvent } from "@cli-core/index.ts";
+import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
+
 import { InkApp, type InkAppProps } from "../ink-app.tsx";
 import type { PersonaProbe } from "../slash.ts";
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { apply, EMPTY_BUFFER } from "./input-buffer.ts";
 
 describe("InputBuffer — ghost set", () => {

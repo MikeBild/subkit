@@ -21,10 +21,12 @@
 //   - cli() spawns dist/sk as a subprocess, returns {stdout,stderr,exitCode}.
 //   - Each describe block is one scenario; test() steps are sequential.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { boot, cli, type E2EEnv, expectSuccess, parseJson, run, shutdown } from "./setup.ts";
 
 // ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 // the soft-rewrite backtick-strip for tool.phantom_reference.
 
 import { describe, expect, it } from "bun:test";
+
 import { runOutputGuard } from "../index.ts";
 import { toolScanner } from "../scanners/tool.ts";
 

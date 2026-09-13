@@ -7,6 +7,7 @@
 //   - deterministic failures (auth, 4xx, schema) → not retryable
 
 import { describe, expect, test } from "bun:test";
+
 import { isTransientRunResult } from "./classify.ts";
 import type { RunResult } from "./types.ts";
 

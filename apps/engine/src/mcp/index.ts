@@ -17,9 +17,9 @@ export { assembleCatalog } from "./capabilities/catalog-budget.ts";
 export { listWorkflowTools } from "./capabilities/tools-helpers.ts";
 export type { RemoteToolAnnotations } from "./client/manifest.ts";
 export {
+  makeMcpOAuthProvider,
   McpDbOAuthClientProvider,
   type McpDbOAuthClientProviderInput,
-  makeMcpOAuthProvider,
 } from "./client/oauth-provider.ts";
 export { buildMcpOAuthRedirectUri, MCP_OAUTH_CALLBACK_PATH } from "./client/oauth-redirect.ts";
 // Production surface of the client pool ONLY. The pool's `__set*ForTests` /
@@ -32,10 +32,10 @@ export {
   evictServer,
   evictTenant,
   getTenantMcpTools,
-  type InvokeRemoteToolInput,
-  type InvokeRemoteToolResult,
   invalidateCachedManifest,
   invokeRemoteTool,
+  type InvokeRemoteToolInput,
+  type InvokeRemoteToolResult,
   type NegotiatedServerCapabilities,
   type RemoteToolDescriptor,
   type TenantMcpToolSet,

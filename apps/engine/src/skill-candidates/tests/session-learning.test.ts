@@ -3,6 +3,7 @@
 // reject blocks re-proposal → approve carries domain tags to the skill.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { proposeLearning } from "../../agent/sessions.ts";
 import type { Db } from "../../db/client.ts";
 import { tenants } from "../../db/schema/index.ts";

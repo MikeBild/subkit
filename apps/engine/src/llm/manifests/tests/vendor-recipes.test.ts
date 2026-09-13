@@ -1,6 +1,7 @@
 // Unit tests for VendorRecipeManifest — loader + freshness contract.
 
 import { describe, expect, it } from "bun:test";
+
 import { getVendorRecipe, listVendorRecipes, recipeFreshness } from "../vendor-recipes.ts";
 
 describe("VendorRecipeManifest", () => {

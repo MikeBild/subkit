@@ -3,6 +3,7 @@ import type { SortingState } from "@tanstack/react-table";
 import { Bot, FolderTree, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { type CockpitColumn, DataTable } from "@/components/cockpit/data-table";
@@ -36,8 +37,8 @@ import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
-  MIN_CATEGORY_SIZE,
   memberCountAfterMove,
+  MIN_CATEGORY_SIZE,
   recategorizedSlug,
   UNCATEGORIZED,
 } from "@/lib/workflow-category";

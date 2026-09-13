@@ -22,6 +22,7 @@ import {
   type TurnEvent,
 } from "@cli-core/index.ts";
 import { VERSION } from "@cli-core/version.ts";
+
 import { loadConfig, type ResolvedProfile, resolveProfile, saveConfig } from "./config.ts";
 import { ConnectionPinger, type ConnectionSnapshot } from "./connection-pinger.ts";
 import {
@@ -39,12 +40,12 @@ import {
 } from "./engine-client.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
+import { runRepl } from "./repl.ts";
 import { enableBracketedPaste } from "./repl/bracketed-paste.ts";
 import { humanizeRequestError } from "./repl/error-humanize.ts";
 import { loadMentionCandidates, type MentionCandidate } from "./repl/mention-candidates.ts";
 import { fallbackPersona, type ResolvedPersona, resolvePersona } from "./repl/resolved-persona.ts";
 import { handleSlash, type PaneSpec } from "./repl/slash/handler.ts";
-import { runRepl } from "./repl.ts";
 import { saveSessionMetadata } from "./sessions.ts";
 import { loadSettings } from "./settings.ts";
 

@@ -5,6 +5,7 @@
 // "status=succeeded · no output" for a run whose data existed all along.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
@@ -83,7 +84,7 @@ describe("loop guard — prior-success attachment", () => {
     const sameArgs = { workflow: "org-top-repos", input: '{"org":"remotion-dev"}' };
     // Call 1 — the workflow does not exist in this tenant so the call
     // fails, but the repeat tracker records the canonical args hash.
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     await (run!.execute as any)(sameArgs, { toolCallId: "t1", messages: [] });
     const recordedHash = signals.toolArgsRepeat.get("run_workflow")?.hash;
     expect(typeof recordedHash).toBe("string");
@@ -103,7 +104,7 @@ describe("loop guard — prior-success attachment", () => {
     // Call 2 with IDENTICAL args — because the exact execution already
     // succeeded this turn, the wrapper returns the prior output instead
     // of creating a duplicate execution row.
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result2 = await (run!.execute as any)(sameArgs, { toolCallId: "t2", messages: [] });
     const data2 = result2.data as {
       error_code?: string;

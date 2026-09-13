@@ -16,6 +16,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import readline from "node:readline";
+
 import { isEngineError, isTransportError } from "@cli-core/errors.ts";
 import {
   applyTurnEvent,
@@ -25,6 +26,7 @@ import {
   type SkSessionState,
   type TurnEvent,
 } from "@cli-core/index.ts";
+
 import type { ResolvedProfile } from "./config.ts";
 import {
   type DebugCorrelationFields,

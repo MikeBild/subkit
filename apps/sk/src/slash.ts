@@ -15,6 +15,7 @@
 // empty `/` uses frequency bias, typed text uses exact/prefix matches.
 
 import { z } from "zod";
+
 import { frequencyBias } from "./usage-stats.ts";
 
 /**

@@ -5,6 +5,7 @@
 // projection that drops a field while mapping (the dropped-`resources` shape).
 
 import { describe, expect, test } from "bun:test";
+
 import { detectTransformWarnings } from "../transform-warnings.ts";
 
 // Scope envelope mirrors the engine: scope[stepId] = { data: <output> }.

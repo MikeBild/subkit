@@ -14,10 +14,12 @@
 // registered with the authorization server are two different files, and
 // nothing but this assertion holds them together.
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { OAUTH_CALLBACK_PATH } from "../../credentials/index.ts";
 import { buildMcpOAuthRedirectUri, MCP_OAUTH_CALLBACK_PATH } from "./oauth-redirect.ts";

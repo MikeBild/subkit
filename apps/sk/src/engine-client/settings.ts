@@ -4,6 +4,7 @@
 // group merged into `EngineClient` by `../engine-client.ts`.
 
 import { AUDIT_SOURCE_HEADER, type AuditSource } from "@shared/audit-source.ts";
+
 import type { EngineClient } from "../engine-client.ts";
 
 /** The CLI's channel tag on audit_log.metadata.audit_source. The

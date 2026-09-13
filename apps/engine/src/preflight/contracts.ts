@@ -42,12 +42,7 @@ export type PreflightRefusalCode = (typeof PREFLIGHT_REFUSAL_CODES)[number];
 
 /** The numbered check a result belongs to, named as the contract names it. */
 export type PreflightCheckName =
-  | "master_key"
-  | "schema"
-  | "object_store"
-  | "settings_revision"
-  | "secret_bindings"
-  | "identity";
+  "master_key" | "schema" | "object_store" | "settings_revision" | "secret_bindings" | "identity";
 
 export interface PreflightCheckResult {
   check: PreflightCheckName;

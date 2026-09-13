@@ -4,6 +4,7 @@
 // quotes, unescaped newlines).
 
 import { describe, expect, test } from "bun:test";
+
 import { safeParseJson, safeParseJsonWithMeta } from "../safe-json.ts";
 
 describe("safeParseJson", () => {

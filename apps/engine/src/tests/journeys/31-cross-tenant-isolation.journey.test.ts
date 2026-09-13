@@ -20,12 +20,14 @@
 //          unlock Tenant B's binding (and vice versa). The slug+secret
 //          pair is tenant-scoped by construction.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, createHmac } from "node:crypto";
+
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import {
   apiKeys,
   executions,

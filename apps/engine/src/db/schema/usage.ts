@@ -8,6 +8,7 @@
 
 import { sql } from "drizzle-orm";
 import { check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+
 import { tenants } from "./identity.ts";
 
 export const usageEvents = pgTable(

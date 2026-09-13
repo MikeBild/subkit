@@ -5,7 +5,7 @@
 // `new Promise(r => setTimeout(r, N))` directly — use the helpers here
 // instead. A Biome rule enforces this.
 
-import { type WaitForOpts, waitForJson } from "../../../test-helpers/determinism/wait.ts";
+import { waitForJson, type WaitForOpts } from "../../../test-helpers/determinism/wait.ts";
 import type { JourneyCtx } from "../setup.ts";
 
 /** Poll a GET endpoint (bearer-authed) until the predicate accepts. */

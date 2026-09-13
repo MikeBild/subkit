@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+
 import { translate } from "@/lib/i18n";
+
 import {
   AUTHORITY_EFFECT_KEYS,
   AUTHORITY_STATE_KEYS,

@@ -31,9 +31,10 @@
 // example fails the gate at boot instead of silently breaking
 // production.
 
-import { describe, expect, it } from "bun:test";
 import { zodSchema } from "ai";
 import Ajv from "ajv";
+import { describe, expect, it } from "bun:test";
+
 import { listTools } from "../index.ts";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
@@ -91,25 +92,10 @@ describe("tool example_input ↔ inputSchema round-trip (post-incident guard)", 
     // strict channel.
     expect(compatible).toContain("propose_skill");
 
-    // Pin the *exact* set of tools that cannot ship `inputExamples`
-    // today. Adding a new offending tool, OR fixing one of the three
-    // listed, both fail this assertion — the failure message points
-    // at the projection / record-mismatch problem so the engineer can
-    // either tighten the example or update the snapshot. When all
-    // three drop off (upstream projection fix OR each tool drops
-    // `z.record(...)`), flip the assertion to `toEqual([])` and
-    // re-enable `toInputExamples()` in sdk-wrap/invoke.ts.
-    //
-    // Replaces the prior `void incompatible` discard so a
-    // NEW offender lights up CI instead of slipping through silently.
-    //
-    // MAINTENANCE RULE: if you are tightening one
-    // of these tools' `example_input` or its `inputSchema` and the
-    // snapshot test fails, REMOVE the corresponding entry from this
-    // array. DO NOT append a new tool to make the test pass — the
-    // whole point of pinning the set is to force a new offender to be
-    // discussed (either tighten its example or accept the regression
-    // explicitly).
-    expect(incompatible.map((t) => t.name).sort()).toEqual(["call_connector", "probe_connector"]);
+    // AI SDK 7 / Zod 4.6 now project every current example correctly.
+    // Keep the set empty: any new incompatible example is a regression.
+    // Provider inputExamples remain disabled until their wire integration
+    // is reviewed separately; projection success alone does not enable it.
+    expect(incompatible).toEqual([]);
   });
 });

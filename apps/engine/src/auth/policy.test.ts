@@ -4,6 +4,7 @@
 // call directly.
 
 import { describe, expect, test } from "bun:test";
+
 import { checkRoute, policy } from "./policy.ts";
 import type { ResolvedPrincipal } from "./types.ts";
 

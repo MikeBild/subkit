@@ -13,9 +13,10 @@
 // below pin that contract: an explicit value wins, blank/unset falls
 // back to the loopback default.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { serve } from "@hono/node-server";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
+
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
   DEFAULT_ENGINE_LISTEN_HOSTNAME,

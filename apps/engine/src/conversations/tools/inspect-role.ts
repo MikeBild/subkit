@@ -4,6 +4,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+
 import { users } from "../../db/schema/index.ts";
 import { getRole, listRolePermissions } from "../../rbac/roles.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";

@@ -4,13 +4,15 @@
 // three access paths: HTTP GET metadata, HTTP POST /links, and
 // MCP read_resource. Real Postgres + config loaded.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
 import type {
   ListResourcesRequest,
   ListResourcesResult,
   ReadResourceRequest,
 } from "@modelcontextprotocol/sdk/types.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { apiKeys, conversations, tenants, users } from "../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";

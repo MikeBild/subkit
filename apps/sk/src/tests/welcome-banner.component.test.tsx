@@ -2,6 +2,7 @@
 // covered in welcome-banner.test.ts; this file asserts on the render.
 
 import { describe, expect, test } from "bun:test";
+
 import { WelcomeBanner } from "../repl/welcome-banner.tsx";
 import { renderInk } from "./helpers/ink.tsx";
 

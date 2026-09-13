@@ -14,6 +14,7 @@
 // mocked via the mock provider (LLM_PROVIDER=mock). No real LLM calls.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";

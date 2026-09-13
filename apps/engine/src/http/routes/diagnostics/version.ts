@@ -12,6 +12,7 @@
 // as a named OpenAPI component.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
   AuditAction,

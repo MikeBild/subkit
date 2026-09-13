@@ -14,13 +14,7 @@
 import type { SettingLeafEntry } from "../../engine-client.ts";
 
 export type FormFieldKind =
-  | "text"
-  | "secret"
-  | "number"
-  | "bool"
-  | "select"
-  | "string-list"
-  | "json";
+  "text" | "secret" | "number" | "bool" | "select" | "string-list" | "json";
 
 export interface FormField {
   path: string;

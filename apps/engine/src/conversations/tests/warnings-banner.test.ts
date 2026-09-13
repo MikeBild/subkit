@@ -7,6 +7,7 @@
 // and burned the step budget guessing path variants.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";
@@ -80,7 +81,7 @@ describe("dry_run_workflow · warnings_banner", () => {
           },
         ],
       },
-      // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
     } as any;
     const result = await dryRunWorkflowTool.execute(
       makeCtx(() => draft),
@@ -117,7 +118,7 @@ describe("dry_run_workflow · warnings_banner", () => {
           },
         ],
       },
-      // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
     } as any;
     const result = await dryRunWorkflowTool.execute(
       makeCtx(() => draft),
@@ -157,7 +158,7 @@ describe("dry_run_workflow · warnings_banner", () => {
           },
         ],
       },
-      // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
     } as any;
     const result = await dryRunWorkflowTool.execute(
       makeCtx(() => draft),

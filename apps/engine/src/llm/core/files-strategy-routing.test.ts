@@ -6,6 +6,7 @@
 // No I/O, no LLM calls.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   chooseFileStrategy,
   getStaticCapabilities,

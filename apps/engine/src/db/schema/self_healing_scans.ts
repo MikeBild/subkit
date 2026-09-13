@@ -15,6 +15,7 @@
 // NOT NULL) so anonymous scans don't collide on the missing key.
 
 import { index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+
 import { tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 

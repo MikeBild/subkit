@@ -3,8 +3,9 @@
 // elsewhere; /mention here is just a hint string so the test asserts
 // shape only.
 
-import { describe, expect, mock, test } from "bun:test";
 import type { SkSessionState } from "@cli-core/index.ts";
+import { describe, expect, mock, test } from "bun:test";
+
 import type { ResolvedProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { handleSlash, type SlashHandlerContext } from "../repl/slash/handler.ts";

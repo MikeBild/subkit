@@ -7,6 +7,7 @@
 // schema, then the `Link` header.
 
 import { load as loadYaml } from "js-yaml";
+
 import { log } from "../../logging/logger.ts";
 import { getDriverFetch } from "../drivers/fetch-seam.ts";
 import { scrubUrl } from "../egress.ts";

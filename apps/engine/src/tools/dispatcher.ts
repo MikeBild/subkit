@@ -35,6 +35,7 @@
 //  10. log         — single tool.dispatch.invoke event per call
 
 import type { z } from "@hono/zod-openapi";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
@@ -43,7 +44,7 @@ import type { ToolContext, ToolResult } from "../conversations/tools/index.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import { denialDetails, denialHint } from "../rbac/denial.ts";
-import { type ConnectorAccessLevel, can, connectorAccessLevel } from "../rbac/evaluator.ts";
+import { can, type ConnectorAccessLevel, connectorAccessLevel } from "../rbac/evaluator.ts";
 import {
   type ApprovalAuditResource,
   approvalAuditResource,

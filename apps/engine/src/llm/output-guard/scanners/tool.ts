@@ -69,7 +69,7 @@ export const toolScanner: Scanner = {
     const manifest = getToolManifest();
     BACKTICKED_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
+    // eslint-disable-next-line no-cond-assign -- standard regex exec loop.
     while ((m = BACKTICKED_RE.exec(text)) !== null) {
       const token = m[1]!;
       if (ALLOW_LIST.has(token)) continue;

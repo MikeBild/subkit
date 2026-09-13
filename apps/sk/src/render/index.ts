@@ -1,5 +1,7 @@
 import { basename } from "node:path";
+
 import pc from "picocolors";
+
 import { STATUS_GLYPH } from "../repl/plan-cell.tsx";
 import {
   connectorHeading,

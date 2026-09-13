@@ -6,6 +6,7 @@
 // message — this test pins the canonical shapes.
 
 import { describe, expect, test } from "bun:test";
+
 import type { RunLoopResult } from "../../conversations/loop.ts";
 import type { TurnEvent } from "../../conversations/types.ts";
 import { extractAssistantText } from "../dispatcher.ts";

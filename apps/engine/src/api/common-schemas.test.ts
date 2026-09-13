@@ -9,9 +9,10 @@
 //   - paginatedResponse builds an envelope that round-trips items
 //     and accepts both `null` and "absent" cursors
 
-import { describe, expect, test } from "bun:test";
 import { z } from "@hono/zod-openapi";
-import { ErrorSchema, IdParam, PaginationQuery, paginatedResponse } from "./common-schemas.ts";
+import { describe, expect, test } from "bun:test";
+
+import { ErrorSchema, IdParam, paginatedResponse, PaginationQuery } from "./common-schemas.ts";
 
 describe("ErrorSchema", () => {
   test("accepts the minimal {code, message} envelope", () => {

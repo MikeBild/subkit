@@ -1,5 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import type { Db } from "../../db/client.ts";
 import {
@@ -9,8 +10,8 @@ import {
 } from "../../db/schema/index.ts";
 import {
   AuthorityExecutionShapeSchema,
-  GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
+  GrantWorkflowAuthoritySchema,
   previewWorkflowAuthority,
   revokeWorkflowAuthority,
   suggestAuthorityBounds,

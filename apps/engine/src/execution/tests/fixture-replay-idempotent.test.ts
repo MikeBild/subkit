@@ -12,6 +12,7 @@
 // live path — fixture round-trips are now idempotent.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { runExecution } from "../engine.ts";
 import { createEngineCtx, type EngineTestCtx } from "./setup.ts";
 

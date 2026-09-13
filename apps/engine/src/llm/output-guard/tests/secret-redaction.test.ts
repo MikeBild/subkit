@@ -8,6 +8,7 @@
 // by a real scanner violation carries no token material.
 
 import { describe, expect, it } from "bun:test";
+
 import { LlmOutputViolation } from "../../errors.ts";
 import { runOutputGuard } from "../index.ts";
 import { createStreamScrubber } from "../stream-scrub.ts";

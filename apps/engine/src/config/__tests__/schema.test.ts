@@ -1,6 +1,7 @@
 // Unit tests for ConfigSchema. Pure logic; no I/O.
 
 import { describe, expect, test } from "bun:test";
+
 import { ConfigSchema } from "../schema.ts";
 import { dottedPath, findLeafByPath, listConfigLeaves } from "../walk.ts";
 

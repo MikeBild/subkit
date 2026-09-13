@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
+
 import { runMigrations } from "../../db/migrate.ts";
 import {
   events,
@@ -11,7 +12,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
-import { type CreateExecutionParams, createExecution } from "../state.ts";
+import { createExecution, type CreateExecutionParams } from "../state.ts";
 
 let ctx: TestDb;
 let counter = 0;

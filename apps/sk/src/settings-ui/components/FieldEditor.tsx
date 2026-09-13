@@ -1,6 +1,7 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
+
 import { resolveAction } from "../keybindings/useKeybinding.ts";
 import { labelForPath } from "../lib/config-labels.ts";
 import type { FormField } from "../lib/zod-to-form-fields.ts";

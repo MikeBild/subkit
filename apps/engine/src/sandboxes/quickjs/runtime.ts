@@ -33,6 +33,7 @@ import {
   type QuickJSHandle,
   type QuickJSWASMModule,
 } from "quickjs-emscripten-core";
+
 import { getConfig } from "../../config/loader.ts";
 import { STDLIB_SOURCE } from "./stdlib/index.ts";
 import {

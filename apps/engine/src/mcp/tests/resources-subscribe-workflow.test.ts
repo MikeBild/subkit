@@ -12,8 +12,9 @@
 //      explicitly — a leak here would expose cross-tenant workflow
 //      activity to any MCP client.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { ResourceUpdatedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";

@@ -13,6 +13,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { connectorDocumentChunks, connectorDocuments } from "../../db/schema/connector_docs.ts";
 import { conversationMessages, conversations } from "../../db/schema/conversations.ts";
 import { connectors, tenants } from "../../db/schema/index.ts";

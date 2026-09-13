@@ -20,6 +20,7 @@
 // would assert a session that never happened.
 
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+
 import { tenantId, timestamps } from "./_common.ts";
 import { connectors } from "./connectors.ts";
 import { tenants } from "./identity.ts";

@@ -10,6 +10,7 @@
 // instead of burning a runtime QuickJS parse error.
 
 import { describe, expect, test } from "bun:test";
+
 import { TransformStepSchema } from "../types.ts";
 
 describe("TransformStepSchema — JSONata pipe in a JavaScript body (language_mismatch)", () => {

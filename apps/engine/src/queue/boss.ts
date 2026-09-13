@@ -6,6 +6,7 @@
 
 import type { ConstructorOptions, QueueResult } from "pg-boss";
 import { PgBoss } from "pg-boss";
+
 import { logger } from "../logging/logger.ts";
 import { setDlqJobCount, setQueueDepth, setQueueLag } from "../observability/instrumentation.ts";
 import { QUEUE_DEFINITIONS, QUEUE_NAMES, type QueueName } from "./queues.ts";

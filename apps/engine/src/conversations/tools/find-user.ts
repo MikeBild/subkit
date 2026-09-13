@@ -3,6 +3,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { eq, inArray } from "drizzle-orm";
+
 import { roles } from "../../db/schema/index.ts";
 import { getUser, listUsers } from "../../identity/service.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";

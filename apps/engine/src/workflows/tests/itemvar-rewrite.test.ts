@@ -8,6 +8,7 @@
 // results — the runtime-level meaning of "semantics preserving".
 
 import { describe, expect, test } from "bun:test";
+
 import { buildJsonataBindings } from "../../execution/jsonata-bindings.ts";
 import { compile as compileJsonata } from "../../execution/jsonata-engine.ts";
 import {
@@ -298,7 +299,7 @@ describe("rewriteWorkflowItemVars — whole definitions", () => {
         id: "call",
         kind: "request",
         method: "GET",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal placeholder is the tested grammar.
+        // eslint-disable-next-line no-template-curly-in-string -- literal placeholder is the tested grammar.
         url: "https://api.example.com/projects/${item.id}",
       },
     ]);

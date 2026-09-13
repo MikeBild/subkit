@@ -11,6 +11,7 @@
 //   - `kind: "loop"` remains a valid step kind.
 
 import { describe, expect, test } from "bun:test";
+
 import { StepSchema } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
 
@@ -80,7 +81,7 @@ describe("baseStep.for_each — W3a schema", () => {
       id: "fetch_item",
       kind: "request",
       method: "GET",
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal placeholder tests the grammar.
+      // eslint-disable-next-line no-template-curly-in-string -- literal placeholder tests the grammar.
       url: "https://api.example.com/items/${item.id}",
       for_each: "(sourceData) => sourceData.list_items.data",
     });
@@ -116,7 +117,7 @@ describe("baseStep.for_each — W3a schema", () => {
       id: "iter_and_project",
       kind: "request",
       method: "GET",
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal placeholder tests the grammar.
+      // eslint-disable-next-line no-template-curly-in-string -- literal placeholder tests the grammar.
       url: "https://api.example.com/items/${item.id}/detail",
       for_each: "(sourceData) => sourceData.fetch_projects.data",
       data_selector: "$.body.items",
@@ -130,7 +131,7 @@ describe("validateWorkflowDef — E4 input_schema drift", () => {
     id: "fetch",
     kind: "request",
     method: "GET",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal placeholder tests the grammar.
+    // eslint-disable-next-line no-template-curly-in-string -- literal placeholder tests the grammar.
     url: "https://api.example.com/essays/${input.essay_id}",
   };
 
@@ -225,7 +226,7 @@ describe("validateWorkflowDef — E4 input_schema drift", () => {
           id: "fetch",
           kind: "request",
           method: "GET",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal placeholder tests the grammar.
+          // eslint-disable-next-line no-template-curly-in-string -- literal placeholder tests the grammar.
           url: "https://api.example.com/essays/${input.essay_id}/by/${input.author_id}",
         },
       ],
@@ -330,7 +331,7 @@ describe("validateWorkflowDef — W3a retirement enforcement", () => {
           id: "process",
           kind: "request",
           method: "GET",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal placeholder tests the grammar.
+          // eslint-disable-next-line no-template-curly-in-string -- literal placeholder tests the grammar.
           url: "https://api.example.com/items/${item.id}",
         },
       ],
@@ -353,7 +354,7 @@ describe("validateWorkflowDef — W3a retirement enforcement", () => {
           id: "fetch_item",
           kind: "request",
           method: "GET",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal placeholder tests the grammar.
+          // eslint-disable-next-line no-template-curly-in-string -- literal placeholder tests the grammar.
           url: "https://api.example.com/items/${item.id}",
           for_each: "(sourceData) => sourceData.fetch_all.data",
         },

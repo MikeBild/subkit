@@ -12,6 +12,7 @@
 //    grows. Single-position injection gets buried.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { createWorkflow } from "../../workflows/service.ts";
 import { assembleEnhancedPrompt } from "../core/context-assembler.ts";

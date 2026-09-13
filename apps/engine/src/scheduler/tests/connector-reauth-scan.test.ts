@@ -21,13 +21,14 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { upsertCredential } from "../../credentials/service.ts";
 import {
   connectorMcpSessions,
   connectors,
   events,
-  executionSteps,
   executions,
+  executionSteps,
   tenants,
   workflows,
   workflowsSchedules,

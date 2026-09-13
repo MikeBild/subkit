@@ -14,6 +14,7 @@
 // cosine runs in JS over the caller's bounded, owner-scoped candidate set.
 
 import { and, desc, eq } from "drizzle-orm";
+
 import { type Executor, getDb } from "../db/client.ts";
 import { conversations } from "../db/schema/conversations.ts";
 import { vectorScoreCandidates } from "../embeddings/vector-rerank.ts";

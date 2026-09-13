@@ -5,6 +5,7 @@
 // surfaced as "warnings disappear before I can read them".
 
 import { describe, expect, test } from "bun:test";
+
 import { redact } from "./redact.ts";
 
 describe("redact · operator-debugging depth", () => {
@@ -37,7 +38,7 @@ describe("redact · operator-debugging depth", () => {
   });
 
   test("still terminates on circular references (no depth blow-up)", () => {
-    // biome-ignore lint/suspicious/noExplicitAny: deliberately circular
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately circular
     const a: any = { name: "a" };
     a.self = a;
     // Should not throw / hang — the secret-shape scrubber's seen-set

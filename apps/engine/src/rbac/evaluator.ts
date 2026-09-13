@@ -25,6 +25,7 @@
 // permission in Prometheus.
 
 import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
+
 import { isCeilingScope, WILDCARD_SCOPE } from "../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";

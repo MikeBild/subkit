@@ -11,6 +11,7 @@
 // resets an authoring target rather than inflating a bill.
 
 import { describe, expect, it } from "bun:test";
+
 import { detectAuthoringIntent } from "./authoring-intent.ts";
 
 describe("detectAuthoringIntent — authoring phrases", () => {

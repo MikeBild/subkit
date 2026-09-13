@@ -3,6 +3,7 @@
 // land on the caller's bag and contain the right tokens.
 
 import { describe, expect, test } from "bun:test";
+
 import { signSigV4Request } from "./aws-sigv4.ts";
 import { HttpRequestInvalidError } from "./http.ts";
 

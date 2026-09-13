@@ -1,13 +1,14 @@
 // Unit tests for apps/sk/src/turn-event.ts. Shared reducer coverage
 // keeps the interactive and headless `sk` surfaces behavior-compatible.
 
-import { describe, expect, test } from "bun:test";
 import {
   applyTurnEvent,
   initialSessionState,
   lastAssistantText,
   type TurnEvent,
 } from "@cli-core/index.ts";
+import { describe, expect, test } from "bun:test";
+
 import { readExtendedTurnUsage } from "../engine-client.ts";
 
 describe("sk turn-event reducer", () => {
@@ -177,7 +178,7 @@ describe("sk turn-event reducer", () => {
 
   test("unknown event types are ignored", () => {
     let s = initialSessionState("c1");
-    // biome-ignore lint/suspicious/noExplicitAny: intentionally malformed
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- intentionally malformed
     s = applyTurnEvent(s, { type: "garbage" } as any);
     expect(s.messages.length).toBe(0);
   });

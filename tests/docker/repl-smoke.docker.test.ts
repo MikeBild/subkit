@@ -7,11 +7,13 @@
 // because it spawns a real pseudo-terminal and is slower / more exotic than
 // the HTTP smoke.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import path from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { runPtyScenario, SKIP_PTY_WHEN_NO_EXPECT } from "../e2e/_helpers/pty.ts";
 import { exit, quickStartReady } from "../e2e/_helpers/pty-steps.ts";
-import { collectContainerLogs, type DockerEnv, dockerBoot } from "./_harness.ts";
+import { collectContainerLogs, dockerBoot, type DockerEnv } from "./_harness.ts";
 
 let env: DockerEnv;
 beforeAll(async () => {

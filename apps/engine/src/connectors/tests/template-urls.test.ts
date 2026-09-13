@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { loadBuiltinTemplates } from "../templates.ts";
 
 // URL reachability tests are opt-in: set CHECK_URLS=1 to run them.

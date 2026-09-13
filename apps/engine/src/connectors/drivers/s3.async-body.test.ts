@@ -17,8 +17,9 @@
 // the number a release reads. The probe now happens once at module scope and
 // the suite is gated with `describe.skipIf`, so bun counts them as skipped.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createConnector, getConnector } from "../service.ts";

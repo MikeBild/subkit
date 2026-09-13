@@ -6,6 +6,7 @@
 // integration coverage; this file stays pure.
 
 import { describe, expect, test } from "bun:test";
+
 import { buildTemplateBindingFields, parseTemplateSnapshot } from "./template-resolver.ts";
 import { loadBuiltinTemplates } from "./templates.ts";
 

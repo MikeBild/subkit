@@ -7,6 +7,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+
 import { fileLinks } from "../../db/schema/index.ts";
 import { isTextLike } from "../../files/content-type.ts";
 import { requireFileForTenant, storageKey } from "../../files/resolver.ts";

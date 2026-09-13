@@ -8,6 +8,7 @@
 // schedule against every connector with a docs source configured.
 
 import type { Job, PgBoss } from "pg-boss";
+
 import type { Db } from "../../db/client.ts";
 import * as docs from "../../docs-ingestion/service.ts";
 import type { DocSourceType } from "../../docs-ingestion/types.ts";

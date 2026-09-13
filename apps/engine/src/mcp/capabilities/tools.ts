@@ -23,12 +23,13 @@ import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/proto
 import {
   CallToolRequestSchema,
   type CallToolResult,
-  ListToolsRequestSchema,
   ElicitResultSchema as McpElicitResultSchema,
+  ListToolsRequestSchema,
   type ServerNotification,
   type ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import { and, eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { registerNativeUrlElicitationCompletion } from "../../conversations/native-url-elicitation.ts";

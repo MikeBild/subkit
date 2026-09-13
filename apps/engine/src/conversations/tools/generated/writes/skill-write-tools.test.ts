@@ -27,6 +27,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { proposeLearning } from "../../../../agent/sessions.ts";
 import { AuditAction } from "../../../../audit/types.ts";
 import { auditLog, skillCandidates, skills, tenants } from "../../../../db/schema/index.ts";

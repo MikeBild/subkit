@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { decideToolMode } from "../tool-policies.ts";
 
 describe("bounded auto authoring policy", () => {

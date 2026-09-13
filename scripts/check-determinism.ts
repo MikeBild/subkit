@@ -42,6 +42,7 @@
 
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+
 import { Glob } from "bun";
 
 interface Violation {

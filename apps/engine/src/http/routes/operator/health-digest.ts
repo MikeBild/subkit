@@ -8,6 +8,7 @@
 // /v1/stats/*.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { buildOperatorHealthDigest } from "../../../operator/health-digest.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";

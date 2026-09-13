@@ -23,10 +23,12 @@
 // To re-add a leaf to the live-consumer set, write a getConfig() call
 // in production code (not a test) that resolves the dotted path.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { Glob } from "bun";
+import { describe, expect, test } from "bun:test";
+
 import { dottedPath, listConfigLeaves } from "../walk.ts";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..");
@@ -54,7 +56,7 @@ function loadEnvToConfigPath(): Set<string> {
   // Match: KEY: ["llm", "providers", "anthropic", "api_key"],
   const pattern = /^\s*[A-Z_]+:\s*\[(.+?)\],\s*$/gm;
   let m: RegExpExecArray | null;
-  // biome-ignore lint/suspicious/noAssignInExpressions: regex iteration pattern
+  // eslint-disable-next-line no-cond-assign -- regex iteration pattern
   while ((m = pattern.exec(text)) !== null) {
     const literal = m[1];
     if (!literal) continue;

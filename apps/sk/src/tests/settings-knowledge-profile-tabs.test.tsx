@@ -2,6 +2,7 @@
 
 import { describe, expect, mock, test } from "bun:test";
 import type React from "react";
+
 import type { EngineClient } from "../engine-client.ts";
 import { SettingsModal } from "../settings-ui/SettingsModal.tsx";
 import { renderInk } from "./helpers/ink.tsx";

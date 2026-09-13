@@ -5,6 +5,7 @@
 // diagnostics outage from regressing into a CLI startup blocker.
 
 import { describe, expect, test } from "bun:test";
+
 import { fetchSetupStatus } from "../setup-banner.ts";
 
 // Bun's `typeof fetch` includes a `preconnect` member the test stubs

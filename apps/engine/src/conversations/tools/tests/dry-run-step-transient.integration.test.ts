@@ -11,8 +11,10 @@
 //
 // Requires Postgres — set REQUIRES_PG=0 to skip.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { IncomingMessage, ServerResponse } from "node:http";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../../execution/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
@@ -75,7 +77,7 @@ function makeCtxWithStep(stepUrl: string): ToolContext {
       db: convCtx.testDb.db,
     }),
     getDraft: () => liveDraft,
-    // biome-ignore lint/suspicious/noExplicitAny: cast mirrors the as unknown as ToolContext above
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- cast mirrors the as unknown as ToolContext above
     setDraft: async (next: any) => {
       liveDraft = next;
     },

@@ -9,7 +9,9 @@
 // a cursor-only checkpoint would otherwise return an incomplete result.
 
 import { createHash } from "node:crypto";
+
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 import { executionSteps } from "../db/schema/index.ts";
 import { applySelector } from "./selectors.ts";

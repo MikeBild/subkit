@@ -10,6 +10,7 @@
 // disturb normal traffic.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { EXTRACT_BODY_CAP_BYTES } from "../routes/ai/extract.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";

@@ -7,6 +7,7 @@
 // shape the LLM keeps emitting).
 
 import { describe, expect, test } from "bun:test";
+
 import { detectProseOptions } from "./prose-options-detector.ts";
 
 describe("detectProseOptions · numbered prose → ChoicePrompt", () => {

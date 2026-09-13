@@ -7,8 +7,8 @@
 
 import { normalizeDraftDocument } from "../../conversations/authoring-state.ts";
 import {
-  nextQuestion as computeNextQuestion,
   type ExpertiseHint,
+  nextQuestion as computeNextQuestion,
   nextRecommendedAction,
 } from "../../conversations/onboarding-policy.ts";
 import { planTurnRouting } from "../../conversations/turn-routing.ts";
@@ -340,7 +340,7 @@ const REQUEST_STEP_URL_HINT_LINES = [
   "- Request step URL shapes (pick one, do not invent others):",
   "  - `connector_id` + `path` (relative path, base_url merged from the connector)",
   "  - `url: https://...` (absolute)",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal placeholder syntax must reach the model — it is what the substitution parser consumes at execution time.
+  // eslint-disable-next-line no-template-curly-in-string -- the literal placeholder syntax must reach the model — it is what the substitution parser consumes at execution time.
   "  - `url: ${connector.<slug>.base_url}/<path>` (resolved at execute time)",
 ];
 

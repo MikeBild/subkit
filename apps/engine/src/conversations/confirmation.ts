@@ -21,6 +21,7 @@
 // append-only. Every state transition writes one entry.
 
 import { and, eq, sql } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 import { conversationMessages, conversationToolCalls } from "../db/schema/index.ts";
 import { recordConfirmationTransition } from "../observability/instrumentation.ts";

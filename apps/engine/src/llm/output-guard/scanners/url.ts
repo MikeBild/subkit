@@ -35,7 +35,7 @@ export const urlScanner: Scanner = {
     }
     URL_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
+    // eslint-disable-next-line no-cond-assign -- standard regex exec loop.
     while ((m = URL_RE.exec(text)) !== null) {
       let parsed: URL;
       try {

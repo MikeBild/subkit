@@ -97,7 +97,7 @@ export const vendorRecipeScanner: Scanner = {
     const out: Violation[] = [];
     FENCED_JSON_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
+    // eslint-disable-next-line no-cond-assign -- standard regex exec loop.
     while ((m = FENCED_JSON_RE.exec(text)) !== null) {
       const body = m[1] ?? "";
       let parsed: unknown;

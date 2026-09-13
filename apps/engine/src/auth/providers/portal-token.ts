@@ -14,6 +14,7 @@
 // provider first so it short-circuits the api-key lookup entirely.
 
 import { eq } from "drizzle-orm";
+
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { type Db, getDb } from "../../db/client.ts";

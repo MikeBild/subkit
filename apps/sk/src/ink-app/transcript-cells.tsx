@@ -17,6 +17,7 @@ import type {
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo, useEffect, useState } from "react";
+
 import { formatCitationsFooter } from "../lib/citations-footer.ts";
 import {
   classifyEngineError,
@@ -360,12 +361,10 @@ export function renderValidationErrorsBlock(
   validationErrors: SkSessionState["validationErrors"],
   status: SkSessionState["status"],
 ): React.ReactNode {
-  if (
-    !(
-      validationErrors.length > 0 &&
-      (status === "error" || status === "awaiting_input" || status === "completed")
-    )
-  ) {
+  if (!(
+    validationErrors.length > 0 &&
+    (status === "error" || status === "awaiting_input" || status === "completed")
+  )) {
     return null;
   }
   // Pick a header that matches the *kind* of error. Pre-fix

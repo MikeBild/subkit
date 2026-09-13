@@ -1,4 +1,4 @@
-import { LOCALES, type Locale } from "./i18n";
+import { type Locale, LOCALES } from "./i18n";
 
 export type LocalePreference = Locale | "auto";
 export const LOCALE_STORAGE_KEY = "sk-cockpit-locale";

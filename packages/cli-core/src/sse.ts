@@ -10,7 +10,7 @@ export interface SseFrame {
 
 export async function readSse(
   response: Response,
-  // biome-ignore lint/suspicious/noConfusingVoidType: existing consumers are notification callbacks; returning false is the opt-in early-stop signal.
+  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- existing consumers are notification callbacks; returning false is the opt-in early-stop signal.
   onFrame: (frame: SseFrame) => void | boolean,
   signal?: AbortSignal,
 ): Promise<void> {

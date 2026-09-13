@@ -15,8 +15,8 @@
 // After the rewrite, a single `useInput` in ConfirmPrompt dispatches
 // all keystrokes. These tests pin that contract.
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { ConfirmPrompt, resetHyperlinkSupportCacheForTests } from "@chat-ui/index.ts";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 
 async function yieldTick(ms = 40): Promise<void> {

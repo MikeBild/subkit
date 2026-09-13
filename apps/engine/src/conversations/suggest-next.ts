@@ -165,7 +165,7 @@ export async function suggestNextMessage(params: SuggestNextParams): Promise<Sug
 
   // 2. Budget guard — only the model path consumes tokens.
   if (params.budget_guard) {
-    let ok = true;
+    let ok: boolean;
     try {
       ok = await Promise.resolve(params.budget_guard());
     } catch (err) {

@@ -1,0 +1,25 @@
+**/node_modules/
+**/dist/
+docs/
+.claude/
+.agents/
+bun.lock
+*.md
+contract/
+assets/cockpit/
+apps/cockpit/src/api/schema.d.ts
+packages/cli-core/src/engine-api/
+apps/engine/src/http/cockpit-embedded.ts
+apps/engine/src/db/migrations/embedded.ts
+apps/engine/eval/out/
+FAMILY-UI.json
+OPERATIONAL-KPIS.json
+OPERATIONAL-OVERVIEW.schema.json
+.agent-prime.json
+vendor/
+patches/
+
+# These files carry byte-exact CSP and shared CSS contracts.
+apps/cockpit/index.html
+apps/cockpit/src/index.css
+apps/engine/assets/embeddings/

@@ -3,6 +3,7 @@
 // `ask_user_*` family that paused-loop elicitations dispatch through.
 
 import { describe, expect, test } from "bun:test";
+
 import { getTool, listTools } from "../tools/index.ts";
 
 describe("conversation tools — registration", () => {

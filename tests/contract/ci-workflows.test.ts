@@ -18,10 +18,11 @@
 // of truth — WatchKit reads its stage ids out of `scripts/gate.ts`; SubKit has
 // no gate.ts, its gate IS the `verify` chain in package.json, so the stages are
 // read from there.
-import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const root = join(import.meta.dir, "../..");
 
@@ -258,7 +259,7 @@ const specifierCache = new Map<string, string[]>();
 function specifiersOfFile(file: string): string[] {
   const cached = specifierCache.get(file);
   if (cached) return cached;
-  let found: string[] = [];
+  let found: string[];
   try {
     found = specifiersOf(readFileSync(join(root, file), "utf8"));
   } catch {

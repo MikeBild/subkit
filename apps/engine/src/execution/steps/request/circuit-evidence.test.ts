@@ -10,6 +10,7 @@
 // One rule now decides for all four, and these tests are that rule.
 
 import { describe, expect, test } from "bun:test";
+
 import type { ConnectorResolutionSummary, RequestMeta } from "../../types.ts";
 import {
   type ConnectorEvidence,

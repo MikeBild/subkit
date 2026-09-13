@@ -6,6 +6,7 @@
 // last error after the budget is exhausted.
 
 import { describe, expect, test } from "bun:test";
+
 import { WEBHOOK_MAX_ATTEMPTS, WebhookNotificationAdapter } from "../channels/webhook.ts";
 
 interface FetchCall {

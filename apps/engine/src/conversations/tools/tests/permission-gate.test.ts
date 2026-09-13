@@ -4,6 +4,7 @@
 // matching the pre-consolidation inline behaviour.
 
 import { describe, expect, it } from "bun:test";
+
 import { callConnectorTool } from "../call-connector.ts";
 import { analyzeKnowledgeSourceTool } from "../generated/writes/analyze-knowledge-source.ts";
 import {

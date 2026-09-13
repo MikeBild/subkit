@@ -12,10 +12,12 @@
 // Complements migrate-idempotency.test.ts by exercising the runtime
 // side of the observability story (logs + audit API, both CLI-driven).
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { getTestNow } from "../../apps/engine/src/test-helpers/determinism/clock.ts";
 import { boot, cli, type E2EEnv, run, runJson, shutdown } from "./setup.ts";
 

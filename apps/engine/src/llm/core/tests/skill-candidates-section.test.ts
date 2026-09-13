@@ -3,6 +3,7 @@
 // from formatters.ts/loaders.ts directly.
 
 import { describe, expect, test } from "bun:test";
+
 import type { SkillCandidateView } from "../../../skill-candidates/types.ts";
 import { countTokens } from "../../accounting/index.ts";
 import {

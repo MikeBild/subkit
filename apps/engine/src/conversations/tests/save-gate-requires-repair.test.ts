@@ -7,6 +7,7 @@
 // row plus a fragile recovery path.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
@@ -44,7 +45,7 @@ function toolCtx(
     actor_id: actorId,
     connector_id: null,
     workflow_id: null,
-    // biome-ignore lint/suspicious/noExplicitAny: stub for gate test
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub for gate test
     engineClient: {} as any,
     getDraft,
     setDraft: async () => {},
@@ -94,7 +95,7 @@ function makeDraft(opts: {
         },
       ],
     },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal test fixture
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal test fixture
   } as any;
   let next = withWorkflowInspection(base);
   next = withWorkflowValidation(next, true, "validated");

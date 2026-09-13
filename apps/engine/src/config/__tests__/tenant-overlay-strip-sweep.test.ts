@@ -9,10 +9,12 @@
 // overlay parser's strip logic misses a leaf path, leaking a global
 // setting under a tenant ID.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { _resetConfigForTests, loadConfig, ScopeViolationError, setConfigKey } from "../loader.ts";
 import { type ConfigLeaf, dottedPath, listConfigLeaves } from "../walk.ts";
 

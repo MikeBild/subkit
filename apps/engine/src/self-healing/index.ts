@@ -39,11 +39,7 @@ export {
 // import so accidental callers cannot treat its output as an
 // authoritative persisted candidate.
 export type { AutohealPolicy } from "./policy.ts";
-export {
-  DEFAULT_AUTOHEAL_POLICY,
-  resolvePolicy,
-  shouldAutoApply,
-} from "./policy.ts";
+export { DEFAULT_AUTOHEAL_POLICY, resolvePolicy, shouldAutoApply } from "./policy.ts";
 export { preparePatchCandidate } from "./prepare-candidate.ts";
 export type {
   ProactiveScanFilters,

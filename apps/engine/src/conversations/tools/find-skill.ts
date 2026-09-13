@@ -6,6 +6,7 @@
 // against the user message; find_skill is a direct keyword query.
 
 import { z } from "@hono/zod-openapi";
+
 import { listSkills } from "../../skills/service.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { keywordSearch } from "./keyword-search.ts";

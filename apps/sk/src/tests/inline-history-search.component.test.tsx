@@ -3,6 +3,7 @@
 // here we exercise the keyboard contract through ink.
 
 import { describe, expect, mock, test } from "bun:test";
+
 import { InlineHistorySearch } from "../repl/inline-history-search.tsx";
 import { renderInk } from "./helpers/ink.tsx";
 

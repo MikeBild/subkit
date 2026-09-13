@@ -16,7 +16,9 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+
 import { trimJsonlFile } from "@shared/jsonl-ring.ts";
+
 import { debugLog, serializeDebugError } from "../../debug.ts";
 import { detectSecretShape } from "../../lib/secret-shape.ts";
 

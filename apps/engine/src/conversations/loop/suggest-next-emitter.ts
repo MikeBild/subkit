@@ -14,6 +14,7 @@
 
 import { generateText, type LanguageModel, type ModelMessage } from "ai";
 import { and, desc, eq } from "drizzle-orm";
+
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages } from "../../db/schema/index.ts";
@@ -23,10 +24,10 @@ import type { RecentMessage } from "../../llm/core/suggestion-prompt.ts";
 import { logger } from "../../logging/logger.ts";
 import { nextSuggestion } from "../streaming.ts";
 import {
+  suggestNextMessage,
   type SuggestNextModelInvocation,
   type SuggestNextModelInvoker,
   type SuggestNextModelResult,
-  suggestNextMessage,
 } from "../suggest-next.ts";
 import type { LoadedSkillHint } from "../suggest-next-offer-parse.ts";
 import type { TurnEvent } from "../types.ts";

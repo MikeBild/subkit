@@ -14,6 +14,7 @@
 // Spec refs: plan docs — §2e LOOP STEP: Actual Item Iteration
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { containsOffloadRef } from "../../execution/offload-rehydrate.ts";
 import { STEP_RESULT_DB_BYTES } from "../../execution/timeouts.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";

@@ -6,6 +6,7 @@
 // slug, with the tenant override winning.
 
 import { integer, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+
 import { tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 

@@ -5,6 +5,7 @@
 // tool-result with `source: "harness_auto_persist"`.
 
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../../../db/client.ts";
 import { conversationToolCalls } from "../../../db/schema/index.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";

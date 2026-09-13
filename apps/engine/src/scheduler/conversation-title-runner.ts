@@ -28,6 +28,7 @@
 // stops the (cheap, LLM-free) scan once the walk has reached the end.
 
 import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+
 import { stringifyConversationExcerpt } from "../conversations/excerpt.ts";
 import {
   CONVERSATION_TITLE_MAX,

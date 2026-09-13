@@ -4,6 +4,7 @@
 // builder is what the opt-in flag returns.
 
 import { describe, expect, test } from "bun:test";
+
 import { buildRawStepResults, type RawStepResultSource } from "../step-results.ts";
 
 describe("buildRawStepResults", () => {

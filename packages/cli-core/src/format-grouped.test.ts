@@ -4,6 +4,7 @@
 // dropped by a block list that does not mention it.
 
 import { afterEach, describe, expect, test } from "bun:test";
+
 import { emitGroupedList } from "./format.ts";
 
 const originalWrite = process.stdout.write.bind(process.stdout);

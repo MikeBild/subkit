@@ -2,6 +2,7 @@
 // an actual error code — no `toBeDefined` placeholder assertions.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   collectTokenNames,
   hasPlaceholders,

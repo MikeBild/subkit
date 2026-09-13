@@ -12,9 +12,11 @@
 // test scaffold so auth + RBAC + Zod + parsing + persistence + audit are
 // exercised end-to-end.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { auditLog } from "../../db/schema/audit.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";

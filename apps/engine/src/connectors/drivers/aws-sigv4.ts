@@ -13,6 +13,7 @@
 // signer mutates a header bag in place rather than the URL.
 
 import aws4 from "aws4";
+
 import type { AwsSigV4CredentialValue } from "../../credentials/types.ts";
 import { HttpRequestInvalidError } from "./http.ts";
 

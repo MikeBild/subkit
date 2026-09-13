@@ -3,10 +3,12 @@
 // suite's database (DATABASE_URL), reads the token from stdout, then calls a
 // protected route with it — and proves the key never has to leave the file.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const ENGINE_ENTRY = join(import.meta.dir, "..", "..", "index.ts");

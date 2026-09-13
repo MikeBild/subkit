@@ -9,6 +9,7 @@
 // Uses GENERIC fake namespace "examplemcp" — no real vendor names.
 
 import { describe, expect, it } from "bun:test";
+
 import { isDangerousTool } from "../dangerous-tools.ts";
 import { getApprovalMode, resolveToolMode } from "../tool-policies.ts";
 

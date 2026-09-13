@@ -13,6 +13,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+
 import { timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 
@@ -24,7 +25,10 @@ export const mcpOauthClients = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     client_id: text("client_id").notNull(),
-    redirect_uris: jsonb("redirect_uris").notNull().default(sql`'[]'::jsonb`).$type<string[]>(),
+    redirect_uris: jsonb("redirect_uris")
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<string[]>(),
     grant_types: jsonb("grant_types")
       .notNull()
       .default(sql`'["authorization_code", "refresh_token"]'::jsonb`)

@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
+/* eslint-disable no-template-curly-in-string -- literal `${...}` placeholder tokens are part of the tested grammar. */
 // Authoring-time check: a request step with `connector_id` must not
 // also set an `Authorization` header. Pre-fix the LLM routinely
 // authored both — driving the GitHub "Bad credentials" loop in
@@ -13,6 +13,7 @@
 // before dry_run.
 
 import { describe, expect, test } from "bun:test";
+
 import { validateWorkflowDef } from "../validator.ts";
 
 describe("validateWorkflowDef · redundant Authorization header", () => {

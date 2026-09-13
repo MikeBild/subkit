@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { STDLIB_VERSION } from "../../sandboxes/quickjs/stdlib/index.ts";
 import { annotateRuntime, workflowUsesSandboxedJs } from "../runtime-annotation.ts";
 import type { WorkflowDef } from "../types.ts";

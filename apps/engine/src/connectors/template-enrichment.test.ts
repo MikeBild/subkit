@@ -3,6 +3,7 @@
 // (user wins / template fills) cannot regress.
 
 import { describe, expect, test } from "bun:test";
+
 import { enrichConnectorFromTemplate } from "./template-enrichment.ts";
 import type { ConnectorTemplate } from "./templates.ts";
 

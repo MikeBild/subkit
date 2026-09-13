@@ -10,10 +10,12 @@
 //   - unreadable path → exitCode 1 with ATTACH_FAILED in stream-json
 //   - text mode: attaches silently, assistant response present in stdout
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { runHeadless } from "../../headless.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";

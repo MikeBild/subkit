@@ -20,6 +20,7 @@
 import { and, asc, desc, gt, type SQL } from "drizzle-orm";
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
+
 import type { Db } from "../../db/client.ts";
 import { events } from "../../db/schema/index.ts";
 import type { AppEnv } from "../openapi.ts";

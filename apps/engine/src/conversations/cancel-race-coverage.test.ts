@@ -26,9 +26,10 @@
 // without the harness cost. Pair with `abort.test.ts` for runtime
 // behaviour and the e2e cover for the canonical path.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const ROOT = resolve(import.meta.dir, "..", "..", "..", "..");
 

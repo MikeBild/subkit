@@ -13,6 +13,7 @@
 // too; it must fail the `kind` / URL-field checks, not blow up parsing).
 
 import { describe, expect, test } from "bun:test";
+
 import {
   OAUTH_AUTHORIZATION_URL_FIELD,
   OAuthApprovalInputSchema,
@@ -72,7 +73,7 @@ describe("OAuthApprovalInputSchema — accepts the producer output", () => {
   test("a javascript: authorization_url is rejected", () => {
     const r = OAuthApprovalInputSchema.safeParse({
       ...producerOutput(),
-      // eslint-disable-next-line no-script-url
+
       [OAUTH_AUTHORIZATION_URL_FIELD]: "javascript:alert(1)",
     });
     expect(r.success).toBe(false);

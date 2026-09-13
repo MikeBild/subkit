@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import type { ReactElement } from "react";
+
 import { SummaryCard } from "./summary-card.tsx";
 import type {
   ConnectorSummary,

@@ -28,6 +28,7 @@
 // to skip in environments without a DB.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { connectors, skills, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { assembleEnhancedPrompt } from "../../llm/core/context-assembler.ts";

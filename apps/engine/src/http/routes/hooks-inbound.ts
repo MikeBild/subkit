@@ -8,6 +8,7 @@
 //                                          (signature IS the auth)
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { getBoss } from "../../queue/index.ts";
 import * as svc from "../../webhooks/index.ts";
@@ -189,8 +190,7 @@ export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
     // Resolve pg-boss lazily: tests without a boss can pass one via
     // c.get("boss") (the openapi type isn't strict about extras).
     const bossOverride = (c as unknown as { get: (k: string) => unknown }).get("boss") as
-      | ReturnType<typeof getBoss>
-      | undefined;
+      ReturnType<typeof getBoss> | undefined;
     const boss = bossOverride ?? getBoss();
     const outcome = await svc.handleInbound({ db, boss }, { slug, headers, rawBody });
     if (outcome.status === "not_found") {

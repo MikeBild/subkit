@@ -2,6 +2,7 @@
 // + description, plus permission count and built-in flag.
 
 import { z } from "@hono/zod-openapi";
+
 import { listRolePermissions, listRoles } from "../../rbac/roles.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { keywordSearch } from "./keyword-search.ts";

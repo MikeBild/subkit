@@ -15,6 +15,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import { generateKeyPair, SignJWT } from "jose";
+
 import { type MockOidcHandle, startMockOidc } from "../auth/providers/tests/fixtures/mock-oidc.ts";
 import { auditLog, roles, sessions, tenants, userIdentities, users } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";

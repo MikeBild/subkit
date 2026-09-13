@@ -13,9 +13,11 @@
 // driving the route as the first tenant's admin and asserting the
 // second tenant's rows are invisible.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { setConfigKey } from "../../config/loader.ts";
 import {
   apiKeys,

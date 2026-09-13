@@ -5,8 +5,10 @@
 // Decision 1: per-id hashes are grep-able, bounded to ≤ 12 entries,
 // and no metric labels carry raw hash values (cardinality protection).
 
-import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterEach, describe, expect, test } from "bun:test";
+
 import { idHashesCapped } from "../id-hashes.ts";
 import { recordLlmContextAssembled } from "../instrumentation.ts";
 import { logRing } from "../log-ring.ts";

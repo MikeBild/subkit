@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { ThemeProvider } from "@chat-ui/index.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Text } from "ink";
 import { useEffect } from "react";
+
 import { ToastQueue, useToast } from "../shell/ToastQueue.tsx";
 import { flush, renderInk } from "./helpers/ink.tsx";
 

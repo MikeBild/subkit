@@ -24,6 +24,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
+
 import { SYSTEM_TENANT_ID } from "../../audit/types.ts";
 import { ChatAdapterRegistry } from "../../chat/registry.ts";
 import type {

@@ -14,6 +14,7 @@
 // fallback returns "empty" — the CTA suppressor fires BEFORE that path.
 
 import { describe, expect, test } from "bun:test";
+
 import { suggestNextMessage } from "./suggest-next.ts";
 
 const TWO_MSG_HISTORY = [

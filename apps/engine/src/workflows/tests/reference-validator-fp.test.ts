@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the subject under test — these are intentional placeholders.
+/* eslint-disable no-template-curly-in-string -- literal `${…}` tokens are the subject under test — these are intentional placeholders. */
 // Regression tests for bare-path validator false positives.
 //
 // Pre-fix the BARE_PATH_RE flagged any dotted identifier as a candidate
@@ -7,6 +7,7 @@
 // session f00b8d1c. These cases must stay green.
 
 import { describe, expect, test } from "bun:test";
+
 import { validateStepReferences, validateUnsupportedPlaceholders } from "../reference-validator.ts";
 import type { WorkflowDef } from "../types.ts";
 

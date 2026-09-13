@@ -3,6 +3,7 @@
 // llama) must map to stable named buckets rather than collapsing into "other".
 
 import { describe, expect, it } from "bun:test";
+
 import { inferProvider } from "./accountant.ts";
 
 describe("inferProvider", () => {

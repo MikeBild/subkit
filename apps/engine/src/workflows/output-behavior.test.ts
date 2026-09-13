@@ -1,6 +1,7 @@
 // Tests for `deriveOutputBehavior` — Polish A's derivation surface.
 
 import { describe, expect, it } from "bun:test";
+
 import { deriveOutputBehavior } from "./output-behavior.ts";
 
 describe("deriveOutputBehavior", () => {

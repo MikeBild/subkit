@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { type Toast, toastReducer } from "../shell/ToastQueue.tsx";
 
 const baseToast = (overrides: Partial<Toast> = {}): Toast => ({

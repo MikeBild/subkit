@@ -8,6 +8,7 @@
 // metadata) so a future addition surfaces in CI.
 
 import { describe, expect, test } from "bun:test";
+
 import { WelcomeBanner } from "../repl/welcome-banner.tsx";
 import { renderInk } from "./helpers/ink.tsx";
 

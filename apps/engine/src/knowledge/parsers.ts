@@ -15,8 +15,8 @@
 import {
   type BinaryFormat,
   isBinaryFormat as isBinaryFormatId,
-  PDF_PAGE_SEPARATOR,
   parseBinaryFile,
+  PDF_PAGE_SEPARATOR,
 } from "../docs-ingestion/parsers/index.ts";
 import type { RawChunk } from "../docs-ingestion/types.ts";
 

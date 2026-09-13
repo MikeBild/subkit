@@ -11,11 +11,13 @@
 // A regression that bypasses the masker (route layer, audit helper, or
 // loader) leaks the sentinel and fails the test loudly.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { _resetConfigForTests, loadConfig } from "../../../config/loader.ts";
 import { dottedPath, listConfigLeaves } from "../../../config/walk.ts";
 import { auditLog } from "../../../db/schema/audit.ts";

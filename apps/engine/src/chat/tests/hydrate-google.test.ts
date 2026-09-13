@@ -14,6 +14,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { AuditAction } from "../../audit/types.ts";
 import { setConfigKey } from "../../config/loader.ts";
 import {

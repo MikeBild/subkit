@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import type { Citation } from "@cli-core/index.ts";
+import { describe, expect, test } from "bun:test";
+
 import { formatCitationsFooter, terminalAssistantCitations } from "../lib/citations-footer.ts";
 
 describe("formatCitationsFooter", () => {

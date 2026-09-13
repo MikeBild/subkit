@@ -2,8 +2,10 @@ import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
+
 import { logger } from "../logging/logger.ts";
 import { EMBEDDED_COCKPIT } from "./cockpit-embedded.ts";
 import type { AppEnv } from "./openapi.ts";

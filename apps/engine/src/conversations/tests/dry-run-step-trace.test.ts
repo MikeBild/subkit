@@ -10,6 +10,7 @@
 // save tokens.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";
@@ -67,7 +68,7 @@ describe("dry_run_workflow · step_trace envelope", () => {
           },
         ],
       },
-      // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
     } as any;
     const toolCtx: ToolContext = {
       ...makeCtx(() => draft),
@@ -122,7 +123,7 @@ describe("dry_run_workflow · step_trace envelope", () => {
           },
         ],
       },
-      // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
     } as any;
     const toolCtx: ToolContext = {
       ...makeCtx(() => draft),
@@ -162,7 +163,7 @@ describe("dry_run_workflow · step_trace envelope", () => {
             },
           ],
         },
-        // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
       }) as any;
 
     // Default: no `step_results` field — the compact envelope carries only

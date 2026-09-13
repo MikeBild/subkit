@@ -16,6 +16,7 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
+
 import type { OperatorHealthDigest } from "../engine-client.ts";
 import { FAILURE_ORIGIN_LABEL, totalFailureCount } from "../lib/operator-digest.ts";
 

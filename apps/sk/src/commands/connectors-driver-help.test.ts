@@ -20,8 +20,8 @@
 // basename, and a name wrapped across two lines reads as a file that does not
 // exist.
 
-import { describe, expect, test } from "bun:test";
 import openapi from "@cli-core/engine-api/openapi.json" with { type: "json" };
+import { describe, expect, test } from "bun:test";
 
 /** The engine's driver list, as published in the generated OpenAPI surface. */
 const DRIVER_ENUM: string[] =

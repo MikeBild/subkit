@@ -16,7 +16,7 @@ function walk(dir: string, found: string[] = []): string[] {
 }
 
 function generate(): { content: string; count: number } {
-  let files: string[] = [];
+  let files: string[];
   try {
     files = walk(bundleDir).sort();
   } catch {
@@ -34,7 +34,7 @@ function generate(): { content: string; count: number } {
 
 const generated = generate();
 if (process.argv.includes("--check")) {
-  let current = "";
+  let current: string;
   try {
     current = readFileSync(output, "utf8");
   } catch {

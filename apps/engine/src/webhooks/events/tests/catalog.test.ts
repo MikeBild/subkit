@@ -1,6 +1,7 @@
 // Events catalog unit tests — pure zod, no DB.
 
 import { describe, expect, test } from "bun:test";
+
 import type {
   ConnectorAuthFailedPayload,
   ConnectorHealthChangedPayload,

@@ -13,6 +13,7 @@
 //      because they're still waiting for the user.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { assembleEnhancedPrompt } from "../../llm/core/context-assembler.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";

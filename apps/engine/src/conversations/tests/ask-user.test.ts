@@ -7,6 +7,7 @@
 // companion (gate passes → normal pause) is integration and uses a real DB.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { appendSnapshot } from "../draft.ts";

@@ -11,10 +11,7 @@
 // scoped where it makes sense): see `config/schema.ts`.
 
 export type OptimizationKind =
-  | "narrow_path_prefix"
-  | "raise_max_chars"
-  | "increase_wait_ms"
-  | "prefer_llms_txt";
+  "narrow_path_prefix" | "raise_max_chars" | "increase_wait_ms" | "prefer_llms_txt";
 
 export interface OptimizationCandidate {
   kind: OptimizationKind;

@@ -20,11 +20,13 @@
 //        (the `conversations.model` column gets the right value).
 //   AC6. Missing files are tolerated — loader falls back to defaults.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import type { ResolvedProfile } from "../../../../sk/src/config.ts";
 import { runHeadless } from "../../../../sk/src/headless.ts";
 import { loadSettings } from "../../../../sk/src/settings.ts";

@@ -1,6 +1,7 @@
 // Unit tests for the D7 secret-shaped elicitation detector.
 
 import { describe, expect, test } from "bun:test";
+
 import { detectSecretElicitation } from "./secret-detection.ts";
 
 describe("detectSecretElicitation — ask_user_form", () => {

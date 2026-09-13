@@ -1,6 +1,7 @@
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import { RouteOff, TriangleAlert } from "lucide-react";
 import { useEffect } from "react";
+
 import { FAMILY_UI_VERSION, FamilyFailureState } from "@/components/family-ui";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n-context";

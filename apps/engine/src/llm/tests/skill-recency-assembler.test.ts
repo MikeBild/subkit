@@ -15,6 +15,7 @@
 // Set REQUIRES_PG=0 to skip in environments without a DB.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { connectors, skills, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
@@ -258,7 +259,7 @@ describe.skipIf(skip)(
     test("formatSkillIndex renders a one-liner per skill with load_skill hint", () => {
       // Import synchronously after the dynamic import above has resolved.
       // Using require() inside a test is fine for pure-function assertions.
-      // biome-ignore lint/suspicious/noExplicitAny: test helper
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test helper
       const mod = require("../core/context-assembler.ts") as any;
       const { formatSkillIndex } = mod;
       const fakeSkills = [

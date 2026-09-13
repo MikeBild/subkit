@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { asToolPart, patchCandidateId, withToolResult } from "./tool-parts";
 
 describe("tool part adapter", () => {

@@ -8,7 +8,9 @@
 // `ingestKnowledgeSource`) verbatim — there is no third chunk-insert path.
 
 import { createHash } from "node:crypto";
+
 import { and, asc, eq, inArray } from "drizzle-orm";
+
 import { type Executor, getDb } from "../db/client.ts";
 import { knowledgeChunks } from "../db/schema/knowledge_sources.ts";
 import { canonicalBundleSerialization, normalizeBundlePath, parseBundle } from "./bundle.ts";

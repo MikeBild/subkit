@@ -21,11 +21,13 @@
 // Secret-by-reference assertion: client_secret / private_key must NEVER appear
 // in connectors.last_error or in the audit_log.metadata blob.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import { closeDb } from "../../db/client.ts";

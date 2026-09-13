@@ -9,6 +9,7 @@
 // server remains the authority.
 
 import { sql } from "drizzle-orm";
+
 import type { Db } from "../../../db/client.ts";
 import { BadRequestError } from "../../errors.ts";
 

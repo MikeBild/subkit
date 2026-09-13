@@ -15,6 +15,7 @@
 // the counter is process-global; the row is per-tenant.
 
 import { sql } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 import { filesDedupSeen } from "../db/schema/files.ts";
 

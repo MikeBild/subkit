@@ -8,6 +8,7 @@
 // Only SHA-256 hashes are persisted; plaintext never touches the database.
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+
 import { sha256Hex } from "../../identity/api-key.ts";
 
 export { sha256Hex };

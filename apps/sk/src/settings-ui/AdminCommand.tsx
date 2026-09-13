@@ -9,6 +9,7 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
+
 import type { EngineClient } from "../engine-client.ts";
 import { isAdminFromPermissions } from "./lib/admin-gate.ts";
 import { SinglePane } from "./SinglePane.tsx";
@@ -21,9 +22,7 @@ interface Props {
 }
 
 type GateState =
-  | { kind: "loading" }
-  | { kind: "ready"; isAdmin: boolean }
-  | { kind: "error"; message: string };
+  { kind: "loading" } | { kind: "ready"; isAdmin: boolean } | { kind: "error"; message: string };
 
 export const AdminCommand: React.FC<Props> = ({ client, tenant, onDismiss }) => {
   const [state, setState] = useState<GateState>({ kind: "loading" });

@@ -6,6 +6,7 @@
 // caught here before the dispatcher silently treats it as ignored.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   ChatEventJobSchema,
   ChatInteractionEnvelopeSchema,

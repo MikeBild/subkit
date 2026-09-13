@@ -16,6 +16,7 @@
 // PostgreSQL revision — and read the answer off the real discovery endpoint.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import {
   setupMcpOauthServer,
   teardownMcpOauthServer,

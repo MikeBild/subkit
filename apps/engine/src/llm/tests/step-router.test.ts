@@ -1,6 +1,7 @@
 // Unit tests for the converse-loop step router.
 
 import { describe, expect, it } from "bun:test";
+
 import type { ConversationTool } from "../../conversations/tools/index.ts";
 import {
   prepareStep,
@@ -24,7 +25,7 @@ function fakeTool(
     {
       name,
       description: name,
-      // biome-ignore lint/suspicious/noExplicitAny: test stub doesn't need a real schema
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test stub doesn't need a real schema
       inputSchema: {} as any,
       category,
       execute: async () => ({ ok: true, data: {} }),
@@ -59,7 +60,7 @@ function baseParams(over: Partial<StepRouterParams> = {}): StepRouterParams {
     stepNumber: 1,
     steps: [],
     messages: [],
-    // biome-ignore lint/suspicious/noExplicitAny: not exercised by the router
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- not exercised by the router
     model: {} as any,
     tenantDefaultModelId: "claude-sonnet-4-5",
     provider: "anthropic" as LlmProviderKind,

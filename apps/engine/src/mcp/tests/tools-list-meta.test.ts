@@ -7,6 +7,7 @@
 // tenant.* alias path used to assert.
 
 import { describe, expect, it } from "bun:test";
+
 import { buildConversationToolMeta } from "../capabilities/tool-meta.ts";
 
 describe("MCP tool listing _meta.subkit", () => {

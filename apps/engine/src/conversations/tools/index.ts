@@ -6,6 +6,7 @@
 // result back to the model.
 
 import type { z } from "@hono/zod-openapi";
+
 import type { Db } from "../../db/client.ts";
 import type { EngineClient } from "../../engine-client/index.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
@@ -187,11 +188,7 @@ export interface ToolContext {
 export interface ToolResultPause {
   /** Which `ask_user_*` tool paused the loop. */
   tool_name:
-    | "ask_user_choice"
-    | "ask_user_multi"
-    | "ask_user_text"
-    | "ask_user_form"
-    | "ask_user_confirm";
+    "ask_user_choice" | "ask_user_multi" | "ask_user_text" | "ask_user_form" | "ask_user_confirm";
   /**
    * Optional `kind` hint for `ask_user_confirm` — lets the client
    * pick the right sub-renderer (structured diff for

@@ -10,6 +10,7 @@
 // Runtime `llm.context_1m` read-back is covered by consumer-readback.test.ts.
 
 import { describe, expect, test } from "bun:test";
+
 import { contextCapFor } from "../accounting/index.ts";
 
 describe("contextCapFor · 1M Claude cap", () => {

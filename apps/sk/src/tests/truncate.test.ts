@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+
 import { truncateEnd, truncateMiddle } from "../repl/truncate.ts";
 
 describe("truncateEnd", () => {

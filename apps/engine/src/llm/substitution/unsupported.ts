@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the subject under test/detection — these strings encode the placeholder grammar.
+/* eslint-disable no-template-curly-in-string -- literal `${…}` tokens are the subject under test/detection — these strings encode the placeholder grammar. */
 // Detects placeholder-shaped substrings the runtime will NOT substitute.
 //
 // Pre-fix, the LLM author repeatedly wrote Mustache placeholders

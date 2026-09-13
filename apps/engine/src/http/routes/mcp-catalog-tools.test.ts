@@ -16,6 +16,7 @@
 // same function `tools/list` calls, not a count and not a spot check.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { assembleCatalog, listWorkflowTools, resolveMcpMode } from "../../mcp/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 

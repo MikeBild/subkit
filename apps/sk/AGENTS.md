@@ -83,7 +83,7 @@ Canonical docs: `docs/developers/input-surfaces.md`, `docs/authors/authoring-wor
 
 ## Style
 
-- Biome (inherited). TypeScript strict. ESM with explicit `.ts`/`.tsx`.
+- ESLint + Prettier (inherited). TypeScript strict. ESM with explicit `.ts`/`.tsx`.
 - `.tsx` only for Ink components; keep non-UI code in `.ts`.
 - File naming: `kebab-case.ts(x)`.
 - Prefer named exports.

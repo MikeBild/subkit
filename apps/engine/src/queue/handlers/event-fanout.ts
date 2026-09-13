@@ -6,6 +6,7 @@
 // `webhook.deliver` jobs for every matching subscription.
 
 import type { Job, PgBoss } from "pg-boss";
+
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import type { Db } from "../../db/client.ts";
 import { errorFields, log, logger } from "../../logging/logger.ts";

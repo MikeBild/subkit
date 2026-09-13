@@ -1,7 +1,8 @@
 // Push notifications + /session QR.
 
-import { describe, expect, mock, test } from "bun:test";
 import type { SkSessionState } from "@cli-core/index.ts";
+import { describe, expect, mock, test } from "bun:test";
+
 import type { ResolvedProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { inQuietHoursWindow, notify, shouldNotify } from "../repl/notifications/index.ts";

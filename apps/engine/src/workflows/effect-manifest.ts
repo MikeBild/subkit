@@ -3,6 +3,7 @@
 // must come from the server's version/connector snapshot, never a client claim.
 import { z } from "@hono/zod-openapi";
 import { classifyHttpSideEffect, inferGraphqlOperation } from "@shared/index.ts";
+
 import { workflowJsonDigest } from "./canonical-json.ts";
 import { JsonValueSchema, type RequestStep, WorkflowDefSchema } from "./types.ts";
 

@@ -165,7 +165,7 @@ export function validateConnectorDraft(
       if (connector.driver === "graphql" && template.url_pattern && connector.base_url) {
         const placeholders = extractTemplatePlaceholders(connector.base_url);
         if (placeholders.length === 0) {
-          let pattern: RegExp | null = null;
+          let pattern: RegExp | null;
           try {
             pattern = new RegExp(template.url_pattern);
           } catch {

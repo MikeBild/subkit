@@ -13,6 +13,7 @@
 // `@cli-core/sse.ts`).
 
 import createClient, { type ClientOptions, type Middleware } from "openapi-fetch";
+
 import type { paths } from "./openapi.d.ts";
 
 export type EngineClient = ReturnType<typeof createClient<paths>>;

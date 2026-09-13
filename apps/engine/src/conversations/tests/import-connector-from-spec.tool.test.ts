@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { importConnectorFromSpecTool } from "../tools/import-connector-from-spec.ts";
 
@@ -6,7 +7,7 @@ import { importConnectorFromSpecTool } from "../tools/import-connector-from-spec
 // The tool's execute() is passed a null context because it only uses
 // stateless parsers + template matching.
 
-// biome-ignore lint/suspicious/noExplicitAny: minimal stub for stateless tool
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub for stateless tool
 const nullCtx = null as any;
 let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
 

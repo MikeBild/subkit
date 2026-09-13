@@ -18,6 +18,7 @@
 // erased at compile time and triggers no module evaluation.
 
 import type { PDFParse } from "pdf-parse";
+
 import {
   BinaryParseError,
   DetectionPriority,

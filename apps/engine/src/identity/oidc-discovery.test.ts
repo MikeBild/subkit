@@ -11,8 +11,9 @@
 //   - flushDiscoveryCache + isCached utilities
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { HttpResponse, http } from "msw";
+import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
+
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import {
   DiscoveryDocSchema,
@@ -104,7 +105,7 @@ describe("fetchDiscovery — happy path", () => {
 
   test("returns a doc missing jwks_uri when the server omits it", async () => {
     const body = makeDiscoveryBody();
-    // biome-ignore lint/suspicious/noExplicitAny: removing key from test fixture
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- removing key from test fixture
     delete (body as any).jwks_uri;
     server.use(http.get(`${ISSUER}${DISCOVERY_PATH}`, () => HttpResponse.json(body)));
 

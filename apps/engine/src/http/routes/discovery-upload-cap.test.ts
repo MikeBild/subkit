@@ -10,6 +10,7 @@
 // the buffering loop is the backstop there.
 
 import { describe, expect, test } from "bun:test";
+
 import { contentLengthOverCap, MAX_DISCOVERY_UPLOAD_BYTES } from "./discovery.ts";
 
 function withContentLength(value: string | undefined): {

@@ -5,12 +5,14 @@
 // this binary actually carries, fetched from the engine that served the
 // script; and the installer is a script that aborts rather than half-installs.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { ESSENTIAL_PATHS } from "@shared/llms-index.ts";
+import { describe, expect, test } from "bun:test";
+
 import type { AppEnv } from "../openapi.ts";
 import { createApp } from "../server.ts";
 import {

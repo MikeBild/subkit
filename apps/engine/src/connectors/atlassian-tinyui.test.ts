@@ -3,6 +3,7 @@
 // covers padding edge cases and rejection of invalid shapes.
 
 import { describe, expect, it } from "bun:test";
+
 import { decodeAtlassianTinyui, parseAtlassianCloudResourceUrl } from "./atlassian-tinyui.ts";
 
 describe("decodeAtlassianTinyui", () => {
@@ -34,9 +35,9 @@ describe("decodeAtlassianTinyui", () => {
 
   it("returns null on empty / non-string input", () => {
     expect(decodeAtlassianTinyui("")).toBe(null);
-    // biome-ignore lint/suspicious/noExplicitAny: defensive null handling
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- defensive null handling
     expect(decodeAtlassianTinyui(null as any)).toBe(null);
-    // biome-ignore lint/suspicious/noExplicitAny: defensive null handling
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- defensive null handling
     expect(decodeAtlassianTinyui(undefined as any)).toBe(null);
   });
 

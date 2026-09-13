@@ -9,6 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { auditLog, webhooksInbound } from "../../../db/schema/index.ts";
 import { bindFromWorkflow, unbindFromWorkflow } from "../service.ts";
 import { createInboundCtx, type InboundTestCtx } from "./setup.ts";

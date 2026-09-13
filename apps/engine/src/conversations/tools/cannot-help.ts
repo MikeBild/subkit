@@ -14,6 +14,7 @@
 // pretends otherwise.
 
 import { z } from "@hono/zod-openapi";
+
 import { recordGapCandidate } from "../../discovery/service.ts";
 import { recordCannotHelp } from "../../observability/instrumentation.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";

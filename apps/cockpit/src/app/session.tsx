@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createContext, type ReactNode, useContext } from "react";
+
 import { ApiError, type Bootstrap, bootstrap } from "@/api/client";
 import { BootstrapErrorPage, LoginRedirect } from "@/components/failure-state";
 import { Skeleton } from "@/components/ui/skeleton";

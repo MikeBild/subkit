@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { parseOffer } from "./suggest-next-offer-parse.ts";
 
 describe("parseOffer — English offer patterns", () => {

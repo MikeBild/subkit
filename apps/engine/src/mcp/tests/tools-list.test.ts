@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { buildToolAnnotations } from "../capabilities/tool-meta.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 

@@ -1,6 +1,7 @@
 // Connector read tools.
 
 import { z } from "@hono/zod-openapi";
+
 import { categoryOfConnector } from "../../../connectors/categorize.ts";
 import type { ConversationTool } from "../index.ts";
 

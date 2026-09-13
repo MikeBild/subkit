@@ -10,6 +10,7 @@
 //   - decline     → nothing applied, draft byte-stable
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { conversationElicitations, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
@@ -54,7 +55,7 @@ function makeDraft(): DraftDocument {
         { step_id: "b", kind: "transform", status: "succeeded", output_preview: { v: 1 } },
       ],
     },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
   } as any;
 }
 

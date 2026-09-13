@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the subject under test — the skill body uses them as runtime-template markers.
+/* eslint-disable no-template-curly-in-string -- literal `${…}` tokens are the subject under test — the skill body uses them as runtime-template markers. */
 
 // Contract test for the mcp-server-setup skill body.
 //
@@ -10,9 +10,10 @@
 // force every new MCP client (Cursor, Continue, Zed, Goose, …) to
 // touch this prompt. The contract test makes that regression loud.
 
-import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, it } from "bun:test";
 
 const SKILL_PATH = fileURLToPath(new URL("../mcp-server-setup.md", import.meta.url));
 const body = readFileSync(SKILL_PATH, "utf8");

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { updateCommand } from "../update.ts";
 
 // Cast through unknown to avoid citty's complex generics in test assertions.

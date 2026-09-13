@@ -8,9 +8,11 @@
 //          end-to-end via the CLI client wrapper, returning succeeded.
 // Spec refs: docs/developers/input-surfaces.md
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { EngineClient } from "../../../../sk/src/engine-client.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 

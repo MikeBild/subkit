@@ -4,6 +4,7 @@
 // edge.
 
 import { describe, expect, test } from "bun:test";
+
 import { buildStepDag, detectCycles } from "../dag.ts";
 import type { WorkflowDef } from "../types.ts";
 

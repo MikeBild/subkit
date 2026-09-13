@@ -18,6 +18,7 @@
 //   POST   /v1/connector-templates/import                       — import from spec
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
+
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { registerCollectionRoutes } from "./collection.ts";

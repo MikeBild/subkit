@@ -15,8 +15,10 @@
 //   - evidence_count on the list row equals items.length from this route
 //   - skill:read-denied credential → 403 (mirrors skill-candidates-rbac.test.ts)
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import {
   apiKeys,
   skillCandidateEvidence,

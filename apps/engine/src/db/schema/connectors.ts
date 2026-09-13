@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+
 import { bytea, tenantId, timestamps } from "./_common.ts";
 import { outboundConnections } from "./connections.ts";
 import { tenants } from "./identity.ts";
@@ -145,7 +146,9 @@ export const connectors = pgTable(
     uniqueIndex("connectors_tenant_slug_env_key")
       .on(t.tenant_id, t.slug, t.environment)
       .where(sql`${t.deleted_at} IS NULL`),
-    index("connectors_needs_reauth_idx").on(t.tenant_id).where(sql`${t.needs_reauth} = true`),
+    index("connectors_needs_reauth_idx")
+      .on(t.tenant_id)
+      .where(sql`${t.needs_reauth} = true`),
     // Slug shape gate. The tool palette names an external MCP tool
     // `mcp_<slug>__<tool>`, so the `__` separator is only an unambiguous
     // split point while no slug may contain a `__` run. Slug must start

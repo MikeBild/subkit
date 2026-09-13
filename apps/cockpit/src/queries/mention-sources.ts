@@ -8,6 +8,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+
 import { apiRequest } from "@/api/client";
 import { isMentionableLabel, type MentionCandidate, rankCandidates } from "@/lib/mentions";
 import { useDebouncedValue } from "@/lib/use-debounced-value";

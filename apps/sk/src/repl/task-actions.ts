@@ -1,13 +1,7 @@
 import type { PersonaProbe } from "../slash.ts";
 
 export type TaskActionCategory =
-  | "start"
-  | "authoring"
-  | "execution"
-  | "review"
-  | "context"
-  | "admin"
-  | "utility";
+  "start" | "authoring" | "execution" | "review" | "context" | "admin" | "utility";
 
 export type TaskActionInvocation =
   | { kind: "slash"; command: string }

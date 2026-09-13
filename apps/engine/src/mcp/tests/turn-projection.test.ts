@@ -8,6 +8,7 @@
 // Run: bun test apps/engine/src/mcp/tests/turn-projection.test.ts
 
 import { describe, expect, it } from "bun:test";
+
 import {
   projectTurnEnvelopeForClient,
   projectTurnEventsForClient,

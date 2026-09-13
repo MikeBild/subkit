@@ -14,12 +14,14 @@
 //
 // This test exercises (1) directly. Coverage for (2) lives below.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { EngineError } from "@cli-core/errors";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { runCommand } from "citty";
+
 import { knowledgeSourcesCommand } from "../../commands/knowledge-sources.ts";
 
 const PROFILE_ENV_KEYS = ["SUBKIT_ENGINE_URL", "SUBKIT_API_KEY", "SUBKIT_TENANT"] as const;

@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: `${engine_url}` is the literal runtime-template token under test, asserted verbatim — not a template-literal typo.
+/* eslint-disable no-template-curly-in-string -- `${engine_url}` is the literal runtime-template token under test, asserted verbatim — not a template-literal typo. */
 
 // Cross-layer regression test for the conversational "how do I install sk?"
 // answer. The install answer is produced by THREE layers that must agree, and
@@ -18,6 +18,7 @@
 // shot (the coverage gap that made the original fix take three releases).
 
 import { describe, expect, it } from "bun:test";
+
 import { applyRuntimeTemplate, basePromptFor } from "../../core/context-assembler.ts";
 import { runOutputGuard } from "../index.ts";
 

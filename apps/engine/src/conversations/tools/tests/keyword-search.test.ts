@@ -2,6 +2,7 @@
 // find_connector / find_skill.
 
 import { describe, expect, test } from "bun:test";
+
 import { keywordSearch } from "../keyword-search.ts";
 
 const items = [

@@ -30,10 +30,11 @@
 // a regression — operators set the env, get the warn, but the value
 // silently still wires through.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { Glob } from "bun";
+import { describe, expect, test } from "bun:test";
 
 const SRC_ROOT = join(import.meta.dir, "..", "..");
 

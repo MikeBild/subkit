@@ -4,6 +4,7 @@
 // regardless of input order.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   canonicalBundleSerialization,
   extractFrontmatter,
@@ -38,7 +39,7 @@ describe("extractFrontmatter — tolerance", () => {
   });
 
   test("BOM-prefixed frontmatter still parses (Windows editors)", () => {
-    const raw = `﻿---\ntype: Note\n---\nbody`;
+    const raw = `\uFEFF---\ntype: Note\n---\nbody`;
     const { fm, body } = extractFrontmatter(raw);
     expect(fm).toEqual({ type: "Note" });
     expect(body).toBe("body");

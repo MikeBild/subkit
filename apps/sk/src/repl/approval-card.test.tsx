@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
 import type { ToolCallState } from "@cli-core/index.ts";
+import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import type { ReactElement } from "react";
+
 import { renderAuthoringCard } from "./authoring-cards.tsx";
 
 function snapshot(ui: ReturnType<typeof render>): string {

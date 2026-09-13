@@ -58,7 +58,7 @@ See the subsystem table in `../../docs/developers/agent-navigation.md` for the
 
 ## Style
 
-- Biome formatter (inherited from root `biome.json`). 100 char width, semicolons,
+- Prettier formatter (inherited from root `.prettierrc.json`), ESLint checks. 100 char width, semicolons,
   double quotes, trailing commas.
 - TypeScript strict mode. No `any`. No non-null assertions without a documented
   invariant.
@@ -133,31 +133,13 @@ clamp) and gate every path with `requirePermission("stats:read")`. The
 the principal — user-supplied `connector_id`/`workflow_id` can only narrow
 within the tenant, never widen across tenants.
 
-### Binary file parsers — `xlsx@0.18.5` supply-chain stance
+### Binary file parsers — SheetJS supply chain
 
-SheetJS deprecated all npm-published versions in 2023 and migrated security
-fixes to their self-hosted CDN. `0.18.5` is the last npm artifact and is
-known to carry CVE-2023-30533 (prototype pollution via crafted file). We
-intentionally pin it here for three reasons:
-
-1. **Mitigations are in place.** The 60 s `withParserTimeout` guard kills
-   any pathological workbook; the 200-row-per-sheet cap (`XLSX_ROW_CAP_PER_SHEET`)
-   bounds output volume; `XLSX.read(..., { type: "buffer", cellDates: true })`
-   does NOT enable formula evaluation, so the CVE's prototype-pollution path
-   (which requires running formulas) does not trigger from our usage.
-2. **No npm alternative is drop-in.** `@e965/xlsx` (community fork) lags
-   behind on SheetJS bugfixes; `exceljs` has a meaningfully different
-   row-iteration API and would require parser rewrite.
-3. **CDN tarball install is operator-hostile.** Bun's lockfile + offline
-   mirrors assume npm registry; switching the install source would break
-   reproducible builds.
-
-If the threat model changes (e.g. tenant-supplied workbooks become a
-revenue surface), revisit: fetch the SheetJS CDN tarball and check it
-into a `vendor/` dir, or switch to `exceljs` with a wider API rewrite.
-
-The decision is recorded here, not env-flag-gated — operators should not
-choose between two parser libraries at runtime.
+SheetJS 0.20.3 is vendored from the official release CDN under `vendor/`.
+The source URL and SHA-256 are recorded in `vendor/README.md`; update the
+archive, checksum and root lockfile together. This preserves XLS and XLSX
+support while removing the vulnerable npm 0.18.5 release. Parser timeouts
+and output caps remain required; they do not replace upstream security fixes.
 
 ### Binary file parsers — `pdf-parse@2.4.5` supply-chain stance
 

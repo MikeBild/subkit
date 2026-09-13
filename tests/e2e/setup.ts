@@ -41,8 +41,10 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { type ServerType, serve } from "@hono/node-server";
+
+import { serve, type ServerType } from "@hono/node-server";
 import type { PgBoss } from "pg-boss";
+
 import {
   getConfig as getEngineConfig,
   loadConfig as loadEngineConfig,
@@ -57,8 +59,8 @@ import { createBoss, disposeBoss } from "../../apps/engine/src/queue/boss.ts";
 import { registerAllHandlers } from "../../apps/engine/src/queue/handlers/index.ts";
 import {
   backfillRoleIds,
-  type SeededRoleIds,
   seedBuiltinRolesAndPermissions,
+  type SeededRoleIds,
 } from "../../apps/engine/src/rbac/seed.ts";
 import {
   MemoryObjectStore,

@@ -5,9 +5,11 @@
 //   - AC2: The default-bot system account remains full admin.
 // Spec refs: gap-pass-2 C7 / C8
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
+
 import { apiKeys, roles, systemAccounts } from "../../db/schema/index.ts";
 import { BUILTIN_ROLE_NAMES } from "../../rbac/seed.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";

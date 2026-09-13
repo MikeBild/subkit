@@ -15,6 +15,7 @@
 // request_source='tool-chain' and depth+1.
 
 import { and, eq, isNull } from "drizzle-orm";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../connectors/service.ts";
@@ -61,7 +62,7 @@ import { isOffloadRef, maybeOffload, previewOf } from "./offload.ts";
 import { deepResolveOffloadRefs, previewOffloadRefs } from "./offload-rehydrate.ts";
 import { checkOutputContract, summarizeViolations } from "./output-contract.ts";
 import { capturePreparedWorkflowReferences } from "./prepared-workflow-references.ts";
-import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
+import { resolveDefinition, type RunExecutionSource } from "./resolve-definition.ts";
 import { applyResponseFilters } from "./response-filter.ts";
 import {
   createExecution,
@@ -70,7 +71,7 @@ import {
   insertStepRow,
   markExecutionRunning,
 } from "./state.ts";
-import { type RunStepOutcome, runStep } from "./step-runner.ts";
+import { runStep, type RunStepOutcome } from "./step-runner.ts";
 import { classifyRequestStepSideEffects } from "./steps/request/side-effects.ts";
 import { MAX_CALL_DEPTH, WORKFLOW_TIMEOUT_DEFAULT_MS } from "./timeouts.ts";
 import {
@@ -1379,8 +1380,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               const branchHeldIds = new Set<string>();
               for (const branchStepId of branchStepIds) {
                 const branchStepDef = def.steps.find((s) => s.id === branchStepId) as
-                  | StepDef
-                  | undefined;
+                  StepDef | undefined;
                 if (!branchStepDef) continue;
                 if (opts.hold_writes) {
                   const heldDep = findHeldDependency(

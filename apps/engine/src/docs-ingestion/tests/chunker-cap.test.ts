@@ -6,6 +6,7 @@
 // quietly undo the cap.
 
 import { describe, expect, test } from "bun:test";
+
 import { PER_PAGE_BYTES } from "../budgets.ts";
 import { fingerprintChunks } from "../chunker.ts";
 

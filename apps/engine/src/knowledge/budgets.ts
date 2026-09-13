@@ -2,6 +2,7 @@
 // Reuses the guard pattern from docs-ingestion/budgets.ts.
 
 import { and, eq, isNull, sql } from "drizzle-orm";
+
 import type { Executor } from "../db/client.ts";
 import { knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { envIntOr } from "../utils/env-config.ts";

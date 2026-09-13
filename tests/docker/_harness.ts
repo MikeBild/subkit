@@ -14,6 +14,7 @@
 
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+
 import { BASE_URL, type CommandResult, waitForHealth } from "../e2e/_helpers.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..", "..");

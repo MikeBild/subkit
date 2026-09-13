@@ -6,9 +6,10 @@
 // draft between calls. The "args identical → spiral" heuristic is
 // wrong for tools that operate on evolving state.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 // The repeat-cap exemptions live in `tools/sdk-wrap/invoke.ts`.
 const SRC = join(import.meta.dir, "..", "sdk-wrap", "invoke.ts");

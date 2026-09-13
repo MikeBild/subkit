@@ -4,6 +4,7 @@
 // scoped grounding block at session start. Read-only: no audit entry.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import {
   buildAgentBriefing,
   DEFAULT_BRIEFING_BUDGET_TOKENS,

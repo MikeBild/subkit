@@ -19,6 +19,7 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
+
 import { StructuredDiff } from "../diff/StructuredDiff.tsx";
 import { renderTextWithLinks } from "../hyperlink.ts";
 import { useTheme } from "../theme/Provider.tsx";

@@ -11,11 +11,13 @@
 // job directly onto `conversation.run-turn.dlq` — exactly the envelope
 // pg-boss moves there on expiry — and drives the GENUINE consumer.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { getConfig, loadConfig } from "../../config/loader.ts";
 import * as svc from "../../conversations/service.ts";
 import { auditLog, tenants, users } from "../../db/schema/index.ts";

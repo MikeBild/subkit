@@ -1,6 +1,7 @@
 // Unit tests for the loop→for_each rewriter (pure data, no I/O).
 
 import { describe, expect, test } from "bun:test";
+
 import { rewriteLoopsToForEach } from "../migrate-loop-to-for-each.ts";
 import type { WorkflowDef } from "../types.ts";
 
@@ -91,7 +92,7 @@ describe("rewriteLoopsToForEach", () => {
           id: "send_row",
           method: "POST",
           url: "https://api.example.com/rows",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${item.id} placeholder in workflow body — tests the for_each migration preserves the field
+          // eslint-disable-next-line no-template-curly-in-string -- literal ${item.id} placeholder in workflow body — tests the for_each migration preserves the field
           body: { id: "${item.id}" },
         },
       ],

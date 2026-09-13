@@ -6,6 +6,7 @@
 // loops.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
@@ -247,7 +248,7 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
         ...empty.workflow,
         name: "Render deck",
         slug: "render-deck",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
+        // eslint-disable-next-line no-template-curly-in-string -- literal ${...} placeholder is the fixture under test.
         steps: [{ id: "upload", kind: "request", method: "POST", url: "/u/${input.markdown}" }],
         input_schema_sample: { markdown: "# hi", filename: "deck.md" },
       } as never,

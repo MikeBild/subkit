@@ -3,6 +3,7 @@
 // will post and the modal-view JSON the route's sync fast path opens.
 
 import { describe, expect, test } from "bun:test";
+
 import type { ChatElicitation } from "../../types.ts";
 import {
   buildElicitationModal,

@@ -11,6 +11,7 @@
 
 import { hasToolCall, type ModelMessage, stepCountIs, streamText, type ToolSet } from "ai";
 import { and, desc, eq, sql } from "drizzle-orm";
+
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { getConfig } from "../config/loader.ts";

@@ -3,6 +3,7 @@
 // shape-only smoke checks at the bottom.
 
 import { describe, expect, test } from "bun:test";
+
 import { initCommand, runInit } from "../init.ts";
 
 const cmd = initCommand as unknown as {

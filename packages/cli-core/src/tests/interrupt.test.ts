@@ -3,6 +3,7 @@
 // turn, a single press exits directly.
 
 import { describe, expect, test } from "bun:test";
+
 import { makeInterruptController } from "../interrupt.ts";
 
 describe("interrupt controller", () => {

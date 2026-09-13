@@ -8,6 +8,7 @@
 //   - constant-time equality is the only safe way to compare hashes
 
 import { describe, expect, test } from "bun:test";
+
 import {
   constantTimeHexEquals,
   generateKey,
@@ -71,11 +72,11 @@ describe("parseKey", () => {
 
   test("rejects null, empty, and non-string inputs", () => {
     expect(parseKey("")).toBeNull();
-    // biome-ignore lint/suspicious/noExplicitAny: deliberately probing the runtime guard
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately probing the runtime guard
     expect(parseKey(null as any)).toBeNull();
-    // biome-ignore lint/suspicious/noExplicitAny: deliberately probing the runtime guard
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately probing the runtime guard
     expect(parseKey(undefined as any)).toBeNull();
-    // biome-ignore lint/suspicious/noExplicitAny: deliberately probing the runtime guard
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately probing the runtime guard
     expect(parseKey(42 as any)).toBeNull();
   });
 

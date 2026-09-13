@@ -7,6 +7,7 @@
 
 import { createRoute, type OpenAPIHono, type RouteConfigToTypedResponse } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import * as svc from "../../../conversations/index.ts";
 import {
@@ -218,9 +219,8 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id, tool_call_id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const { getPendingElicitationByToolCall } = await import(
-      "../../../conversations/elicitations.ts"
-    );
+    const { getPendingElicitationByToolCall } =
+      await import("../../../conversations/elicitations.ts");
     const elicit = await getPendingElicitationByToolCall(principal.tenant_id, id, tool_call_id, db);
     if (!elicit) {
       throw new NotFoundError("elicitation_for_tool_call");

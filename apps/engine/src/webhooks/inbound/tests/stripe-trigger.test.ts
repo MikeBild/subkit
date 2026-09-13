@@ -15,13 +15,15 @@
 //   * the workflow runs and the `request` step's stub fetch lands an
 //     HTTP POST shaped like a Slack chat.postMessage call
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import {
   auditLog,
-  executionSteps,
   executions,
+  executionSteps,
   workflows,
   workflowVersions,
 } from "../../../db/schema/index.ts";
@@ -137,7 +139,7 @@ beforeAll(async () => {
             headers: { "Content-Type": "application/json; charset=utf-8" },
             body: {
               channel: "C0123ALERT",
-              // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow template placeholders are evaluated by the engine, not JS string interpolation
+              // eslint-disable-next-line no-template-curly-in-string -- workflow template placeholders are evaluated by the engine, not JS string interpolation
               text: "[stripe] charge.failed — ${scope.extract.data.currency} ${scope.extract.data.amount} — ${scope.extract.data.failure_code} — ${scope.extract.data.email} — ${scope.extract.data.charge_id}",
             },
           },

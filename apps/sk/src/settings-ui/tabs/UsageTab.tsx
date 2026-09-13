@@ -9,6 +9,7 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
+
 import type { EngineClient } from "../../engine-client.ts";
 
 interface Props {

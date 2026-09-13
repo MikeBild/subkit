@@ -3,6 +3,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
 import { auditLog, sessions, users } from "../../db/schema/index.ts";
 import type { HttpTestServer } from "../../http/tests/setup.ts";

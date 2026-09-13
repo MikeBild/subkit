@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+
 import type { z } from "zod";
+
 import {
   ConfigLoaderError,
   RestartRequiredError,
@@ -177,9 +179,7 @@ function collectBootstrapEnvSeeds(
   return seeds;
 }
 
-// Exported for unit tests that need to assert path resolution without
-// triggering the full loadConfig() (which would also try to write the
-// auto-generated session secret to disk — fine for tmpdirs, fatal for
+// Exported for unit tests that need to assert path resolution without triggering the full loadConfig() (which would also try to write the auto-generated session secret to disk — fine for tmpdirs, fatal for
 // /etc/subkit on a dev workstation).
 export function _defaultConfigPathForTests(env: Record<string, string | undefined>): string {
   return defaultConfigPath(env);

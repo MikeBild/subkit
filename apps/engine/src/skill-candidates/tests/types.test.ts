@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { computeConfidence } from "../types.ts";
 
 describe("skill-candidates/computeConfidence", () => {

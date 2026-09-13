@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { dispatchAuthRedirectSlash } from "../repl/slash/handlers/auth-redirects.ts";
 
 describe("dispatchAuthRedirectSlash", () => {

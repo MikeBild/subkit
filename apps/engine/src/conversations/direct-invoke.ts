@@ -24,6 +24,7 @@
 // the tool itself.
 
 import { and, eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";

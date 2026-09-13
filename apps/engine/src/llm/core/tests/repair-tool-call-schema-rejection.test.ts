@@ -5,6 +5,7 @@
 // message format. These tests pin the contract.
 
 import { describe, expect, it } from "bun:test";
+
 import { isSchemaRejectionError } from "../repair-tool-call.ts";
 
 describe("isSchemaRejectionError", () => {

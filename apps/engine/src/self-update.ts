@@ -18,6 +18,7 @@ import {
   type UpdaterConfig,
 } from "@cli-core/updater.ts";
 import { VERSION } from "@cli-core/version.ts";
+
 import {
   recordEngineUpdateCompleted,
   recordEngineUpdateFailed,
@@ -43,6 +44,7 @@ function openAuditDb(): Db {
     throw new Error(
       `--self-update / --rollback need DATABASE_URL set so the audit row can be written. ` +
         `On a systemd host, source the unit's EnvironmentFile first (root cause: ${cause}).`,
+      { cause: err },
     );
   }
 }

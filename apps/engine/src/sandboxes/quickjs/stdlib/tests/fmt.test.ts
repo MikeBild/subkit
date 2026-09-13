@@ -8,6 +8,7 @@
 // silent path fail loudly.
 
 import { describe, expect, test } from "bun:test";
+
 import { runJs } from "../../runtime.ts";
 
 const evalJs = (expression: string) =>

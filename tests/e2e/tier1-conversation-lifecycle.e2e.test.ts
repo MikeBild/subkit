@@ -22,6 +22,7 @@
 // that gap permanently.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { boot, cli, type E2EEnv, shutdown } from "./setup.ts";
 
 // Skip the whole suite when CI forces LLM_PROVIDER=mock (no real API

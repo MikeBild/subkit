@@ -6,6 +6,7 @@ import { createVertex } from "@ai-sdk/google-vertex";
 import { createVertexAnthropic } from "@ai-sdk/google-vertex/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel, Tool } from "ai";
+
 import { getConfig } from "../../config/loader.ts";
 
 const CONFIG_UNINITIALIZED = Symbol("config_uninitialized");

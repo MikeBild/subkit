@@ -21,6 +21,7 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
+
 import { useTheme } from "../theme/Provider.tsx";
 import { ControlledTextField } from "./ControlledTextField.tsx";
 
@@ -49,7 +50,7 @@ function isPrintableChar(code: number): boolean {
 // doesn't embed a literal ESC (0x1b) byte that lint flags as a control
 // char in regex-literal syntax. Matches `ESC [ 200~` / `ESC [ 201~`
 // — the bracketed-paste wrappers terminals emit around a paste.
-// biome-ignore lint/suspicious/noControlCharactersInRegex: literal ESC byte is exactly what we strip — RegExp(...) constructor triggers the opposite "prefer literal" rule.
+// eslint-disable-next-line no-control-regex -- literal ESC byte is exactly what we strip — RegExp(...) constructor triggers the opposite "prefer literal" rule.
 const BRACKETED_PASTE_RE = /\u001b\[20[01]~/g;
 
 /**

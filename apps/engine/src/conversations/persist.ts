@@ -1,14 +1,13 @@
 // Conversation DB persistence + SDK message-history assembly.
 //
-// All writes from the loop go through here. `buildModelMessages` walks
-// `conversation_messages` and `conversation_tool_calls` in created_at
-// order and emits an AI SDK `ModelMessage[]` with stable tool-call ids
+// All writes from the loop go through here. `buildModelMessages` walks `conversation_messages` and `conversation_tool_calls` in created_at order and emits an AI SDK `ModelMessage[]` with stable tool-call ids
 // copied from `conversation_tool_calls.id`. Real providers (Anthropic)
 // need this shape; the mock model only reads the final user content to
 // parse the `[conv:<id>]` envelope that keys its plan cursor.
 
 import type { FilePart, ImagePart, ModelMessage, TextPart } from "ai";
 import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { fileLinks } from "../db/schema/files.ts";

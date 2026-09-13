@@ -9,9 +9,10 @@
 // negative check that the old generic string isn't the only summary
 // path anymore.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 // The buildPolicyGateSummary closure lives in
 // `conversations/tools/sdk-wrap/invoke.ts`.

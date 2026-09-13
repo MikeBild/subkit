@@ -48,6 +48,7 @@
 
 import { sql } from "drizzle-orm";
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+
 import { bytea, tenantId } from "./_common.ts";
 import { tenants } from "./identity.ts";
 
@@ -133,7 +134,9 @@ export const toolApprovals = pgTable(
     // The sweeper is `scheduler/tool-approvals-cleanup-runner.ts`, fired
     // hourly by the reconciler; its expired-approval DELETE carries this
     // exact predicate.
-    index("tool_approvals_expiry_sweep_idx").on(t.expires_at).where(sql`${t.consumed_at} IS NULL`),
+    index("tool_approvals_expiry_sweep_idx")
+      .on(t.expires_at)
+      .where(sql`${t.consumed_at} IS NULL`),
     // The portal's only lookup key. Unique so a token can name at most one
     // approval; Postgres allows many NULLs, which is what an approval with no
     // minted link carries.

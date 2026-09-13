@@ -8,6 +8,7 @@
 // generalized pause-resume surface for every `askUser.*` tool.
 
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+
 import { tenantId } from "./_common.ts";
 import { conversations } from "./conversations.ts";
 import { tenants } from "./identity.ts";

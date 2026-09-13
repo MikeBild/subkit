@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
+/* eslint-disable no-template-curly-in-string -- literal `${...}` placeholder tokens are part of the tested grammar. */
 // Probe-evidence exemption for the loop-authoring gate. When a
 // loop's referenced upstream step is a `request` step routed through
 // a connector the operator has already successfully probed in this
@@ -15,6 +15,7 @@
 // new exemption.
 
 import { describe, expect, test } from "bun:test";
+
 import { stepFingerprint } from "../../step-fingerprint.ts";
 import type { DraftDocument } from "../../types.ts";
 import { evaluateLoopAuthoringGate } from "../loop-authoring-gate.ts";

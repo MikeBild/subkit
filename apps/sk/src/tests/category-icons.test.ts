@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import openapi from "@cli-core/engine-api/openapi.json" with { type: "json" };
+import { describe, expect, test } from "bun:test";
+
 import { CATEGORY_ICON, categoryIconFor } from "../domain/connectors/category-icons.ts";
 
 /** The engine's driver list, as published in the generated OpenAPI surface. */

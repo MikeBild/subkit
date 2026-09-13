@@ -10,6 +10,7 @@
 // Reproduce the real path: modeFlags → readOnly → listToolsViaRegistry.
 
 import { describe, expect, it } from "bun:test";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { listToolsViaRegistry } from "../adapter.ts";
 import { type McpMode, modeFlags } from "../mode-resolver.ts";

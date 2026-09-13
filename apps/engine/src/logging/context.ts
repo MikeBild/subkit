@@ -12,15 +12,7 @@ export type LogContext = {
   execution_id?: string;
   workflow_id?: string;
   request_source?:
-    | "api"
-    | "cli"
-    | "scheduler"
-    | "mcp"
-    | "webhook"
-    | "tool-chain"
-    | "ui"
-    | "chat"
-    | "queue";
+    "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat" | "queue";
   actor_id?: string;
   /** Credential path of the actor when it was not the primary credential —
    *  `token_exchange` for a Bearer token minted from an API key. */

@@ -7,6 +7,7 @@
 //   GET /v1/recipe-packs/{vertical}
 
 import { createRoute, type OpenAPIHono, type z } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
   ConnectorRecipeSchema,

@@ -15,6 +15,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { createKnowledgeSourceTool } from "../../conversations/tools/generated/writes/create-knowledge-source.ts";
@@ -71,11 +72,11 @@ const OCPP_FIXTURE = [
 // ---------- helpers ----------
 
 function makeToolCtx(ctx: JourneyCtx): ToolContext {
-  // biome-ignore lint/suspicious/noExplicitAny: minimal stub for in-process service forwarding
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub for in-process service forwarding
   const engineClientStub: any = {
     context: { actor_id: ctx.userId, actor_type: "user" },
     knowledgeSources: {
-      // biome-ignore lint/suspicious/noExplicitAny: in-process service forwarding
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- in-process service forwarding
       create: async (params: any) => {
         const { createKnowledgeSource } = await import("../../knowledge/service.ts");
         return createKnowledgeSource(
@@ -95,7 +96,7 @@ function makeToolCtx(ctx: JourneyCtx): ToolContext {
         );
       },
     },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal audit stub
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal audit stub
     audit_write: async (entry: any) => {
       const row = await auditAwait(
         {

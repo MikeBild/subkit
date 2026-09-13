@@ -119,7 +119,7 @@ function suggestNearest(invented: string, valid: string[]): string | undefined {
     if (v.toLowerCase() === lower) return v;
     if (Math.abs(v.length - lower.length) > 2) continue;
     let diff = 0;
-    for (let i = 0, j = 0; i < v.length || j < lower.length; ) {
+    for (let i = 0, j = 0; i < v.length || j < lower.length;) {
       if (v[i] === lower[j]) {
         i += 1;
         j += 1;
@@ -145,7 +145,7 @@ export const cliScanner: Scanner = {
     const out: Violation[] = [];
     FENCED_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
+    // eslint-disable-next-line no-cond-assign -- standard regex exec loop.
     while ((m = FENCED_RE.exec(text)) !== null) {
       const block = m[1] ?? "";
       const invocations = parseInvocations(block);

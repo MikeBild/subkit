@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { ElicitationCompleteNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { setConfigKey } from "../../config/loader.ts";
 import {
   createEmptyDraftDocument,

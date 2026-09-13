@@ -6,6 +6,7 @@
 // contract asks for: check 3 puts one probe object and deletes it again.
 
 import { and, eq, isNull, sql } from "drizzle-orm";
+
 import type { Config } from "../config/schema.ts";
 import { decryptSecret } from "../crypto/aes-gcm.ts";
 import type { Db } from "../db/client.ts";

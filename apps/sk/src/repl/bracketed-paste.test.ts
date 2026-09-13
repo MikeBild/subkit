@@ -2,6 +2,7 @@
 // function so test runs don't need a real stdin.
 
 import { describe, expect, it } from "bun:test";
+
 import { applyBracketedPaste, PASTE_END, PASTE_START } from "./bracketed-paste.ts";
 
 const empty = { inPaste: false, pasteBuf: "" };

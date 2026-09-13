@@ -11,6 +11,7 @@
 // query SUCCEEDS and returns the wrong rows. An engine executing workflows
 // against a stale schema is worse than one that is down, so the guard aborts.
 import { describe, expect, test } from "bun:test";
+
 import { assertSearchPath, EXPECTED_SCHEMA } from "../client.ts";
 
 const poolReturning = (schema: string | null) => ({

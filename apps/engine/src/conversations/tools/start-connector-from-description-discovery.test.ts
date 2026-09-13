@@ -20,6 +20,7 @@
 // red is the signal; both green together is what makes either meaningful.
 
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
+
 import * as discoveryModule from "../../connectors/discovery/index.ts";
 import { DiscoveryError, type DiscoveryResult } from "../../connectors/discovery/types.ts";
 import { tenants } from "../../db/schema/identity.ts";

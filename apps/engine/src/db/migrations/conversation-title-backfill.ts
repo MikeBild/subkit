@@ -15,6 +15,7 @@
 // marker stays unset so the next boot retries.
 
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+
 import { deriveConversationTitle } from "../../conversations/title.ts";
 import { logger } from "../../logging/logger.ts";
 import type { Db } from "../client.ts";

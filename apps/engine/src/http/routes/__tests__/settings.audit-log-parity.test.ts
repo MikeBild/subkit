@@ -11,11 +11,13 @@
 // rename). This sweep does N PUTs and asserts row count == log count
 // == N, with bijective resource_id ↔ leaf matching.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { _resetConfigForTests, loadConfig } from "../../../config/loader.ts";
 import { auditLog } from "../../../db/schema/audit.ts";
 import { logRing } from "../../../observability/log-ring.ts";
@@ -252,9 +254,8 @@ describe("audit_log ↔ setting.applied bijection", () => {
     // test, a future refactor that drops the catch (or the metadata
     // stamp) would leave the operator-visible "live tracer is on the
     // old config" signal silently broken.
-    const { _failNextReconfigureForTests, _clearReconfigureFailureForTests } = await import(
-      "../../../test-helpers/tracing.ts"
-    );
+    const { _failNextReconfigureForTests, _clearReconfigureFailureForTests } =
+      await import("../../../test-helpers/tracing.ts");
     _failNextReconfigureForTests();
     try {
       const url = `${server.baseUrl}/v1/settings/observability.langfuse.host`;

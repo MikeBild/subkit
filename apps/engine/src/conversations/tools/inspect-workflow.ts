@@ -14,6 +14,7 @@
 // next patch is authored against the real shape, not an imagined one.
 
 import { z } from "@hono/zod-openapi";
+
 import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth.ts";
 import { deriveOutputBehavior } from "../../workflows/output-behavior.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
@@ -78,9 +79,7 @@ export const inspectWorkflowTool: ConversationTool = {
     // raw_preview, and scope_at_step.
     const previewSteps = (() => {
       const latest = draft.latest_preview as
-        | { step_traces?: Array<Record<string, unknown>> }
-        | null
-        | undefined;
+        { step_traces?: Array<Record<string, unknown>> } | null | undefined;
       const m = new Map<string, Record<string, unknown>>();
       const traces = latest?.step_traces;
       if (Array.isArray(traces)) {

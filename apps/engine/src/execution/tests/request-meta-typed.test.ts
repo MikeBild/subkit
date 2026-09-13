@@ -1,10 +1,11 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
+/* eslint-disable no-template-curly-in-string -- literal `${...}` placeholder tokens are part of the tested grammar. */
 // Typed RequestMeta — strict discriminated union with non-optional
 // `connector` on driver-keyed variants. The `connectorless` variant
 // covers raw-url HTTP steps; the `error` variant covers pre-dispatch
 // failures.
 
 import { describe, expect, test } from "bun:test";
+
 import { RequestMetaSchema } from "../request-meta-schema.ts";
 import type { ConnectorResolutionSummary, RequestMeta } from "../types.ts";
 

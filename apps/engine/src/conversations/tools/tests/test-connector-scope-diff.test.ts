@@ -5,6 +5,7 @@
 // contract; surface-level surfacing is exercised by integration tests.
 
 import { describe, expect, test } from "bun:test";
+
 import { diffOauthScopes } from "../../../connectors/oauth-scope-diff.ts";
 
 describe("diffOauthScopes (G6 / H4)", () => {

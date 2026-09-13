@@ -19,9 +19,11 @@
 //   - A system-account principal has no read state of its own.
 //   - A principal without notification:read is rejected (401 / 403).
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import {
   apiKeys,
   auditLog,

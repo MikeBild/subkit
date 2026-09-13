@@ -5,6 +5,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { eq } from "drizzle-orm";
 import * as jose from "jose";
+
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import {
   IdentityLinkConflictError,

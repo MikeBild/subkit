@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MoreHorizontal, Plug, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+
 import { ApiError, apiRequest } from "@/api/client";
 import { useSession } from "@/app/session";
 import { IconButton } from "@/components/cockpit/icon-button";
@@ -42,9 +43,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
+
 import {
-  type ConnectionItem,
   connectionFailureKey,
+  type ConnectionItem,
   connectionNeedsRenewal,
   connectionStateKey,
   type DiscoveryItem,

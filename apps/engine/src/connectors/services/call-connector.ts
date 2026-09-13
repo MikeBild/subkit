@@ -37,8 +37,8 @@ import { query as graphqlQuery } from "../drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../drivers/http.ts";
 import { extractCreatedResourceId } from "../egress.ts";
 import {
-  type ConnectorHealth,
   classifyConnectorHealth,
+  type ConnectorHealth,
   connectorHealthHint,
   parseDeprecation,
 } from "../health.ts";
@@ -219,9 +219,7 @@ async function dispatchGraphql(
         })()
       : req.body;
   const b = rawBody as
-    | { query?: unknown; variables?: unknown; operation?: unknown }
-    | null
-    | undefined;
+    { query?: unknown; variables?: unknown; operation?: unknown } | null | undefined;
   if (!b || typeof b !== "object" || typeof b.query !== "string") {
     return { invalid_input: "graphql connectors require body: {query, variables}" };
   }

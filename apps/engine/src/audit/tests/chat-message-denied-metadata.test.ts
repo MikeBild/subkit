@@ -5,6 +5,7 @@
 // shape round-trips the fields the pending-space query reads.
 
 import { describe, expect, test } from "bun:test";
+
 import { ChatMessageDeniedMetadataSchema } from "../types.ts";
 
 describe("ChatMessageDeniedMetadataSchema", () => {

@@ -15,6 +15,7 @@
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { invokeJudge, shouldInvokeJudge } from "./llm-judge.ts";
 
 type ValidatorFn = (fixture: FixtureRecord) => Promise<ValidationResult> | ValidationResult;
@@ -29,14 +30,7 @@ export interface FixtureRecord {
    * etc.).
    */
   flow:
-    | "generate"
-    | "extract"
-    | "repair"
-    | "converse"
-    | "discover"
-    | "summarize"
-    | "judge"
-    | "infra";
+    "generate" | "extract" | "repair" | "converse" | "discover" | "summarize" | "judge" | "infra";
   /** Arbitrary input payload handed to the validator. */
   input: unknown;
   /** Optional expected output payload the validator may assert against. */

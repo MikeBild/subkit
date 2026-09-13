@@ -8,6 +8,7 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useMemo, useState } from "react";
+
 import { Pane } from "./Pane.tsx";
 import { useTheme } from "./theme/Provider.tsx";
 

@@ -17,6 +17,7 @@
 // violate the patch_candidates identity contract.
 
 import { and, eq } from "drizzle-orm";
+
 import { recordConnectorMcpManifestDrift } from "../../audit/recorders/index.ts";
 import type { Executor } from "../../db/client.ts";
 import { connectorMcpSessions } from "../../db/schema/index.ts";

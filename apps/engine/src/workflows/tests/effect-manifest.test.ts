@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { workflowJsonDigest } from "../canonical-json.ts";
 import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "../effect-manifest.ts";
 import { WorkflowDefSchema } from "../types.ts";
@@ -81,11 +82,11 @@ test("version, recipient, environment, configuration, credentials and execution 
 
 test("runtime recipients, paths, and target-rewriting hooks cannot receive repeated-run authority", () => {
   for (const request of [
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: Workflow interpolation, not JavaScript.
+    // eslint-disable-next-line no-template-curly-in-string -- Workflow interpolation, not JavaScript.
     { path: "/messages/${input.target}" },
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: Workflow interpolation, not JavaScript.
+    // eslint-disable-next-line no-template-curly-in-string -- Workflow interpolation, not JavaScript.
     { body: { recipient: "${input.recipient}" } },
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: Workflow interpolation, not JavaScript.
+    // eslint-disable-next-line no-template-curly-in-string -- Workflow interpolation, not JavaScript.
     { headers: { "X-Tenant": "${input.tenant}" } },
   ]) {
     const result = compileWorkflowEffectManifest(fixture(request));

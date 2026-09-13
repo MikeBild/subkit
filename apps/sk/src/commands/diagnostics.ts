@@ -2,6 +2,7 @@ import { reportCommandError } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
+
 import { resolveProfile } from "../config.ts";
 import type { SetupValidationResponse, SetupValidationSection } from "../engine-client.ts";
 import { EngineClient } from "../engine-client.ts";

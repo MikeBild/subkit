@@ -15,6 +15,7 @@
 //   GET /v1/diagnostics/logs/stream   — SSE live log tail
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
+
 import { requireAnyPermission, requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { registerDriftRoute } from "./drift.ts";

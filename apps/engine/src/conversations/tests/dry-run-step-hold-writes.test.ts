@@ -10,6 +10,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { executions } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -81,7 +82,7 @@ function writeStepDraft(): DraftDocument {
         },
       ],
     },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
   } as any;
 }
 

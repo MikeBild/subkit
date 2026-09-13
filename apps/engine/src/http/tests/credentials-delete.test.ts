@@ -3,6 +3,7 @@
 // { deleted: true } envelope.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { upsertCredential } from "../../credentials/index.ts";
 import { connectors, credentials, tenants } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";

@@ -29,6 +29,7 @@
 // and 403 for authenticated principals that lack the scope.
 
 import type { MiddlewareHandler } from "hono";
+
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { WILDCARD_SCOPE } from "../../auth/scopes.ts";

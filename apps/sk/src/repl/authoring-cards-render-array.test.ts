@@ -7,6 +7,7 @@
 // inline so the operator sees "1. Acme — 4 resources".
 
 import { describe, expect, test } from "bun:test";
+
 import { __testHooks } from "./authoring-cards.tsx";
 
 const { renderArrayOfObjects, previewLines } = __testHooks;

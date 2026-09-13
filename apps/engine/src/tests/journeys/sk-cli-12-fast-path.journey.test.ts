@@ -26,6 +26,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import type { ResolvedProfile } from "../../../../sk/src/config.ts";
 import { runHeadless } from "../../../../sk/src/headless.ts";
 import { executions } from "../../db/schema/index.ts";
@@ -127,8 +128,7 @@ describe("journey: sk fast-path — list intent (T16)", () => {
         // Also check in the completed envelope
         if (obj.type === "completed") {
           const toolCalls = obj.tool_calls as
-            | Array<{ output?: Record<string, unknown> }>
-            | undefined;
+            Array<{ output?: Record<string, unknown> }> | undefined;
           if (toolCalls?.some((tc) => tc.output?.skipped_llm === true)) {
             foundSkippedLlm = true;
           }

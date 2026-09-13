@@ -20,7 +20,9 @@
 // there is no way back from that but a backup.
 
 import { createHash } from "node:crypto";
+
 import { and, asc, desc, eq, gte } from "drizzle-orm";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../audit/types.ts";
 import {
@@ -155,6 +157,7 @@ export async function rewrapMasterKey(
         // work around.
         throw new Error(
           `${row.name}/${row.version} decrypts under neither the running MASTER_KEY nor the key in --from-file; nothing was changed (${error instanceof Error ? error.message : String(error)})`,
+          { cause: error },
         );
       }
       const reencrypted = encryptSecretWithKey(runningKey, plaintext, aad);

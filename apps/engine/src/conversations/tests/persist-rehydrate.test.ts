@@ -7,6 +7,7 @@
 // tool call.
 
 import { beforeAll, describe, expect, it } from "bun:test";
+
 import {
   conversationElicitations,
   conversationMessages,
@@ -109,12 +110,12 @@ describe("buildModelMessages — interaction_log rehydration", () => {
     // Find the tool-result message.
     const toolResult = msgs.find((m) => {
       if (m.role !== "tool") return false;
-      // biome-ignore lint/suspicious/noExplicitAny: ModelMessage content shape is a union
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ModelMessage content shape is a union
       const content = m.content as any;
       return Array.isArray(content) && content[0]?.type === "tool-result";
     });
     expect(toolResult).toBeDefined();
-    // biome-ignore lint/suspicious/noExplicitAny: content is a union; cast for inspection
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- content is a union; cast for inspection
     const parts = (toolResult as any).content as Array<{
       output: { value: Record<string, unknown> };
     }>;
@@ -204,7 +205,7 @@ describe("buildModelMessages — interaction_log rehydration", () => {
     const msgs = await buildModelMessages(ctx.testDb.db, ctx.tenant_id, conversation_id);
     const toolResult = msgs.find((m) => m.role === "tool");
     expect(toolResult).toBeDefined();
-    // biome-ignore lint/suspicious/noExplicitAny: ModelMessage tool content is a union
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ModelMessage tool content is a union
     const payload = ((toolResult as any).content[0].output.value ?? {}) as Record<string, unknown>;
     expect(payload._truncated).toBe(true);
     expect(typeof payload._raw_ref).toBe("string");
@@ -301,7 +302,7 @@ describe("buildModelMessages — interaction_log rehydration", () => {
       if (toolCalls.length === 0) continue;
       const next = msgs[i + 1];
       expect(next?.role).toBe("tool");
-      // biome-ignore lint/suspicious/noExplicitAny: union content
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- union content
       const nextParts = (next as any).content as Array<{
         type: string;
         toolCallId: string;
@@ -318,12 +319,12 @@ describe("buildModelMessages — interaction_log rehydration", () => {
     // pair stays balanced; the probe call uses its real output.
     const orphanResult = msgs.find((m) => {
       if (m?.role !== "tool" || !Array.isArray(m.content)) return false;
-      // biome-ignore lint/suspicious/noExplicitAny: union
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- union
       const part = (m.content as any)[0];
       return part?.type === "tool-result" && part.toolCallId === orphanCall!.id;
     });
     expect(orphanResult).toBeDefined();
-    // biome-ignore lint/suspicious/noExplicitAny: union
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- union
     const orphanPayload = ((orphanResult as any).content[0].output.value ?? {}) as Record<
       string,
       unknown
@@ -333,7 +334,7 @@ describe("buildModelMessages — interaction_log rehydration", () => {
 
     const probeResult = msgs.find((m) => {
       if (m?.role !== "tool" || !Array.isArray(m.content)) return false;
-      // biome-ignore lint/suspicious/noExplicitAny: union
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- union
       const part = (m.content as any)[0];
       return part?.type === "tool-result" && part.toolCallId === probeCall!.id;
     });

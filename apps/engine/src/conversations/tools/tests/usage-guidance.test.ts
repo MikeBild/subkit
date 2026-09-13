@@ -13,6 +13,7 @@
 //   - follow_up values for workflow, connector, knowledge_source
 
 import { describe, expect, test } from "bun:test";
+
 import {
   buildConnectorUsage,
   buildKnowledgeSourceUsage,
@@ -102,7 +103,7 @@ describe("buildWorkflowUsageFromParts — inputs synthesized from placeholders",
     // synthesizeInputSchema collects from request step url.
     // The URL contains ${input.date} and ${input.format} placeholder syntax
     // (workflow substitution, not JS template literals — hence the raw string).
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow step URL literals use ${input.*} syntax
+    // eslint-disable-next-line no-template-curly-in-string -- workflow step URL literals use ${input.*} syntax
     const stepUrl = "https://api.example.com/?d=${input.date}&fmt=${input.format}";
     const usage = buildWorkflowUsageFromParts({
       workflow: {

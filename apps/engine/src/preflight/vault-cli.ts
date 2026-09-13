@@ -56,10 +56,7 @@ export interface PreflightCommand {
 }
 
 export type VaultCliCommand =
-  | VaultCheckCommand
-  | VaultSetCommand
-  | RewrapCommand
-  | PreflightCommand;
+  VaultCheckCommand | VaultSetCommand | RewrapCommand | PreflightCommand;
 
 export type VaultCliParse = { ok: true; command: VaultCliCommand } | { ok: false; message: string };
 

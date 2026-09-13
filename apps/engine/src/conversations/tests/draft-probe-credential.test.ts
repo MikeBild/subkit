@@ -14,6 +14,7 @@
 // would a stored credential.
 
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
+
 import * as discoveryService from "../../connectors/discovery/service.ts";
 import { createConnector, getConnector } from "../../connectors/service.ts";
 import { getCredentialForConnector, upsertCredential } from "../../credentials/service.ts";

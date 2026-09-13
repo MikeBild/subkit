@@ -12,6 +12,7 @@
 // is up and behind any edge.
 
 import { readFileSync } from "node:fs";
+
 import { SYSTEM_TENANT_ID } from "../../audit/index.ts";
 import { closeDb, getDb } from "../../db/client.ts";
 import { newTraceId, withContext } from "../../logging/context.ts";

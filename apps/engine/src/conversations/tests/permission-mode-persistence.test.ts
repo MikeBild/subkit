@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { getMockProvider } from "../../llm/mock-provider.ts";
-import { getStoredPermissionMode } from "../service/shared.ts";
 import { createConversation, getConversation } from "../service.ts";
+import { getStoredPermissionMode } from "../service/shared.ts";
 import {
   appendMessageWithTurn,
   type ConversationTestCtx,

@@ -12,6 +12,7 @@
 // unset so the next boot retries. Never breaks boot — the caller wraps it.
 
 import { eq } from "drizzle-orm";
+
 import { logger } from "../../logging/logger.ts";
 import type { Db } from "../client.ts";
 import { cliNotificationInbox, dataMigrations } from "../schema/index.ts";

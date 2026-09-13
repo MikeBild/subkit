@@ -4,6 +4,7 @@
 // printed banner, and the typed-error mapping.
 
 import { describe, expect, test } from "bun:test";
+
 import { joinCommand, runJoin } from "../join.ts";
 
 function jsonResponse(body: unknown, status = 200): Response {

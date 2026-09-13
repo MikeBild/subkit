@@ -8,6 +8,7 @@
 // rotation; we accept if any of them matches.
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+
 import { logger } from "../../../logging/logger.ts";
 import type { VerifierResult, VerifyInput } from "./types.ts";
 

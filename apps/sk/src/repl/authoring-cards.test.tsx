@@ -8,10 +8,11 @@
 // when a policy-pending call is in chat mode, and non-null when the
 // same call is in inspect mode.
 
-import { describe, expect, test } from "bun:test";
 import type { ToolCallState } from "@cli-core/index.ts";
+import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import type { ReactElement } from "react";
+
 import {
   extractKnowledgeSourceSummary,
   isPolicyGatePending,

@@ -12,6 +12,7 @@
 // thin call site and the audit-invariants `file_size` gate stays green.
 
 import { eq } from "drizzle-orm";
+
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { Db } from "../db/client.ts";
 import { selfHealingScans } from "../db/schema/index.ts";

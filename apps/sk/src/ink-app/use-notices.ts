@@ -8,6 +8,7 @@
 import type { PendingElicitation } from "@cli-core/index.ts";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
+
 import { humanizeRequestError } from "../repl/error-humanize.ts";
 import { bodyOf, errorToPanel } from "../shell/ErrorPanel.tsx";
 import type { NoticeItem, NoticeTone } from "../shell/NoticeStack.tsx";

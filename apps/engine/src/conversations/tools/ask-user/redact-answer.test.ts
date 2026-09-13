@@ -3,6 +3,7 @@
 // in-memory outcome pipeline; only the persisted projection is masked.
 
 import { describe, expect, test } from "bun:test";
+
 import { ELICITATION_REDACTED_MARKER, redactElicitationOutput } from "./redact-answer.ts";
 
 const formInput = (fields: Array<Record<string, unknown>>) => ({ fields });

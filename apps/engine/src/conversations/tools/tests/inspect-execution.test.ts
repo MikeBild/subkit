@@ -7,7 +7,8 @@
 // the same builder and produces its chat lifecycle payload.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { executionSteps, executions, tenants } from "../../../db/schema/index.ts";
+
+import { executions, executionSteps, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";

@@ -5,6 +5,7 @@
 // take a healthy connector offline for the whole reset window.
 
 import { describe, expect, test } from "bun:test";
+
 import { isAvailabilityFailure, isAvailabilityFailureFromError } from "./availability.ts";
 
 describe("isAvailabilityFailure — the remote could not serve us", () => {

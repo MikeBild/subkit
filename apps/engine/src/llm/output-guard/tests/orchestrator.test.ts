@@ -3,6 +3,7 @@
 // produced in soft mode.
 
 import { describe, expect, it } from "bun:test";
+
 import { LlmOutputViolation } from "../../errors.ts";
 import { runOutputGuard } from "../index.ts";
 import type { Scanner, Violation } from "../types.ts";

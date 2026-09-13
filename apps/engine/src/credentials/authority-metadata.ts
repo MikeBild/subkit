@@ -2,6 +2,7 @@
 // In particular, it must not call readAccessToken/getCredentialForConnector,
 // whose connection-backed path can refresh against a remote authorization server.
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+
 import { type Executor, getDb } from "../db/client.ts";
 import { credentials, outboundConnections, runtimeSecretVersions } from "../db/schema/index.ts";
 import { authorityScopeSet } from "./authority-scopes.ts";

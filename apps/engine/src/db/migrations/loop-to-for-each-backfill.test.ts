@@ -18,6 +18,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq, sql } from "drizzle-orm";
+
 import {
   auditLog,
   dataMigrations,
@@ -183,8 +184,7 @@ describe("loop→for_each backfill", () => {
     const v2dag = eligibleVersions[1]?.dag as { steps: Array<Record<string, unknown>> };
     expect(v2dag.steps.some((s) => s.id === "iterate_rows")).toBe(false);
     const processRow = v2dag.steps.find((s) => s.id === "process_row") as
-      | { for_each?: string }
-      | undefined;
+      { for_each?: string } | undefined;
     expect(processRow?.for_each).toBe("(sourceData) => sourceData.fetch_data.data.rows");
 
     // Current version pointer updated.

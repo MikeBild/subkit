@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { HeightCache } from "../repl/transcript/height-cache.ts";
 
 describe("HeightCache", () => {

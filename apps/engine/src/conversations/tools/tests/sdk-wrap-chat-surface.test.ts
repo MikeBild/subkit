@@ -11,6 +11,7 @@
 // makes the restriction leak into the default palette (or vice versa).
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";

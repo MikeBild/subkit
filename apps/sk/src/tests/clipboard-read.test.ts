@@ -3,6 +3,7 @@
 // readClipboard path is covered by the E2E suite via a mock.
 
 import { describe, expect, test } from "bun:test";
+
 import { classifyAttachment } from "../repl/clipboard-read.ts";
 
 describe("classifyAttachment: images", () => {

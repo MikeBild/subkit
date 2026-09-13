@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
+/* eslint-disable no-template-curly-in-string -- literal `${...}` placeholder tokens are part of the tested grammar. */
 // User story: As a workflow author, I want a loop body that calls an HTTP
 // endpoint with the current item's id in the path to actually substitute
 // that id at request time, so my "list X then fetch each X's resources"
@@ -20,9 +20,11 @@
 // Spec refs: workflow-authoring.md "Loops" section,
 //            docs/authors/authoring-workflows.md placeholder substitution.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;

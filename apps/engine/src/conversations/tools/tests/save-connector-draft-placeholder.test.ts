@@ -7,6 +7,7 @@
 // execution / probe would 401 against `Authorization: Bearer {{token}}`.
 
 import { describe, expect, test } from "bun:test";
+
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import type { DraftDocument } from "../../types.ts";
 import type { ToolContext } from "../index.ts";

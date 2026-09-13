@@ -23,8 +23,10 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type ServerType, serve } from "@hono/node-server";
+
+import { serve, type ServerType } from "@hono/node-server";
 import type { PgBoss } from "pg-boss";
+
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { apiKeys, systemAccounts, tenants, users } from "../../db/schema/index.ts";
@@ -36,8 +38,8 @@ import { createBoss, disposeBoss, startBoss, stopBoss } from "../../queue/boss.t
 import { registerAllHandlers } from "../../queue/handlers/index.ts";
 import {
   backfillRoleIds,
-  type SeededRoleIds,
   seedBuiltinRolesAndPermissions,
+  type SeededRoleIds,
 } from "../../rbac/seed.ts";
 import {
   createDeterministicClock,

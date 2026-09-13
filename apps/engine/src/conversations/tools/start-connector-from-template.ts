@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+
 import { withMcpConfigDefaults } from "../../connectors/config-schemas.ts";
 import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
 import { enrichConnectorFromTemplate } from "../../connectors/template-enrichment.ts";

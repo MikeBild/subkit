@@ -4,6 +4,7 @@
 // `next_best_actions` short-circuits the decision.
 
 import { describe, expect, test } from "bun:test";
+
 import { pickProbeRecoveryActions } from "./probe-connector-draft.ts";
 
 describe("pickProbeRecoveryActions", () => {

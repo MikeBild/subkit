@@ -4,6 +4,7 @@
 // Reproduces session bab50df1.
 
 import { describe, expect, it } from "bun:test";
+
 import { ALL_PROBE_PERMISSIONS, probePermissionsForRole } from "../persona-probe.ts";
 
 describe("probePermissionsForRole — tier filtering", () => {

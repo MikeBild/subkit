@@ -5,8 +5,10 @@
 //   2. RBAC gate: audit:read required — member role → 403, admin → 200.
 //   3. Unauthenticated → 401.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { apiKeys, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 

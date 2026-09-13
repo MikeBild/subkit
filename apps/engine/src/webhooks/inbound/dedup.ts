@@ -5,6 +5,7 @@
 // INSERT and interpret a unique-violation as "already seen".
 
 import { sql } from "drizzle-orm";
+
 import type { Executor } from "../../db/client.ts";
 
 export interface MarkSeenInput {

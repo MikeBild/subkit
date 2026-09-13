@@ -6,6 +6,7 @@
 // this test pins the contract.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { _validateBootDependenciesForTests } from "../../test-helpers/boot.ts";
 

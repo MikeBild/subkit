@@ -3,6 +3,7 @@
 // and trimRecipeBodiesToBudget from loaders.ts directly.
 
 import { describe, expect, test } from "bun:test";
+
 import { countTokens } from "../../accounting/index.ts";
 import {
   formatConnectorRecipeBodies,

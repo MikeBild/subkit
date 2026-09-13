@@ -6,6 +6,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { auditLog, connectors, knowledgeSources, subscriptions } from "../../db/schema/index.ts";
 import { updateConnectorTool } from "../tools/generated/writes/update-connector.ts";
 import { updateKnowledgeSourceTool } from "../tools/generated/writes/update-knowledge-source.ts";
@@ -24,18 +25,18 @@ afterAll(async () => {
 });
 
 function toolCtx(): ToolContext {
-  // biome-ignore lint/suspicious/noExplicitAny: minimal stub matching ToolContext for in-process service calls
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub matching ToolContext for in-process service calls
   const engineClientStub: any = {
     context: { actor_id: ctx.user_id, actor_type: "user" },
     connectors: {
-      // biome-ignore lint/suspicious/noExplicitAny: in-process service forwarding
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- in-process service forwarding
       update: async (id: string, patch: any) => {
         const { updateConnector } = await import("../../connectors/service.ts");
         return updateConnector(ctx.tenant_id, id, patch, ctx.user_id, ctx.testDb.db);
       },
     },
     knowledgeSources: {
-      // biome-ignore lint/suspicious/noExplicitAny: in-process service forwarding
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- in-process service forwarding
       update: async (id: string, patch: any) => {
         const { updateKnowledgeSource } = await import("../../knowledge/service.ts");
         return updateKnowledgeSource(
@@ -45,7 +46,7 @@ function toolCtx(): ToolContext {
       },
     },
     subscriptions: {
-      // biome-ignore lint/suspicious/noExplicitAny: in-process service forwarding
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- in-process service forwarding
       update: async (id: string, patch: any) => {
         const { updateSubscription } = await import("../../webhooks/outbound/service.ts");
         return updateSubscription(
@@ -59,7 +60,7 @@ function toolCtx(): ToolContext {
         );
       },
     },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal audit stub
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal audit stub
     audit_write: async (entry: any) => {
       const { auditAwait } = await import("../../audit/audit.ts");
       const { AuditAction } = await import("../../audit/types.ts");

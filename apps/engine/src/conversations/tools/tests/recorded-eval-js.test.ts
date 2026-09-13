@@ -7,6 +7,7 @@
 // globals), no LLM, no DB.
 
 import { describe, expect, test } from "bun:test";
+
 import { runRecordedEval } from "../../recorded-eval.ts";
 import { stepFingerprint } from "../../step-fingerprint.ts";
 import type { DraftDocument } from "../../types.ts";

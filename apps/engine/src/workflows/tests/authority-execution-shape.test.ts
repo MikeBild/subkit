@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
+
 import {
-  AuthorityExecutionShapeSchema,
   authorityExecutionShape,
+  AuthorityExecutionShapeSchema,
 } from "../authority-execution-shape.ts";
 import { WorkflowDefSchema } from "../types.ts";
 

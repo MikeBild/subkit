@@ -1,5 +1,6 @@
-import { SENSITIVE_KEY_PATTERN, scrubSecrets } from "@shared/redaction.ts";
+import { scrubSecrets, SENSITIVE_KEY_PATTERN } from "@shared/redaction.ts";
 import { Kind, parse, print, type ValueNode, visit } from "graphql";
+
 import type { RequestStep } from "./types.ts";
 
 const MAX_REVIEW_CHARACTERS = 16_000;

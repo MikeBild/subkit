@@ -10,10 +10,12 @@
 // surface is "tenant A guesses tenant B's slug and signs a payload
 // with an unrelated secret".
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
+
 import { executions, tenants, workflows, workflowVersions } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { createBoss, disposeBoss } from "../../../queue/boss.ts";

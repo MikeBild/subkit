@@ -17,6 +17,7 @@
 // closes the editor (modal stays mounted), second Esc dismisses.
 
 import { describe, expect, mock, test } from "bun:test";
+
 import type { EngineClient } from "../../engine-client.ts";
 import { renderInk } from "../../tests/helpers/ink.tsx";
 import type { FormField } from "../lib/zod-to-form-fields.ts";

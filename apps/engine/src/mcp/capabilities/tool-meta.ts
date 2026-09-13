@@ -7,6 +7,7 @@
 // one delete" path that a self-authored confirm prompt would otherwise hit.
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+
 import { resolveToolMode } from "../../conversations/tool-policies.ts";
 import type { ToolCategory } from "../../conversations/tools/index.ts";
 

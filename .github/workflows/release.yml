@@ -9,7 +9,7 @@ on:
   # We intentionally do NOT listen on `release: published` — a single tag
   # push must fan out exactly once.
   push:
-    tags: ['v*.*.*']
+    tags: ["v*.*.*"]
   # Manual recovery — two modes:
   #   1. `gh workflow run release.yml --ref <tag>` — dispatch IS the tag;
   #      github.ref becomes the tag ref and the workflow runs as if the
@@ -240,7 +240,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           # See bun-version comment in the `test` job above.
-          bun-version: 1.4.0
+          bun-version: 1.4.2
       - name: Cache Bun install
         uses: actions/cache@v6
         with:

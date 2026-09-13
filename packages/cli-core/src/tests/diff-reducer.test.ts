@@ -3,6 +3,7 @@
 // assistant message; never appends to messages or cells.
 
 import { describe, expect, test } from "bun:test";
+
 import { applyTurnEvent, initialSessionState } from "../turn-event.ts";
 
 describe("applyTurnEvent · diff", () => {

@@ -17,6 +17,7 @@
 // dispatch doesn't issue a SELECT for every turn.
 
 import { sql } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
 import { skills as skillsTable } from "../../db/schema/index.ts";
 

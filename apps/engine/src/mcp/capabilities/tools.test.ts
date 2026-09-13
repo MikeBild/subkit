@@ -7,14 +7,16 @@
 // Uses the journey harness (createJourneyCtx + MCP StreamableHTTP client)
 // so tests reach the engine via its public MCP contracts.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq, sql } from "drizzle-orm";
+
 import {
   executions,
   workflowExecutionAuthorities,

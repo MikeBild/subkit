@@ -1,9 +1,10 @@
 // Determinism gate for the settings-doc generator. Runs the script
 // twice and asserts byte-stable output.
 
-import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const SCRIPT = join(import.meta.dir, "..", "gen-settings-doc.ts");
 

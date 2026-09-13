@@ -22,8 +22,8 @@ import type { Db, Executor } from "../db/client.ts";
 import { fileLinks } from "../db/schema/files.ts";
 import { recordFilesDedupSeen } from "../files/dedup-counter.ts";
 import {
-  type PersistInlineUploadResult,
   persistInlineUpload,
+  type PersistInlineUploadResult,
 } from "../files/persist-inline-upload.ts";
 
 export async function persistKnowledgeFile(

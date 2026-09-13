@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { renderTenantSummaryBlock } from "../core/tenant-summary.ts";
 
 describe("tenant-summary block", () => {

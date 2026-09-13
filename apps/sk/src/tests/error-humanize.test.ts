@@ -1,5 +1,6 @@
-import { describe, expect, it, test } from "bun:test";
 import { EngineError, TransportError } from "@cli-core/errors.ts";
+import { describe, expect, it, test } from "bun:test";
+
 import {
   classifyEngineError,
   findErrorHint,

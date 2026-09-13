@@ -1,5 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
+
 import { resolveAction } from "../keybindings/useKeybinding.ts";
 
 interface Props {

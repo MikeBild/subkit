@@ -9,10 +9,12 @@
 //   - AC3: Running the workflow against dev records execution_mode=dev.
 // Spec refs: docs/concepts/connectors.md, docs/concepts/workflows.md
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { connectors, executions } from "../../db/schema/index.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 

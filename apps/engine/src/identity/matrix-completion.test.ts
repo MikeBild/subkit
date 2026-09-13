@@ -26,6 +26,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
+
 import { resolveProviderIdentity } from "../auth/identity-link.ts";
 import { createPortalTokenProvider } from "../auth/providers/portal-token.ts";
 import type { Db } from "../db/client.ts";

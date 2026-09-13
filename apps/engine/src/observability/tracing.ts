@@ -19,6 +19,7 @@
 import { OpenTelemetry } from "@ai-sdk/otel";
 import type { SpanExporter } from "@opentelemetry/sdk-trace-base";
 import { registerTelemetry } from "ai";
+
 import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
 

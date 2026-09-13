@@ -5,6 +5,7 @@
 // details behind exceptions; compliance needs the HTTP/SSE envelope itself.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 const MCP_PROTOCOL_VERSION = "2025-11-25";

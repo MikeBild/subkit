@@ -27,6 +27,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
+
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import { selfHealingScans } from "../../db/schema/index.ts";
@@ -40,8 +41,8 @@ import {
 import {
   driftSignalContext,
   processDriftSignal,
-  type SignalSource,
   scanForDrift,
+  type SignalSource,
 } from "../../self-healing/index.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";

@@ -1,12 +1,12 @@
-import { describe, expect, test } from "bun:test";
 import {
   defaultTheme,
-  PALETTES,
   paletteFor,
+  PALETTES,
   shouldForceNoColor,
   type ThemeName,
   type ThemeTokens,
 } from "@chat-ui/index.ts";
+import { describe, expect, test } from "bun:test";
 
 const ALL_THEMES: ThemeName[] = ["dark", "light", "highContrast", "noColor"];
 

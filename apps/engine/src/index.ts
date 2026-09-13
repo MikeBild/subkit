@@ -1,12 +1,13 @@
 import { checkForUpdate, defaultUpdaterConfig } from "@cli-core/updater.ts";
 import { serve } from "@hono/node-server";
+
 import { SYSTEM_TENANT_ID } from "./audit/index.ts";
 import { ChatAdapterRegistry } from "./chat/registry.ts";
 import { SkCliAdapter } from "./chat/sk-cli/adapter.ts";
 import { closeAllPools } from "./connectors/drivers/postgres.ts";
 import { assertCryptoKeyOrExit } from "./crypto/aes-gcm.ts";
 import { closeDb, getDb, getPool } from "./db/client.ts";
-import { type DriftReport, detectDrift, runMigrationsFromUrl } from "./db/migrate.ts";
+import { detectDrift, type DriftReport, runMigrationsFromUrl } from "./db/migrate.ts";
 import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
 import { warmEmbeddings } from "./embeddings/local-provider.ts";
 import { startAbortMonitor } from "./execution/index.ts";
@@ -61,9 +62,8 @@ async function runServer(): Promise<void> {
   // Phase 1 logger is already live (hardcoded defaults). Load the
   // config file before any subsystem reads it; reconfigure the logger
   // immediately so subsequent boot logs honor the operator's settings.
-  const { loadConfig, getConfig, recordBootConsumer, emitBootComplete } = await import(
-    "./config/loader.ts"
-  );
+  const { loadConfig, getConfig, recordBootConsumer, emitBootComplete } =
+    await import("./config/loader.ts");
   const { reconfigureLogger, reconfigureObservability } = await import("./logging/logger.ts");
   await bootPhase("config_load", () => loadConfig());
   const cfg = getConfig();
@@ -166,7 +166,7 @@ async function runServer(): Promise<void> {
 
   // Drift detection is read-only; tagless pre-squash rows are retained history,
   // while unknown tagged identities or missing embedded identities are actionable.
-  let drift: DriftReport | null = null;
+  let drift: DriftReport | null;
   try {
     drift = await detectDrift(db);
     if (drift.historical_in_db.length > 0) {
@@ -845,9 +845,8 @@ async function main(): Promise<void> {
       },
       async () => {
         try {
-          const { issueAdminKey, parseIssueAdminKeyArgs, formatIssuedKeyBanner } = await import(
-            "./db/issue-admin-key.ts"
-          );
+          const { issueAdminKey, parseIssueAdminKeyArgs, formatIssuedKeyBanner } =
+            await import("./db/issue-admin-key.ts");
           await loadConfigAndReconfigureLogger();
           const { tenantSlug } = parseIssueAdminKeyArgs(process.argv.slice(2));
           const issued = await issueAdminKey({ tenantSlug });

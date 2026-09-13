@@ -7,6 +7,7 @@
 // `unknown`.
 
 import { describe, expect, test } from "bun:test";
+
 import { classifySlash, REMOVED_SLASH_GUIDANCE } from "../repl/slash/dispatcher.ts";
 import { SLASH_COMMANDS } from "../slash.ts";
 

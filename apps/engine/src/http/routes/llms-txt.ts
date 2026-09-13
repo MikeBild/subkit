@@ -29,9 +29,11 @@
 
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
+
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { type LlmsPage, OPTIONAL_PATHS, renderLlmsIndex } from "@shared/llms-index.ts";
 import type { Context } from "hono";
+
 import llmsFullTxt from "../../../../../docs/llms-essential.txt" with { type: "text" };
 // Repo-root docs, embedded at build time so the compiled binary serves them
 // without a filesystem dependency. The manifest is the structured index; the
@@ -117,7 +119,7 @@ export function resolveOrigin(c: Context<AppEnv>): string {
   // newcomer and a probe hit first, and answering 500 because configuration is
   // not ready yet would be the worst possible first impression — the request
   // itself already carries enough to name an origin.
-  let configured = "";
+  let configured: string;
   try {
     configured = getConfig().server.public_base_url ?? "";
   } catch {

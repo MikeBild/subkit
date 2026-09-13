@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { rankEntries } from "../repl/inline-history-search.tsx";
 
 describe("rankEntries", () => {

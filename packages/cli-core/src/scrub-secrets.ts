@@ -1,7 +1,7 @@
 export type { SecretKind, SecretPattern } from "@shared/redaction.ts";
 export {
-  SECRET_PATTERNS,
-  SENSITIVE_KEY_PATTERN,
   scrubSecrets,
   scrubString,
+  SECRET_PATTERNS,
+  SENSITIVE_KEY_PATTERN,
 } from "@shared/redaction.ts";

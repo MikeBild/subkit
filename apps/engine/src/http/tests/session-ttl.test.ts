@@ -10,6 +10,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { auditLog, sessions } from "../../db/schema/index.ts";
 import { createSession, resolveSession } from "../../identity/service.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { connectorHref, triggerLabelKey } from "@/pages/workflows-model";
 
 describe("workflow connector relations", () => {

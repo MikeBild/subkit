@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+
 import { detectToolHallucinatedAbsence } from "../tool-not-available-guard.ts";
 
 const PALETTE = new Set([

@@ -5,10 +5,12 @@
 //   2. /v1/sk/bootstrap success → cache populated
 //   3. /v1/sk/bootstrap rejection → tiered persona-probe fallback
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { loadBootstrap } from "../../lib/bootstrap.ts";
 import {
   ANONYMOUS_PROFILE,

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { rerankSearchHits } from "../search-ranking.ts";
 
 describe("rerankSearchHits", () => {

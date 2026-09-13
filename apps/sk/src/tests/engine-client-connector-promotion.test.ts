@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { EngineClient, type FetchLike } from "../engine-client.ts";
 
 describe("EngineClient connector promotion", () => {

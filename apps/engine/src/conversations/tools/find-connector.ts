@@ -3,6 +3,7 @@
 // "do we have a Stripe connector?" before list_connectors.
 
 import { z } from "@hono/zod-openapi";
+
 import { categoryOfConnector } from "../../connectors/categorize.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { keywordSearch } from "./keyword-search.ts";

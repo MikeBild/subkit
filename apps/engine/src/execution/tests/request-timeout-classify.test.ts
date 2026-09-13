@@ -7,6 +7,7 @@
 // plumbing (the reason the earlier behavioural test was flaky).
 
 import { describe, expect, test } from "bun:test";
+
 import { classifyTransportError } from "../steps/request/dispatch.ts";
 
 function timeoutError(): Error {

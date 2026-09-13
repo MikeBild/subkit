@@ -1,5 +1,7 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { createConnector } from "../../connectors/index.ts";
 import { upsertCredential } from "../../credentials/index.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";

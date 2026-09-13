@@ -9,10 +9,7 @@ export {
   type AuditSource,
   DEPLOY_VERSION_HEADER,
 } from "./audit-source.ts";
-export {
-  ConnectorOperationError,
-  isConnectorOperationError,
-} from "./connector-operation-error.ts";
+export { ConnectorOperationError, isConnectorOperationError } from "./connector-operation-error.ts";
 export {
   OAUTH_AUTHORIZATION_URL_FIELD,
   OAuthApprovalInputSchema,
@@ -28,10 +25,10 @@ export { OPTIONAL_PATHS, renderLlmsIndex } from "./llms-index.ts";
 export type { SecretKind, SecretPattern } from "./redaction.ts";
 export {
   redactWithMaxDepth,
-  SECRET_PATTERNS,
-  SENSITIVE_KEY_PATTERN,
   scrubSecrets,
   scrubString,
+  SECRET_PATTERNS,
+  SENSITIVE_KEY_PATTERN,
 } from "./redaction.ts";
 export type {
   GraphqlOperation,

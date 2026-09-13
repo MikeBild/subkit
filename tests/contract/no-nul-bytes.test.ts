@@ -36,16 +36,17 @@
 //
 // It lives in tests/contract/ because CI's shard job runs `apps packages` only
 // (LOCAL-SK-SCRIPTS-TESTS-NICHT-IN-CI). `bun run test:contract` runs this.
-import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { describe, expect, test } from "bun:test";
+
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 /** Formats whose bytes are not text. Everything else is scanned. */
-const BINARY_SUFFIXES = [".gif", ".png", ".jpg", ".jpeg", ".ico", ".pdf", ".woff", ".woff2"];
+const BINARY_SUFFIXES = [".gif", ".png", ".jpg", ".jpeg", ".ico", ".pdf", ".woff", ".woff2", ".tgz"];
 
 /** The index, not the working tree — see "THE LIMIT OF THAT SENTENCE" above. */
 function trackedFiles(cwd: string = root): string[] {

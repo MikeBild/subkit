@@ -28,6 +28,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { query as gqlQuery } from "../../apps/engine/src/connectors/drivers/graphql.ts";
 import {
   __resetOAuth2CacheForTests,
@@ -176,7 +177,7 @@ describe("AppSync + Cognito (live)", () => {
       const res = await gqlQuery({
         db: ctx.db,
         tenant_id: tenantId,
-        // biome-ignore lint/suspicious/noExplicitAny: drizzle row → ConnectorView shape match
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- drizzle row → ConnectorView shape match
         connector: connector as any,
         query: "{ __schema { queryType { name fields { name } } } }",
       });
@@ -200,9 +201,8 @@ describe("AppSync + Cognito (live)", () => {
       username: EMAIL,
       password: PASSWORD,
     });
-    const { runCognitoRefreshTokenGrant } = await import(
-      "../../apps/engine/src/credentials/oauth2/client.ts"
-    );
+    const { runCognitoRefreshTokenGrant } =
+      await import("../../apps/engine/src/credentials/oauth2/client.ts");
     const refreshed = await runCognitoRefreshTokenGrant({
       region: REGION,
       client_id: CLIENT_ID,

@@ -10,6 +10,7 @@ import {
   DIAGNOSTICS_LOG_TAIL_PATH,
 } from "@cli-core/diagnostics-paths.ts";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
+
 import type { EngineClient } from "../engine-client.ts";
 
 // Aliased from the generated OpenAPI surface so command surfaces have a

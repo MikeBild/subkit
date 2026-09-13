@@ -58,12 +58,12 @@ export class EventSink {
    * the emitter. Prefer `sink.push(ev)` for new code.
    */
   asArrayProxy(): TurnEvent[] {
-    const sink = this;
+    const push = this.push.bind(this);
     return new Proxy(this.events, {
       get(target, key, receiver) {
         if (key === "push") {
           return (...args: TurnEvent[]) => {
-            for (const ev of args) sink.push(ev);
+            for (const ev of args) push(ev);
             return target.length;
           };
         }

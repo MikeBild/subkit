@@ -9,7 +9,7 @@
 // poll callback against it, and shut it down on cleanup. Mirrors the
 // engine's `/v1/credentials/oauth2/poll/:state` shape.
 
-import { type ServerType, serve } from "@hono/node-server";
+import { serve, type ServerType } from "@hono/node-server";
 import { Hono } from "hono";
 
 interface State {

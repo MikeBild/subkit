@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { ThemeProvider } from "@chat-ui/index.ts";
+import { describe, expect, test } from "bun:test";
+
 import {
   StepCarousel,
   type StepCarouselTab,

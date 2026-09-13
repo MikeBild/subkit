@@ -4,6 +4,7 @@
 // loudly here instead of silently re-pinning tags in production.
 
 import { describe, expect, test } from "bun:test";
+
 import { isStructuralTag, mergeStructuralTags } from "../tags.ts";
 
 describe("knowledge/isStructuralTag", () => {

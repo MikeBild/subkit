@@ -7,6 +7,7 @@
 // failure mode from session bab50df1.
 
 import { describe, expect, it } from "bun:test";
+
 import { saveConnectorDraftTool } from "../save-connector-draft.ts";
 
 const schema = saveConnectorDraftTool.inputSchema;

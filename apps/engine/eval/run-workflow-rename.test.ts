@@ -3,6 +3,7 @@
 // field. This pins the breaking rename from CP2 against regression.
 
 import { describe, expect, test } from "bun:test";
+
 import { listTools } from "../src/conversations/tools/index.ts";
 
 // ---------------------------------------------------------------------------

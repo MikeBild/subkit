@@ -3,11 +3,12 @@
 // as /connectors. Gated by `stats:read`.
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
+  aggregateAudit,
   type AuditGroupDim,
   type AuditOutcome,
-  aggregateAudit,
 } from "../../../stats/aggregate-audit.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";

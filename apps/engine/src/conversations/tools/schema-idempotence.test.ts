@@ -26,6 +26,7 @@
 
 import { describe, expect, it } from "bun:test";
 import type { z } from "zod";
+
 import { listTools } from "./index.ts";
 
 /** Zod v4 keeps the node's structure on `_zod.def`; there is no public

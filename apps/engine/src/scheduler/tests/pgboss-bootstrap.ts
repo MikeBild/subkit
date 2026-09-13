@@ -18,6 +18,7 @@
 // in-flight scan can succeed and the soft-delete proceeds.
 
 import { sql } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
 
 /** Install the minimal `pgboss` schema needed for the files-cleanup

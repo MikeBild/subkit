@@ -7,10 +7,12 @@
 // We also verify the attached file's bytes are still readable after the
 // execution completes (the file row and object-store entry are intact).
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { fileLinks } from "../../db/schema/files.ts";
 import { buildObjectKey } from "../../files/object-key.ts";
 import { requireFileForTenant } from "../../files/resolver.ts";

@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the subject under test — they encode the placeholder grammar.
+/* eslint-disable no-template-curly-in-string -- literal `${…}` tokens are the subject under test — they encode the placeholder grammar. */
 // Commit-time placeholder resolvability on request addressing surfaces
 // (audit M4). The runtime fails a request step with
 // `placeholder_unresolved` when path/url (or the graphql query/variables,
@@ -11,6 +11,7 @@
 // same grammar the resolver uses and rejects at commit.
 
 import { describe, expect, test } from "bun:test";
+
 import { validateWorkflowDef } from "../validator.ts";
 
 function defWithSteps(steps: unknown[]): unknown {

@@ -10,6 +10,7 @@
 // silently inheriting from the proposed shape.
 
 import { describe, expect, it } from "bun:test";
+
 import { baseUrlHost, compareConnectorOverlap, scoreConnectorOverlap } from "./overlap.ts";
 
 const PROPOSED = {

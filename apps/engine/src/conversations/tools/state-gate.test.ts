@@ -4,6 +4,7 @@
 // `tool_unavailable_in_state` envelope.
 
 import { describe, expect, test } from "bun:test";
+
 import type { AuthoringSummary, DraftDocument } from "../types.ts";
 import {
   requireAuthoringStage,

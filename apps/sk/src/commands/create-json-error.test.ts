@@ -10,10 +10,11 @@
 // setting `process.exitCode` — handlers MUST NOT call process.exit
 // directly, see knowledge-sources-error-discipline.test.ts).
 
-import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 // Capture real module shapes BEFORE we override them so we can restore
 // them in afterAll. `mock.restore()` does NOT undo `mock.module()`

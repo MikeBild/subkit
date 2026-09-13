@@ -6,8 +6,10 @@
 // "Ã¢Â€Â“" instead of "–". These tests run inside the real QuickJS
 // sandbox and verify the wire bytes with Node's own decoders.
 
-import { describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
+
+import { describe, expect, test } from "bun:test";
+
 import { runJs } from "../../runtime.ts";
 
 const run = <T>(code: string, input: unknown): Promise<T> =>

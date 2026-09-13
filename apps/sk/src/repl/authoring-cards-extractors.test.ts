@@ -1,13 +1,14 @@
 // Unit tests for the four safe extractors exported from authoring-cards.tsx.
 // All tests operate on ToolCallState fixtures — no Ink, no DB, no LLM.
 
-import { describe, expect, test } from "bun:test";
 import type { ToolCallState } from "@cli-core/index.ts";
 // Engine-side output type imported directly so the structural-overlap
 // test at the bottom of this file detects shape drift at compile time:
 // if the engine renames a field or drops one, the fixture below stops
 // matching the type and TypeScript refuses to compile this test.
 import type { CreateKnowledgeSourceOutputData } from "@engine/conversations/tools/generated/writes/create-knowledge-source.ts";
+import { describe, expect, test } from "bun:test";
+
 import {
   extractConnectorIntent,
   extractConnectorSummary,

@@ -6,6 +6,7 @@
 // wrong path is a 404 nobody sees until an operator runs the verb.
 
 import { describe, expect, test } from "bun:test";
+
 import { EngineClient, type FetchLike } from "../engine-client.ts";
 
 const BASE = "https://engine.example.test";

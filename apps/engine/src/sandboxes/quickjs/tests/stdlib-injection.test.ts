@@ -3,6 +3,7 @@
 // inline hook patterns it replaces.
 
 import { describe, expect, test } from "bun:test";
+
 import { runJs } from "../runtime.ts";
 import { STDLIB_VERSION } from "../stdlib/index.ts";
 

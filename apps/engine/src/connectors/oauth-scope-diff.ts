@@ -10,7 +10,7 @@
 // recorded scope data" (legacy pre-6.2.4 credential rows).
 
 import { and, eq, isNull, ne } from "drizzle-orm";
-// biome-ignore lint/style/useImportType: Db is the runtime type the drizzle queries operate on
+
 import { type Db } from "../db/client.ts";
 import { credentials } from "../db/schema/index.ts";
 import type { ConnectorView } from "./types.ts";

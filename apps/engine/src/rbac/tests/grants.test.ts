@@ -6,6 +6,7 @@
 // stretching the matrix file.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import type { Db } from "../../db/client.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

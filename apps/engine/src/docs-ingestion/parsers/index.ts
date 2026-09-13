@@ -27,13 +27,9 @@ import { type DocxParseOutput, docxStrategy } from "./docx.ts";
 import { type PdfParseOutput, pdfStrategy } from "./pdf.ts";
 import { type PptxParseOutput, pptxStrategy } from "./pptx.ts";
 import { type BinaryFormat, BinaryParseError, FileStrategyRegistry } from "./strategy.ts";
-import { type XlsxParseOutput, xlsStrategy, xlsxStrategy } from "./xlsx.ts";
+import { xlsStrategy, type XlsxParseOutput, xlsxStrategy } from "./xlsx.ts";
 
-export type {
-  ArchiveEntry,
-  ArchiveParseOutput,
-  ArchiveSkip,
-} from "./archive.ts";
+export type { ArchiveEntry, ArchiveParseOutput, ArchiveSkip } from "./archive.ts";
 export type { DocxParseOutput } from "./docx.ts";
 export type { PdfParseOutput } from "./pdf.ts";
 export { PDF_PAGE_SEPARATOR } from "./pdf.ts";
@@ -43,11 +39,7 @@ export { BinaryParseError } from "./strategy.ts";
 export type { XlsxFormat, XlsxParseOutput } from "./xlsx.ts";
 
 export type BinaryParseResult =
-  | PdfParseOutput
-  | DocxParseOutput
-  | XlsxParseOutput
-  | PptxParseOutput
-  | ArchiveParseOutput;
+  PdfParseOutput | DocxParseOutput | XlsxParseOutput | PptxParseOutput | ArchiveParseOutput;
 
 /** Maps a `BinaryFormat` literal to the concrete parser output. Lets
  *  `parseBinaryFile("pdf")` return `PdfParseOutput` directly so callers

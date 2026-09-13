@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+
 import { can } from "../../../rbac/evaluator.ts";
 import type { ConversationTool, ToolContext } from "../index.ts";
 

@@ -3,6 +3,7 @@ import { exitCodeFor, reportCommandError } from "@cli-core/errors";
 import { emitGroupedList, emitList, printJson, printTable } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
+
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { pickId } from "../lib/pick.ts";

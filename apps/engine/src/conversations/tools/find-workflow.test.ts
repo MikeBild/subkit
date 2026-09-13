@@ -7,6 +7,7 @@
 // precedence as the HTTP surface (routes/workflows.ts) and MCP resources.
 
 import { describe, expect, test } from "bun:test";
+
 import { summarize } from "./find-workflow.ts";
 
 const base = {

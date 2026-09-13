@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: placeholder tokens (${engine_url}, ${plaintext_key}) are the literal prompt-surface the model reads — they must appear verbatim in description and notes.
+/* eslint-disable no-template-curly-in-string -- placeholder tokens (${engine_url}, ${plaintext_key}) are the literal prompt-surface the model reads — they must appear verbatim in description and notes. */
 
 // get_vendor_recipe — look up a verified MCP-client / SDK config
 // recipe from the VendorRecipeManifest.
@@ -18,6 +18,7 @@
 // skill — this tool only returns data.
 
 import { z } from "@hono/zod-openapi";
+
 import {
   getVendorRecipe,
   listVendorRecipes,

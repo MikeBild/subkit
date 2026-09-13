@@ -4,6 +4,7 @@
 // section. No DB, no network.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   buildScopeAtStep,
   enumerateScopePaths,

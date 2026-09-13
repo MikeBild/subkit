@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+
+import { describe, expect, test } from "bun:test";
+
 import { NAVIGATION } from "@/app/navigation";
 import { ALL_ROUTE_PATHS, CATALOG_RESOURCES, PAGE_ROUTES } from "@/app/route-table";
 

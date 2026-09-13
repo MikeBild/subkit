@@ -3,6 +3,7 @@
 // and the HTML-link-extractor sub-cascade.
 
 import { describe, expect, test } from "bun:test";
+
 import { cascadeIngest, discoverOpenApiLinks } from "../cascade.ts";
 
 function makeFetchMock(

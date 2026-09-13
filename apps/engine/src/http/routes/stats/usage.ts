@@ -2,6 +2,7 @@
 // product usage reports over the shared tenant-scoped usage ledger.
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { getConfig } from "../../../config/loader.ts";
 import type { Db } from "../../../db/client.ts";

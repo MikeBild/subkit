@@ -12,6 +12,7 @@
 // (this module does not touch the database).
 
 import { z } from "@hono/zod-openapi";
+
 import { HttpError } from "../http/errors.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "../workflows/types.ts";
 import templateSkillsJson from "./template-skills.json" with { type: "json" };

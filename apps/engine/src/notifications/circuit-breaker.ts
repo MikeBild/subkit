@@ -20,6 +20,7 @@
 // ephemeral `half_open` transition.
 
 import { eq } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 import { type NotificationChannelRow, notificationChannels } from "../db/schema/notifications.ts";
 

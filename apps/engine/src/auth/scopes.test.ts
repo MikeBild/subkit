@@ -1,6 +1,7 @@
 // The credential-scope marker/permission split (Stream 1b, C1 + C2).
 
 import { describe, expect, test } from "bun:test";
+
 import { isCeilingScope, isMcpModeMarkerScope, WILDCARD_SCOPE } from "./scopes.ts";
 
 describe("isMcpModeMarkerScope", () => {

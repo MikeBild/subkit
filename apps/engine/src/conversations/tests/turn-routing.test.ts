@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { planTurnRouting } from "../turn-routing.ts";
 import type { DraftDocument } from "../types.ts";
 

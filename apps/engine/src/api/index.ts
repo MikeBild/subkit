@@ -7,12 +7,7 @@
 // etc.) but ANY schema referenced by more than one subsystem belongs
 // here.
 
-export {
-  ErrorSchema,
-  IdParam,
-  PaginationQuery,
-  paginatedResponse,
-} from "./common-schemas.ts";
+export { ErrorSchema, IdParam, paginatedResponse, PaginationQuery } from "./common-schemas.ts";
 export {
   ConnectorCallMetadataSchema,
   ConnectorCallRequestSchema,

@@ -3,6 +3,7 @@
 // queries rather than mocking the driver.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { looksLikePostgresUrl, postgresIntrospectStrategy } from "./postgres-introspect.ts";
 

@@ -20,6 +20,7 @@
 // the matcher just returns fewer activations.
 
 import { and, eq, inArray } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";

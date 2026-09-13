@@ -7,6 +7,7 @@
 // (whitelist + plain prose) must return `matched: false`.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   detectSecretShape,
   REQUEST_CREDENTIAL_FORM_FALLBACK,

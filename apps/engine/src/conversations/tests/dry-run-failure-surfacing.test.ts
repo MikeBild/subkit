@@ -13,6 +13,7 @@
 // This test locks the top-level surfacing AND that summarizeToolFailure lifts it.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";
@@ -71,7 +72,7 @@ function failingDraft(slug: string): DraftDocument {
         },
       ],
     },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
   } as any;
 }
 

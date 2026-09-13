@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+
 import { z } from "zod";
+
 import { type EvalBindings, evaluate as evaluateJsonata } from "../src/execution/jsonata-engine.ts";
 import { runJs } from "../src/sandboxes/quickjs/runtime.ts";
 
@@ -107,7 +109,9 @@ export async function replayEstateCase(
       clock: null,
     });
     const new_output = newResult.output;
-    const output_equal = isDeepStrictEqual(old_output, new_output);
+    // JSONata uses null-prototype records; JSON equivalence compares values,
+    // including nested values and types, rather than host object prototypes.
+    const output_equal = isDeepStrictEqual(old_output, new_output, true);
     const side_effects_equal = testCase.side_effects
       ? isDeepStrictEqual(
           testCase.side_effects.old_held_requests,

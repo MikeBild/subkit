@@ -14,9 +14,11 @@
 // Clock: detectSuccessPatterns reads time through `now()`. Tests that need
 // a lookback boundary use installClock/restoreClock to freeze time.
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { executionSteps, executions } from "../../db/schema/executions.ts";
+
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+
+import { executions, executionSteps } from "../../db/schema/executions.ts";
 import { tenants } from "../../db/schema/identity.ts";
 import { workflows } from "../../db/schema/workflows.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

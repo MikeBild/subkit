@@ -18,11 +18,7 @@ import type { FormFieldDefinition } from "./form.ts";
 
 /** Tool names that take the form-mode elicitation bridge. */
 export type FormBridgeToolName =
-  | "ask_user_text"
-  | "ask_user_choice"
-  | "ask_user_confirm"
-  | "ask_user_multi"
-  | "ask_user_form";
+  "ask_user_text" | "ask_user_choice" | "ask_user_confirm" | "ask_user_multi" | "ask_user_form";
 
 export type MapToPrimitiveResult =
   | { degrade: true }

@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the subject under test — these are intentional placeholders, not accidental template-literal typos.
+/* eslint-disable no-template-curly-in-string -- literal `${…}` tokens are the subject under test — these are intentional placeholders, not accidental template-literal typos. */
 
 // Tests for applyRuntimeTemplate — the pre-LLM template step that
 // substitutes whitelisted runtime-context tokens (engine_url,
@@ -15,6 +15,7 @@
 // placeholders the user or the executor will fill in later.
 
 import { describe, expect, it } from "bun:test";
+
 import { SK_INSTALL_GROUNDING } from "../../../conversations/agent/prompts.ts";
 import { applyRuntimeTemplate } from "../context-assembler.ts";
 

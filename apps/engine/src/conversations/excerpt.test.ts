@@ -4,6 +4,7 @@
 // survives into human-facing text.
 
 import { describe, expect, test } from "bun:test";
+
 import { stringifyConversationExcerpt, truncateExcerpt } from "./excerpt.ts";
 
 describe("truncateExcerpt", () => {

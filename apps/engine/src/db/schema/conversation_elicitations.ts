@@ -28,6 +28,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+
 import { tenantId, timestamps } from "./_common.ts";
 import { conversationMessages, conversations, conversationToolCalls } from "./conversations.ts";
 import { tenants, users } from "./identity.ts";

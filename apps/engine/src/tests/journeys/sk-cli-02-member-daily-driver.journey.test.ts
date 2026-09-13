@@ -19,8 +19,10 @@
 // Audit coverage: CONVERSATION_CREATED, CONVERSATION_MEMORY_INJECTED,
 // CONVERSATION_UPDATED, policy.denied (audit:read).
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { apiKeys, users } from "../../db/schema/index.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 

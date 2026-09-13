@@ -5,9 +5,11 @@
 //   - DELETE soft-disables a client; subsequent /authorize with that client_id is rejected
 //   - Both routes return 403 for a member-role principal without the admin permission
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { setConfigKey } from "../../config/loader.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";
 import {

@@ -6,6 +6,7 @@
 //   4. MCP tenant.* tool list exposes populated input schemas
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { boot, cli, type E2EEnv, shutdown } from "./setup.ts";
 
 let env: E2EEnv;

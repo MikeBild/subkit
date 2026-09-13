@@ -5,9 +5,10 @@
 // early warning carry actionable guidance instead of a raw status code.
 
 import { describe, expect, test } from "bun:test";
+
 import {
-  type ConnectorHealth,
   classifyConnectorHealth,
+  type ConnectorHealth,
   connectorHealthHint,
   isConnectorUnusable,
   parseDeprecation,

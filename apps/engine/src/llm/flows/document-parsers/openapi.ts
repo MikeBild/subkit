@@ -1,6 +1,7 @@
 // Deterministic OpenAPI 3.x parser. No LLM required.
 
 import { load as loadYaml } from "js-yaml";
+
 import type { EndpointSpec, HttpMethod } from "../document-analysis.ts";
 
 type LooseObject = Record<string, unknown>;

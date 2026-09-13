@@ -61,6 +61,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import {
   registerConversationAbort,
   unregisterConversationAbort,
@@ -198,7 +199,7 @@ describe("journey 53: session-79bf2cca regression set", () => {
       connector_id: null,
       workflow_id: null,
       permission_mode: "auto",
-      // biome-ignore lint/suspicious/noExplicitAny: minimal stub matching the runtime shape
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub matching the runtime shape
       engineClient: stubEngineClient as any,
       getDraft: () => draft,
       setDraft: async () => {},
@@ -258,8 +259,7 @@ describe("journey 53: session-79bf2cca regression set", () => {
     expect(empty).toBeDefined();
     expect(empty?.identifier).toBe("iter");
     const details = empty?.details as
-      | { iterations: number; productive_iterations: number; example_path: string }
-      | undefined;
+      { iterations: number; productive_iterations: number; example_path: string } | undefined;
     expect(details?.iterations).toBe(3);
     expect(details?.productive_iterations).toBe(0);
     expect(details?.example_path).toBe("$scope.iter.data[0].fetch_resources.data");
@@ -308,7 +308,7 @@ describe("journey 53: session-79bf2cca regression set", () => {
           environment: null,
           lifecycle_state: "persisted",
         },
-        // biome-ignore lint/suspicious/noExplicitAny: minimal summary
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal summary
       } as any,
     };
     const toolCtx: ToolContext = {
@@ -329,7 +329,7 @@ describe("journey 53: session-79bf2cca regression set", () => {
       connector_id: null,
       workflow_id: seeded.id,
       permission_mode: "auto",
-      // biome-ignore lint/suspicious/noExplicitAny: minimal stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub
       engineClient: stubEngineClient as any,
       getDraft: () => draft,
       setDraft: async () => {},

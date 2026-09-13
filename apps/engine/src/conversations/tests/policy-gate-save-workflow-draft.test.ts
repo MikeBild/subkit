@@ -17,6 +17,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { auditLog } from "../../db/schema/audit.ts";
 import {
   conversationElicitations,
@@ -144,7 +145,7 @@ describe("save_workflow_draft — policy gate", () => {
     const saveWorkflowDraft = wrapped.save_workflow_draft;
     expect(saveWorkflowDraft).toBeDefined();
 
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result = await (saveWorkflowDraft!.execute as any)(
       {},
       { toolCallId: "fake-llm-call-id", messages: [] },
@@ -277,7 +278,7 @@ describe("save_workflow_draft — policy gate", () => {
       {},
     );
 
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result = await (wrapped.save_workflow_draft!.execute as any)(
       {},
       { toolCallId: "reissue-call-id", messages: [] },
@@ -564,7 +565,7 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
         { run_workflow: "confirm_before_execution" },
       );
 
-      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
       const result = await (wrapped.run_workflow!.execute as any)(
         {
           workflow_id: "00000000-0000-0000-0000-000000000000",
@@ -619,7 +620,7 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
         { run_workflow: "confirm_before_execution" },
       );
 
-      // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
       const result = await (wrapped.run_workflow!.execute as any)(
         {
           workflow_id: "00000000-0000-0000-0000-000000000000",

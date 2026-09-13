@@ -4,9 +4,11 @@
 // real fetch with a real (test-fixture) credential applied — the same
 // end-to-end path the conversation tool exercises.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { createConnector } from "../../connectors/service.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";

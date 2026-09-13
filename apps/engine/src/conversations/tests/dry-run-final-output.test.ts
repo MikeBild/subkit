@@ -12,6 +12,7 @@
 // step's output.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";
@@ -86,7 +87,7 @@ function sentinelDraft(slug: string): DraftDocument {
       // the step output, proving the FINAL output differs from the step output.
       output_transform: `"${FINAL_OUTPUT_SENTINEL}"`,
     },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
   } as any;
 }
 
@@ -106,7 +107,7 @@ function noTransformDraft(slug: string): DraftDocument {
         },
       ],
     },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
   } as any;
 }
 

@@ -20,8 +20,10 @@
 //   AC6. A portal-token principal is also denied (403) — the
 //        evaluator's allowlist branch does not grant `mcp:read`.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { apiKeys, connectors, portalTokens, skills, users } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";

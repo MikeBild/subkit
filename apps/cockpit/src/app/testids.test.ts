@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
 import { globSync, readFileSync } from "node:fs";
+
+import { describe, expect, test } from "bun:test";
 import ts from "typescript";
+
 import { presentationValue } from "@/components/ai-elements/tool";
 
 const files = [

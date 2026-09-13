@@ -6,8 +6,10 @@
 // level (`apply-auth-material.test.ts`); this file exercises the
 // DB-and-network-adjacent glue those pure tests can't reach.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { IncomingMessage, ServerResponse } from "node:http";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { upsertCredential } from "../../../credentials/service.ts";
 import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";

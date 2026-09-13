@@ -2,6 +2,7 @@
 // truncation marker) and the 20 link-follow cap on llms.txt.
 
 import { describe, expect, test } from "bun:test";
+
 import { createBudgetState, MAX_LINKS, PER_PAGE_BYTES } from "../budgets.ts";
 import { fingerprintChunks } from "../chunker.ts";
 import { ingestLlmsTxt } from "../sources/llms-txt.ts";

@@ -7,6 +7,7 @@
 // `tools/approval.ts` — those assertions live in dispatcher.test.ts.
 
 import { describe, expect, test } from "bun:test";
+
 import { resolveToolMode, type ToolPolicies } from "../../conversations/tool-policies.ts";
 import {
   DRAFT_WRITE_MCP_UNAVAILABLE_REASON,

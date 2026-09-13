@@ -18,9 +18,10 @@
 //      word "rewrites" or "user may also type").
 //   3. Asserts the attachment-handling.md uses `$file` as the canonical shape.
 
-import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const SKILL_CONTENT_DIR = join(import.meta.dir, "../../conversations/agent/skills/content");
 

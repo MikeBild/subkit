@@ -8,6 +8,7 @@
 // a phantom "tool not in palette" message.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   createEmptyDraftDocument,
   withConnectorDraft,

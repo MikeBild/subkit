@@ -15,6 +15,7 @@
 // `cognito_user_password` client is reused.
 
 import { createHmac } from "node:crypto";
+
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import type { TokenMintCredentialValue } from "../types.ts";
 

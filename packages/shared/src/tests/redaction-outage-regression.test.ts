@@ -11,6 +11,7 @@
 // All fake tokens are shaped to match the regex patterns, never real entropy.
 
 import { describe, expect, test } from "bun:test";
+
 import { findSecretSpans, scrubSecrets, scrubString, scrubStringsDeep } from "../redaction.ts";
 
 // ---------------------------------------------------------------------------

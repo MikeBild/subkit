@@ -18,6 +18,7 @@
 // the source.
 
 import { describe, expect, it } from "bun:test";
+
 import { repairOrigin, repairTelemetry } from "./repair.ts";
 
 const SCAN = "8a7b6c5d-4e3f-4a2b-9c8d-7e6f5a4b3c2d";

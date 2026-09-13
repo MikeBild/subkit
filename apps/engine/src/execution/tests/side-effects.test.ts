@@ -6,6 +6,7 @@
 // `side_effects` may escalate a read, but cannot grant unknown remote effects.
 
 import { describe, expect, test } from "bun:test";
+
 import { type RequestStep, RequestStepSchema } from "../../workflows/types.ts";
 import {
   classifyRequestStepSideEffects,

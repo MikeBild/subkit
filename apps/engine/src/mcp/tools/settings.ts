@@ -6,6 +6,7 @@
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {

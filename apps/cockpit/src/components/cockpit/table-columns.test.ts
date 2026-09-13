@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { bytes, MISSING, stringValue } from "@/components/cockpit/table-columns";
 
 // CUI-SEV-2 lives here: a value nobody sent is not zero, and a measured zero

@@ -9,6 +9,7 @@
 // want for a primary UI label.
 
 import { describe, expect, test } from "bun:test";
+
 import { listConfigLeaves } from "../../../../engine/src/config/walk.ts";
 import {
   formatLabel,

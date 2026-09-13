@@ -4,10 +4,12 @@
 // contract + the resolution precedence
 // (config → x-forwarded-* → host → req.url).
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { buildOAuthRedirectUri, OAUTH_CALLBACK_PATH } from "./redirect-uri.ts";
 

@@ -3,6 +3,7 @@
 // before creation.
 
 import { z } from "@hono/zod-openapi";
+
 import { createElicitation } from "../elicitations.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -33,7 +34,7 @@ export const proposeSkillTool: ConversationTool = {
     title: "Always idempotency-key POST requests against the payments provider",
     body: "When calling payments-provider POST endpoints, include an Idempotency-Key header derived from the workflow run id so retries don't double-charge.",
     examples: [
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: placeholder grammar surfaced to the LLM as few-shot text.
+      // eslint-disable-next-line no-template-curly-in-string -- placeholder grammar surfaced to the LLM as few-shot text.
       'curl -X POST https://payments.example.test/v1/charges -H "Idempotency-Key: ${run_id}"',
     ],
     best_practices: [

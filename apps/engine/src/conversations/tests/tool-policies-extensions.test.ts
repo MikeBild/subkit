@@ -10,6 +10,7 @@
 //                         pasted token cannot silently land
 
 import { describe, expect, test } from "bun:test";
+
 import {
   buildPendingOutputForTool,
   hasInlineCredential,

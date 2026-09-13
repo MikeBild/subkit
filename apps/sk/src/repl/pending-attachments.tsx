@@ -1,7 +1,9 @@
 import { basename } from "node:path";
+
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
+
 import type { StoredPaste } from "./paste-store.ts";
 
 function formatBytes(bytes: number | undefined): string | null {

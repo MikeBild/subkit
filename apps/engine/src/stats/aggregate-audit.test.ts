@@ -10,6 +10,7 @@
 // Negative case: ≤200 distinct templates → truncated_endpoints is absent.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { auditLog } from "../db/schema/audit.ts";
 import { tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";

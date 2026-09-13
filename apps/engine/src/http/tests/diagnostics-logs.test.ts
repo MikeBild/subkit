@@ -4,9 +4,11 @@
 // own logger module, and asserts both the paginated tail and the SSE
 // stream surface it.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq, gte } from "drizzle-orm";
+
 import { apiKeys, auditLog, users } from "../../db/schema/index.ts";
 import { withContext } from "../../logging/context.ts";
 import { logger } from "../../logging/logger.ts";

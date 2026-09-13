@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
+
 import type { AuthProviderRegistry } from "../../auth/registry.ts";
 import { authMiddleware } from "./auth.ts";
 

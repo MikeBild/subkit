@@ -31,8 +31,8 @@ export {
   listResolvedConnectorTemplates,
   materializeConnectorTemplateRow,
   parseTemplateSnapshot,
-  type ResolvedConnectorTemplate,
   resolveConnectorTemplate,
+  type ResolvedConnectorTemplate,
 } from "./template-resolver.ts";
 export * from "./template-url-match.ts";
 export * from "./templates.ts";

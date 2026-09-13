@@ -20,11 +20,12 @@
 //
 // tests/contract/ because CI's shard job runs `apps packages` only
 // (LOCAL-SK-SCRIPTS-TESTS-NICHT-IN-CI). `bun run test:contract` runs this.
-import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, test } from "bun:test";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const source = readFileSync(join(root, "scripts/verify-cockpit-visual.mjs"), "utf8");
@@ -76,7 +77,7 @@ describe("the visual sweep reports the frames it wrote", () => {
   });
 
   test("the closing line prints the count, not a formula over the route table", () => {
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
+    // eslint-disable-next-line no-template-curly-in-string -- the source text is checked, not its result
     expect(source).toContain("${framesWritten} screenshots in ${outputDir}");
     expect(source, "the formula is gone").not.toContain("variants.length * 12");
   });

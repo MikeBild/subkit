@@ -1,8 +1,10 @@
 // Unit tests for MCP OAuth token helpers.
 // Pure functions — no DB, no Docker.
 
-import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { describe, expect, test } from "bun:test";
+
 import {
   ACCESS_TOKEN_PREFIX_LITERAL,
   constantTimeHexEquals,
@@ -133,9 +135,9 @@ describe("parseMcpToken", () => {
 
   test("returns null for non-string input (null cast to any)", () => {
     // parseMcpToken has a typeof guard for non-string
-    // biome-ignore lint/suspicious/noExplicitAny: testing guard
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- testing guard
     expect(parseMcpToken(null as any)).toBeNull();
-    // biome-ignore lint/suspicious/noExplicitAny: testing guard
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- testing guard
     expect(parseMcpToken(undefined as any)).toBeNull();
   });
 

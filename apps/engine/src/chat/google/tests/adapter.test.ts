@@ -1,9 +1,10 @@
 // Google Chat adapter test — mock token + messages endpoints, plus a
 // real test DB for the handleSyncInteraction Dialog fast path.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { serve } from "@hono/node-server";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
+
 import {
   type ConversationTestCtx,
   createConversationTestCtx,

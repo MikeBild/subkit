@@ -16,14 +16,15 @@
 // candidates ride along as the "fixes awaiting review" bucket.
 
 import { and, count, desc, eq, gte, inArray } from "drizzle-orm";
-import { AuditAction, audit } from "../audit/index.ts";
+
+import { audit, AuditAction } from "../audit/index.ts";
 import {
   RiskSignalClearedMetadataSchema,
   RiskSignalRaisedMetadataSchema,
   SYSTEM_TENANT_ID,
 } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
-import { executionSteps, executions, patchCandidates, workflows } from "../db/schema/index.ts";
+import { executions, executionSteps, patchCandidates, workflows } from "../db/schema/index.ts";
 import { classifyFailure, humanizeClassification } from "../execution/classify.ts";
 import { getContext } from "../logging/context.ts";
 import { computeRiskSignals, type RiskSignal, takeRiskEdges, topRisk } from "./risk-signals.ts";

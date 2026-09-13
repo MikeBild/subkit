@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import { ThemeProvider } from "@chat-ui/index.ts";
-import { type RunSummary, RunsTable } from "../domain/workflows/RunsTable.tsx";
+import { describe, expect, test } from "bun:test";
+
+import { RunsTable, type RunSummary } from "../domain/workflows/RunsTable.tsx";
 import { flush, renderInk } from "./helpers/ink.tsx";
 
 const RUNS: RunSummary[] = [

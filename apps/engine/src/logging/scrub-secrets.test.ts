@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
+
 import {
-  SECRET_PATTERNS,
-  SENSITIVE_KEY_PATTERN,
   scrubSecrets,
   scrubString,
+  SECRET_PATTERNS,
+  SENSITIVE_KEY_PATTERN,
 } from "./scrub-secrets.ts";
 
 describe("scrub-secrets", () => {

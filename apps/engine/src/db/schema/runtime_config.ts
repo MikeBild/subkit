@@ -11,6 +11,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+
 import { bytea } from "./_common.ts";
 
 export const runtimeConfigRevisionStatusEnum = pgEnum("runtime_config_revision_status", [

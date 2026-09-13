@@ -48,6 +48,7 @@
 // limit.
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { listToolsViaRegistry } from "../adapter.ts";
 import { type McpMode, modeFlags } from "../mode-resolver.ts";

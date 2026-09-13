@@ -1,6 +1,7 @@
 // ask_user_form — ask the user to fill in a structured form.
 
 import { z } from "@hono/zod-openapi";
+
 import { resolveConnectorTemplate } from "../../../connectors/template-resolver.ts";
 import {
   resolveDraftCredentialSeedMode,

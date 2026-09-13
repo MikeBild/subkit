@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { EngineClient } from "../engine-client.ts";
 
 test("CLI rejects legacy successful HTTP responses that did not apply a repair", async () => {

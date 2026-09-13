@@ -6,6 +6,7 @@
 // before falling back to role-based checks.
 
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 import { permissions as permissionsTable, resourceGrants } from "../db/schema/index.ts";
 

@@ -6,6 +6,7 @@
 //   - tools with computeModeFromInput are over-promised as "approval_before"
 
 import { describe, expect, test } from "bun:test";
+
 import { APPROVAL_LABELS, getApprovalMode } from "./tool-policies.ts";
 
 describe("getApprovalMode", () => {

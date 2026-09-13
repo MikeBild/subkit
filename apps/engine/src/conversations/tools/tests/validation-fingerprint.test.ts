@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
+/* eslint-disable no-template-curly-in-string -- literal `${...}` placeholder tokens are part of the tested grammar. */
 // Validation-fingerprint loop-break — repeated identical-shape
 // validation failures across DIFFERENT args trigger a structured
 // short-circuit. Distinct from the args-hash repeat detector, which
@@ -8,6 +8,7 @@
 // all hitting "${item.…} placeholder outside loop body").
 
 import { describe, expect, test } from "bun:test";
+
 import { computeValidationFingerprint } from "../sdk-wrap.ts";
 
 describe("computeValidationFingerprint", () => {

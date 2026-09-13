@@ -4,6 +4,7 @@
 // Tests run in `bun run test:unit` without any external dependencies.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   detectNamedOutputFormat,
   findFilterViolations,

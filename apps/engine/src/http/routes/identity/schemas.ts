@@ -8,8 +8,8 @@ import { z } from "@hono/zod-openapi";
 export {
   ErrorSchema,
   IdParam,
-  PaginationQuery,
   paginatedResponse,
+  PaginationQuery,
 } from "../../../api/common-schemas.ts";
 
 export const TenantSchema = z

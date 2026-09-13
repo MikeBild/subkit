@@ -18,6 +18,7 @@
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { eq } from "drizzle-orm";
+
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";

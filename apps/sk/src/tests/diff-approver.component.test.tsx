@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import { ThemeProvider } from "@chat-ui/index.ts";
+import { describe, expect, test } from "bun:test";
+
 import { DiffApprover, type DiffHunk } from "../domain/workflows/DiffApprover.tsx";
 import { flush, renderInk } from "./helpers/ink.tsx";
 

@@ -8,8 +8,9 @@
 // the idempotent dockerBoot (POST /v1/setup → 410 → issue-admin-key path).
 
 import { beforeAll, describe, expect, test } from "bun:test";
+
 import { pollUntil } from "../e2e/_helpers/poll.ts";
-import { type DockerEnv, dockerApi, dockerBoot, skDocker } from "./_harness.ts";
+import { dockerApi, dockerBoot, type DockerEnv, skDocker } from "./_harness.ts";
 
 let env: DockerEnv;
 beforeAll(async () => {

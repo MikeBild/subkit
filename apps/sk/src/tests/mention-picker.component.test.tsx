@@ -3,10 +3,12 @@
 // mention-picker.test.ts; this file exercises the interactive rendering
 // and keyboard handling.
 
-import { describe, expect, mock, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { describe, expect, mock, test } from "bun:test";
+
 import { MentionPicker } from "../repl/mention-picker.tsx";
 import { renderInk } from "./helpers/ink.tsx";
 

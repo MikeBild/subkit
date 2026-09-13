@@ -4,6 +4,7 @@
 // and profile management against a real engine.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { boot, cli, type E2EEnv, expectSuccess, run, shutdown } from "./setup.ts";
 
 let env: E2EEnv;

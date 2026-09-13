@@ -4,6 +4,7 @@
 // passes through unchanged.
 
 import { describe, expect, test } from "bun:test";
+
 import { buildServiceMetadata, mintTraceId, ServiceMetadataSchema } from "../service-metadata.ts";
 
 describe("ServiceMetadata", () => {

@@ -14,6 +14,7 @@
 // 4. Rejects a hand-rolled hex table, steers to sk.hexEncode.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   describeTransformGateBlock,
   detectHandRolledCodec,

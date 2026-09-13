@@ -6,6 +6,7 @@
 // Commit and external-write callers emit this tool.
 
 import { z } from "@hono/zod-openapi";
+
 import { scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
 import { requestApproval } from "../../../tools/approval.ts";
 import {

@@ -44,8 +44,10 @@
 // the hidden `grant` field so the browser can round-trip it on submit.
 
 import { createHash } from "node:crypto";
+
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
+
 import { signLoginState } from "../../auth/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { completeApprovalBackedElicitation } from "../../conversations/index.ts";

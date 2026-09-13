@@ -8,6 +8,7 @@
 // changed). See stats.ts exports.
 
 import { describe, expect, test } from "bun:test";
+
 import { BUCKETS, buildQuery, resolveTime, ValidationError, WINDOW_CAP_MS } from "./stats.ts";
 
 // Fixed "now" so relative expressions are deterministic.

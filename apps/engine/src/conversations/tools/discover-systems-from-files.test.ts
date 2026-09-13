@@ -11,6 +11,7 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { auditLog } from "../../db/schema/audit.ts";
 import { tenants } from "../../db/schema/identity.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
@@ -165,9 +166,9 @@ function mockedInvokeOk(payload: unknown = CANDIDATES_RESPONSE) {
     text: JSON.stringify(payload),
     model_used: "mock-model",
     fell_back: false,
-    // biome-ignore lint/suspicious/noExplicitAny: route + assembled fields are not asserted by the tool
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- route + assembled fields are not asserted by the tool
     route: {} as any,
-    // biome-ignore lint/suspicious/noExplicitAny: route + assembled fields are not asserted by the tool
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- route + assembled fields are not asserted by the tool
     assembled: {} as any,
     usage: {
       input_tokens: 0,

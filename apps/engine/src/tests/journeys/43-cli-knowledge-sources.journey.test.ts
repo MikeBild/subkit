@@ -13,10 +13,12 @@
 //   - AC7: `knowledge-sources get <id>` after delete returns an error.
 // Spec refs: docs/authors/authoring-workflows.md, docs/developers/input-surfaces.md
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { knowledgeSourcesCommand } from "../../../../sk/src/commands/knowledge-sources.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";

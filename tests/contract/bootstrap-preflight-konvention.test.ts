@@ -20,10 +20,11 @@
 // belongs in `docs/admins/bootstrap-preflight.md`, which is ours to edit
 // freely — that separation is what lets the shared text stay frozen.
 
-import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const REPO = join(import.meta.dir, "..", "..");
 const CONVENTION = join(REPO, "docs/BOOTSTRAP-PREFLIGHT.md");

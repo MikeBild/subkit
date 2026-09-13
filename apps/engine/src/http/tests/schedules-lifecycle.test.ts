@@ -7,9 +7,11 @@
 //     as delete) — an archived workflow must not keep live-looking
 //     bindings that only a reconciler filter stops from firing.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { auditLog, workflowsSchedules } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 

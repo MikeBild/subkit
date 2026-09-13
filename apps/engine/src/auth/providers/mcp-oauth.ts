@@ -12,6 +12,7 @@
 // - Builds a ResolvedPrincipal with tenant + roles + scopes from the token
 
 import { and, eq } from "drizzle-orm";
+
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { getConfig } from "../../config/loader.ts";

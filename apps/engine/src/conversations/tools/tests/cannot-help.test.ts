@@ -4,6 +4,7 @@
 // will read.
 
 import { describe, expect, it } from "bun:test";
+
 import { cannotHelpTool } from "../cannot-help.ts";
 import type { ToolContext } from "../index.ts";
 

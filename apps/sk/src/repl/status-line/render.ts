@@ -114,7 +114,7 @@ function resolvePlaceholders(input: StatusLineInput): Record<string, string> {
   const connectors = input.connectors_count == null ? "0" : String(input.connectors_count);
   const statusMessage = input.status_message ? ` · ${input.status_message}` : "";
 
-  let engineHost = "";
+  let engineHost: string;
   try {
     const u = new URL(input.engine_url);
     engineHost = u.port ? `${u.hostname}:${u.port}` : u.hostname;
@@ -254,6 +254,14 @@ export async function runStatusLineHook(
       finish({ ok: true, line });
     });
 
+    child.stdin?.on("error", (err: NodeJS.ErrnoException) => {
+      // A hook may intentionally ignore stdin and exit before the write.
+      // Its exit status and stdout remain authoritative in that case.
+      if (err.code === "EPIPE") return;
+      clearTimeout(timer);
+      child.kill("SIGKILL");
+      finish({ ok: false, err });
+    });
     child.stdin?.write(`${JSON.stringify(input)}\n`);
     child.stdin?.end();
   });

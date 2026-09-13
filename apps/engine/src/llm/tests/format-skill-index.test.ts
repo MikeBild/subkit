@@ -5,6 +5,7 @@
 // retrieve full bodies on demand.
 
 import { describe, expect, test } from "bun:test";
+
 import type { Skill } from "../../skills/types.ts";
 import { formatSkillIndex } from "../core/context-assembler.ts";
 
@@ -153,7 +154,7 @@ describe("formatSkillIndex", () => {
           id: "id-r",
           slug: "runtime-aware",
           title: "Runtime Aware",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal $-curly tokens are the input shape applyRuntimeTemplate replaces
+          // eslint-disable-next-line no-template-curly-in-string -- literal $-curly tokens are the input shape applyRuntimeTemplate replaces
           body: "Engine URL is ${engine_url} and tenant is ${tenant_slug}.",
         }),
       ],

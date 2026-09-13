@@ -10,6 +10,7 @@
 //   - Permissive mode still blocks `localhost`/`0.0.0.0`.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import {
   assertEgressAllowed,
   assertEgressAllowedResolved,
@@ -17,7 +18,7 @@ import {
   isPrivateOrLoopback,
 } from "./egress-guard.ts";
 
-// biome-ignore lint/suspicious/noExplicitAny: test stub for node's dns lookup
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- test stub for node's dns lookup
 type LookupStub = any;
 function fakeLookup(address: string): LookupStub {
   return async () => [{ address, family: address.includes(":") ? 6 : 4 }];

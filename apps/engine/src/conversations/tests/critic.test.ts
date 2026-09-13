@@ -6,10 +6,12 @@
 // per-tenant-shaped leaves at runtime (matching the
 // `sk settings configure` operator path). NO env-var feature flags.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { shouldRunCritic } from "../authoring-critic/gating.ts";
 import { expandPriorFailuresFromToolCalls } from "../authoring-critic/prior-failures.ts";

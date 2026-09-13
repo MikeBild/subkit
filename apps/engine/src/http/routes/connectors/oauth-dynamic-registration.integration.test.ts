@@ -6,10 +6,12 @@
 //   - Credential is persisted and client_id written back to connector config.
 //   - Registration failure → structured error and audit_log row.
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { setConfigKey } from "../../../config/loader.ts";
 import { __resetOAuth2CacheForTests } from "../../../credentials/oauth2/client.ts";
 import { auditLog, connectors, credentials } from "../../../db/schema/index.ts";

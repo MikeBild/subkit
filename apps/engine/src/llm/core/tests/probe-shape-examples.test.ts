@@ -13,6 +13,7 @@
 // `summarizeShape`.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { connectors, schemaVersions, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { recordSuccessShape } from "../../../schema-versions/service.ts";
@@ -164,7 +165,7 @@ describe.skipIf(skip)("loadProbeShapeExamples — latest shapes, caps", () => {
   });
 
   test("non-UUID connector ids (recipe placeholders) are filtered without erroring", async () => {
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal placeholder form draft steps carry.
+    // eslint-disable-next-line no-template-curly-in-string -- the literal placeholder form draft steps carry.
     const examples = await loadProbeShapeExamples(tenantA, ["${stripe}", "not-a-uuid"], ctx.db);
     expect(examples).toEqual([]);
   });

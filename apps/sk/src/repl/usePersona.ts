@@ -8,6 +8,7 @@
 // by the network.
 
 import { useEffect, useRef, useState } from "react";
+
 import type { ResolvedProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
 import {

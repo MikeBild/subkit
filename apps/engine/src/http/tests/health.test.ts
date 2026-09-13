@@ -1,5 +1,6 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import type { Db } from "../../db/client.ts";
 import { setHealthState } from "../health-state.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -150,8 +151,7 @@ describe("GET /ready", () => {
     expect(
       (
         doc.components.schemas.ReadyResponse?.properties?.checks as
-          | { additionalProperties?: boolean }
-          | undefined
+          { additionalProperties?: boolean } | undefined
       )?.additionalProperties,
     ).toBe(false);
   });

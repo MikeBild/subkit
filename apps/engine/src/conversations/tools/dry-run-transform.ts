@@ -31,8 +31,10 @@
 // the raw expression, since it might contain PII) plus the dialect.
 
 import { createHash } from "node:crypto";
+
 import { z } from "@hono/zod-openapi";
 import type { Expression } from "jsonata";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { buildJsonataBindings } from "../../execution/jsonata-bindings.ts";

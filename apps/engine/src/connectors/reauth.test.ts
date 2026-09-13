@@ -6,6 +6,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { connectors, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { buildReauthUrl, clearConnectorReauth, markConnectorNeedsReauth } from "./reauth.ts";

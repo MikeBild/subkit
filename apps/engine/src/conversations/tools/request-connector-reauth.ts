@@ -37,6 +37,7 @@
 // conversation, so the recovery path must always be reachable.
 
 import { z } from "@hono/zod-openapi";
+
 import { mintCredentialSetupGrantUrl } from "../../connectors/credential-setup-grant.ts";
 import { beginConnectorOAuthDance } from "../../connectors/oauth-start.ts";
 import { mintOAuthStartGrantUrl } from "../../connectors/oauth-start-grant.ts";
@@ -45,8 +46,8 @@ import { getConnector } from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import { buildOAuthRedirectUri } from "../../credentials/oauth2/redirect-uri.ts";
 import { logger } from "../../logging/logger.ts";
-import { hydrateDraftFromSavedConnector } from "../authoring-state/normalize.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
+import { hydrateDraftFromSavedConnector } from "../authoring-state/normalize.ts";
 import { pauseForUserInput } from "./ask-user/common.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 

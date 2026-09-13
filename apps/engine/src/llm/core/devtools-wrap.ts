@@ -22,6 +22,7 @@
 import type { LanguageModelV4, LanguageModelV4Middleware } from "@ai-sdk/provider";
 import type { LanguageModel } from "ai";
 import { wrapLanguageModel } from "ai";
+
 import { logger } from "../../logging/logger.ts";
 
 const REDACTED = "[REDACTED]";

@@ -1,6 +1,7 @@
 // Unit tests for the paste store + ref expansion.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   createPasteStore,
   expandRefs,

@@ -7,8 +7,10 @@
 //   - AC3: Removing the member revokes access.
 // Spec refs: gap-pass-2 C3 / C4 / C8
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { apiKeys, users } from "../../db/schema/index.ts";
 import {
   createJourneyCtx,

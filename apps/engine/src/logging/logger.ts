@@ -1,6 +1,7 @@
 import { LOG_LEVEL_WEIGHT, type LogLevelName } from "@cli-core/log-levels.ts";
 import { VERSION } from "@cli-core/version.ts";
 import pc from "picocolors";
+
 import { logRing } from "../observability/log-ring.ts";
 import { getContext } from "./context.ts";
 import { classifyError, type ErrorClass } from "./error-class.ts";

@@ -20,7 +20,6 @@ export interface NormalizedEvent {
 }
 
 export type VerifierResult =
-  | { ok: true; normalized: NormalizedEvent }
-  | { ok: false; reason: string };
+  { ok: true; normalized: NormalizedEvent } | { ok: false; reason: string };
 
 export type VerifierFn = (input: VerifyInput) => VerifierResult;

@@ -8,6 +8,7 @@
 // registry and emits the DOCUMENT_ANALYZED audit row.
 
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
 import { fileLinks, files } from "../../db/schema/index.ts";
 import { storageKey } from "../../files/resolver.ts";

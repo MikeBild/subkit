@@ -4,7 +4,6 @@
 // Langfuse's OTLP ingestion reads (token/cost). Uses an in-memory span
 // exporter — no network, no real Langfuse.
 
-import { describe, expect, test } from "bun:test";
 import { trace } from "@opentelemetry/api";
 import {
   BasicTracerProvider,
@@ -13,6 +12,8 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { generateText, registerTelemetry } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
+import { describe, expect, test } from "bun:test";
+
 // @ai-sdk/otel via the test-helpers shim (no_live_llm invariant forbids direct
 // @ai-sdk/* imports in *.test.ts; the OpenTelemetry adapter is not a live-LLM path).
 import { OpenTelemetry } from "../../test-helpers/otel-telemetry.ts";

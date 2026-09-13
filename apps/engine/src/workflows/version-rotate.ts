@@ -3,6 +3,7 @@
 // owner (and service.ts stays under the file-size invariant).
 
 import { and, eq, sql } from "drizzle-orm";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";

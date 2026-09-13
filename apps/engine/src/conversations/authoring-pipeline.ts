@@ -1,9 +1,7 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens in the generation prompt are the placeholder grammar surfaced to the LLM.
+/* eslint-disable no-template-curly-in-string -- literal `${…}` tokens in the generation prompt are the placeholder grammar surfaced to the LLM. */
 // Engine-side one-shot authoring pipeline (Fix A).
 //
-// The authoring PROCESS moves into code: instead of the conversation
-// model micro-iterating across ~30 tool calls (propose_step ×9,
-// update_param ×9, dry_run ×9 — session 784c1b02), `author_workflow`
+// The authoring PROCESS moves into code: instead of the conversation model micro-iterating across ~30 tool calls (propose_step ×9, update_param ×9, dry_run ×9 — session 784c1b02), `author_workflow`
 // runs this deterministic pipeline once and hands the model a complete,
 // evaluated draft:
 //
@@ -39,6 +37,7 @@
 
 import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
+
 import { readDiscoveryIndexForConnector } from "../connectors/discovery/service.ts";
 import type { DiscoveryResult } from "../connectors/discovery/types.ts";
 import { connectors as connectorsTable, conversationToolCalls } from "../db/schema/index.ts";
@@ -48,7 +47,7 @@ import { loadChunks, loadProbeShapeExamples } from "../llm/core/context-assemble
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
 import { ResponseFilterSchema, TriggerSchema, WorkflowRuntimeSchema } from "../workflows/types.ts";
-import { type ValidationError, validateWorkflowDef } from "../workflows/validator.ts";
+import { validateWorkflowDef, type ValidationError } from "../workflows/validator.ts";
 import { runCriticAgent } from "./authoring-critic/critic-agent.ts";
 import { shouldRunCritic } from "./authoring-critic/gating.ts";
 import { withWorkflowDraft } from "./authoring-state.ts";

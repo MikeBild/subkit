@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
+
 import { KEYS, renderInk, stripAnsi } from "./ink.tsx";
 
 function Counter(): React.ReactElement {

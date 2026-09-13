@@ -6,10 +6,12 @@
 // in sync with the schema; this test additionally proves the file
 // boots through the full loader path.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { _resetConfigForTests, getConfig, loadConfig } from "../loader.ts";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..");

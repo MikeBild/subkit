@@ -9,6 +9,7 @@
 // Pure HTTP — no LLM. Auth probes use admin + member personas.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
 let env: E2EEnv;

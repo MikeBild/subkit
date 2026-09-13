@@ -9,6 +9,7 @@
 // tightening the schema fails fast.
 
 import { describe, expect, it } from "bun:test";
+
 import { authorWorkflowTool } from "../author-workflow.ts";
 import { editWorkflowPatchTool } from "../edit-workflow-patch.ts";
 import { proposeSkillTool } from "../propose-skill.ts";

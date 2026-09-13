@@ -8,6 +8,7 @@
 // `GET /v1/diagnostics/logs` serves — without needing a real pg-boss queue.
 
 import { describe, expect, test } from "bun:test";
+
 import { getContext } from "../../logging/context.ts";
 import { logger } from "../../logging/logger.ts";
 import { logRing } from "../../observability/log-ring.ts";

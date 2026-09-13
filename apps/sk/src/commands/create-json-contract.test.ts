@@ -8,10 +8,11 @@
 // covered by render/index.test.ts. This test covers the wiring layer
 // the dispatcher tests cannot reach.
 
-import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 // Capture the real module shapes BEFORE we override them. `mock.module()`
 // updates the module cache for the whole worker process, and `mock.restore()`
@@ -98,7 +99,6 @@ import { connectorsCommand } from "./connectors.ts";
 // Import AFTER the mocks are registered so the commands resolve mocked
 // modules at import time.
 import { knowledgeSourcesCommand } from "./knowledge-sources.ts";
-
 import { workflowsCommand } from "./workflows.ts";
 
 type CittySub = {

@@ -19,6 +19,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+
 import { redact } from "@cli-core/index.ts";
 
 const TRUTHY = new Set(["1", "true", "yes", "on"]);

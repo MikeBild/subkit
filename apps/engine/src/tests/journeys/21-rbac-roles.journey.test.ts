@@ -10,8 +10,10 @@
 //   - AC6: Built-in roles reject mutation with 409.
 // Spec refs: gap-pass-2 C1 / C5 / C8
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { apiKeys, users } from "../../db/schema/index.ts";
 import {
   createJourneyCtx,

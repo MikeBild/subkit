@@ -1,6 +1,7 @@
 // Theme/Personality/Title/Statusline pickers.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   PersonalityPicker,
   StatuslineConfigurator,

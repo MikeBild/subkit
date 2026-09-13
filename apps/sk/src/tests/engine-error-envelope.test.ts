@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { EngineError } from "@cli-core/errors.ts";
+import { describe, expect, test } from "bun:test";
 
 describe("EngineError parses the engine error envelope", () => {
   test("plain envelope leaves hint/retry_after null", () => {

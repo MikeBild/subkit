@@ -10,10 +10,12 @@
 // (DEFAULT_LIMITS) is restored for the other sandbox test files sharing
 // this process.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { _resetConfigForTests, loadConfig } from "../../../config/loader.ts";
 import { runJs } from "../runtime.ts";
 import { SandboxError } from "../types.ts";

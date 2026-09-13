@@ -3,6 +3,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, or } from "drizzle-orm";
+
 import { hasLegacyRoleDrift, policy, resolveEffectiveUserRole } from "../../../auth/index.ts";
 import { roles } from "../../../db/schema/index.ts";
 import * as identity from "../../../identity/index.ts";
@@ -12,7 +13,7 @@ import { requireAuth } from "../../middleware/auth.ts";
 import { enforce } from "../../middleware/policy.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { ErrorSchema, IdParam, PaginationQuery, paginatedResponse, UserSchema } from "./schemas.ts";
+import { ErrorSchema, IdParam, paginatedResponse, PaginationQuery, UserSchema } from "./schemas.ts";
 
 const UserListResponse = paginatedResponse(UserSchema, "UserListResponse");
 

@@ -2,6 +2,7 @@
 // scope (global + current connector + current workflow).
 
 import { z } from "@hono/zod-openapi";
+
 import { retrieveApplicableSkills } from "../../skills/service.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 

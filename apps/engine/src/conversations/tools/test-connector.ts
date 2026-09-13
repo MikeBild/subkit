@@ -20,6 +20,7 @@
 // surface (CLI, MCP, converse) gets the same audit row + decision.
 
 import { z } from "@hono/zod-openapi";
+
 import { recordConnectorInvoked } from "../../audit/recorders/connector.ts";
 import { probeConnector } from "../../connectors/drivers/index.ts";
 import { computeConnectorScopeDiff } from "../../connectors/oauth-scope-diff.ts";

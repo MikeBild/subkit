@@ -2,6 +2,7 @@
 // Three code paths: jsonMode (silent), non-TTY (plain ASCII), TTY (Ink mount).
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import type { AnyIntent } from "./intent-card.tsx";
 import type { AnySummary } from "./summary-card.tsx";
 import type {

@@ -1,5 +1,6 @@
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { z } from "zod";
+
 import { grantApproval } from "../../tools/approval.ts";
 import type { McpTestSuite } from "./setup.ts";
 

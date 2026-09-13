@@ -21,6 +21,7 @@ import {
   type IntrospectionQuery,
   printSchema,
 } from "graphql";
+
 import { log } from "../../logging/logger.ts";
 import { getDriverFetch } from "../drivers/fetch-seam.ts";
 import { scrubUrl } from "../egress.ts";

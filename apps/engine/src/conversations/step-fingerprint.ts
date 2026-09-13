@@ -22,6 +22,7 @@
 // (tenant, conversation). No cross-draft or cross-tenant sharing.
 
 import { createHash } from "node:crypto";
+
 import { canonicalJson } from "./text-line-diff.ts";
 import type { WorkflowDraftStepPreview } from "./types.ts";
 

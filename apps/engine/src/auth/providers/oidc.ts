@@ -23,9 +23,11 @@
 // `user_identities` relation; no protocol owns a column on `users`.
 
 import { createHash, randomBytes } from "node:crypto";
+
 import { eq, lt } from "drizzle-orm";
 import * as jose from "jose";
 import * as oauth from "openid-client";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { getConfig, isConfigLoaded } from "../../config/loader.ts";

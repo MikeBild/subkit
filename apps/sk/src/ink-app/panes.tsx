@@ -11,6 +11,7 @@ import type { SkSessionState } from "@cli-core/index.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
+
 import type { EngineClient, SetupValidationResponse } from "../engine-client.ts";
 import { OnboardingWizard } from "../repl/onboarding-wizard.tsx";
 import type { PaneSpec } from "../repl/slash/handler.ts";

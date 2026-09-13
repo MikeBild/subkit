@@ -5,6 +5,7 @@
 // imported from the CLI source, so we test exactly what operators run.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import {
   boot,
   cli,

@@ -1,10 +1,12 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+
 import * as prompts from "@clack/prompts";
 import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
+
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { planSync, SKILL_TARGET_DIRS, type SyncSkill } from "../lib/skill-sync.ts";

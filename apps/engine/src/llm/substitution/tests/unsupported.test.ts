@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the subject under test — these are intentional placeholders.
+/* eslint-disable no-template-curly-in-string -- literal `${…}` tokens are the subject under test — these are intentional placeholders. */
 // Unit tests for the unsupported-placeholder detector.
 //
 // Locks down the behaviour that addresses session f00b8d1c — every
@@ -7,6 +7,7 @@
 // concrete `did_you_mean` rewrite.
 
 import { describe, expect, test } from "bun:test";
+
 import { findUnsupportedPlaceholders } from "../unsupported.ts";
 
 describe("findUnsupportedPlaceholders", () => {

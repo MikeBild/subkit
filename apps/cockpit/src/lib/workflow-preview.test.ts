@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { workflowPreviewRequest, workflowPreviewSucceeded } from "./workflow-preview";
 
 describe("cockpit workflow previews", () => {

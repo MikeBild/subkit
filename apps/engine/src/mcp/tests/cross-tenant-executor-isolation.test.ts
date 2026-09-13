@@ -11,9 +11,10 @@
 // `connector_not_found` — never `policy_denied`, and never tenant-B
 // data — and tenant B's audit log stays empty.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
+
 import { auditLog } from "../../db/schema/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../execution/tests/setup.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";

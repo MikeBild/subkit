@@ -32,14 +32,7 @@ import type { TranslationKey } from "./i18n";
  *     much thought went into it.
  */
 export type DetailFieldFormat =
-  | "text"
-  | "date"
-  | "boolean"
-  | "status"
-  | "bytes"
-  | "scope"
-  | "sideEffects"
-  | "maturity";
+  "text" | "date" | "boolean" | "status" | "bytes" | "scope" | "sideEffects" | "maturity";
 
 export interface DetailField {
   key: string;

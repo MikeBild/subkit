@@ -18,6 +18,7 @@
 import type { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
 import { and, eq } from "drizzle-orm";
+
 import { recordToolPolicyConfirmationRequired } from "../../../audit/recorders/index.ts";
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";

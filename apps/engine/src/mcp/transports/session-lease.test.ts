@@ -8,9 +8,10 @@
 // drives `tick()` directly with a deterministic clock instead of waiting on
 // the real `SESSION_SWEEP_INTERVAL_MS` timer.
 
-import { describe, expect, test } from "bun:test";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { describe, expect, test } from "bun:test";
+
 import {
   createDeterministicClock,
   installClock,
@@ -21,9 +22,9 @@ import {
   MAX_LIVE_SESSIONS,
   MAX_LIVE_SESSIONS_HARD,
   MAX_LIVE_SESSIONS_PER_OWNER,
+  type Session,
   SESSION_IDLE_TTL_MS,
   SESSION_STUCK_TTL_MS,
-  type Session,
 } from "./session-lease.ts";
 
 function fakeSession(

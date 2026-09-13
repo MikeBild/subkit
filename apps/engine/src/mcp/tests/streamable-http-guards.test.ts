@@ -11,8 +11,9 @@
 // Suite 3 — guards.ts pure helpers (unit):
 //   originOf and allowedOriginsForRequest without the HTTP stack.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { __test__ as guardsTest } from "../transports/guards.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 

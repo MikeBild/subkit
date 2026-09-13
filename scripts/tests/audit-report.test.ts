@@ -7,6 +7,7 @@
 // call it covered.
 
 import { describe, expect, test } from "bun:test";
+
 import { readAuditReport } from "../lib/audit-report.ts";
 import fixture from "./fixtures/bun-audit.json" with { type: "json" };
 

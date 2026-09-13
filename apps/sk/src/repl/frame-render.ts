@@ -14,6 +14,7 @@
 import { hyperlink } from "@chat-ui/index.ts";
 import { lastAssistantText, type SkSessionState, type TurnEvent } from "@cli-core/index.ts";
 import { OAuthApprovalInputSchema } from "@shared/elicitation-constants.ts";
+
 import { formatCitationsFooter, terminalAssistantCitations } from "../lib/citations-footer.ts";
 import { BrowserUrlSchema, defaultOpenBrowser } from "../lib/open-browser.ts";
 

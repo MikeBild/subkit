@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+
 import {
-  type ConversationReference,
   candidateToReference,
+  type ConversationReference,
   dedupeReferences,
   findMentionQuery,
   findTokenAt,

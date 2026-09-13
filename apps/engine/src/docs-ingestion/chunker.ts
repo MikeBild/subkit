@@ -7,6 +7,7 @@
 // at the split points. This keeps the hot loop cheap.
 
 import { createHash } from "node:crypto";
+
 import { PER_PAGE_BYTES } from "./budgets.ts";
 import type { FingerprintedChunk, RawChunk } from "./types.ts";
 

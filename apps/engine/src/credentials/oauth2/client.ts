@@ -10,6 +10,7 @@
 // `randomPKCECodeVerifier()`, `calculatePKCECodeChallenge()`.
 
 import * as oauth from "openid-client";
+
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import { logger } from "../../logging/logger.ts";
 import {

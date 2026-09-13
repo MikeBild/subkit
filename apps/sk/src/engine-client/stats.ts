@@ -3,6 +3,7 @@
 // Method group merged into `EngineClient` by `../engine-client.ts`.
 
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
+
 import type { EngineClient } from "../engine-client.ts";
 
 // Aliased from the generated OpenAPI surface (WS-2 routes) so command

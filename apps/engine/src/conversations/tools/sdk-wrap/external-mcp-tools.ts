@@ -43,6 +43,7 @@
 
 import { classifyMcpToolSideEffect } from "@shared/index.ts";
 import { jsonSchema, type Tool, tool } from "ai";
+
 import { recordMcpExternalToolPaletteAssemblyFailed } from "../../../audit/recorders/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { buildMcpToolName } from "../../../connectors/drivers/mcp.ts";

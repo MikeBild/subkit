@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { beginHttpShutdown, type ShutdownHttpServer } from "./shutdown.ts";
 
 describe("HTTP shutdown", () => {

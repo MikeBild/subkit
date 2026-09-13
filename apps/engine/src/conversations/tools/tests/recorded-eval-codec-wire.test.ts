@@ -16,6 +16,7 @@
 // compile error, no empty result, no preview-gap block).
 
 import { describe, expect, test } from "bun:test";
+
 import { MISSING_EVIDENCE_NEXT_ACTIONS, runRecordedEval } from "../../recorded-eval.ts";
 
 // The full sequential standard base64 alphabet, the literal a hand-rolled
@@ -72,9 +73,8 @@ describe("runRecordedEval — hand-rolled-codec block next-action wire shape", (
 // rejected at the boundary instead of silently riding the wire.
 describe("MissingEvidenceNextActionSchema — runtime guard at the wire boundary", () => {
   test("accepts the two canonical next-actions", async () => {
-    const { MissingEvidenceNextActionSchema, MISSING_EVIDENCE_NEXT_ACTIONS } = await import(
-      "../../recorded-eval.ts"
-    );
+    const { MissingEvidenceNextActionSchema, MISSING_EVIDENCE_NEXT_ACTIONS } =
+      await import("../../recorded-eval.ts");
     expect(MissingEvidenceNextActionSchema.parse(MISSING_EVIDENCE_NEXT_ACTIONS.PREVIEW_GAP)).toBe(
       "dry_run_workflow",
     );
@@ -84,9 +84,8 @@ describe("MissingEvidenceNextActionSchema — runtime guard at the wire boundary
   });
 
   test("rejects an unknown next-action (the gap the bare TS union left open)", async () => {
-    const { MissingEvidenceNextActionSchema, RecordedEvalMissingEvidenceSchema } = await import(
-      "../../recorded-eval.ts"
-    );
+    const { MissingEvidenceNextActionSchema, RecordedEvalMissingEvidenceSchema } =
+      await import("../../recorded-eval.ts");
     expect(MissingEvidenceNextActionSchema.safeParse("inspect_workflow_draft").success).toBe(false);
     expect(
       RecordedEvalMissingEvidenceSchema.safeParse({

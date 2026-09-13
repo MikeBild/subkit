@@ -1,4 +1,5 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+
 import { NotFoundPage, RouteErrorPage } from "@/components/failure-state";
 import {
   AccessPage,
@@ -17,6 +18,7 @@ import { DecisionsPage } from "@/pages/decisions";
 import { OverviewPage } from "@/pages/overview";
 import { RunsPage } from "@/pages/runs";
 import { UsagePage } from "@/pages/usage";
+
 import { CATALOG_RESOURCES, CHAT_ROUTES, PAGE_ROUTES, type PageRoute } from "./route-table";
 import { useSession } from "./session";
 import { AppShell } from "./shell";
@@ -65,7 +67,7 @@ const catalogRoutes = CATALOG_RESOURCES.flatMap((resource) => [
   createRoute({
     getParentRoute: () => rootRoute,
     path: `/${resource}`,
-    component: () => {
+    component: function ResourceRoute() {
       const session = useSession();
       return (
         <CatalogPage resource={resource as DetailResource} permissions={session.permissions} />
@@ -75,7 +77,7 @@ const catalogRoutes = CATALOG_RESOURCES.flatMap((resource) => [
   createRoute({
     getParentRoute: () => rootRoute,
     path: `/${resource}/$resourceId`,
-    component: () => {
+    component: function ResourceRoute() {
       const session = useSession();
       return (
         <CatalogDetailPage

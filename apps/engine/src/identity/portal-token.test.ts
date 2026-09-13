@@ -6,12 +6,13 @@
 // These tests pin both invariants.
 
 import { describe, expect, test } from "bun:test";
+
 import { sha256Hex } from "./api-key.ts";
 import {
   generatePortalToken,
+  parsePortalToken,
   PORTAL_TOKEN_PREFIX_LENGTH,
   PORTAL_TOKEN_PREFIX_LITERAL,
-  parsePortalToken,
 } from "./portal-token.ts";
 
 describe("generatePortalToken", () => {
@@ -51,9 +52,9 @@ describe("parsePortalToken", () => {
 
   test("rejects null, empty, and non-string inputs", () => {
     expect(parsePortalToken("")).toBeNull();
-    // biome-ignore lint/suspicious/noExplicitAny: probing the runtime guard
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- probing the runtime guard
     expect(parsePortalToken(null as any)).toBeNull();
-    // biome-ignore lint/suspicious/noExplicitAny: probing the runtime guard
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- probing the runtime guard
     expect(parsePortalToken(undefined as any)).toBeNull();
   });
 

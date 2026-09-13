@@ -17,6 +17,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq } from "drizzle-orm";
+
 import { conversationMessages, conversations } from "../../db/schema/index.ts";
 import { FILE_SENTINEL_RE } from "../../files/sentinel.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";

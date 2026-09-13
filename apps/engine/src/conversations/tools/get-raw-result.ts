@@ -2,6 +2,7 @@
 // tool result by its `raw_ref`.
 
 import { z } from "@hono/zod-openapi";
+
 import type { ConversationTool } from "./index.ts";
 import { getRawResult } from "./truncate.ts";
 

@@ -5,9 +5,10 @@
 // file. Keep this as a cheap source-level contract because the signing key is
 // intentionally available only inside the release job.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const REPO = join(import.meta.dir, "..", "..");
 const WORKFLOW = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8");

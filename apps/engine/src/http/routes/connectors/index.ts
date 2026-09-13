@@ -31,6 +31,7 @@
 //   POST   /v1/connectors/:id/end-user-credentials — end-user-scoped credential
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
+
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { registerAuthoringRoutes } from "./authoring.ts";

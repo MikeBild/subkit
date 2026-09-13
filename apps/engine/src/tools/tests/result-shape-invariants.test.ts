@@ -8,6 +8,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { dispatchTool } from "../dispatcher.ts";
 import { buildRegistry, type ToolProvider } from "../registry.ts";
@@ -60,20 +61,20 @@ const PRINCIPAL: ResolvedPrincipal = {
   permission_grants: [],
   role_ids: [],
   api_key_id: null,
-  // biome-ignore lint/suspicious/noExplicitAny: test stub
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test stub
 } as any;
 
 // Zero-row update chain: the needs_confirm path may call
 // `mintApprovalGrantUrl` when the ambient config/env carries a
 // public_base_url (parallel test files can set one concurrently) — the
 // stub must survive that path, not explode on db.update.
-// biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- drizzle chain shape
 const UPDATE_STUB: any = {
   set: () => UPDATE_STUB,
   where: () => UPDATE_STUB,
   returning: () => Promise.resolve([]),
 };
-// biome-ignore lint/suspicious/noExplicitAny: drizzle Db shape
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- drizzle Db shape
 const DB_STUB: any = {
   transaction: async (fn: (db: unknown) => unknown) => fn(DB_STUB),
   insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),

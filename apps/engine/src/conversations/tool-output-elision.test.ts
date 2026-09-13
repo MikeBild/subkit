@@ -6,8 +6,9 @@
 // with the same `_raw_ref` stub the cross-turn path emits, and the
 // model recovers any stubbed payload via `get_raw_result(ref)`.
 
-import { afterEach, describe, expect, test } from "bun:test";
 import type { ModelMessage } from "ai";
+import { afterEach, describe, expect, test } from "bun:test";
+
 import {
   buildElidedToolOutputStub,
   elideWithinTurnToolOutputs,

@@ -1,7 +1,5 @@
 export type ConversationSelection =
-  | { kind: "automatic" }
-  | { kind: "new" }
-  | { kind: "existing"; id: string };
+  { kind: "automatic" } | { kind: "new" } | { kind: "existing"; id: string };
 
 export function activeConversationId(
   selection: ConversationSelection,

@@ -4,8 +4,10 @@
 // no table coupling). Persists to knowledge_sources + knowledge_chunks.
 
 import { createHash } from "node:crypto";
+
 import { and, asc, eq, isNull, type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { hyperlink, renderTextWithLinks } from "../hyperlink.ts";
 
 const URL = "https://github.com/MikeBild/subkit/compare/subkit-v6.10.0...subkit-v6.10.1";

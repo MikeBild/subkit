@@ -7,10 +7,10 @@
 //      the round-trip through the draft store survives (per-file DB).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { conversations } from "../db/schema/index.ts";
 import { getMockProvider } from "../llm/mock-provider.ts";
 import { scrubStringsDeep } from "../logging/scrub-secrets.ts";
-import { createEmptyState, normalizeState } from "./authoring-state/normalize.ts";
 import {
   createEmptyDraftDocument,
   withLatestPreview,
@@ -18,6 +18,7 @@ import {
   withWorkflowInspection,
   withWorkflowValidation,
 } from "./authoring-state.ts";
+import { createEmptyState, normalizeState } from "./authoring-state/normalize.ts";
 import { recordDeniedIntentIfDeclined } from "./declined-intent.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
 import { authoringIntentFingerprint } from "./intent-fingerprint.ts";

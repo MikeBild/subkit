@@ -28,10 +28,12 @@
 //      lower-level `can(db, { permission: ... })` shape, so a separate
 //      gate is needed to catch drift there.
 
-import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
 import { Glob } from "bun";
+import { describe, expect, test } from "bun:test";
+
 import { loadBuiltinTemplates } from "../../connectors/templates.ts";
 import { ALL_PERMISSION_NAMES } from "../catalog.ts";
 

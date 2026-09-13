@@ -7,6 +7,7 @@
 // adding `sax`/`htmlparser2` would be overkill for text-only output.
 
 import yauzl from "yauzl";
+
 import {
   BinaryParseError,
   DetectionPriority,

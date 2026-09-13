@@ -16,6 +16,7 @@
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
+
 import { getConnectorForEnvironment } from "../../connectors/service.ts";
 import {
   getCredentialForConnector,

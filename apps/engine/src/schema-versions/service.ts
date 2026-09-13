@@ -6,6 +6,7 @@
 // provenance-specific contract back on failure.
 
 import { and, desc, eq, isNull } from "drizzle-orm";
+
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { schemaVersions } from "../db/schema/index.ts";

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { isWorkflowInputForm } from "./commit-intent.ts";
 
 test("only handle-free workflow input forms are data rather than approval decisions", () => {

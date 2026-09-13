@@ -7,8 +7,9 @@
 // the column names against the committed OpenAPI schema turns that silent
 // class of bug into a test failure.
 
-import { describe, expect, test } from "bun:test";
 import openapi from "@cli-core/engine-api/openapi.json" with { type: "json" };
+import { describe, expect, test } from "bun:test";
+
 import {
   CONNECTOR_LIST_COLUMNS,
   CONNECTOR_SYNTHESISED_COLUMNS,

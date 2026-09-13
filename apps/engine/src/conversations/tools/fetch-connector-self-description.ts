@@ -22,6 +22,7 @@ import {
   type IntrospectionQuery,
   printSchema,
 } from "graphql";
+
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import { assertEgressAllowed } from "../../connectors/egress-guard.ts";
 import { getConnector } from "../../connectors/service.ts";

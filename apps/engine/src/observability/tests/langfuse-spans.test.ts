@@ -3,6 +3,7 @@
 // absent, and no integration test should hit a real Langfuse instance.
 
 import { beforeEach, describe, expect, test } from "bun:test";
+
 import { redactPayload, resetLangfuseCacheForReload, startToolSpan } from "../langfuse-spans.ts";
 
 describe("redactPayload — sensitive key masking", () => {

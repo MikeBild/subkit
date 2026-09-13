@@ -12,6 +12,7 @@
 //   - an over-budget manifest loses reply SHAPES before it loses tools
 
 import { describe, expect, test } from "bun:test";
+
 import {
   canonicalJson,
   capManifest,

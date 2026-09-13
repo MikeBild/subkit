@@ -2,6 +2,7 @@
 // No external dependencies — uses an in-memory Map with periodic pruning.
 
 import type { MiddlewareHandler } from "hono";
+
 import { logger } from "../../logging/logger.ts";
 import type { AppEnv } from "../openapi.ts";
 

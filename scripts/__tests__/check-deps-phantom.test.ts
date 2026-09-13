@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { aliasPrefixes, detype, importedPackages, pkgNameOf } from "../check-deps-phantom.ts";
 
 describe("pkgNameOf", () => {

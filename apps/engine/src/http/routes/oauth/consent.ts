@@ -6,6 +6,7 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
 import type { Context } from "hono";
+
 import {
   AuditAction,
   auditAwait,
@@ -38,8 +39,8 @@ import {
   verifyCsrfToken,
 } from "./shared.ts";
 import {
-  AUTHORIZE_INVALID_MESSAGE,
   authHtmlResponse,
+  AUTHORIZE_INVALID_MESSAGE,
   renderConsentPage,
   renderErrorPage,
   resolveAuthLocale,

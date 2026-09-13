@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { memberCountAfterMove, recategorizedSlug } from "./workflow-category";
 
 describe("recategorized slug", () => {

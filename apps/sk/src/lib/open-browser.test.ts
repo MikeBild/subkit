@@ -9,6 +9,7 @@
 // scheme (and a scheme-less string) is rejected.
 
 import { describe, expect, test } from "bun:test";
+
 import { assertHttpsUrl, BrowserUrlSchema } from "./open-browser.ts";
 
 describe("BrowserUrlSchema — allowlisted http(s) URLs pass", () => {

@@ -8,6 +8,7 @@
 // partial failure cannot orphan an audit entry.
 
 import { and, desc, eq, isNull } from "drizzle-orm";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -18,7 +19,7 @@ import { now } from "../utils/clock.ts";
 import { constantTimeHexEquals } from "./api-key.ts";
 import { generateInviteToken, parseInviteToken } from "./invite.ts";
 import { revokeConnectionsForUser } from "./oauth-connections.ts";
-import { type IssueApiKeyResult, issueApiKey, type UserRole, type UserStatus } from "./service.ts";
+import { issueApiKey, type IssueApiKeyResult, type UserRole, type UserStatus } from "./service.ts";
 
 // ---------- users -----------------------------------------------------------
 
@@ -493,10 +494,7 @@ export async function revokeInvite(
 }
 
 export type RedeemInviteError =
-  | "invite_invalid"
-  | "invite_expired"
-  | "invite_revoked"
-  | "invite_already_redeemed";
+  "invite_invalid" | "invite_expired" | "invite_revoked" | "invite_already_redeemed";
 
 export type RedeemInviteOutcome =
   | {

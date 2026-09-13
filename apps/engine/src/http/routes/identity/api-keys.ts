@@ -1,6 +1,7 @@
 // GET / POST / POST :id/rotate / DELETE /v1/identity/api-keys
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { policy } from "../../../auth/index.ts";
 import * as identity from "../../../identity/index.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";

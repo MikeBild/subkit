@@ -14,6 +14,7 @@
 // contacted; we assert the spy was invoked with the correct parsed body.
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+
 import * as graphqlDriver from "../../connectors/drivers/graphql.ts";
 import { connectors } from "../../db/schema/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
@@ -114,7 +115,7 @@ describe("call_connector — GraphQL: JSON-stringified body", () => {
       connector_id: connectorId,
       method: "POST",
       path: "/graphql",
-      // biome-ignore lint/suspicious/noExplicitAny: deliberately testing the string-body path
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately testing the string-body path
       body: bodyString as any,
     });
 
@@ -143,7 +144,7 @@ describe("call_connector — GraphQL: JSON-stringified body", () => {
       connector_id: connectorId,
       method: "POST",
       path: "/graphql",
-      // biome-ignore lint/suspicious/noExplicitAny: testing string-body path
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- testing string-body path
       body: bodyString as any,
     });
 
@@ -166,7 +167,7 @@ describe("call_connector — GraphQL: non-JSON string body fails cleanly", () =>
       connector_id: connectorId,
       method: "POST",
       path: "/graphql",
-      // biome-ignore lint/suspicious/noExplicitAny: deliberately testing invalid-string path
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately testing invalid-string path
       body: "not-an-object" as any,
     });
 
@@ -190,7 +191,7 @@ describe("call_connector — GraphQL: non-JSON string body fails cleanly", () =>
       connector_id: connectorId,
       method: "POST",
       path: "/graphql",
-      // biome-ignore lint/suspicious/noExplicitAny: testing missing-query path
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- testing missing-query path
       body: bodyString as any,
     });
 

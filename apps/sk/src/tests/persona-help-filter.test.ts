@@ -21,6 +21,7 @@
 // which poisoned the shared worker's module cache and broke ~30 unrelated
 // tests in the full run while every suite stayed green in isolation.
 import { describe, expect, it } from "bun:test";
+
 import { personaCanSee, personaHintForRole } from "../persona-probe.ts";
 
 // The commands a Claude Code user needs; hiding these was the bug.

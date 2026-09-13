@@ -11,10 +11,12 @@
 // Spec refs: docs/developers/input-surfaces.md, docs/authors/authoring-workflows.md,
 //            docs/authors/authoring-workflows.md, docs/concepts/workflows.md
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
-import { type ServerType, serve } from "@hono/node-server";
+
+import { serve, type ServerType } from "@hono/node-server";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { ChatAdapterRegistry } from "../../chat/registry.ts";
 import { SlackAdapter } from "../../chat/slack/adapter.ts";
 import { connectors, conversations, workflows } from "../../db/schema/index.ts";

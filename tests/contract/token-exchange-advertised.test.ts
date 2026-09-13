@@ -7,9 +7,10 @@
 // Runtime behaviour (mint, use, revoke) lives in
 // apps/engine/src/http/tests/token-exchange.test.ts.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const REPO = join(import.meta.dir, "..", "..");
 const GRANT = "urn:ietf:params:oauth:grant-type:token-exchange";

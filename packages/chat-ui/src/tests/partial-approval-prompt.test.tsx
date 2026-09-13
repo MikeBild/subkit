@@ -4,6 +4,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
+
 import { PartialApprovalPrompt } from "../elicit/PartialApprovalPrompt.tsx";
 import { ThemeProvider } from "../theme/Provider.tsx";
 

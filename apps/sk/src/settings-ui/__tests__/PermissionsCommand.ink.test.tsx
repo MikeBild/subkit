@@ -2,6 +2,7 @@
 // SettingsModal — see PermissionsCommand.tsx and ink-app.tsx wiring.
 
 import { describe, expect, mock, test } from "bun:test";
+
 import type { EngineClient } from "../../engine-client.ts";
 import { renderInk } from "../../tests/helpers/ink.tsx";
 import { PermissionsCommand } from "../PermissionsCommand.tsx";

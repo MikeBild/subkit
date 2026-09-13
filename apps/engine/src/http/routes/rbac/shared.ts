@@ -4,6 +4,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../../../db/client.ts";
 import { users as usersTable } from "../../../db/schema/index.ts";
 import type * as grantsSvc from "../../../rbac/index.ts";

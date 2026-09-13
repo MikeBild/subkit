@@ -4,6 +4,7 @@
 // success surfaced as "status=succeeded · no output" in production.
 
 import { describe, expect, test } from "bun:test";
+
 import { getRawResult, sampleWorkflowOutputForLlm } from "../truncate.ts";
 
 describe("sampleWorkflowOutputForLlm", () => {

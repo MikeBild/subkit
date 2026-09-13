@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import fs, { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 // Restore env per-test so a sibling test in another file cannot leak
 // `SK_DEBUG_FILE` or `SK_DEBUG` here. The module-level `cachedVerbose`

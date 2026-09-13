@@ -9,6 +9,7 @@
 // These tests lock the auto-sync.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createWorkflow, getWorkflow, updateWorkflow } from "../service.ts";

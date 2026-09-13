@@ -1,8 +1,9 @@
 // /config and /usage deep-link into the SettingsModal Config / Usage
 // tab. The legacy 4-field /config form moved to /config-form.
 
-import { describe, expect, mock, test } from "bun:test";
 import type { SkSessionState } from "@cli-core/index.ts";
+import { describe, expect, mock, test } from "bun:test";
+
 import type { ResolvedProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { handleSlash, type PaneSpec, type SlashHandlerContext } from "../repl/slash/handler.ts";

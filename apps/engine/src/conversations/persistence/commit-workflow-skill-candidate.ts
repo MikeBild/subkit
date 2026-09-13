@@ -5,6 +5,7 @@
 // active skill; the operator promotes it via the human approval gate.
 
 import { createHash } from "node:crypto";
+
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { upsertFromSignal } from "../../skill-candidates/service.ts";

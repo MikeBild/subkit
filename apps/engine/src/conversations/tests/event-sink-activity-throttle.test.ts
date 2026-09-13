@@ -3,6 +3,7 @@
 // events pass through untouched.
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+
 import { EventSink } from "../event-sink.ts";
 import type { TurnEvent } from "../types.ts";
 

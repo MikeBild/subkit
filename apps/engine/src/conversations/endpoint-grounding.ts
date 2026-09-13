@@ -1,4 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the sk placeholder grammar this module parses and matches — never JS template strings.
 // `evaluateEndpointGrounding` — refuses a workflow draft whose `request`
 // steps target a path the connector's discovered spec does not document.
 //

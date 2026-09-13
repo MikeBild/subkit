@@ -20,6 +20,7 @@
 // call is canned per-conversation, the answer text is the mock's canned ack.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { createEmptyDraftDocument } from "../../apps/engine/src/conversations/authoring-state.ts";
 import { conversations } from "../../apps/engine/src/db/schema/index.ts";
 import {

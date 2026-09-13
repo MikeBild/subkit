@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { __test__, paginate } from "./pagination.ts";
 
 describe("mcp pagination helper", () => {

@@ -3,6 +3,7 @@
 // Pure in-memory, no DB.
 
 import { describe, expect, test } from "bun:test";
+
 import type { ChatAdapter } from "../adapter.ts";
 import { ChatAdapterRegistry } from "../registry.ts";
 import type {

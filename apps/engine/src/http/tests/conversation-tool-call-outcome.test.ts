@@ -8,6 +8,7 @@
 // reader needs to explain a call that waited on a human.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { recordTransition } from "../../conversations/confirmation.ts";
 import {
   appendMessage,

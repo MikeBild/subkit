@@ -1,4 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
 // Schema-level guard for the headers union. The string-coercion branch
 // was previously lenient: `parseHeaderLines("{\"Accept\":\"x\"}")`
 // returned `{'{"Accept"': '"x"}'}` because the line had a `:` and a
@@ -9,6 +8,7 @@
 // 730c568a.
 
 import { describe, expect, test } from "bun:test";
+
 import { RequestStepSchema } from "../types.ts";
 
 describe("RequestStepSchema headers — RFC 7230 token guard", () => {

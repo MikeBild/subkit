@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import type { DiscoveredConnectorEndpoints } from "./endpoint-grounding.ts";
 import { authoringIntentFingerprint, groundingFingerprint } from "./intent-fingerprint.ts";
 

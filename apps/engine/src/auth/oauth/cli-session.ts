@@ -5,6 +5,7 @@
 // API key; the linked refresh family is revoked in the same transaction.
 
 import { and, eq, isNull } from "drizzle-orm";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";

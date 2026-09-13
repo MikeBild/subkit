@@ -23,6 +23,7 @@ import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { scrubString } from "@shared/index.ts";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
+
 import { recordConnectorMcpClientRegistered } from "../../audit/recorders/index.ts";
 import { EgressBlockedError } from "../../connectors/egress-guard.ts";
 import { setConnectorHealth } from "../../connectors/health-state.ts";
@@ -51,12 +52,7 @@ export const MCP_CREDENTIAL_ENVIRONMENT = "prod" as const;
  */
 export interface McpAuthConfig {
   kind:
-    | "none"
-    | "bearer"
-    | "basic"
-    | "oauth2"
-    | "oauth2_client_credentials"
-    | "oauth2_private_key_jwt";
+    "none" | "bearer" | "basic" | "oauth2" | "oauth2_client_credentials" | "oauth2_private_key_jwt";
   /** OAuth2 issuer base URL (oauth2 / M2M kinds, documentation only for
    *  M2M since the SDK discovers the token endpoint via RFC 9728 off
    *  `base_url` — not consumed as a provider option). */
@@ -280,10 +276,7 @@ export class McpPreflightError extends Error {
  *  probe vocabulary (connectors/drivers/index.ts); `mcp_transport_unsupported`
  *  is the code the mcp-server migration already writes for sse/stdio rows. */
 export type McpPreflightErrorCode =
-  | "credential_missing"
-  | "credential_invalid"
-  | "config_incomplete"
-  | "mcp_transport_unsupported";
+  "credential_missing" | "credential_invalid" | "config_incomplete" | "mcp_transport_unsupported";
 
 /**
  * Machine-readable classification of a failed MCP handshake.

@@ -1,6 +1,7 @@
 // Types shared by the listener and the in-process pub/sub emitter.
 
 import { z } from "zod";
+
 import type { OutboxChannel } from "../db/events.ts";
 
 export type { OutboxChannel };

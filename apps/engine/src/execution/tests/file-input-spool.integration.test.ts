@@ -8,9 +8,11 @@
 // bare UUID would 404 (local) / NoSuchKey (S3) and surface as a step
 // failure even though the file row + bytes are both present.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { SPOOL_THRESHOLD_BYTES } from "../../files/resolver.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";

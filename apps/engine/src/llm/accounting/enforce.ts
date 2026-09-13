@@ -161,7 +161,7 @@ export function stepLooksLikeLlmCall(step: RequestStep): boolean {
  *  is empty or unmeasurable. */
 export function estimateLlmCallTokens(body: unknown): number {
   if (body === undefined || body === null) return PROMPT_FLOOR_TOKENS;
-  let chars = 0;
+  let chars: number;
   if (typeof body === "string") {
     chars = body.length;
   } else {

@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { useState } from "react";
+
 import { apiRequest } from "@/api/client";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -28,8 +29,8 @@ import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import {
   buildInput,
-  type InputSchemaSource,
   inputFields,
+  type InputSchemaSource,
   missingRequired,
 } from "@/lib/workflow-inputs";
 

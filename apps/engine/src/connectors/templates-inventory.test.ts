@@ -6,6 +6,7 @@
 // long as the Zod shape still holds. This file pins that identity.
 
 import { describe, expect, test } from "bun:test";
+
 import { EVENT_TYPES } from "../webhooks/events/catalog.ts";
 import { loadBuiltinTemplates, type TemplateCapabilities } from "./templates.ts";
 

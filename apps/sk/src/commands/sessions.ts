@@ -7,9 +7,11 @@
 // won't appear in the user's sk cache anymore.
 
 import { existsSync, unlinkSync } from "node:fs";
+
 import { defineCommand } from "citty";
 import Fuse from "fuse.js";
 import pc from "picocolors";
+
 import { resolveProfile } from "../config.ts";
 import {
   listSessionMetadata,

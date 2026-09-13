@@ -72,8 +72,7 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
     const heldStep = run.steps.find((s) => s.step_key === input.expect.held_step);
     c.check(heldStep?.held === true, `step ${input.expect.held_step} was not held`);
     const held = heldStep?.held_request as
-      | { method?: string; url?: string; body?: { to?: string } }
-      | undefined;
+      { method?: string; url?: string; body?: { to?: string } } | undefined;
     c.check(
       held?.method === input.expect.held_method,
       `held_request.method is ${String(held?.method)}, expected ${input.expect.held_method}`,

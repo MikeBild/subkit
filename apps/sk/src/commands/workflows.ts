@@ -2,6 +2,7 @@ import { exitCodeFor, reportCommandError } from "@cli-core/errors";
 import { emitGroupedList, emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
+
 import { resolveProfile } from "../config.ts";
 import {
   EngineClient,
@@ -204,7 +205,7 @@ function renderInvokeSnippet(opts: {
 
   if (lang === "node") {
     const headers: Record<string, string> = {
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted verbatim into the user's Node snippet as a template-literal placeholder.
+      // eslint-disable-next-line no-template-curly-in-string -- emitted verbatim into the user's Node snippet as a template-literal placeholder.
       authorization: "Bearer ${process.env.SK_API_KEY}",
       "content-type": "application/json",
     };

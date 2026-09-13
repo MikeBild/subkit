@@ -21,6 +21,7 @@
 // `compile` / `evaluate` here. CI grep gate enforces this (see WS8.4).
 
 import jsonata, { type Expression } from "jsonata";
+
 import { instrument } from "../observability/runtime-telemetry.ts";
 
 export type EvalBindings = {

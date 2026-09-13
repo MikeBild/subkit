@@ -4,6 +4,7 @@
 // must be deterministic and covered.
 
 import { describe, expect, test } from "bun:test";
+
 import { synthesizeFallbackMessage, turnLoopBudgetStopCondition } from "../turn-helpers.ts";
 import type { TurnEvent } from "../types.ts";
 

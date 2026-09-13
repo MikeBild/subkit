@@ -15,6 +15,7 @@
 // and genuinely new post-message streams still render.
 
 import { describe, expect, test } from "bun:test";
+
 import { applyTurnEvent, initialSessionState, type TurnEvent } from "./turn-event.ts";
 
 const FULL_TEXT =

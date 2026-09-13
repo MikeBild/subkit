@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { llmUsage, tenantLlmSettings } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { invoke } from "../core/invoke.ts";
@@ -33,9 +34,9 @@ describe("llm/routing", () => {
     getMockProvider().setFailure("mock-primary-1", "overloaded");
 
     const events: Array<Record<string, unknown>> = [];
-    // biome-ignore lint/suspicious/noExplicitAny: logger spy
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- logger spy
     const priorWarn: any = logger.warn.bind(logger);
-    // biome-ignore lint/suspicious/noExplicitAny: logger spy
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- logger spy
     (logger as any).warn = (payload: Record<string, unknown>) => {
       events.push(payload);
       return priorWarn(payload);
@@ -54,7 +55,7 @@ describe("llm/routing", () => {
       expect(result.fell_back).toBe(true);
       expect(result.model_used).toBe("mock-fallback-1");
     } finally {
-      // biome-ignore lint/suspicious/noExplicitAny: restore logger
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- restore logger
       (logger as any).warn = priorWarn;
     }
 

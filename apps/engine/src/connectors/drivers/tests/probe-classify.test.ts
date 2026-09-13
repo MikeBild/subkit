@@ -8,6 +8,7 @@
 //     credential death on an unknown error shape)
 
 import { describe, expect, test } from "bun:test";
+
 import {
   classifyGraphqlProbe,
   classifyPgProbeError,

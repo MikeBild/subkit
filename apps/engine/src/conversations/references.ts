@@ -17,6 +17,7 @@
 // is a governed resource, a conversation attachment is not.
 
 import { and, desc, eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { getConnector } from "../connectors/service.ts";
 import type { Executor } from "../db/client.ts";

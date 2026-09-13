@@ -9,6 +9,7 @@
 //   DELETE /v1/rbac/groups/:id/roles/:role_id
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import * as groupsSvc from "../../../rbac/index.ts";

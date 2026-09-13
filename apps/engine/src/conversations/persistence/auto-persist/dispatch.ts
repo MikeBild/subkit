@@ -7,6 +7,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { eq } from "drizzle-orm";
+
 import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import { listResolvedConnectorTemplates } from "../../../connectors/template-resolver.ts";

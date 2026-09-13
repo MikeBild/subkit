@@ -5,6 +5,7 @@
 // produce a `tenant_id=""` time series that masks tenant cohorts.
 
 import { describe, expect, it } from "bun:test";
+
 import { recordWorkflowScheduleNotBound, recordWorkflowTriggerKind } from "../instrumentation.ts";
 import { getMetrics, METRIC_NAMES, resetMetricsRegistryForTests } from "../metrics.ts";
 

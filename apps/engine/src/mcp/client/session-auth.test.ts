@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { resolveStaticAuthHeaders } from "./session-auth.ts";
 
 describe("resolveStaticAuthHeaders", () => {

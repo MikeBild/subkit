@@ -22,6 +22,7 @@
 //   end-to-end picture.
 
 import type { Tool } from "ai";
+
 import { recordMcpExternalToolPaletteAssemblyFailed } from "../../audit/recorders/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";

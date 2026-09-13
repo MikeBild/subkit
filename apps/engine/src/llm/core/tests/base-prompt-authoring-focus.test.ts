@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+
 import type { AuthoringPromptHint } from "../../types.ts";
 import { basePromptFor } from "../context-assembler.ts";
 

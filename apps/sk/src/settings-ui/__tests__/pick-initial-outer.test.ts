@@ -1,6 +1,7 @@
 // Unit tests for the SettingsModal `pickInitialOuter` helper.
 
 import { describe, expect, test } from "bun:test";
+
 import { ALL_TABS, pickInitialOuter } from "../SettingsModal.tsx";
 
 describe("pickInitialOuter", () => {

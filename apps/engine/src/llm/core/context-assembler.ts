@@ -69,8 +69,8 @@ import {
   formatSkillIndex,
   formatUserMemory,
   type RecipeBodyView,
-  SKILL_CANDIDATES_SECTION_CAP,
   selectOperatorQuirkCategories,
+  SKILL_CANDIDATES_SECTION_CAP,
   trimPriorWorkflowsToBudget,
 } from "./context-assembler/formatters.ts";
 import { resolveLoadedSkills } from "./context-assembler/loaded-skills.ts";
@@ -92,10 +92,7 @@ import {
 import { recordConversationBudgetReport } from "./conversation-budget-report.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "./tenant-summary.ts";
 
-export {
-  basePromptFor,
-  type ConversationSurface,
-} from "./context-assembler/base-prompts.ts";
+export { basePromptFor, type ConversationSurface } from "./context-assembler/base-prompts.ts";
 export {
   applyRuntimeTemplate,
   countSkillTokens,

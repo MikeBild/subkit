@@ -28,11 +28,7 @@ services:
       MINIO_ROOT_USER: subkit
       MINIO_ROOT_PASSWORD: subkit-object-test
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null",
-        ]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null"]
       interval: 2s
       timeout: 3s
       retries: 30

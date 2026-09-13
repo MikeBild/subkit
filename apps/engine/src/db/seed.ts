@@ -24,15 +24,17 @@
 // to stdout exactly once with a bright warning — they cannot be recovered.
 
 import { createHash, randomBytes } from "node:crypto";
+
 import { and, eq, isNull } from "drizzle-orm";
 import pc from "picocolors";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { logger } from "../logging/logger.ts";
 import {
   backfillRoleIds,
-  type SeededRoleIds,
   seedBuiltinRolesAndPermissions,
+  type SeededRoleIds,
 } from "../rbac/seed.ts";
 import type { Db, Executor } from "./client.ts";
 import {

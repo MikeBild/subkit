@@ -13,6 +13,7 @@
 // caught + logged but never abort the rest of the reconciler tick.
 
 import { lt, sql } from "drizzle-orm";
+
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../audit/index.ts";
 import type { Db } from "../db/client.ts";
 import { chatEventsSeen } from "../db/schema/index.ts";
@@ -26,7 +27,7 @@ const REPLAY_GRACE = sql`interval '24 hours'`;
 
 export async function runChatDedupCleanup(now: Date, db: Db): Promise<void> {
   const started = Date.now();
-  let deleted = 0;
+  let deleted: number;
   try {
     const result = await db
       .delete(chatEventsSeen)

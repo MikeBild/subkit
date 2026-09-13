@@ -18,9 +18,11 @@
 //   2. cannot read the same file via GET /v1/files/:id (403)
 //   3. cannot download the same file via GET /v1/files/:id/content (403)
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
+
 import { apiKeys, conversations, roles, users } from "../../db/schema/index.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";

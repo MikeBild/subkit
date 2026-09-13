@@ -14,6 +14,7 @@
 // SinglePane parity.
 
 import { describe, expect, mock, test } from "bun:test";
+
 import type { EngineClient } from "../engine-client.ts";
 import { AdminTab } from "../settings-ui/tabs/AdminTab.tsx";
 import { renderInk } from "./helpers/ink.tsx";

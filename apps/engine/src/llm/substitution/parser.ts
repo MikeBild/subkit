@@ -25,13 +25,7 @@
 // not log token values (there are none to log — it only sees names/paths).
 
 export type PlaceholderKind =
-  | "cred"
-  | "connector_url"
-  | "connector_config"
-  | "input"
-  | "scope"
-  | "item"
-  | "state";
+  "cred" | "connector_url" | "connector_config" | "input" | "scope" | "item" | "state";
 
 export interface Placeholder {
   kind: PlaceholderKind;

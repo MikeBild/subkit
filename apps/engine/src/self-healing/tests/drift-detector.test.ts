@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { deriveShape } from "../../schema-versions/service.ts";
 import { analyzeStepFailure, renderDriftDiff } from "../drift-detector.ts";
 import type { SchemaShape } from "../types.ts";

@@ -1,10 +1,11 @@
 // Unit tests for usage-stats.ts persistence helpers.
 // Uses a tempdir to avoid touching the real ~/.sk/prefs.json.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 // We need to patch the module-level PREFS_DIR / PREFS_PATH at import time.
 // The simplest approach: the module reads from homedir() at module load time,

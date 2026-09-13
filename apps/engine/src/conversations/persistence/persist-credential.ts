@@ -5,6 +5,7 @@
 // that `saveConnectorAtomic` performs after the connector row lands.
 
 import { eq } from "drizzle-orm";
+
 import { runCognitoUserPasswordGrant } from "../../credentials/oauth2/client.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";

@@ -1,9 +1,11 @@
 import { readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
+
 import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
+
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { collectBundleFiles, defaultBundleName } from "../lib/bundle-import.ts";

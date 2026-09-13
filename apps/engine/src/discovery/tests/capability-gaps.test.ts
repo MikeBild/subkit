@@ -8,6 +8,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { auditLog } from "../../db/schema/audit.ts";
 import { discoveryArtifacts } from "../../db/schema/discovery.ts";
 import { tenants } from "../../db/schema/index.ts";

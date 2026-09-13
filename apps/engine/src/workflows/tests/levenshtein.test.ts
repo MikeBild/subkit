@@ -1,10 +1,11 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
+/* eslint-disable no-template-curly-in-string -- literal `${...}` placeholder tokens are part of the tested grammar. */
 // levenshtein — small pure helpers used in two places:
 // `validateStepReferences` (authoring-time) and `loop.ts` /
 // `branch.ts` (runtime) both surface "did you mean" suggestions
 // with the same vocabulary, so the helpers are unit-tested once.
 
 import { describe, expect, test } from "bun:test";
+
 import { extractStepIdReferences, levenshtein, suggestClosest } from "../levenshtein.ts";
 
 describe("levenshtein", () => {

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { applyBracketedPaste, PASTE_END, PASTE_START } from "../repl/bracketed-paste.ts";
 
 const wrap = (s: string): string => `${PASTE_START}${s}${PASTE_END}`;

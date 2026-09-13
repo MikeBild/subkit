@@ -3,6 +3,7 @@
 // silently 404s the CLI while typechecking fine (paths are strings).
 
 import { describe, expect, test } from "bun:test";
+
 import { EngineClient } from "../engine-client.ts";
 
 interface Captured {

@@ -8,6 +8,7 @@
 // audit row reproduces before sdk-wrap pauses the dispatch.
 
 import { describe, expect, it } from "bun:test";
+
 import { decideToolMode, resolveToolMode } from "../tool-policies.ts";
 
 const DOP_TOKEN = "dop_v1_abcdefghijklmnopqrstuvwxyz0123456789ABCDEF";

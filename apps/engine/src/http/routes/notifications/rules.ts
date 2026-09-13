@@ -8,6 +8,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import { type NotificationRuleRow, notificationRules } from "../../../db/schema/notifications.ts";
@@ -355,11 +356,7 @@ export function registerRuleRoutes(app: OpenAPIHono<AppEnv>): void {
       workflow_id: body.workflow_id ?? null,
       workflow_slug: body.workflow_slug ?? null,
       severity: (body.severity ?? rule.severity) as
-        | "debug"
-        | "info"
-        | "warn"
-        | "error"
-        | "critical",
+        "debug" | "info" | "warn" | "error" | "critical",
       payload: body.payload ?? null,
     };
     const result = await dispatchEvent(

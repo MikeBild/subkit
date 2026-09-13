@@ -3,6 +3,7 @@
 // classification. No DB, no network, no Docker.
 
 import { describe, expect, test } from "bun:test";
+
 import type { ConnectorView } from "../types.ts";
 import {
   classifyHttpProbeStatus,

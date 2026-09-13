@@ -9,8 +9,9 @@
 // These tests exercise the CALL, not the listing. A test that only asserted
 // absence from `tools/list` would have passed against the hole.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { MCP_AUTHORING_SCOPE } from "../../auth/scopes.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 

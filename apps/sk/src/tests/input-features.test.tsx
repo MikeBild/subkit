@@ -6,12 +6,14 @@
 // Every test mounts <InkApp> via ink-testing-library with a tmp
 // history path so runs don't touch ~/.sk.
 
-import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import type { TurnEvent } from "@cli-core/index.ts";
+import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
+
 import { EngineClient } from "../engine-client.ts";
 import { InkApp, type InkAppProps } from "../ink-app.tsx";
 import { appendHistory } from "../repl/history-store.ts";

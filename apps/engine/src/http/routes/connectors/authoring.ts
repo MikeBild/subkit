@@ -15,6 +15,7 @@
 // dropped — never written to `credentials`, never echoed back in the response.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
   type ConnectorView,

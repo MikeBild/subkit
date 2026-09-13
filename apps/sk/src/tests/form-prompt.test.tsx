@@ -8,8 +8,8 @@
 // The fixture mirrors the screenshot payload: text required + number
 // required with placeholder + boolean + select required.
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
 import { type FormField, FormPrompt } from "@chat-ui/index.ts";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 
 // ---------- Helpers ----------

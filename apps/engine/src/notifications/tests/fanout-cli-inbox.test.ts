@@ -13,6 +13,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
+
 import { SkCliAdapter } from "../../chat/sk-cli/adapter.ts";
 import { tenants } from "../../db/schema/index.ts";
 import {

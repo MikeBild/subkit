@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   PALETTES,
   type ThemeName,
@@ -7,8 +6,10 @@ import {
   useTheme,
   useThemeControl,
 } from "@chat-ui/index.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Box, Text } from "ink";
 import { useEffect } from "react";
+
 import { flush, renderInk } from "./helpers/ink.tsx";
 
 function ProbeTokens({ onTokens }: { onTokens: (t: ThemeTokens) => void }) {

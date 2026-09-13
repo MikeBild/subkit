@@ -5,6 +5,7 @@
 // Status heatmap are the source of truth for those surfaces.
 
 import { describe, expect, test } from "bun:test";
+
 import { ALL_TABS, type OuterTabName } from "../SettingsModal.tsx";
 
 describe("SettingsModal — ALL_TABS registry", () => {

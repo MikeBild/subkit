@@ -5,6 +5,7 @@
 // uses — i.e. whether OPT-E injects at all when its conditions are met.
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+
 import * as discoveryModule from "../../../connectors/discovery/index.ts";
 import { runDiscoveryCached } from "../../../connectors/discovery/service.ts";
 import type { DiscoveryResult } from "../../../connectors/discovery/types.ts";

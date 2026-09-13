@@ -11,6 +11,7 @@
 //     tenant-isolation chokepoint).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { parseFileId } from "../../api/files-schemas.ts";
 import { conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -18,8 +19,8 @@ import { attachInlineForTest } from "../../files/test-helpers.ts";
 import {
   FileNotFoundError,
   parseAttachmentSlugs,
-  type ResolvedFile,
   resolveAttachmentSlugsInText,
+  type ResolvedFile,
   walkAndResolve,
 } from "../attachments.ts";
 

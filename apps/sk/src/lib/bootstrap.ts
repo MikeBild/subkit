@@ -17,8 +17,10 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { z } from "zod";
+
 import type { ResolvedProfile } from "../config.ts";
 import { debugLog, serializeDebugError } from "../debug.ts";
 import type { EngineClient } from "../engine-client.ts";

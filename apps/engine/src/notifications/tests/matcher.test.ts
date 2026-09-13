@@ -2,6 +2,7 @@
 // filters, multiple-rule matches.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { notificationRules } from "../../db/schema/notifications.ts";
 import { matchGlob, matchRules, severityMeets } from "../matcher.ts";
 import { createNotificationCtx, type NotificationTestCtx } from "./setup.ts";

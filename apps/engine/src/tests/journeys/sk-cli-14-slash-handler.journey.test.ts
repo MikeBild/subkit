@@ -20,8 +20,9 @@
 //   AC8. /permissions lists the allowedPermissions array.
 //   AC9. /audit with admin perms returns a non-empty list of rows.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { initialSessionState, type SkSessionState } from "@cli-core/index.ts";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import type { ResolvedProfile } from "../../../../sk/src/config.ts";
 import { EngineClient } from "../../../../sk/src/engine-client.ts";
 import { handleSlash } from "../../../../sk/src/repl/slash/handler.ts";

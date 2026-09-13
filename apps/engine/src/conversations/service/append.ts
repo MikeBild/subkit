@@ -8,6 +8,7 @@
 // `conversation.run-turn` pg-boss worker for the MCP async-Tasks path.
 
 import { and, eq } from "drizzle-orm";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -108,7 +109,7 @@ export async function appendUserMessage(
   });
   // If a new memory payload arrived, persist it on the row and emit
   // an audit entry; otherwise reuse the last memory payload we stored.
-  let effectiveMemory: string | null = null;
+  let effectiveMemory: string | null;
   if (typeof p.memory === "string") {
     await exec
       .update(conversations)

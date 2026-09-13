@@ -26,6 +26,7 @@
 //     journey asserts the middleware contract.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { users } from "../../db/schema/index.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 

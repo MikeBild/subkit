@@ -6,6 +6,7 @@
 // invocation creates a NEW row — there is no rotation here.
 
 import { eq } from "drizzle-orm";
+
 import { issueApiKey } from "../identity/service.ts";
 import { newTraceId, withContext } from "../logging/context.ts";
 import { logger } from "../logging/logger.ts";

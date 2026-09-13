@@ -5,11 +5,13 @@
 // that `risk` is non-empty, `all_clear` is false, and the headline reflects
 // the leading-indicator risk.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { _drainAuditWritesForTests, AuditAction } from "../audit/index.ts";
 import { _resetConfigForTests, loadConfig } from "../config/loader.ts";
 import { auditLog, tenants } from "../db/schema/index.ts";

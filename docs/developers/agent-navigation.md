@@ -54,7 +54,7 @@ Priority when sources conflict:
 
 High-value references (by task type):
 
-- **Project shape & build** — `package.json`, `biome.json`, `tsconfig.json`, `docker-compose.yml`,
+- **Project shape & build** — `package.json`, `eslint.config.mjs`, `.prettierrc.json`, `tsconfig.json`, `docker-compose.yml`,
   `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `.commitlintrc.json`
 - **Platform & concepts** — `docs/concepts/glossary.md`
 - **Input surfaces** — `docs/developers/input-surfaces.md`. The sk REPL exposes a 5-tab
@@ -238,7 +238,7 @@ Directory-local overrides:
 
 ## Code Quality Enforcement
 
-- **Biome** (`biome.json`) is the only formatter and linter. 100 char line width, 2-space
+- **ESLint + Prettier** (`eslint.config.mjs`, `.prettierrc.json`) define the linter and formatter. 100 char line width, 2-space
   indent, double quotes, semicolons, trailing commas. Run `bun run lint` before calling done.
 - **TypeScript strict mode.** No `any` in new code. No non-null assertions without a
   documented invariant. Run `bun run typecheck` before calling done.
@@ -284,7 +284,7 @@ Three test layers (picked by subsystem and command):
 
 Before marking any code task done, run (or have a reason not to):
 
-1. `bun run lint` — biome check, no warnings.
+1. `bun run lint` — ESLint and Prettier checks.
 2. `bun run typecheck` — tsc clean.
 3. `bun run test:determinism` — determinism lint clean.
 4. `bun run test:unit` — unit tests green.

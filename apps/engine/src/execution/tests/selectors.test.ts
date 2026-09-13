@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { applySelector, compileSelector } from "../selectors.ts";
 
 describe("JSONPath-lite selectors", () => {

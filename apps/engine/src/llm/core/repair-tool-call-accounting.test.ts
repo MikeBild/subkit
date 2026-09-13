@@ -12,8 +12,9 @@
 // Tested at the entry shape rather than through the DB, the same way
 // `accountant.attribution.test.ts` does, so this stays a fast unit test.
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { LanguageModel } from "ai";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+
 import { _resetConfigForTests } from "../../config/loader.ts";
 import { recordRepairUsage } from "./repair-tool-call.ts";
 

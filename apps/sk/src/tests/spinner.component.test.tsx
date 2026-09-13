@@ -4,6 +4,7 @@
 // pinned verb list so the output is deterministic.
 
 import { describe, expect, test } from "bun:test";
+
 import { Spinner } from "../repl/spinner.tsx";
 import { renderInk } from "./helpers/ink.tsx";
 

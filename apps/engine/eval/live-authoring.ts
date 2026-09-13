@@ -24,7 +24,9 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+
 import { z } from "zod";
+
 import { compareLiveAuthoringReports } from "./live-benchmark.ts";
 import {
   buildLiveReport,

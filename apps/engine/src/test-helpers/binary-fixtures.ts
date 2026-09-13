@@ -15,6 +15,7 @@
 
 import { Buffer } from "node:buffer";
 import { deflateRawSync } from "node:zlib";
+
 import * as XLSX from "xlsx";
 
 /** Build a minimal valid PDF that contains a single page of text. The

@@ -1,4 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { ConnectorPromotionError, promoteConnector } from "../../../connectors/index.ts";
 import { HttpError, NotFoundError } from "../../errors.ts";

@@ -12,6 +12,7 @@
 // `created_at < now() - interval`, so multi-instance overlap is a no-op.
 
 import { lt, sql } from "drizzle-orm";
+
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../audit/index.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
@@ -21,7 +22,7 @@ import { errorFields, logger } from "../logging/logger.ts";
 export async function runNotificationInboxRetention(now: Date, db: Db): Promise<void> {
   const started = Date.now();
   const retentionDays = getConfig().notifications.inbox.retention_days;
-  let deleted = 0;
+  let deleted: number;
   try {
     // tenant-filter:exempt — cross-tenant retention sweep
     const result = await db

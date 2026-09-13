@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import type { SlashHandlerContext } from "../repl/slash/handler.ts";
 import { dispatchInspectSlash } from "../repl/slash/handlers/inspect.ts";
 

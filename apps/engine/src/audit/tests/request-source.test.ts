@@ -15,6 +15,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { Context } from "hono";
+
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { readRequestSource } from "../request-source.ts";
 

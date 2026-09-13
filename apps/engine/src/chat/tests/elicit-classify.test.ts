@@ -5,8 +5,9 @@
 // actionable redirect instead of rethrowing into the queue (which DLQs and
 // leaves the user with Google Chat's opaque error card).
 
-import { describe, expect, test } from "bun:test";
 import { NoSuchToolError } from "ai";
+import { describe, expect, test } from "bun:test";
+
 import { classifyChatElicitError } from "../elicit-routing.ts";
 
 describe("classifyChatElicitError — surface_unsupported", () => {

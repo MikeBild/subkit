@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+
 import { detectSchedulePhrases } from "../schedule-phrase-detector.ts";
 
 describe("detectSchedulePhrases", () => {

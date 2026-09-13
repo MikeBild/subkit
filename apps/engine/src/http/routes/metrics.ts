@@ -13,6 +13,7 @@
 // in `../../rbac/seed.ts`.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
+
 import { getMetrics, refreshProcessUptime } from "../../observability/index.ts";
 import {
   getOperationalOverview,

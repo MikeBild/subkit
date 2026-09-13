@@ -8,6 +8,7 @@
 // product-tier callers.
 
 import { describe, expect, test } from "bun:test";
+
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { modeFlags, resolveMcpMode } from "./mode-resolver.ts";
 

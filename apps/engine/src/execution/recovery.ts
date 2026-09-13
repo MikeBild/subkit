@@ -29,11 +29,12 @@
 // passes will pick up anything left behind.
 
 import { eq, sql } from "drizzle-orm";
+
 import { recordExecutionCrashRecovered } from "../audit/recorders/index.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
-import { executionSteps, executions, workflowVersions } from "../db/schema/index.ts";
+import { executions, executionSteps, workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import type { ExecutionStatus } from "./types.ts";
 

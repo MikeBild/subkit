@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { computeLineDiff, isUnchanged, selectChangeView, toDiffLines } from "./line-diff";
 
 describe("line diff", () => {

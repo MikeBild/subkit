@@ -27,6 +27,7 @@ import { printJson } from "@cli-core/format";
 import { VERSION as CLI_VERSION } from "@cli-core/version.ts";
 import { defineCommand } from "citty";
 import pc from "picocolors";
+
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 

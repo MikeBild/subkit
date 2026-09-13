@@ -1,8 +1,9 @@
 // The MCP client is not an approval authority. Real transport + Postgres prove
 // that a write waits for a human grant and its stored call executes once.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
+
 import { auditLog } from "../../db/schema/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../execution/tests/setup.ts";
 import { grantApproval } from "../../tools/approval.ts";

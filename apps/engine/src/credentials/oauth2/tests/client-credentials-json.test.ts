@@ -10,6 +10,7 @@
 // live server is required.
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+
 import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { runClientCredentialsJsonGrant } from "../client.ts";
 

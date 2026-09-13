@@ -14,6 +14,7 @@
 //      the elide-size check re-stringified every verbatim output.
 
 import { beforeAll, describe, expect, it } from "bun:test";
+
 import {
   conversationMessages,
   conversations,
@@ -117,9 +118,9 @@ describe("buildModelMessages — audit-copy projection + allocation bound", () =
   it("stringify work during one assembly stays under 3× the verbatim payload bytes", async () => {
     const orig = JSON.stringify.bind(JSON);
     let bytes = 0;
-    // biome-ignore lint/suspicious/noExplicitAny: test-local shim
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test-local shim
     (JSON as any).stringify = function counted(value: unknown, ...rest: unknown[]) {
-      // biome-ignore lint/suspicious/noExplicitAny: passthrough
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- passthrough
       const s = (orig as any)(value, ...rest);
       if (typeof s === "string") bytes += s.length;
       return s;
@@ -128,7 +129,7 @@ describe("buildModelMessages — audit-copy projection + allocation bound", () =
     try {
       msgs = await buildModelMessages(ctx.testDb.db, ctx.tenant_id, conversation_id);
     } finally {
-      // biome-ignore lint/suspicious/noExplicitAny: restore
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- restore
       (JSON as any).stringify = orig;
     }
     expect(msgs.length).toBeGreaterThan(0);

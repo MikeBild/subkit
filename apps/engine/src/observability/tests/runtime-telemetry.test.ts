@@ -3,6 +3,7 @@
 // sees the exact bytes an operator's log pipeline would.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { _resetLoggerForTests, reconfigureLogger } from "../../logging/logger.ts";
 import {
   bootPhase,

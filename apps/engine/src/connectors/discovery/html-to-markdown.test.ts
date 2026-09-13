@@ -1,6 +1,7 @@
 // Pure-function tests for the HTML→Markdown helper.
 
 import { describe, expect, test } from "bun:test";
+
 import { htmlToMarkdown, looksLikeHtml } from "./html-to-markdown.ts";
 
 describe("looksLikeHtml", () => {

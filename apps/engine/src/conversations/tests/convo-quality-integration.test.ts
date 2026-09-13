@@ -22,9 +22,11 @@
 //   - Full LLM conversation loop. We drive the tools directly so the
 //     assertions are deterministic and fast (<1s).
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { upsertCredential } from "../../credentials/service.ts";
 import { auditLog, connectors, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

@@ -15,6 +15,7 @@ import type { ToolCallState } from "@cli-core/index.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
+
 import { debugLog } from "../debug.ts";
 import { IntentCard } from "../render/intent-card.tsx";
 import { SummaryCard } from "../render/summary-card.tsx";

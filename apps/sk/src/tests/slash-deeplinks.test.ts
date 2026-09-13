@@ -10,6 +10,7 @@
 // `slash-config-deeplink.test.ts`).
 
 import { describe, expect, test } from "bun:test";
+
 import type { PaneSpec, SlashHandlerContext } from "../repl/slash/handler.ts";
 import { dispatchInspectSlash } from "../repl/slash/handlers/inspect.ts";
 

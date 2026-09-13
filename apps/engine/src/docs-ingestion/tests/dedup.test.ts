@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { fingerprintChunks } from "../chunker.ts";
 import { dedupChunks, jaccard } from "../dedup.ts";
 import type { RawChunk } from "../types.ts";

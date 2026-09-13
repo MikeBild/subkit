@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+
 import { runMigrations } from "../../db/migrate.ts";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -195,7 +196,8 @@ test("deleted credentials are unavailable in both review and runtime without dec
 
 test("a failed audit rolls token, permission metadata and authority revision back together", async () => {
   const f = await fixture();
-  await ctx.pool.query(`CREATE FUNCTION subkit.reject_rotation_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+  await ctx.pool
+    .query(`CREATE FUNCTION subkit.reject_rotation_audit() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN IF NEW.action = 'credential.rotated' THEN RAISE EXCEPTION 'fixture audit unavailable'; END IF; RETURN NEW; END $$;
     CREATE TRIGGER reject_rotation_audit BEFORE INSERT ON subkit.audit_log FOR EACH ROW EXECUTE FUNCTION subkit.reject_rotation_audit()`);
   try {

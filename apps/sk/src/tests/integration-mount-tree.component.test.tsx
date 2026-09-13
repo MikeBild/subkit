@@ -15,6 +15,7 @@
 import { describe, expect, test } from "bun:test";
 import { Box, Text } from "ink";
 import { useEffect, useState } from "react";
+
 import {
   ErrorPanel,
   ResizeBoundary,

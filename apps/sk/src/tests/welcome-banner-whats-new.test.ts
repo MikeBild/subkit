@@ -3,10 +3,12 @@
 // (returns stale headline), no cache + remote success, no cache +
 // remote failure (returns null), and timeout behavior.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import {
   changelogHead,
   isFresh,

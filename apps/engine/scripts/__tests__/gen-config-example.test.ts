@@ -5,9 +5,11 @@
 //     as the empty string. Structured secret-bearing leaves may retain
 //     non-secret defaults, but every credential-shaped field must be empty.
 
-import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
+
 import { listConfigLeaves } from "../../src/config/walk.ts";
 
 const SCRIPT = join(import.meta.dir, "..", "gen-config-example.ts");

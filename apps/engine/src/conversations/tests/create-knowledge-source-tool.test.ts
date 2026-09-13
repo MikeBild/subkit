@@ -12,6 +12,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
+
 import { auditLog, knowledgeChunks, knowledgeSources } from "../../db/schema/index.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createKnowledgeSourceTool } from "../tools/generated/writes/create-knowledge-source.ts";
@@ -29,11 +30,11 @@ afterAll(async () => {
 });
 
 function toolCtx(): ToolContext {
-  // biome-ignore lint/suspicious/noExplicitAny: minimal stub matching ToolContext for in-process service calls
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub matching ToolContext for in-process service calls
   const engineClientStub: any = {
     context: { actor_id: ctx.user_id, actor_type: "user" },
     knowledgeSources: {
-      // biome-ignore lint/suspicious/noExplicitAny: in-process service forwarding
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- in-process service forwarding
       create: async (params: any) => {
         const { createKnowledgeSource } = await import("../../knowledge/service.ts");
         return createKnowledgeSource(
@@ -53,7 +54,7 @@ function toolCtx(): ToolContext {
         );
       },
     },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal audit stub
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal audit stub
     audit_write: async (entry: any) => {
       const { auditAwait } = await import("../../audit/audit.ts");
       const { AuditAction } = await import("../../audit/types.ts");

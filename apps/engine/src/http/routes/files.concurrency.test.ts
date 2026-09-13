@@ -3,9 +3,11 @@
 // Two parallel POSTs of the same sha256 from the same tenant must both
 // resolve to the same fid, only one row exists in the DB.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
+
 import { files } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 

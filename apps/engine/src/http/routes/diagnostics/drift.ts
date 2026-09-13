@@ -8,6 +8,7 @@
 // migrations embedded in the binary at compile time.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
   AuditAction,
@@ -15,7 +16,7 @@ import {
   DiagnosticsDriftReadMetadataSchema,
 } from "../../../audit/index.ts";
 import { getDb } from "../../../db/client.ts";
-import { DriftReportSchema, detectDrift, listEmbeddedMigrations } from "../../../db/migrate.ts";
+import { detectDrift, DriftReportSchema, listEmbeddedMigrations } from "../../../db/migrate.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { OPENAPI_INFO } from "../../openapi.ts";

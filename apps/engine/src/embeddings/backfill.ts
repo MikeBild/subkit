@@ -13,12 +13,13 @@
 // highest-signal words survive the model's 512-token truncation.
 
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
+
 import { type Executor, getDb } from "../db/client.ts";
 import { connectorDocumentChunks } from "../db/schema/connector_docs.ts";
 import { conversationMessages, conversations } from "../db/schema/conversations.ts";
 import { knowledgeChunks } from "../db/schema/knowledge_sources.ts";
 import { log } from "../logging/logger.ts";
-import { EMBEDDING_MODEL, embedChunkTextsPaced } from "./local-provider.ts";
+import { embedChunkTextsPaced, EMBEDDING_MODEL } from "./local-provider.ts";
 
 /** Extract the user's text from a conversation_messages.content jsonb, which
  *  may be a bare string, a `{ text }` object, or an array of content parts. */

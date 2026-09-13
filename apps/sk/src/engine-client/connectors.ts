@@ -4,6 +4,7 @@
 // Method group merged into `EngineClient` by `../engine-client.ts`.
 
 import { TransportError } from "@cli-core/errors.ts";
+
 import type { EngineClient } from "../engine-client.ts";
 
 export interface ConnectorPromotionResponse {

@@ -8,6 +8,7 @@ import type { ToolCallState } from "@cli-core/index.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo, useEffect, useState } from "react";
+
 import { BrowserUrlSchema, defaultOpenBrowser } from "../lib/open-browser.ts";
 import { badge, unwrapData } from "./authoring-cards-shared.tsx";
 

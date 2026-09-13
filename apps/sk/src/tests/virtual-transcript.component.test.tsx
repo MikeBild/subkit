@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import { ThemeProvider } from "@chat-ui/index.ts";
+import { describe, expect, test } from "bun:test";
 import { Text } from "ink";
+
 import { HeightCache } from "../repl/transcript/height-cache.ts";
 import {
   _computeSliceForTests as computeSlice,

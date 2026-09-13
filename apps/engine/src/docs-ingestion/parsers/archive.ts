@@ -20,6 +20,7 @@
 // `withParserTimeout` envelope bounds wall-clock.
 
 import { gunzipSync } from "node:zlib";
+
 import { walkZipEntries } from "../../utils/zip-walk.ts";
 import {
   type BinaryFormat,

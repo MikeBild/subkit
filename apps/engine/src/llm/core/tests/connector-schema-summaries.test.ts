@@ -11,6 +11,7 @@
 // Plus a pure-render assertion on `formatConnectorSchemaSummaries`.
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+
 import * as discoveryModule from "../../../connectors/discovery/index.ts";
 import { runDiscoveryCached } from "../../../connectors/discovery/service.ts";
 import type { DiscoveryResult } from "../../../connectors/discovery/types.ts";

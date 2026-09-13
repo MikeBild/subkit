@@ -15,6 +15,7 @@
 
 import { and, asc, eq, gt, max, sql } from "drizzle-orm";
 import pg from "pg";
+
 import type { Db } from "../db/client.ts";
 import { events as eventsTable, outboxCursors } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";

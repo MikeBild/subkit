@@ -25,6 +25,7 @@
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
+
 import type { EngineClient } from "./engine-client.ts";
 
 export interface MentionResolveOptions {

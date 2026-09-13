@@ -21,10 +21,11 @@
 // so there is no runtime import cycle.
 
 import { EngineError, TransportError } from "@cli-core/errors.ts";
+
 import {
   type DebugCorrelationFields,
-  type DebugMode,
   debugLog,
+  type DebugMode,
   extractTraceId,
   isDebugVerbose,
   serializeDebugError,
@@ -117,8 +118,8 @@ export type {
   SettingLeafEntry,
   SettingLeafMeta,
   SettingPutResult,
-  SettingSource,
   SettingsListResponse,
+  SettingSource,
 } from "./engine-client/settings.ts";
 export type {
   StatsAuditResponse,
@@ -146,6 +147,7 @@ export interface ClientOptions {
   debug_mode?: DebugMode | undefined;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging -- Resource methods are installed on the prototype below.
 export class EngineClient {
   // Internal transport plumbing. Not `private` because the resource
   // method modules under `./engine-client/` execute with
@@ -606,8 +608,10 @@ type ApiMethods<T> = { [K in keyof T]: OmitThisParameter<T[K]> };
 
 // Declaration merging: the per-resource method groups become part of
 // the `EngineClient` instance type…
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging -- The interface describes the resource methods installed on the prototype below.
 export interface EngineClient
-  extends ApiMethods<typeof agentMethods>,
+  extends
+    ApiMethods<typeof agentMethods>,
     ApiMethods<typeof chatMethods>,
     ApiMethods<typeof connectorsMethods>,
     ApiMethods<typeof conversationsMethods>,

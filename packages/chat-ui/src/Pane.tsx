@@ -11,6 +11,7 @@
 
 import { Box, Text, useInput } from "ink";
 import type React from "react";
+
 import { useTheme } from "./theme/Provider.tsx";
 
 export interface PaneProps {

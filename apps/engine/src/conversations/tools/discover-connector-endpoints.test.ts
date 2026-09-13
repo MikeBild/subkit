@@ -9,6 +9,7 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import * as discoveryModule from "../../connectors/discovery/index.ts";
 import { DiscoveryError, type DiscoveryResult } from "../../connectors/discovery/types.ts";
 import { createConnector } from "../../connectors/service.ts";

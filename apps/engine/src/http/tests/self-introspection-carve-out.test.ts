@@ -6,9 +6,11 @@
 // route under `identity/` cannot inherit the "self-introspection"
 // pass by copy-pasting the comment block. R5-S1 review fix.
 
-import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
+
 import { SELF_INTROSPECTION_ROUTES } from "../../rbac/index.ts";
 
 const IDENTITY_ROUTES_DIR = "apps/engine/src/http/routes/identity";

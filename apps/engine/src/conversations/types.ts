@@ -2,6 +2,7 @@
 // and HTTP / MCP layers.
 
 import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
+
 import type { AuthType, DriverName, Environment } from "../connectors/types.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 import type { Citation } from "./citations.ts";
@@ -168,10 +169,7 @@ export interface ConversationToolCallRecord {
 }
 
 export type AuthoringMode =
-  | "onboarding"
-  | "connector_authoring"
-  | "workflow_authoring"
-  | "resume_review";
+  "onboarding" | "connector_authoring" | "workflow_authoring" | "resume_review";
 
 export type AuthoringSurfaceMode = "connector" | "workflow" | "execution" | "diagnosis";
 

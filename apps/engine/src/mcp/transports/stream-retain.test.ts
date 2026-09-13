@@ -13,6 +13,7 @@
 // parameter instead of waiting out the production default.
 
 import { describe, expect, test } from "bun:test";
+
 import { isKeepaliveOnly, trackStreamLifetime } from "./session-lease.ts";
 
 const SILENT_MS = 10;

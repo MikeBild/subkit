@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import type { Config } from "../config/schema.ts";
 import { ConfigSchema } from "../config/schema.ts";
 import { buildDefaultRegistry } from "./server.ts";

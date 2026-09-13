@@ -6,6 +6,7 @@
 // stays narrowly focused on catalog visibility + provider contracts.
 
 import { describe, expect, test } from "bun:test";
+
 import { listTools } from "../../conversations/tools/index.ts";
 import { conversationToolProvider, staticToolProvider } from "../index.ts";
 import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../policy.ts";
@@ -109,6 +110,9 @@ describe("tools/registry — providers (active)", () => {
 
 describe("tools/registry — pending (todo)", () => {
   test.todo("get(name) returns the same descriptor regardless of which surface asked", () => {});
-  test.todo("list({surface:'mcp', mcpMode:'authoring'}) is a strict superset of product (modulo disabled descriptors)", () => {});
+  test.todo(
+    "list({surface:'mcp', mcpMode:'authoring'}) is a strict superset of product (modulo disabled descriptors)",
+    () => {},
+  );
   test.todo("list({surface:'mcp', mcpMode:'admin'}) is a strict superset of authoring", () => {});
 });

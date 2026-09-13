@@ -32,6 +32,7 @@
 // server.
 
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+
 import { tenantId } from "./_common.ts";
 import { connectors } from "./connectors.ts";
 import { tenants } from "./identity.ts";

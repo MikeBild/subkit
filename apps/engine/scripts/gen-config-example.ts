@@ -33,15 +33,15 @@ async function main(): Promise<void> {
     );
     process.exit(2);
   }
-  // Format through biome so the generated file is byte-identical to what
+  // Format through Prettier so the generated file is byte-identical to what
   // `bun run lint` expects — `JSON.stringify` always multi-lines arrays
-  // while biome keeps short ones inline, which would otherwise leave the
+  // while Prettier keeps short ones inline, which would otherwise leave the
   // generated example perpetually lint-dirty.
   const raw = JSON.stringify(parsed.data, null, 2);
-  const proc = Bun.spawn(
-    ["bunx", "biome", "format", "--stdin-file-path=subkit.config.example.json"],
-    { stdin: new TextEncoder().encode(raw), stdout: "pipe" },
-  );
+  const proc = Bun.spawn(["bun", "x", "prettier", "--stdin-filepath=subkit.config.example.json"], {
+    stdin: new TextEncoder().encode(raw),
+    stdout: "pipe",
+  });
   const formatted = await new Response(proc.stdout).text();
   await proc.exited;
   process.stdout.write(formatted.endsWith("\n") ? formatted : `${formatted}\n`);

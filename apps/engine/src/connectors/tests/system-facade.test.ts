@@ -4,6 +4,7 @@
 // file proves the facade composes them correctly.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createConnector } from "../service.ts";

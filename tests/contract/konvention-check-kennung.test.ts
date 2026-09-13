@@ -33,12 +33,13 @@
 // It lives in tests/contract/ because CI's shard job runs `apps packages` only
 // (LOCAL-SK-SCRIPTS-TESTS-NICHT-IN-CI); a guard over a mandatory gate stage that
 // CI never runs is just another comment. `bun run test:contract` runs this.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium } from "playwright";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -159,14 +160,14 @@ describe("the convention check asks whose console answered", () => {
     // reports "foreign document" about its own console.
     // The expectation IS the script's source text; a template literal would
     // resolve it instead of checking it.
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
+    // eslint-disable-next-line no-template-curly-in-string -- the source text is checked, not its result
     expect(library).toContain('<meta name="${IDENTITY_META}" content="…">.');
     expect(library).toContain("a finding about THIS repository");
   });
 
   test("a foreign console is NAMED, not merely rejected", () => {
     expect(library).toContain("Its title reads");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
+    // eslint-disable-next-line no-template-curly-in-string -- the source text is checked, not its result
     expect(library).toContain("this is not ${expected} but ${delivered}");
   });
 
@@ -217,7 +218,7 @@ describe("the convention check asks whose console answered", () => {
 
   test("the report reads the identity of the LAST answer", () => {
     expect(code).toContain("stand.identity === null");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
+    // eslint-disable-next-line no-template-curly-in-string -- the source text is checked, not its result
     expect(code).toContain("identity ${stand.identity} (from");
   });
 
@@ -247,7 +248,7 @@ describe("the convention check asks whose console answered", () => {
     // Before: exit 1 with 16 invented "page does not mount" breaches and
     // "aborted at route 27 of 27 ... 0 were never looked at". After: exit 2.
     const probe = code.indexOf("await assertStandStillAnswers(error);");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
+    // eslint-disable-next-line no-template-curly-in-string -- the source text is checked, not its result
     const write = code.indexOf('breach("§6", `/${route}`, `page does not mount:');
     expect(probe, "the sweep asks whether anybody still answers").toBeGreaterThan(0);
     expect(write, "the mount breach is still written").toBeGreaterThan(0);

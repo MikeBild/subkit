@@ -3,10 +3,12 @@
 // Drives the compiled CLI through the official MCP client transport so the
 // local stdio proxy is covered as a real MCP server, not as a direct import.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import path from "node:path";
+
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { SK_BIN } from "./_helpers/pty.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 

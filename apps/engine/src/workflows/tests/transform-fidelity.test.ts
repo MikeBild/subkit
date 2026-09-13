@@ -26,10 +26,12 @@
 // production-fixtures.test.ts's `*.json` file filter does not pick them
 // up as workflow DAGs.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, test } from "bun:test";
+
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");

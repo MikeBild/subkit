@@ -53,8 +53,7 @@ export interface GateWorkflowRunRbacParams {
 }
 
 export type WorkflowRunRbacDecision =
-  | { allow: true }
-  | { allow: false; reason: string; error_message: string };
+  { allow: true } | { allow: false; reason: string; error_message: string };
 
 /**
  * Evaluate `workflow:run` on the given workflow and write a

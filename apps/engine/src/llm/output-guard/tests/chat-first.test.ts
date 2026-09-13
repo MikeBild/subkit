@@ -5,6 +5,7 @@
 // only-surface-is-this-chat invariant.
 
 import { describe, expect, it } from "bun:test";
+
 import { chatFirstScanner } from "../scanners/chat-first.ts";
 
 const ctx = {};

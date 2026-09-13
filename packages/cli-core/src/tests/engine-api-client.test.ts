@@ -2,6 +2,7 @@
 // round-trip and the auth middleware is applied.
 
 import { describe, expect, test } from "bun:test";
+
 import { createEngineClient } from "../engine-api/client.ts";
 
 describe("createEngineClient", () => {

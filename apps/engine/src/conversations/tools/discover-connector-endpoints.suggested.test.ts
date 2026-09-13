@@ -7,6 +7,7 @@
 // the field is omitted entirely so the LLM does not see noise.
 
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
+
 import * as discoveryModule from "../../connectors/discovery/index.ts";
 import type { DiscoveredEndpoint, DiscoveryResult } from "../../connectors/discovery/types.ts";
 import { tenants } from "../../db/schema/identity.ts";

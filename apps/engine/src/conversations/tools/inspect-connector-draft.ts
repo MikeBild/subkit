@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { withConnectorInspection } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";

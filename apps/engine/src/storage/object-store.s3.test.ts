@@ -16,8 +16,9 @@
 // The probe therefore happens once, at module scope, and the suites are gated
 // with `describe.skipIf` / `test.skipIf` so bun counts them as skipped.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { MULTIPART_PART_BYTES, S3ObjectStore } from "./object-store.ts";
 
 interface MinioHandle {

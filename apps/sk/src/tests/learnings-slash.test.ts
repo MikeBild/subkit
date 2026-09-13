@@ -6,8 +6,9 @@
 // can't diverge). The registry gates it on skill:read; the dispatch path must
 // honor that gate before submitting.
 
-import { describe, expect, mock, test } from "bun:test";
 import type { SkSessionState } from "@cli-core/index.ts";
+import { describe, expect, mock, test } from "bun:test";
+
 import { dispatchSlashSubmit, type SlashDispatchContext } from "../ink-app/submit-pipeline.ts";
 import { REVIEW_LEARNINGS_STARTER_PROMPT } from "../repl/task-actions.ts";
 import { findSlashCommand, INK_INTERCEPTED_ENGINE_SLASHES, type PersonaProbe } from "../slash.ts";

@@ -2,8 +2,9 @@
 // engine's /v1/diagnostics/errors surface — no spawn, no ssh, no
 // doctl, no environment-variable side channels.
 
-import { describe, expect, test } from "bun:test";
 import { initialSessionState } from "@cli-core/index.ts";
+import { describe, expect, test } from "bun:test";
+
 import type { EngineClient, EngineErrorEntry } from "../engine-client.ts";
 import { handleSlash } from "../repl/slash/handler.ts";
 

@@ -12,8 +12,9 @@ import * as prompts from "@clack/prompts";
 import { exitCodeFor, isEngineError, wasReported } from "@cli-core/errors";
 import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
 import { VERSION } from "@cli-core/version.ts";
-import { type CommandDef, defineCommand, runCommand, type SubCommandsDef, showUsage } from "citty";
+import { type CommandDef, defineCommand, runCommand, showUsage, type SubCommandsDef } from "citty";
 import pc from "picocolors";
+
 import { agentCommand } from "./commands/agent.ts";
 import { apiKeysCommand } from "./commands/apikeys.ts";
 import { auditCommand } from "./commands/audit.ts";
@@ -78,7 +79,7 @@ import { personaCanSee, recordPersonaHint } from "./persona-probe.ts";
 // `sk -p "..."` (headless) and `sk` invocations on a non-TTY stdout
 // (CI pipes, container exec). The headless checkpoint below dynamically
 // imports the REPL only when we actually need it.
-type RunInkRepl = typeof import("./ink-repl.ts")["runInkRepl"];
+type RunInkRepl = (typeof import("./ink-repl.ts"))["runInkRepl"];
 async function loadInkRepl(): Promise<RunInkRepl> {
   const mod = await import("./ink-repl.ts");
   return mod.runInkRepl;

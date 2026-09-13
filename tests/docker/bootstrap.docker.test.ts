@@ -6,13 +6,15 @@
 // entrypoint / binary-packaging / PostgreSQL-connectivity / binding regressions
 // the in-process e2e track structurally cannot see.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import path from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import {
   collectContainerLogs,
-  type DockerEnv,
   dockerApi,
   dockerBoot,
+  type DockerEnv,
   issueAdminKeyViaExec,
   skDocker,
 } from "./_harness.ts";

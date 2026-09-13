@@ -25,6 +25,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+
 import { RELEASE_PUBLIC_KEY } from "./release-public-key.ts";
 
 export const GITHUB_REPO = "mikebild/subkit";
@@ -498,7 +499,7 @@ export async function performUpdate(
   mkdirSync(tmpDir, { recursive: true });
   const tmpPath = join(tmpDir, `${config.binaryName}.download.${process.pid}`);
 
-  let actualHash = "";
+  let actualHash: string;
   try {
     const binRes = await fetchImpl(asset.url);
     if (!binRes.ok) throw new Error(`failed to download ${assetName}: ${binRes.status}`);
@@ -565,6 +566,7 @@ export async function performUpdate(
         const cause = err instanceof Error ? err.message : String(err);
         throw new Error(
           `macOS codesign failed for ${tmpPath} — install Xcode command-line tools (xcode-select --install) or check spctl: ${cause}`,
+          { cause: err },
         );
       }
     }

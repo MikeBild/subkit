@@ -3,6 +3,7 @@
 // withContext({trace_id, request_source}).
 
 import type { MiddlewareHandler } from "hono";
+
 import { withContext } from "../../logging/context.ts";
 import type { AppEnv } from "../openapi.ts";
 

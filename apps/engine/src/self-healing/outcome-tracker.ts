@@ -9,6 +9,7 @@
 // This keeps the feedback loop honest without retaining data forever.
 
 import { and, eq, isNull, sql } from "drizzle-orm";
+
 import type { Executor } from "../db/client.ts";
 import { getDb } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/index.ts";

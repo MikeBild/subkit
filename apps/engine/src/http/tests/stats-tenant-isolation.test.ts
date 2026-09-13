@@ -18,8 +18,10 @@
 //      tenant A's id but whose `tenant_id` column is tenant B's id, then
 //      verify that tenant A's query does NOT see it.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import {
   apiKeys,
   auditLog,

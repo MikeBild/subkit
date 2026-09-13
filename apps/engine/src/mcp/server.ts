@@ -8,6 +8,7 @@
 import { VERSION } from "@cli-core/version.ts";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { ElicitResultSchema as McpElicitResultSchema } from "@modelcontextprotocol/sdk/types.js";
+
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { listElicitationsForConversation } from "../conversations/elicitations.ts";
 import { registerNativeUrlElicitationCompletion } from "../conversations/native-url-elicitation.ts";

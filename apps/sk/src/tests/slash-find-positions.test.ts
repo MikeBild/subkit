@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { findSlashCommandPositions, spanAtCursor } from "../repl/slash/findPositions.ts";
 
 describe("findSlashCommandPositions", () => {

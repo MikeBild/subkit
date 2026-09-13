@@ -12,8 +12,10 @@
 // where signing + retries + circuit breaking happen.
 
 import { createHash, randomUUID } from "node:crypto";
+
 import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
+
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import type { ChatPlatform } from "../../chat/types.ts";
 import type { Db } from "../../db/client.ts";

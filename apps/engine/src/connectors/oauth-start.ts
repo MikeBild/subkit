@@ -12,6 +12,7 @@
 // reuse the exact same dance without duplicating the logic.
 
 import { and, eq } from "drizzle-orm";
+
 import {
   AuditAction,
   auditAwait,
@@ -20,8 +21,8 @@ import {
 } from "../audit/index.ts";
 import * as credsvc from "../credentials/index.ts";
 import {
-  DynamicRegistrationError,
   dynamicallyRegisterClient,
+  DynamicRegistrationError,
   runClientCredentialsJsonGrant,
   startAuthorizationCode,
 } from "../credentials/index.ts";
@@ -37,8 +38,7 @@ import {
 } from "./template-binding.ts";
 
 export type OAuthDanceResult =
-  | { kind: "browser"; authorization_url: string; state: string }
-  | { kind: "done" };
+  { kind: "browser"; authorization_url: string; state: string } | { kind: "done" };
 
 export interface BeginConnectorOAuthDanceOptions {
   db: Db;

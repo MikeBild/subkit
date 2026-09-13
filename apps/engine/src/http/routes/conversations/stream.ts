@@ -8,6 +8,7 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
+
 import * as svc from "../../../conversations/index.ts";
 import {
   harvestCitationsFromPersisted,
@@ -31,9 +32,8 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!detail) throw new NotFoundError("conversation");
 
     return streamSSE(c, async (stream) => {
-      const { listElicitationsForConversation } = await import(
-        "../../../conversations/elicitations.ts"
-      );
+      const { listElicitationsForConversation } =
+        await import("../../../conversations/elicitations.ts");
       const allElicitations = await listElicitationsForConversation(principal.tenant_id, id, db);
       const pendingElicitations = allElicitations.filter((e) => e.status === "pending");
       // Replay the conversation as a single chronologically-ordered
@@ -209,8 +209,7 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
       // Compute turn usage for the completed event so CLI clients
       // (sk) can surface token counts without a second round-trip.
       let usage:
-        | { turn_tokens: number; remaining_monthly_budget_tokens: number | null }
-        | undefined;
+        { turn_tokens: number; remaining_monthly_budget_tokens: number | null } | undefined;
       try {
         const used = await monthlyUsage(principal.tenant_id, db);
         const route = await resolveModelRoute(principal.tenant_id, db);

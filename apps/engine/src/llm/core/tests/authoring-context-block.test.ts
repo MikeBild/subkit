@@ -1,6 +1,7 @@
 // Pure-render tests for renderAuthoringContextBlock — no DB.
 
 import { describe, expect, it } from "bun:test";
+
 import { renderAuthoringContextBlock } from "../authoring-context-block.ts";
 
 describe("renderAuthoringContextBlock — Document Analysis section", () => {

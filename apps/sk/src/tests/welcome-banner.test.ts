@@ -3,6 +3,7 @@
 // here we just lock the tip rotation logic.
 
 import { describe, expect, test } from "bun:test";
+
 import { BANNER_TIPS, pickTip } from "../repl/welcome-banner.tsx";
 
 describe("sk welcome banner", () => {

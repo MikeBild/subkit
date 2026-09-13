@@ -15,6 +15,7 @@ import {
   type PromptArgument,
 } from "@modelcontextprotocol/sdk/types.js";
 import { and, desc, eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { skills } from "../../db/schema/index.ts";

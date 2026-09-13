@@ -21,6 +21,7 @@ import {
   ClientCredentialsProvider,
   PrivateKeyJwtProvider,
 } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
+
 import {
   getCredentialForConnector,
   getOAuth2ClientCredential,

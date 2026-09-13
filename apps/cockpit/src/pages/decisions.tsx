@@ -4,6 +4,7 @@ import { CircleCheck, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
+
 import { ApiError } from "@/api/client";
 import {
   approvePatchCandidate,
@@ -23,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
+
 import {
   type DecidableItem,
   type DecidableKind,

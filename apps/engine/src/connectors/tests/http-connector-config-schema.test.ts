@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { HttpConnectorConfig } from "../types.ts";
 
 describe("HttpConnectorConfig — nested oauth shape", () => {

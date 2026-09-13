@@ -17,9 +17,11 @@
 // the HTTP envelope (auth, idempotency, persistence, audit) — not
 // re-testing scanner internals.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { AuditAction } from "../../audit/types.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import { apiKeys, selfHealingScans, users } from "../../db/schema/index.ts";

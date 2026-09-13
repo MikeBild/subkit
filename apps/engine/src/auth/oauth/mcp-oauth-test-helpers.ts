@@ -3,7 +3,9 @@
 // HttpTestServer (unique label → isolated test DB) via setupMcpOauthServer().
 
 import { createHash } from "node:crypto";
+
 import { SignJWT } from "jose";
+
 import { getConfig, setConfigKey } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { sessions } from "../../db/schema/index.ts";

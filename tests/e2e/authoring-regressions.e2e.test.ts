@@ -1,16 +1,19 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server as HttpServer } from "node:http";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { conversations, tenants } from "../../apps/engine/src/db/schema/index.ts";
 import type { ConverseMockStep } from "../../apps/engine/src/llm/mock-provider.ts";
 import { getMockProvider } from "../../apps/engine/src/llm/mock-provider.ts";
 import { getTestNow } from "../../apps/engine/src/test-helpers/determinism/clock.ts";
+import { startLocalTargetServer } from "../../apps/engine/src/test-helpers/local-http.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
 
 let env: E2EEnv;
-let httpServer: ReturnType<typeof Bun.serve>;
-let graphqlServer: ReturnType<typeof Bun.serve>;
+let httpServer: Awaited<ReturnType<typeof startLocalTargetServer>>;
+let graphqlServer: Awaited<ReturnType<typeof startLocalTargetServer>>;
 let s3Server: HttpServer;
 let httpBaseUrl = "";
 let graphqlBaseUrl = "";
@@ -18,41 +21,31 @@ let s3BaseUrl = "";
 
 beforeAll(async () => {
   env = await boot("authoring-regressions", { llm: "mock" });
-  httpServer = Bun.serve({
-    port: 0,
-    // Pinned: the suite dials 127.0.0.1, so the server must bind it too.
-    hostname: "127.0.0.1",
-    async fetch(req) {
-      const url = new URL(req.url);
-      // Suffix matching: each connector-creating test uses a DISTINCT
-      // base_url prefix (e.g. /papi, /zxqp) on this one server, because a
-      // green probe AUTO-PERSISTS its connector and
-      // start_connector_from_description dedupes by base_url — two tests
-      // sharing the exact base_url would short-circuit into the reuse
-      // envelope instead of exercising a fresh draft.
-      if (url.pathname.endsWith("/health"))
-        return Response.json({ ok: true, source: "authoring-e2e" });
-      if (url.pathname.endsWith("/protected")) {
-        return Response.json({ error: "unauthorized" }, { status: 401 });
-      }
-      if (url.pathname.endsWith("/slow")) {
-        // Simulates a 250ms upstream RTT — must exceed the 100ms probe
-        // timeout used by the probe-timeout test below, and long enough
-        // to let the cancel-race test (line ~470) preempt the request.
-        await new Promise((resolve) => setTimeout(resolve, 250)); // allow-wall-clock: simulates slow upstream for probe-timeout + cancel-race tests
-        return Response.json({ ok: true, delayed: true });
-      }
-      return new Response("not found", { status: 404 });
-    },
+  httpServer = await startLocalTargetServer(async (req) => {
+    const url = new URL(req.url);
+    // Suffix matching: each connector-creating test uses a DISTINCT
+    // base_url prefix (e.g. /papi, /zxqp) on this one server, because a
+    // green probe AUTO-PERSISTS its connector and
+    // start_connector_from_description dedupes by base_url — two tests
+    // sharing the exact base_url would short-circuit into the reuse
+    // envelope instead of exercising a fresh draft.
+    if (url.pathname.endsWith("/health"))
+      return Response.json({ ok: true, source: "authoring-e2e" });
+    if (url.pathname.endsWith("/protected")) {
+      return Response.json({ error: "unauthorized" }, { status: 401 });
+    }
+    if (url.pathname.endsWith("/slow")) {
+      // Simulates a 250ms upstream RTT — must exceed the 100ms probe
+      // timeout used by the probe-timeout test below, and long enough
+      // to let the cancel-race test (line ~470) preempt the request.
+      await new Promise((resolve) => setTimeout(resolve, 250)); // allow-wall-clock: simulates slow upstream for probe-timeout + cancel-race tests
+      return Response.json({ ok: true, delayed: true });
+    }
+    return new Response("not found", { status: 404 });
   });
-  graphqlServer = Bun.serve({
-    port: 0,
-    // Pinned: the suite dials 127.0.0.1, so the server must bind it too.
-    hostname: "127.0.0.1",
-    async fetch(req) {
-      if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
-      return Response.json({ data: { __typename: "Query" } });
-    },
+  graphqlServer = await startLocalTargetServer(async (req) => {
+    if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+    return Response.json({ data: { __typename: "Query" } });
   });
   s3Server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "127.0.0.1"}`);
@@ -79,8 +72,8 @@ beforeAll(async () => {
     s3Server.once("error", reject);
     s3Server.listen(0, "127.0.0.1", () => resolve());
   });
-  httpBaseUrl = `http://127.0.0.1:${httpServer.port}`;
-  graphqlBaseUrl = `http://127.0.0.1:${graphqlServer.port}`;
+  httpBaseUrl = httpServer.url;
+  graphqlBaseUrl = graphqlServer.url;
   const s3Address = s3Server.address();
   if (!s3Address || typeof s3Address === "string") {
     throw new Error("failed to resolve s3 stub port");
@@ -89,8 +82,8 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
-  httpServer.stop(true);
-  graphqlServer.stop(true);
+  await httpServer.stop();
+  await graphqlServer.stop();
   await new Promise<void>((resolve, reject) => {
     s3Server.close((error) => {
       if (error) reject(error);

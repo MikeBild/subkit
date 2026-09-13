@@ -14,6 +14,7 @@
 // `wf_propose_step` (distinct from the built-in `propose_step` tool).
 
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";

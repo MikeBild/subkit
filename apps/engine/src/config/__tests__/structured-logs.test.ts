@@ -16,10 +16,12 @@
 // The logs are captured by intercepting process.stdout.write so the
 // test harness sees the same bytes a downstream operator would.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../loader.ts";
 
 interface CapturedLog {

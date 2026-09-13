@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, asc, eq } from "drizzle-orm";
+
 import { patchCandidates, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { approvePatchCandidate } from "../../self-healing/candidate-decision.ts";

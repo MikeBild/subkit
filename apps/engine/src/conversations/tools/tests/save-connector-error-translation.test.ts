@@ -7,9 +7,10 @@
 // [list_connectors, get_connector, update_connector]` and recovers
 // in a single turn.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const SRC = join(import.meta.dir, "..", "save-connector-draft.ts");
 

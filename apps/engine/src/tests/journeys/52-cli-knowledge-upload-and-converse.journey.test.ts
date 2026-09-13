@@ -21,10 +21,12 @@
 // Spec refs: docs/authors/authoring-workflows.md, docs/concepts/connectors.md
 //            plans/discover-knowledge-and-documentation-dreamy-falcon.md
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { knowledgeSourcesCommand } from "../../../../sk/src/commands/knowledge-sources.ts";
 import { connectors } from "../../db/schema/index.ts";
 import { getDocsSearchCacheStats, invalidateDocsCache } from "../../docs-ingestion/service.ts";
@@ -313,8 +315,7 @@ describe("journey 52: sk CLI knowledge upload → search → converse", () => {
     // ToolResult envelope is unwrapped before serialization), so hits
     // sit at `output.hits` directly.
     const output = toolResult?.output as
-      | { hits?: Array<{ fetched_at?: string | null }> }
-      | undefined;
+      { hits?: Array<{ fetched_at?: string | null }> } | undefined;
     const hits = output?.hits ?? [];
     expect(hits.length).toBeGreaterThan(0);
     const top = hits[0]!;

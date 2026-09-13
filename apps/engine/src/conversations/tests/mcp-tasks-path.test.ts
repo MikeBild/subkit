@@ -12,10 +12,11 @@
 //
 // Also pins `tasks/list` and `tasks/cancel` of an already-terminal task.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Task } from "@modelcontextprotocol/sdk/types.js";
 import { CallToolResultSchema, CreateTaskResultSchema } from "@modelcontextprotocol/sdk/types.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { issueBrowserSession } from "../../auth/browser-session.ts";
 import { setConfigKey } from "../../config/loader.ts";
 import { connectors, mcpTasks } from "../../db/schema/index.ts";

@@ -24,6 +24,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { releaseVersionWasUsed } from "./release-history.ts";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");

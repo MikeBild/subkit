@@ -68,6 +68,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+
 import pLimit from "p-limit";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -307,7 +308,7 @@ async function probeWithBackoff(
     error: "no attempt made",
     url: req.url,
   };
-  let host = "";
+  let host: string;
   try {
     host = new URL(req.url).hostname;
   } catch {

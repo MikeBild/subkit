@@ -6,6 +6,7 @@
 // LLM sees on the tool_result message.
 
 import { describe, expect, test } from "bun:test";
+
 import { listVendorRecipes } from "../../../llm/manifests/vendor-recipes.ts";
 import { getVendorRecipeTool } from "../get-vendor-recipe.ts";
 import type { ToolContext } from "../index.ts";

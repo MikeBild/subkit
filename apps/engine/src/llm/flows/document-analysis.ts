@@ -4,6 +4,7 @@
 // Result: DocumentAnalysisResult with endpoints, auth, confidence.
 
 import { sql } from "drizzle-orm";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { type Db, getDb } from "../../db/client.ts";
@@ -18,14 +19,7 @@ import { parsePostman } from "./document-parsers/postman.ts";
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 
 export type DocumentFormat =
-  | "openapi"
-  | "graphql"
-  | "postman"
-  | "har"
-  | "pdf"
-  | "markdown"
-  | "image"
-  | "unknown";
+  "openapi" | "graphql" | "postman" | "har" | "pdf" | "markdown" | "image" | "unknown";
 
 export interface EndpointSpec {
   path: string;

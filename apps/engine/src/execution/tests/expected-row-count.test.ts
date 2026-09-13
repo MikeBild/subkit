@@ -3,6 +3,7 @@
 // {min}/{max}/{min,max} = half-open or two-sided bounds.
 
 import { describe, expect, test } from "bun:test";
+
 import { evaluateExpectedRowCount } from "../expected-row-count.ts";
 
 describe("evaluateExpectedRowCount · number form", () => {

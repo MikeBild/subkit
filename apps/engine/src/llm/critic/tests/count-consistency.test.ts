@@ -5,6 +5,7 @@
 // confidence 1.
 
 import { describe, expect, test } from "bun:test";
+
 import { detectCountInconsistencies } from "../count-consistency.ts";
 
 const codes = (t: string) => detectCountInconsistencies(t).map((i) => i.kind);

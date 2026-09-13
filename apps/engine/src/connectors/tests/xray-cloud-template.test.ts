@@ -10,6 +10,7 @@
 //   - operator_quirks.rate_limit mentions 300 req/5min
 
 import { describe, expect, test } from "bun:test";
+
 import { loadBuiltinTemplates } from "../templates.ts";
 
 const templates = loadBuiltinTemplates();

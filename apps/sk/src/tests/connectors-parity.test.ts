@@ -14,8 +14,9 @@
 // is in `tests/e2e/cross-cli.e2e.test.ts`'s scope; this contract test
 // is the lighter regression gate that runs on every PR.
 
-import { describe, expect, mock, test } from "bun:test";
 import type { SkSessionState } from "@cli-core/index.ts";
+import { describe, expect, mock, test } from "bun:test";
+
 import type { ResolvedProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
 import type { SlashHandlerContext } from "../repl/slash/handler.ts";

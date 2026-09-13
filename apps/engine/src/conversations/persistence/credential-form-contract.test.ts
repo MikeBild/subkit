@@ -9,6 +9,7 @@
 // typed the secret. The contract moves the failure to form creation.
 
 import { describe, expect, it } from "bun:test";
+
 import type { Db } from "../../db/client.ts";
 import {
   CREDENTIAL_FORM_FIELDS,

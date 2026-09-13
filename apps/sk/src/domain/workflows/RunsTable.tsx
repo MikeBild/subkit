@@ -12,6 +12,7 @@
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import { useMemo, useState } from "react";
+
 import type { StepStatus } from "./StepCarousel.tsx";
 
 export interface RunSummary {

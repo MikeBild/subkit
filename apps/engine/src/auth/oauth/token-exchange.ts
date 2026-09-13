@@ -22,8 +22,10 @@
 // and exchanges again.
 
 import { createHash, randomUUID } from "node:crypto";
+
 import { and, eq } from "drizzle-orm";
 import * as jose from "jose";
+
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { type Db, getDb } from "../../db/client.ts";

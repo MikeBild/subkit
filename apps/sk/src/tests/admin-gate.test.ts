@@ -7,6 +7,7 @@
 // not on which permission set was checked.
 
 import { describe, expect, test } from "bun:test";
+
 import { isAdminFromPermissions } from "../settings-ui/lib/admin-gate.ts";
 
 describe("isAdminFromPermissions", () => {

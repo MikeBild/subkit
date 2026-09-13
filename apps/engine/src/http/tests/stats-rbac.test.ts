@@ -11,9 +11,11 @@
 //   - An admin API key → 200 on all four routes.
 //   - Each 403 produces a `policy.denied` audit row.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { apiKeys, auditLog, portalTokens, systemAccounts, users } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";

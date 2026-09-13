@@ -9,6 +9,7 @@
 // /v1/diagnostics/llm.
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { getPool } from "../../../db/client.ts";
 import { getLastEventLoopLagMs, readMemoryUsage } from "../../../observability/index.ts";

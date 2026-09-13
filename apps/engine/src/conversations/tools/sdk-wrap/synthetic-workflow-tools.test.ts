@@ -10,9 +10,11 @@
 // mcp/capabilities/held-preview.test.ts; the workflows seeded here have no
 // write-classified steps, so they never mint an approval.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createServer } from "node:http";
+
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { AuditAction } from "../../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { auditLog } from "../../../db/schema/audit.ts";

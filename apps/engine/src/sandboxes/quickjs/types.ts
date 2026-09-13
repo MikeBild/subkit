@@ -35,13 +35,7 @@ export class SandboxError extends Error {
   constructor(
     message: string,
     public readonly cause_kind:
-      | "memory"
-      | "interrupt"
-      | "timeout"
-      | "syntax"
-      | "runtime"
-      | "marshal"
-      | "stdlib_init",
+      "memory" | "interrupt" | "timeout" | "syntax" | "runtime" | "marshal" | "stdlib_init",
     public readonly stats?: SandboxStats,
   ) {
     super(message);

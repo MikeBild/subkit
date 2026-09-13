@@ -78,7 +78,7 @@ export const placeholderScanner: Scanner = {
       // Fresh exec loop so the global flag's lastIndex does not stick across calls.
       p.re.lastIndex = 0;
       let m: RegExpExecArray | null;
-      // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
+      // eslint-disable-next-line no-cond-assign -- standard regex exec loop.
       while ((m = p.re.exec(text)) !== null) {
         const violation: Violation = {
           kind: p.kind,

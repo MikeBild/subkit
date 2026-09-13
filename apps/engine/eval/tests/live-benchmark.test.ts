@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { compareLiveAuthoringReports } from "../live-benchmark.ts";
 import type { LiveAuthoringReport, LiveScenarioScore } from "../live-report.ts";
 

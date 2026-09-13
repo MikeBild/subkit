@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { normalizeBaseUrl, requireConnectable } from "../discovery.ts";
 import {
   type AuthorizationServerMetadata,

@@ -8,6 +8,7 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
+
 import {
   asRecord,
   badge,

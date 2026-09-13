@@ -21,4 +21,4 @@ if [ "$current" = ".githooks" ]; then
   exit 0
 fi
 git config core.hooksPath .githooks
-printf '[setup-hooks] core.hooksPath → .githooks (pre-commit now runs biome + tsc)\n'
+printf '[setup-hooks] core.hooksPath → .githooks (pre-commit now runs ESLint + Prettier + TypeScript)\n'

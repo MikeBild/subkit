@@ -4,6 +4,7 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { sql } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
 import { getDb } from "../../db/client.ts";
 import { logger } from "../../logging/index.ts";

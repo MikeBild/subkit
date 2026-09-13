@@ -12,6 +12,7 @@
 // payload would lose the answer rather than improve it.
 
 import { describe, expect, it } from "bun:test";
+
 import type { EngineClient } from "../engine-client.ts";
 import { resolveMentions } from "../mentions.ts";
 

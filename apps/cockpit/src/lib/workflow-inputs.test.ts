@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { buildInput, inputFields, missingRequired } from "./workflow-inputs";
 
 const SCHEMA = {

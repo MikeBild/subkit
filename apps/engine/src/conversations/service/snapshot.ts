@@ -2,6 +2,7 @@
 // prompt assembly would inject. No LLM calls.
 
 import { and, asc, eq } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
 import { getConversationBudgetReport } from "../../llm/core/conversation-budget-report.ts";
 import { computeGroundingStatus } from "../grounding-staleness.ts";

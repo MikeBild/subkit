@@ -4,6 +4,7 @@
 //   - apply different budgets for success and error kinds.
 
 import { describe, expect, test } from "bun:test";
+
 import { truncatedToolResultValue, truncateToolResult } from "../tool-result-truncate.ts";
 
 function bigPayload(approxBytes: number): Record<string, unknown> {

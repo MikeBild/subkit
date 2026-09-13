@@ -9,6 +9,7 @@
 
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { upsertCredential } from "../../../credentials/service.ts";
 import { connectors, credentials, tenants } from "../../../db/schema/index.ts";

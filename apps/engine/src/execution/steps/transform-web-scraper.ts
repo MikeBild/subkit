@@ -123,7 +123,7 @@ export function runReadability(p: RunWebScraperParams): StepResult {
     );
   }
 
-  let parsed: ReturnType<Readability["parse"]> | null = null;
+  let parsed: ReturnType<Readability["parse"]> | null;
   try {
     const dom = new JSDOM(html, { url: url || undefined });
     const reader = new Readability(dom.window.document);

@@ -11,6 +11,7 @@
 // block.
 
 import { createHash } from "node:crypto";
+
 import type { DiscoveredConnectorEndpoints } from "./endpoint-grounding.ts";
 import { workflowDefinitionFingerprint } from "./preview-judge.ts";
 import { canonicalJson } from "./text-line-diff.ts";

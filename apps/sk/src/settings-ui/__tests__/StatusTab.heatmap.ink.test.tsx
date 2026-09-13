@@ -4,6 +4,7 @@
 // checks the 1/2/3 window toggles still work after the merge.
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+
 import type { EngineClient } from "../../engine-client.ts";
 import { renderInk } from "../../tests/helpers/ink.tsx";
 import type { FormField } from "../lib/zod-to-form-fields.ts";

@@ -19,9 +19,11 @@
 //   - a NON-M2M oauth2 draft keeps the existing browser-flow gate
 //     (`authenticate_oauth_required`).
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createServer } from "node:http";
+
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { connectors, credentials } from "../../../db/schema/index.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import {

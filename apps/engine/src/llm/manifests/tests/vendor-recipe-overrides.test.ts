@@ -2,6 +2,7 @@
 // Uses the testcontainer-backed db helper so the real row + index is exercised.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { tenants, vendorRecipeOverrides } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { getVendorRecipe, getVendorRecipeForTenant } from "../vendor-recipes.ts";

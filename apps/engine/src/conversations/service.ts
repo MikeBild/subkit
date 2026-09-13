@@ -26,52 +26,46 @@ export {
   appendUserMessage,
 } from "./service/append.ts";
 export {
+  compactConversation,
   type CompactConversationParams,
   type CompactConversationResult,
-  compactConversation,
   undoLastDraftMutation,
 } from "./service/compact.ts";
 export {
+  createConversation,
   type CreateConversationParams,
   type CreateConversationResult,
-  createConversation,
 } from "./service/create.ts";
 export {
   ConversationNotFoundError,
   ElicitationActorMismatchError,
   ElicitationNotFoundError,
   ElicitationValidationError,
-  type RespondElicitationParams,
   respondElicitation,
+  type RespondElicitationParams,
 } from "./service/elicit.ts";
 export {
   FORK_COPY_MESSAGE_CAP,
+  forkConversation,
   type ForkConversationParams,
   type ForkConversationResult,
-  forkConversation,
 } from "./service/fork.ts";
 export { getConversation } from "./service/get.ts";
 export {
-  type ConversationListItem,
   cancelConversation,
+  type ConversationListItem,
   countConversations,
-  type ListConversationsParams,
   listConversations,
-  type PatchConversationParams,
+  type ListConversationsParams,
   patchConversation,
+  type PatchConversationParams,
   setConversationHidden,
 } from "./service/lifecycle.ts";
-export {
-  type RunConversationTurnParams,
-  runConversationTurn,
-} from "./service/run-turn.ts";
+export { runConversationTurn, type RunConversationTurnParams } from "./service/run-turn.ts";
 export {
   type ConversationTurnOutcome,
   ElicitationAlreadyResolvedError,
   PendingElicitationBlockedError,
   type PendingElicitationSummary,
 } from "./service/shared.ts";
-export {
-  type ContextSnapshot,
-  getContextSnapshot,
-} from "./service/snapshot.ts";
+export { type ContextSnapshot, getContextSnapshot } from "./service/snapshot.ts";

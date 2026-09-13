@@ -5,10 +5,12 @@
 // entries (a 276 MB config) and hung engine boot in production. The merge now
 // uses deepMergeReplaceArrays (replace, not concat). These tests pin that.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { METRICS_SCOPE } from "../../auth/scopes.ts";
 import { _resetConfigForTests, getConfig, loadConfig, setConfigKey } from "../loader.ts";
 import { ConfigSchema } from "../schema.ts";

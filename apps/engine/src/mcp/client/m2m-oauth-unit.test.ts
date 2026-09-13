@@ -13,6 +13,7 @@
 //   - wrong tenant → pool seam would skip the credential (unit aspect: credential shape)
 
 import { describe, expect, test } from "bun:test";
+
 import { parseAuthConfig } from "./registry.ts";
 
 describe("parseAuthConfig — oauth2_client_credentials", () => {

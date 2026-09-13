@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { getBuiltinTemplate } from "../connectors/templates.ts";
 import { validateConnectorDraft } from "./connector-draft.ts";
 

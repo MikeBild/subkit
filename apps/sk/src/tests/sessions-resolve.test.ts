@@ -1,12 +1,14 @@
 // Tests for resolveSessionRef — the alias/id resolution used by the
 // new `sk ls/show/rename/rm` commands.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { getTestNow } from "../../../engine/src/test-helpers/determinism/clock.ts";
-import { resolveSessionRef, type SessionMetadata, saveSessionMetadata } from "../sessions.ts";
+import { resolveSessionRef, saveSessionMetadata, type SessionMetadata } from "../sessions.ts";
 
 const TEST_NOW_MS = getTestNow();
 

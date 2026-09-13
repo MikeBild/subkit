@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { loadConnectorSystem } from "../../connectors/system.ts";
 import { upsertCredential } from "../../credentials/service.ts";

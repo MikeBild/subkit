@@ -3,6 +3,7 @@
 // asserts that only major-gap rows produce DriftSignal entries.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { requestHooks, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { STDLIB_VERSION } from "../../sandboxes/quickjs/stdlib/index.ts";

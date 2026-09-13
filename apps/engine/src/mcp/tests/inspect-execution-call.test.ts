@@ -8,6 +8,7 @@
 // conversation tools (same pattern as tools-list-disabled.test.ts).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../../tools/policy.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
@@ -30,8 +31,7 @@ describe("mcp inspect_execution — surface-agnostic tenant_read", () => {
     const tool = result.tools.find((t) => t.name === "inspect_execution");
     expect(tool).toBeDefined();
     const meta = (tool as Record<string, unknown>)._meta as
-      | { subkit?: { disabled?: unknown } }
-      | undefined;
+      { subkit?: { disabled?: unknown } } | undefined;
     expect(meta?.subkit?.disabled).toBeUndefined();
   });
 

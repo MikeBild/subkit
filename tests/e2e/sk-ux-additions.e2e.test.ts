@@ -8,11 +8,12 @@
 // and the non-TTY no-profile path never touches the network. Tests are
 // skipped when dist/sk doesn't exist (CI builds it first).
 
-import { describe, expect, test } from "bun:test";
-import { type SpawnSyncReturns, spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path, { resolve } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const REPO_ROOT = resolve(import.meta.dir, "..", "..");
 const BINARY = resolve(REPO_ROOT, "dist", "sk");

@@ -5,10 +5,10 @@ export {
   collectTokenNames,
   hasPlaceholders,
   type ParseError,
+  parsePlaceholders,
   type ParseResult,
   type Placeholder,
   type PlaceholderKind,
-  parsePlaceholders,
   stripPlaceholders,
 } from "./parser.ts";
 
@@ -17,9 +17,9 @@ export {
   describeConnectorPlaceholders,
   type Environment,
   flattenCredential,
-  type ResolveResult,
-  type ResolverContext,
   resolvePlaceholders,
+  type ResolverContext,
+  type ResolveResult,
   resolveStringPlaceholders,
   type Unresolved,
   type UnresolvedCode,

@@ -6,8 +6,9 @@
 //   * the dispatcher integration short-circuits before unknown handlers
 //     would have produced a generic banner.
 
-import { describe, expect, mock, test } from "bun:test";
 import type { SkSessionState } from "@cli-core/index.ts";
+import { describe, expect, mock, test } from "bun:test";
+
 import type { ResolvedProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { SUB_COMMANDS } from "../index.ts";

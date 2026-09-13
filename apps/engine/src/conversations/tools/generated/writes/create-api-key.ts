@@ -13,6 +13,7 @@
 // or system account.
 
 import { z } from "@hono/zod-openapi";
+
 import type { ConversationTool, ToolResult } from "../../index.ts";
 
 /** Exported so the ONE direct caller outside the dispatcher — the

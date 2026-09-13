@@ -1,6 +1,7 @@
 // sampleToSchema inference tests.
 
 import { describe, expect, test } from "bun:test";
+
 import { sampleToSchema } from "../sample-to-schema.ts";
 
 describe("sampleToSchema — primitives", () => {

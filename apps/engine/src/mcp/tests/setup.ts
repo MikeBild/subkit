@@ -22,12 +22,13 @@ import {
   type ElicitResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import { eq } from "drizzle-orm";
+
 import { MCP_AUTHORING_SCOPE } from "../../auth/scopes.ts";
 import {
   apiKeys,
   connectors,
-  executionSteps,
   executions,
+  executionSteps,
   skills,
   tenants,
   users,
@@ -132,9 +133,8 @@ export async function startMcpTestSuite(
   let bossCleanup: (() => Promise<void>) | null = null;
   if (opts.withQueue) {
     const { startBoss, stopBoss } = await import("../../queue/boss.ts");
-    const { registerConversationRunTurnHandler } = await import(
-      "../../queue/handlers/conversation-run-turn.ts"
-    );
+    const { registerConversationRunTurnHandler } =
+      await import("../../queue/handlers/conversation-run-turn.ts");
     const boss = await startBoss({ connectionString: http.testDb.url });
     await registerConversationRunTurnHandler({ boss, db: http.db });
     bossCleanup = async () => {

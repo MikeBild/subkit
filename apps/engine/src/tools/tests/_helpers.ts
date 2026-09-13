@@ -23,9 +23,9 @@ export function makeTestPrincipal(overrides: Partial<ResolvedPrincipal> = {}): R
     permission_grants: [],
     role_ids: [],
     api_key_id: null,
-    // biome-ignore lint/suspicious/noExplicitAny: ResolvedPrincipal carries fields the dispatcher never reads; fill at boundary
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ResolvedPrincipal carries fields the dispatcher never reads; fill at boundary
     ...(overrides as any),
-    // biome-ignore lint/suspicious/noExplicitAny: stub
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
   } as any;
 }
 
@@ -50,7 +50,7 @@ export interface StubDbCapture {
  */
 export function makeStubDb(): { db: Db; capture: StubDbCapture } {
   const capture: StubDbCapture = { inserts: [] };
-  // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- drizzle chain shape
   const emptySelect: any = {
     from: () => emptySelect,
     where: () => emptySelect,
@@ -65,20 +65,20 @@ export function makeStubDb(): { db: Db; capture: StubDbCapture } {
   // suite's beforeAll/afterAll window (e.g. mcp-oauth audience tests) can
   // set one concurrently, so the stub must carry the chain instead of
   // exploding with "db.update is not a function" depending on scheduling.
-  // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- drizzle chain shape
   const emptyUpdate: any = {
     set: () => emptyUpdate,
     where: () => emptyUpdate,
     returning: () => Promise.resolve([]),
   };
-  // biome-ignore lint/suspicious/noExplicitAny: drizzle Db shape
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- drizzle Db shape
   const db: any = {
-    // biome-ignore lint/suspicious/noExplicitAny: transaction wrapper
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- transaction wrapper
     transaction: async (fn: any) => fn(db),
     select: () => emptySelect,
     update: () => emptyUpdate,
     insert: () => ({
-      // biome-ignore lint/suspicious/noExplicitAny: drizzle insert chain
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- drizzle insert chain
       values: (row: any) => {
         capture.inserts.push({
           action: row?.action,
@@ -102,7 +102,7 @@ export function makeStubCtx(opts: { db: Db; principal: ResolvedPrincipal }): Too
     actor_id: opts.principal.id,
     connector_id: null,
     workflow_id: null,
-    // biome-ignore lint/suspicious/noExplicitAny: EngineClient stub
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- EngineClient stub
     engineClient: {} as any,
     getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},

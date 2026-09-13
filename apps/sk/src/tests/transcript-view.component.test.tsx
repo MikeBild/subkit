@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import { ThemeProvider } from "@chat-ui/index.ts";
+import { describe, expect, test } from "bun:test";
 import { Text } from "ink";
+
 import { type TranscriptItem, TranscriptView } from "../repl/transcript/TranscriptView.tsx";
 import { flush, renderInk } from "./helpers/ink.tsx";
 

@@ -10,6 +10,7 @@
 // and the tenant snapshot); the block itself is passed in already rendered.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { logger } from "../../../logging/logger.ts";

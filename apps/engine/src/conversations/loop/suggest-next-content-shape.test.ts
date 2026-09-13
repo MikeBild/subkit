@@ -9,6 +9,7 @@
 // capture logger.warn calls to assert the warn/no-warn boundary.
 
 import { describe, expect, test } from "bun:test";
+
 import { logger } from "../../logging/logger.ts";
 import type { TurnEvent } from "../types.ts";
 import { buildNextSuggestionFrame } from "./suggest-next-emitter.ts";
@@ -16,9 +17,9 @@ import { buildNextSuggestionFrame } from "./suggest-next-emitter.ts";
 // Capture every logger.warn call during the action, restore after.
 async function captureWarns(fn: () => Promise<void>): Promise<Array<Record<string, unknown>>> {
   const captured: Array<Record<string, unknown>> = [];
-  // biome-ignore lint/suspicious/noExplicitAny: logger spy
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- logger spy
   const priorWarn: any = logger.warn.bind(logger);
-  // biome-ignore lint/suspicious/noExplicitAny: logger spy
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- logger spy
   (logger as any).warn = (payload: Record<string, unknown>) => {
     captured.push(payload);
     return priorWarn(payload);
@@ -26,7 +27,7 @@ async function captureWarns(fn: () => Promise<void>): Promise<Array<Record<strin
   try {
     await fn();
   } finally {
-    // biome-ignore lint/suspicious/noExplicitAny: restore logger
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- restore logger
     (logger as any).warn = priorWarn;
   }
   return captured;

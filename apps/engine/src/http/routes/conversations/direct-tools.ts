@@ -16,6 +16,7 @@
 // writes by default, and no tenant_write tool is reachable here.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import {
   DirectInvokeError,

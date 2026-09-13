@@ -22,7 +22,9 @@
 // approval bars.
 
 import { createHash } from "node:crypto";
+
 import { and, eq } from "drizzle-orm";
+
 import type {
   ConnectorEndpointCandidate,
   ConnectorEndpointCandidateEnvelope,

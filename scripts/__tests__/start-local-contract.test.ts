@@ -9,10 +9,12 @@
 // So this test holds the script against the things it depends on. It is a
 // contract test, not a smoke test: it starts nothing and needs no Docker.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, test } from "bun:test";
+
 import {
   BOOTSTRAP_LLM_PROVIDERS,
   BootstrapSetupPayloadSchema,

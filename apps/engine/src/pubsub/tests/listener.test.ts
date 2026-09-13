@@ -1,6 +1,7 @@
 // writeEvent -> NOTIFY -> listener hydrates event -> local handler sees it.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { writeEvent } from "../../db/events.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

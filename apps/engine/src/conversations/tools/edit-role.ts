@@ -7,6 +7,7 @@
 // tenant_write tools touching identity / RBAC).
 
 import { z } from "@hono/zod-openapi";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import {
@@ -14,8 +15,8 @@ import {
   grantPermissionToRole,
   listRolePermissions,
   PermissionNotFoundError,
-  RoleNotFoundError,
   revokePermissionFromRole,
+  RoleNotFoundError,
   updateRole,
 } from "../../rbac/roles.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";

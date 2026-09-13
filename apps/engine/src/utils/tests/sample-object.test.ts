@@ -2,6 +2,7 @@
 // function: same input → same output, no side-effects on the input.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   SAMPLE_MARKER_TRUNCATED_COUNT,
   SAMPLE_MARKER_TRUNCATED_KEYS,

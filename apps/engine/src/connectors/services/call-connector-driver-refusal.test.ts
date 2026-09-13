@@ -13,6 +13,7 @@
 // which for MCP is the request step's `mcp` sub-block.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { callConnectorTool } from "../../conversations/tools/call-connector.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import { connectors, tenants } from "../../db/schema/index.ts";

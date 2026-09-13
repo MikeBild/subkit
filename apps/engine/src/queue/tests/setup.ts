@@ -3,6 +3,7 @@
 // database cleanly.
 
 import type { PgBoss } from "pg-boss";
+
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createBoss, disposeBoss } from "../boss.ts";
 

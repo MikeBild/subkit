@@ -32,6 +32,7 @@
 //   POST   /v1/rbac/can
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
+
 import type { AppEnv } from "../../openapi.ts";
 import { registerCanRoutes } from "./can.ts";
 import { registerGrantsRoutes } from "./grants.ts";

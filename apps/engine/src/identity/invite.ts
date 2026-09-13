@@ -10,6 +10,7 @@
 // dedicated endpoint, never presented as a bearer credential.
 
 import { randomBytes } from "node:crypto";
+
 import { sha256Hex } from "./api-key.ts";
 
 export const INVITE_TOKEN_PREFIX_LITERAL = "wf_invite_";

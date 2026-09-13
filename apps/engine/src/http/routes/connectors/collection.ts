@@ -6,6 +6,7 @@
 //   DELETE /v1/connectors/{id}
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
@@ -14,7 +15,6 @@ import {
   UpdateConnectorSchema,
 } from "../../../connectors/index.ts";
 import { logger } from "../../../logging/index.ts";
-
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";

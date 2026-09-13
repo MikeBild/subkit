@@ -20,13 +20,7 @@
 // Use `isConnectorUnusable` when only the connector-level faults matter.
 
 export type ConnectorHealth =
-  | "ok"
-  | "auth_failed"
-  | "endpoint_gone"
-  | "deprecated"
-  | "not_found"
-  | "rate_limited"
-  | "degraded";
+  "ok" | "auth_failed" | "endpoint_gone" | "deprecated" | "not_found" | "rate_limited" | "degraded";
 
 // Atlassian (Jira / Confluence, Seraph auth) serve an *unauthenticated*
 // request as HTTP 200 with `X-Seraph-LoginReason: AUTHENTICATED_FAILED`

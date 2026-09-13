@@ -9,6 +9,7 @@
 // general fallback than provider-specific REFRESH_TOKEN_AUTH wiring.
 
 import { eq } from "drizzle-orm";
+
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { encryptSecret } from "../../crypto/aes-gcm.ts";

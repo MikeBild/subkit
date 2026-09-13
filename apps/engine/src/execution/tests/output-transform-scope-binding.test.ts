@@ -10,6 +10,7 @@
 // `{ input, scope }` bindings. These tests pin that contract.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { runExecution } from "../engine.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
 

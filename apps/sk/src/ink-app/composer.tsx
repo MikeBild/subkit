@@ -16,6 +16,7 @@ import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useStdout } from "ink";
 import type React from "react";
 import { memo, useEffect, useMemo, useState } from "react";
+
 import { firstGrapheme } from "../repl/grapheme.ts";
 import { cursorPosition, type InputBuffer, splitLines } from "../repl/input-buffer.ts";
 import { type PersonaProbe, searchSlashCommands } from "../slash.ts";
@@ -61,9 +62,9 @@ export const Composer: React.FC<ComposerProps> = memo(({ input, busy, placeholde
   const ghost = input.ghost;
   const showGhost = Boolean(
     ghost &&
-      ghost.consumed < ghost.text.length &&
-      row === lines.length - 1 &&
-      column === (lines[row]?.length ?? 0),
+    ghost.consumed < ghost.text.length &&
+    row === lines.length - 1 &&
+    column === (lines[row]?.length ?? 0),
   );
   const ghostRemainder = showGhost && ghost ? ghost.text.slice(ghost.consumed) : "";
   const ghostFirst = showGhost ? firstGrapheme(ghostRemainder) : "";

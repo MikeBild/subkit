@@ -4,6 +4,7 @@
 // service-layer imports.
 
 import { and, asc, desc, eq } from "drizzle-orm";
+
 import type { Executor } from "../../db/client.ts";
 import {
   conversationElicitations,
@@ -115,37 +116,33 @@ export async function getConversation(
     conversation: conversationRecord,
     owner: (conversationRecord.owner_id && owners.get(conversationRecord.owner_id)) || null,
     created_resources: collectCreatedResources(draft, calls),
-    messages: msgs.map(
-      (m): ConversationMessageRecord => ({
-        id: m.id,
-        conversation_id: m.conversation_id,
-        role: m.role as ConversationMessageRecord["role"],
-        // Strip `[file:fid_<uuid>]` sentinels from the content surfaced
-        // to API consumers (CLI/REPL, web UI, MCP detail readers). The
-        // canonical persisted form keeps the sentinel for replay
-        // routing in `buildModelMessages`; the human/API surface gets
-        // a `[file]` placeholder. Without this, the raw fid would land
-        // in any UI that renders the conversation transcript.
-        content: stripContentSentinels(m.content),
-        model: m.model,
-        created_at: m.created_at.toISOString(),
-      }),
-    ),
-    tool_calls: calls.map(
-      (c): ConversationToolCallRecord => ({
-        id: c.id,
-        conversation_id: c.conversation_id,
-        tool: c.tool,
-        input: c.input,
-        output: c.output,
-        approval_required: c.approval_required,
-        created_at: c.created_at.toISOString(),
-        parent_message_id: c.parent_message_id,
-        confirmation_state: c.confirmation_state,
-        approved_at: c.approved_at ? c.approved_at.toISOString() : null,
-        outcome: (c.outcome as ConversationToolCallRecord["outcome"]) ?? null,
-      }),
-    ),
+    messages: msgs.map((m): ConversationMessageRecord => ({
+      id: m.id,
+      conversation_id: m.conversation_id,
+      role: m.role as ConversationMessageRecord["role"],
+      // Strip `[file:fid_<uuid>]` sentinels from the content surfaced
+      // to API consumers (CLI/REPL, web UI, MCP detail readers). The
+      // canonical persisted form keeps the sentinel for replay
+      // routing in `buildModelMessages`; the human/API surface gets
+      // a `[file]` placeholder. Without this, the raw fid would land
+      // in any UI that renders the conversation transcript.
+      content: stripContentSentinels(m.content),
+      model: m.model,
+      created_at: m.created_at.toISOString(),
+    })),
+    tool_calls: calls.map((c): ConversationToolCallRecord => ({
+      id: c.id,
+      conversation_id: c.conversation_id,
+      tool: c.tool,
+      input: c.input,
+      output: c.output,
+      approval_required: c.approval_required,
+      created_at: c.created_at.toISOString(),
+      parent_message_id: c.parent_message_id,
+      confirmation_state: c.confirmation_state,
+      approved_at: c.approved_at ? c.approved_at.toISOString() : null,
+      outcome: (c.outcome as ConversationToolCallRecord["outcome"]) ?? null,
+    })),
     draft,
     resume_summary: resumeSummary,
   };

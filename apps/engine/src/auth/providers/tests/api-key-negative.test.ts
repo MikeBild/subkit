@@ -14,6 +14,7 @@
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import type { Db } from "../../../db/client.ts";
 import { apiKeys, tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";

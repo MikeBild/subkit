@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import { Search } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
@@ -24,10 +25,10 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
-  type AuditScope,
   actorTypeKey,
   auditActionKey,
   auditResourceHref,
+  type AuditScope,
   DECISION_ACTIONS,
   isAuditScope,
   resourceTypeKey,

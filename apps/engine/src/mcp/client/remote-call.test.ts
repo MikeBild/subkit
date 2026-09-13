@@ -12,6 +12,7 @@
 // alternative of dropping or type-erroring on a value the author supplied.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   MCP_WIRE_METHOD,
   performRemoteCall,

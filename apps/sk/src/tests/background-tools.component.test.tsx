@@ -1,8 +1,9 @@
 // Ink-component coverage for BackgroundToolGroup + the isBackgroundTool
 // classifier.
 
-import { describe, expect, test } from "bun:test";
 import type { ToolCallState } from "@cli-core/index.ts";
+import { describe, expect, test } from "bun:test";
+
 import { BackgroundToolGroup, isBackgroundTool } from "../repl/background-tools.tsx";
 import { renderInk } from "./helpers/ink.tsx";
 

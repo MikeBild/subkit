@@ -10,11 +10,12 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { auditLog } from "../db/schema/audit.ts";
 import {
   events,
-  executionSteps,
   executions,
+  executionSteps,
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";

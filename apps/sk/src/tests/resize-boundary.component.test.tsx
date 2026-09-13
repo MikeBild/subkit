@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import { ThemeProvider } from "@chat-ui/index.ts";
+import { describe, expect, test } from "bun:test";
 import { Text } from "ink";
+
 import { _sanitizeSizeForTests, ResizeBoundary } from "../shell/ResizeBoundary.tsx";
 import { flush, renderInk } from "./helpers/ink.tsx";
 

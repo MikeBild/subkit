@@ -20,14 +20,16 @@
 // audit as every other runtime secret.
 
 import { createHash, randomBytes } from "node:crypto";
+
 import { and, count, eq, gt, isNull, lte, sql } from "drizzle-orm";
+
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import {
   credentials,
-  outboundConnectionStarts,
   outboundConnections,
+  outboundConnectionStarts,
 } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import {

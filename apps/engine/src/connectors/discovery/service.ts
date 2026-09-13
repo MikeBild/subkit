@@ -16,7 +16,9 @@
 // the two callers cannot drift apart.
 
 import { createHash } from "node:crypto";
+
 import { and, eq } from "drizzle-orm";
+
 import { recordKnowledgeSourceRefreshed } from "../../audit/recorders/index.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db, Executor } from "../../db/client.ts";
@@ -25,7 +27,7 @@ import { logger } from "../../logging/logger.ts";
 import { applyAuthMaterial, resolveConnectorCredential } from "../drivers/http.ts";
 import { attachConnectorSelfDescriptionLinks, getConnectorForEnvironment } from "../service.ts";
 import type { ConnectorSelfDescriptionLink } from "../types.ts";
-import { type DiscoverConnectorEndpointsInput, discoverConnectorEndpoints } from "./index.ts";
+import { discoverConnectorEndpoints, type DiscoverConnectorEndpointsInput } from "./index.ts";
 import { DiscoveryError, type DiscoveryResult } from "./types.ts";
 
 /** 24h freshness window for a USEFUL cached endpoint index. */

@@ -9,6 +9,7 @@
 // Pure-function unit test against the translator — no DB needed.
 
 import { describe, expect, test } from "bun:test";
+
 import { translateAutoPersistError } from "./auto-persist.ts";
 
 class PgError extends Error {

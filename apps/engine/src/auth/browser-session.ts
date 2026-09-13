@@ -1,8 +1,10 @@
 // Shared browser-session primitives for all interactive MCP login methods.
 
 import { createHash, randomBytes } from "node:crypto";
+
 import { eq } from "drizzle-orm";
 import * as jose from "jose";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { getConfig } from "../config/loader.ts";

@@ -19,6 +19,7 @@
 // leak into every other test file in the same worker).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { closeDb, type Db } from "../../../db/client.ts";
 import { conversations, tenants } from "../../../db/schema/index.ts";
@@ -33,9 +34,9 @@ import {
 import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
+import type { TurnSignals } from "../sdk-wrap.ts";
 import { readOnlyPaletteSpecs } from "../sdk-wrap/external-mcp-readonly.ts";
 import { buildExternalMcpTools } from "../sdk-wrap/external-mcp-tools.ts";
-import type { TurnSignals } from "../sdk-wrap.ts";
 
 let remoteCallToolCalls = 0;
 let declared: ServerCapabilitiesLike = { tools: {} };

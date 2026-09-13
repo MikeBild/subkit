@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
+
 import {
   MANAGED_MARKER,
   planSync,
   renderSkillMd,
-  type SyncSkill,
   skillDirName,
+  type SyncSkill,
 } from "../lib/skill-sync.ts";
 
 function makeSkill(overrides: Partial<SyncSkill> = {}): SyncSkill {

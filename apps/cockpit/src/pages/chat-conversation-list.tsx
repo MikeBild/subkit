@@ -12,6 +12,7 @@
 // "it wants you" (marked) or not worth a line.
 
 import { Eye, EyeOff, Pencil, Search } from "lucide-react";
+
 import type { Conversation } from "@/api/client";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,8 @@ import { Separator } from "@/components/ui/separator";
 import { formatShortRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
-import { type ConversationRowLabels, conversationRow } from "./chat-list-model";
+
+import { conversationRow, type ConversationRowLabels } from "./chat-list-model";
 
 export interface ConversationListProps {
   conversations: readonly Conversation[];

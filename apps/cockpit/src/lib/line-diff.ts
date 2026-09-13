@@ -71,9 +71,7 @@ export function isUnchanged(lines: readonly DiffLine[]): boolean {
 }
 
 export type ChangeView =
-  | { kind: "diff"; lines: DiffLine[] }
-  | { kind: "patch"; lines: string[] }
-  | { kind: "unchanged" };
+  { kind: "diff"; lines: DiffLine[] } | { kind: "patch"; lines: string[] } | { kind: "unchanged" };
 
 /**
  * Distinguishes the three kinds of emptiness a proposal can have: a real

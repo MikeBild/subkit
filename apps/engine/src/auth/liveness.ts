@@ -24,11 +24,7 @@ export interface ClientLivenessRow {
 }
 
 export type LivenessRefusal =
-  | "user_missing"
-  | "user_deleted"
-  | "user_disabled"
-  | "client_missing"
-  | "client_revoked";
+  "user_missing" | "user_deleted" | "user_disabled" | "client_missing" | "client_revoked";
 
 /**
  * `null` when the person may still authenticate. Disabling or soft-deleting

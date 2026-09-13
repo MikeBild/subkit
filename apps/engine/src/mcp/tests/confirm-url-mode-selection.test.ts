@@ -12,6 +12,7 @@
 // pins ONLY the new `approval_url` branch.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { ElicitationResult } from "../../conversations/elicitation-bridge.ts";
 import { getElicitation } from "../../conversations/elicitations.ts";

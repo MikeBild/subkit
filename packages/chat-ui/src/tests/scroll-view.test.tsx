@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Text } from "ink";
 import { cleanup, render } from "ink-testing-library";
+
 import { ScrollView } from "../ScrollView.tsx";
 import { ThemeProvider } from "../theme/Provider.tsx";
 

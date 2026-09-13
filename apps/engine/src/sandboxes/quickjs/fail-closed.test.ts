@@ -7,6 +7,7 @@
 // holds when the WASM loader rejects.
 
 import { afterEach, describe, expect, test } from "bun:test";
+
 import { runJs, setQuickJsModuleProviderForTesting } from "./runtime.ts";
 
 describe("quickjs runtime · fail-closed invariant", () => {

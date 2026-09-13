@@ -8,9 +8,10 @@
 // the new shape) so a future refactor can't silently regress to the
 // old field names.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 // The retry-telemetry log calls live in `request/dispatch.ts`; the
 // top-level `request.ts` is a barrel re-exporter only.

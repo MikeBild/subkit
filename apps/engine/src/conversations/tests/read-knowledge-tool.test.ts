@@ -10,6 +10,7 @@
 //   - unknown source id → knowledge_source_not_found envelope
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { upsertKnowledgeBundle } from "../../knowledge/bundle-service.ts";
 import { readKnowledgeTool } from "../tools/generated/knowledge-sources.ts";
 import type { ToolContext } from "../tools/index.ts";
@@ -20,11 +21,11 @@ let sourceId = "";
 let bigSourceId = "";
 
 function toolCtx(): ToolContext {
-  // biome-ignore lint/suspicious/noExplicitAny: minimal stub matching ToolContext for in-process service calls
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub matching ToolContext for in-process service calls
   const engineClientStub: any = {
     context: { actor_id: ctx.user_id, actor_type: "user" },
     knowledgeSources: {
-      // biome-ignore lint/suspicious/noExplicitAny: in-process service forwarding
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- in-process service forwarding
       chunks: async (id: string, opts: any) => {
         const { listKnowledgeChunks } = await import("../../knowledge/bundle-service.ts");
         return listKnowledgeChunks(

@@ -1,6 +1,7 @@
 // Pure tests for the shared validation-result helpers.
 
 import { describe, expect, test } from "bun:test";
+
 import { ConnectorOperationError, fail, isConnectorOperationError, ok } from "../index.ts";
 
 describe("ValidationResult helpers", () => {

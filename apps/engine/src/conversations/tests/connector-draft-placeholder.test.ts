@@ -6,6 +6,7 @@
 // "ground this from real context" instruction.
 
 import { describe, expect, test } from "bun:test";
+
 import { validateConnectorDraft } from "../connector-draft.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
 

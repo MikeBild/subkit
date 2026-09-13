@@ -18,9 +18,11 @@
 // admin key (`rbac/evaluator.ts` step 0), so they isolate one permission
 // without needing custom roles.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { apiKeys, skillCandidates, skills } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 

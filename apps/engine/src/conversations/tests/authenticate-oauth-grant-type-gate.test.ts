@@ -16,10 +16,12 @@
 // call is intercepted. The DB-pause branch (no bridge) is exercised so we
 // never need a live elicitation bridge.
 
-import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import * as oauthClient from "../../credentials/oauth2/client.ts";
 import { connectors, conversations, tenants } from "../../db/schema/index.ts";

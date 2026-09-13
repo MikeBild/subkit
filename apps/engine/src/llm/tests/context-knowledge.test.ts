@@ -1,6 +1,7 @@
 // Tests for H2 knowledge chunk integration in the context enhancement pipeline.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { assembleEnhancedPrompt } from "../core/context-assembler.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";

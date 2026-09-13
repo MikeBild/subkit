@@ -21,8 +21,10 @@
 //     poll `working` forever.
 
 import { randomUUID } from "node:crypto";
+
 import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import {
@@ -40,8 +42,8 @@ import type { Db } from "../../db/client.ts";
 import { conversationMessages } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
 import {
-  type ConversationTurnEnvelope,
   clearMcpTaskPark,
+  type ConversationTurnEnvelope,
   getMcpTask,
   laterTurnCompleted,
   setMcpTaskFailure,
@@ -484,7 +486,8 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
           { ...data, provider_limit_parks: parkPlan.parks },
           { id: retryAttemptId, startAfter: parkPlan.start_after },
         );
-        if (retryJobId !== retryAttemptId) throw new Error("queue rejected the parked retry job");
+        if (retryJobId !== retryAttemptId)
+          throw new Error("queue rejected the parked retry job", { cause: err });
         // Make the wait legible to whoever is polling. The task row stays
         // non-terminal on purpose — the turn WILL run — but "not terminal" must
         // not mean "indistinguishable from working".

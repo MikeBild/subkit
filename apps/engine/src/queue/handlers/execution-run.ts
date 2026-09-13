@@ -7,9 +7,10 @@
 
 import { and, asc, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
+
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
-import { executionSteps, executions } from "../../db/schema/index.ts";
+import { executions, executionSteps } from "../../db/schema/index.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { finalizeExecution } from "../../execution/state.ts";
 import type { RequestSource, RunOptions } from "../../execution/types.ts";
@@ -219,7 +220,7 @@ export async function registerExecutionRunHandler(
   // that never load configuration — the scheduler's own tests among them — and
   // a throw here would take down the queue rather than fall back to the value
   // this was hard-coded to before the setting was wired up.
-  let concurrency = 1;
+  let concurrency: number;
   try {
     concurrency = getConfig().queue.concurrency;
   } catch {

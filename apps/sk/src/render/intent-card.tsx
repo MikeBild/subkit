@@ -1,6 +1,8 @@
 import { basename } from "node:path";
+
 import { Box, Text } from "ink";
 import type React from "react";
+
 import { PlanCard } from "../repl/plan-cell.tsx";
 import {
   connectorHeading,

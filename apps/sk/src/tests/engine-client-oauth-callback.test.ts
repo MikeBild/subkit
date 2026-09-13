@@ -9,6 +9,7 @@
 //   5. cancels cleanly on caller `signal`.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { flush, waitFor } from "../../../engine/src/test-helpers/determinism/wait.ts";
 import type { FetchLike } from "../engine-client.ts";
 

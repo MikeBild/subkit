@@ -11,6 +11,7 @@
 // MCP surface; this gate is the conversation-loop (chat) path enforcement.
 
 import { and, eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { roles, systemAccounts, users } from "../../db/schema/index.ts";
 import { can } from "../../rbac/evaluator.ts";
@@ -86,8 +87,7 @@ export async function resolveConversationPrincipal(
 }
 
 export type ToolPermissionResult =
-  | { allow: true }
-  | { allow: false; reason: string; permission: string };
+  { allow: true } | { allow: false; reason: string; permission: string };
 
 /**
  * Write a `policy.denied` audit row for a conversation-tool RBAC deny. Mirrors

@@ -19,10 +19,12 @@
 //     succeeds; the engine logs `post_save.graphql_introspection_disabled`
 //     at info level; no `knowledge_sources` row is written.
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { runDiscoveryCached } from "../../apps/engine/src/connectors/discovery/service.ts";
 import { knowledgeSources, tenants } from "../../apps/engine/src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../apps/engine/src/db/tests/setup.ts";
@@ -266,9 +268,8 @@ describe("runDiscoveryCached against live AppSync", () => {
       // runDiscoveryCached with the connector_id. The discovery
       // service resolves auth from the persisted credential and
       // injects the raw JWT in `Authorization`.
-      const { runCognitoUserPasswordGrant } = await import(
-        "../../apps/engine/src/credentials/oauth2/client.ts"
-      );
+      const { runCognitoUserPasswordGrant } =
+        await import("../../apps/engine/src/credentials/oauth2/client.ts");
       const { upsertCredential } = await import("../../apps/engine/src/credentials/service.ts");
       const { connectors } = await import("../../apps/engine/src/db/schema/index.ts");
 

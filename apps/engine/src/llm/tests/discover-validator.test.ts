@@ -1,6 +1,7 @@
 // Unit tests for the discover-flow draft validator.
 
 import { describe, expect, it } from "bun:test";
+
 import { type DiscoverArtifact, validateDiscoverDraft } from "../flows/discover.ts";
 
 function mk(kind: DiscoverArtifact["kind"], draft: Record<string, unknown>): DiscoverArtifact {

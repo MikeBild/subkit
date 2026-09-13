@@ -3,10 +3,11 @@
 // asserts they collapse by root-cause signature and tag correctly.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import {
   connectors,
-  executionSteps,
   executions,
+  executionSteps,
   patchCandidates,
   tenants,
   workflows,

@@ -7,6 +7,7 @@
 // an admin sees everything.
 
 import { describe, expect, it } from "bun:test";
+
 import { loadPermissionCatalog } from "../catalog.ts";
 
 const PERMISSION_NAMES = loadPermissionCatalog().map((p) => p.name);

@@ -2,11 +2,12 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { auditLog } from "../db/schema/audit.ts";
 import { engineSettings, tenants } from "../db/schema/identity.ts";
 import { workflows } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
-import { type SeededRoleIds, seedBuiltinRolesAndPermissions } from "../rbac/seed.ts";
+import { seedBuiltinRolesAndPermissions, type SeededRoleIds } from "../rbac/seed.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { DEMO_WORKFLOWS } from "./demo-seed.ts";
 

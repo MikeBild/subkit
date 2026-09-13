@@ -6,6 +6,7 @@
 // binding at commit time and refuse with a typed per-step error.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createWorkflow, updateWorkflow } from "../service.ts";

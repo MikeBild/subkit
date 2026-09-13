@@ -13,9 +13,10 @@
 // wave-3) consumes these intents and calls the appropriate atomic
 // helper.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 // The commit-intent helpers live in `tools/sdk-wrap/policy-helpers.ts`.
 const SRC = join(import.meta.dir, "..", "sdk-wrap", "policy-helpers.ts");

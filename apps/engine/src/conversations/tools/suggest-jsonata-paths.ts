@@ -23,7 +23,8 @@
 
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
-import { executionSteps, executions, workflows, workflowVersions } from "../../db/schema/index.ts";
+
+import { executions, executionSteps, workflows, workflowVersions } from "../../db/schema/index.ts";
 import {
   buildScopeAtStep,
   enumerateScopePaths,

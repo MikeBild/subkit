@@ -11,6 +11,7 @@ import { VERSION as CLI_VERSION } from "@cli-core/version.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo, useEffect, useMemo, useRef } from "react";
+
 import type {
   OperatorHealthDigest,
   SetupValidationResponse,
@@ -144,9 +145,9 @@ export const WelcomeRow: React.FC<WelcomeRowProps> = ({
   // permission to act) it also injects a key-"1" guided-triage starter action.
   const hasDigest = Boolean(
     digestSnapshot &&
-      (digestSnapshot.failure_groups.length > 0 ||
-        digestSnapshot.risk.length > 0 ||
-        digestSnapshot.patch_candidates.pending > 0),
+    (digestSnapshot.failure_groups.length > 0 ||
+      digestSnapshot.risk.length > 0 ||
+      digestSnapshot.patch_candidates.pending > 0),
   );
   const digestNode =
     hasDigest && digestSnapshot ? <NeedsAttentionPanel digest={digestSnapshot} /> : null;

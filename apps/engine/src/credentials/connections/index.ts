@@ -1,16 +1,16 @@
 export { discoverService, normalizeBaseUrl, requireConnectable } from "./discovery.ts";
 export {
-  type CompleteConnectionResult,
   completeConnection,
+  type CompleteConnectionResult,
   disconnectConnection,
   getConnection,
   listConnections,
-  REFRESH_BUFFER_MS,
   readAccessToken,
+  REFRESH_BUFFER_MS,
   refreshDueConnections,
-  type StartConnectionInput,
-  type StartConnectionResult,
   secretNames,
   startConnection,
+  type StartConnectionInput,
+  type StartConnectionResult,
 } from "./service.ts";
 export * from "./types.ts";

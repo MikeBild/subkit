@@ -14,6 +14,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { selfHealingScans } from "../../db/schema/index.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { isUndefinedTable } from "../environment.ts";
 
 describe("check 2 on a fresh database", () => {

@@ -7,6 +7,7 @@
 // surfaced in the OCPP-2.0.1.md session repro.
 
 import { describe, expect, test } from "bun:test";
+
 import { isGenericName } from "./create-knowledge-source.ts";
 
 describe("isGenericName", () => {

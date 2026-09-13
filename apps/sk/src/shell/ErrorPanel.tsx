@@ -22,6 +22,7 @@ import { useTheme } from "@chat-ui/index.ts";
 import { isEngineError, isTransportError } from "@cli-core/errors.ts";
 import { Box, Text } from "ink";
 import { useEffect, useState } from "react";
+
 import {
   classifyEngineError,
   humanizeRequestError,
@@ -29,12 +30,7 @@ import {
 } from "../repl/error-humanize.ts";
 
 export type ErrorPanelKind =
-  | "rate-limit"
-  | "validation"
-  | "network"
-  | "engine"
-  | "auth"
-  | "generic";
+  "rate-limit" | "validation" | "network" | "engine" | "auth" | "generic";
 
 export interface RateLimitPayload {
   message: string;

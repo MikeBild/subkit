@@ -20,11 +20,13 @@
 // the fake adapter's verify() always succeeds and the sync handler
 // never touches `db`, so a stub object satisfies the context.
 
-import { beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { beforeAll, describe, expect, test } from "bun:test";
+
 import type { ChatAdapter } from "../../chat/adapter.ts";
 import { ChatAdapterRegistry } from "../../chat/registry.ts";
 import type { ChatSyncResult } from "../../chat/sync-turn.ts";

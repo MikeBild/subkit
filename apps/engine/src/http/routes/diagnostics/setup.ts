@@ -15,6 +15,7 @@
 // revision can be decrypted.
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { getConfig } from "../../../config/loader.ts";
 import { BOOTSTRAP_ONLY_ENV_KEYS } from "../../../crypto/aes-gcm.ts";

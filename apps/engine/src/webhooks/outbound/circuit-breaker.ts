@@ -8,6 +8,7 @@
 // letter without an HTTP call.
 
 import { eq, sql } from "drizzle-orm";
+
 import type { Executor } from "../../db/client.ts";
 import { subscriptions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";

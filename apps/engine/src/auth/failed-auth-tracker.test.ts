@@ -9,6 +9,7 @@
 // from the others regardless of execution order.
 
 import { describe, expect, spyOn, test } from "bun:test";
+
 import { logger } from "../logging/logger.ts";
 import { recordAuthFailure } from "./failed-auth-tracker.ts";
 

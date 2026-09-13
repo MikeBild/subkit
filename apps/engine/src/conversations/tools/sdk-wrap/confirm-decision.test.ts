@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { decideConfirm } from "./confirm-decision.ts";
 
 describe("decideConfirm — a local decision, independent of surface and category", () => {

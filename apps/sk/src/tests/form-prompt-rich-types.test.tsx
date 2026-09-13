@@ -10,8 +10,8 @@
 // (text/number/boolean/select/password) continue to pass with the
 // FormPrompt rewrite untouched.
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
 import { type FormField, FormPrompt } from "@chat-ui/index.ts";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 
 async function yieldTick(ms = 40): Promise<void> {

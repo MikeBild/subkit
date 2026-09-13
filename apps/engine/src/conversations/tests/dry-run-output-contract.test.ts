@@ -12,6 +12,7 @@
 // payload — execution parity with live runs.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";
@@ -75,7 +76,7 @@ function draftWith(
       output_schema: CONTRACT,
       ...extra,
     },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal fixture
   } as any;
 }
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import type { TurnEvent } from "../types.ts";
 import { buildNextSuggestionFrame } from "./suggest-next-emitter.ts";
 

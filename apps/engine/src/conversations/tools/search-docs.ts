@@ -6,6 +6,7 @@
 // stable cache block with unrelated endpoints.
 
 import { z } from "@hono/zod-openapi";
+
 import { searchDocs } from "../../docs-ingestion/service.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 

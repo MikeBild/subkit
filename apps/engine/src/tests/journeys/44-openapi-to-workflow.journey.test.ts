@@ -11,6 +11,7 @@
 // Spec refs: plan docs — Approach 2 document analysis
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { runDocumentAnalysisFlow } from "../../llm/flows/document-analysis.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 

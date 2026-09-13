@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import * as shell from "../shell/index.ts";
 
 describe("shell barrel", () => {

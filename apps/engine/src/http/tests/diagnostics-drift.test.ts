@@ -5,9 +5,11 @@
 // to operator clients. Without this surface, drift is invisible until
 // a downstream subsystem fails.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
+
 import { apiKeys, auditLog, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 

@@ -10,6 +10,7 @@
 
 import { WebClient } from "@slack/web-api";
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
 import { chatWorkspaces, conversationElicitations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -178,8 +179,7 @@ export class SlackAdapter implements ChatAdapter {
         const name = blockId.slice("field:".length);
         const elKey = `el:${name}`;
         const el = (elements as Record<string, unknown>)?.[elKey] as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         if (!el) continue;
         form_values[name] = extractInputValue(el);
       }
@@ -220,8 +220,7 @@ export class SlackAdapter implements ChatAdapter {
         const optsBlockId = `subkit_elicit_opts:${multiMatch[1]}`;
         const optsElementId = `elicit:${multiMatch[1]}:multi:select`;
         const elements = (stateValues as Record<string, unknown>)[optsBlockId] as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         const checkboxes = elements?.[optsElementId] as Record<string, unknown> | undefined;
         const selected =
           (checkboxes?.selected_options as Array<{ value: string }> | undefined) ?? [];

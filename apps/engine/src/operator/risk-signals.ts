@@ -16,7 +16,9 @@
 // that the lagging failure groups can never give you in time.
 
 import { totalmem } from "node:os";
+
 import { and, eq, notInArray, sql } from "drizzle-orm";
+
 import { getConfig } from "../config/loader.ts";
 import type { Config } from "../config/schema.ts";
 import type { Executor } from "../db/client.ts";

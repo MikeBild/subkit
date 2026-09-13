@@ -3,6 +3,7 @@
 // on `completed`.
 
 import { describe, expect, test } from "bun:test";
+
 import { applyTurnEvent, initialSessionState } from "../turn-event.ts";
 
 describe("applyTurnEvent · activity", () => {

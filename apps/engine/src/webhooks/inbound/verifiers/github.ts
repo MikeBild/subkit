@@ -6,6 +6,7 @@
 // window — we lean on the `X-GitHub-Delivery` UUID for dedup.
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+
 import { logger } from "../../../logging/logger.ts";
 import type { VerifierResult, VerifyInput } from "./types.ts";
 

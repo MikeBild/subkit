@@ -5,22 +5,23 @@
 // ordinal. The newest ordinal is the live draft; :undo pops the top.
 
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+
 import type { Executor } from "../db/client.ts";
 import {
   conversationDrafts,
   conversations,
-  executionSteps,
   executions,
+  executionSteps,
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
 import { buildScopeAtStep } from "../workflows/scope-shape.ts";
-import { normalizeWorkflowDraft } from "./authoring-state/normalize.ts";
 import {
   bindPersistedWorkflow,
   createEmptyDraftDocument,
   normalizeDraftDocument,
 } from "./authoring-state.ts";
+import { normalizeWorkflowDraft } from "./authoring-state/normalize.ts";
 import type { DraftDocument, WorkflowDraftDocument, WorkflowDraftStepPreview } from "./types.ts";
 
 function emptyDraft(): DraftDocument {

@@ -111,7 +111,7 @@ export async function runPreflightCliOrExit(
       actor_id: "preflight",
     },
     async () => {
-      let exitCode = 1;
+      let exitCode: number;
       try {
         const { getConfig } = await import("../config/loader.ts");
         await loadConfigAndReconfigureLogger();

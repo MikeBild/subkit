@@ -1,6 +1,7 @@
 // verifyWorkflow static-check tests.
 
 import { describe, expect, test } from "bun:test";
+
 import { isAcceptable, verifyWorkflow } from "../verifier.ts";
 
 describe("verifyWorkflow — JSONata parsing", () => {

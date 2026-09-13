@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+
 import { EventSink } from "../event-sink.ts";
 import type { TurnEvent } from "../types.ts";
 

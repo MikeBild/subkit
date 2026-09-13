@@ -1,7 +1,9 @@
 // Durable, inert authoring versions. This path never changes the executable
 // current_version_id, reconciles triggers, or grants execution authority.
 import { randomUUID } from "node:crypto";
+
 import { and, eq, isNull, sql } from "drizzle-orm";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";

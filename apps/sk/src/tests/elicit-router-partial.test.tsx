@@ -4,9 +4,9 @@
 // keystroke-by-keystroke, asserting the exact `approved_indices` response
 // the engine's apply_workflow_patch dispatcher reads.
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
 import { ElicitRouter } from "@chat-ui/index.ts";
 import type { PendingElicitation } from "@cli-core/index.ts";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 
 async function yieldTick(ms = 40): Promise<void> {

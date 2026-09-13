@@ -29,8 +29,10 @@
 // `proposal.kind`.
 
 import { createHash } from "node:crypto";
+
 import { z } from "@hono/zod-openapi";
 import { and, eq, gte } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
 import { connectors } from "../../db/schema/connectors.ts";
 import { executionFixtures, patchCandidates } from "../../db/schema/executions.ts";

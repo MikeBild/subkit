@@ -6,6 +6,7 @@
 // second function has to exist at all.
 
 import { describe, expect, test } from "bun:test";
+
 import type { ToolResult, ToolResultPause } from "./index.ts";
 import { normalizeToolResultPayload, toolCallOutcome } from "./result-payload.ts";
 

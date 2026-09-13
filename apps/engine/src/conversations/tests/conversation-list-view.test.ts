@@ -5,6 +5,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
+
 import { auditLog, conversationHidden, conversations, workflows } from "../../db/schema/index.ts";
 import { appendMessage } from "../persist.ts";
 import {
@@ -253,8 +254,9 @@ describe("conversation list view", () => {
       { tenant_id: ctx.tenant_id, actor_id: ctx.user_id, initial_message: "first", surface: "web" },
       ctx.testDb.db,
     );
-    const before = (await listMine()).find((r) => r.id === created.conversation.id)!
-      .last_activity_at!;
+    const before = (await listMine()).find(
+      (r) => r.id === created.conversation.id,
+    )!.last_activity_at!;
     await appendUserMessage(
       {
         tenant_id: ctx.tenant_id,

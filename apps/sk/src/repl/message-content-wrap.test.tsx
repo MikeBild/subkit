@@ -6,6 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
+
 import { MessageContent } from "./message-content.tsx";
 
 function snapshot(s: ReturnType<typeof render>): string {

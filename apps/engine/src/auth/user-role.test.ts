@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+
+import { describe, expect, test } from "bun:test";
+
 import { hasLegacyRoleDrift, resolveEffectiveUserRole } from "./user-role.ts";
 
 describe("resolveEffectiveUserRole", () => {

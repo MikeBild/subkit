@@ -12,10 +12,11 @@
 // document, not a package (§7). The built copy is committed under assets/cockpit
 // and held against the source by `bun run check:cockpit-drift`, so it is a
 // stable measuring point and not a snapshot of somebody's machine.
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, test } from "bun:test";
 
 const root = dirname(dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url))))));
 const viteConfig = readFileSync(join(root, "apps/cockpit/vite.config.ts"), "utf8");

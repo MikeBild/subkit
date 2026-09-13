@@ -2,6 +2,7 @@
 // issues a NOTIFY with the new event id. The listener lives in P4.
 
 import { sql } from "drizzle-orm";
+
 import { logger } from "../logging/logger.ts";
 import type { Executor } from "./client.ts";
 import { events } from "./schema/events.ts";

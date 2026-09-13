@@ -2,6 +2,7 @@
 // status-line pipeline.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   buildStatusLine,
   renderTemplate,
@@ -93,6 +94,14 @@ describe("sk status line", () => {
     const r = await buildStatusLine({ command: `echo "custom-line-ok"` }, INPUT);
     expect(r.source).toBe("hook");
     expect(r.line).toBe("custom-line-ok");
+  });
+
+  test("a hook may exit without reading a large stdin payload", async () => {
+    const line = await runStatusLineHook('echo "stdin-optional"', {
+      ...INPUT,
+      cwd: "x".repeat(256 * 1024),
+    });
+    expect(line).toBe("stdin-optional");
   });
 
   test("buildStatusLine falls back with ⚠ prefix when the hook errors", async () => {

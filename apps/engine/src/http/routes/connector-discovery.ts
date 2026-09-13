@@ -23,6 +23,7 @@
 //         actually means.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { DiscoveryResultSchema } from "../../api/connector-schemas.ts";
 import { DiscoveryError, runDiscoveryCached } from "../../connectors/index.ts";

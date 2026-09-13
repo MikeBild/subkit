@@ -5,6 +5,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { auditLog } from "../db/schema/audit.ts";
@@ -496,8 +497,7 @@ describe("tryFastPath — RBAC denial", () => {
 
 function findToolResultOutput(events: TurnEvent[] | undefined): Record<string, unknown> {
   const tr = events?.find((e) => e.type === "tool_result") as
-    | { output?: Record<string, unknown> }
-    | undefined;
+    { output?: Record<string, unknown> } | undefined;
   return tr?.output ?? {};
 }
 

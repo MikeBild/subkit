@@ -11,7 +11,9 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+
 import { z } from "zod";
+
 // Build-time embed of the repo's CHANGELOG.md. Bun's text-import bundles
 // the file into the compiled binary, so this works both at dev time and
 // in the shipped binary (where the source CHANGELOG isn't on disk).
@@ -121,13 +123,13 @@ export const RECOMMENDED_WHATS_NEW_URL = DEFAULT_URL;
  */
 function stripAnsiAndControlBytes(input: string): string {
   // CSI: ESC [ <params> <final-byte (A-Za-z)>
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: matching ESC by design
+  // eslint-disable-next-line no-control-regex -- matching ESC by design
   const noCsi = input.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
   // OSC: ESC ] <body up to BEL>
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: matching ESC + BEL by design
+  // eslint-disable-next-line no-control-regex -- matching ESC + BEL by design
   const noOsc = noCsi.replace(/\x1b\][^\x07]*\x07/g, "");
   // Any remaining C0 control bytes + DEL (raw ESC, BEL, CR, LF, TAB).
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping C0 by design
+  // eslint-disable-next-line no-control-regex -- stripping C0 by design
   return noOsc.replace(/[\x00-\x1f\x7f]/g, "");
 }
 

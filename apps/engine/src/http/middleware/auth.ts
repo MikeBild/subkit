@@ -4,6 +4,7 @@
 // public routes (health, openapi, docs).
 
 import type { MiddlewareHandler } from "hono";
+
 import { browserSessionForPrincipal } from "../../auth/browser-session.ts";
 import { recordAuthFailure } from "../../auth/failed-auth-tracker.ts";
 import type { AuthProviderRegistry } from "../../auth/registry.ts";

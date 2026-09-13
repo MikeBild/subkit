@@ -13,8 +13,9 @@
 //   2. `confirm_tool_call` can trigger only an already human-granted local
 //      approval; its presence does not let a model approve its own work.
 
-import { describe, expect, test } from "bun:test";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { describe, expect, test } from "bun:test";
+
 import { MCP_AUTHORING_SCOPE } from "../../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { MCP_CORE_TOOL_NAMES } from "../mode-resolver.ts";

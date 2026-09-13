@@ -17,6 +17,7 @@
 // flow at the contract layer — no DB, no LLM, no full runLoop required.
 
 import { describe, expect, test } from "bun:test";
+
 import { expandPriorFailuresFromToolCalls } from "../authoring-critic/prior-failures.ts";
 import type { CriticRejectedDetails } from "../authoring-critic/types.ts";
 

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
+
 import { createSeededRandom, seedFromEnv } from "../random.ts";
 
 describe("random", () => {

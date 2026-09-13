@@ -6,9 +6,10 @@
 // drives them together through the same fixture data the wizard
 // would feed them.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { ThemeProvider } from "@chat-ui/index.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { useEffect, useState } from "react";
+
 import {
   type FakeOAuthServer,
   startFakeOAuthServer,

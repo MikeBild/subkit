@@ -11,6 +11,7 @@ import type { SkSessionState, ToolCallState } from "@cli-core/index.ts";
 import { lastAssistantText } from "@cli-core/index.ts";
 import { Box, Text } from "ink";
 import type React from "react";
+
 import { renderAuthoringCard } from "../repl/authoring-cards.tsx";
 import { BackgroundToolGroup, isBackgroundTool } from "../repl/background-tools.tsx";
 import { DiffCard } from "../repl/diff-cell.tsx";
@@ -255,7 +256,7 @@ export function buildTranscript(input: TranscriptBuildInput): TranscriptBuildRes
       }
     }
     if (inspectView && pendingBackgroundCalls.length > 0) {
-      flushBackgroundGroup(pendingBackgroundCalls, `${keyPrefix}-${bgIdx++}`);
+      flushBackgroundGroup(pendingBackgroundCalls, `${keyPrefix}-${bgIdx}`);
     }
   };
 

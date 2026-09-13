@@ -1,6 +1,7 @@
 // Unit tests for the streaming output-guard short-circuit.
 
 import { describe, expect, it } from "bun:test";
+
 import { runOutputGuardStream } from "../index.ts";
 import type { Scanner, ScannerContext, Violation } from "../types.ts";
 

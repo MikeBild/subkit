@@ -8,10 +8,12 @@
 // header, and asserts the `SK_CLI_LOGIN` audit action lands on top of
 // the standard `USER_LOGGED_IN` row.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server as HttpServer } from "node:http";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import * as jose from "jose";
+
 import { auditLog, tenants } from "../../db/schema/index.ts";
 import { loadAuthProvidersForTest } from "../../http/tests/setup.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";

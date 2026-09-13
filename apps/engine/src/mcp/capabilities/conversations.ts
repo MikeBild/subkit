@@ -24,8 +24,10 @@
 // returns in milliseconds.
 
 import { randomUUID } from "node:crypto";
+
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+
 import { principalOrigin } from "../../auth/origin.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { type ElicitationRecord, getElicitation } from "../../conversations/elicitations.ts";
@@ -723,9 +725,8 @@ async function conversationGet(
   const pending =
     detail.conversation.status === "awaiting_input" && !respondInFlight
       ? await (async () => {
-          const { listElicitationsForConversation } = await import(
-            "../../conversations/elicitations.ts"
-          );
+          const { listElicitationsForConversation } =
+            await import("../../conversations/elicitations.ts");
           return (await listElicitationsForConversation(principal.tenant_id, conversation_id, db))
             .filter((e) => e.status === "pending")
             .at(0);
@@ -801,9 +802,8 @@ async function workingHeartbeat(
   conversation_id: string,
   since_ms: number,
 ): Promise<HandleConversationToolResult> {
-  const { latestProgressForConversation, parkedStateForConversation } = await import(
-    "../tasks/store.ts"
-  );
+  const { latestProgressForConversation, parkedStateForConversation } =
+    await import("../tasks/store.ts");
   const anchor = Number.isFinite(since_ms) ? since_ms : Date.now();
 
   // A parked turn is NOT "working". It hit a provider usage limit and was

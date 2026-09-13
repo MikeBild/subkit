@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { useState } from "react";
+
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { Badge } from "@/components/ui/badge";
@@ -9,8 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import {
-  type WorkflowPreviewSource,
   workflowPreviewRequest,
+  type WorkflowPreviewSource,
   workflowPreviewSucceeded,
 } from "@/lib/workflow-preview";
 import {
@@ -18,8 +19,8 @@ import {
   type ExecutionStep,
   joinStepsWithLastRun,
   stepResultPreview,
-  type WorkflowStepView,
   workflowStepKindKey,
+  type WorkflowStepView,
 } from "@/lib/workflow-steps";
 
 type Execution = components["schemas"]["Execution"];

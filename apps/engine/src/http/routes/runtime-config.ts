@@ -1,5 +1,6 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../../audit/index.ts";
 import {
@@ -10,11 +11,11 @@ import {
   getRuntimeRevision,
   listRuntimeRevisions,
   listSecretVersions,
+  revokeSecretVersion,
   RuntimeConfigConflictError,
   RuntimeConfigNotFoundError,
   RuntimeConfigValidationError,
   RuntimeSecretInUseError,
-  revokeSecretVersion,
   saveRuntimeConfigPatch,
 } from "../../runtime-config/service.ts";
 import { requireAuth } from "../middleware/auth.ts";

@@ -3,6 +3,7 @@
 // workflow draft without first reading the contract.
 
 import { describe, expect, test } from "bun:test";
+
 import { filterBySkillGate, SKILL_GATED_TOOLS } from "../gated.ts";
 
 describe("skill-gated tool exposure", () => {

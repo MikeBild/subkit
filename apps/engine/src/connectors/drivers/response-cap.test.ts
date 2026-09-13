@@ -5,6 +5,7 @@
 // HttpRequestInvalidError; under-cap responses are returned unchanged.
 
 import { describe, expect, test } from "bun:test";
+
 import { HttpRequestInvalidError, readBodyBytesCapped, readBodyCapped } from "./http.ts";
 
 describe("readBodyCapped", () => {

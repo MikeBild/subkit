@@ -7,11 +7,13 @@
 // the typed `llm_budget_exceeded` error code. The mock's call counter
 // proves no provider charge was incurred for the rejected call.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { _resetConfigForTests, getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { auditLog } from "../../db/schema/index.ts";
 import { runExecution } from "../engine.ts";

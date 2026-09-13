@@ -16,6 +16,7 @@
 // the CURRENT shape so we can prove what was preserved.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;

@@ -9,6 +9,7 @@
 //     not a silent empty result.
 
 import { describe, expect, it } from "bun:test";
+
 import { RunLlmBudget } from "../../llm/accounting/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { buildLoopChildScope } from "../loop-scope.ts";

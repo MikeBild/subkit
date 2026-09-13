@@ -8,6 +8,7 @@
 // additionally call into `rbac/` helpers before dispatching.
 
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+
 import { auditAwait } from "../audit/audit.ts";
 import { getAuditRowById, queryAuditLog } from "../audit/query.ts";
 import type { AuditEntry } from "../audit/types.ts";
@@ -56,8 +57,8 @@ import {
   getWorkflow,
   getWorkflowBySlug,
   listWorkflows,
-  type UpdateWorkflowMetadataInput,
   updateWorkflowMetadata,
+  type UpdateWorkflowMetadataInput,
 } from "../workflows/service.ts";
 
 export type EngineClientActorType = "user" | "system_account" | "system";

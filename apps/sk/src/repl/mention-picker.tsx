@@ -19,6 +19,7 @@
 
 import { readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";

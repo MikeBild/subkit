@@ -2,6 +2,7 @@
 // respects the TTY + size guards.
 
 import { describe, expect, test } from "bun:test";
+
 import { osc52Copy, ringBell } from "../clipboard.ts";
 
 function makeMockStream(isTTY: boolean): {

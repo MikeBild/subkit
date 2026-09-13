@@ -9,6 +9,7 @@
 // Requires a real Postgres database — set REQUIRES_PG=0 to skip.
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+
 import { patchCandidates } from "../../db/schema/executions.ts";
 import { tenants, workflows } from "../../db/schema/index.ts";
 import { skillCandidateEvidence, skillCandidates } from "../../db/schema/skills.ts";

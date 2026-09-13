@@ -16,9 +16,10 @@
 // reads the source and asserts the index helper exists + the ambient
 // sections route through it.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 // The assembler is split across
 // `core/context-assembler.ts` (orchestrator) and

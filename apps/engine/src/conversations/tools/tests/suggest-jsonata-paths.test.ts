@@ -3,6 +3,7 @@
 // uses an in-memory draft via a fake context.
 
 import { describe, expect, test } from "bun:test";
+
 import type { DraftDocument } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { suggestJsonataPathsTool } from "../suggest-jsonata-paths.ts";

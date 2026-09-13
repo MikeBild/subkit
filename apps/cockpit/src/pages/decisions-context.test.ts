@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+
 import { buildNameIndex } from "@/lib/name-index";
+
 import {
   type ContextLabels,
   conversationContext,

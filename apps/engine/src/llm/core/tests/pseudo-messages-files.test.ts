@@ -9,6 +9,7 @@
 // Real Postgres via createHttpTestServer (config loaded). Mock LLM uploader.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { conversations } from "../../../db/schema/index.ts";
 import { attachInlineForTest } from "../../../files/test-helpers.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../http/tests/setup.ts";

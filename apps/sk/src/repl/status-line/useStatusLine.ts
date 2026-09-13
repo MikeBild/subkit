@@ -10,6 +10,7 @@
 // matching the legacy behavior; the existing config can override it.
 
 import { useEffect, useRef, useState } from "react";
+
 import { buildStatusLine, type StatusLineConfig, type StatusLineInput } from "./render.ts";
 
 export interface UseStatusLineResult {

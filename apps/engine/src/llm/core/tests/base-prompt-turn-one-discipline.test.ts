@@ -4,6 +4,7 @@
 // the registry wires it via `MAIN.preloadedSkills`.
 
 import { describe, expect, it } from "bun:test";
+
 import { basePromptFor } from "../context-assembler.ts";
 
 describe("converse base prompt — TURN-ONE DISCIPLINE behaviour skill", () => {

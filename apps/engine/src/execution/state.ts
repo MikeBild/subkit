@@ -2,11 +2,12 @@
 // Keeps the engine.ts file focused on control flow.
 
 import { and, eq, inArray, isNull } from "drizzle-orm";
+
 import { AuditAction, type AuditActorType, auditAwait } from "../audit/index.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
-import { executionSteps, executions } from "../db/schema/index.ts";
+import { executions, executionSteps } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { recordExecutionTerminal } from "../observability/instrumentation.ts";
 import type {

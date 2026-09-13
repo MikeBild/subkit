@@ -3,6 +3,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { auditLog, conversationElicitations, conversations } from "../../db/schema/index.ts";
@@ -10,9 +11,9 @@ import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
 import type { PermissionMode } from "../tool-policies.ts";
 import { getTool, listTools, type ToolContext } from "../tools/index.ts";
+import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
 import { decideConfirm } from "../tools/sdk-wrap/confirm-decision.ts";
 import { wrapOne } from "../tools/sdk-wrap/invoke.ts";
-import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
 
 let ctx: LlmTestCtx;
@@ -97,7 +98,7 @@ async function runGatedTool(
     permissionMode,
     [],
   );
-  // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
   const result = await (wrapped.execute as any)(args, { toolCallId: "fake", messages: [] });
   return { result, events };
 }

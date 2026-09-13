@@ -13,6 +13,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
+
 import type { OperatorHealthDigest } from "../engine-client.ts";
 import type { PersonaProbe } from "../slash.ts";
 import { NeedsAttentionPanel } from "./needs-attention-panel.tsx";

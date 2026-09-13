@@ -26,6 +26,7 @@
 // results.
 
 import { z } from "@hono/zod-openapi";
+
 import { type EndpointScore, scoreEndpoints } from "../../connectors/discovery/endpoint-scorer.ts";
 import { recognizeAuthFromSchemes } from "../../connectors/discovery/recognize-auth.ts";
 import {

@@ -11,6 +11,7 @@
 //   - Approval prompt: Adaptive Card 1.5 with two Action.Submit buttons.
 
 import { createRemoteJWKSet, jwtVerify } from "jose";
+
 import { logger } from "../../logging/logger.ts";
 import type { ChatAdapter } from "../adapter.ts";
 import type { ApprovalCard, ChatDelivery, ChatEvent, VerifiedEvent } from "../types.ts";

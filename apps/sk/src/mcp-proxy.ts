@@ -7,15 +7,15 @@
 // pay for the MCP module tree.
 
 import { VERSION } from "@cli-core/version.ts";
+
 import type { ResolvedProfile } from "./config.ts";
 import { EngineClient } from "./engine-client.ts";
 
 export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
   const { Server } = await import("@modelcontextprotocol/sdk/server/index.js");
   const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
-  const { CallToolRequestSchema, ListToolsRequestSchema } = await import(
-    "@modelcontextprotocol/sdk/types.js"
-  );
+  const { CallToolRequestSchema, ListToolsRequestSchema } =
+    await import("@modelcontextprotocol/sdk/types.js");
 
   const client = new EngineClient({
     engine_url: profile.engine_url,

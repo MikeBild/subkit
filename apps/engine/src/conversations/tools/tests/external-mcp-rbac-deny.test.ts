@@ -20,6 +20,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { closeDb, type Db } from "../../../db/client.ts";
 import { conversations, conversationToolCalls, tenants } from "../../../db/schema/index.ts";
@@ -34,8 +35,8 @@ import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
 import { seedBuiltinRolesAndPermissions } from "../../../rbac/seed.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
-import { buildExternalMcpTools } from "../sdk-wrap/external-mcp-tools.ts";
 import type { TurnSignals } from "../sdk-wrap.ts";
+import { buildExternalMcpTools } from "../sdk-wrap/external-mcp-tools.ts";
 
 // Counts remote invocations: the RBAC gate must fire BEFORE any `callTool`
 // reaches the (fake) remote server.

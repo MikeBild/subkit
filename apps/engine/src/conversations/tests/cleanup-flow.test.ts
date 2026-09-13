@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig, setConfigKey } from "../../config/loader.ts";
@@ -55,8 +56,7 @@ async function approvalIdForElicitation(elicitationId: string): Promise<string> 
     .where(eq(conversationElicitations.id, elicitationId))
     .limit(1);
   const input = row?.input as
-    | { commit_intent?: { payload?: { approval_id?: string } } }
-    | undefined;
+    { commit_intent?: { payload?: { approval_id?: string } } } | undefined;
   const approvalId = input?.commit_intent?.payload?.approval_id;
   if (!approvalId) {
     throw new Error("elicitation carries no commit_intent.payload.approval_id");

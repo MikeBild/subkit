@@ -15,8 +15,7 @@ export interface AuditProcessResult {
 }
 
 export type AuditProcessDisposition =
-  | { kind: "report"; stdout: string }
-  | { kind: "unreachable"; reason: string };
+  { kind: "report"; stdout: string } | { kind: "unreachable"; reason: string };
 
 export function classifyAuditProcess(
   result: AuditProcessResult,

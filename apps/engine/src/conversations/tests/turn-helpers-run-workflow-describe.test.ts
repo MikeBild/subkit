@@ -8,6 +8,7 @@
 // + output shape.
 
 import { describe, expect, test } from "bun:test";
+
 import { classifyFallbackSynthesis, synthesizeFallbackMessage } from "../turn-helpers.ts";
 import type { TurnEvent } from "../types.ts";
 

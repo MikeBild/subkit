@@ -33,6 +33,7 @@ import { exitCodeFor } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
+
 import { resolveProfile } from "../config.ts";
 import {
   type DiagnosticsRuntime,

@@ -17,10 +17,12 @@
 // LLM provider is the in-process mock (LLM_PROVIDER=mock bootstrap +
 // `generateOverrides.generate`) — no network, deterministic.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

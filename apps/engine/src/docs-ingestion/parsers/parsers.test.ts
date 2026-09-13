@@ -5,8 +5,10 @@
 // archive). Fixtures live in `fixtures.test-helper.ts` so the suite
 // stays portable — no binary blobs in the repo.
 
-import { describe, expect, test } from "bun:test";
 import { gzipSync } from "node:zlib";
+
+import { describe, expect, test } from "bun:test";
+
 import {
   buildDocxFixture,
   buildPdfFixture,

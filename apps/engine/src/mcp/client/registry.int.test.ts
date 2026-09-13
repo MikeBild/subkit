@@ -11,6 +11,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { setConnectorEnabled } from "../../connectors/service.ts";
 import { auditLog, connectorMcpSessions, connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

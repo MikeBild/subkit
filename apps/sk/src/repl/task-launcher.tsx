@@ -2,6 +2,7 @@ import { Pane, useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+
 import { searchTaskActions, type TaskAction } from "./task-actions.ts";
 
 interface TaskLauncherProps {

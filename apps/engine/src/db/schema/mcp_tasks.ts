@@ -21,6 +21,7 @@
 
 import { sql } from "drizzle-orm";
 import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+
 import { tenantId, timestamps } from "./_common.ts";
 import { conversationMessages, conversations } from "./conversations.ts";
 import { tenants, users } from "./identity.ts";

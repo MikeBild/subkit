@@ -6,6 +6,7 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
+
 import { AdminCreateForm, type AdminFormField } from "./AdminCreateForm.tsx";
 
 interface Props {

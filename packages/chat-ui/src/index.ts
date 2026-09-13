@@ -13,12 +13,7 @@ export {
   type ConversationItem,
 } from "./ConversationBrowser.tsx";
 export { StructuredDiff, type StructuredDiffProps } from "./diff/StructuredDiff.tsx";
-export { ExitFlow, type ExitFlowProps } from "./ExitFlow.tsx";
-export {
-  type ChoiceOption,
-  ChoicePrompt,
-  type ChoicePromptProps,
-} from "./elicit/ChoicePrompt.tsx";
+export { type ChoiceOption, ChoicePrompt, type ChoicePromptProps } from "./elicit/ChoicePrompt.tsx";
 export {
   type ConfirmKind,
   ConfirmPrompt,
@@ -46,6 +41,7 @@ export {
   type ElicitRouterProps,
 } from "./elicit/Router.tsx";
 export { TextPrompt, type TextPromptProps } from "./elicit/TextPrompt.tsx";
+export { ExitFlow, type ExitFlowProps } from "./ExitFlow.tsx";
 export { HistorySearch, type HistorySearchProps } from "./HistorySearch.tsx";
 export {
   hyperlink,
@@ -62,8 +58,8 @@ export { StatusPane, type StatusPaneProps, type StatusPaneRow } from "./StatusPa
 export { ThemeProvider, useTheme, useThemeControl } from "./theme/Provider.tsx";
 export {
   defaultTheme,
-  PALETTES,
   paletteFor,
+  PALETTES,
   shouldForceNoColor,
   type ThemeName,
   type ThemeTokens,

@@ -9,6 +9,7 @@
 // these stop at the argument object the SDK actually receives.
 
 import { describe, expect, it } from "bun:test";
+
 import { AiSdkModel } from "../ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "../base-types.ts";
 import { toSystemMessages } from "../cache-blocks.ts";
@@ -32,7 +33,7 @@ function recordingModel() {
   };
   const model = new AiSdkModel({
     defaultModel: "claude-sonnet-4-5",
-    // biome-ignore lint/suspicious/noExplicitAny: stub
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
     generateTextFn: fn as any,
   });
   return { model, calls };

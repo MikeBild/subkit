@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import type React from "react";
+
 import {
   connectorTemplateSuffix,
   humanBytes,

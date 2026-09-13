@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+
 import { logout } from "@/api/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -56,6 +57,7 @@ import { Toaster } from "@/components/ui/sonner";
 import type { TranslationKey } from "@/lib/i18n";
 import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { type Theme, useTheme } from "@/lib/theme";
+
 import { navigationItem, visibleNavigation } from "./navigation";
 import { useSession } from "./session";
 import { useDecisionQueue } from "./use-decisions";

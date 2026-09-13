@@ -13,8 +13,9 @@
 //   - The closing message includes the next-step `sk profile login`
 //     command with the engine URL pre-filled.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { getConfig, setConfigKey } from "../../config/loader.ts";
 import type { AppEnv } from "../openapi.ts";
 import { _internal, registerInstallRoute } from "./install.ts";
@@ -51,7 +52,7 @@ describe("install script template", () => {
     // outbound egress succeed. The check is a 5-second probe that 404s cleanly
     // on the slim engine image.
     expect(script).toContain("BUNDLED_ASSET_URL=");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variables in generated install script
+    // eslint-disable-next-line no-template-curly-in-string -- literal shell variables in generated install script
     expect(script).toContain("/install/sk-${os}-${arch}");
     expect(script).toContain("/install/sha256sums");
     expect(script).toMatch(/curl -fsSI[^\n]*BUNDLED_ASSET_URL/);
@@ -68,13 +69,13 @@ describe("install script template", () => {
 
   test("accepts an operator-supplied mirror as the second source", () => {
     const script = buildScript("3.4.0", "https://engine.example.com");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variable in generated install script
+    // eslint-disable-next-line no-template-curly-in-string -- literal shell variable in generated install script
     expect(script).toContain('MIRROR_BASE="${SK_INSTALL_BASE_URL:-}"');
     expect(script).toMatch(/elif \[ -n "\$MIRROR_BASE" \]; then/);
     // A trailing slash on the operator's value must not produce a double slash.
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variables in generated install script
+    // eslint-disable-next-line no-template-curly-in-string -- literal shell variables in generated install script
     expect(script).toContain("${MIRROR_BASE%/}/${ASSET}");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variable in generated install script
+    // eslint-disable-next-line no-template-curly-in-string -- literal shell variable in generated install script
     expect(script).toContain("${MIRROR_BASE%/}/SHA256SUMS");
   });
 

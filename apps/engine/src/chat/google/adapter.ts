@@ -10,6 +10,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+
 import type { Db } from "../../db/client.ts";
 import { chatWorkspaces, conversationElicitations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";

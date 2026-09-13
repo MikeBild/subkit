@@ -12,6 +12,7 @@
 // nothing about that path is otherwise observable. This test holds the string.
 
 import { describe, expect, test } from "bun:test";
+
 import { bunCacheDirCandidates, corruptRuntimeFromStderr } from "../stage-cli-binaries.ts";
 
 // Copied verbatim from the 2026-08-04 nightly (`docker e2e (full track)`).

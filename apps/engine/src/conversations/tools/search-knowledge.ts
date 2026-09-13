@@ -1,6 +1,7 @@
 // search_knowledge — search across Knowledge Sources in scope.
 
 import { z } from "@hono/zod-openapi";
+
 import { searchKnowledge } from "../../knowledge/service.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 

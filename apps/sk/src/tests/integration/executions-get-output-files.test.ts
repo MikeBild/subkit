@@ -8,6 +8,7 @@
 //   - Missing file:read permission on getFile → fid still printed as hint.
 
 import { describe, expect, test } from "bun:test";
+
 import { collectFileRefs, isFileRef } from "../../utils/file-ref.ts";
 
 const FID_A = "fid_00000000-0000-0000-0000-000000000040";

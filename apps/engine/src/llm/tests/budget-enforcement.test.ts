@@ -10,6 +10,7 @@
 // behaviour is pinned independently of the flow orchestration path.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { llmUsage, tenantLlmSettings } from "../../db/schema/index.ts";
 import { checkAndDecrement, currentMonthBucket } from "../accounting/index.ts";
 import { LlmQuotaExhausted } from "../errors.ts";

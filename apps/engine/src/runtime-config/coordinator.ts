@@ -1,5 +1,7 @@
 import { hostname } from "node:os";
+
 import { eq } from "drizzle-orm";
+
 import type { Config } from "../config/schema.ts";
 import type { Db } from "../db/client.ts";
 import { runtimeConfigReplicas, runtimeConfigState } from "../db/schema/index.ts";

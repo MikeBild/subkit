@@ -14,13 +14,14 @@
 // Every mutation writes an audit entry via the service layer.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schemas.ts";
 import {
   activateSkill,
   archiveSkill,
-  CreateSkillSchema,
   countSkills,
   createSkill,
+  CreateSkillSchema,
   deleteSkill,
   getSkill,
   listSkillHistory,
@@ -29,8 +30,8 @@ import {
   SkillLifecycleSchema,
   SkillSchema,
   SkillScopeSchema,
-  UpdateSkillSchema,
   updateSkill,
+  UpdateSkillSchema,
 } from "../../skills/index.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";

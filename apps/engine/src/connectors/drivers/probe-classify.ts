@@ -94,9 +94,7 @@ export function classifyPgProbeError(err: unknown): ProbeErrorCode {
  */
 export function classifyS3ProbeError(err: unknown): ProbeErrorCode {
   const e = err as
-    | { statusCode?: number; code?: string; name?: string; error_code?: string }
-    | null
-    | undefined;
+    { statusCode?: number; code?: string; name?: string; error_code?: string } | null | undefined;
 
   // Typed credential errors thrown by the s3 driver itself (before any
   // request leaves the process). Matched by name, not instanceof, to keep

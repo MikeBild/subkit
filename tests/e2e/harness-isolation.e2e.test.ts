@@ -22,8 +22,10 @@
 // rests on is asserted rather than assumed. The rest drive
 // `boot()`/`cleanup()`, because the teardown IS the subject.
 
-import { describe, expect, test } from "bun:test";
 import http from "node:http";
+
+import { describe, expect, test } from "bun:test";
+
 import { getConfig, setConfigKey } from "../../apps/engine/src/config/loader.ts";
 import { playwrightCrawlStrategy } from "../../apps/engine/src/connectors/discovery/index.ts";
 import { boot, closeHttpServer, trackConnections } from "./setup.ts";
@@ -65,7 +67,7 @@ describe("e2e harness isolation", () => {
     expect(server.listening).toBe(false);
   }, 30_000);
 
-  test("close() plus closeAllConnections() alone never completes with a stream open", async () => {
+  test("Bun 1.4 closes a streaming connection through closeAllConnections", async () => {
     const { server, port } = await streamingServer();
     // Observed only — the raw close path below deliberately does not use
     // them; they exist so this test can still release the server.
@@ -79,13 +81,14 @@ describe("e2e harness isolation", () => {
     server.closeAllConnections();
     const outcome = await Promise.race([
       closed,
-      // allow-wall-clock: proving a callback does NOT fire needs a bound.
+      // allow-wall-clock: require the native close callback within the shutdown bound.
       new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 1_500)),
     ]);
-    expect(outcome).toBe("pending");
+    expect(outcome).toBe("closed");
+    expect(server.listening).toBe(false);
 
-    // Clean up with the very step the fix adds — destroying the socket is
-    // what lets the pending close() finish.
+    // The pinned runtime fixed the old pending callback. Retain explicit
+    // cleanup as defense in depth; the first test still checks our helper.
     stream.abort();
     for (const socket of [...sockets]) socket.destroy();
     await closed;

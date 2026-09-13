@@ -1,8 +1,9 @@
 import { type ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { and, eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
-import { executionSteps, executions } from "../../db/schema/index.ts";
+import { executions, executionSteps } from "../../db/schema/index.ts";
 import { resolveOffloaded } from "../../execution/offload.ts";
 import { can } from "../../rbac/evaluator.ts";
 

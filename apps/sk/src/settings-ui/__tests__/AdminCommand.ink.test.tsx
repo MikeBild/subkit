@@ -4,6 +4,7 @@
 // admins see the AdminTab body.
 
 import { describe, expect, mock, test } from "bun:test";
+
 import type { EngineClient } from "../../engine-client.ts";
 import { renderInk } from "../../tests/helpers/ink.tsx";
 import { AdminCommand } from "../AdminCommand.tsx";

@@ -6,6 +6,7 @@
 // headers through to the persisted envelope.
 
 import { describe, expect, test } from "bun:test";
+
 import { buildStepErrorDetail } from "../error-detail.ts";
 
 describe("buildStepErrorDetail", () => {

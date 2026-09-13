@@ -1,5 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { apiKeys, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer, loadAuthProvidersForTest } from "./setup.ts";
 

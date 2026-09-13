@@ -5,6 +5,7 @@
 // proving the data-driven path is functional for non-shipped skills.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { skills, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { autoloadForToolCall, loadActivationCatalog } from "./skill-autoload.ts";

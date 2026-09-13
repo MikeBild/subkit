@@ -8,6 +8,7 @@
 // which is the part worth keeping in one place with its reasoning attached.
 
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+
 import type { McpClientLike, NegotiatedServerCapabilities } from "./pool.ts";
 
 /** What the engine tells the server about ITSELF at `initialize`.

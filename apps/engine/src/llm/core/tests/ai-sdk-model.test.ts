@@ -2,6 +2,7 @@
 // via the constructor `generateTextFn` option (no SDK module mocking).
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+
 import { classifyProviderError, isFallbackEligible } from "../../provider-errors.ts";
 import { AiSdkModel, LlmCallAbortedError } from "../ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "../base-types.ts";
@@ -20,7 +21,7 @@ afterAll(() => {
 
 interface GenerateTextStubResult {
   text: string;
-  // biome-ignore lint/suspicious/noExplicitAny: loose stub shape
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- loose stub shape
   toolCalls?: Array<{ toolCallId: string; toolName: string; input: any }>;
   toolResults?: Array<{ toolCallId: string; output: unknown }>;
   finishReason?: string;
@@ -98,7 +99,7 @@ describe("AiSdkModel per-call timeout + abort", () => {
     const model = new AiSdkModel({
       defaultModel: "claude-sonnet-4-5",
       callTimeoutMs: 40,
-      // biome-ignore lint/suspicious/noExplicitAny: stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
       generateTextFn: stub.fn as any,
     });
     await expect(model.generateText([{ role: "user", content: "hi" }])).rejects.toBeInstanceOf(
@@ -112,7 +113,7 @@ describe("AiSdkModel per-call timeout + abort", () => {
       defaultModel: "claude-sonnet-4-5",
       // long timeout so the caller signal is what fires
       callTimeoutMs: 60_000,
-      // biome-ignore lint/suspicious/noExplicitAny: stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
       generateTextFn: stub.fn as any,
     });
     const controller = new AbortController();
@@ -128,7 +129,7 @@ describe("AiSdkModel per-call timeout + abort", () => {
     const stub = makeStub({ text: "ok", usage: { inputTokens: 1, outputTokens: 1 } });
     const model = new AiSdkModel({
       defaultModel: "claude-sonnet-4-5",
-      // biome-ignore lint/suspicious/noExplicitAny: stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
       generateTextFn: stub.fn as any,
     });
     await model.generateText([{ role: "user", content: "hi" }]);
@@ -141,7 +142,7 @@ describe("AiSdkModel per-call timeout + abort", () => {
     const model = new AiSdkModel({
       defaultModel: "claude-sonnet-4-5",
       callTimeoutMs: 50,
-      // biome-ignore lint/suspicious/noExplicitAny: stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
       generateTextFn: stub.fn as any,
     });
     const r = await model.generateText([{ role: "user", content: "hi" }]);
@@ -178,7 +179,7 @@ describe("AiSdkModel per-call timeout + abort", () => {
       defaultModel: "claude-sonnet-4-5",
       callTimeoutMs: 40,
       fallback: { defaultModel: "claude-sonnet-4-6" },
-      // biome-ignore lint/suspicious/noExplicitAny: stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
       generateTextFn: fn as any,
     });
     await expect(model.generateText([{ role: "user", content: "hi" }])).rejects.toBeInstanceOf(
@@ -218,7 +219,7 @@ describe("AiSdkModel per-call timeout + abort", () => {
       defaultModel: "claude-sonnet-4-5",
       callTimeoutMs: 5,
       fallback: { defaultModel: "claude-sonnet-4-6" },
-      // biome-ignore lint/suspicious/noExplicitAny: stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
       generateTextFn: fn as any,
     });
 
@@ -240,7 +241,7 @@ describe("AiSdkModel.generateText", () => {
     });
     const model = new AiSdkModel({
       defaultModel: "claude-sonnet-4-5",
-      // biome-ignore lint/suspicious/noExplicitAny: stub replaces SDK
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub replaces SDK
       generateTextFn: stub.fn as any,
     });
     const r = await model.generateText([{ role: "user", content: "hi" }]);
@@ -256,7 +257,7 @@ describe("AiSdkModel.generateText", () => {
   it("honours temperature and metadata", async () => {
     const stub = makeStub({ text: "ok" });
     const model = new AiSdkModel({
-      // biome-ignore lint/suspicious/noExplicitAny: stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
       generateTextFn: stub.fn as any,
     });
     await model.generateText([{ role: "user", content: "x" }], {
@@ -285,7 +286,7 @@ describe("AiSdkModel.generateObject — submit-tool loop", () => {
       finishReason: "tool-calls",
     });
     const model = new AiSdkModel({
-      // biome-ignore lint/suspicious/noExplicitAny: stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
       generateTextFn: stub.fn as any,
     });
     const r = await model.generateObject({
@@ -311,7 +312,7 @@ describe("AiSdkModel.generateObject — submit-tool loop", () => {
       finishReason: "tool-calls",
     });
     const model = new AiSdkModel({
-      // biome-ignore lint/suspicious/noExplicitAny: stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
       generateTextFn: stub.fn as any,
     });
     const r = await model.generateObject<number[]>({
@@ -329,7 +330,7 @@ describe("AiSdkModel.generateObject — submit-tool loop", () => {
       finishReason: "tool-calls",
     });
     const model = new AiSdkModel({
-      // biome-ignore lint/suspicious/noExplicitAny: stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
       generateTextFn: stub.fn as any,
     });
     const r = await model.generateObject({
@@ -348,7 +349,7 @@ describe("AiSdkModel.generateObject — submit-tool loop", () => {
     });
     const model = new AiSdkModel({
       defaultModel: "o1-preview",
-      // biome-ignore lint/suspicious/noExplicitAny: stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
       generateTextFn: stub.fn as any,
     });
     await model.generateObject({
@@ -367,7 +368,7 @@ describe("AiSdkModel.generateObject — submit-tool loop", () => {
       finishReason: "stop",
     });
     const model = new AiSdkModel({
-      // biome-ignore lint/suspicious/noExplicitAny: stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
       generateTextFn: stub.fn as any,
     });
     const r = await model.generateObject({
@@ -391,7 +392,7 @@ describe("AiSdkModel.generateObject — submit-tool loop", () => {
       },
     ]);
     const model = new AiSdkModel({
-      // biome-ignore lint/suspicious/noExplicitAny: stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub
       generateTextFn: stub.fn as any,
     });
     const r = await model.generateObject<{ ok: boolean }>({

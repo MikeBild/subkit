@@ -1,10 +1,12 @@
 // Unit tests for the persistent REPL history store. Every test uses
 // a fresh tmpdir path so runs don't touch the user's real ~/.sk.
 
-import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, describe, expect, test } from "bun:test";
+
 import { getTestNow } from "../../../engine/src/test-helpers/determinism/clock.ts";
 import {
   appendHistory,

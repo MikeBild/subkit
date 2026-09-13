@@ -8,11 +8,11 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
 import { llmUsage, tenantLlmSettings } from "../../db/schema/index.ts";
 import type { LlmProviderError } from "../../llm/errors.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
-
 import type { ConversationTool, ToolContext, ToolResult } from "../tools/index.ts";
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
@@ -41,7 +41,7 @@ describe("conversations/hardening", () => {
     const markerTool: ConversationTool = {
       name: "marker",
       description: "serialization marker tool",
-      // biome-ignore lint/suspicious/noExplicitAny: test fixture schema
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test fixture schema
       inputSchema: { parse: (x: unknown) => x } as any,
       category: "draft_write",
       async execute(_ctx: ToolContext, rawArgs: unknown): Promise<ToolResult> {
@@ -108,7 +108,7 @@ describe("conversations/hardening", () => {
     const listSkills = tools.list_skills;
     expect(listSkills).toBeDefined();
     const call = (i: number) =>
-      // biome-ignore lint/suspicious/noExplicitAny: direct execute access
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- direct execute access
       (listSkills!.execute as any)({}, { toolCallId: `tc-${i}`, messages: [] });
 
     const resolved: number[] = [];

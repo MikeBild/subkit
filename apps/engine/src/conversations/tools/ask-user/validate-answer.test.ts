@@ -23,6 +23,7 @@
 // Pure functions — no DB, no network.
 
 import { describe, expect, test } from "bun:test";
+
 import { validateElicitationAnswer } from "./validate-answer.ts";
 
 // ── ask_user_form ────────────────────────────────────────────────────────────

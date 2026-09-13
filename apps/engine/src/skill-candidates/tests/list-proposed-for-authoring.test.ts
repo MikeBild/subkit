@@ -10,6 +10,7 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { tenants } from "../../db/schema/identity.ts";
 import { skillCandidateEvidence, skillCandidates } from "../../db/schema/skills.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

@@ -1,6 +1,7 @@
 // Resume summary — one-sentence recap + next-best-action across states.
 
 import { describe, expect, test } from "bun:test";
+
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
 import type { ConversationRecord, DraftDocument } from "../types.ts";

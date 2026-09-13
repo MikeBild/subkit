@@ -15,6 +15,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Db } from "../../../db/client.ts";
 import { auditLog, conversations, tenants } from "../../../db/schema/index.ts";
@@ -22,8 +23,8 @@ import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
-import { __setExternalMcpToolsBuilderForTests } from "../sdk-wrap/external-mcp-tools.ts";
 import { type TurnSignals, wrapTools } from "../sdk-wrap.ts";
+import { __setExternalMcpToolsBuilderForTests } from "../sdk-wrap/external-mcp-tools.ts";
 
 function freshSignals(): TurnSignals {
   return {

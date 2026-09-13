@@ -15,10 +15,11 @@
 //   4. JSON string missing `query` field → invalid_input.
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import * as graphqlDriver from "../drivers/graphql.ts";
-import { type CallConnectorRequest, callConnector } from "./call-connector.ts";
+import { callConnector, type CallConnectorRequest } from "./call-connector.ts";
 
 let testDb: TestDb;
 let tenant_id: string;

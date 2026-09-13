@@ -8,6 +8,7 @@
 
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordUsageEvent, type TrafficClass } from "../../stats/usage-events.ts";

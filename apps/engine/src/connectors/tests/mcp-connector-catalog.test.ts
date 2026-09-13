@@ -11,6 +11,7 @@
 // catalog block, having issued no MCP-specific query to find it.
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
+
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "../../llm/core/tenant-summary.ts";

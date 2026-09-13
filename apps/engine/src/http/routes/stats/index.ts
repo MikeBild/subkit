@@ -4,6 +4,7 @@
 // from `executions` / `audit_log` / `llm_usage` — no new persistence.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
+
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { registerStatsConnectorsRoute } from "./connectors.ts";

@@ -1,6 +1,7 @@
 // Unit tests for the URL grounding scanner.
 
 import { describe, expect, it } from "bun:test";
+
 import { urlScanner } from "../scanners/url.ts";
 
 describe("urlScanner", () => {

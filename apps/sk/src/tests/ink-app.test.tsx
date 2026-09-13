@@ -11,12 +11,14 @@
 // runtime. Async iterables for the SSE stream are synthesized
 // per test via a tiny `framesOf(...)` helper.
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import type { PendingElicitation, TurnEvent } from "@cli-core/index.ts";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
+
 import { InkApp, type InkAppProps } from "../ink-app.tsx";
 import type { PersonaProbe } from "../slash.ts";
 

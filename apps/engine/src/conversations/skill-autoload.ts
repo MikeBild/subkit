@@ -17,6 +17,7 @@
 // only reachable via explicit `load_skill(slug)`.
 
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 import { skills } from "../db/schema/index.ts";
 import type { SkillActivation, SkillMaturity, SkillSideEffects } from "../skills/types.ts";

@@ -27,6 +27,7 @@
 
 import { readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+
 import { type CallExpression, Node, Project, type SourceFile } from "ts-morph";
 
 export interface TenantFilterViolation {

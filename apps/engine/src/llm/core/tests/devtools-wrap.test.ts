@@ -5,6 +5,7 @@
 // wrapped, (4) the scrub middleware redacts Authorization headers.
 
 import { afterEach, describe, expect, it } from "bun:test";
+
 import {
   __resetDevtoolsCacheForTests,
   maybeWrapForDevtools,
@@ -54,18 +55,18 @@ describe("maybeWrapForDevtools", () => {
   it("does not wrap when NODE_ENV is production", async () => {
     process.env.NODE_ENV = "production";
     const model = stubV4Model();
-    // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub satisfies the runtime contract
     const out = await maybeWrapForDevtools(model as any);
-    // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub satisfies the runtime contract
     expect(out).toBe(model as any);
   });
 
   it("wraps in DEV and returns a different instance", async () => {
     process.env.NODE_ENV = "development";
     const model = stubV4Model();
-    // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub satisfies the runtime contract
     const out = await maybeWrapForDevtools(model as any);
-    // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub satisfies the runtime contract
     expect(out).not.toBe(model as any);
     expect(typeof out === "object" && out !== null && "specificationVersion" in out).toBe(true);
   });
@@ -79,9 +80,9 @@ describe("maybeWrapForDevtools", () => {
       if (env === "") delete process.env.NODE_ENV;
       else process.env.NODE_ENV = env;
       const model = stubV4Model();
-      // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub satisfies the runtime contract
       const out = await maybeWrapForDevtools(model as any);
-      // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub satisfies the runtime contract
       expect(out).toBe(model as any);
     });
   }
@@ -89,9 +90,9 @@ describe("maybeWrapForDevtools", () => {
   it("passes through models with unsupported specificationVersion", async () => {
     process.env.NODE_ENV = "development";
     const legacyModel = { ...stubV4Model(), specificationVersion: "v2" };
-    // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub satisfies the runtime contract
     const out = await maybeWrapForDevtools(legacyModel as any);
-    // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stub satisfies the runtime contract
     expect(out).toBe(legacyModel as any);
   });
 });
@@ -118,9 +119,9 @@ describe("scrubAuthHeadersMiddleware", () => {
           "x-trace-id": "trace-1234",
         },
       },
-      // biome-ignore lint/suspicious/noExplicitAny: minimal stub for the LanguageModelV3 surface
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub for the LanguageModelV3 surface
     } as any);
-    // biome-ignore lint/suspicious/noExplicitAny: scrubbed result is shaped per LanguageModelV3 params
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- scrubbed result is shaped per LanguageModelV3 params
     const headers = (result as any).headers as Record<string, string>;
     expect(headers.Authorization).toBe("[REDACTED]");
     expect(headers["X-Api-Key"]).toBe("[REDACTED]");
@@ -137,10 +138,10 @@ describe("scrubAuthHeadersMiddleware", () => {
   it("scrub middleware runs before downstream middleware sees params", async () => {
     const { wrapLanguageModel } = await import("ai");
     const observed: Array<{ which: string; auth: string | undefined }> = [];
-    // biome-ignore lint/suspicious/noExplicitAny: probe middleware is intentionally minimal — full v3 surface would dwarf the assertion.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- probe middleware is intentionally minimal — full v3 surface would dwarf the assertion.
     const probe: any = (label: string) => ({
       specificationVersion: "v4" as const,
-      // biome-ignore lint/suspicious/noExplicitAny: see above
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
       transformParams: async ({ params }: any) => {
         observed.push({ which: label, auth: params.headers?.Authorization });
         return params;
@@ -148,7 +149,7 @@ describe("scrubAuthHeadersMiddleware", () => {
     });
     const model = stubV4Model();
     const wrapped = wrapLanguageModel({
-      // biome-ignore lint/suspicious/noExplicitAny: minimal stub for LanguageModelV3
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub for LanguageModelV3
       model: model as any,
       middleware: [scrubAuthHeadersMiddleware, probe("inner")],
     });

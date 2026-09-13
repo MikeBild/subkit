@@ -12,6 +12,7 @@
 //   - The conversations verifier rejects both at build time.
 
 import { describe, expect, test } from "bun:test";
+
 import { verifyWorkflow } from "../../conversations/verifier.ts";
 import { validateBareIterationIdentifiers } from "../reference-validator.ts";
 import { validateWorkflowDef } from "../validator.ts";
@@ -70,7 +71,7 @@ describe("validateWorkflowDef — item_var rejection (single enforcement point)"
           id: "call",
           kind: "request",
           method: "GET",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal placeholder is the tested grammar.
+          // eslint-disable-next-line no-template-curly-in-string -- literal placeholder is the tested grammar.
           url: "https://api.example.com/x/${item.id}",
         },
       ],

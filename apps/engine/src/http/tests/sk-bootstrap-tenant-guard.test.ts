@@ -7,6 +7,7 @@
 // helper directly with synthetic rows.
 
 import { describe, expect, test } from "bun:test";
+
 import { enforceTenantMatch } from "../routes/identity/sk-bootstrap.ts";
 
 describe("enforceTenantMatch (R9-C1 defensive guard)", () => {

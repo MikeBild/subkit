@@ -17,6 +17,7 @@
 import { Box, Text, useInput, useStdout } from "ink";
 import type React from "react";
 import { Children, useEffect, useLayoutEffect, useMemo, useState } from "react";
+
 import { useTheme } from "./theme/Provider.tsx";
 
 export interface ScrollViewProps {

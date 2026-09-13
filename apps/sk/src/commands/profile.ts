@@ -6,6 +6,7 @@
 import * as prompts from "@clack/prompts";
 import { defineCommand } from "citty";
 import pc from "picocolors";
+
 import { configPath, DEFAULT_ENGINE_URL, loadConfig, saveConfig, saveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 

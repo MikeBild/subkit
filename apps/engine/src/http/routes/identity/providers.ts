@@ -16,6 +16,7 @@
 // the caller is signed in: two different answers would make this route a probe
 // for whether a credential is valid.
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import type { AppEnv } from "../../openapi.ts";
 
 const ProviderEntry = z

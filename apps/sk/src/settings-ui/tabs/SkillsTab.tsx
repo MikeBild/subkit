@@ -7,6 +7,7 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
+
 import type { EngineClient } from "../../engine-client.ts";
 import { resolveAction } from "../keybindings/useKeybinding.ts";
 

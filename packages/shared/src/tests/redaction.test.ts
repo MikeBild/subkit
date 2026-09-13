@@ -8,6 +8,7 @@
 // real-token entropy.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   findSecretSpans,
   redactWithMaxDepth,

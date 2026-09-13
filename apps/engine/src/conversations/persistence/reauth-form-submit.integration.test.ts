@@ -34,6 +34,7 @@
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
+
 import { markConnectorNeedsReauth } from "../../connectors/reauth.ts";
 import * as oauthClient from "../../credentials/oauth2/client.ts";
 import { auditLog, connectors, conversationElicitations } from "../../db/schema/index.ts";
@@ -181,8 +182,7 @@ describe("Cognito re-issue form-submit path — Part A: commit_intent stamped on
 
     const input = elicitation.input as Record<string, unknown>;
     const commitIntent = input.commit_intent as
-      | { kind: string; payload: Record<string, unknown>; description: string }
-      | undefined;
+      { kind: string; payload: Record<string, unknown>; description: string } | undefined;
 
     // The fix: commit_intent must be present with kind = "save_connector_draft".
     expect(commitIntent).toBeDefined();

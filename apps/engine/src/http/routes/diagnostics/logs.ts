@@ -16,6 +16,7 @@
 
 import { DIAGNOSTICS_LOG_STREAM_PATH } from "@cli-core/diagnostics-paths.ts";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
   AuditAction,

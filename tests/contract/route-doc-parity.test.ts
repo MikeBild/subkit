@@ -11,9 +11,10 @@
 // removed, or a new route that nobody documented. Known stable
 // exceptions live on `WHITELIST` below — keep that list tight.
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const REPO = join(import.meta.dir, "..", "..");
 
@@ -58,7 +59,7 @@ function collectRoutesFromSource(files: string[]): Set<string> {
     const text = readFileSync(join(REPO, rel), "utf8");
     for (const re of patterns) {
       let match: RegExpExecArray | null;
-      // biome-ignore lint/suspicious/noAssignInExpressions: tight loop, common pattern
+      // eslint-disable-next-line no-cond-assign -- tight loop, common pattern
       while ((match = re.exec(text)) !== null) {
         const method = match[1]?.toUpperCase() ?? "";
         const path = match[2] ?? "";
@@ -158,7 +159,7 @@ describe("route-doc parity", () => {
     const nameRe = /name:\s*"([a-z][a-z0-9-]*)"[\s\S]{0,400}?category:/g;
     const names = new Set<string>();
     let m: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: tight loop
+    // eslint-disable-next-line no-cond-assign -- tight loop
     while ((m = nameRe.exec(slashSrc)) !== null) {
       if (m[1]) names.add(m[1]);
     }

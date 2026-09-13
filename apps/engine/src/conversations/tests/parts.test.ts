@@ -3,6 +3,7 @@
 // `UIMessage` shape exposed on `messages_v2`.
 
 import { describe, expect, test } from "bun:test";
+
 import { buildMessagesV2, toMessageParts } from "../parts.ts";
 import type { ConversationMessageRecord, ConversationToolCallRecord } from "../types.ts";
 

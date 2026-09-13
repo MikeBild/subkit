@@ -10,6 +10,7 @@
 // live event never carried a harvestable shape at all.
 
 import { describe, expect, test } from "bun:test";
+
 import { harvestCitations, harvestCitationsFromPersisted } from "../citations.ts";
 import type { TurnEvent } from "../types.ts";
 

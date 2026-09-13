@@ -8,6 +8,7 @@
 // is now required; these tests pin the previously-broken tool paths.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { connectorTemplates } from "../../../db/schema/index.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import { createConversation } from "../../service.ts";

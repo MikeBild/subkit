@@ -17,10 +17,12 @@
 // These tests pin the shape rather than the model names alone: an elevation
 // that does not raise the tier is the defect, whatever the ids are.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { _resetConfigForTests, loadConfig } from "../../../config/loader.ts";
 import type { ModelRoute } from "../../types.ts";
 import { applyFlowModelElevation, globalLlmStatus } from "../invoke.ts";

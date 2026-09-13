@@ -14,6 +14,7 @@
 //     main dispatcher should fall through to the next handler.
 
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
+
 import { panify, type SlashHandlerContext } from "../handler.ts";
 
 type Connector = components["schemas"]["Connector"];

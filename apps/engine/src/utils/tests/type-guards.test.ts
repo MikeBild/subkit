@@ -3,6 +3,7 @@
 // for instance, which a naive `typeof === "object"` check accepts.
 
 import { describe, expect, test } from "bun:test";
+
 import { isRecord } from "../type-guards.ts";
 
 describe("isRecord", () => {

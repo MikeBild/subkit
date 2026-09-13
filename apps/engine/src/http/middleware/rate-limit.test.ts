@@ -7,6 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { AppEnv } from "../openapi.ts";
 import { rateLimitMiddleware, resolveClientIp } from "./rate-limit.ts";

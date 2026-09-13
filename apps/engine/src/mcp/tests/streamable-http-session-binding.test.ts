@@ -11,6 +11,7 @@
 // returns, disclosing nothing about the id.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { tenants, users } from "../../db/schema/index.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 

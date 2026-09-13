@@ -8,7 +8,6 @@
 // test database (`createTestDb`) and bind it to `process.env.DATABASE_URL`
 // so `getDb()` resolves to it.
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -21,8 +20,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import type { UpdaterConfig } from "@cli-core/updater.ts";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { desc, eq, like } from "drizzle-orm";
+
 import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 import { closeDb } from "../db/client.ts";
 import { auditLog } from "../db/schema/audit.ts";

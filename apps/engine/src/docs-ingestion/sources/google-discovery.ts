@@ -1,8 +1,8 @@
 // Google API Discovery source normalizer.
 
 import {
-  type GoogleDiscoveryObject,
   googleDiscoveryBaseUrl,
+  type GoogleDiscoveryObject,
   listGoogleDiscoveryMethods,
   parseGoogleDiscoveryDocument,
 } from "../../llm/flows/document-parsers/google-discovery.ts";

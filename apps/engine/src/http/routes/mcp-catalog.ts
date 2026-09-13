@@ -11,6 +11,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { Context } from "hono";
+
 import { paginatedResponse } from "../../api/common-schemas.ts";
 import { getConfig } from "../../config/loader.ts";
 import { connectors, skills } from "../../db/schema/index.ts";

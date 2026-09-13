@@ -2,14 +2,15 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { notificationChannels } from "../../db/schema/notifications.ts";
 import {
   __resetBreakers,
   canPass,
   FAILURE_THRESHOLD,
-  OPEN_DURATION_MS,
   onFailure,
   onSuccess,
+  OPEN_DURATION_MS,
 } from "../circuit-breaker.ts";
 import { createNotificationCtx, type NotificationTestCtx } from "./setup.ts";
 

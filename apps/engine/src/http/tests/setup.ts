@@ -12,7 +12,9 @@ import { mkdtempSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type ServerType, serve } from "@hono/node-server";
+
+import { serve, type ServerType } from "@hono/node-server";
+
 import { _resetConfigForTests, getConfig, loadConfig } from "../../config/loader.ts";
 import type { Config } from "../../config/schema.ts";
 import type { Db } from "../../db/client.ts";

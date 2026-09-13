@@ -11,6 +11,7 @@
 // LLM: none needed — boot mock to stay hermetic.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { grantScheduleAuthorityFixture } from "../../apps/engine/src/scheduler/tests/authority-fixture.ts";
 import { seedWorkflow } from "./_helpers/factories.ts";
 import { apiClient } from "./_helpers/http.ts";

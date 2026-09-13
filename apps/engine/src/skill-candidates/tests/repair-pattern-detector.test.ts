@@ -15,8 +15,10 @@
 // relative to the seam's value when the test runs. (A future test that needs
 // frozen time can install a clock override and seed created_at relative to it.)
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+
 import { connectors } from "../../db/schema/connectors.ts";
 import { executionFixtures, patchCandidates } from "../../db/schema/executions.ts";
 import { tenants } from "../../db/schema/identity.ts";

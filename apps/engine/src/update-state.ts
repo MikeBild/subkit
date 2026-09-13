@@ -2,6 +2,7 @@
 // The startup code writes to this; the health route reads from it.
 
 import { checkForUpdate, defaultUpdaterConfig } from "@cli-core/updater.ts";
+
 import { logger } from "./logging/logger.ts";
 
 export interface EngineUpdateState {

@@ -8,6 +8,7 @@
 // null and every later prompt deadlocked.
 
 import { describe, expect, test } from "bun:test";
+
 import { applyTurnEvent, errorFrameToEvents, initialSessionState } from "../turn-event.ts";
 
 describe("errorFrameToEvents", () => {

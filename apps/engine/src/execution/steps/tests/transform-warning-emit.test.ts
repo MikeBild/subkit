@@ -6,6 +6,7 @@
 // dry-run repair gate consumes.
 
 import { describe, expect, test } from "bun:test";
+
 import { RunLlmBudget } from "../../../llm/accounting/index.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import type { StepRunContext } from "../../types.ts";
@@ -15,7 +16,7 @@ const TEST_NOW_MS = getTestNow();
 
 function ctx(scope: Record<string, unknown>): StepRunContext {
   return {
-    // biome-ignore lint/suspicious/noExplicitAny: minimal stub; no DB needed for a non-offloaded scope
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub; no DB needed for a non-offloaded scope
     db: {} as any,
     tenant_id: "t-transform",
     execution_id: "00000000-0000-0000-0000-000000000099",
@@ -29,7 +30,7 @@ function ctx(scope: Record<string, unknown>): StepRunContext {
     workflow_slug: "test-wf",
     trace_id: null,
     execution_mode: "dev",
-    // biome-ignore lint/suspicious/noExplicitAny: minimal stub
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub
     step: {} as any,
     step_index: 0,
     step_row_id: "00000000-0000-0000-0000-000000000aaa",

@@ -18,11 +18,13 @@
 // it is asking to reach private hosts. The gate under test is the production
 // one, so these tests pin `strict` rather than inheriting the test default.
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { closeDb } from "../../db/client.ts";
 import { connectors, tenants } from "../../db/schema/index.ts";

@@ -7,9 +7,11 @@
 //   - AC4: DELETE /v1/rbac/grants/:id removes the grant, revoking access.
 // Spec refs: gap-pass-2 C2 / C4 / C8
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
+
 import { apiKeys, roles, users } from "../../db/schema/index.ts";
 import { BUILTIN_ROLE_NAMES } from "../../rbac/seed.ts";
 import {

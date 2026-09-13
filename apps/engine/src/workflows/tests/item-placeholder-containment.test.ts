@@ -1,4 +1,4 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
+/* eslint-disable no-template-curly-in-string -- literal `${...}` placeholder tokens are part of the tested grammar. */
 // Authoring-time check: a step using `${item.X}` placeholder MUST
 // be inside a loop's body[]. Pre-fix (session a128deba 15:13:06)
 // the LLM added a `request` step with `path: "/v2/projects/${item.id}/resources"`
@@ -7,6 +7,7 @@
 // cycle. This rule catches the structural mistake at validation time.
 
 import { describe, expect, test } from "bun:test";
+
 import { validateWorkflowDef } from "../validator.ts";
 
 describe("validateWorkflowDef · item-placeholder containment", () => {

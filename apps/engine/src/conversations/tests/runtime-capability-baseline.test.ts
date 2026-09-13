@@ -15,6 +15,7 @@
 // flips — that is the measured gate. This is a plain DB test (no model).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { listCapabilityGaps } from "../../discovery/service.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "../../llm/core/tenant-summary.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";

@@ -14,6 +14,7 @@
 //   - same not_available_on_surface short-circuit for draft_write
 
 import { describe, expect, test } from "bun:test";
+
 import { invokeForSdk } from "../../conversations/tools/dispatch-adapter.ts";
 import { callToolViaDispatcher } from "../../mcp/adapter.ts";
 import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../policy.ts";
@@ -92,8 +93,7 @@ describe("tools/cross-surface-parity", () => {
     // _meta.subkit.not_available_on_surface for clients that prefer
     // structured metadata over content scraping.
     const meta = mcpResult._meta as
-      | { subkit?: { not_available_on_surface?: { reason: string } } }
-      | undefined;
+      { subkit?: { not_available_on_surface?: { reason: string } } } | undefined;
     expect(meta?.subkit?.not_available_on_surface?.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
   });
 

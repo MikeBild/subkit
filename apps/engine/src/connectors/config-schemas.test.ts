@@ -6,6 +6,7 @@
 // a message naming the connector id instead of the bad field.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   CONNECTOR_CONFIG_SCHEMAS,
   MCP_ONLY_AUTH_TYPES,

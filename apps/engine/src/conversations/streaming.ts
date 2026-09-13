@@ -7,6 +7,7 @@
 // share.
 
 import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
+
 import type { TurnEvent } from "./types.ts";
 
 export function serializeEvent(ev: TurnEvent): { event: string; data: string } {

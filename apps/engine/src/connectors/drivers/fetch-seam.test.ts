@@ -8,8 +8,10 @@
 // to a connection-counting server must open N distinct TCP connections.
 // (A plain pooled fetch would open 1.)
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
+
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+
 import { getDriverFetch } from "./fetch-seam.ts";
 
 let server: Server;

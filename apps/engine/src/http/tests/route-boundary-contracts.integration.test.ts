@@ -15,10 +15,12 @@
 // `RouteSpec` entry. New endpoints inherit the contract test by
 // adding themselves to ROUTE_SPECS.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { type ServerType, serve } from "@hono/node-server";
+
+import { serve, type ServerType } from "@hono/node-server";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import { apiKeys, tenants, users } from "../../db/schema/index.ts";

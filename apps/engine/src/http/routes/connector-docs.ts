@@ -10,6 +10,7 @@
 // middleware.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as connectorSvc from "../../connectors/index.ts";
 import * as docs from "../../docs-ingestion/index.ts";

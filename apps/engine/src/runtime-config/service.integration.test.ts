@@ -1,7 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { _resetConfigForTests, getConfig, loadConfig } from "../config/loader.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { RuntimeConfigCoordinator } from "./coordinator.ts";
@@ -11,10 +13,10 @@ import {
   DATABASE_URL_BOOTSTRAP_SENTINEL,
   getRuntimeRevision,
   initializeRuntimeConfig,
+  revokeSecretVersion,
   RuntimeConfigConflictError,
   RuntimeConfigValidationError,
   RuntimeSecretInUseError,
-  revokeSecretVersion,
   saveRuntimeConfigPatch,
 } from "./service.ts";
 

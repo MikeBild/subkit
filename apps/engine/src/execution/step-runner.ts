@@ -6,6 +6,7 @@
 import { unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type ResolvedFile, SPOOL_THRESHOLD_BYTES, walkAndResolve } from "../files/resolver.ts";
@@ -226,8 +227,7 @@ export async function runStep(
       const fileCache = new Map<string, ResolvedFile>();
       const resolverCtx = { db: ctx.db, tenant_id: ctx.tenant_id };
       let resolvedMultipart:
-        | import("./steps/request/dispatch.ts").ResolvedMultipartPart[]
-        | undefined;
+        import("./steps/request/dispatch.ts").ResolvedMultipartPart[] | undefined;
       let resolvedBodyFile: ResolvedFile | undefined;
 
       if (step.multipart && step.multipart.length > 0) {

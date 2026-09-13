@@ -3,9 +3,10 @@
 // Store-level tests cover derivation details; this suite drives the advertised
 // MCP `tasks/*` protocol methods over Streamable HTTP with real auth sessions.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { conversations, mcpTasks, tenants, users } from "../../db/schema/index.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
@@ -146,8 +147,7 @@ describe("MCP tasks surface", () => {
 
     const meta = (result as { _meta?: Record<string, unknown> })._meta;
     const relatedTask = meta?.["io.modelcontextprotocol/related-task"] as
-      | { taskId?: string }
-      | undefined;
+      { taskId?: string } | undefined;
     expect(relatedTask?.taskId).toBe(taskId);
   });
 
@@ -163,8 +163,7 @@ describe("MCP tasks surface", () => {
 
     const meta = (result as { _meta?: Record<string, unknown> })._meta;
     const relatedTask = meta?.["io.modelcontextprotocol/related-task"] as
-      | { taskId?: string }
-      | undefined;
+      { taskId?: string } | undefined;
     expect(relatedTask?.taskId).toBe(taskId);
   });
 

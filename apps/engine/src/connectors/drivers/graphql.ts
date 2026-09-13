@@ -23,10 +23,10 @@ import {
   checkAuthorityRedirect,
   deriveAppliedAuthMethod,
   FETCH_DEADLINE_MS,
-  type RequestDispatchPolicy,
-  type ResolvedConnectorCredential,
   readBodyCapped,
+  type RequestDispatchPolicy,
   resolveConnectorCredential,
+  type ResolvedConnectorCredential,
   resolveMaxResponseBytes,
   validateOutboundHeaders,
 } from "./http.ts";

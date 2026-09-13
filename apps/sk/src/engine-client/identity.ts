@@ -4,6 +4,7 @@
 // `../engine-client.ts`.
 
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
+
 import type { EngineClient } from "../engine-client.ts";
 
 // ---------- Identity provisioning wire types ----------

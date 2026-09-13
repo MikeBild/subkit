@@ -45,6 +45,7 @@
 // EXECUTION_MODE: confirm_before_execution
 
 import { z } from "@hono/zod-openapi";
+
 import { recordConnectorInvoked } from "../../audit/recorders/index.ts";
 import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
@@ -423,9 +424,7 @@ export const callConnectorTool: ConversationTool = {
               })()
             : args.body;
         const b = rawBody as
-          | { query?: unknown; variables?: unknown; operation?: unknown }
-          | null
-          | undefined;
+          { query?: unknown; variables?: unknown; operation?: unknown } | null | undefined;
         if (!b || typeof b !== "object" || typeof b.query !== "string") {
           return structuredError(
             "invalid_input",

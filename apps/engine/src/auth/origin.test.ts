@@ -6,6 +6,7 @@
 // exists is to be trustworthy when `clientInfo` is not.
 
 import { describe, expect, test } from "bun:test";
+
 import { principalOrigin } from "./origin.ts";
 import type { ResolvedPrincipal } from "./types.ts";
 

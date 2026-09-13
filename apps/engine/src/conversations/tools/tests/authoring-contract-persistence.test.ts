@@ -5,6 +5,7 @@
 // buildGateError accepts an `extra` override that wins over the default.
 
 import { describe, expect, test } from "bun:test";
+
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import { buildGateError, buildPersistencePayload } from "../authoring-contract.ts";
 

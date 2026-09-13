@@ -13,6 +13,7 @@
 // Run: bun test apps/engine/src/conversations/tests/verbosity-evidence.test.ts
 
 import { describe, expect, it } from "bun:test";
+
 import { EventSink } from "../event-sink.ts";
 import type { TurnEvent } from "../types.ts";
 

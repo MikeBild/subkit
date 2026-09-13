@@ -17,6 +17,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
+
 import {
   auditLog,
   conversationElicitations,
@@ -136,7 +137,7 @@ function stubToolCtx(conversationId: string, draft: DraftDocument): ToolContext 
     connector_id: null,
     workflow_id: null,
     permission_mode: null,
-    // biome-ignore lint/suspicious/noExplicitAny: minimal engineClient stub
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal engineClient stub
     engineClient: {} as any,
     getDraft: () => live,
     setDraft: async (next) => {

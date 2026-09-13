@@ -145,8 +145,10 @@ export async function recordEngineUpdateFailed(
  *  field as a parameter would be dead code and would invite a future
  *  contributor to pass `"self-update"` here, which the recorder would
  *  silently override. */
-export interface RecordEngineUpdateRolledBackParams
-  extends Omit<EngineUpdateBase, "request_source"> {
+export interface RecordEngineUpdateRolledBackParams extends Omit<
+  EngineUpdateBase,
+  "request_source"
+> {
   /** SHA256 of the retained binary that was restored. */
   sha256: string;
   reason?: string;

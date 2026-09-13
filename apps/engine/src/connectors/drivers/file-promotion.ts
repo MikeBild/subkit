@@ -90,7 +90,7 @@ const EXTENSION_BY_TYPE: Record<string, string> = {
  *  255-char ceiling the files API enforces on upload filenames. */
 function sanitizeFilename(raw: string): string | null {
   const base = raw.split(/[/\\]/).pop() ?? "";
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control chars from vendor-supplied filenames is the point
+  // eslint-disable-next-line no-control-regex -- stripping control chars from vendor-supplied filenames is the point
   const cleaned = base.replace(/[\u0000-\u001f\u007f]/g, "").trim();
   if (!cleaned || cleaned === "." || cleaned === "..") return null;
   return cleaned.slice(0, 255);

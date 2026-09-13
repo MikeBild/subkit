@@ -4,12 +4,14 @@
 // overall status. Mirrors the journey-test rig (`ink-app.test.tsx`)
 // for shape so the two suites stay easy to refactor together.
 
-import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import type { TurnEvent } from "@cli-core/index.ts";
+import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
+
 import type { SetupValidationResponse } from "../engine-client.ts";
 import { InkApp, type InkAppProps } from "../ink-app.tsx";
 import type { PersonaProbe } from "../slash.ts";

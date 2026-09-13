@@ -17,6 +17,7 @@
 // This job is never a required check and nothing depends on it.
 
 import { appendFileSync } from "node:fs";
+
 import { classifyAuditProcess } from "./lib/audit-process.ts";
 import { readAuditReport } from "./lib/audit-report.ts";
 

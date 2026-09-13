@@ -6,6 +6,7 @@
 // live DB (createTestDb).
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import { createConversation } from "../../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
@@ -333,9 +334,8 @@ describe("update_connector_draft — clean updates pass", () => {
     // into a state where the next probe surfaces credential_required,
     // and the LLM oscillates. The downgrade must be refused so the
     // operator gets a clear next-best-action set.
-    const { setDraftCredential, _resetDraftCredentialCacheForTests } = await import(
-      "../../persistence/draft-credential-cache.ts"
-    );
+    const { setDraftCredential, _resetDraftCredentialCacheForTests } =
+      await import("../../persistence/draft-credential-cache.ts");
     _resetDraftCredentialCacheForTests();
     const { base } = await makeCtx();
     // Stage an oauth2 connector + cached credential.
@@ -363,9 +363,8 @@ describe("update_connector_draft — clean updates pass", () => {
   });
 
   it("allows auth_type changes that are not a downgrade-to-none", async () => {
-    const { _resetDraftCredentialCacheForTests } = await import(
-      "../../persistence/draft-credential-cache.ts"
-    );
+    const { _resetDraftCredentialCacheForTests } =
+      await import("../../persistence/draft-credential-cache.ts");
     _resetDraftCredentialCacheForTests();
     const { base } = await makeCtx();
     await updateConnectorDraftTool.execute(base, {

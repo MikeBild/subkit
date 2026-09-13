@@ -19,6 +19,7 @@
 // NaN.
 
 import { type SQL, sql } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 
 export interface QualityStatsParams {

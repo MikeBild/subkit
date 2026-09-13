@@ -26,6 +26,7 @@
 // saying so explicitly is what stops the next reader from assuming an omission.
 
 import { z } from "zod";
+
 import { type McpAuthConfig, McpAuthConfigSchema } from "../mcp/client/registry.ts";
 import { type AuthType, type DriverName, HttpConnectorConfig } from "./types.ts";
 

@@ -6,10 +6,12 @@
 // harness can observe through engine-only contracts.
 // Spec refs: docs/operators/observability.md
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { executions, workflows, workflowsSchedules } from "../../db/schema/index.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { grantScheduleAuthorityFixture } from "../../scheduler/tests/authority-fixture.ts";

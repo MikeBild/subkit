@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 import { userIdentities, users } from "../db/schema/index.ts";
 

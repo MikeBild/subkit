@@ -4,6 +4,7 @@
 // GOTCHA: `can` is a query, so it is gated on `rbac:read` — not write.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { can, type PermissionCheck } from "../../../rbac/index.ts";
 import { NotFoundError } from "../../errors.ts";

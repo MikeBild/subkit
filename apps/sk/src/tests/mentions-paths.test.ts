@@ -7,6 +7,7 @@
 // endpoint.
 
 import { describe, expect, it } from "bun:test";
+
 import { resolveMentions } from "../mentions.ts";
 
 interface RequestCall {
@@ -32,7 +33,7 @@ describe("mentions — entity HTTP paths", () => {
   it("@api-key:<id> hits /v1/identity/api-keys/:id", async () => {
     const client = makeClient();
     await resolveMentions("@api-key:00000000-0000-0000-0000-000000000001 tell me", {
-      // biome-ignore lint/suspicious/noExplicitAny: test stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test stub
       client: client as any,
     });
     expect(client.calls[0]?.path).toBe(
@@ -43,7 +44,7 @@ describe("mentions — entity HTTP paths", () => {
   it("@user:<id> hits /v1/identity/users/:id", async () => {
     const client = makeClient();
     await resolveMentions("@user:00000000-0000-0000-0000-000000000002", {
-      // biome-ignore lint/suspicious/noExplicitAny: test stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test stub
       client: client as any,
     });
     expect(client.calls[0]?.path).toBe("/v1/identity/users/00000000-0000-0000-0000-000000000002");
@@ -52,7 +53,7 @@ describe("mentions — entity HTTP paths", () => {
   it("@audit:<id> uses the query endpoint (no /v1/audit-log/:id)", async () => {
     const client = makeClient();
     await resolveMentions("@audit:00000000-0000-0000-0000-000000000003", {
-      // biome-ignore lint/suspicious/noExplicitAny: test stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test stub
       client: client as any,
     });
     expect(client.calls[0]?.path).toBe("/v1/audit-log?id=00000000-0000-0000-0000-000000000003");
@@ -61,7 +62,7 @@ describe("mentions — entity HTTP paths", () => {
   it("@workflow + @execution + @connector unchanged", async () => {
     const client = makeClient();
     await resolveMentions("@workflow:abc @execution:def @connector:ghi", {
-      // biome-ignore lint/suspicious/noExplicitAny: test stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test stub
       client: client as any,
     });
     expect(client.calls.map((c) => c.path)).toEqual([

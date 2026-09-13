@@ -3,6 +3,7 @@
 // returns the per-keystroke matcher consumed inside `useInput`.
 
 import type { Key } from "ink";
+
 import { DEFAULT_BINDINGS } from "./default-bindings.ts";
 import type { SettingsAction, SettingsContext } from "./schema.ts";
 

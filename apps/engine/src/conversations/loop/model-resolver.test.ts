@@ -3,6 +3,7 @@
 // silently when the SDK upgrades the provider registry signature.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   DEFAULT_BUDGET,
   type LoopProviderKind,

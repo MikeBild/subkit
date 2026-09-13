@@ -14,7 +14,7 @@ ARG CLI_BINARIES_SOURCE=generated-cli
 # buildx runs this stage natively per target arch, so `bun build --compile`
 # emits a binary for the runtime arch with no cross-compile flag needed.
 # ---------------------------------------------------------------------------
-FROM oven/bun:1.4.0-debian@sha256:5bb0f9be3a1a36a03e27c9a9dd894a3b1ad26657155c7df4dda771e17bf872ef AS builder
+FROM oven/bun:1.4.2-debian@sha256:4f6e31d1a54d6a3dd312daef655fc998101b5043d52e12592ac293ef04b9bc73 AS builder
 
 WORKDIR /app
 
@@ -81,7 +81,7 @@ FROM ${CLI_BINARIES_SOURCE} AS cli-binaries
 # Stage 2 — runtime: Playwright provides the exact Chromium build and its OS
 # libraries used by browser-backed engine workflows.
 # ---------------------------------------------------------------------------
-FROM mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e AS runtime
+FROM mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27 AS runtime
 
 # Retry apt-get update: under buildx/QEMU multi-arch builds the InRelease
 # fetch occasionally fails transiently ("is not signed"). Acquire::Retries

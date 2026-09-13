@@ -13,6 +13,7 @@
 // the correct outcome for an identity we cannot resolve.
 
 import { and, eq } from "drizzle-orm";
+
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { users } from "../db/schema/index.ts";

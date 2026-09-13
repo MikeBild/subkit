@@ -1,7 +1,9 @@
 // GitHub native verifier tests.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac, randomUUID } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { handleInbound } from "../service.ts";
 import { createInboundCtx, type InboundTestCtx } from "./setup.ts";
 

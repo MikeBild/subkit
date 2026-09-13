@@ -8,13 +8,14 @@
 //   - mintOAuthStartGrantUrl refuses when origin is missing
 
 import { afterEach, describe, expect, test } from "bun:test";
+
 import {
   createDeterministicClock,
   installClock,
   restoreClock,
 } from "../../test-helpers/determinism/clock.ts";
 import type { NowProvider } from "../../utils/clock.ts";
-import { GRANT_PREFIX, generateStartGrant, sha256Hex } from "../oauth-start-grant.ts";
+import { generateStartGrant, GRANT_PREFIX, sha256Hex } from "../oauth-start-grant.ts";
 
 let prevClock: NowProvider | null = null;
 

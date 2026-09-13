@@ -19,6 +19,7 @@ import {
   useRef,
   useState,
 } from "react";
+
 import { Badge } from "@/components/ui/badge";
 import {
   Command,
@@ -29,9 +30,9 @@ import {
 } from "@/components/ui/command";
 import { useI18n } from "@/lib/i18n-context";
 import {
+  candidateToReference,
   type ConversationReference,
   type ConversationReferenceType,
-  candidateToReference,
   findMentionQuery,
   findTokenAt,
   insertMention,

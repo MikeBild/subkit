@@ -9,20 +9,12 @@
 // for the seed authors, not an ingestible Knowledge Source.
 
 import externalChat from "../conversations/seed/knowledge/external-chat.md" with { type: "text" };
-import knowledgeAndSkills from "../conversations/seed/knowledge/knowledge-and-skills.md" with {
-  type: "text",
-};
-import mcpToolCatalog from "../conversations/seed/knowledge/mcp-tool-catalog.md" with {
-  type: "text",
-};
+import knowledgeAndSkills from "../conversations/seed/knowledge/knowledge-and-skills.md" with { type: "text" };
+import mcpToolCatalog from "../conversations/seed/knowledge/mcp-tool-catalog.md" with { type: "text" };
 import restApi from "../conversations/seed/knowledge/rest-api.md" with { type: "text" };
 import skCli from "../conversations/seed/knowledge/sk-cli.md" with { type: "text" };
-import statusAndCapabilities from "../conversations/seed/knowledge/status-and-capabilities.md" with {
-  type: "text",
-};
-import webhooksAndTriggers from "../conversations/seed/knowledge/webhooks-and-triggers.md" with {
-  type: "text",
-};
+import statusAndCapabilities from "../conversations/seed/knowledge/status-and-capabilities.md" with { type: "text" };
+import webhooksAndTriggers from "../conversations/seed/knowledge/webhooks-and-triggers.md" with { type: "text" };
 
 export interface EmbeddedKnowledgeSeedFile {
   /** Source filename (e.g. "rest-api.md"). Used for typed parse-error

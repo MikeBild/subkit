@@ -27,6 +27,7 @@
 
 import { describe, expect, it } from "bun:test";
 import type { ZodType } from "zod";
+
 import { getTool, listTools } from "../conversations/tools/index.ts";
 import { zodToJsonSchema7 } from "./json-schema.ts";
 

@@ -5,6 +5,7 @@
 
 import { createRoute, type OpenAPIHono, type z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import { listResolvedConnectorTemplates } from "../../../connectors/index.ts";

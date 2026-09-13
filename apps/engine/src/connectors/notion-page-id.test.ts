@@ -3,6 +3,7 @@
 // canonical example; the rest covers the URL/id forms a user might paste.
 
 import { describe, expect, it } from "bun:test";
+
 import { normalizeNotionPageId, parseNotionResourceUrl } from "./notion-page-id.ts";
 
 const RAW = "386492c68914803da988f2c7aacd3749";
@@ -44,9 +45,9 @@ describe("normalizeNotionPageId", () => {
 
   it("returns null on empty / non-string input", () => {
     expect(normalizeNotionPageId("")).toBe(null);
-    // biome-ignore lint/suspicious/noExplicitAny: defensive null handling
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- defensive null handling
     expect(normalizeNotionPageId(null as any)).toBe(null);
-    // biome-ignore lint/suspicious/noExplicitAny: defensive null handling
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- defensive null handling
     expect(normalizeNotionPageId(undefined as any)).toBe(null);
   });
 });

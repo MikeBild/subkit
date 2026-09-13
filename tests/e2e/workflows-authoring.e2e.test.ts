@@ -10,6 +10,7 @@
 // LLM: mock — boot hermetic; no model call on this REST path.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { defaultTransformSteps, seedWorkflow } from "./_helpers/factories.ts";
 import { apiClient } from "./_helpers/http.ts";
 import { boot, cli, type E2EEnv, expectSuccess, shutdown } from "./setup.ts";

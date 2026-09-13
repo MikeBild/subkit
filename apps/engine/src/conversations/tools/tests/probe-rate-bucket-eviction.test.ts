@@ -11,6 +11,7 @@
 //      oldest-insertion key when the cap is hit.
 
 import { afterEach, describe, expect, test } from "bun:test";
+
 import {
   _consumeRateTokenForTests,
   _probeRateBucketCountForTests,

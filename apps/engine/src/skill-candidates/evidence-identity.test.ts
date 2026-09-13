@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import { uniqueEvidence } from "./evidence-identity.ts";
 
 test("repeated observations never multiply evidence", () => {

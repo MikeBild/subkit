@@ -7,6 +7,7 @@
 // during the engine wait window (session 09219b6d).
 
 import { describe, expect, test } from "bun:test";
+
 import { applyTurnEvent, initialSessionState, type TurnEvent } from "./turn-event.ts";
 
 describe("applyTurnEvent · user-message echo dedupe", () => {

@@ -8,8 +8,8 @@
 // the merged controller's lifetime. Keeping this rationale inline so
 // an "organize imports" tool doesn't strand it.
 export {
-  CONVERSATION_CANCELLED_REASON,
   cancelConversationAbort,
+  CONVERSATION_CANCELLED_REASON,
   registerConversationAbort,
   unregisterConversationAbort,
 } from "./abort.ts";
@@ -44,10 +44,7 @@ export {
   releaseDraftCredentialNativeUrlElicitation,
 } from "./native-url-elicitation.ts";
 export * from "./parts.ts";
-export {
-  clearDraftCredential,
-  setDraftCredential,
-} from "./persistence/draft-credential-cache.ts";
+export { clearDraftCredential, setDraftCredential } from "./persistence/draft-credential-cache.ts";
 export * from "./service.ts";
 // Re-exported so the replay path can drop since-unresolvable citations before
 // the footer, mirroring the live loop's governance filter.

@@ -14,6 +14,7 @@ import {
 } from "react";
 import type { BundledLanguage, BundledTheme, HighlighterGeneric, ThemedToken } from "shiki";
 import { createHighlighter } from "shiki";
+
 import { IconButton } from "@/components/cockpit/icon-button";
 import {
   Select,

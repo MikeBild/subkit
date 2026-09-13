@@ -4,6 +4,7 @@
 // "judge must block" inversion, and the stable report shape.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   aggregateTrials,
   BENCHMARK_TARGETS,

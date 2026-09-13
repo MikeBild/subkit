@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { connectorAuthState, connectorHealthLabel, needsRenewal } from "./connector-auth-state";
 import { CATALOGS } from "./i18n";
 

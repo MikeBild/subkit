@@ -3,6 +3,7 @@
 // into `EngineClient` by `../engine-client.ts`.
 
 import { EngineError } from "@cli-core/errors.ts";
+
 import type { EngineClient } from "../engine-client.ts";
 
 // Operator health digest — mirrors apps/engine/src/operator/health-digest.ts.

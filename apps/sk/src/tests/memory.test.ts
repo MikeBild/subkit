@@ -1,9 +1,11 @@
 // Unit tests for apps/sk/src/memory.ts.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { loadMemory } from "../memory.ts";
 
 describe("sk memory loader", () => {

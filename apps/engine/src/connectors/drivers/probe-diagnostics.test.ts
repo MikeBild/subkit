@@ -4,6 +4,7 @@
 // stringification, secret scrubbing, and the header allowlist.
 
 import { describe, expect, test } from "bun:test";
+
 import { buildProbeDiagnostics } from "./probe-diagnostics.ts";
 
 describe("buildProbeDiagnostics — body snippet", () => {

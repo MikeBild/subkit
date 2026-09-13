@@ -15,6 +15,7 @@
 // Spec refs: docs/developers/input-surfaces.md, docs/developers/input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { notificationsCommand } from "../../../../sk/src/commands/notifications.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 

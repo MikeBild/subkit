@@ -5,6 +5,7 @@
 // envelope ("no more than 5 failed tool calls in a row").
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
@@ -96,7 +97,7 @@ describe("consecutive-failures cap", () => {
     // tool body.
     const editPatch = wrapped.edit_workflow_patch;
     expect(editPatch).toBeDefined();
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result = await (editPatch!.execute as any)(
       { patches: [{ op: "replace", path: "/steps/0/method", value: "POST" }] },
       { toolCallId: "t1", messages: [] },
@@ -146,7 +147,7 @@ describe("consecutive-failures cap", () => {
     );
     const editPatch = wrapped.edit_workflow_patch;
     expect(editPatch).toBeDefined();
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result = await (editPatch!.execute as any)(
       { patches: [{ op: "replace", path: "/steps/0/method", value: "POST" }] },
       { toolCallId: "t1", messages: [] },
@@ -191,7 +192,7 @@ describe("consecutive-failures cap", () => {
     // The tool body runs (returns its normal pause shape with an
     // elicitation). The cap envelope must NOT fire here — otherwise
     // the model would have no way to break the loop.
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result = await (askUserChoice!.execute as any)(
       {
         question: "Pick one",
@@ -237,7 +238,7 @@ describe("consecutive-failures cap", () => {
     );
     const inspectWorkflow = wrapped.inspect_workflow;
     expect(inspectWorkflow).toBeDefined();
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
     const result = await (inspectWorkflow!.execute as any)(
       { sections: ["instruction"] },
       { toolCallId: "t1", messages: [] },

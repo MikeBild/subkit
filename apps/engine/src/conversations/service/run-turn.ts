@@ -13,6 +13,7 @@
 // `CONVERSATION_COMMITTED` audit on a committed turn.
 
 import { and, eq } from "drizzle-orm";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -24,7 +25,7 @@ import type { AnswerActor } from "../answer-actor.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import { createElicitation } from "../elicitations.ts";
 import { tryFastPath } from "../fast-path.ts";
-import { type RunLoopResult, runLoop } from "../loop.ts";
+import { runLoop, type RunLoopResult } from "../loop.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
 import type { ConversationReference } from "../references.ts";
 import { refreshConversationTitle, shouldRefreshTitle } from "../title.ts";

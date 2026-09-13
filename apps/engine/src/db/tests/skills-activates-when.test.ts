@@ -7,6 +7,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
+
 import type { SeededSkill } from "../../skills/seed.ts";
 import { applySkillSeeds } from "../../skills/seed.ts";
 import { skills, tenants } from "../schema/index.ts";

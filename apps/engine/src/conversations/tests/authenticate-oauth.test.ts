@@ -7,6 +7,7 @@
 // errors rather than blowing up the loop.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { connectors as connectorsTable, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";

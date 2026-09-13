@@ -3,6 +3,7 @@
 
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
+
 import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";

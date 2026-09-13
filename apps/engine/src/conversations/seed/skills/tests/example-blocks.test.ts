@@ -23,9 +23,11 @@
 // pedantry would force every example to use real UUIDs and erode
 // readability.
 
-import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
+
 import { StepSchema } from "../../../../workflows/types.ts";
 
 const SKILLS_DIR = join(import.meta.dir, "..");

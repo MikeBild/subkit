@@ -13,10 +13,11 @@
 // `tools/list` → `tools/call` path. If the SSE framing ever regresses,
 // this fails before any elicitation-specific test does.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { createMockServer, jsonResponse, type MockServer } from "../../execution/tests/setup.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 

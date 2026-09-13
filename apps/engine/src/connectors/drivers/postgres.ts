@@ -6,6 +6,7 @@
 // `closeAllPools()` to reset.
 
 import pg from "pg";
+
 import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { validateWorkflowDef } from "../validator.ts";
 
 const workflow = (when: string) => ({

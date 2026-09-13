@@ -8,7 +8,9 @@
 // and `askUser.confirm` without branching per tool.
 
 import { randomUUID } from "node:crypto";
+
 import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -331,8 +333,7 @@ async function insertElicitation(
   const intentKind =
     p.input && typeof p.input === "object" && p.input !== null
       ? (((p.input as { commit_intent?: { kind?: unknown } }).commit_intent?.kind ?? null) as
-          | string
-          | null)
+          string | null)
       : null;
   logger.info({
     module: "conversation",
@@ -826,10 +827,7 @@ export async function resolveElicitationAndReactivate(
  *      stale-supersede backfill in `insertElicitation`.
  */
 export type ElicitationExpiryReason =
-  | "approval_expired"
-  | "approval_abandoned"
-  | "credential_setup_expired"
-  | "prompt_expired";
+  "approval_expired" | "approval_abandoned" | "credential_setup_expired" | "prompt_expired";
 
 /** What the model is told when its paused call is abandoned. Keyed by reason so
  *  the note names the capability that actually lapsed — and, for

@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+
 import { tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 
@@ -57,7 +58,10 @@ export const skills = pgTable(
     //     `activates_when` (which controls auto-loading).
     seed_source: text("seed_source"),
     slug: text("slug"),
-    gates_tools: jsonb("gates_tools").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    gates_tools: jsonb("gates_tools")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // Skill metadata overhaul (migration 0006):
     //   activates_when — discriminated-union list of activation rules
     //     consumed by `apps/engine/src/conversations/skill-autoload.ts`. The
@@ -67,19 +71,27 @@ export const skills = pgTable(
     //     declares `derived_from_skill_id` pointing at this skill.
     //   side_effects / idempotency / maturity / tags — capability/safety
     //     contract surfaced into the assembled prompt and gating logic.
-    activates_when: jsonb("activates_when").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
+    activates_when: jsonb("activates_when")
+      .$type<unknown[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     input_schema: jsonb("input_schema").$type<Record<string, unknown> | null>(),
     output_schema: jsonb("output_schema").$type<Record<string, unknown> | null>(),
     side_effects: text("side_effects").notNull().default("read"),
     idempotency: text("idempotency").notNull().default("none"),
     maturity: text("maturity").notNull().default("stable"),
-    tags: jsonb("tags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    tags: jsonb("tags")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     ...timestamps,
   },
   (t) => [
     index("skills_tenant_scope_connector_idx").on(t.tenant_id, t.scope, t.connector_id),
     index("skills_tenant_scope_workflow_idx").on(t.tenant_id, t.scope, t.workflow_id),
-    uniqueIndex("skills_tenant_slug_uq").on(t.tenant_id, t.slug).where(sql`${t.slug} IS NOT NULL`),
+    uniqueIndex("skills_tenant_slug_uq")
+      .on(t.tenant_id, t.slug)
+      .where(sql`${t.slug} IS NOT NULL`),
     check("skills_idempotency_chk", sql`${t.idempotency} IN ('none','naturally','key_required')`),
     check("skills_maturity_chk", sql`${t.maturity} IN ('experimental','stable')`),
     check(

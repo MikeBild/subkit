@@ -2,6 +2,7 @@
 // pipeline pull from the same shapes.
 
 import type { FilePart, ImagePart, TextPart } from "ai";
+
 import type {
   AuthoringActiveTarget,
   AuthoringCheckpointView,

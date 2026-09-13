@@ -17,6 +17,7 @@
 // Precedent: the raw /mcp mount in mcp/transports/streamable-http.ts.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
+
 import type { AppEnv } from "../openapi.ts";
 import { registerOAuthConsentRoutes } from "./oauth/consent.ts";
 import { registerOAuthDcrRoutes } from "./oauth/dcr.ts";

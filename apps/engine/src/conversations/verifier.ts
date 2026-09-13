@@ -321,7 +321,7 @@ export function verifyWorkflow(wf: InputWorkflow): VerifierReport {
         severity: "error",
         code: "item_var_retired",
         message:
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal `${item.…}` token names the canonical placeholder grammar.
+          // eslint-disable-next-line no-template-curly-in-string -- literal `${item.…}` token names the canonical placeholder grammar.
           "`item_var` is retired — remove it. Address the loop item as `$item` in JSONata and `${item.<field>}` in strings; `$loop_index` is the iteration counter.",
         path: `${path}.item_var`,
       });

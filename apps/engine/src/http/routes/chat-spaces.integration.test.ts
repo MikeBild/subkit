@@ -7,8 +7,10 @@
 // directly against the test db (mirrors connector-discovery.test.ts's
 // harness usage) and assert the HTTP contract + RBAC gate.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../../audit/index.ts";
 import { apiKeys, chatIdentities, tenants, users } from "../../db/schema/index.ts";
 import { createRole } from "../../rbac/roles.ts";

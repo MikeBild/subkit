@@ -5,6 +5,7 @@
 // silently break the upload-path caller contract.
 
 import { describe, expect, test } from "bun:test";
+
 import { getScanner, NoopScanner } from "./scanner.ts";
 
 async function* emptyStream(): AsyncIterable<Uint8Array> {

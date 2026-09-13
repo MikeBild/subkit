@@ -1,5 +1,6 @@
 import { createColumnHelper, type RowData } from "@tanstack/react-table";
 import type { ReactNode } from "react";
+
 import type { CockpitColumn, CockpitTableFeatures } from "@/components/cockpit/data-table";
 import { Badge } from "@/components/ui/badge";
 import type { useI18n } from "@/lib/i18n-context";

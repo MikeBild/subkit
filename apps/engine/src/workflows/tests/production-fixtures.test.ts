@@ -29,10 +29,12 @@
 // retry policies, on_error settings are preserved verbatim. The schema
 // does not care about UUID identity — it cares about shape.
 
-import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, test } from "bun:test";
+
 import { WorkflowDefSchema } from "../types.ts";
 
 const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), "fixtures");

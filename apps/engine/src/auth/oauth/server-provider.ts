@@ -14,8 +14,10 @@
 // ── SDK type shapes ───────────────────────────────────────────────────────────
 // Import only type shapes from the MCP SDK — never runtime handlers.
 import { randomBytes } from "node:crypto";
+
 import type { OAuthClientInformationFull } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { and, eq, isNull, sql } from "drizzle-orm";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../../audit/types.ts";
 import type { Config } from "../../config/schema.ts";

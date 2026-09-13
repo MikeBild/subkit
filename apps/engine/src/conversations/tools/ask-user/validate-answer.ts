@@ -23,8 +23,7 @@ export interface ElicitationFieldError {
 }
 
 export type ValidateAnswerResult =
-  | { ok: true }
-  | { ok: false; field_errors: ElicitationFieldError[] };
+  { ok: true } | { ok: false; field_errors: ElicitationFieldError[] };
 
 function asRecord(v: unknown): Record<string, unknown> | null {
   return v !== null && typeof v === "object" && !Array.isArray(v)

@@ -2,10 +2,12 @@
 // persona resolution flow against the fake EngineClient and verify
 // the same allow-set the slash registry consumes flows through.
 
-import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
+
 import { loadBootstrap } from "../../lib/bootstrap.ts";
 import { hasCommand } from "../../repl/slash/hasCommand.ts";
 import { ANONYMOUS_PROFILE, createFakeEngineClient } from "../_helpers/fake-engine-client.ts";

@@ -11,6 +11,7 @@
 //   writes an `api_key.used` audit row only when the throttle window fires
 
 import { eq } from "drizzle-orm";
+
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { type Db, getDb } from "../../db/client.ts";

@@ -6,6 +6,7 @@
 // gap shows up here, not in production logs.
 
 import { describe, expect, it } from "bun:test";
+
 import type { WorkflowDraftDocument } from "../../types.ts";
 import { workflowDefFromDraft } from "../commit-workflow.ts";
 
@@ -138,7 +139,7 @@ describe("workflowDefFromDraft", () => {
       name: "Render upload slides",
       slug: "render-upload-slides",
       steps: [
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
+        // eslint-disable-next-line no-template-curly-in-string -- literal ${...} placeholder is the fixture under test.
         { id: "upload", kind: "request", method: "POST", url: "https://x.test/${input.markdown}" },
       ],
       input_schema_sample: { markdown: "# hi", filename: "deck.md" },

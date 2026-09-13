@@ -3,6 +3,7 @@
 // are read-only and trip the `builtin_immutable` error.
 
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 import {
   permissions as permissionsTable,

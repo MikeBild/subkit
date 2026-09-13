@@ -12,10 +12,12 @@
 // Spec refs: docs/concepts/connectors.md, docs/authors/authoring-workflows.md,
 //            docs/authors/authoring-workflows.md, docs/concepts/workflows.md
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { auditLog, executions } from "../../db/schema/index.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";

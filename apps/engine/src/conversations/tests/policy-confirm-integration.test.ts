@@ -14,6 +14,7 @@
 
 import { beforeAll, describe, expect, it, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
@@ -29,8 +30,8 @@ import {
   withoutApprovalHandle,
 } from "../tools/ask-user/commit-intent.ts";
 import type { ToolContext } from "../tools/index.ts";
-import { buildPolicyGateCommitIntent } from "../tools/sdk-wrap/policy-helpers.ts";
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
+import { buildPolicyGateCommitIntent } from "../tools/sdk-wrap/policy-helpers.ts";
 import type { TurnEvent } from "../types.ts";
 
 /** Deterministic handle — random ids are banned in tests. */
@@ -105,7 +106,7 @@ async function runLoopTool(
   );
   const t = wrapped[tool];
   expect(t).toBeDefined();
-  // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool.execute is generic
   const result = await (t!.execute as any)(args, { toolCallId: "fake", messages: [] });
   return { result, events };
 }

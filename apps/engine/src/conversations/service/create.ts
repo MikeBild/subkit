@@ -8,6 +8,7 @@
 // production it is a no-op because LLM_PROVIDER isn't `mock`.
 
 import { eq } from "drizzle-orm";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";

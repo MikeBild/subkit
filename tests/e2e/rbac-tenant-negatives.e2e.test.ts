@@ -9,6 +9,7 @@
 // LLM: none — boot mock to stay hermetic.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { seedConnector, seedWorkflow, uniqueSuffix } from "./_helpers/factories.ts";
 import { apiClient } from "./_helpers/http.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";

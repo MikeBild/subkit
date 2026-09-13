@@ -14,6 +14,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, desc, eq } from "drizzle-orm";
+
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import type { Db } from "../../db/client.ts";
@@ -31,7 +32,7 @@ import {
   readPatchReadinessBatch,
   rejectPatchCandidate,
 } from "../../self-healing/index.ts";
-import { GrantWorkflowAuthoritySchema, grantWorkflowAuthority } from "../../workflows/index.ts";
+import { grantWorkflowAuthority, GrantWorkflowAuthoritySchema } from "../../workflows/index.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

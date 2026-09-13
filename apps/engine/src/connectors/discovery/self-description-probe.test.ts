@@ -4,6 +4,7 @@
 // HTTP is made — mirrors the pattern in llms-txt.test.ts.
 
 import { describe, expect, mock, test } from "bun:test";
+
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { probeAllSelfDescriptionLinks } from "./self-description-probe.ts";
 

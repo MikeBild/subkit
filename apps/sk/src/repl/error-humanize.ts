@@ -8,6 +8,7 @@
 // banner stay consistent.
 
 import { type EngineError, isEngineError, isTransportError } from "@cli-core/errors.ts";
+
 import { debugLogPath, isDebugVerbose } from "../debug.ts";
 
 const VALID_KINDS = [

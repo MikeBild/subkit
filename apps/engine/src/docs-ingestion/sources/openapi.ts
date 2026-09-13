@@ -47,6 +47,7 @@ export async function fetchOpenAPI(
   } catch (err) {
     throw new Error(
       `openapi parse failed (P6 supports JSON only): ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
   return { body, bytes, parsed };

@@ -67,8 +67,7 @@ export interface BareItemRef {
 }
 
 export type FindBareItemRefsResult =
-  | { ok: true; refs: BareItemRef[] }
-  | { ok: false; reason: string };
+  { ok: true; refs: BareItemRef[] } | { ok: false; reason: string };
 
 /**
  * Locate every root-context bare reference to one of `names` in a
@@ -283,8 +282,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 export type ExpressionRewrite =
-  | { ok: true; changed: boolean; rewritten: string }
-  | { ok: false; reason: string };
+  { ok: true; changed: boolean; rewritten: string } | { ok: false; reason: string };
 
 /**
  * Rewrite every root-context bare reference to `name` in a JSONata

@@ -1,9 +1,11 @@
 // Bug RR regression: per-conversation tool-policy overrides via the
 // /v1/conversations/:id/tool-policies route.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
+
 import { apiKeys, auditLog, conversations, tenants, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 

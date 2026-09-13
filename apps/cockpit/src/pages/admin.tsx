@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
+
 import { apiRequest } from "@/api/client";
 import { useSession } from "@/app/session";
 import { ContextHelp } from "@/components/cockpit/context-help";
@@ -2464,7 +2465,8 @@ export function SettingsPage() {
               disabled={save.isPending}
               onClick={() => {
                 const restart = changedItems.find((item) => item.meta.requiresRestart);
-                restart ? setRestartSetting(restart) : save.mutate({ items: changedItems });
+                if (restart) setRestartSetting(restart);
+                else save.mutate({ items: changedItems });
               }}
               data-testid="settings-save"
             >

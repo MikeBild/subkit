@@ -9,6 +9,7 @@
 // Wired into `streamText({ prepareStep })` in conversations/loop.ts.
 
 import type { LanguageModel, ModelMessage, ToolChoice, ToolSet } from "ai";
+
 import type { ConversationSurface } from "../../conversations/agent/types.ts";
 import type { ConversationTool } from "../../conversations/tools/index.ts";
 import type { AuthoringStage } from "../../conversations/types.ts";

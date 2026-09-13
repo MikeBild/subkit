@@ -5,6 +5,7 @@
 
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -332,7 +333,7 @@ export async function respondElicitation(
   if (originatingToolCall) {
     const { recordTransition } = await import("../confirmation.ts");
     const out = (output ?? {}) as Record<string, unknown>;
-    let to_state: "confirmed" | "declined" | "partial" | "tested" = "confirmed";
+    let to_state: "confirmed" | "declined" | "partial" | "tested";
     if (out.tested === true) to_state = "tested";
     else if (out.partial === true) to_state = "partial";
     else if (interpretConfirmDecision(out) === "declined") to_state = "declined";

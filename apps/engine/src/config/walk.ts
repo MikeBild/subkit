@@ -1,14 +1,9 @@
 import type { z } from "zod";
+
 import { ConfigSchema, type FieldMeta } from "./schema.ts";
 
 export type LeafKind =
-  | "string"
-  | "number"
-  | "boolean"
-  | "enum"
-  | "string-list"
-  | "string-array"
-  | "json";
+  "string" | "number" | "boolean" | "enum" | "string-list" | "string-array" | "json";
 
 export interface ConfigLeaf {
   path: string[];

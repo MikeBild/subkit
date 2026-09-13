@@ -6,6 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
+
 import { Spinner } from "./spinner.tsx";
 
 describe("Spinner · failure-aware head", () => {

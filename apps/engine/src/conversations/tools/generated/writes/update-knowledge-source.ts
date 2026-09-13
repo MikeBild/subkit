@@ -7,6 +7,7 @@
 // `knowledge_source.updated` action — no new audit-action enum entry.
 
 import { z } from "@hono/zod-openapi";
+
 import type { ConversationTool } from "../../index.ts";
 
 const UpdateKnowledgeSourceInput = z
@@ -25,13 +26,13 @@ const UpdateKnowledgeSourceInput = z
     (v) =>
       Boolean(
         v.name ||
-          v.description ||
-          v.tags !== undefined ||
-          v.scope ||
-          v.workflow_id !== undefined ||
-          v.status ||
-          v.refresh_strategy ||
-          v.refresh_cron !== undefined,
+        v.description ||
+        v.tags !== undefined ||
+        v.scope ||
+        v.workflow_id !== undefined ||
+        v.status ||
+        v.refresh_strategy ||
+        v.refresh_cron !== undefined,
       ),
     { message: "At least one patch field is required" },
   )

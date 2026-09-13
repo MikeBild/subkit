@@ -5,6 +5,7 @@
 // operators can audit every LLM interaction against the budget.
 
 import { and, eq, sql } from "drizzle-orm";
+
 import { type Executor, getDb } from "../../db/client.ts";
 import { llmUsage, tenantLlmSettings, userLlmSettings } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";

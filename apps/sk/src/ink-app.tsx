@@ -27,6 +27,7 @@ import { initialSessionState } from "@cli-core/index.ts";
 import { Box, Static, Text, useApp, useStdout } from "ink";
 import type React from "react";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+
 import { readExtendedTurnUsage } from "./engine-client.ts";
 import { runBuiltinSlash } from "./ink-app/builtin-slash.ts";
 import { Composer, DEFAULT_RULE_WIDTH, SuggestionList } from "./ink-app/composer.tsx";
@@ -83,8 +84,8 @@ import { SlashSuggest } from "./repl/slash/SlashSuggest.tsx";
 import { buildStarterTaskActions } from "./repl/starter-action-injection.ts";
 import { type TaskAction, taskActionsForContext } from "./repl/task-actions.ts";
 import { TaskLauncher } from "./repl/task-launcher.tsx";
-import { loadWhatsNew, loadWhatsNewSync } from "./repl/welcome-banner/whats-new.ts";
 import { pickTip } from "./repl/welcome-banner.tsx";
+import { loadWhatsNew, loadWhatsNewSync } from "./repl/welcome-banner/whats-new.ts";
 import { NoticeStack } from "./shell/NoticeStack.tsx";
 import { ResizeBoundary } from "./shell/ResizeBoundary.tsx";
 import { ToastQueue } from "./shell/ToastQueue.tsx";

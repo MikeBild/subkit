@@ -121,7 +121,7 @@ export const chatFirstScanner: Scanner = {
 
     FENCED_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
+    // eslint-disable-next-line no-cond-assign -- standard regex exec loop.
     while ((m = FENCED_RE.exec(text)) !== null) {
       const fullStart = m.index;
       const fullEnd = m.index + m[0].length;
@@ -149,7 +149,7 @@ export const chatFirstScanner: Scanner = {
     // trigger AND a surface mention land in the same sentence.
     const sentenceRe = /[^.!?\n]+[.!?]?/g;
     let s: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
+    // eslint-disable-next-line no-cond-assign -- standard regex exec loop.
     while ((s = sentenceRe.exec(text)) !== null) {
       const sentence = s[0];
       if (!TRIGGER_RE.test(sentence)) continue;

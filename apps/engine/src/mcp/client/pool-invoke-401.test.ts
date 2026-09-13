@@ -13,12 +13,14 @@
 //   - evict the cached client,
 //   - DELETE the oauth2 token credential for that tenant/server.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import { closeDb } from "../../db/client.ts";

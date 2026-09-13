@@ -39,7 +39,7 @@ Local dev uses docker compose for postgres only (and optional MinIO under `--pro
 ## 3. Run the quality gate
 
 ```bash
-bun run lint                # biome
+bun run lint                # ESLint + Prettier
 bun run typecheck           # tsc --noEmit
 bun run test:unit           # fast inner loop (needs Postgres — see note below)
 bun run test:integration    # db/queue/http/webhooks/credentials-oauth2

@@ -87,7 +87,10 @@
       "name": "weather-table-format-mismatch",
       "goal": "Return a MARKDOWN TABLE ranking cities by temperature.",
       "definition_summary": "fetch_weather -> rank (transform)",
-      "final_output": [{ "city": "Madrid", "temp_c": 34 }, { "city": "Berlin", "temp_c": 27 }],
+      "final_output": [
+        { "city": "Madrid", "temp_c": 34 },
+        { "city": "Berlin", "temp_c": 27 }
+      ],
       "label": "failed",
       "note": "Data is correct but the goal demanded a markdown table; a JSON array does not satisfy the named output format."
     },

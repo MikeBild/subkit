@@ -1,6 +1,7 @@
 // Wait-for-event schema + timeout-coupling regression tests.
 
 import { describe, expect, test } from "bun:test";
+
 import { WaitForEventStepSchema, WorkflowDefSchema } from "../types.ts";
 
 describe("WaitForEventStepSchema", () => {

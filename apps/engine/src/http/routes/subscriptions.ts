@@ -9,8 +9,9 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { AuditAction, audit } from "../../audit/index.ts";
+import { audit, AuditAction } from "../../audit/index.ts";
 import { deliveries, events } from "../../db/schema/index.ts";
 import { getBoss } from "../../queue/index.ts";
 import * as svc from "../../webhooks/index.ts";
@@ -271,8 +272,7 @@ export function registerSubscriptionRoutes(app: OpenAPIHono<AppEnv>): void {
     const existing = rows[0];
     if (!existing) throw new NotFoundError("delivery");
     const bossOverride = (c as unknown as { get: (k: string) => unknown }).get("boss") as
-      | ReturnType<typeof getBoss>
-      | undefined;
+      ReturnType<typeof getBoss> | undefined;
     const boss = bossOverride ?? getBoss();
 
     // Reconstruct the original payload from the outbox row so the replay

@@ -2,10 +2,12 @@
 // no DB. Each test runs loadConfig() against a fresh config file and
 // asserts the documented boot invariants.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import {
   _resetConfigForTests,
   ConfigLoaderError,

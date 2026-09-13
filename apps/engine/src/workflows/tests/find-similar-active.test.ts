@@ -4,6 +4,7 @@
 // and the exclusion + cap behaviour the assembler relies on.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createSeededRandom } from "../../test-helpers/determinism/random.ts";

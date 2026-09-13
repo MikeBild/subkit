@@ -9,6 +9,7 @@
 // drift (undocumented, untyped API surface) distinct from the deliberate
 // exclusions below.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { buildDefaultRegistry, createApp } from "../server.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 

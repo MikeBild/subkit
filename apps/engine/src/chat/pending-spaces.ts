@@ -29,6 +29,7 @@
 // list — there is no directory / email fallback, by design.
 
 import { and, desc, eq, inArray, or, type SQL, sql } from "drizzle-orm";
+
 import { AuditAction, ChatMessageDeniedMetadataSchema, SYSTEM_TENANT_ID } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { auditLog } from "../db/schema/audit.ts";

@@ -15,8 +15,10 @@
 //
 // Requires a real Postgres database — set REQUIRES_PG=0 to skip.
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+
 import { connectors } from "../../db/schema/connectors.ts";
 import { executionFixtures, patchCandidates } from "../../db/schema/executions.ts";
 import { tenants } from "../../db/schema/identity.ts";

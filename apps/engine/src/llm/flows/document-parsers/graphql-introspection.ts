@@ -5,6 +5,7 @@
 // parser in graphql.ts which targets SDL strings.
 
 import { buildClientSchema, type IntrospectionQuery } from "graphql";
+
 import type { EndpointSpec } from "../document-analysis.ts";
 
 export function parseGraphQLIntrospection(content: string): EndpointSpec[] {
@@ -12,7 +13,7 @@ export function parseGraphQLIntrospection(content: string): EndpointSpec[] {
   try {
     parsed = JSON.parse(content) as { data: IntrospectionQuery };
   } catch (e) {
-    throw new Error(`invalid GraphQL introspection JSON: ${String(e)}`);
+    throw new Error(`invalid GraphQL introspection JSON: ${String(e)}`, { cause: e });
   }
   if (!parsed.data) {
     throw new Error("introspection JSON missing `data` root");

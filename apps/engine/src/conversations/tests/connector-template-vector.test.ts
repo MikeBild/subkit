@@ -8,6 +8,7 @@
 //   - embeddings unavailable → degrade to the pure lexical scorer
 
 import { describe, expect, test } from "bun:test";
+
 import { loadBuiltinTemplates } from "../../connectors/templates.ts";
 import { suggestConnectorTemplates } from "../connector-template-intelligence.ts";
 import {

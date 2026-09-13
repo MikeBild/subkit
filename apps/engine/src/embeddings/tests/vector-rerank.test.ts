@@ -5,6 +5,7 @@
 // embedder so they cannot silently regress.
 
 import { describe, expect, test } from "bun:test";
+
 import { fuseVectorFirst, type QueryEmbedder, vectorScoreCandidates } from "../vector-rerank.ts";
 
 const stub = (q: number[]): QueryEmbedder => ({

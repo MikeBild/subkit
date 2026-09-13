@@ -15,6 +15,7 @@
 // a <3 s ack on Events API posts, which the queue ack satisfies.
 
 import type { Queue, SendOptions } from "pg-boss";
+
 import type { ChatEvent } from "../chat/types.ts";
 
 export type QueueName =

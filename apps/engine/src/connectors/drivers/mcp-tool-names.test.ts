@@ -8,6 +8,7 @@
 // tool call landing on the wrong remote server.
 
 import { describe, expect, test } from "bun:test";
+
 import { CONNECTOR_SLUG_RE, ConnectorSlugSchema } from "../types.ts";
 import {
   buildMcpToolName,

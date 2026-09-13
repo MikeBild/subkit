@@ -17,6 +17,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { EMBEDDING_MODEL } from "../src/embeddings/local-provider.ts";
 
 const FIXTURE = join(import.meta.dir, "fixtures", "knowledge-retrieval-blogde-golden.json");

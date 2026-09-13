@@ -2,6 +2,7 @@
 //   POST /v1/connector-templates/{slug}/oauth-credentials
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
   resolveConnectorTemplate,

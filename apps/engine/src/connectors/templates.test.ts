@@ -7,6 +7,7 @@
 // must hold across the whole template catalog.
 
 import { describe, expect, test } from "bun:test";
+
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { loadBuiltinTemplates, ProbeEndpointSchema } from "./templates.ts";
 
@@ -429,7 +430,7 @@ describe("connector-template catalog — Layer-3 vendor-drift sweep", () => {
       const lines = stale.map(
         (s) => `  - ${s.slug} (verified_at=${s.verified_at ?? "null"}, ${s.reason})`,
       );
-      // eslint-disable-next-line no-console
+
       console.warn(
         [
           `[connector-templates] vendor-drift sweep stale on ${stale.length}/${templates.length} templates.`,

@@ -13,10 +13,12 @@
 // file serially by default. Different files get different databases so
 // parallel file execution is safe.
 
-import { setDefaultTimeout } from "bun:test";
 import { randomBytes } from "node:crypto";
+
+import { setDefaultTimeout } from "bun:test";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
+
 import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
 import { createMigrationDbFromUrl } from "../client.ts";
 import { runMigrations } from "../migrate.ts";
@@ -79,6 +81,7 @@ async function preflightPostgres(adminUrl: string): Promise<void> {
         `database-backed tests need it. Run \`bun run compose:up\` first ` +
         `(see CONTRIBUTING.md), or point DATABASE_URL at a running server.` +
         (cause ? ` (probe error: ${cause})` : ""),
+      { cause: err },
     );
   } finally {
     await probe.end().catch(() => {});

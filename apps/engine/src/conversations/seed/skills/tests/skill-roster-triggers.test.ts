@@ -21,9 +21,10 @@
 // Regressions here re-introduce the exact UX issues the skill-roster
 // audit flagged. Keep the test loud.
 
-import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, it } from "bun:test";
 
 function read(name: string): string {
   return readFileSync(fileURLToPath(new URL(`../${name}`, import.meta.url)), "utf8");

@@ -3,6 +3,7 @@
 // Unicode rode along with the user's pasted path.
 
 import { describe, expect, test } from "bun:test";
+
 import { renderSuspiciousCodepoints, sanitizePathInput } from "./path-input.ts";
 
 describe("sanitizePathInput", () => {

@@ -14,6 +14,7 @@
 //   body:   string | Buffer | Uint8Array (PUT only)
 
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
+
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -61,9 +62,7 @@ export class S3CredentialError extends Error {
   constructor(
     message: string,
     public readonly error_code:
-      | "credential_missing"
-      | "credential_invalid"
-      | "credential_mode_unsupported_for_s3",
+      "credential_missing" | "credential_invalid" | "credential_mode_unsupported_for_s3",
   ) {
     super(message);
     this.name = "S3CredentialError";
@@ -471,7 +470,7 @@ async function executeS3Operation(ctx: {
       if (partSize !== undefined) putOpts.partSize = partSize;
       const info = await client.putObject(
         key,
-        data,
+        data instanceof Uint8Array ? new Uint8Array(data) : data,
         Object.keys(putOpts).length > 0 ? (putOpts as never) : undefined,
       );
       return {

@@ -12,17 +12,18 @@
 // validation (via `validateElicitationOutput` in `chat/api.ts`).
 
 import { NoSuchToolError } from "ai";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../conversations/abort.ts";
 import { humanChatAnswer } from "../conversations/answer-actor.ts";
+import { ElicitationAlreadyResolvedError, respondElicitation } from "../conversations/service.ts";
 import {
   ConversationNotFoundError,
   ElicitationActorMismatchError,
   ElicitationNotFoundError,
   ElicitationValidationError,
 } from "../conversations/service/elicit.ts";
-import { ElicitationAlreadyResolvedError, respondElicitation } from "../conversations/service.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import {
@@ -216,8 +217,8 @@ export async function routeChatInteraction(
 
   let conversation_id = "";
   let elicitation_id = "";
-  let rawOutput: unknown = null;
-  let kind: ElicitationKind | null = null;
+  let rawOutput: unknown;
+  let kind: ElicitationKind | null;
 
   const legacy = /^(approve|reject):(.+)$/.exec(action_id);
   if (legacy) {

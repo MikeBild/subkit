@@ -4,6 +4,7 @@
 // collectFileRefs walker on nested objects/arrays.
 
 import { describe, expect, test } from "bun:test";
+
 import {
   collectFileRefs,
   formatFileRef,

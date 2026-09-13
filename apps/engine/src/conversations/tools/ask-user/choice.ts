@@ -1,6 +1,7 @@
 // ask_user_choice — ask the user to pick one option from a list.
 
 import { z } from "@hono/zod-openapi";
+
 import type { ConversationTool, ToolResult } from "../index.ts";
 import { pauseForUserInput } from "./common.ts";
 

@@ -5,11 +5,12 @@
 // a short confirmation; errors / portal_setup → generic fallback.
 // Non-TTY test env, so OSC 8 is forced on.
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetHyperlinkSupportCacheForTests } from "@chat-ui/index.ts";
 import type { ToolCallState } from "@cli-core/index.ts";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { render } from "ink-testing-library";
 import type { ReactElement } from "react";
+
 import { flush, waitFor } from "../../../engine/src/test-helpers/determinism/wait.ts";
 import {
   extractReauthOutcome,

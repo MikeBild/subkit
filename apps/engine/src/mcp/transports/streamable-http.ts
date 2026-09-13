@@ -30,9 +30,11 @@
 // `requireAuth(c)` will throw a 401 if the principal is absent.
 
 import { randomUUID } from "node:crypto";
+
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { UnauthorizedError } from "../../http/errors.ts";
@@ -305,6 +307,7 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
       // inside `handleRequest`). Held as a mutable binding rather than a
       // forward reference to a `const` declared further down, so the callback
       // does not depend on statement ordering it has no way to enforce.
+      // eslint-disable-next-line prefer-const -- An early SDK callback must see undefined, not throw in the temporal dead zone.
       let lease: Session | undefined;
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),

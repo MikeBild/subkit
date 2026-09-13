@@ -1,9 +1,11 @@
 import type { lookup as dnsLookup } from "node:dns/promises";
+
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import { assertEgressAllowed, assertEgressAllowedResolved } from "../../connectors/egress-guard.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
@@ -18,8 +20,8 @@ import {
   type RemoteToolDescriptor,
 } from "./manifest.ts";
 import {
-  CLIENT_CAPABILITIES,
   captureNegotiatedProtocolVersion,
+  CLIENT_CAPABILITIES,
   negotiatedCapabilities,
 } from "./negotiation.ts";
 import { type McpConnectorRow, McpPreflightError } from "./registry.ts";

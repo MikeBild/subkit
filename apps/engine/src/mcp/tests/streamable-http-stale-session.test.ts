@@ -11,6 +11,7 @@
 // `action: "mcp.session.stale"`) replaces.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;

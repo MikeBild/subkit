@@ -22,6 +22,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
+
 import { logger } from "../logging/logger.ts";
 
 export const AES_ALGORITHM = "aes-256-gcm" as const;
@@ -33,11 +34,7 @@ export class CryptoError extends Error {
   constructor(
     message: string,
     public readonly code:
-      | "key_length"
-      | "decrypt_failed"
-      | "auth_tag_length"
-      | "iv_length"
-      | "aad_mismatch",
+      "key_length" | "decrypt_failed" | "auth_tag_length" | "iv_length" | "aad_mismatch",
   ) {
     super(message);
     this.name = "CryptoError";

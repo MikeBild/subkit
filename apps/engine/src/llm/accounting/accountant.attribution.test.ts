@@ -14,9 +14,10 @@
 // row so this stays a fast unit test (no testcontainers required).
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+
 import { _resetConfigForTests } from "../../config/loader.ts";
 import type { SubkitLlmTelemetryMetadata, SubkitLlmUsage } from "../core/base-types.ts";
-import { type AccountParams, account } from "./accountant.ts";
+import { account, type AccountParams } from "./accountant.ts";
 
 // account() calls recordUsage(), which calls getDb(). In a unit
 // context there is no live DB pool — we capture the call by replacing

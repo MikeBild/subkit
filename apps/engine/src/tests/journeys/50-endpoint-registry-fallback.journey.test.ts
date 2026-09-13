@@ -10,10 +10,12 @@
 //          returns a status the registry does NOT list.
 // Spec refs: plan §2h Endpoint Schema Registry — Runtime fallback.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import {
   browserSessionCookie,
   signBrowserCsrf,

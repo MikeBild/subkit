@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { stripLeakedToolCallMarkup } from "./strip-tool-call-markup.ts";
 
 describe("stripLeakedToolCallMarkup", () => {

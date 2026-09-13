@@ -5,6 +5,7 @@
 // failures logged a bare ok:false carrying only data_keys (no WHY).
 
 import { describe, expect, test } from "bun:test";
+
 import { summarizeToolFailure } from "./policy-helpers.ts";
 
 describe("summarizeToolFailure", () => {

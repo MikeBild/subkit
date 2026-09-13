@@ -26,7 +26,9 @@ export const auditLog = pgTable(
     before: jsonb("before"),
     after: jsonb("after"),
     reason: text("reason"),
-    metadata: jsonb("metadata").default(sql`'{}'::jsonb`).notNull(),
+    metadata: jsonb("metadata")
+      .default(sql`'{}'::jsonb`)
+      .notNull(),
   },
   (t) => [
     index("audit_log_tenant_ts_idx").on(t.tenant_id, t.ts),

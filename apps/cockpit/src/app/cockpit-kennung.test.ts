@@ -10,10 +10,12 @@
 // The value is held against `package.json` instead of repeated here: the marker
 // exists to say WHICH product this is, so one that can drift from the product name
 // would be worse than none.
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, test } from "bun:test";
+
 import { EMBEDDED_COCKPIT } from "../../../engine/src/http/cockpit-embedded.ts";
 
 const root = dirname(dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url))))));

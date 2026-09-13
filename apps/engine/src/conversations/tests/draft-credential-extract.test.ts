@@ -6,6 +6,7 @@
 // lives in draft-probe-credential.test.ts.
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+
 import { conversations as conversationsTable, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";

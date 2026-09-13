@@ -3,6 +3,7 @@
 // Pure function: no DB, no network.
 
 import { describe, expect, it } from "bun:test";
+
 import type { ConnectorView } from "../../connectors/types.ts";
 import { hydrateDraftFromSavedConnector } from "./normalize.ts";
 

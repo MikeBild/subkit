@@ -11,6 +11,7 @@
 // `information_schema` has confirmed them, once per database handle.
 
 import { sql } from "drizzle-orm";
+
 import type { Executor } from "../db/client.ts";
 import { runtimeSecretVersions } from "../db/schema/index.ts";
 

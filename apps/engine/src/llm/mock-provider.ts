@@ -43,10 +43,7 @@ export interface MockResult<T = unknown> {
 }
 
 export type MockFailure =
-  | "rate_limit"
-  | "quota_exhausted"
-  | "overloaded"
-  | "context_length_exceeded";
+  "rate_limit" | "quota_exhausted" | "overloaded" | "context_length_exceeded";
 
 /**
  * One item in the canned conversation tool-call plan. The loop reads

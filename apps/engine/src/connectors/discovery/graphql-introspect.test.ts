@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { graphqlIntrospectStrategy, looksLikeGraphQLUrl } from "./graphql-introspect.ts";
 import { DiscoveryError } from "./types.ts";

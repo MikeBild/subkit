@@ -1,6 +1,7 @@
 // Shared, script-free OAuth UI contract used by the SubKit MCP authorization server.
 
 import { createHash } from "node:crypto";
+
 import { escapeHtml } from "./shared.ts";
 
 const AUTH_CONTRACT = "mcp-auth";

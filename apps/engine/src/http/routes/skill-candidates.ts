@@ -5,6 +5,7 @@
 // and admin tooling.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { invalidateOperationalOverview } from "../../operator/index.ts";
 import * as svc from "../../skill-candidates/index.ts";

@@ -17,6 +17,7 @@ import { VERSION as CLI_VERSION } from "@cli-core/version.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
+
 import type { EngineClient } from "../../engine-client.ts";
 import { ActivityHeatmap } from "../components/ActivityHeatmap.tsx";
 import type { FormField } from "../lib/zod-to-form-fields.ts";

@@ -13,8 +13,8 @@
 // stdout/stderr are captured per test, and the originals are re-installed in
 // afterAll because mock.restore() does not undo mock.module.
 
-import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import openapi from "@cli-core/engine-api/openapi.json" with { type: "json" };
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const realEngineClient = await import("../engine-client.ts");
 const realConfig = await import("../config.ts");

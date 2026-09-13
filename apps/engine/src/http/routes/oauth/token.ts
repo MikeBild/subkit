@@ -5,6 +5,7 @@
 // Precedent: the raw /mcp mount in mcp/transports/streamable-http.ts.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
+
 import { readRequestSource } from "../../../audit/index.ts";
 import {
   ACCESS_TOKEN_TYPE,

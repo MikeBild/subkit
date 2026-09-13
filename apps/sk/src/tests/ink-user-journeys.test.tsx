@@ -13,12 +13,14 @@
 //   • tool_result truncation surfaces `_truncated` / `_raw_ref` fields.
 //   • interactionLog splice shows confirmation state history in the UI.
 
-import { beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import type { PendingElicitation, TurnEvent } from "@cli-core/index.ts";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
+
 import { InkApp, type InkAppProps } from "../ink-app.tsx";
 import type { PersonaProbe } from "../slash.ts";
 

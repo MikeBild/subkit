@@ -12,6 +12,7 @@
 // so the canonical series catalog stays render-able with zero data.
 
 import { describe, expect, it } from "bun:test";
+
 import {
   getMetrics,
   METRIC_NAMES,

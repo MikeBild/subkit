@@ -9,6 +9,7 @@
 // AppSync Cognito session bab50df1.
 
 import { describe, expect, it } from "bun:test";
+
 import { extractCredentialFromFormOutput } from "./auto-persist.ts";
 
 describe("extractCredentialFromFormOutput — bearer / basic / header / query", () => {

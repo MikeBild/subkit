@@ -197,7 +197,7 @@ export function validateWorkflowDef(
           errors.push({
             path: `steps.${step.id}.url`,
             message:
-              // biome-ignore lint/suspicious/noTemplateCurlyInString: operator-facing message must show the literal `${connector.<slug>.base_url}` placeholder syntax — see substitution/parser.ts
+              // eslint-disable-next-line no-template-curly-in-string -- operator-facing message must show the literal `${connector.<slug>.base_url}` placeholder syntax — see substitution/parser.ts
               "url must start with http(s):// OR with `${connector.<slug>.base_url}` — alternatively set `connector_id` and `path` so the driver merges base_url + path",
           });
         }
@@ -326,7 +326,7 @@ export function validateWorkflowDef(
         errors.push({
           path: `steps.${step.id}.item_var`,
           message:
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: operator-facing message names the literal `${item.…}` placeholder grammar.
+            // eslint-disable-next-line no-template-curly-in-string -- operator-facing message names the literal `${item.…}` placeholder grammar.
             "`item_var` is retired — remove it. Address the loop item as `$item` in JSONata expressions and `${item.<field>}` in URL/header/query/body strings (`$loop_index` is the iteration counter).",
         });
       }
@@ -361,7 +361,7 @@ export function validateWorkflowDef(
         errors.push({
           path: `steps.${step.id}`,
           message:
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: operator-facing message names the literal `${item.field}` placeholder grammar.
+            // eslint-disable-next-line no-template-curly-in-string -- operator-facing message names the literal `${item.field}` placeholder grammar.
             "loop body never references the iteration item — use `${item.field}` in URLs/strings or `$item.field` in JSONata. Without it the loop runs N copies of the same call.",
         });
       }
@@ -400,7 +400,7 @@ export function validateWorkflowDef(
       errors.push({
         path: `steps.${step.id}`,
         message:
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal `${item.…}` token names the placeholder grammar surfaced to the LLM.
+          // eslint-disable-next-line no-template-curly-in-string -- literal `${item.…}` token names the placeholder grammar surfaced to the LLM.
           'step uses `${item.…}` placeholder but is not contained in any `loop.body[]` and has no `for_each` declared. Set `for_each: "(sourceData) => sourceData.<prev_step>.<array_path>"` on this step to bind `$item` per element (the placeholder resolver only sets `$item` inside a `for_each` iteration or a loop body).',
       });
     }

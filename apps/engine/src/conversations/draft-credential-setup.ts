@@ -1,4 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
+
 import { generateCredentialSetupGrant } from "../connectors/credential-setup-grant.ts";
 import { buildOAuthRedirectUri, OAUTH_CALLBACK_PATH } from "../credentials/oauth2/redirect-uri.ts";
 import { secureEqual } from "../crypto/aes-gcm.ts";
@@ -25,8 +26,7 @@ export function isDraftCredentialSetupAuthType(
 }
 
 export type MintDraftCredentialSetupResult =
-  | { ok: true; url: string; expires_at: Date }
-  | { ok: false; error: "engine_public_url_missing" };
+  { ok: true; url: string; expires_at: Date } | { ok: false; error: "engine_public_url_missing" };
 
 export function mintDraftCredentialSetupUrl(
   conversation_id: string,
@@ -85,7 +85,7 @@ export async function validateDraftCredentialSetup(
     const expiresAt = Date.parse(input.expires_at);
     if (!Number.isFinite(expiresAt) || expiresAt <= now()) continue;
 
-    let storedGrant = "";
+    let storedGrant: string;
     try {
       storedGrant = new URL(input.setup_url).searchParams.get("grant") ?? "";
     } catch {

@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
+
 import type { PersonaProbe } from "../slash.ts";
 import { starterTaskActionsForPersona, TASK_ACTIONS, type TaskAction } from "./task-actions.ts";
 

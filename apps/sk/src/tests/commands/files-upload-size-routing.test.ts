@@ -3,10 +3,12 @@
 // The mock intercepts at the `fetchImpl` boundary so we verify the actual
 // wire paths without any process spawning.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import { uploadPath } from "../../commands/files.ts";
 import { EngineClient, MAX_INLINE_BYTES } from "../../engine-client.ts";
 

@@ -11,9 +11,11 @@
 // log line — no audit row, no DB mutation — so this file does not
 // assert against `audit_log`.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
+
 import { apiKeys, conversations, roles, systemAccounts, tenants } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 

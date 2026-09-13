@@ -5,8 +5,9 @@
 // `${...}`, so we suppress the rule for this whole file (it is
 // declarative-fixture-only).
 //
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal placeholder fixtures
+/* eslint-disable no-template-curly-in-string -- literal placeholder fixtures */
 import { describe, expect, test } from "bun:test";
+
 import { validateWorkflowDef } from "../validator.ts";
 
 describe("validateWorkflowDef · request step.url shapes", () => {

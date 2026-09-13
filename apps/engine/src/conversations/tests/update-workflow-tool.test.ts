@@ -13,6 +13,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { auditLog, conversations, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import { updateWorkflowTool } from "../tools/generated/writes/update-workflow.ts";
@@ -78,7 +79,7 @@ function buildToolCtx(params?: {
   draft?: DraftDocument;
   setDraft?: (next: DraftDocument) => Promise<void>;
 }): ToolContext {
-  // biome-ignore lint/suspicious/noExplicitAny: minimal stub matching ToolContext
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal stub matching ToolContext
   const engineClientStub: any = {
     context: {
       actor_id: ctx.user_id,
@@ -347,7 +348,7 @@ describe("update_workflow tool — chat-native metadata patch", () => {
     const { listWorkflowToolsForTenant } = await import("../../workflows/catalog.ts");
     const catalog = await listWorkflowToolsForTenant({
       db: ctx.testDb.db,
-      // biome-ignore lint/suspicious/noExplicitAny: minimal principal stub
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal principal stub
       principal: { tenant_id: ctx.tenant_id, allowed_workflows: "all" } as any,
     });
     const entry = catalog.find((c) => c.slug === "describe-me-uw");

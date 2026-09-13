@@ -24,6 +24,7 @@
 
 import { z } from "@hono/zod-openapi";
 import type { Context } from "hono";
+
 import type { AppEnv } from "../http/openapi.ts";
 
 /** Canonical entry-point label. The same enum drives RBAC softening,

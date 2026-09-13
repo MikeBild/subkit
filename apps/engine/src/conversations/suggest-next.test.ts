@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { type SuggestNextModelInvoker, suggestNextMessage } from "./suggest-next.ts";
+
+import { suggestNextMessage, type SuggestNextModelInvoker } from "./suggest-next.ts";
 
 const baseHistory = [
   { role: "user" as const, text: "should I commit?" },

@@ -11,6 +11,7 @@
 // abort the request.
 
 import type { Context } from "hono";
+
 import { logger } from "../logging/logger.ts";
 import { type RequestSource, RequestSourceSchema } from "../observability/service-metadata.ts";
 

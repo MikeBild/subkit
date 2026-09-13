@@ -9,8 +9,10 @@
 //   - AC4: A bare (empty) custom role is denied connector:read.
 // Spec refs: gap-pass-2 C4 / C6 / C8
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { portalTokens, users } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {

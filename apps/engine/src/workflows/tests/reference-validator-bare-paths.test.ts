@@ -1,10 +1,10 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
 // Bare-path validation. The skill documents `<step_id>.data` as
 // equivalent to `$scope.<step_id>.data`, so the LLM uses both forms.
 // The original validator only caught $scope./$steps./${scope.X}
 // references; this pass covers the bare form.
 
 import { describe, expect, test } from "bun:test";
+
 import { validateStepReferences } from "../reference-validator.ts";
 import type { WorkflowDef } from "../types.ts";
 
@@ -93,7 +93,7 @@ describe("validateStepReferences · output_transform", () => {
   test("flags unknown ref in output_transform_function", () => {
     const draft = wf([{ id: "fetch", kind: "request", method: "GET", url: "https://x/y" }], {
       output_transform_function: "(scope) => scope.feetch.data",
-      // biome-ignore lint/suspicious/noExplicitAny: schema field exists on draft documents
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- schema field exists on draft documents
     } as any);
     const errors = validateStepReferences(draft);
     expect(errors.some((e) => e.step_id === "(output_transform_function)")).toBe(true);

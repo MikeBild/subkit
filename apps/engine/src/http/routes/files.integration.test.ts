@@ -5,9 +5,11 @@
 // finalize rejection. Real Postgres via createHttpTestServer (includes
 // loadConfig); in-memory provider-neutral object-store test double.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
+
 import { parseFileIdOrThrow } from "../../api/files-schemas.ts";
 import { apiKeys, auditLog, files, roles, tenants, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";

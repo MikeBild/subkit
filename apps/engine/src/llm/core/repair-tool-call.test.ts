@@ -8,8 +8,9 @@
 // model's "test the draft I just built" call lands on
 // `dry_run_workflow` instead of dead-ending in the repair cap.
 
-import { describe, expect, test } from "bun:test";
 import type { LanguageModel } from "ai";
+import { describe, expect, test } from "bun:test";
+
 import { repairToolCall } from "./repair-tool-call.ts";
 
 // The missing-tool branch never touches the model, so a bare sentinel
@@ -20,7 +21,7 @@ const UNUSED_MODEL = {} as unknown as LanguageModel;
 function noSuchToolError(toolName: string) {
   const err = new Error(`No such tool: ${toolName}`);
   err.name = "AI_NoSuchToolError";
-  // biome-ignore lint/suspicious/noExplicitAny: minimal NoSuchToolError stand-in.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal NoSuchToolError stand-in.
   return err as any;
 }
 

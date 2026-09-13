@@ -3,6 +3,7 @@
 // and dry_run_step can reuse it; this test pins the contract once.
 
 import { describe, expect, test } from "bun:test";
+
 import { pickProbeRecoveryActions, probeStatusHint } from "../probe-recovery.ts";
 
 describe("pickProbeRecoveryActions", () => {

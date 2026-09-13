@@ -8,8 +8,9 @@
 // drift apart.
 
 import { and, asc, eq } from "drizzle-orm";
+
 import type { Db } from "../../db/client.ts";
-import { executionSteps, executions } from "../../db/schema/index.ts";
+import { executions, executionSteps } from "../../db/schema/index.ts";
 import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { LatestDiagnosisSummary } from "../types.ts";
 import { truncateForLlm } from "./truncate.ts";

@@ -16,6 +16,7 @@
 //   - tools not exposed over MCP at all (chat-only) — nothing to pin.
 
 import { describe, expect, test } from "bun:test";
+
 import { decideToolMode } from "../../conversations/tool-policies.ts";
 import { getUnifiedRegistry } from "../../tools/index.ts";
 import { policyDecide } from "../../tools/policy.ts";

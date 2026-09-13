@@ -1,10 +1,12 @@
 // Loader tests. Filesystem-backed (tmpdir) but no DB / no testcontainers.
 // Determinism gate: no Math.random / setTimeout / .only.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import {
   _resetConfigForTests,
   getConfig,
@@ -254,9 +256,8 @@ describe("setConfigKey", () => {
 
 describe("settings_override_active{key} legacy metric", () => {
   test("does not publish active override samples for one-time env imports", async () => {
-    const { getMetrics, resetMetricsRegistryForTests } = await import(
-      "../../observability/metrics.ts"
-    );
+    const { getMetrics, resetMetricsRegistryForTests } =
+      await import("../../observability/metrics.ts");
     resetMetricsRegistryForTests();
 
     await loadFresh({

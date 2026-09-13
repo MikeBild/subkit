@@ -2,6 +2,7 @@
 // truth block injected into the system prompt.
 
 import { describe, expect, it } from "bun:test";
+
 import { renderRuntimeContextBlock, resolveEngineUrl } from "../runtime-context.ts";
 
 describe("renderRuntimeContextBlock", () => {

@@ -10,12 +10,14 @@
 //   - Audit row carries the target tenant_id for ?tenant=X writes
 //   - Cross-tenant guard rejects non-admin callers targeting other tenants
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+
 import { SYSTEM_TENANT_ID } from "../../../audit/index.ts";
 import { _resetConfigForTests, loadConfig } from "../../../config/loader.ts";
 import { auditLog } from "../../../db/schema/audit.ts";

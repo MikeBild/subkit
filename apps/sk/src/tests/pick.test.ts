@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
 import type * as prompts from "@clack/prompts";
+import { describe, expect, test } from "bun:test";
+
 import { pickId } from "../lib/pick.ts";
 
 const noRows = async () => [];

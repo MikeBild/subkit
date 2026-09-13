@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
+
 import { z } from "@hono/zod-openapi";
 import { classifyHttpSideEffect } from "@shared/index.ts";
+
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { probeGraphQLConnector } from "../../connectors/drivers/graphql.ts";
@@ -516,7 +518,7 @@ export const probeConnectorDraftTool: ConversationTool = {
       (typeof oauthCfg.aws_region === "string" && oauthCfg.aws_region) ||
       null;
     const clientId = typeof oauthCfg.client_id === "string" ? oauthCfg.client_id : null;
-    let credentialOverride: DecryptedCredential | null = null;
+    let credentialOverride: DecryptedCredential | null;
     if (draftCredential?.mode === "oauth2") {
       // Reachable only for client_credentials_json (the browser-grant
       // gate above returned for everything else): mint the bearer

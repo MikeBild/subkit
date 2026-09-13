@@ -8,9 +8,11 @@
 // sandbox and compare against the engine's jsonata runtime — the same
 // two runtimes production uses.
 
-import { describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
 import { createHash, createHmac } from "node:crypto";
+
+import { describe, expect, test } from "bun:test";
+
 import { evaluate as jsonataEval } from "../../../../execution/jsonata-engine.ts";
 import { runJs } from "../../runtime.ts";
 

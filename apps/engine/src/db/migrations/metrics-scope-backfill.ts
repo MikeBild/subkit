@@ -23,6 +23,7 @@
 // unset so the next boot retries. Never breaks boot — the caller wraps it.
 
 import { eq, isNull } from "drizzle-orm";
+
 import { WILDCARD_SCOPE } from "../../auth/scopes.ts";
 import { resolveEffectiveUserRole } from "../../auth/user-role.ts";
 import { logger } from "../../logging/logger.ts";

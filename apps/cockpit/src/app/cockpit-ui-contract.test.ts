@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { describe, expect, test } from "bun:test";
 
 const root = dirname(dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url))))));
 const css = readFileSync(join(root, "apps/cockpit/src/index.css"), "utf8");

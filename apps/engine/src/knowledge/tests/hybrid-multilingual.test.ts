@@ -10,6 +10,7 @@
 // embeddings/tests/vector-rerank.test.ts.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { backfillEmbeddings } from "../../embeddings/backfill.ts";
 import { embeddingsAvailable } from "../../embeddings/local-provider.ts";
 import { createKnowledgeSource, searchKnowledge } from "../service.ts";

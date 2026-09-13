@@ -1,6 +1,7 @@
 // Unit tests for the CLI ref scanner.
 
 import { describe, expect, it } from "bun:test";
+
 import { cliScanner } from "../scanners/cli.ts";
 
 const ctx = { engine_url: "https://subkit-api.example.com" };

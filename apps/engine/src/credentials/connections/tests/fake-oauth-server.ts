@@ -164,7 +164,7 @@ export async function startFakeOAuthServer(
       const grant = form.get("grant_type");
       const client_id = form.get("client_id") ?? "";
       if (!state.clients.has(client_id)) return json(res, 401, { error: "invalid_client" });
-      let scope = "";
+      let scope: string;
       if (grant === "authorization_code") {
         const issued = codes.get(form.get("code") ?? "");
         if (!issued || issued.spent) return json(res, 400, { error: "invalid_grant" });

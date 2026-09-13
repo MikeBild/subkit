@@ -4,13 +4,15 @@
 // test server (no Docker, no Postgres). Covers the happy path, all
 // failure branches, schema validation, and the insecure-request flag.
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+
 import {
   __resetOAuth2CacheForTests,
-  DynamicRegistrationError,
   dynamicallyRegisterClient,
+  DynamicRegistrationError,
 } from "../client.ts";
 
 // ---------------------------------------------------------------------------

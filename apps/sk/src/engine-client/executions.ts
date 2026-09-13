@@ -4,6 +4,7 @@
 // `EngineClient` by `../engine-client.ts`.
 
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
+
 import type { EngineClient } from "../engine-client.ts";
 
 // Aliased from the generated OpenAPI surface so command surfaces have a
@@ -63,13 +64,7 @@ export interface ConnectorResolutionSummary {
   requested_environment: "dev" | "prod";
   resolved_environment: "dev" | "prod";
   auth_method:
-    | "none"
-    | "bearer"
-    | "header"
-    | "query"
-    | "basic"
-    | "oauth2_static"
-    | "oauth2_refreshed";
+    "none" | "bearer" | "header" | "query" | "basic" | "oauth2_static" | "oauth2_refreshed";
   base_url?: string | null;
 }
 

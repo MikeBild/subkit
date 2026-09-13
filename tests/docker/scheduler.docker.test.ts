@@ -9,14 +9,16 @@
 // sleep. Slow by nature (waits on the in-container 60s reconcile tick), so
 // it runs nightly only.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import path from "node:path";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { pollUntil } from "../e2e/_helpers/poll.ts";
 import {
   collectContainerLogs,
-  type DockerEnv,
   dockerApi,
   dockerBoot,
+  type DockerEnv,
   skDocker,
 } from "./_harness.ts";
 

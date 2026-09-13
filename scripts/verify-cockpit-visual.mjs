@@ -2,7 +2,9 @@ import { spawn } from "node:child_process";
 import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
+
 import { chromium } from "playwright";
+
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";

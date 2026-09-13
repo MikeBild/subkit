@@ -12,9 +12,11 @@
 //   - 403 for a token that lacks `audit:read`
 //   - 401 for an absent token
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq, gte } from "drizzle-orm";
+
 import { apiKeys, auditLog, users } from "../../db/schema/index.ts";
 import { resetUpdateState, setUpdateState } from "../../update-state.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";

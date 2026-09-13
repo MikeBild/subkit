@@ -25,9 +25,11 @@
 // to until the bootstrap transaction lands.
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+
 import { eq } from "drizzle-orm";
 import pc from "picocolors";
 import { z } from "zod";
+
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../audit/types.ts";
 import { setConfigKey } from "../config/loader.ts";
@@ -256,11 +258,7 @@ export async function run(db: Db, deps: BootstrapRunDeps = {}): Promise<Bootstra
 }
 
 export type ConsumeFailureCode =
-  | "rate_limited"
-  | "gone"
-  | "invalid_token"
-  | "token_expired"
-  | "validation_failed";
+  "rate_limited" | "gone" | "invalid_token" | "token_expired" | "validation_failed";
 
 export type ConsumeOutcome =
   | {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { type TranslationKey, translate } from "@/lib/i18n";
+
+import { translate, type TranslationKey } from "@/lib/i18n";
 import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "@/pages/chat-resume";
 
 const de = (key: TranslationKey, values?: Record<string, string>) => translate("de", key, values);

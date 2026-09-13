@@ -19,6 +19,7 @@
 // the live turn — burning 3.9M tokens in a single session.
 
 import type { ModelMessage } from "ai";
+
 import { rememberRaw } from "./tools/truncate.ts";
 
 /** Serialized tool outputs above this size are elided when they fall

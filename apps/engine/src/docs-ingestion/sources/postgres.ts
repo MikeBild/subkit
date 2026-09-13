@@ -8,6 +8,7 @@
 // "how do I read from <table>?" questions.
 
 import pg from "pg";
+
 import { consumeBytes } from "../budgets.ts";
 import { byteLen } from "../chunker.ts";
 import type { BudgetState, RawChunk } from "../types.ts";

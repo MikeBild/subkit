@@ -13,11 +13,12 @@
 // land on /cockpit/connections with a query the page turns into a sentence.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import {
   buildConnectionCallbackUri,
-  ConnectionError,
   completeConnection,
+  ConnectionError,
   disconnectConnection,
   discoverService,
   getConnection,

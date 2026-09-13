@@ -14,7 +14,9 @@
 // Both paths land in `ingestDocs(...)`.
 
 import { createHash } from "node:crypto";
+
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+
 import { auditAwait } from "../audit/audit.ts";
 import { sanitizeForAudit } from "../audit/sanitize.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -65,6 +67,7 @@ function parseInlineOpenApiChunks(content: string): RawChunk[] {
   } catch (err) {
     throw new Error(
       `inline openapi parse failed (JSON only): ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
   return chunkOpenAPI(parsed);
@@ -76,6 +79,7 @@ function parseInlineGoogleDiscoveryChunks(content: string): RawChunk[] {
   } catch (err) {
     throw new Error(
       `inline google discovery parse failed: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
 }
@@ -87,6 +91,7 @@ function parseInlineGraphQlChunks(content: string): RawChunk[] {
   } catch (err) {
     throw new Error(
       `inline graphql introspection parse failed: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
   const envelope = parsed.data as { __schema?: unknown } | undefined;

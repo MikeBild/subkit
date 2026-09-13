@@ -4,7 +4,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
-import { LOGO_ROWS, LOGO_ROWS_APPLE, Logo } from "../repl/logo.tsx";
+
+import { Logo, LOGO_ROWS, LOGO_ROWS_APPLE } from "../repl/logo.tsx";
 
 describe("sk Logo", () => {
   test("renders all three glyph rows on standard terminals", () => {

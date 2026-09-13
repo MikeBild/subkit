@@ -8,6 +8,7 @@
 // decision for the full matrix of confirm shapes.
 
 import { describe, expect, test } from "bun:test";
+
 import { checkDecline } from "../persistence/auto-persist/synthetic.ts";
 import {
   type ConfirmDecision,

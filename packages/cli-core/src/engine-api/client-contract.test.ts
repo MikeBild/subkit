@@ -15,9 +15,10 @@
 // test would) would find zero matches and pass vacuously — so this scans the
 // actual call shape instead.
 
-import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
 
 const ENGINE_CLIENT_DIR = join(import.meta.dir, "../../../../apps/sk/src/engine-client");
 const DIAGNOSTICS_PATHS_FILE = join(import.meta.dir, "../diagnostics-paths.ts");

@@ -10,6 +10,7 @@
 // standard `tool.dispatch.invoke` log.
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { resolveConnectorTemplate } from "../../connectors/template-resolver.ts";
 import type { ConnectorRecipe } from "../../connectors/templates.ts";

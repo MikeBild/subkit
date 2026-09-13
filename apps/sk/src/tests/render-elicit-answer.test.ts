@@ -16,6 +16,7 @@
 // submitted.
 
 import { describe, expect, test } from "bun:test";
+
 import { renderElicitAnswer } from "../ink-app.tsx";
 
 describe("renderElicitAnswer — confirmation outputs", () => {

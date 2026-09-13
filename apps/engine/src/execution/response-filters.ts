@@ -19,7 +19,9 @@
 // the DB once and caches per-tenant for 60 seconds.
 
 import { createHash } from "node:crypto";
+
 import { and, eq } from "drizzle-orm";
+
 import type { Db } from "../db/client.ts";
 import { tenantDlpRules } from "../db/schema/index.ts";
 

@@ -1,6 +1,7 @@
 // "Did you mean" suggestion logic for the top-level dispatcher.
 
 import { describe, expect, test } from "bun:test";
+
 import { levenshtein, suggestCommand } from "../lib/suggest.ts";
 
 const COMMANDS = [

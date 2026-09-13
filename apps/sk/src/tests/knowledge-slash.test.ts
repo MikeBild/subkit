@@ -3,10 +3,12 @@
 // inspect behavior (Settings pane / list), `/knowledge import <dir>`
 // walks the local directory and posts a bundle.
 
-import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach, describe, expect, test } from "bun:test";
+
 import { handleSlash, type SlashHandlerContext } from "../repl/slash/handler.ts";
 import { dispatchKnowledgeSlash } from "../repl/slash/handlers/knowledge.ts";
 
