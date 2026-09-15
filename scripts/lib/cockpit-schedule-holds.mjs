@@ -117,6 +117,7 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
     await card.getByRole("link").click();
     await page.getByTestId("detail-workflows").waitFor();
     await page.getByTestId("authority-grant-open").waitFor();
+    await page.getByTestId("authority-schedule-held").waitFor();
   } finally {
     await page.unroute(schedulePattern, schedules);
     await page.unroute(overviewPattern, overview);

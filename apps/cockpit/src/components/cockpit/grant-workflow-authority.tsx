@@ -1,7 +1,9 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { apiRequest } from "@/api/client";
+import { useSession } from "@/app/session";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -36,16 +38,30 @@ export function GrantWorkflowAuthority({
   prepareVersion,
   onGrant,
   reviewContent,
+  initialEnvironment = "dev",
+  versionLabel,
+  disabled = false,
 }: {
   workflowId: string;
   versionId: string;
   prepareVersion?: () => Promise<string>;
   onGrant?: (input: NonNullable<ReturnType<typeof authorityGrantInput>>) => Promise<unknown>;
   reviewContent?: ReactNode;
+  initialEnvironment?: "dev" | "prod";
+  versionLabel?: string;
+  disabled?: boolean;
 }) {
   const { t, dateTime } = useI18n();
-  const client = useQueryClient();
   const [open, setOpen] = useState(false);
+  const client = useQueryClient();
+  const session = useSession();
+  const connectors = useQuery({
+    queryKey: ["authority-connector-names"],
+    enabled: open && session.permissions.includes("connector:read"),
+    staleTime: 300_000,
+    queryFn: () =>
+      apiRequest<{ items: { id: string; name: string }[] }>("/v1/connectors?limit=200"),
+  });
   const [environment, setEnvironment] = useState<"dev" | "prod">("dev");
   const [runs, setRuns] = useState("");
   const [hours, setHours] = useState("");
@@ -97,6 +113,14 @@ export function GrantWorkflowAuthority({
     },
   });
   const busy = prepare.isPending || grant.isPending;
+  const unsupported = review && !review.eligible_for_repeated_runs;
+  const incomplete = review?.execution_shape.requests.some(
+    (request) => request.request_review_truncated || request.opaque_payload_omitted,
+  );
+  const invalidRuns = !Number.isInteger(Number(runs)) || Number(runs) < 1 || Number(runs) > 10000;
+  const invalidHours = !Number.isInteger(Number(hours)) || Number(hours) < 1 || Number(hours) > 744;
+  const boundsVisible = review && !unsupported && !incomplete;
+  const adjustUrl = `/cockpit/chat/new?workflow_id=${encodeURIComponent(workflowId)}&prompt=${encodeURIComponent(t("authority.adjustPrompt"))}`;
   function openDialog(value: boolean) {
     if (busy) return;
     setOpen(value);
@@ -104,14 +128,14 @@ export function GrantWorkflowAuthority({
     prepare.reset();
     grant.reset();
     if (value) {
-      setEnvironment("dev");
-      prepare.mutate("dev");
+      setEnvironment(initialEnvironment);
+      prepare.mutate(initialEnvironment);
     }
   }
   return (
     <Dialog open={open} onOpenChange={openDialog}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" data-testid="authority-grant-open">
+        <Button variant="outline" size="sm" disabled={disabled} data-testid="authority-grant-open">
           {t(onGrant ? "decisions.applyAndAuthorize" : "authority.grantOpen")}
         </Button>
       </DialogTrigger>
@@ -121,14 +145,42 @@ export function GrantWorkflowAuthority({
       >
         <DialogHeader className="shrink-0">
           <DialogTitle>
-            {t(onGrant ? "decisions.applyAndAuthorize" : "authority.grantOpen")}
+            {t(
+              unsupported
+                ? "authority.adjustTitle"
+                : onGrant
+                  ? "decisions.applyAndAuthorize"
+                  : "authority.grantOpen",
+            )}
           </DialogTitle>
           <DialogDescription>
-            {t(onGrant ? "decisions.applyAndAuthorizeDescription" : "authority.grantDescription")}
+            {t(
+              unsupported
+                ? "authority.adjustDescription"
+                : onGrant
+                  ? "decisions.applyAndAuthorizeDescription"
+                  : "authority.grantDescription",
+            )}
           </DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
           {reviewContent}
+          {unsupported && (
+            <Alert data-testid="authority-needs-adjustment">
+              <AlertTitle>{t("schedules.held.status")}</AlertTitle>
+              <AlertDescription>
+                {t("authority.unsupportedSteps", {
+                  steps: review?.unavailable_steps.join(", ") || t("authority.effects"),
+                })}
+              </AlertDescription>
+            </Alert>
+          )}
+          {incomplete && (
+            <Alert data-testid="authority-incomplete">
+              <AlertTitle>{t("authority.incompleteTitle")}</AlertTitle>
+              <AlertDescription>{t("authority.incompleteDescription")}</AlertDescription>
+            </Alert>
+          )}
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="authority-environment">{t("authority.environment")}</FieldLabel>
@@ -159,9 +211,9 @@ export function GrantWorkflowAuthority({
                 </SelectContent>
               </Select>
             </Field>
-            {review && (
+            {boundsVisible && (
               <>
-                <Field data-invalid={!input}>
+                <Field data-invalid={invalidRuns}>
                   <FieldLabel htmlFor="authority-runs">{t("authority.runs")}</FieldLabel>
                   <Input
                     id="authority-runs"
@@ -172,11 +224,12 @@ export function GrantWorkflowAuthority({
                     step={1}
                     value={runs}
                     disabled={busy}
-                    aria-invalid={!input}
+                    aria-invalid={invalidRuns}
                     onChange={(event) => setRuns(event.target.value)}
                   />
+                  {invalidRuns && <FieldError>{t("authority.runsError")}</FieldError>}
                 </Field>
-                <Field data-invalid={!input}>
+                <Field data-invalid={invalidHours}>
                   <FieldLabel htmlFor="authority-hours">{t("authority.hours")}</FieldLabel>
                   <Input
                     id="authority-hours"
@@ -187,9 +240,10 @@ export function GrantWorkflowAuthority({
                     step={1}
                     value={hours}
                     disabled={busy}
-                    aria-invalid={!input}
+                    aria-invalid={invalidHours}
                     onChange={(event) => setHours(event.target.value)}
                   />
+                  {invalidHours && <FieldError>{t("authority.hoursError")}</FieldError>}
                 </Field>
               </>
             )}
@@ -203,11 +257,12 @@ export function GrantWorkflowAuthority({
           )}
           {review && (
             <div className="flex min-w-0 flex-col gap-4" data-testid="authority-grant-review">
-              <p className="break-all text-sm">
-                {t("authority.version")}
-                {": "}
-                {review.manifest.workflow_version_id}
-              </p>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline">{versionLabel ?? t("authority.reviewedVersion")}</Badge>
+                <Badge variant="secondary">
+                  {t(environment === "prod" ? "authority.production" : "authority.development")}
+                </Badge>
+              </div>
               {input && (
                 <p className="text-sm">
                   {t("authority.window")}
@@ -217,60 +272,70 @@ export function GrantWorkflowAuthority({
                   {dateTime(input.valid_until)}
                 </p>
               )}
-              <Alert>
-                <AlertTitle>{t("authority.runNotRequest")}</AlertTitle>
-                <AlertDescription>{t("authority.runNotRequestDescription")}</AlertDescription>
-              </Alert>
-              {review.manifest.effects.map((effect) => (
-                <div key={effect.step_id} className="min-w-0 text-sm">
-                  <p className="font-medium">
-                    {effect.step_id}
-                    {" · "}
-                    {t(AUTHORITY_EFFECT_KEYS[effect.effect])}
-                    {" · "}
-                    {effect.operation}
+              <details open={!unsupported} data-testid="authority-effect-details">
+                <summary className="cursor-pointer text-sm font-medium">
+                  {t("authority.effects")}
+                </summary>
+                <div className="mt-3 flex flex-col gap-3">
+                  <p className="text-sm text-muted-foreground">
+                    {t("authority.runNotRequestDescription")}
                   </p>
-                  <p className="break-all">
-                    {t("authority.connector")}
-                    {": "}
-                    {effect.connector_id ?? t("authority.directRequest")}
+                  {review.manifest.effects.map((effect) => (
+                    <div key={effect.step_id} className="min-w-0 text-sm">
+                      <p className="font-medium">
+                        {effect.step_id}
+                        {" · "}
+                        {t(AUTHORITY_EFFECT_KEYS[effect.effect])}
+                        {" · "}
+                        {effect.operation}
+                      </p>
+                      <p className="break-all">
+                        {t("authority.connector")}
+                        {": "}
+                        {effect.connector_id
+                          ? (connectors.data?.items.find(
+                              (connector) => connector.id === effect.connector_id,
+                            )?.name ?? t("authority.configuredConnector"))
+                          : t("authority.directRequest")}
+                      </p>
+                      <p className="break-all">{effect.target ?? t("authority.unboundTarget")}</p>
+                    </div>
+                  ))}
+                  {review.execution_shape.requests.map((request) => (
+                    <details key={request.step_id}>
+                      <summary className="cursor-pointer text-sm font-medium">
+                        {t("authority.requestReview", { step: request.step_id })}
+                      </summary>
+                      <p className="my-2 text-sm">
+                        {t("authority.attempts", {
+                          count: request.retry_policy_max_attempts ?? t("common.unknown"),
+                        })}
+                      </p>
+                      <pre className="max-h-64 overflow-auto rounded-lg bg-muted p-3 text-xs whitespace-pre-wrap break-all">
+                        {request.redacted_request_json}
+                      </pre>
+                    </details>
+                  ))}
+                  {review.execution_shape.iterations.map((iteration) => (
+                    <p
+                      key={`${iteration.step_id}:${iteration.kind}`}
+                      className="break-words text-sm"
+                    >
+                      {t("authority.iteration", {
+                        step: iteration.step_id,
+                        children: iteration.body_step_ids.join(", "),
+                      })}
+                    </p>
+                  ))}
+                  <p className="text-sm text-muted-foreground">
+                    {t("authority.maskedDescription")}
                   </p>
-                  <p className="break-all">{effect.target ?? t("authority.unboundTarget")}</p>
                 </div>
-              ))}
-              {review.execution_shape.requests.map((request) => (
-                <details key={request.step_id}>
-                  <summary className="cursor-pointer text-sm font-medium">
-                    {t("authority.requestReview", { step: request.step_id })}
-                  </summary>
-                  <p className="my-2 text-sm">
-                    {t("authority.attempts", {
-                      count: request.retry_policy_max_attempts ?? t("common.unknown"),
-                    })}
-                  </p>
-                  <pre className="max-h-64 overflow-auto rounded-lg bg-muted p-3 text-xs whitespace-pre-wrap break-all">
-                    {request.redacted_request_json}
-                  </pre>
-                </details>
-              ))}
-              {review.execution_shape.iterations.map((iteration) => (
-                <p key={`${iteration.step_id}:${iteration.kind}`} className="break-words text-sm">
-                  {t("authority.iteration", {
-                    step: iteration.step_id,
-                    children: iteration.body_step_ids.join(", "),
-                  })}
-                </p>
-              ))}
-              <p className="text-sm text-muted-foreground">{t("authority.maskedDescription")}</p>
-              <p className="break-all font-mono text-xs">
-                {t("authority.digest")}
-                {": "}
-                {review.digest}
-              </p>
-              {!input && (
-                <Alert variant="destructive">
-                  <AlertTitle>{t("authority.cannotGrant")}</AlertTitle>
-                  <AlertDescription>{t("authority.cannotGrantDescription")}</AlertDescription>
+              </details>
+              {!input && boundsVisible && !invalidRuns && !invalidHours && (
+                <Alert>
+                  <AlertTitle>{t("authority.reviewExpired")}</AlertTitle>
+                  <AlertDescription>{t("authority.reviewExpiredHint")}</AlertDescription>
                 </Alert>
               )}
             </div>
@@ -291,35 +356,48 @@ export function GrantWorkflowAuthority({
           >
             {t("common.cancel")}
           </Button>
-          <Button
-            variant="outline"
-            disabled={busy}
-            onClick={() => {
-              grant.reset();
-              setReview(null);
-              prepare.reset();
-              prepare.mutate(environment);
-            }}
-            data-testid="authority-prepare"
-          >
-            {t("authority.prepare")}
-          </Button>
-          <Button
-            disabled={busy || !input || Boolean(grant.error)}
-            onClick={() => grant.mutate()}
-            data-testid="authority-grant-confirm"
-          >
-            {t(
-              grant.isPending
-                ? "authority.granting"
-                : onGrant
-                  ? "decisions.applyAndAuthorize"
-                  : Number(runs) === 1
-                    ? "authority.grantConfirmOne"
-                    : "authority.grantConfirm",
-              { count: runs },
-            )}
-          </Button>
+          {(prepare.error ||
+            grant.error ||
+            incomplete ||
+            (boundsVisible && !input && !invalidRuns && !invalidHours)) && (
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => {
+                grant.reset();
+                setReview(null);
+                prepare.reset();
+                prepare.mutate(environment);
+              }}
+              data-testid="authority-prepare"
+            >
+              {t("authority.prepare")}
+            </Button>
+          )}
+          {unsupported ? (
+            <Button asChild>
+              <a href={adjustUrl} data-testid="authority-adjust">
+                {t("authority.adjust")}
+              </a>
+            </Button>
+          ) : (
+            <Button
+              disabled={busy || !input || Boolean(grant.error)}
+              onClick={() => grant.mutate()}
+              data-testid="authority-grant-confirm"
+            >
+              {t(
+                grant.isPending
+                  ? "authority.granting"
+                  : onGrant
+                    ? "decisions.applyAndAuthorize"
+                    : Number(runs) === 1
+                      ? "authority.grantConfirmOne"
+                      : "authority.grantConfirm",
+                { count: runs },
+              )}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
