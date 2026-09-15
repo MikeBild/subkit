@@ -13,6 +13,7 @@ import {
 } from "../../db/schema/index.ts";
 import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
 import { loadDraft } from "../draft.ts";
+import { proseQuestionAnswer } from "../prose-question-answer.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
 import type {
   ConversationCreatedResource,
@@ -74,6 +75,36 @@ export async function getConversation(
     )
     .orderBy(asc(conversationToolCalls.created_at));
   const draft = await loadDraft(tenant_id, id, exec);
+  const textAnswers = await exec
+    .select()
+    .from(conversationElicitations)
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, tenant_id),
+        eq(conversationElicitations.conversation_id, id),
+        eq(conversationElicitations.status, "resolved"),
+        eq(conversationElicitations.tool_name, "ask_user_text"),
+      ),
+    );
+  // Project the canonical answer row into the transcript; do not duplicate it in storage.
+  const transcriptMessages = [
+    ...msgs,
+    ...textAnswers.flatMap((answer) => {
+      const text = proseQuestionAnswer(answer);
+      return text === null
+        ? []
+        : [
+            {
+              id: answer.id,
+              conversation_id: id,
+              role: "user",
+              content: { text },
+              model: null,
+              created_at: answer.decided_at ?? answer.updated_at,
+            },
+          ];
+    }),
+  ].sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
   const conversationRecord = rowToRecord(row);
   const pendingElicitationRows = await exec
     .select()
@@ -115,7 +146,7 @@ export async function getConversation(
     conversation: conversationRecord,
     owner: (conversationRecord.owner_id && owners.get(conversationRecord.owner_id)) || null,
     created_resources: collectCreatedResources(draft, calls),
-    messages: msgs.map(
+    messages: transcriptMessages.map(
       (m): ConversationMessageRecord => ({
         id: m.id,
         conversation_id: m.conversation_id,
