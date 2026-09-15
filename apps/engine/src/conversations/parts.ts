@@ -54,7 +54,9 @@ export function toMessageParts(
         tool: tc.tool,
         output: tc.output,
         outcome: tc.outcome,
-        ...(tc.confirmation_state ? { confirmation_state: tc.confirmation_state } : {}),
+        ...(tc.tool === "ask_user_confirm" && tc.confirmation_state
+          ? { confirmation_state: tc.confirmation_state }
+          : {}),
       });
     }
   }

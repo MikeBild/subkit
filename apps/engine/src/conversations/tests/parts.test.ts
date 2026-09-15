@@ -255,3 +255,18 @@ for (const confirmation_state of ["confirmed", "declined", "expired"]) {
     });
   });
 }
+
+test("a text answer is not labelled as an execution approval", () => {
+  const ui = toMessageParts(msg({ id: "answer-message", role: "assistant" }), [
+    call({
+      id: "answer-call",
+      tool: "ask_user_text",
+      created_at: "2026-01-01T00:00:01.000Z",
+      confirmation_state: "confirmed",
+      outcome: "ok",
+    }),
+  ]);
+  expect(ui.parts.find((part) => part.type === "tool_result")).not.toHaveProperty(
+    "confirmation_state",
+  );
+});
