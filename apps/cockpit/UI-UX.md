@@ -259,6 +259,12 @@ A running action shows its latest log line and its age from the live stream. Nei
 reload, and neither pretends to: no per-call duration is persisted anywhere, so a reloaded
 transcript shows no timer rather than a fabricated one.
 
+A submitted turn shows a spinner and a short localized activity label above the composer until
+the request settles, including quiet periods between tool calls. The submitted message is visible
+immediately. The transcript follows growing output at the live edge; scrolling back releases
+following. Sending another message or jumping to the latest message resumes it. Streaming
+assistant rows are not top-aligned turn anchors. Switching conversations opens at the latest message.
+
 ### Product-family evidence
 
 The shared contract is copied into each repository; no Cockpit imports another product at runtime.
