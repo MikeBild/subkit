@@ -1,6 +1,7 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/api/client";
+import { listHeldSchedules } from "@/api/decisions";
 import { GrantWorkflowAuthority } from "@/components/cockpit/grant-workflow-authority";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -173,10 +174,12 @@ export function WorkflowAuthorities({
   workflowId,
   versionId,
   canWrite,
+  versionLabel,
 }: {
   workflowId: string;
   versionId: string | null;
   canWrite: boolean;
+  versionLabel?: string;
 }) {
   const { t } = useI18n();
   const [now, setNow] = useState(() => Date.now());
@@ -195,6 +198,12 @@ export function WorkflowAuthorities({
     refetchInterval: 30_000,
   });
   const items = history.data?.pages.flatMap((page) => page.items) ?? [];
+  const holds = useQuery({
+    queryKey: ["workflow-schedule-holds"],
+    queryFn: listHeldSchedules,
+    refetchInterval: 30_000,
+  });
+  const hold = holds.data?.find((schedule) => schedule.workflow_id === workflowId);
   return (
     <section
       data-family-slot="workflow-authorities"
@@ -212,24 +221,32 @@ export function WorkflowAuthorities({
               key={`${workflowId}:${versionId}`}
               workflowId={workflowId}
               versionId={versionId}
+              versionLabel={versionLabel}
+              disabled={holds.isPending}
+              initialEnvironment={hold?.execution_mode === "prod" ? "prod" : "dev"}
             />
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={history.isFetching}
-            onClick={() => void history.refetch()}
-            data-testid="authority-refresh"
-          >
-            {t("common.refresh")}
-          </Button>
         </div>
       </div>
+      {hold && (
+        <div className="flex flex-wrap items-center gap-2" data-testid="authority-schedule-held">
+          <Badge variant="secondary">{t("schedules.held.status")}</Badge>
+          <p className="text-sm">{t("authority.heldHint")}</p>
+        </div>
+      )}
       {history.isPending && <p role="status">{t("common.loading")}</p>}
       {history.error && (
         <Alert variant="destructive">
           <AlertTitle>{t("authority.loadFailed")}</AlertTitle>
           <AlertDescription>{t("authority.retryDescription")}</AlertDescription>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void history.refetch()}
+            data-testid="authority-refresh"
+          >
+            {t("session.retry")}
+          </Button>
         </Alert>
       )}
       {!history.isPending && !history.error && items.length === 0 && (
