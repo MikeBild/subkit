@@ -28,7 +28,9 @@ import {
   recordFileLlmCapDowngrade,
   recordFileLlmInlineBytes,
 } from "../observability/instrumentation.ts";
+import { isProseQuestionElicitation, proseQuestionAnswer } from "./prose-question-answer.ts";
 import { scrubReferenceLabels } from "./references.ts";
+import { dropAssistantTail } from "./replay-tail.ts";
 import { ensureConversationTitle } from "./title.ts";
 import {
   approxValueSize,
@@ -389,6 +391,8 @@ function resolveElicitationToolCallId(
   elicitation: typeof conversationElicitations.$inferSelect,
   calls: Array<typeof conversationToolCalls.$inferSelect>,
 ): string | null {
+  // A parked prose question must never borrow an earlier ask_user_text call.
+  if (isProseQuestionElicitation(elicitation)) return null;
   if (typeof elicitation.tool_call_id === "string" && elicitation.tool_call_id.length > 0) {
     return elicitation.tool_call_id;
   }
@@ -705,10 +709,11 @@ export async function buildModelMessages(
   // or filter again in the items loop.
 
   interface Item {
-    kind: "msg" | "call";
+    kind: "msg" | "call" | "prose-answer";
     created_at: Date;
     msg?: (typeof msgs)[number];
     call?: (typeof calls)[number];
+    answer?: string;
   }
   // Resolved elicitations are no longer separate items — their
   // tool-result is emitted inline next to the matching tool-call so the
@@ -716,6 +721,12 @@ export async function buildModelMessages(
   const items: Item[] = [
     ...msgs.map((m): Item => ({ kind: "msg", created_at: m.created_at, msg: m })),
     ...calls.map((c): Item => ({ kind: "call", created_at: c.created_at, call: c })),
+    ...elicitations.flatMap((row): Item[] => {
+      const answer = proseQuestionAnswer(row);
+      return answer === null
+        ? []
+        : [{ kind: "prose-answer", created_at: row.decided_at ?? row.updated_at, answer }];
+    }),
   ];
   items.sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
 
@@ -727,6 +738,10 @@ export async function buildModelMessages(
     out.push({ role: "system", content: latestCompactionSummary });
   }
   for (const item of items) {
+    if (item.kind === "prose-answer" && item.answer !== undefined) {
+      out.push({ role: "user", content: item.answer });
+      continue;
+    }
     if (item.kind === "msg" && item.msg) {
       const role = item.msg.role;
       const content = item.msg.content;
@@ -963,37 +978,4 @@ export async function buildModelMessages(
   }
 
   return dropAssistantTail(maybeCompactReplay(out));
-}
-
-/**
- * Enforce the provider contract that a `messages` array must not END on an
- * assistant turn — Anthropic reads that as an attempt to prefill the reply and
- * answers "This model does not support assistant message prefill. The
- * conversation must end with a user message."
- *
- * A replayed conversation can end on assistant whenever the last thing that
- * happened was the model speaking and the turn is resumed by something other
- * than the user typing: a resolved elicitation or approval re-enqueues
- * `conversation.run-turn` with no `currentUserMessage`, and
- * `empty_turn_fallback` (see `loop.ts`) appends a SYNTHETIC assistant message
- * after the tool rows, so it lands last in `created_at` order.
- *
- * Dropping the tail is safe and non-inventive: that text was already delivered
- * to the user, and whatever drives the resume — the tool result or elicitation
- * outcome — sits earlier in the array and is preserved. The alternative,
- * appending a synthetic user turn, would put words the user never said into the
- * main converse loop. (`llm/core/suggestion-prompt.ts` does append one, but its
- * whole task is "predict what the user would type next", so a user-framed nudge
- * is the prompt rather than a fabrication.)
- *
- * Never strips the array down to nothing: if no user/tool turn survives
- * underneath, the trailing assistant message is the only conversational content
- * there is and removing it would send an empty array, which providers reject too.
- */
-function dropAssistantTail(messages: ModelMessage[]): ModelMessage[] {
-  const hasGroundTurn = messages.some((m) => m.role === "user" || m.role === "tool");
-  if (!hasGroundTurn) return messages;
-  const out = [...messages];
-  while (out.length > 0 && out[out.length - 1]!.role === "assistant") out.pop();
-  return out;
 }
