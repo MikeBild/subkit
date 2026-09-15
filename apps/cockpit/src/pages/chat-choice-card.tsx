@@ -9,16 +9,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import type { ChatChoice } from "./chat-choice";
@@ -62,32 +55,36 @@ export function ChatChoiceCard({
       <CardContent>
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor={`${testId}-select`}>{t("chat.choice.select")}</FieldLabel>
-            <Select
+            <FieldLabel id={`${testId}-label`}>{t("chat.choice.select")}</FieldLabel>
+            <ToggleGroup
+              type="single"
+              orientation="vertical"
+              variant="outline"
+              className="w-full"
               value={value}
-              onValueChange={(next) => setValue(next ?? "")}
+              onValueChange={setValue}
               disabled={busy || expired}
+              aria-labelledby={`${testId}-label`}
+              data-testid={`${testId}-select`}
             >
-              <SelectTrigger id={`${testId}-select`} data-testid={`${testId}-select`}>
-                <SelectValue placeholder={t("chat.choice.select")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {presentation.options.map((option) => (
-                    <SelectItem
-                      key={option.value}
-                      value={option.value}
-                      data-testid={`${testId}-option-${option.value}`}
-                    >
-                      {readable(option.label)}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            {selected?.description && (
-              <FieldDescription>{readable(selected.description)}</FieldDescription>
-            )}
+              {presentation.options.map((option) => (
+                <ToggleGroupItem
+                  key={option.value}
+                  value={option.value}
+                  className="h-auto w-full justify-start whitespace-normal px-3 py-3 text-left"
+                  data-testid={`${testId}-option-${option.value}`}
+                >
+                  <span className="flex flex-col gap-1">
+                    <span>{readable(option.label)}</span>
+                    {option.description && (
+                      <span className="text-xs text-muted-foreground">
+                        {readable(option.description)}
+                      </span>
+                    )}
+                  </span>
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
           </Field>
         </FieldGroup>
         {expired && <p>{t("chat.decision.expired")}</p>}

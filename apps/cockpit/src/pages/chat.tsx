@@ -1109,7 +1109,28 @@ export function ChatPage() {
           </div>
         </header>
 
+        {resume?.unsaved &&
+          targetWorkflowId &&
+          !pendingDecision &&
+          !pendingChoice &&
+          status === "ready" && (
+            <Alert className="mx-4 mt-4 w-auto shrink-0" data-testid="chat-preparation-next-step">
+              <AlertTitle>{t("chat.preparation.title")}</AlertTitle>
+              <AlertDescription>
+                <p>{t("chat.preparation.effect")}</p>
+                <Button
+                  size="sm"
+                  onClick={() => send.mutate({ message: t("chat.preparation.prompt") })}
+                  data-testid="chat-continue-preparation"
+                >
+                  {t("chat.preparation.continue")}
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
         {heldTarget &&
+          !resume?.unsaved &&
           targetWorkflowId &&
           !pendingDecision &&
           !pendingChoice &&

@@ -21,6 +21,11 @@ const EN = {
   "chat.resume.workflowSaved": "Saved {target}.",
   "chat.resume.stage.workflowSaved": "Workflow saved",
   "chat.schedule.count": "The {count} blocked schedule(s) still count as open decisions.",
+  "chat.preparation.title": "Preparation not yet complete",
+  "chat.preparation.effect": "SubKit can finish checking your change and prepare it for use.",
+  "chat.preparation.continue": "Check change",
+  "chat.preparation.prompt":
+    "Continue preparing the current change. Keep the requested behavior, schedule and destinations. Perform the permitted checks and save when allowed. Do not activate or run live. Ask only for missing business input using a short dialogue. Summarize the result briefly without code or tool names.",
   "chat.schedule.pending": "Automatic runs still paused",
   "chat.schedule.effect":
     "Answering or saving a draft does not release scheduled runs. Review the workflow's run permission.",
@@ -47,7 +52,7 @@ const EN = {
     "Some actions or targets cannot be approved for scheduled runs yet. Prepare a change, then review the updated version.",
   "authority.adjust": "Prepare adjustment",
   "authority.adjustPrompt":
-    "Prepare a change that makes this workflow eligible for bounded scheduled execution. Identify unsupported actions and dynamic targets, propose fixed supported boundaries, and show the changes for my review. Do not activate, authorize, or run the workflow.",
+    "Prepare this workflow for automatic operation. Check the existing schedule and destinations; keep them unless I request a change. Perform the permitted checks yourself and save the prepared changes when allowed. Do not activate, authorize live effects, or run live. If a business decision is missing, ask one short question with clear options and a recommendation. Explain the result and next action briefly, without code or tool names.",
   "authority.incompleteTitle": "Request details are incomplete",
   "authority.incompleteDescription":
     "Check again. If details are still missing, adjust the workflow before granting permission.",
@@ -1517,6 +1522,12 @@ const DE: Record<TranslationKey, string> = {
   "chat.resume.stage.workflowSaved": "Workflow gespeichert",
   "chat.schedule.count":
     "Die {count} blockierten Zeitpläne zählen weiterhin als offene Entscheidungen.",
+  "chat.preparation.title": "Vorbereitung noch nicht abgeschlossen",
+  "chat.preparation.effect":
+    "SubKit kann deine Änderung fertig prüfen und für die Nutzung vorbereiten.",
+  "chat.preparation.continue": "Änderung prüfen",
+  "chat.preparation.prompt":
+    "Setze die Vorbereitung der aktuellen Änderung fort. Behalte das gewünschte Verhalten, den Zeitplan und die Ziele bei. Übernimm die erlaubten Prüfungen und speichere, soweit erlaubt. Nicht aktivieren oder live ausführen. Frage nur nach fehlenden fachlichen Angaben in einem kurzen Dialog. Fasse das Ergebnis kurz ohne Code oder Tool-Namen zusammen.",
   "chat.schedule.pending": "Automatische Läufe noch blockiert",
   "chat.schedule.effect":
     "Antworten oder Entwürfe speichern gibt den Zeitplan nicht frei. Prüfe die Ausführungsfreigabe des Workflows.",
@@ -1553,7 +1564,7 @@ const DE: Record<TranslationKey, string> = {
     "Einige Aktionen oder Ziele können noch nicht für automatische Läufe freigegeben werden. Anpassung vorbereiten, danach die neue Version prüfen.",
   "authority.adjust": "Anpassung vorbereiten",
   "authority.adjustPrompt":
-    "Bereite eine Änderung vor, damit dieser Workflow mit begrenzter Freigabe automatisch laufen kann. Benenne nicht unterstützte Aktionen und dynamische Ziele, schlage feste unterstützte Grenzen vor und zeige mir die Änderungen zur Prüfung. Workflow nicht aktivieren, freigeben oder ausführen.",
+    "Bereite diesen Ablauf für den automatischen Betrieb vor. Prüfe den bestehenden Zeitplan und die Ziele; ändere sie nur auf meinen Wunsch. Übernimm die erlaubten Prüfungen selbst und speichere die vorbereiteten Änderungen, soweit erlaubt. Nicht aktivieren, keine Live-Wirkungen freigeben oder ausführen. Fehlt eine fachliche Entscheidung, stelle eine kurze Frage mit klaren Auswahlmöglichkeiten und einer Empfehlung. Erkläre Ergebnis und nächsten Schritt kurz, ohne Code oder Tool-Namen.",
   "authority.incompleteTitle": "Anfragedetails fehlen",
   "authority.incompleteDescription":
     "Erneut prüfen. Fehlen weiterhin Details, den Workflow vor der Freigabe anpassen.",

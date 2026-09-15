@@ -114,7 +114,10 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
     probe && probe.ok === true
       ? `${probe.method ?? "GET"} ${probe.path ?? "/"} → ${probe.status_code ?? "ok"}`
       : null;
-  const preview = d.latest_preview ?? null;
+  const previewCheckpoint = d.summary?.checkpoints.find(
+    (checkpoint) => checkpoint.key === "workflow_previewed",
+  );
+  const preview = previewCheckpoint?.status === "stale" ? null : (d.latest_preview ?? null);
   const lastPreview = preview && preview.ok === true ? preview.summary : null;
 
   const pendingElicitation = params.pendingElicitation ?? null;
