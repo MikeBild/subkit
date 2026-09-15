@@ -247,6 +247,19 @@ export function cancelConversation(id: string): Promise<unknown> {
   return apiRequest(`/v1/conversations/${encodeURIComponent(id)}/cancel`, { method: "POST" });
 }
 
+export function respondToChatApproval(
+  conversationId: string,
+  elicitationId: string,
+  confirmed: boolean,
+  onEvent?: (event: ConversationStreamEvent) => void,
+): Promise<ConversationRun> {
+  return streamConversation(
+    `/v1/conversations/${encodeURIComponent(conversationId)}/elicitations/${encodeURIComponent(elicitationId)}/respond`,
+    { output: { confirmed } },
+    onEvent,
+  );
+}
+
 export function respondToToolCall(
   conversationId: string,
   toolCallId: string,

@@ -851,6 +851,7 @@ export interface ConversationResumeSummary {
   unsaved: boolean;
   pending_approval: {
     id: string;
+    tool_call_id?: string | null;
     tool_name: string;
     summary: string;
     /** When this approval lapses — mirrors `ResumeSummary` in `resume.ts`;

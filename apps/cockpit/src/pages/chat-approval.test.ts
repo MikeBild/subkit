@@ -1,0 +1,53 @@
+import { expect, test } from "bun:test";
+import type { ConversationDetail } from "@/api/client";
+import { chatApproval } from "./chat-approval";
+
+function fixture(tool = "ask_user_confirm", callId: string | null = "call-1") {
+  return {
+    resume_summary: {
+      pending_approval: {
+        id: "elicitation-2",
+        tool_call_id: callId,
+        tool_name: tool,
+        expires_at: "2099-01-01T00:00:00Z",
+      },
+    },
+    tool_calls: [
+      {
+        id: "call-1",
+        tool: "ask_user_confirm",
+        input: {
+          question: "Save the inactive version?",
+          commit_intent: { kind: "save_workflow_draft", description: "Save the changed schedule." },
+        },
+      },
+    ],
+  } as unknown as ConversationDetail;
+}
+test("binds distinct request and tool ids and describes the inactive save", () => {
+  expect(chatApproval(fixture())).toEqual({
+    id: "elicitation-2",
+    toolCallId: "call-1",
+    question: "Save the inactive version?",
+    description: "Save the changed schedule.",
+    savesInactiveWorkflow: true,
+    expiresAt: "2099-01-01T00:00:00Z",
+  });
+});
+test("never guesses a tool call or turns text/form questions into grants", () => {
+  for (const detail of [
+    undefined,
+    fixture("ask_user_text"),
+    fixture("ask_user_form"),
+    fixture("ask_user_confirm", null),
+    fixture("ask_user_confirm", "unrelated"),
+  ])
+    expect(chatApproval(detail)).toBeNull();
+});
+test("requires a readable question and does not label other decisions as inactive saves", () => {
+  const detail = fixture();
+  detail.tool_calls[0]!.input = { question: "Continue?" };
+  expect(chatApproval(detail)?.savesInactiveWorkflow).toBe(false);
+  detail.tool_calls[0]!.input = { question: "  " };
+  expect(chatApproval(detail)).toBeNull();
+});

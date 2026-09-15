@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
+import { verifyChatApprovals } from "./lib/cockpit-chat-approvals.mjs";
 import { verifyChatReplies } from "./lib/cockpit-chat-replies.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
@@ -2107,6 +2108,11 @@ for (const locale of variants) {
     }
     await verifyScheduleHolds(page, stand, uuid, locale.name, operationalOverview, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-schedule-held-${state}`, {
+        fullPage: false,
+      }),
+    );
+    await verifyChatApprovals(page, stand, conversation, locale.name, (state) =>
+      shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
         fullPage: false,
       }),
     );
