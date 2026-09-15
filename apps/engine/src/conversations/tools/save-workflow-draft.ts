@@ -64,7 +64,7 @@ export const saveWorkflowDraftTool: ConversationTool = {
     "Persist validated authoring work, including recovery after an interrupted save. In ask/plan mode the existing save confirmation remains available; in auto mode ordinary draft preparation needs no human decision.",
   important_notes: [
     "In ask/plan mode, refuses with `no_prior_approval` until the matching save confirmation is resolved. Ordinary saves in auto mode do not require it.",
-    "Refuses with `workflow_not_ready` until inspect_workflow_draft and validate_draft are fresh; with `preview_failed` if the most recent dry-run failed (pass `force_commit: true` after the operator confirms to override).",
+    "Before saving, inspect and validate the current draft and run dry_run_workflow with grounded inputs. On workflow_not_ready, complete the named missing checks automatically within current permissions. Do not ask the user to choose a preview versus a bypass. On preview_failed diagnose and repair first; exceptional eligible overrides remain explicitly human-gated.",
     "Idempotent: unchanged definition and preview shape hints return the same saved draft version without writing. Changed hints receive a new immutable version.",
     "Update-in-place semantics: if the conversation has a target_workflow_id, appends a new workflow_version to that row. The slug of the existing workflow stays authoritative; changing draft.slug does not rename the workflow.",
     "No silent slug-adoption: a different workflow's slug produces slug_conflict_with_live_workflow. Rename the draft or open that workflow to observe its saved draft before requesting a human-approved replacement. A force flag cannot replace an observed version.",

@@ -275,3 +275,20 @@ describe("chat surface persona", () => {
     expect(chat.content).not.toContain("inspect -> validate -> preview -> commit");
   });
 });
+
+test("resumed workflow and diagnosis prompts include preparation and plain-language rules", async () => {
+  for (const mode of ["workflow", "diagnosis"] as const) {
+    const { content } = await generateMainAgentSystemPrompt({
+      surface: "web",
+      authoring_hint: makeHint(mode),
+    });
+    expect(content).toContain(
+      "workflow_not_ready with stale checkpoints is work for the assistant",
+    );
+    expect(content).toContain("Held/skipped steps remain untested");
+    expect(content).toContain("Structured labels are prose, not identifiers");
+    expect(content).not.toContain("structured field labels stay verbatim");
+    expect(content).not.toContain("NEVER chain two state-changing tools in the same turn");
+    expect(content).not.toContain("say it is live");
+  }
+});

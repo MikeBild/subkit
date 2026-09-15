@@ -191,6 +191,39 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
     release();
     await page.getByTestId("chat-message-0-choice").getByRole("alert").waitFor();
     await capture("error");
+
+    // The persisted pre-8.0.13 question keeps its response binding, but exposes
+    // a readable recommendation and effects on both surfaces.
+    waiting = true;
+    fail = false;
+    input.question =
+      "Die Engine verlangt ein Dry-Run-Preview, bevor der Draft gespeichert werden kann. Write-Schritte (call_generate, call_publish, call_accept) werden dabei gehalten und nicht ausgeführt. Wie soll ich vorgehen?";
+    input.options = [
+      { value: "dryrun", label: "Dry-Run durchführen" },
+      { value: "force", label: "force_commit verwenden" },
+      { value: "cancel", label: "Abbrechen" },
+    ];
+    for (const surface of ["inline", "context"]) {
+      await stand.visit(page, `chat/${conversation.id}`);
+      if (surface === "context") await page.getByTestId("chat-context-toggle").click();
+      const prefix = `${surface === "context" ? "chat-context" : "chat-message-0"}-choice`;
+      const card = page.getByTestId(prefix);
+      await card.waitFor();
+      if (!/recommend|empfehlen/.test(await card.innerText()))
+        throw new Error("Legacy preparation has no readable recommendation");
+      if (!(await page.getByTestId(`${prefix}-submit`).isDisabled()))
+        throw new Error("Recommendation selected an answer implicitly");
+      await page.getByTestId(`${prefix}-select`).click();
+      const recommended = page.getByTestId(`${prefix}-option-dryrun`);
+      if (!/recommended|empfohlen/.test(await recommended.innerText()))
+        throw new Error("Recommended preparation option missing");
+      await recommended.click();
+      if (!/untested|ungetestet/.test(await card.innerText()))
+        throw new Error("Held publication is misrepresented as tested");
+      if (/force_commit|Dry-Run|call_publish/.test(await card.innerText()))
+        throw new Error("Technical legacy choice text leaked");
+      await capture(`${surface}-legacy-preparation`);
+    }
   } finally {
     release?.();
     page.off("request", trackQueue);

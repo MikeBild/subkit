@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 8.0.13 — 2026-09-15
+
+### Fixed
+
+- Workflow preparation guidance now includes inspection, validation and supported
+  previews instead of asking users to choose internal engine steps or bypass a
+  missing check. Built-in authoring and recovery skills follow the same rules.
+- Preview results distinguish checked, held, skipped and failed operations;
+  saved drafts are no longer described as live by the authoring instructions.
+- The existing legacy preparation question has plain-language choices with a
+  recommendation and effects in chat and Working Context, preserving its exact
+  response binding and explicit submission.
+
 ## 8.0.12 — 2026-09-15
 
 ### Fixed
