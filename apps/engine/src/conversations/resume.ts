@@ -55,6 +55,8 @@ export interface BuildResumeSummaryParams {
 export function shouldShowResumeSummary(params: BuildResumeSummaryParams): boolean {
   const { conversation, draft } = params;
   if (conversation.status === "committed" || conversation.status === "abandoned") return false;
+  // A pending question is actionable even before any draft exists.
+  if (params.pendingElicitation) return true;
   if (!draft) return false;
   const hasConnectorDraft = draft.connector !== undefined && draft.connector !== null;
   const hasWorkflowSteps = draft.workflow.steps.length > 0;

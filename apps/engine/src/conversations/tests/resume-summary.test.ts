@@ -47,6 +47,44 @@ describe("buildResumeSummary", () => {
     ).toBe(false);
   });
 
+  test("exposes a pending text question before a draft exists", () => {
+    const pendingElicitation = {
+      id: "question-1",
+      tool_name: "ask_user_text",
+      summary: "Which colour?",
+      expires_at: "2099-01-01T00:00:00Z",
+    };
+    for (const draft of [
+      null,
+      { workflow: { name: "new-workflow", steps: [] } } as DraftDocument,
+    ]) {
+      const params = {
+        conversation: conv({ status: "awaiting_input" }),
+        draft,
+        pendingElicitation,
+      };
+      expect(shouldShowResumeSummary(params)).toBe(true);
+      expect(buildResumeSummary(params).pending_approval).toEqual(pendingElicitation);
+      expect(buildResumeSummary(params).stage).toBe("awaiting_approval");
+    }
+  });
+
+  test("does not resurrect a terminal conversation for an old pending question", () => {
+    for (const status of ["committed", "abandoned"] as const) {
+      expect(
+        shouldShowResumeSummary({
+          conversation: conv({ status }),
+          draft: null,
+          pendingElicitation: {
+            id: "old-question",
+            tool_name: "ask_user_text",
+            expires_at: "2099-01-01T00:00:00Z",
+          },
+        }),
+      ).toBe(false);
+    }
+  });
+
   test("shouldShowResumeSummary is true once a connector draft exists", () => {
     expect(
       shouldShowResumeSummary({
