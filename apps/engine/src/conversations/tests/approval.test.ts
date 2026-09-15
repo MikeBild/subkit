@@ -27,8 +27,9 @@ import {
   conversationElicitations,
   conversationToolCalls,
 } from "../../db/schema/index.ts";
+import { createElicitation } from "../elicitations.ts";
 import { buildModelMessages } from "../persist.ts";
-import { getConversation } from "../service.ts";
+import { createConversation, getConversation } from "../service.ts";
 import {
   appendMessageWithTurn,
   type ConversationTestCtx,
@@ -233,4 +234,64 @@ describe("conversations/elicitation", () => {
       .limit(1);
     expect(pendingRow[0]?.status).toBe("pending");
   });
+});
+
+test("a prose answer does not resolve or change an older text tool call", async () => {
+  const created = await createConversation(
+    { tenant_id: ctx.tenant_id, actor_id: ctx.user_id },
+    ctx.testDb.db,
+  );
+  const conversation_id = created.conversation.id;
+  const [oldCall] = await ctx.testDb.db
+    .insert(conversationToolCalls)
+    .values({
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      tool: "ask_user_text",
+      input: { question: "Older question" },
+      output: { status: "resolved", response: { value: "Older answer" } },
+      confirmation_state: "declined",
+      interaction_log: [],
+    })
+    .returning();
+  const pending = await createElicitation(
+    {
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      tool_name: "ask_user_text",
+      tool_call_id: null,
+      summary: "the assistant asked a question",
+      input: { question: "Which colour?", metadata: { source: "loop.prose_question_parked" } },
+      actor_id: ctx.user_id,
+    },
+    ctx.testDb.db,
+  );
+  await respondElicitationForTest(
+    {
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      elicitation_id: pending.id,
+      actor_id: ctx.user_id,
+      output: { value: "Blau" },
+    },
+    ctx.testDb.db,
+  );
+  const [after] = await ctx.testDb.db
+    .select()
+    .from(conversationToolCalls)
+    .where(
+      and(
+        eq(conversationToolCalls.tenant_id, ctx.tenant_id),
+        eq(conversationToolCalls.id, oldCall!.id),
+      ),
+    );
+  expect(after?.confirmation_state).toBe("declined");
+  expect(after?.interaction_log).toEqual([]);
+  expect(after?.output).toEqual(oldCall?.output);
+  const detail = await getConversation(ctx.tenant_id, conversation_id, ctx.testDb.db);
+  expect(
+    detail?.messages.filter(
+      (m) => m.role === "user" && (m.content as { text?: string })?.text === "Blau",
+    ),
+  ).toHaveLength(1);
 });

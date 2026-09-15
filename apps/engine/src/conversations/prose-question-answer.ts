@@ -3,7 +3,9 @@ import type { conversationElicitations } from "../db/schema/index.ts";
 type Elicitation = typeof conversationElicitations.$inferSelect;
 
 /** These questions have no tool call to carry their answer into the next turn. */
-export function isProseQuestionElicitation(row: Elicitation): boolean {
+export function isProseQuestionElicitation(
+  row: Pick<Elicitation, "tool_call_id" | "tool_name" | "input">,
+): boolean {
   const input = row.input as { metadata?: { source?: unknown } } | null;
   return (
     row.tool_call_id === null &&
