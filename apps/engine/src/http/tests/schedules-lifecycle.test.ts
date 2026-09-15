@@ -278,7 +278,7 @@ test("persisted admission holds are readable and suppressed for paused schedules
   expect(row.admission_hold).toBeNull();
   const hold = {
     reason_code: "execution_authority_required" as const,
-    observed_at: new Date().toISOString(),
+    observed_at: "2026-09-15T03:00:00.000Z",
   };
   await ctx.testDb.db
     .update(workflowsSchedules)
