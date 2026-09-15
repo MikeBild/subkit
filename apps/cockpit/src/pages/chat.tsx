@@ -540,7 +540,10 @@ function ChatMessage({
           const verdict = toolPartVerdict(tool);
           const stale = isStaleCall({
             messageCreatedAt: message.created_at,
-            hasResult: tool.state === "output-available" || tool.state === "output-error",
+            hasResult:
+              tool.state === "output-available" ||
+              tool.state === "output-error" ||
+              tool.state === "output-denied",
             isStreaming: false,
             now: Date.now(),
           });
