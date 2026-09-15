@@ -180,6 +180,7 @@ export const ConversationDetailSchema = z
         pending_approval: z
           .object({
             id: z.string(),
+            tool_call_id: z.string().nullable().optional(),
             tool_name: z.string(),
             summary: z.string(),
             /** When this approval lapses. Non-null: the column is NOT NULL and

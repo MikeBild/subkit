@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { sendConversationTurn } from "./client";
+import { respondToChatApproval, sendConversationTurn } from "./client";
 
 const originalFetch = globalThis.fetch;
 
@@ -163,4 +163,40 @@ describe("answering pending conversation questions", () => {
     ).rejects.toMatchObject({ code: "internal" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+});
+
+for (const confirmed of [true, false]) {
+  test(`chat approval sends the explicit ${confirmed} decision to the canonical elicitation`, async () => {
+    const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      outcomeResponse(),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    fetchMock.mockImplementation(
+      async () =>
+        new Response(
+          'event: message\ndata: {"type":"text_delta","text":"Weiter"}\n\nevent: outcome\ndata: {"conversation":{"id":"conversation-1"}}\n\n',
+        ),
+    );
+    const event = mock(() => {});
+    await respondToChatApproval("conversation/1", "elicitation/2", confirmed, event);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(path).toBe("/v1/conversations/conversation%2F1/elicitations/elicitation%2F2/respond");
+    expect(JSON.parse(String(init.body))).toEqual({ output: { confirmed } });
+    expect(event).toHaveBeenCalled();
+  });
+}
+test("a stale approval is surfaced without retrying the decision", async () => {
+  const fetchMock = mock(
+    async () =>
+      new Response(
+        JSON.stringify({
+          error: { code: "elicitation_already_resolved", message: "Already decided" },
+        }),
+        { status: 409 },
+      ),
+  );
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  await expect(respondToChatApproval("c", "e", true)).rejects.toThrow();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
 });

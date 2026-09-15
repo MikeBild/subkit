@@ -510,3 +510,72 @@ test("answered text tools show the answer and a completed card after reloading",
   expect(stored?.output).toEqual(pendingOutput);
   expect(stored?.outcome).toBe("pending");
 });
+
+for (const confirmed of [true, false]) {
+  test(`confirmation ${confirmed} is actionable by exact call then completed after reload`, async () => {
+    const [conv] = await ctx.testDb.db
+      .insert(conversations)
+      .values({ tenant_id: ctx.tenant_id, status: "awaiting_input" })
+      .returning();
+    const conversation_id = conv!.id;
+    const original = { status: "awaiting_input" };
+    const [call] = await ctx.testDb.db
+      .insert(conversationToolCalls)
+      .values({
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool: "ask_user_confirm",
+        input: { question: "Save inactive draft?" },
+        output: original,
+        outcome: "pending",
+      })
+      .returning();
+    const [request] = await ctx.testDb.db
+      .insert(conversationElicitations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool_call_id: call!.id,
+        tool_name: "ask_user_confirm",
+        summary: "Save inactive draft?",
+        input: { question: "Save inactive draft?" },
+        status: "pending",
+      })
+      .returning();
+    const pending = await getConversation(ctx.tenant_id, conversation_id, ctx.testDb.db);
+    expect(pending?.resume_summary?.pending_approval).toMatchObject({
+      id: request!.id,
+      tool_call_id: call!.id,
+    });
+    expect(request!.id).not.toBe(call!.id);
+    await ctx.testDb.db
+      .update(conversationElicitations)
+      .set({ status: "resolved", output: { confirmed } })
+      .where(
+        and(
+          eq(conversationElicitations.tenant_id, ctx.tenant_id),
+          eq(conversationElicitations.id, request!.id),
+        ),
+      );
+    const detail = await getConversation(ctx.tenant_id, conversation_id, ctx.testDb.db);
+    expect(detail?.resume_summary?.pending_approval ?? null).toBeNull();
+    expect(detail?.tool_calls[0]).toMatchObject({
+      outcome: confirmed ? "ok" : "denied",
+      output: { status: confirmed ? "resolved" : "declined", elicitation_id: request!.id },
+    });
+    expect(
+      await getConversation("00000000-0000-4000-8000-000000000099", conversation_id, ctx.testDb.db),
+    ).toBeNull();
+    const [stored] = await ctx.testDb.db
+      .select()
+      .from(conversationToolCalls)
+      .where(
+        and(
+          eq(conversationToolCalls.tenant_id, ctx.tenant_id),
+          eq(conversationToolCalls.id, call!.id),
+        ),
+      );
+    expect(stored?.output).toEqual(original);
+    expect(stored?.outcome).toBe("pending");
+  });
+}

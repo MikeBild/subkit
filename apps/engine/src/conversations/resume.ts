@@ -24,6 +24,7 @@ export interface ResumeSummary {
   unsaved: boolean;
   pending_approval: {
     id: string;
+    tool_call_id?: string | null;
     tool_name: string;
     summary: string;
     /** When this approval lapses. The only real deadline in the product;
@@ -39,6 +40,7 @@ export interface BuildResumeSummaryParams {
   draft: DraftDocument | null | undefined;
   pendingElicitation?: {
     id: string;
+    tool_call_id?: string | null;
     tool_name: string;
     summary?: string | null;
     /** ISO instant the prompt lapses. Carried through so the resume banner —
@@ -111,6 +113,9 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
   const pendingApproval = pendingElicitation
     ? {
         id: pendingElicitation.id,
+        ...(pendingElicitation.tool_call_id !== undefined
+          ? { tool_call_id: pendingElicitation.tool_call_id }
+          : {}),
         tool_name: pendingElicitation.tool_name,
         summary: pendingElicitation.summary ?? "",
         expires_at: pendingElicitation.expires_at,

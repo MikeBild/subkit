@@ -1257,6 +1257,17 @@ const EN = {
   "chat.activity.responding": "Writing the response…",
   "chat.scrollBottom": "Scroll to latest message",
   "chat.context.title": "Working context",
+  "chat.decision.saveTitle": "Save workflow draft",
+  "chat.decision.title": "Your decision",
+  "chat.decision.saveEffect": "Saves an inactive version. Does not start the workflow.",
+  "chat.decision.details": "What will change",
+  "chat.decision.validUntil": "Decide by",
+  "chat.decision.expired": "This request has expired. Ask SubKit to prepare a new request.",
+  "chat.decision.failed":
+    "The decision was not completed. Review the current request and try again.",
+  "chat.decision.processing": "Processing decision…",
+  "chat.decision.save": "Save inactive version",
+
   "chat.context.help": "About the working context",
   "chat.context.description": "Evidence, checkpoints and pending decisions for this conversation.",
   "chat.context.stage": "Stage",
@@ -2764,6 +2775,17 @@ const DE: Record<TranslationKey, string> = {
   "chat.activity.responding": "Ich schreibe die Antwort …",
   "chat.scrollBottom": "Zur neuesten Nachricht springen",
   "chat.context.title": "Arbeitskontext",
+  "chat.decision.saveTitle": "Workflow-Entwurf speichern",
+  "chat.decision.title": "Deine Entscheidung",
+  "chat.decision.saveEffect": "Speichert eine inaktive Version. Startet den Workflow nicht.",
+  "chat.decision.details": "Was sich ändert",
+  "chat.decision.validUntil": "Entscheiden bis",
+  "chat.decision.expired": "Diese Anfrage ist abgelaufen. Bitte SubKit um eine neue Anfrage.",
+  "chat.decision.failed":
+    "Die Entscheidung wurde nicht abgeschlossen. Prüfe die aktuelle Anfrage und versuche es erneut.",
+  "chat.decision.processing": "Entscheidung wird verarbeitet…",
+  "chat.decision.save": "Inaktive Version speichern",
+
   "chat.context.help": "Informationen zum Arbeitskontext",
   "chat.context.description":
     "Nachweise, Prüfpunkte und offene Entscheidungen dieser Unterhaltung.",

@@ -19627,6 +19627,7 @@ export interface components {
                 unsaved: boolean;
                 pending_approval: {
                     id: string;
+                    tool_call_id?: string | null;
                     tool_name: string;
                     summary: string;
                     expires_at: string;

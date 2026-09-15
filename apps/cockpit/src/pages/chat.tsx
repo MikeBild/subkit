@@ -10,6 +10,7 @@ import {
   getConversation,
   listConversations,
   renameConversation,
+  respondToChatApproval,
   respondToToolCall,
   sendConversationTurn,
   setConversationHidden,
@@ -95,6 +96,8 @@ import { patchCandidateId, toolPartVerdict } from "@/lib/tool-parts";
 import { isStaleCall, toolLabel, toolOutcomeKey } from "@/lib/tool-presentation";
 import { cn } from "@/lib/utils";
 import { useMentionCandidates } from "@/queries/mention-sources";
+import { type ChatApproval, chatApproval } from "./chat-approval";
+import { ChatApprovalCard } from "./chat-approval-card";
 import { ConversationList } from "./chat-conversation-list";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
@@ -448,12 +451,20 @@ function ChatMessage({
   message,
   messageIndex,
   pendingApprovalId,
+  approval,
+  approvalBusy,
+  approvalError,
+  onApproval,
   onDecision,
   nameFor,
 }: {
   message: UiMessage;
   messageIndex: number;
   pendingApprovalId: string | null;
+  approval: ChatApproval | null;
+  approvalBusy: boolean;
+  approvalError: boolean;
+  onApproval: (id: string, approved: boolean) => void;
   onDecision: (toolCallId: string, approved: boolean) => void;
   /** What this conversation knows about the identifiers it mentions. */
   nameFor: (id: string) => ResolvedIdentifier | null;
@@ -513,6 +524,18 @@ function ChatMessage({
           }
           const tool = group.tool;
           const partIndex = group.index;
+          if (approval?.toolCallId === tool.toolCallId) {
+            return (
+              <ChatApprovalCard
+                key={`${message.id}-approval-${partIndex}`}
+                approval={approval}
+                busy={approvalBusy}
+                error={approvalError}
+                onDecision={onApproval}
+                testId={`chat-message-${messageIndex}-approval`}
+              />
+            );
+          }
           const candidateId = patchCandidateId(tool);
           const verdict = toolPartVerdict(tool);
           const stale = isStaleCall({
@@ -679,6 +702,21 @@ export function ChatPage() {
     queryFn: () => getConversation(activeId ?? ""),
     enabled: Boolean(activeId),
   });
+  const onTurnEvent = (event: { type: string; [key: string]: unknown }) => {
+    if (event.type === "text_delta" && typeof event.text === "string") {
+      setStreamedText((currentText) => currentText + event.text);
+      return;
+    }
+    const live = reduceLiveCall(event);
+    if (live) {
+      setLiveCalls((calls) => applyLiveCall(calls, live));
+      return;
+    }
+    // A change the engine proposes mid-turn: show it while it is being
+    // worked out, not only once the turn ends and the state refetches.
+    const diff = asStreamedDiff(event);
+    if (diff) setStreamedDiffs((current) => [...current, diff]);
+  };
   const send = useMutation({
     mutationFn: async ({
       message,
@@ -690,21 +728,7 @@ export function ChatPage() {
       setStreamedText("");
       setStreamedDiffs([]);
       setLiveCalls([]);
-      const onEvent = (event: { type: string; [key: string]: unknown }) => {
-        if (event.type === "text_delta" && typeof event.text === "string") {
-          setStreamedText((currentText) => currentText + event.text);
-          return;
-        }
-        const live = reduceLiveCall(event);
-        if (live) {
-          setLiveCalls((calls) => applyLiveCall(calls, live));
-          return;
-        }
-        // A change the engine proposes mid-turn: show it while it is being
-        // worked out, not only once the turn ends and the state refetches.
-        const diff = asStreamedDiff(event);
-        if (diff) setStreamedDiffs((current) => [...current, diff]);
-      };
+
       const params = new URLSearchParams(window.location.search);
       const workflowId = params.get("workflow_id");
       const connectorId = params.get("connector_id");
@@ -725,7 +749,7 @@ export function ChatPage() {
                 ...(connectorId ? { connector_id: connectorId } : {}),
               },
             },
-        onEvent,
+        onTurnEvent,
       );
     },
     onError: async () => {
@@ -749,16 +773,45 @@ export function ChatPage() {
     mutationFn: () => cancelConversation(activeId ?? ""),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversation", activeId] }),
   });
+  const decisionLock = useRef(false);
   const decide = useMutation({
-    mutationFn: ({ toolCallId, approved }: { toolCallId: string; approved: boolean }) =>
-      respondToToolCall(activeId ?? "", toolCallId, approved),
-    onSuccess: async (result) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["conversations"] }),
-        queryClient.invalidateQueries({ queryKey: ["conversation", result.conversation.id] }),
-      ]);
+    mutationFn: ({
+      toolCallId,
+      elicitationId,
+      approved,
+    }: {
+      toolCallId?: string;
+      elicitationId?: string;
+      approved: boolean;
+    }) => {
+      setStreamedText("");
+      setStreamedDiffs([]);
+      setLiveCalls([]);
+      return elicitationId
+        ? respondToChatApproval(activeId ?? "", elicitationId, approved, onTurnEvent)
+        : respondToToolCall(activeId ?? "", toolCallId ?? "", approved);
+    },
+    onSuccess: () => {
+      setStreamedText("");
+      setStreamedDiffs([]);
+      setLiveCalls([]);
+    },
+    onSettled: async () => {
+      try {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+          queryClient.invalidateQueries({ queryKey: ["conversation", activeId] }),
+        ]);
+      } finally {
+        decisionLock.current = false;
+      }
     },
   });
+  const submitApproval = (elicitationId: string, approved: boolean) => {
+    if (decisionLock.current || send.isPending || decide.isPending) return;
+    decisionLock.current = true;
+    decide.mutate({ elicitationId, approved });
+  };
   const hide = useMutation({
     mutationFn: ({ id, hidden }: { id: string; hidden: boolean }) =>
       setConversationHidden(id, hidden),
@@ -776,6 +829,7 @@ export function ChatPage() {
   const current = detail.data?.conversation;
   const messages = detail.data?.messages ?? [];
   const resume = detail.data?.resume_summary;
+  const pendingDecision = chatApproval(detail.data);
   const createdResources = detail.data?.created_resources ?? [];
   const referencedResources = useMemo(() => collectReferencedResources(messages), [messages]);
   // Everything this conversation is known to be about: what it made, and what
@@ -806,7 +860,7 @@ export function ChatPage() {
     return (id: string) => known.get(id) ?? null;
   }, [createdResources, referencedResources, resume?.active_target]);
   const session = useSession();
-  const status = send.isPending ? "streaming" : "ready";
+  const status = send.isPending || decide.isPending ? "streaming" : "ready";
   const ordered = useMemo(
     () =>
       [...(conversations.data?.items ?? [])].sort((a, b) =>
@@ -1000,8 +1054,13 @@ export function ChatPage() {
           </Alert>
         )}
 
+        {decide.isError && !pendingDecision && (
+          <Alert variant="destructive" className="m-4 mb-0" data-testid="chat-decision-error">
+            <AlertDescription>{t("chat.decision.failed")}</AlertDescription>
+          </Alert>
+        )}
         <MessageScrollerProvider key={activeId ?? "new"} autoScroll>
-          <FollowSubmittedTurn submittedAt={send.submittedAt} />
+          <FollowSubmittedTurn submittedAt={Math.max(send.submittedAt, decide.submittedAt)} />
           <MessageScroller className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
             {/* `both-edges` is the operative part, the same as the shared page
                 frame: the primitive's default utility sets plain `stable`, so
@@ -1038,7 +1097,13 @@ export function ChatPage() {
                       <ChatMessage
                         message={message}
                         messageIndex={index}
-                        pendingApprovalId={resume?.pending_approval?.id ?? null}
+                        pendingApprovalId={resume?.pending_approval?.tool_call_id ?? null}
+                        approval={pendingDecision}
+                        approvalBusy={send.isPending || decide.isPending}
+                        approvalError={
+                          decide.isError && decide.variables?.elicitationId === pendingDecision?.id
+                        }
+                        onApproval={submitApproval}
                         nameFor={nameFor}
                         onDecision={(toolCallId, approved) =>
                           decide.mutate({ toolCallId, approved })
@@ -1166,7 +1231,7 @@ export function ChatPage() {
               initialInput={selection.kind === "new" ? initialPrompt : ""}
             >
               <ChatComposer
-                disabled={send.isPending}
+                disabled={send.isPending || decide.isPending}
                 status={status}
                 onStop={() => cancel.mutate()}
                 onSend={(message, references) => send.mutateAsync({ message, references })}
@@ -1190,10 +1255,25 @@ export function ChatPage() {
             <SheetDescription>{t("chat.context.description")}</SheetDescription>
           </SheetHeader>
           <ScrollArea className="min-h-0 flex-1">
+            {pendingDecision && (
+              <div className="p-4 pb-0">
+                <ChatApprovalCard
+                  approval={pendingDecision}
+                  busy={send.isPending || decide.isPending}
+                  error={decide.isError && decide.variables?.elicitationId === pendingDecision?.id}
+                  onDecision={submitApproval}
+                  testId="chat-context-approval"
+                />
+              </div>
+            )}
             <dl className="grid gap-4 p-4 text-sm">
               <div data-testid="chat-context-stage">
                 <dt className="text-xs text-muted-foreground">{t("chat.context.stage")}</dt>
-                <dd className="mt-1 font-medium">{resumeStageLabel(resume?.stage, t)}</dd>
+                <dd className="mt-1 font-medium">
+                  {decide.isPending
+                    ? t("chat.decision.processing")
+                    : resumeStageLabel(resume?.stage, t)}
+                </dd>
               </div>
               <div data-testid="chat-context-target">
                 <dt className="text-xs text-muted-foreground">{t("chat.context.target")}</dt>
@@ -1201,10 +1281,12 @@ export function ChatPage() {
                   {localizedTarget(resume?.active_target.name || resume?.active_target.kind, t)}
                 </dd>
               </div>
-              <div data-testid="chat-context-next-action">
-                <dt className="text-xs text-muted-foreground">{t("chat.context.nextAction")}</dt>
-                <dd className="mt-1">{resumeNextAction(resume?.stage, t)}</dd>
-              </div>
+              {!pendingDecision && (
+                <div data-testid="chat-context-next-action">
+                  <dt className="text-xs text-muted-foreground">{t("chat.context.nextAction")}</dt>
+                  <dd className="mt-1">{resumeNextAction(resume?.stage, t)}</dd>
+                </div>
+              )}
               <div data-testid="chat-context-checkpoint">
                 <dt className="text-xs text-muted-foreground">{t("chat.context.checkpoint")}</dt>
                 <dd className="mt-1">
@@ -1283,7 +1365,7 @@ export function ChatPage() {
                   )}
                 </dd>
               </div>
-              {resume?.pending_approval && (
+              {resume?.pending_approval && !pendingDecision && (
                 <div
                   className="rounded-lg border border-warning/40 bg-warning/10 p-3"
                   data-testid="chat-context-approval"
