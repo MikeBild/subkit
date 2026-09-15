@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { respondToChatApproval, sendConversationTurn } from "./client";
+import { respondToChatApproval, respondToChatChoice, sendConversationTurn } from "./client";
 
 const originalFetch = globalThis.fetch;
 
@@ -199,4 +199,16 @@ test("a stale approval is surfaced without retrying the decision", async () => {
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   await expect(respondToChatApproval("c", "e", true)).rejects.toThrow();
   expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+test("choice submits exactly the declared value to the canonical request route", async () => {
+  const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+    outcomeResponse(),
+  );
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  await respondToChatChoice("conversation-1", "request-1", "dryrun");
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+  expect(path).toBe("/v1/conversations/conversation-1/elicitations/request-1/respond");
+  expect(JSON.parse(String(init.body))).toEqual({ output: { value: "dryrun" } });
 });

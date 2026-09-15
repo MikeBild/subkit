@@ -11,6 +11,7 @@ import {
   listConversations,
   renameConversation,
   respondToChatApproval,
+  respondToChatChoice,
   respondToToolCall,
   sendConversationTurn,
   setConversationHidden,
@@ -18,6 +19,7 @@ import {
 } from "@/api/client";
 import { dryRunPatchCandidate, getPatchCandidatePreview } from "@/api/decisions";
 import { useSession } from "@/app/session";
+import { useDecisionQueue } from "@/app/use-decisions";
 import { BackgroundTools } from "@/components/ai-elements/background-tools";
 import {
   Confirmation,
@@ -98,6 +100,8 @@ import { cn } from "@/lib/utils";
 import { useMentionCandidates } from "@/queries/mention-sources";
 import { type ChatApproval, chatApproval } from "./chat-approval";
 import { ChatApprovalCard } from "./chat-approval-card";
+import { type ChatChoice, chatChoice } from "./chat-choice";
+import { ChatChoiceCard } from "./chat-choice-card";
 import { ConversationList } from "./chat-conversation-list";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
@@ -452,6 +456,8 @@ function ChatMessage({
   messageIndex,
   pendingApprovalId,
   approval,
+  choice,
+  onChoice,
   approvalBusy,
   approvalError,
   onApproval,
@@ -462,6 +468,8 @@ function ChatMessage({
   messageIndex: number;
   pendingApprovalId: string | null;
   approval: ChatApproval | null;
+  choice: ChatChoice | null;
+  onChoice: (id: string, value: string) => void;
   approvalBusy: boolean;
   approvalError: boolean;
   onApproval: (id: string, approved: boolean) => void;
@@ -536,6 +544,18 @@ function ChatMessage({
               />
             );
           }
+          if (choice?.toolCallId === tool.toolCallId) {
+            return (
+              <ChatChoiceCard
+                key={`${message.id}-choice-${partIndex}`}
+                choice={choice}
+                busy={approvalBusy}
+                error={approvalError}
+                onAnswer={onChoice}
+                testId={`chat-message-${messageIndex}-choice`}
+              />
+            );
+          }
           const candidateId = patchCandidateId(tool);
           const verdict = toolPartVerdict(tool);
           const stale = isStaleCall({
@@ -547,11 +567,26 @@ function ChatMessage({
             isStreaming: false,
             now: Date.now(),
           });
-          const outcomeKey = toolOutcomeKey({
-            confirmationState: verdict.confirmationState,
-            outcome: verdict.outcome,
-            stale,
-          });
+          const answeredQuestion =
+            tool.type === "dynamic-tool" &&
+            (tool.toolName === "ask_user_choice" || tool.toolName === "ask_user_text") &&
+            verdict.outcome === "ok";
+          const choiceStatus =
+            tool.type === "dynamic-tool" && tool.toolName === "ask_user_choice"
+              ? (tool.output as { status?: string } | undefined)?.status
+              : null;
+          const outcomeKey =
+            choiceStatus === "timeout"
+              ? "chat.choice.expired"
+              : choiceStatus === "cancelled"
+                ? "chat.choice.cancelled"
+                : answeredQuestion
+                  ? "chat.outcome.answered"
+                  : toolOutcomeKey({
+                      confirmationState: verdict.confirmationState,
+                      outcome: verdict.outcome,
+                      stale,
+                    });
           const notRun = didNotRun(verdict);
           return (
             <Tool
@@ -560,7 +595,7 @@ function ChatMessage({
                 tool.state !== "output-available" &&
                 !(
                   tool.type === "dynamic-tool" &&
-                  tool.toolName === "ask_user_confirm" &&
+                  (tool.toolName === "ask_user_confirm" || tool.toolName === "ask_user_choice") &&
                   tool.state === "output-denied"
                 )
               }
@@ -775,6 +810,8 @@ export function ChatPage() {
       setLiveCalls([]);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+        queryClient.invalidateQueries({ queryKey: ["decisions"] }),
+        queryClient.invalidateQueries({ queryKey: ["operational-overview"] }),
         queryClient.invalidateQueries({ queryKey: ["conversation", result.conversation.id] }),
       ]);
     },
@@ -789,17 +826,21 @@ export function ChatPage() {
       toolCallId,
       elicitationId,
       approved,
+      choiceValue,
     }: {
       toolCallId?: string;
       elicitationId?: string;
-      approved: boolean;
+      approved?: boolean;
+      choiceValue?: string;
     }) => {
       setStreamedText("");
       setStreamedDiffs([]);
       setLiveCalls([]);
       return elicitationId
-        ? respondToChatApproval(activeId ?? "", elicitationId, approved, onTurnEvent)
-        : respondToToolCall(activeId ?? "", toolCallId ?? "", approved);
+        ? choiceValue !== undefined
+          ? respondToChatChoice(activeId ?? "", elicitationId, choiceValue, onTurnEvent)
+          : respondToChatApproval(activeId ?? "", elicitationId, approved === true, onTurnEvent)
+        : respondToToolCall(activeId ?? "", toolCallId ?? "", approved === true);
     },
     onSuccess: () => {
       setStreamedText("");
@@ -810,6 +851,8 @@ export function ChatPage() {
       try {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+          queryClient.invalidateQueries({ queryKey: ["decisions"] }),
+          queryClient.invalidateQueries({ queryKey: ["operational-overview"] }),
           queryClient.invalidateQueries({ queryKey: ["conversation", activeId] }),
         ]);
       } finally {
@@ -821,6 +864,12 @@ export function ChatPage() {
     if (decisionLock.current || send.isPending || decide.isPending) return;
     decisionLock.current = true;
     decide.mutate({ elicitationId, approved });
+  };
+  const submitChoice = (elicitationId: string, choiceValue: string) => {
+    if (decisionLock.current || send.isPending || decide.isPending) return;
+    decisionLock.current = true;
+    send.reset();
+    decide.mutate({ elicitationId, choiceValue });
   };
   const hide = useMutation({
     mutationFn: ({ id, hidden }: { id: string; hidden: boolean }) =>
@@ -840,6 +889,7 @@ export function ChatPage() {
   const messages = detail.data?.messages ?? [];
   const resume = detail.data?.resume_summary;
   const pendingDecision = chatApproval(detail.data);
+  const pendingChoice = chatChoice(detail.data);
   const createdResources = detail.data?.created_resources ?? [];
   const referencedResources = useMemo(() => collectReferencedResources(messages), [messages]);
   // Everything this conversation is known to be about: what it made, and what
@@ -870,6 +920,12 @@ export function ChatPage() {
     return (id: string) => known.get(id) ?? null;
   }, [createdResources, referencedResources, resume?.active_target]);
   const session = useSession();
+  const decisionQueue = useDecisionQueue(session.permissions);
+  const targetWorkflowId =
+    resume?.active_target.kind === "workflow" ? resume.active_target.id : null;
+  const heldTarget = decisionQueue.heldSchedules.some(
+    (schedule) => schedule.workflow_id === targetWorkflowId,
+  );
   const status = send.isPending || decide.isPending ? "streaming" : "ready";
   const ordered = useMemo(
     () =>
@@ -1064,7 +1120,7 @@ export function ChatPage() {
           </Alert>
         )}
 
-        {decide.isError && !pendingDecision && (
+        {decide.isError && !pendingDecision && !pendingChoice && (
           <Alert variant="destructive" className="m-4 mb-0" data-testid="chat-decision-error">
             <AlertDescription>{t("chat.decision.failed")}</AlertDescription>
           </Alert>
@@ -1109,9 +1165,13 @@ export function ChatPage() {
                         messageIndex={index}
                         pendingApprovalId={pendingDecision?.toolCallId ?? null}
                         approval={pendingDecision}
+                        choice={pendingChoice}
+                        onChoice={submitChoice}
                         approvalBusy={send.isPending || decide.isPending}
                         approvalError={
-                          decide.isError && decide.variables?.elicitationId === pendingDecision?.id
+                          decide.isError &&
+                          decide.variables?.elicitationId ===
+                            (pendingDecision?.id ?? pendingChoice?.id)
                         }
                         onApproval={submitApproval}
                         nameFor={nameFor}
@@ -1212,6 +1272,11 @@ export function ChatPage() {
           data-testid="chat-composer-area"
         >
           <div className={COLUMN}>
+            {pendingChoice && (
+              <p className="mb-2 text-sm text-muted-foreground" data-testid="chat-choice-hint">
+                {t("chat.choice.hint")}
+              </p>
+            )}
             {resume?.pending_approval?.tool_name === "ask_user_text" && !send.isPending && (
               <p className="mb-2 text-sm text-muted-foreground" data-testid="chat-reply-hint">
                 {t("chat.replyHint")}
@@ -1241,7 +1306,7 @@ export function ChatPage() {
               initialInput={selection.kind === "new" ? initialPrompt : ""}
             >
               <ChatComposer
-                disabled={send.isPending || decide.isPending}
+                disabled={send.isPending || decide.isPending || Boolean(pendingChoice)}
                 status={status}
                 onStop={() => cancel.mutate()}
                 onSend={(message, references) => send.mutateAsync({ message, references })}
@@ -1265,12 +1330,26 @@ export function ChatPage() {
             <SheetDescription>{t("chat.context.description")}</SheetDescription>
           </SheetHeader>
           <ScrollArea className="min-h-0 flex-1">
+            {pendingChoice && (
+              <div className="p-4">
+                <ChatChoiceCard
+                  choice={pendingChoice}
+                  busy={send.isPending || decide.isPending}
+                  error={decide.isError}
+                  onAnswer={submitChoice}
+                  testId="chat-context-choice"
+                />
+              </div>
+            )}
             {pendingDecision && (
               <div className="p-4 pb-0">
                 <ChatApprovalCard
                   approval={pendingDecision}
                   busy={send.isPending || decide.isPending}
-                  error={decide.isError && decide.variables?.elicitationId === pendingDecision?.id}
+                  error={
+                    decide.isError &&
+                    decide.variables?.elicitationId === (pendingDecision?.id ?? pendingChoice?.id)
+                  }
                   onDecision={submitApproval}
                   testId="chat-context-approval"
                 />
@@ -1291,10 +1370,21 @@ export function ChatPage() {
                   {localizedTarget(resume?.active_target.name || resume?.active_target.kind, t)}
                 </dd>
               </div>
-              {!pendingDecision && (
+              {!pendingDecision && !pendingChoice && (
                 <div data-testid="chat-context-next-action">
                   <dt className="text-xs text-muted-foreground">{t("chat.context.nextAction")}</dt>
                   <dd className="mt-1">{resumeNextAction(resume?.stage, t)}</dd>
+                </div>
+              )}
+              {heldTarget && targetWorkflowId && (
+                <div data-testid="chat-context-held-schedule">
+                  <dt className="text-xs text-muted-foreground">{t("chat.schedule.pending")}</dt>
+                  <dd className="mt-1 flex flex-col gap-2">
+                    <p>{t("chat.schedule.effect")}</p>
+                    <a href={catalogHref("workflow", targetWorkflowId)} className="underline">
+                      {t("chat.schedule.review")}
+                    </a>
+                  </dd>
                 </div>
               )}
               <div data-testid="chat-context-checkpoint">
@@ -1375,7 +1465,7 @@ export function ChatPage() {
                   )}
                 </dd>
               </div>
-              {resume?.pending_approval && !pendingDecision && (
+              {resume?.pending_approval && !pendingDecision && !pendingChoice && (
                 <div
                   className="rounded-lg border border-warning/40 bg-warning/10 p-3"
                   data-testid="chat-context-approval"

@@ -13,7 +13,7 @@ import {
 } from "../../db/schema/index.ts";
 import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
 import { loadDraft } from "../draft.ts";
-import { resolvedTextAnswer } from "../prose-question-answer.ts";
+import { resolvedChoiceAnswer, resolvedTextAnswer } from "../prose-question-answer.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
 import { interpretConfirmDecision } from "../tools/ask-user/interpret-confirm.ts";
 import type {
@@ -86,16 +86,25 @@ export async function getConversation(
         or(
           and(
             eq(conversationElicitations.status, "resolved"),
-            eq(conversationElicitations.tool_name, "ask_user_text"),
+            inArray(conversationElicitations.tool_name, ["ask_user_text", "ask_user_choice"]),
           ),
           and(
             inArray(conversationElicitations.status, ["resolved", "cancelled", "timeout"]),
-            eq(conversationElicitations.tool_name, "ask_user_confirm"),
+            inArray(conversationElicitations.tool_name, ["ask_user_confirm", "ask_user_choice"]),
           ),
         ),
       ),
     );
-  const textAnswers = answeredElicitations.filter((answer) => answer.tool_name === "ask_user_text");
+  const textAnswers = answeredElicitations.filter(
+    (answer) => answer.tool_name === "ask_user_text" || answer.tool_name === "ask_user_choice",
+  );
+  const closedChoices = new Map(
+    answeredElicitations.flatMap((answer) =>
+      answer.tool_name === "ask_user_choice" && answer.tool_call_id && answer.status !== "resolved"
+        ? [[answer.tool_call_id, answer] as const]
+        : [],
+    ),
+  );
   const confirmations = new Map(
     answeredElicitations.flatMap((answer) =>
       answer.tool_name === "ask_user_confirm" && answer.tool_call_id
@@ -117,7 +126,7 @@ export async function getConversation(
   const transcriptMessages = [
     ...msgs,
     ...textAnswers.flatMap((answer) => {
-      const text = resolvedTextAnswer(answer);
+      const text = resolvedTextAnswer(answer) ?? resolvedChoiceAnswer(answer);
       return text === null
         ? []
         : [
@@ -134,7 +143,7 @@ export async function getConversation(
   ].sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
   const answeredTextCalls = new Map(
     textAnswers.flatMap((answer) =>
-      answer.tool_call_id && resolvedTextAnswer(answer) !== null
+      answer.tool_call_id && (resolvedTextAnswer(answer) ?? resolvedChoiceAnswer(answer)) !== null
         ? [[answer.tool_call_id, answer.id] as const]
         : [],
     ),
@@ -204,32 +213,41 @@ export async function getConversation(
         tool: c.tool,
         input: c.input,
         output:
-          c.tool === "ask_user_text" && answeredTextCalls.has(c.id)
+          (c.tool === "ask_user_text" || c.tool === "ask_user_choice") &&
+          answeredTextCalls.has(c.id)
             ? { status: "resolved", elicitation_id: answeredTextCalls.get(c.id) }
-            : confirmations.has(c.id)
+            : closedChoices.has(c.id)
               ? {
-                  status:
-                    confirmations.get(c.id)?.status === "resolved"
-                      ? confirmations.get(c.id)?.accepted
-                        ? "resolved"
-                        : "declined"
-                      : confirmations.get(c.id)?.status,
-                  elicitation_id: confirmations.get(c.id)?.id,
+                  status: closedChoices.get(c.id)?.status,
+                  elicitation_id: closedChoices.get(c.id)?.id,
                 }
-              : c.output,
+              : confirmations.has(c.id)
+                ? {
+                    status:
+                      confirmations.get(c.id)?.status === "resolved"
+                        ? confirmations.get(c.id)?.accepted
+                          ? "resolved"
+                          : "declined"
+                        : confirmations.get(c.id)?.status,
+                    elicitation_id: confirmations.get(c.id)?.id,
+                  }
+                : c.output,
         approval_required: c.approval_required,
         created_at: c.created_at.toISOString(),
         parent_message_id: c.parent_message_id,
         confirmation_state: c.confirmation_state,
         approved_at: c.approved_at ? c.approved_at.toISOString() : null,
         outcome:
-          c.tool === "ask_user_text" && answeredTextCalls.has(c.id)
+          (c.tool === "ask_user_text" || c.tool === "ask_user_choice") &&
+          answeredTextCalls.has(c.id)
             ? "ok"
-            : confirmations.has(c.id)
-              ? confirmations.get(c.id)?.accepted
-                ? "ok"
-                : "denied"
-              : ((c.outcome as ConversationToolCallRecord["outcome"]) ?? null),
+            : closedChoices.has(c.id)
+              ? "denied"
+              : confirmations.has(c.id)
+                ? confirmations.get(c.id)?.accepted
+                  ? "ok"
+                  : "denied"
+                : ((c.outcome as ConversationToolCallRecord["outcome"]) ?? null),
       }),
     ),
     draft,

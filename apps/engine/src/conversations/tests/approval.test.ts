@@ -27,7 +27,7 @@ import {
   conversationElicitations,
   conversationToolCalls,
 } from "../../db/schema/index.ts";
-import { createElicitation } from "../elicitations.ts";
+import { createElicitation, resolveElicitation } from "../elicitations.ts";
 import { buildModelMessages } from "../persist.ts";
 import { createConversation, getConversation } from "../service.ts";
 import {
@@ -295,3 +295,134 @@ test("a prose answer does not resolve or change an older text tool call", async 
     ),
   ).toHaveLength(1);
 });
+
+test("a choice is validated, resolved once, and rehydrated as answered without rewriting tool evidence", async () => {
+  const created = await createConversation(
+    { tenant_id: ctx.tenant_id, actor_id: ctx.user_id },
+    ctx.testDb.db,
+  );
+  const conversation_id = created.conversation.id;
+  const input = {
+    question: "Next step?",
+    options: [
+      { value: "preview", label: "Vorschau prüfen" },
+      { value: "cancel", label: "Abbrechen" },
+    ],
+  };
+  const [call] = await ctx.testDb.db
+    .insert(conversationToolCalls)
+    .values({
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      tool: "ask_user_choice",
+      input,
+      output: { status: "awaiting_input" },
+      outcome: "pending",
+    })
+    .returning();
+  const pending = await createElicitation(
+    {
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      tool_name: "ask_user_choice",
+      tool_call_id: call!.id,
+      summary: input.question,
+      input,
+      actor_id: ctx.user_id,
+    },
+    ctx.testDb.db,
+  );
+  const params = {
+    tenant_id: ctx.tenant_id,
+    conversation_id,
+    elicitation_id: pending.id,
+    actor_id: ctx.user_id,
+  };
+  await expect(
+    respondElicitationForTest({ ...params, output: { value: "invented" } }, ctx.testDb.db),
+  ).rejects.toThrow();
+  expect(
+    (await getConversation(ctx.tenant_id, conversation_id, ctx.testDb.db))?.resume_summary
+      ?.pending_approval?.id,
+  ).toBe(pending.id);
+  await respondElicitationForTest({ ...params, output: { value: "preview" } }, ctx.testDb.db);
+  await expect(
+    respondElicitationForTest({ ...params, output: { value: "cancel" } }, ctx.testDb.db),
+  ).rejects.toThrow();
+  const detail = await getConversation(ctx.tenant_id, conversation_id, ctx.testDb.db);
+  expect(detail?.tool_calls.find((item) => item.id === call!.id)?.output).toEqual({
+    status: "resolved",
+    elicitation_id: pending.id,
+  });
+  expect(detail?.tool_calls.find((item) => item.id === call!.id)?.outcome).toBe("ok");
+  expect(
+    detail?.messages.filter(
+      (message) =>
+        message.role === "user" &&
+        (message.content as { text?: string }).text === "Vorschau prüfen",
+    ),
+  ).toHaveLength(1);
+  expect(detail?.resume_summary?.pending_approval?.id).not.toBe(pending.id);
+  expect(await getConversation(crypto.randomUUID(), conversation_id, ctx.testDb.db)).toBeNull();
+  const [stored] = await ctx.testDb.db
+    .select()
+    .from(conversationToolCalls)
+    .where(
+      and(
+        eq(conversationToolCalls.tenant_id, ctx.tenant_id),
+        eq(conversationToolCalls.id, call!.id),
+      ),
+    );
+  expect(stored?.output).toEqual({ status: "awaiting_input" });
+});
+
+for (const status of ["timeout", "cancelled"] as const) {
+  test(`a ${status} choice rehydrates as closed instead of waiting`, async () => {
+    const created = await createConversation(
+      { tenant_id: ctx.tenant_id, actor_id: ctx.user_id },
+      ctx.testDb.db,
+    );
+    const conversation_id = created.conversation.id;
+    const input = {
+      question: "Choose",
+      options: [
+        { value: "a", label: "A" },
+        { value: "b", label: "B" },
+      ],
+    };
+    const [call] = await ctx.testDb.db
+      .insert(conversationToolCalls)
+      .values({
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool: "ask_user_choice",
+        input,
+        output: { status: "awaiting_input" },
+        outcome: "pending",
+      })
+      .returning();
+    const pending = await createElicitation(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool_name: "ask_user_choice",
+        tool_call_id: call!.id,
+        summary: "Choose",
+        input,
+        actor_id: ctx.user_id,
+      },
+      ctx.testDb.db,
+    );
+    await resolveElicitation(
+      { tenant_id: ctx.tenant_id, id: pending.id, output: null, status, decided_by: ctx.user_id },
+      ctx.testDb.db,
+    );
+    const detail = await getConversation(ctx.tenant_id, conversation_id, ctx.testDb.db);
+    expect(detail?.tool_calls.find((item) => item.id === call!.id)?.output).toEqual({
+      status,
+      elicitation_id: pending.id,
+    });
+    expect(detail?.tool_calls.find((item) => item.id === call!.id)?.outcome).toBe("denied");
+    expect(detail?.resume_summary?.pending_approval ?? null).toBeNull();
+  });
+}
