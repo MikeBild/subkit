@@ -158,7 +158,7 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
       const navigationClosed = !(await page.getByTestId("nav-decisions-count").count());
       if (navigationClosed) await page.getByTestId("sidebar-trigger").click();
       const beforeCount = Number(await page.getByTestId("nav-decisions-count").innerText());
-      if (navigationClosed) await page.getByTestId("sidebar-trigger").click();
+      if (navigationClosed) await page.keyboard.press("Escape");
       if (!(await handoff.innerText()).includes("13"))
         throw new Error("Chat does not explain remaining schedule count");
       if (
@@ -209,6 +209,7 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
       );
       if (await page.getByTestId("chat-schedule-next-step").count())
         throw new Error("Resolved schedule still shown as blocked");
+      await page.keyboard.press("Escape");
       await capture("chat-hold-resolved");
     } finally {
       await page.unroute(pattern, saved);
