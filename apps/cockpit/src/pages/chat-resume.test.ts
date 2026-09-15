@@ -130,7 +130,7 @@ test("business choices are questions rather than authority requests in the chat 
       { stage: "awaiting_approval", pending_approval: { tool_name: "ask_user_choice" } },
       t,
     );
-    expect(line).toBe(t("chat.choice.hint"));
+    expect(line).toBe(t("chat.choice.title"));
     expect(line).not.toMatch(/Freigabe|approval/i);
   }
 });
