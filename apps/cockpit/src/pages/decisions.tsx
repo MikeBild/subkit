@@ -202,6 +202,7 @@ export function DecisionsPage() {
                 </p>
                 <a
                   href={`/cockpit/workflows/${encodeURIComponent(schedule.workflow_id)}`}
+                  data-testid="schedule-admission-review"
                   className="underline underline-offset-4"
                 >
                   {t("schedules.held.review")}
@@ -299,7 +300,7 @@ export function DecisionsPage() {
 
             <p className="text-sm text-muted-foreground" data-family-slot="queue-summary">
               {t("decisions.queueSummary", {
-                count: String(queue.open?.decidable ?? open.length),
+                count: String(queue.open?.total ?? open.length),
               })}
             </p>
 

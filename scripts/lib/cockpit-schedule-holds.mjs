@@ -28,11 +28,22 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
       severity: "critical",
       value_state: "missing",
     });
-    for (const section of data.sections)
-      for (const metric of section.metrics) {
-        if (metric.id === "executions.success_ratio")
-          Object.assign(metric, { value: null, value_state: "missing" });
-      }
+    data.sections.push({
+      id: "reliability",
+      title: "Reliability",
+      visualization: "kpi",
+      metrics: [
+        {
+          id: "executions.success_ratio",
+          value: null,
+          value_state: "missing",
+          severity: "unknown",
+          kind: "ratio",
+          drilldown: { path: "/cockpit/runs" },
+        },
+      ],
+      drilldown: { path: "/cockpit/runs" },
+    });
     return route.fulfill({ json: data });
   };
   await page.route(schedulePattern, schedules);
@@ -54,6 +65,9 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
     await card.waitFor();
     if (await page.getByTestId("decisions-empty").count())
       throw new Error("Held schedules presented as an empty queue");
+    const count = await page.locator('[data-testid="decisions-page"]').innerText();
+    if (!count.includes(locale === "de" ? "3 offene Entscheidung" : "3 open decision"))
+      throw new Error("Decision total excludes the held schedule");
     await capture("decision");
     await card.getByRole("link").click();
     await page.getByTestId("detail-workflows").waitFor();
