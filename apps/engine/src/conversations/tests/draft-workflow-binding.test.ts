@@ -126,7 +126,7 @@ describe("loadDraft", () => {
 });
 
 describe("legacy saved-state reconciliation", () => {
-  test("compares the exact saved version and preserves unsaved edits without writing", async () => {
+  test("ignores the save-time runtime stamp but preserves real unsaved edits without writing", async () => {
     const definition = {
       name: "Report",
       slug: "legacy-report",
@@ -144,7 +144,12 @@ describe("legacy saved-state reconciliation", () => {
     if (!workflow) throw new Error("missing workflow");
     const [version] = await ctx.testDb.db
       .insert(workflowVersions)
-      .values({ tenant_id: ctx.tenant_id, workflow_id: workflow.id, version: 1, dag: definition })
+      .values({
+        tenant_id: ctx.tenant_id,
+        workflow_id: workflow.id,
+        version: 1,
+        dag: { ...definition, runtime: { stdlib_version: "1.7.0" } },
+      })
       .returning();
     if (!version) throw new Error("missing version");
     const saved = withWorkflowPersisted(
@@ -174,6 +179,16 @@ describe("legacy saved-state reconciliation", () => {
     expect(unchanged.summary?.checkpoints.find((c) => c.key === "workflow_persisted")?.status).toBe(
       "fresh",
     );
+    const runtimeEdit = structuredClone(saved);
+    runtimeEdit.workflow.runtime = { stdlib_version: "2.0.0" };
+    await ctx.testDb.db
+      .update(conversations)
+      .set({ draft: runtimeEdit })
+      .where(eq(conversations.id, conversation.id));
+    const changedRuntime = await loadDraft(ctx.tenant_id, conversation.id, ctx.testDb.db);
+    expect(
+      changedRuntime.summary?.checkpoints.find((c) => c.key === "workflow_persisted")?.status,
+    ).toBe("stale");
     // Reproduce the old editor: change content without advancing its revision.
     const legacy = structuredClone(saved);
     legacy.workflow.name = "Revised report";
