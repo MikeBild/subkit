@@ -1,3 +1,4 @@
+import { ScheduleEntry } from "./workflow-schedule-schemas.ts";
 // Workflow CRUD + history routes.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
@@ -329,25 +330,6 @@ const historyRoute = createRoute({
   },
 });
 
-const ScheduleEntry = z
-  .object({
-    id: z.string(),
-    workflow_id: z.string(),
-    workflow_slug: z.string().nullable(),
-    workflow_name: z.string().nullable(),
-    cron: z.string(),
-    timezone: z.string(),
-    execution_mode: z.enum(["dev", "prod"]),
-    paused: z.boolean(),
-    input: z
-      .unknown()
-      .nullable()
-      .describe(
-        "Persisted workflow input returned verbatim to workflow readers; credentials belong in connector credential storage.",
-      ),
-    created_at: z.string(),
-  })
-  .openapi("ScheduleEntry");
 const ScheduleUpsertResponse = ScheduleEntry.extend({
   upsert_status: z.enum(["created", "updated"]),
 }).openapi("ScheduleUpsertResponse");
@@ -672,6 +654,10 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
           workflow_id: r.workflow_id,
           workflow_slug: nameById.get(r.workflow_id)?.slug ?? null,
           workflow_name: nameById.get(r.workflow_id)?.name ?? null,
+          admission_hold:
+            r.paused || !named.find((w) => w?.id === r.workflow_id && w.lifecycle !== "archived")
+              ? null
+              : r.admission_hold,
           cron: r.cron,
           timezone: r.timezone,
           execution_mode: r.execution_mode,
@@ -699,6 +685,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       workflow_id: row.workflow_id,
       workflow_slug: wf?.slug ?? null,
       workflow_name: wf?.name ?? null,
+      admission_hold: row.paused || !wf || wf.lifecycle === "archived" ? null : row.admission_hold,
       cron: row.cron,
       timezone: row.timezone,
       execution_mode: row.execution_mode,

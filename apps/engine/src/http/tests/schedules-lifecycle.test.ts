@@ -265,3 +265,35 @@ describe("archive tears down schedule bindings", () => {
     expect(((await list.json()) as { total: number }).total).toBe(0);
   });
 });
+
+test("persisted admission holds are readable and suppressed for paused schedules", async () => {
+  const wf = await createWorkflow("held-http");
+  const created = await fetch(`${ctx.baseUrl}/v1/schedules`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ workflow_id: wf.id, cron: "* * * * *" }),
+  });
+  expect(created.status).toBe(201);
+  const row = (await created.json()) as { id: string; admission_hold: unknown };
+  expect(row.admission_hold).toBeNull();
+  const hold = {
+    reason_code: "execution_authority_required" as const,
+    observed_at: "2026-09-15T03:00:00.000Z",
+  };
+  await ctx.testDb.db
+    .update(workflowsSchedules)
+    .set({ admission_hold: hold })
+    .where(and(eq(workflowsSchedules.tenant_id, ctx.tenantId), eq(workflowsSchedules.id, row.id)));
+  const read = async () =>
+    (await (
+      await fetch(`${ctx.baseUrl}/v1/schedules?workflow_id=${wf.id}`, { headers: headers() })
+    ).json()) as { schedules: Array<{ admission_hold: unknown }> };
+  expect((await read()).schedules[0]?.admission_hold).toEqual(hold);
+  const paused = await fetch(`${ctx.baseUrl}/v1/schedules/${row.id}`, {
+    method: "PUT",
+    headers: headers(),
+    body: JSON.stringify({ paused: true }),
+  });
+  expect(paused.status).toBe(200);
+  expect((await read()).schedules[0]?.admission_hold).toBeNull();
+});

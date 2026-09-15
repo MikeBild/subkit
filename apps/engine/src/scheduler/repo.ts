@@ -34,6 +34,7 @@ export interface ScheduleRow {
   timezone: string;
   paused: boolean;
   execution_mode: "dev" | "prod";
+  admission_hold: typeof workflowsSchedules.$inferSelect.admission_hold;
   input: unknown;
   created_at: Date;
   updated_at: Date;

@@ -254,6 +254,14 @@ export async function runStatusLineHook(
       finish({ ok: true, line });
     });
 
+    child.stdin?.on("error", (err: NodeJS.ErrnoException) => {
+      // A hook may intentionally ignore stdin and exit before the write.
+      // Its exit status and stdout remain authoritative in that case.
+      if (err.code === "EPIPE") return;
+      clearTimeout(timer);
+      child.kill("SIGKILL");
+      finish({ ok: false, err });
+    });
     child.stdin?.write(`${JSON.stringify(input)}\n`);
     child.stdin?.end();
   });

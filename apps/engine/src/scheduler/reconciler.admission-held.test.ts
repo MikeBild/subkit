@@ -1,14 +1,19 @@
 import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
-import { executions, workflowsSchedules } from "../db/schema/index.ts";
+import { auditLog, executions, workflowsSchedules } from "../db/schema/index.ts";
 import {
   createEngineCtx,
   createWorkflowRow,
   type EngineTestCtx,
 } from "../execution/tests/setup.ts";
 import { logger } from "../logging/logger.ts";
+import {
+  getOperationalOverview,
+  invalidateOperationalOverview,
+} from "../operator/operational-overview.ts";
 import { SchedulerReconciler } from "./reconciler.ts";
+import { recordScheduleAdmission } from "./schedule-admission-state.ts";
 import { logScheduleFireFailure } from "./schedule-fire-failure.ts";
 import { grantScheduleAuthorityFixture } from "./tests/authority-fixture.ts";
 
@@ -79,10 +84,64 @@ test("missing authority stays held and retryable; later approval admits exactly 
           and(eq(executions.tenant_id, ctx.tenantId), eq(executions.workflow_id, workflow_id)),
         ),
     ).toHaveLength(0);
+    const held = (await ctx.testDb.db.select().from(workflowsSchedules).where(scheduleWhere))[0];
+    expect(held?.admission_hold).toEqual({
+      reason_code: "execution_authority_unavailable",
+      observed_at: now.toISOString(),
+    });
+    invalidateOperationalOverview(ctx.tenantId);
+    const overview = await getOperationalOverview(ctx.testDb.db, ctx.tenantId);
+    expect(overview.core.blocked.value).toBe(1);
+    expect(overview.core.health.state).toBe("critical");
+    expect(overview.core.health.severity).toBe("critical");
+    expect(overview.core.health.value).toBeNull();
+    const changes = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "schedule.admission.changed"),
+        ),
+      );
+    expect(changes).toHaveLength(1);
+    await ctx.testDb.db.update(workflowsSchedules).set({ paused: true }).where(scheduleWhere);
+    invalidateOperationalOverview(ctx.tenantId);
+    expect((await getOperationalOverview(ctx.testDb.db, ctx.tenantId)).core.blocked.value).toBe(0);
+    await ctx.testDb.db.update(workflowsSchedules).set({ paused: false }).where(scheduleWhere);
     await grantScheduleAuthorityFixture(ctx.testDb.db, ctx.tenantId, workflow_id);
     await reconciler.reconcileWorkflowSchedules(now);
     await reconciler.reconcileWorkflowSchedules(now);
     expect(sent).toHaveLength(1);
+    expect(
+      (await ctx.testDb.db.select().from(workflowsSchedules).where(scheduleWhere))[0]
+        ?.admission_hold,
+    ).toBeNull();
+    // An old claimant and a different tenant cannot resurrect a cleared hold.
+    await recordScheduleAdmission(
+      ctx.testDb.db,
+      {
+        tenant_id: ctx.tenantId,
+        schedule_id: schedule.id,
+        claimed_at: new Date(now.getTime() - 1),
+      },
+      "execution_authority_required",
+    );
+    await recordScheduleAdmission(
+      ctx.testDb.db,
+      {
+        tenant_id: "00000000-0000-4000-8000-000000000000",
+        schedule_id: schedule.id,
+        claimed_at: now,
+      },
+      "execution_authority_required",
+    );
+    expect(
+      (await ctx.testDb.db.select().from(workflowsSchedules).where(scheduleWhere))[0]
+        ?.admission_hold,
+    ).toBeNull();
+    invalidateOperationalOverview(ctx.tenantId);
+    expect((await getOperationalOverview(ctx.testDb.db, ctx.tenantId)).core.blocked.value).toBe(0);
     expect(
       (await ctx.testDb.db.select().from(workflowsSchedules).where(scheduleWhere))[0]
         ?.last_enqueued_at,

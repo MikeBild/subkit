@@ -896,6 +896,13 @@ const EN = {
   "operational.loading": "Loading current aggregates…",
   "operational.unavailable": "Current aggregates are unavailable.",
   "operational.product.title": "SubKit operations",
+  "operational.value.noExecutions": "No runs (24 h)",
+  "schedules.held.title": "Schedule held",
+  "schedules.held.concrete":
+    "The last start was held: dynamic effects cannot currently receive repeated-run authority. Open the workflow to review a preview or restrict effects to supported, fixed targets.",
+  "schedules.held.authority":
+    "The last start was held: execution authority is missing, expired, revoked or exhausted. Review the exact version, targets and finite limits in the workflow.",
+  "schedules.held.review": "Review workflow and authority",
   "operational.value.unknown": "Unknown",
   "operational.value.forbidden": "Restricted",
   "operational.value.stale": "Stale",
@@ -911,7 +918,7 @@ const EN = {
   "operational.freshness.forbidden": "Restricted",
   "operational.core.blocked": "Blocked",
   "operational.core.blocked.tooltip":
-    "Human input that pauses an authoring conversation. Resolve these first.",
+    "Scheduled workflows whose last start was held for execution review. Open the workflow to inspect effects and finite authority.",
   "operational.core.blocked.open": "Open blocked decisions",
   "operational.core.overdue": "Overdue",
   "operational.core.overdue.tooltip":
@@ -922,7 +929,7 @@ const EN = {
   "operational.core.other.open": "Open other decisions",
   "operational.core.health": "Operational health",
   "operational.core.health.tooltip":
-    "Weighted score from blockers, execution success and connector health.",
+    "Known execution blockers make the state critical, even when no success ratio is available. Otherwise derived from blockers, execution success and connector health.",
   "operational.core.health.open": "Open operations",
   "operational.core.freshness": "Data freshness",
   "operational.core.freshness.tooltip": "Age of the snapshot behind every dashboard value.",
@@ -2345,6 +2352,13 @@ const DE: Record<TranslationKey, string> = {
   "operational.loading": "Aktuelle Kennzahlen werden geladen…",
   "operational.unavailable": "Aktuelle Kennzahlen sind nicht verfügbar.",
   "operational.product.title": "SubKit-Betrieb",
+  "operational.value.noExecutions": "Keine Läufe (24 h)",
+  "schedules.held.title": "Zeitplan blockiert",
+  "schedules.held.concrete":
+    "Der letzte Start wurde zurückgehalten: Die dynamischen Effekte lassen sich derzeit nicht für wiederholte Läufe freigeben. Workflow öffnen, eine Vorschau prüfen oder die Effekte auf unterstützte, feste Ziele begrenzen.",
+  "schedules.held.authority":
+    "Der letzte Start wurde zurückgehalten: Eine gültige Ausführungsfreigabe fehlt, ist abgelaufen, widerrufen oder ausgeschöpft. Im Workflow die genaue Version, Ziele und endlichen Grenzen prüfen und freigeben.",
+  "schedules.held.review": "Workflow und Freigabe prüfen",
   "operational.value.unknown": "Unbekannt",
   "operational.value.forbidden": "Eingeschränkt",
   "operational.value.stale": "Veraltet",
@@ -2360,7 +2374,7 @@ const DE: Record<TranslationKey, string> = {
   "operational.freshness.forbidden": "Eingeschränkt",
   "operational.core.blocked": "Blockiert",
   "operational.core.blocked.tooltip":
-    "Menschliche Eingaben, die eine Unterhaltung anhalten. Diese zuerst lösen.",
+    "Zeitpläne, deren letzter Start eine Ausführungsprüfung erfordert. Im Workflow Effekte und zeitlich begrenzte Freigabe prüfen.",
   "operational.core.blocked.open": "Blockierte Entscheidungen öffnen",
   "operational.core.overdue": "Überfällig",
   "operational.core.overdue.tooltip":
@@ -2372,7 +2386,7 @@ const DE: Record<TranslationKey, string> = {
   "operational.core.other.open": "Weitere Entscheidungen öffnen",
   "operational.core.health": "Betriebszustand",
   "operational.core.health.tooltip":
-    "Gewichteter Wert aus Blockaden, Ausführungserfolg und Connector-Zustand.",
+    "Bekannte Ausführungsblockaden machen den Zustand kritisch, auch ohne Erfolgsquote. Sonst aus Blockaden, Ausführungserfolg und Connector-Zustand abgeleitet.",
   "operational.core.health.open": "Betrieb öffnen",
   "operational.core.freshness": "Datenstand",
   "operational.core.freshness.tooltip": "Alter des Datenstands hinter allen Dashboard-Werten.",

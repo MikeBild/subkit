@@ -1,0 +1,1 @@
+ALTER TABLE "workflows_schedules" ADD COLUMN "admission_hold" jsonb;
