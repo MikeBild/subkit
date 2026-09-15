@@ -218,3 +218,32 @@ flowchart LR
 | In-flight jobs     | Durably queued in PostgreSQL; resume automatically on restart.                                                                                 |
 | In-memory state    | None that must survive a restart.                                                                                                              |
 | App-level rollback | Every workflow change creates a new **immutable version**; roll back to a known-good version in a single command. History is always available. |
+
+
+## Scheduled workflows held for review
+
+An active workflow and an enabled schedule do not grant execution authority.
+When admission refuses a due occurrence, the schedule retains `admission_hold`
+with a machine-readable reason and the time that hold was first observed.
+The scheduler retries without advancing the occurrence watermark. Repeated
+attempts do not create duplicate decisions; state changes have an audit entry.
+The cockpit counts unpaused holds as blockers and shows critical operational
+health even when there are no finished executions from which to calculate a
+success ratio. “No runs (24 h)” is missing execution evidence, not a 100% score.
+
+Open **Decisions → the held workflow → Execution authority**. For
+`execution_authority_unavailable`, review the exact active version, production
+or development environment, destinations, validity and finite run limit, then
+issue an applicable human grant. The next due retry discovers it automatically.
+For `execution_authority_required`, the current effects cannot be covered by
+reusable authority: inspect a concrete preview or revise the workflow to use
+supported, statically bound effects. Dynamic requests, unresolved subworkflow
+calls and unsupported targets must not receive an invented migration grant.
+Pause the schedule when it is intentionally not ready. A successful admission
+clears the hold; paused and archived workflows are excluded from blocker counts.
+The stored hold describes the last refused admission, not a fresh authority
+preview; it clears when the scheduler next successfully admits the occurrence.
+
+Automatic drift scans run independently on their hourly cadence. A successful
+scan proves the scan completed; it does not approve workflow execution or prove
+that scheduled business runs succeeded.

@@ -214,7 +214,11 @@ export function OverviewPage() {
                   key={metric.id}
                   id={metric.id}
                   label={t(copy.label)}
-                  value={format(metric, locale, t)}
+                  value={
+                    metric.id === "operations.health"
+                      ? t(`operational.health.${snapshot.core.health.state}`)
+                      : format(metric, locale, t)
+                  }
                   valueRaw={metric.value}
                   valueState={metric.value_state}
                   severity={metric.severity}
@@ -357,6 +361,12 @@ function format(
   locale: string,
   t: (key: TranslationKey, values?: Record<string, string>) => string,
 ): string {
+  if (
+    metric.id === "executions.success_ratio" &&
+    metric.value === null &&
+    metric.value_state === "missing"
+  )
+    return t("operational.value.noExecutions");
   if (metric.value === null || metric.value_state === "missing")
     return t("operational.value.unknown");
   if (metric.value_state === "forbidden") return t("operational.value.forbidden");

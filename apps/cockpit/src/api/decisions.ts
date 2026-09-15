@@ -114,3 +114,9 @@ export function listSkillCandidateEvidence(
 ): Promise<{ items: SkillCandidateEvidence[] }> {
   return apiRequest(`/v1/skill-candidates/${encodeURIComponent(id)}/evidence`);
 }
+
+export type HeldSchedule = components["schemas"]["ScheduleEntry"];
+export async function listHeldSchedules(): Promise<HeldSchedule[]> {
+  const result = await apiRequest<{ schedules: HeldSchedule[] }>("/v1/schedules");
+  return result.schedules.filter((schedule) => !schedule.paused && schedule.admission_hold);
+}

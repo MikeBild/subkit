@@ -47,6 +47,7 @@ import { runFilesCleanup } from "./files-cleanup-runner.ts";
 import { runMcpOAuthCleanup } from "./mcp-oauth-cleanup-runner.ts";
 import { runNotificationInboxRetention } from "./notification-inbox-retention-runner.ts";
 import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts";
+import { recordScheduleAdmission } from "./schedule-admission-state.ts";
 import { logScheduleFireFailure } from "./schedule-fire-failure.ts";
 import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner.ts";
 import { runToolApprovalsCleanup } from "./tool-approvals-cleanup-runner.ts";
@@ -931,6 +932,7 @@ export class SchedulerReconciler {
           schedule_id: schedule.id,
           tz,
           occurrence_after: dueBaseline,
+          claimed_at: now,
         });
       } catch (err) {
         logScheduleFireFailure(
@@ -1447,7 +1449,13 @@ export class SchedulerReconciler {
   private async fireWorkflowSchedule(
     key: string,
     payload: ExecutionRunJob,
-    audit: { tenant_id: string; schedule_id: string; tz: string; occurrence_after: Date },
+    audit: {
+      tenant_id: string;
+      schedule_id: string;
+      tz: string;
+      occurrence_after: Date;
+      claimed_at: Date;
+    },
   ): Promise<void> {
     // The restored cadence watermark is stable across queue failures. Using
     // the retry's wall clock here would charge the same firing again.
@@ -1461,11 +1469,22 @@ export class SchedulerReconciler {
         idempotency_key: `schedule:${audit.schedule_id}:after:${audit.occurrence_after.toISOString()}`,
       },
       this.opts.db,
-    );
+    ).catch(async (error: unknown) => {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        (error.code === "execution_authority_required" ||
+          error.code === "execution_authority_unavailable")
+      ) {
+        await recordScheduleAdmission(this.opts.db, audit, error.code);
+      }
+      throw error;
+    });
     const execution_id = admitted.execution_id;
     const job: ExecutionRunJob = { ...payload, execution_id, request_source: "scheduler" };
     if (admitted.status === "queued")
       await this.opts.boss.send(EXECUTION_RUN_QUEUE, job, { id: execution_id });
+    await recordScheduleAdmission(this.opts.db, audit, null);
     // Reverse-bind audit per AGENTS.md: every schedule firing gets an
     // immutable trail row pointing at the workflow + execution it
     // produced. The webhook variant emits the same shape via
@@ -1554,6 +1573,7 @@ export class SchedulerReconciler {
         schedule_id,
         tz: schedule.timezone || "UTC",
         occurrence_after: schedule.last_enqueued_at ?? schedule.created_at,
+        claimed_at: now,
       });
     } catch (error) {
       await this.opts.db

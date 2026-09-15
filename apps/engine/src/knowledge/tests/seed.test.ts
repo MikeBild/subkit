@@ -13,7 +13,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { knowledgeSources, tenants } from "../../db/schema/index.ts";
-import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
 import { loadEmbeddedSkillSeeds } from "../../skills/seed.ts";
 import {
   applyKnowledgeSeeds,
@@ -561,7 +561,9 @@ describe.skipIf(skip)("searchKnowledge — FTS over seeded sk-platform-reference
     const outcome = await applyKnowledgeSeeds(knowledge, searchTenantId, dbCtx.db);
     // All 7 seeds must have been inserted (this is a fresh tenant)
     expect(outcome.inserted).toBe(7);
-  }, 30_000);
+    // Embedded model assets make this perform real WASM inference for all
+    // seven seeds. Use the shared database setup budget, as other suites do.
+  }, TEST_DB_HOOK_TIMEOUT);
 
   test("'login' returns at least one hit (sk-ref-cli covers sk login command)", async () => {
     const hits = await searchKnowledge({ tenant_id: searchTenantId, query: "login" }, dbCtx.db);
