@@ -107,6 +107,8 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
       await stand.visit(page, `chat/${conversation.id}`);
       const inline = page.getByTestId("chat-message-0-choice");
       await inline.waitFor();
+      if (/Freigabe|approval/i.test(await page.getByTestId("chat-summary").innerText()))
+        throw new Error("Business question is mislabeled as authority in the chat header");
       if ((await inline.innerText()).includes("commit_intent"))
         throw new Error("Raw tool JSON replaced the decision UI");
       if (surface === "context") await page.getByTestId("chat-context-toggle").click();
