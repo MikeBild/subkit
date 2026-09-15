@@ -1930,7 +1930,7 @@ async function prepareOutput() {
 async function shoot(page, label, options) {
   await prepareOutput();
   const path = resolve(outputDir, stand.frameName(page, label));
-  await page.screenshot({ ...options, path });
+  await page.screenshot({ animations: "disabled", ...options, path });
   framesWritten += 1;
   written.set(label, path);
 }
@@ -1942,7 +1942,7 @@ async function shoot(page, label, options) {
 async function shootSheet(page, label, options) {
   await prepareOutput();
   const path = resolve(outputDir, stand.sheetName(label));
-  await page.screenshot({ ...options, path });
+  await page.screenshot({ animations: "disabled", ...options, path });
   framesWritten += 1;
   written.set(label, path);
 }
