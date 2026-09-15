@@ -7,6 +7,17 @@ export const LOCALE_TAGS: Record<Locale, string> = {
 };
 
 const EN = {
+  "chat.choice.preparation.question":
+    "Check the workflow before saving. We recommend this check because it can reveal errors without publishing anything.",
+  "chat.choice.preparation.dryrun": "Check first (recommended)",
+  "chat.choice.preparation.dryrunEffect":
+    "Check available data and steps, then prepare saving. Publications are held and remain untested.",
+  "chat.choice.preparation.force": "Request saving without a check",
+  "chat.choice.preparation.forceEffect":
+    "Errors may remain undetected. Requests an exceptional save; it does not authorize publication or automatic runs.",
+  "chat.choice.preparation.cancel": "Keep draft unchanged",
+  "chat.choice.preparation.cancelEffect": "Stop here. The current draft is retained.",
+
   "chat.schedule.pending": "Automatic runs still paused",
   "chat.schedule.effect":
     "Answering or saving a draft does not release scheduled runs. Review the workflow's run permission.",
@@ -1503,6 +1514,16 @@ const DE: Record<TranslationKey, string> = {
   "chat.schedule.effect":
     "Antworten oder Entwürfe speichern gibt den Zeitplan nicht frei. Prüfe die Ausführungsfreigabe des Workflows.",
   "chat.schedule.review": "Automatische Läufe prüfen",
+  "chat.choice.preparation.question":
+    "Prüfe den Ablauf vor dem Speichern. Wir empfehlen diese Prüfung: Sie kann Fehler erkennen, ohne etwas zu veröffentlichen.",
+  "chat.choice.preparation.dryrun": "Zuerst prüfen (empfohlen)",
+  "chat.choice.preparation.dryrunEffect":
+    "Verfügbare Daten und Schritte prüfen, danach das Speichern vorbereiten. Veröffentlichungen werden zurückgehalten und bleiben ungetestet.",
+  "chat.choice.preparation.force": "Speichern ohne Prüfung anfragen",
+  "chat.choice.preparation.forceEffect":
+    "Fehler können unentdeckt bleiben. Fragt eine Ausnahme zum Speichern an; erlaubt keine Veröffentlichung oder automatischen Läufe.",
+  "chat.choice.preparation.cancel": "Entwurf unverändert lassen",
+  "chat.choice.preparation.cancelEffect": "Hier beenden. Der aktuelle Entwurf bleibt erhalten.",
   "chat.choice.expired": "Rückfrage abgelaufen",
   "chat.choice.cancelled": "Rückfrage abgebrochen",
   "chat.choice.title": "Deine Antwort wird benötigt",
