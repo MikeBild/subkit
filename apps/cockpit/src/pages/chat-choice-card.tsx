@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -74,7 +75,7 @@ export function ChatChoiceCard({
                   className="h-auto w-full justify-start whitespace-normal px-3 py-3 text-left"
                   data-testid={`${testId}-option-${option.value}`}
                 >
-                  <span className="flex flex-col gap-1">
+                  <span className="flex flex-1 flex-col gap-1">
                     <span>{readable(option.label)}</span>
                     {option.description && (
                       <span className="text-xs text-muted-foreground">
@@ -82,6 +83,7 @@ export function ChatChoiceCard({
                       </span>
                     )}
                   </span>
+                  {value === option.value && <Check aria-hidden="true" />}
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>

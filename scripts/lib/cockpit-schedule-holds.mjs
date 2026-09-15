@@ -201,6 +201,30 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
       if (await page.getByTestId("chat-schedule-next-step").count())
         throw new Error("Run authorization offered before preparation is complete");
       await capture("chat-unsaved-next-step");
+      const continuePattern = `**/v1/conversations/${conversation.id}/messages`;
+      let continuationCalls = 0;
+      await page.route(continuePattern, async (route) => {
+        continuationCalls++;
+        const body = route.request().postDataJSON();
+        if (
+          typeof body.message !== "string" ||
+          /save_workflow_draft|force_commit/.test(body.message)
+        )
+          throw new Error("Preparation action sends technical instructions to the user");
+        unsaved = false;
+        await route.fulfill({
+          contentType: "text/event-stream",
+          body: `event: outcome\ndata: ${JSON.stringify({ conversation, status: "active" })}\n\n`,
+        });
+      });
+      try {
+        await page.getByTestId("chat-continue-preparation").click();
+        await page.getByTestId("chat-schedule-next-step").waitFor();
+        if (continuationCalls !== 1)
+          throw new Error("Preparation did not use one normal conversation turn");
+      } finally {
+        await page.unroute(continuePattern);
+      }
       unsaved = false;
       cleared = true;
       await stand.visit(page, `chat/${conversation.id}`);
