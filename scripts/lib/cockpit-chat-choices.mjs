@@ -104,6 +104,13 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
         throw new Error("Raw tool JSON replaced the decision UI");
       if (surface === "context") await page.getByTestId("chat-context-toggle").click();
       const card = surface === "context" ? page.getByTestId("chat-context-choice") : inline;
+      if (
+        surface === "context" &&
+        /Wartet auf eine Freigabe|Waiting for an approval/.test(
+          await page.getByTestId("chat-context").innerText(),
+        )
+      )
+        throw new Error("Choice is mislabeled as an approval");
       const prefix = `${surface === "context" ? "chat-context" : "chat-message-0"}-choice`;
       const action = page.getByTestId(`${prefix}-submit`);
       if (!(await action.isDisabled())) throw new Error("Choice was implicitly selected");

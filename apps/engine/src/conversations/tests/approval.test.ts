@@ -363,7 +363,9 @@ test("a choice is validated, resolved once, and rehydrated as answered without r
     ),
   ).toHaveLength(1);
   expect(detail?.resume_summary?.pending_approval?.id).not.toBe(pending.id);
-  expect(await getConversation(crypto.randomUUID(), conversation_id, ctx.testDb.db)).toBeNull();
+  expect(
+    await getConversation("00000000-0000-4000-8000-000000000099", conversation_id, ctx.testDb.db),
+  ).toBeNull();
   const [stored] = await ctx.testDb.db
     .select()
     .from(conversationToolCalls)

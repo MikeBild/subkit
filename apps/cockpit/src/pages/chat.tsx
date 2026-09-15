@@ -1361,7 +1361,9 @@ export function ChatPage() {
                 <dd className="mt-1 font-medium">
                   {decide.isPending
                     ? t("chat.decision.processing")
-                    : resumeStageLabel(resume?.stage, t)}
+                    : pendingChoice
+                      ? t("chat.choice.title")
+                      : resumeStageLabel(resume?.stage, t)}
                 </dd>
               </div>
               <div data-testid="chat-context-target">
