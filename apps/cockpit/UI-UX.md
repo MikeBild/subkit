@@ -159,6 +159,17 @@ What is settled does not come back onto this page at all: §8.5 keeps state and 
 the decided and rejected positions live in the audit trail, reached by the single link the queue
 carries.
 
+Scheduled workflows held at admission appear in a named blocking group after the section controls,
+kind filters and queue summary. They use compact neutral cards with a status badge, workflow name,
+short reason and an explicit review action. The cron expression and full explanation are behind a
+keyboard-accessible disclosure. Holds obey the same kind filtering, loading and error states as the
+rest of the queue; no repeated destructive alerts may precede its controls.
+
+A hold is an observed admission failure, not a prepared approval proposal. Its review action opens
+the existing workflow review surface, where execution boundaries and supported approval paths can
+be inspected. It never grants authority or starts a run from the queue. Different workflow versions
+and effects must not be collapsed into a blanket approval merely because their reason codes match.
+
 ### Overview surface
 
 The overview answers what is happening, and links to where it is decided. It carries the incident

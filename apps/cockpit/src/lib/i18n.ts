@@ -898,11 +898,22 @@ const EN = {
   "operational.product.title": "SubKit operations",
   "operational.value.noExecutions": "No runs (24 h)",
   "schedules.held.title": "Schedule held",
+  "schedules.held.status": "Review needed",
+  "schedules.held.kind": "Scheduled workflows",
+  "schedules.held.group": "Blocked workflows",
+  "schedules.held.groupHint":
+    "These scheduled workflows cannot start. Open a workflow to review its execution limits.",
+  "schedules.held.concreteShort":
+    "The actions and targets need review before scheduled runs can resume.",
+  "schedules.held.authorityShort": "No valid execution approval is available for the next run.",
+  "schedules.held.details": "Reason and schedule",
+  "schedules.held.schedule": "Schedule",
+
   "schedules.held.concrete":
     "The last start was held: dynamic effects cannot currently receive repeated-run authority. Open the workflow to review a preview or restrict effects to supported, fixed targets.",
   "schedules.held.authority":
     "The last start was held: execution authority is missing, expired, revoked or exhausted. Review the exact version, targets and finite limits in the workflow.",
-  "schedules.held.review": "Review workflow and authority",
+  "schedules.held.review": "Review workflow",
   "operational.value.unknown": "Unknown",
   "operational.value.forbidden": "Restricted",
   "operational.value.stale": "Stale",
@@ -999,7 +1010,7 @@ const EN = {
     "Approve the displayed correction and allow the repaired version to run within these limits. Both changes are saved together.",
   "decisions.reviewChanged": "The reviewed change is no longer current. Reload the preview.",
   "decisions.description":
-    "What is waiting to be decided: proposed fixes and skill candidates. A question asked inside a conversation is answered there.",
+    "Review blocked workflows, proposed fixes and skill candidates before making a decision.",
   "decisions.kind.patch": "Fix",
   "decisions.kind.skill": "Skill candidate",
   "decisions.effect.patch": "Approving writes a new workflow version.",
@@ -2354,11 +2365,23 @@ const DE: Record<TranslationKey, string> = {
   "operational.product.title": "SubKit-Betrieb",
   "operational.value.noExecutions": "Keine Läufe (24 h)",
   "schedules.held.title": "Zeitplan blockiert",
+  "schedules.held.status": "Prüfung nötig",
+  "schedules.held.kind": "Zeitgesteuerte Workflows",
+  "schedules.held.group": "Blockierte Workflows",
+  "schedules.held.groupHint":
+    "Diese zeitgesteuerten Workflows können nicht starten. Im Workflow die Ausführungsgrenzen prüfen.",
+  "schedules.held.concreteShort":
+    "Aktionen und Ziele müssen vor weiteren automatischen Läufen geprüft werden.",
+  "schedules.held.authorityShort":
+    "Für den nächsten Lauf liegt keine gültige Ausführungsfreigabe vor.",
+  "schedules.held.details": "Grund und Zeitplan",
+  "schedules.held.schedule": "Zeitplan",
+
   "schedules.held.concrete":
     "Der letzte Start wurde zurückgehalten: Die dynamischen Effekte lassen sich derzeit nicht für wiederholte Läufe freigeben. Workflow öffnen, eine Vorschau prüfen oder die Effekte auf unterstützte, feste Ziele begrenzen.",
   "schedules.held.authority":
     "Der letzte Start wurde zurückgehalten: Eine gültige Ausführungsfreigabe fehlt, ist abgelaufen, widerrufen oder ausgeschöpft. Im Workflow die genaue Version, Ziele und endlichen Grenzen prüfen und freigeben.",
-  "schedules.held.review": "Workflow und Freigabe prüfen",
+  "schedules.held.review": "Workflow prüfen",
   "operational.value.unknown": "Unbekannt",
   "operational.value.forbidden": "Eingeschränkt",
   "operational.value.stale": "Veraltet",
@@ -2463,7 +2486,7 @@ const DE: Record<TranslationKey, string> = {
   "decisions.reviewChanged":
     "Die geprüfte Änderung ist nicht mehr aktuell. Lade die Vorschau erneut.",
   "decisions.description":
-    "Was auf eine Entscheidung wartet: vorgeschlagene Korrekturen und Skill-Kandidaten. Eine Rückfrage aus einer Unterhaltung wird dort beantwortet.",
+    "Blockierte Workflows, vorgeschlagene Korrekturen und Skill-Kandidaten prüfen und entscheiden.",
   "decisions.kind.patch": "Korrektur",
   "decisions.kind.skill": "Skill-Kandidat",
   "decisions.effect.patch": "Eine Freigabe schreibt eine neue Workflow-Version.",
