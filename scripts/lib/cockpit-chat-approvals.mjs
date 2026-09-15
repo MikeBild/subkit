@@ -88,12 +88,12 @@ export async function verifyChatApprovals(page, stand, conversation, locale, cap
       await inline.waitFor();
       if ((await inline.innerText()).includes("commit_intent"))
         throw new Error("Raw tool JSON replaced the decision UI");
-      await capture("inline");
       if (surface === "context") await page.getByTestId("chat-context-toggle").click();
       const card = surface === "context" ? page.getByTestId("chat-context-approval") : inline;
       const action = card.getByTestId(
         `${surface === "context" ? "chat-context" : "chat-message-0"}-approval-${expected ? "approve" : "decline"}`,
       );
+      await capture(`${surface}-ready`);
       const before = requests;
       release = null;
       await action.click();
