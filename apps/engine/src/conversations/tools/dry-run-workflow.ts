@@ -46,6 +46,7 @@ import {
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { recordLastPreview } from "./last-preview-store.ts";
 import { resolveConversationPrincipal } from "./permission-gate.ts";
+import { previewEvidence } from "./preview-evidence.ts";
 import { replacesPersistedWorkflow } from "./state-gate.ts";
 import { buildRawStepResults } from "./step-results.ts";
 import { truncateStepPreviewForLlm } from "./truncate.ts";
@@ -1042,6 +1043,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           // auto-committed envelope. The LLM still needs to see
           // step-by-step shape + status to author downstream
           // transforms or to debug a follow-up run.
+          preview_evidence: previewEvidence(run.steps),
           step_trace: stepTrace,
           ...finalOutputField,
           ...stepResultsField,
@@ -1082,6 +1084,7 @@ export const dryRunWorkflowTool: ConversationTool = {
             duration_ms: totalDryRunMs,
             execution_id: run.execution_id,
           },
+          preview_evidence: previewEvidence(run.steps),
           step_trace: stepTrace,
           ...finalOutputField,
           ...stepResultsField,
@@ -1213,6 +1216,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           // apply via edit_workflow_patch, then
           // re-preview. The draft was not changed.
           ...(repairProposals.length > 0 ? { repair_proposals: repairProposals } : {}),
+          preview_evidence: previewEvidence(run.steps),
           step_trace: stepTrace,
           ...finalOutputField,
           ...stepResultsField,

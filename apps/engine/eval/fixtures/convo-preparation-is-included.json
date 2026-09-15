@@ -1,0 +1,13 @@
+{
+  "name": "convo-preparation-is-included",
+  "description": "Preparation is performed by the assistant; internal recovery actions must not become a user menu or a live-success claim.",
+  "flow": "converse",
+  "input": {
+    "required_phrases": [
+      "Complete routine inspection, validation, safe preview and authorized draft repair without asking",
+      "next_best_actions as machine guidance, never as a user-facing menu",
+      "Never offer force_commit as a routine alternative to a missing preview",
+      "Held/skipped steps remain untested"
+    ]
+  }
+}

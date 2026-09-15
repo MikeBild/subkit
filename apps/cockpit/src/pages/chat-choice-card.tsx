@@ -22,6 +22,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import type { ChatChoice } from "./chat-choice";
+import { chatChoicePresentation } from "./chat-choice-presentation";
 
 export function ChatChoiceCard({
   choice,
@@ -48,14 +49,15 @@ export function ChatChoiceCard({
   }, []);
   const deadline = Date.parse(choice.expiresAt);
   const expired = !Number.isFinite(deadline) || deadline <= now;
-  const selected = choice.options.find((option) => option.value === value);
+  const presentation = chatChoicePresentation(choice, t);
+  const selected = presentation.options.find((option) => option.value === value);
   const readable = (text: string) =>
     hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"));
   return (
     <Card size="sm" data-testid={testId}>
       <CardHeader>
         <CardTitle>{t("chat.choice.title")}</CardTitle>
-        <CardDescription>{readable(choice.question)}</CardDescription>
+        <CardDescription>{readable(presentation.question)}</CardDescription>
       </CardHeader>
       <CardContent>
         <FieldGroup>
@@ -71,7 +73,7 @@ export function ChatChoiceCard({
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  {choice.options.map((option) => (
+                  {presentation.options.map((option) => (
                     <SelectItem
                       key={option.value}
                       value={option.value}

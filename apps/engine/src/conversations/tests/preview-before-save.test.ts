@@ -102,6 +102,12 @@ describe("save_workflow_draft preview-before-commit gate", () => {
     const data = result.data as { error_code?: unknown; stale_checkpoints?: unknown };
     expect(data.error_code).toBe("workflow_not_ready");
     expect(data.stale_checkpoints).toEqual(expect.arrayContaining(["workflow_previewed"]));
+    expect(result.data).toMatchObject({
+      preparation_required: true,
+      recommended_action: "dry_run_workflow",
+      force_commit_available: false,
+      next_best_actions: ["dry_run_workflow"],
+    });
   });
 
   test("legacy force-like fields do not bypass the preview gate", async () => {

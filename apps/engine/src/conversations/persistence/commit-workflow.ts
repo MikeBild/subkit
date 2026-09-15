@@ -477,7 +477,15 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
           next_best_actions: recovery,
           extra: {
             latest_preview: latestPreview ?? null,
-            force_commit_available: previewMissing || runtimeDataFailure,
+            force_commit_available: runtimeDataFailure,
+            preparation_required: previewMissing,
+            ...(previewMissing
+              ? {
+                  recommended_action: "dry_run_workflow",
+                  recovery_guidance:
+                    "Run the supported hold-writes preview with grounded inputs within current permissions. This is routine preparation, not a user choice. Report checked and untested effects separately; do not offer bypassing the missing check.",
+                }
+              : {}),
             ...(previewFailureClass ? { preview_failure_class: previewFailureClass } : {}),
           },
         }),
