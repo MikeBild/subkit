@@ -133,7 +133,7 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
     if (writes !== 1 || (await page.getByTestId(`authority-revoke-${id}`).count()))
       throw new Error("Revoked authority did not persist after reload");
     failRead = true;
-    await page.getByTestId("authority-refresh").click();
+    await page.reload();
     await page.getByTestId("workflow-authorities").getByRole("alert").waitFor();
     if (await card.count()) throw new Error("Failed refresh still advertises a stale authority");
     failRead = false;
@@ -156,6 +156,7 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
   let previews = 0;
   let posts = 0;
   let incomplete = false;
+  let unsupported = false;
   const preview = async (route) => {
     previews += 1;
     const url = new URL(route.request().url());
@@ -168,8 +169,8 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
         workflow_version_id: version,
         execution_environment: url.searchParams.get("environment"),
       },
-      eligible_for_repeated_runs: true,
-      unavailable_steps: [],
+      eligible_for_repeated_runs: !unsupported,
+      unavailable_steps: unsupported ? ["publish-report"] : [],
       suggested_bounds: {
         valid_from: from,
         valid_until: new Date(Date.parse(from) + 86_400_000).toISOString(),
@@ -233,6 +234,20 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
     )
       throw new Error("Grant lost finite server defaults");
     if (
+      (await page.getByTestId("authority-runs").getAttribute("aria-invalid")) === "true" ||
+      (await page.getByTestId("authority-hours").getAttribute("aria-invalid")) === "true"
+    )
+      throw new Error("Valid bounds presented as invalid");
+    if (await page.getByTestId("authority-prepare").count())
+      throw new Error("Successful review shows redundant refresh action");
+    await page.getByTestId("authority-runs").fill("0");
+    if (
+      (await page.getByTestId("authority-runs").getAttribute("aria-invalid")) !== "true" ||
+      (await page.getByTestId("authority-hours").getAttribute("aria-invalid")) === "true"
+    )
+      throw new Error("Run validation incorrectly marks the duration invalid");
+    await page.getByTestId("authority-runs").fill("1");
+    if (
       !(await page.getByTestId("authority-environment").innerText()).includes(
         locale === "de" ? "Entwicklung" : "Development",
       )
@@ -243,7 +258,7 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
       .getByRole("option", { name: locale === "de" ? "Produktion" : "Production", exact: true })
       .click();
     await page.getByTestId("authority-grant-review").waitFor();
-    await page.getByTestId("authority-grant-review").locator("summary").click();
+    await page.getByTestId("authority-grant-review").locator("summary").last().click();
     await capture("grant");
     if (
       !(await page.getByTestId("authority-grant-review").innerText()).includes(
@@ -278,6 +293,36 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
       throw new Error("Truncated review can be granted");
     await page.getByTestId("authority-grant-cancel").click();
     if (posts !== 2) throw new Error("Incomplete or cancelled review caused a grant");
+    incomplete = false;
+    unsupported = true;
+    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("authority-needs-adjustment").waitFor();
+    if (
+      (await page.getByTestId("authority-runs").count()) ||
+      (await page.getByTestId("authority-hours").count()) ||
+      (await page.getByTestId("authority-grant-confirm").count())
+    )
+      throw new Error("Unsupported workflow offers an impossible grant form");
+    const adjustment = page.getByTestId("authority-adjust");
+    const href = await adjustment.getAttribute("href");
+    if (!href?.includes(`workflow_id=${workflowId}`) || !href.includes("prompt="))
+      throw new Error("Adjustment loses the workflow context or the task");
+    const dialogText = await page.getByRole("dialog").innerText();
+    if (
+      dialogText.includes(currentReview.manifest.workflow_version_id) ||
+      dialogText.includes(baseAuthority.id)
+    )
+      throw new Error("Review exposes internal identifiers instead of useful names");
+    await page.getByRole("dialog").evaluate(async (node) => {
+      await Promise.all(
+        node
+          .getAnimations({ subtree: true })
+          .map((animation) => animation.finished.catch(() => {})),
+      );
+    });
+    await capture("adjustment");
+    await page.getByTestId("authority-grant-cancel").click();
+    if (posts !== 2) throw new Error("Unsupported review caused an execution grant");
   } finally {
     await page.unroute(previewPattern, preview);
     await page.unroute(grantPattern, grant);

@@ -158,7 +158,15 @@ function ConversationsAbout({
   );
 }
 
-function GovernanceBar({ record, canWrite }: { record: RecordValue; canWrite: boolean }) {
+function GovernanceBar({
+  record,
+  canWrite,
+  workflow = false,
+}: {
+  record: RecordValue;
+  canWrite: boolean;
+  workflow?: boolean;
+}) {
   const { t } = useI18n();
   const status =
     typeof record.status === "string"
@@ -174,7 +182,9 @@ function GovernanceBar({ record, canWrite }: { record: RecordValue; canWrite: bo
     >
       <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
       <span className="font-medium">{t("detail.governance")}</span>
-      <Badge variant="outline">{statusLabel(t, status)}</Badge>
+      <Badge variant="outline">
+        {workflow && status === "active" ? t("authority.versionActive") : statusLabel(t, status)}
+      </Badge>
       {version !== undefined && <Badge variant="secondary">v{String(version)}</Badge>}
       <span className="text-muted-foreground">
         {t(canWrite ? "detail.canEdit" : "detail.readOnly")}
@@ -602,7 +612,7 @@ export function CatalogDetailPage({
               {t("detail.test")}
             </Button>
           )}
-          <Button asChild>
+          <Button asChild variant="outline">
             <a
               href={`/cockpit/chat/new?prompt=${prompt}${chatTarget}`}
               data-testid="detail-chat-action"
@@ -613,7 +623,7 @@ export function CatalogDetailPage({
           </Button>
         </div>
       </header>
-      <GovernanceBar record={record} canWrite={canWrite} />
+      <GovernanceBar record={record} canWrite={canWrite} workflow={resource === "workflows"} />
       {resource === "connectors" && probe.data && (
         <div className="border-b px-6 py-4" data-testid="connector-probe-result">
           <p
@@ -648,6 +658,11 @@ export function CatalogDetailPage({
         {resource === "workflows" ? (
           <WorkflowAuthorities
             workflowId={id}
+            versionLabel={
+              typeof (record.version ?? record.current_version) === "number"
+                ? `v${record.version ?? record.current_version}`
+                : undefined
+            }
             versionId={
               typeof record.current_version_id === "string" ? record.current_version_id : null
             }

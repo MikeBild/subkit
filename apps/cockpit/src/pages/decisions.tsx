@@ -16,6 +16,7 @@ import { useDecisionQueue } from "@/app/use-decisions";
 import { DecisionCard } from "@/components/cockpit/decision-card";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
+import { ScheduleReviewCard } from "@/components/cockpit/schedule-review-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,29 +33,32 @@ import {
   partitionByUrgency,
 } from "./decisions-model";
 
-// Only actionable patches and knowledge activations belong in the decision count.
-const KINDS: DecidableKind[] = ["patch", "skill"];
-const KIND_LABEL: Record<DecidableKind, TranslationKey> = {
+// Reviewable scheduled workflows share the existing queue and kind filters.
+type QueueKind = DecidableKind | "schedule";
+const KINDS: QueueKind[] = ["patch", "skill", "schedule"];
+const KIND_LABEL: Record<QueueKind, TranslationKey> = {
   patch: "decisions.kind.patch",
   skill: "decisions.kind.skill",
+  schedule: "schedules.held.kind",
 };
 
 const PREFERENCE_KEY = "sk-cockpit-decisions";
 
 interface Preferences {
-  kinds: DecidableKind[];
+  kinds: QueueKind[];
 }
 
 function readPreferences(): Preferences {
   try {
+    if (new URLSearchParams(window.location.search).get("bucket") === "blocked") {
+      return { kinds: ["schedule"] };
+    }
     const raw = window.localStorage.getItem(PREFERENCE_KEY);
     if (!raw) return { kinds: [] };
     const parsed = JSON.parse(raw) as Partial<Preferences>;
     return {
       kinds: Array.isArray(parsed.kinds)
-        ? parsed.kinds.filter((kind): kind is DecidableKind =>
-            KINDS.includes(kind as DecidableKind),
-          )
+        ? parsed.kinds.filter((kind): kind is QueueKind => KINDS.includes(kind as QueueKind))
         : [],
     };
   } catch {
@@ -125,11 +129,24 @@ export function DecisionsPage() {
   // Only what can be decided reaches the queue. `queue.items` still carries the
   // waiting conversations and diagnostics for their separate sections.
   const open = queue.items.filter(isDecidable);
-  const filtered = filterByKinds(open, preferences.kinds) as DecidableItem[];
+  const selectedKinds = preferences.kinds.filter(
+    (kind): kind is DecidableKind => kind !== "schedule",
+  );
+  const filtered = (
+    preferences.kinds.length > 0 && selectedKinds.length === 0
+      ? []
+      : filterByKinds(open, selectedKinds)
+  ) as DecidableItem[];
+  const held =
+    preferences.kinds.length === 0 || preferences.kinds.includes("schedule")
+      ? queue.heldSchedules
+      : [];
   const initial = filtered.slice(0, visibleCount);
   const urgency = partitionByUrgency(initial, Date.now());
   const { current, aged } = urgency.deferred;
-  const isFiltered = preferences.kinds.length > 0 && open.length > filtered.length;
+  const isFiltered =
+    preferences.kinds.length > 0 &&
+    open.length + queue.heldSchedules.length > filtered.length + held.length;
   // The breakdown comes from the same count as the badge, not from the rows the
   // page happens to hold: the two disagreed the moment a source hit its cap.
 
@@ -183,33 +200,6 @@ export function DecisionsPage() {
       }
     >
       <div className="grid gap-6">
-        {section === "decisions" &&
-          queue.heldSchedules.map((schedule) => (
-            <Alert key={schedule.id} variant="destructive" data-testid="schedule-admission-held">
-              <AlertTitle>
-                {schedule.workflow_name ?? schedule.workflow_slug ?? t("schedules.held.title")}
-              </AlertTitle>
-              <AlertDescription>
-                <p>
-                  {t(
-                    schedule.admission_hold?.reason_code === "execution_authority_required"
-                      ? "schedules.held.concrete"
-                      : "schedules.held.authority",
-                  )}
-                </p>
-                <p>
-                  {schedule.cron} · {schedule.timezone} · {schedule.execution_mode}
-                </p>
-                <a
-                  href={`/cockpit/workflows/${encodeURIComponent(schedule.workflow_id)}`}
-                  data-testid="schedule-admission-review"
-                  className="underline underline-offset-4"
-                >
-                  {t("schedules.held.review")}
-                </a>
-              </AlertDescription>
-            </Alert>
-          ))}
         <fieldset className="flex flex-wrap gap-2" aria-label={t("nav.decisions")}>
           {(["decisions", "suggestions", "questions"] as const).map((value) => (
             <Button
@@ -270,6 +260,7 @@ export function DecisionsPage() {
                   variant={preferences.kinds.length === 0 ? "default" : "outline"}
                   size="sm"
                   data-testid="decisions-chip-all"
+                  aria-pressed={preferences.kinds.length === 0}
                   onClick={() => persist({ ...preferences, kinds: [] })}
                 >
                   {t("decisions.chip.all")}
@@ -283,6 +274,7 @@ export function DecisionsPage() {
                     variant={preferences.kinds.includes(kind) ? "default" : "outline"}
                     size="sm"
                     data-testid={`decisions-chip-${index}`}
+                    aria-pressed={preferences.kinds.includes(kind)}
                     onClick={() =>
                       persist({
                         ...preferences,
@@ -305,6 +297,19 @@ export function DecisionsPage() {
             </p>
 
             <div className="grid gap-5" data-family-slot="queue">
+              {!queue.isPending && !queue.failed && held.length > 0 && (
+                <DecisionSection
+                  testId="decisions-blocked"
+                  title={t("schedules.held.group")}
+                  hint={t("schedules.held.groupHint")}
+                  count={held.length}
+                  bucket="blocked"
+                >
+                  {held.slice(0, visibleCount).map((schedule) => (
+                    <ScheduleReviewCard key={schedule.id} schedule={schedule} />
+                  ))}
+                </DecisionSection>
+              )}
               {queue.isPending && !queue.failed ? (
                 <div
                   className="grid gap-2"
@@ -337,7 +342,7 @@ export function DecisionsPage() {
                   </Button>
                 </Alert>
               ) : filtered.length === 0 ? (
-                isFiltered ? (
+                held.length > 0 ? null : isFiltered ? (
                   <div
                     className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
                     data-testid="decisions-empty-filtered"
@@ -355,7 +360,7 @@ export function DecisionsPage() {
                       {t("decisions.showAll")}
                     </Button>
                   </div>
-                ) : queue.heldSchedules.length > 0 ? null : (
+                ) : (
                   <div
                     className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
                     data-testid="decisions-empty"
@@ -411,7 +416,7 @@ export function DecisionsPage() {
               )}
             </div>
 
-            {filtered.length > visibleCount && (
+            {(filtered.length > visibleCount || held.length > visibleCount) && (
               <Button
                 data-testid="decisions-load-more"
                 variant="outline"
@@ -502,7 +507,7 @@ function DecisionSection({
   title: string;
   hint: string;
   count: number;
-  bucket: "overdue" | "other";
+  bucket: "blocked" | "overdue" | "other";
   muted?: boolean;
   children: ReactNode;
 }) {
