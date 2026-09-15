@@ -42,6 +42,7 @@ export async function verifyChatApprovals(page, stand, conversation, locale, cap
                 call_id: pending.tool_call_id,
                 output: { status: waiting ? "awaiting_input" : "resolved" },
                 outcome: waiting ? "pending" : expected ? "ok" : "denied",
+                confirmation_state: waiting ? null : expected ? "confirmed" : "declined",
               },
             ],
           },
@@ -114,6 +115,19 @@ export async function verifyChatApprovals(page, stand, conversation, locale, cap
       await stand.visit(page, `chat/${conversation.id}`);
       if ((await page.getByTestId("chat-transcript").innerText()).includes("commit_intent"))
         throw new Error("Completed decision exposes technical parameters by default");
+      await page
+        .getByTestId("chat-transcript")
+        .getByText(
+          expected
+            ? locale === "de"
+              ? "Freigegeben"
+              : "Approved"
+            : locale === "de"
+              ? "Abgelehnt"
+              : "Declined",
+          { exact: true },
+        )
+        .waitFor();
       if (await inline.count())
         throw new Error("Completed decision still has active buttons after reload");
     }

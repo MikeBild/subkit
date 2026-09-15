@@ -237,3 +237,21 @@ describe("toMessageParts — @-mention references", () => {
     expect(ui.parts).toEqual([{ type: "text", text: "hi" }]);
   });
 });
+
+for (const confirmation_state of ["confirmed", "declined", "expired"]) {
+  test(`transcript preserves the explicit ${confirmation_state} decision alongside the machine outcome`, () => {
+    const ui = toMessageParts(msg({ id: "decision-message", role: "assistant" }), [
+      call({
+        id: "decision-call",
+        tool: "ask_user_confirm",
+        created_at: "2026-01-01T00:00:01.000Z",
+        confirmation_state,
+        outcome: confirmation_state === "confirmed" ? "ok" : "denied",
+      }),
+    ]);
+    expect(ui.parts.find((part) => part.type === "tool_result")).toMatchObject({
+      confirmation_state,
+      outcome: confirmation_state === "confirmed" ? "ok" : "denied",
+    });
+  });
+}

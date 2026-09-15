@@ -911,6 +911,7 @@ export type ContentPart =
       tool: string;
       output: unknown;
       outcome: ToolCallOutcome | null;
+      confirmation_state?: string | null;
     }
   | { type: "data"; data_type: string; payload: unknown };
 
