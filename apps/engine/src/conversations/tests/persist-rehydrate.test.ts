@@ -15,6 +15,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
 import { buildModelMessages } from "../persist.ts";
+import { getConversation } from "../service/get.ts";
 
 let ctx: LlmTestCtx;
 let conversation_id: string;
@@ -338,5 +339,107 @@ describe("buildModelMessages — interaction_log rehydration", () => {
       return part?.type === "tool-result" && part.toolCallId === probeCall!.id;
     });
     expect(probeResult).toBeDefined();
+  });
+});
+
+describe("parked prose question answers", () => {
+  it("replays and displays the exact answer once, after the question, without borrowing an earlier tool call", async () => {
+    const [conv] = await ctx.testDb.db
+      .insert(conversations)
+      .values({ tenant_id: ctx.tenant_id, status: "active" })
+      .returning();
+    const id = conv!.id;
+    const at = (seconds: number) => new Date(Date.UTC(2026, 8, 15, 9, 0, seconds));
+    await ctx.testDb.db.insert(conversationMessages).values([
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: id,
+        role: "assistant",
+        content: { text: "Which colour?" },
+        created_at: at(2),
+      },
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: id,
+        role: "assistant",
+        content: { text: "Colour accepted." },
+        created_at: at(5),
+      },
+    ]);
+    await ctx.testDb.db.insert(conversationToolCalls).values({
+      tenant_id: ctx.tenant_id,
+      conversation_id: id,
+      tool: "ask_user_text",
+      input: { question: "An older question" },
+      output: { status: "resolved", response: { value: "older answer" } },
+      created_at: at(0),
+    });
+    const answer = "Blau.\nBitte nur bestätigen.";
+    const [elicitation] = await ctx.testDb.db
+      .insert(conversationElicitations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        conversation_id: id,
+        tool_name: "ask_user_text",
+        tool_call_id: null,
+        summary: "the assistant asked a question",
+        input: { question: "Which colour?", metadata: { source: "loop.prose_question_parked" } },
+        output: { value: answer },
+        status: "resolved",
+        created_at: at(3),
+        decided_at: at(4),
+        updated_at: at(4),
+      })
+      .returning();
+    const replay = await buildModelMessages(ctx.testDb.db, ctx.tenant_id, id);
+    expect(replay.filter((m) => m.role === "user" && m.content === answer)).toHaveLength(1);
+    const text = replay.filter((m) => typeof m.content === "string").map((m) => m.content);
+    // Provider replay intentionally drops the trailing assistant prefill.
+    expect(text).toEqual(["Which colour?", answer]);
+    const toolResults = JSON.stringify(replay.filter((m) => m.role === "tool"));
+    expect(toolResults).toContain("older answer");
+    expect(toolResults).not.toContain("Blau");
+    const detail = await getConversation(ctx.tenant_id, id, ctx.testDb.db);
+    expect(detail?.messages.map((m) => m.content)).toEqual([
+      { text: "Which colour?" },
+      { text: answer },
+      { text: "Colour accepted." },
+    ]);
+    expect(detail?.messages[1]?.id).toBe(elicitation!.id);
+    expect(
+      await buildModelMessages(ctx.testDb.db, "00000000-0000-4000-8000-000000000001", id),
+    ).toEqual([]);
+    expect(
+      await getConversation("00000000-0000-4000-8000-000000000001", id, ctx.testDb.db),
+    ).toBeNull();
+  });
+
+  it("does not replay unanswered questions, cancellations, malformed outputs or structured approvals as user text", async () => {
+    const [conv] = await ctx.testDb.db
+      .insert(conversations)
+      .values({ tenant_id: ctx.tenant_id, status: "active" })
+      .returning();
+    for (const patch of [
+      { status: "pending" as const },
+      { status: "cancelled" as const },
+      { output: { confirmed: true } },
+      { tool_name: "ask_user_confirm" },
+      { input: { question: "Unmarked legacy question" } },
+    ]) {
+      await ctx.testDb.db.insert(conversationElicitations).values({
+        tenant_id: ctx.tenant_id,
+        conversation_id: conv!.id,
+        tool_name: "ask_user_text",
+        summary: "question",
+        input: { question: "Which colour?", metadata: { source: "loop.prose_question_parked" } },
+        output: { value: "must not replay" },
+        status: "resolved",
+        decided_at: new Date("2026-09-15T09:00:00.000Z"),
+        ...patch,
+      });
+    }
+    expect(await buildModelMessages(ctx.testDb.db, ctx.tenant_id, conv!.id)).toEqual([]);
+    const detail = await getConversation(ctx.tenant_id, conv!.id, ctx.testDb.db);
+    expect(detail?.messages).toEqual([]);
   });
 });
