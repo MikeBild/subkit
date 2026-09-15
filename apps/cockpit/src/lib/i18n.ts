@@ -28,7 +28,7 @@ const EN = {
     "Continue preparing the current change. Keep the requested behavior, schedule and destinations. Perform the permitted checks and save when allowed. Do not activate or run live. Ask only for missing business input using a short dialogue. Summarize the result briefly without code or tool names.",
   "chat.schedule.pending": "Automatic runs still paused",
   "chat.schedule.effect":
-    "Answering or saving a draft does not release scheduled runs. Review the workflow's run permission.",
+    "Review what this workflow may do automatically. It needs permission before it can start.",
   "chat.schedule.review": "Review automatic runs",
   "chat.choice.expired": "Question expired",
   "chat.choice.cancelled": "Question cancelled",
@@ -45,7 +45,7 @@ const EN = {
   "chat.mode.legacy": "Existing session policy",
   "chat.mode.loading": "Loading stored mode…",
   "chat.mode.boundary":
-    "Authoring mode does not grant activation or live execution. External effects require their own valid authority.",
+    "Prepare changes here. Activation and live actions need a separate permission.",
   "authority.unsupportedSteps": "Review these steps: {steps}",
   "authority.adjustTitle": "Adjust the workflow first",
   "authority.adjustDescription":
@@ -1530,7 +1530,7 @@ const DE: Record<TranslationKey, string> = {
     "Setze die Vorbereitung der aktuellen Änderung fort. Behalte das gewünschte Verhalten, den Zeitplan und die Ziele bei. Übernimm die erlaubten Prüfungen und speichere, soweit erlaubt. Nicht aktivieren oder live ausführen. Frage nur nach fehlenden fachlichen Angaben in einem kurzen Dialog. Fasse das Ergebnis kurz ohne Code oder Tool-Namen zusammen.",
   "chat.schedule.pending": "Automatische Läufe noch blockiert",
   "chat.schedule.effect":
-    "Antworten oder Entwürfe speichern gibt den Zeitplan nicht frei. Prüfe die Ausführungsfreigabe des Workflows.",
+    "Prüfe, was dieser Ablauf automatisch tun darf. Erst mit Freigabe kann er starten.",
   "chat.schedule.review": "Automatische Läufe prüfen",
   "chat.choice.preparation.question":
     "Prüfe den Ablauf vor dem Speichern. Wir empfehlen diese Prüfung: Sie kann Fehler erkennen, ohne etwas zu veröffentlichen.",
@@ -1557,7 +1557,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.mode.legacy": "Bestehende Sitzungsrichtlinie",
   "chat.mode.loading": "Gespeicherter Modus wird geladen…",
   "chat.mode.boundary":
-    "Der Entwurfsmodus erlaubt keine Aktivierung oder Live-Ausführung. Externe Wirkungen benötigen eine eigene gültige Freigabe.",
+    "Hier bereitest du Änderungen vor. Aktivieren und live ausführen erfordern eine eigene Freigabe.",
   "authority.unsupportedSteps": "Diese Schritte prüfen: {steps}",
   "authority.adjustTitle": "Zuerst Workflow anpassen",
   "authority.adjustDescription":

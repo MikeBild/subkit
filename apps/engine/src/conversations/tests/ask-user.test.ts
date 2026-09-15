@@ -462,3 +462,37 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
     }
   });
 });
+
+test("business choices reject text walls before pausing the conversation", () => {
+  const compact = {
+    question: "Wann soll der Bericht erscheinen?",
+    options: [
+      {
+        value: "monday",
+        label: "Montags (empfohlen)",
+        description: "Die Daten sind sonntags vollständig.",
+      },
+      {
+        value: "tuesday",
+        label: "Dienstags",
+        description: "Ein zusätzlicher Tag für die Prüfung.",
+      },
+    ],
+  };
+  expect(askUserChoiceTool.inputSchema.safeParse(compact).success).toBe(true);
+  expect(
+    askUserChoiceTool.inputSchema.safeParse({ ...compact, question: "x".repeat(241) }).success,
+  ).toBe(false);
+  expect(
+    askUserChoiceTool.inputSchema.safeParse({
+      ...compact,
+      options: [{ ...compact.options[0], label: "x".repeat(81) }, compact.options[1]],
+    }).success,
+  ).toBe(false);
+  expect(
+    askUserChoiceTool.inputSchema.safeParse({
+      ...compact,
+      options: [{ ...compact.options[0], description: "x".repeat(181) }, compact.options[1]],
+    }).success,
+  ).toBe(false);
+});
