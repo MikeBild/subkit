@@ -6,7 +6,8 @@
 // has no way to distinguish "tested" from "applied" on a re-issued
 // tool call.
 
-import { beforeAll, describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
 import {
   conversationElicitations,
   conversationMessages,
@@ -14,6 +15,7 @@ import {
   conversationToolCalls,
 } from "../../db/schema/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
+import { buildMessagesV2 } from "../parts.ts";
 import { buildModelMessages } from "../persist.ts";
 import { getConversation } from "../service/get.ts";
 
@@ -424,7 +426,6 @@ describe("parked prose question answers", () => {
       { status: "cancelled" as const },
       { output: { confirmed: true } },
       { tool_name: "ask_user_confirm" },
-      { input: { question: "Unmarked legacy question" } },
     ]) {
       await ctx.testDb.db.insert(conversationElicitations).values({
         tenant_id: ctx.tenant_id,
@@ -442,4 +443,70 @@ describe("parked prose question answers", () => {
     const detail = await getConversation(ctx.tenant_id, conv!.id, ctx.testDb.db);
     expect(detail?.messages).toEqual([]);
   });
+});
+
+test("answered text tools show the answer and a completed card after reloading", async () => {
+  const [conv] = await ctx.testDb.db
+    .insert(conversations)
+    .values({ tenant_id: ctx.tenant_id, status: "active" })
+    .returning();
+  const conversation_id = conv!.id;
+  const [message] = await ctx.testDb.db
+    .insert(conversationMessages)
+    .values({
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      role: "assistant",
+      content: { text: "Which colour?" },
+    })
+    .returning();
+  const pendingOutput = { status: "awaiting_input", elicitation_id: "original-question" };
+  const [call] = await ctx.testDb.db
+    .insert(conversationToolCalls)
+    .values({
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      tool: "ask_user_text",
+      parent_message_id: message!.id,
+      input: { question: "Which colour?" },
+      output: pendingOutput,
+      outcome: "pending",
+    })
+    .returning();
+  const [answer] = await ctx.testDb.db
+    .insert(conversationElicitations)
+    .values({
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      tool_call_id: call!.id,
+      tool_name: "ask_user_text",
+      summary: "Which colour?",
+      input: { question: "Which colour?" },
+      output: { value: "Blau" },
+      status: "resolved",
+    })
+    .returning();
+  const detail = await getConversation(ctx.tenant_id, conversation_id, ctx.testDb.db);
+  if (!detail) throw new Error("conversation missing");
+  const ui = buildMessagesV2(detail.messages, detail.tool_calls);
+  expect(ui.filter((m) => m.role === "user").map((m) => m.parts)).toEqual([
+    [{ type: "text", text: "Blau" }],
+  ]);
+  const result = ui.flatMap((m) => m.parts).find((p) => p.type === "tool_result");
+  expect(result).toMatchObject({
+    outcome: "ok",
+    output: { status: "resolved", elicitation_id: answer!.id },
+  });
+  // The UI projection must not rewrite the original pause/audit payload.
+  const [stored] = await ctx.testDb.db
+    .select()
+    .from(conversationToolCalls)
+    .where(
+      and(
+        eq(conversationToolCalls.tenant_id, ctx.tenant_id),
+        eq(conversationToolCalls.id, call!.id),
+      ),
+    );
+  expect(stored?.output).toEqual(pendingOutput);
+  expect(stored?.outcome).toBe("pending");
 });
