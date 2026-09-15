@@ -15,12 +15,15 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 import { buildScopeAtStep } from "../workflows/scope-shape.ts";
+import { WorkflowDefSchema } from "../workflows/types.ts";
 import { normalizeWorkflowDraft } from "./authoring-state/normalize.ts";
 import {
   bindPersistedWorkflow,
   createEmptyDraftDocument,
   normalizeDraftDocument,
+  refreshDraftSummary,
 } from "./authoring-state.ts";
+import { canonicalJson } from "./text-line-diff.ts";
 import type { DraftDocument, WorkflowDraftDocument, WorkflowDraftStepPreview } from "./types.ts";
 
 function emptyDraft(): DraftDocument {
@@ -142,6 +145,36 @@ async function hydrateBoundWorkflow(
     (resource) => resource.kind === "workflow" && resource.id === target_workflow_id,
   );
   if (alreadyBound) {
+    // Old editor snapshots failed to advance the mutation revision. Reconcile
+    // against their exact immutable saved version, never against today's head.
+    const state = normalized.state;
+    const saved = normalized.summary?.checkpoints.find((item) => item.key === "workflow_persisted");
+    const ref = normalized.summary?.persisted_resources.find(
+      (item) => item.kind === "workflow" && item.id === target_workflow_id,
+    );
+    if (state && saved?.status === "fresh" && ref?.version_id) {
+      const [version] = await exec
+        .select({ dag: workflowVersions.dag })
+        .from(workflowVersions)
+        .where(
+          and(
+            eq(workflowVersions.tenant_id, tenant_id),
+            eq(workflowVersions.workflow_id, target_workflow_id),
+            eq(workflowVersions.id, ref.version_id),
+          ),
+        )
+        .limit(1);
+      const current = WorkflowDefSchema.safeParse(normalized.workflow);
+      const persisted = WorkflowDefSchema.safeParse(version?.dag);
+      if (
+        !current.success ||
+        !persisted.success ||
+        canonicalJson(current.data) !== canonicalJson(persisted.data)
+      ) {
+        state.workflow_mutation_seq += 1;
+        return refreshDraftSummary({ ...normalized, state });
+      }
+    }
     return normalized;
   }
   const workflowRows = await exec

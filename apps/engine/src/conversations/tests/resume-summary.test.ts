@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
   createEmptyDraftDocument,
+  withLatestPreview,
   withWorkflowDraft,
   withWorkflowPersisted,
 } from "../authoring-state.ts";
@@ -228,6 +229,28 @@ describe("saved workflow resume", () => {
     const result = buildResumeSummary({ conversation: conv(), draft });
     expect(result.stage).not.toBe("workflow_saved");
     expect(result.unsaved).toBe(true);
+  });
+  test("editing a saved and previewed workflow requires fresh checks and saving", () => {
+    const previous = withLatestPreview(saved(), { ok: true, summary: "Checked" });
+    const edited = withWorkflowDraft(previous, { ...previous.workflow, name: "Changed report" });
+    expect(edited.state?.workflow_mutation_seq).toBe(
+      (previous.state?.workflow_mutation_seq ?? 0) + 1,
+    );
+    const result = buildResumeSummary({ conversation: conv(), draft: edited });
+    expect(result.unsaved).toBe(true);
+    expect(result.stage).toBe("workflow_drafting");
+    const checked = withLatestPreview(edited, { ok: true, summary: "Checked new change" });
+    expect(buildResumeSummary({ conversation: conv(), draft: checked }).stage).toBe(
+      "workflow_ready_to_commit",
+    );
+  });
+  test("a no-op preserves the exact saved version and evidence", () => {
+    const previous = saved();
+    const unchanged = withWorkflowDraft(previous, structuredClone(previous.workflow));
+    expect(unchanged.state?.workflow_mutation_seq).toBe(previous.state?.workflow_mutation_seq);
+    expect(buildResumeSummary({ conversation: conv(), draft: unchanged }).stage).toBe(
+      "workflow_saved",
+    );
   });
   test("a real pending decision takes priority over the saved checkpoint", () => {
     const result = buildResumeSummary({

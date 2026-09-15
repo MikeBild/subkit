@@ -7,7 +7,10 @@
       "Complete routine inspection, validation, safe preview and authorized draft repair without asking",
       "next_best_actions as machine guidance, never as a user-facing menu",
       "Never offer force_commit as a routine alternative to a missing preview",
-      "Held/skipped steps remain untested"
+      "Held/skipped steps remain untested",
+      "BUSINESS DIALOGUE",
+      "Perform preparation tools yourself; never tell the user to call them.",
+      "Keep existing schedules and destinations unless asked to change them."
     ]
   }
 }
