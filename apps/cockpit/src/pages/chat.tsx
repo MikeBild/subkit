@@ -1107,7 +1107,7 @@ export function ChatPage() {
                       <ChatMessage
                         message={message}
                         messageIndex={index}
-                        pendingApprovalId={resume?.pending_approval?.tool_call_id ?? null}
+                        pendingApprovalId={pendingDecision?.toolCallId ?? null}
                         approval={pendingDecision}
                         approvalBusy={send.isPending || decide.isPending}
                         approvalError={
