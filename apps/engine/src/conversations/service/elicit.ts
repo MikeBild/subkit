@@ -15,6 +15,7 @@ import type { AnswerActor } from "../answer-actor.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import { runLoop } from "../loop.ts";
 import { applyElicitationOutcome } from "../persistence/apply-outcome.ts";
+import { isProseQuestionElicitation } from "../prose-question-answer.ts";
 import { elicitationInputForClient } from "../tools/ask-user/commit-intent.ts";
 import {
   interpretConfirmDecision,
@@ -302,7 +303,7 @@ export async function respondElicitation(
       )
       .limit(1);
     originatingToolCall = toolCall ?? null;
-  } else if (isAskUserToolName(resolved.tool_name)) {
+  } else if (isAskUserToolName(resolved.tool_name) && !isProseQuestionElicitation(resolved)) {
     // Legacy ask_user_* rows were created without a tool_call_id. We
     // infer the latest matching call so already-open dialogs can still
     // resume correctly after the fix ships.
