@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 8.0.14 — 2026-09-15
+
+### Fixed
+
+- Requested workflow names and identifiers are applied before preview and
+  automatic draft saving. The authoring skill no longer defers naming until
+  after saving, which caused a redundant metadata approval in the PROD journey.
+
 ## 8.0.13 — 2026-09-15
 
 ### Fixed

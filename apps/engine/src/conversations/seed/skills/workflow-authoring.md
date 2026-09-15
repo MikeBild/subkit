@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 14
+version: 15
 ---
 
 # Authoring Workflows In A Conversation
@@ -41,6 +41,10 @@ retries in the worst recorded session.
    unclear. Only proceed to step 2 once EVERY connector has a green probe.
 2. **`author_workflow`** (ONE call) — pass the user's goal VERBATIM plus the
    connector ids/slugs (and an `input_example` when the user supplied one).
+   Pass an explicitly requested workflow `name` and `slug` in those tool fields.
+   Inspect the resulting draft and correct requested identity BEFORE preview:
+   a green preview may save immediately. Never postpone naming to a persisted
+   `update_workflow` call, which creates an unnecessary separate decision.
    The engine grounds generation in the recorded endpoint samples + docs,
    generates the COMPLETE definition (steps, transforms, input/output
    schema, trigger), evaluates it against recorded evidence with bounded
