@@ -131,6 +131,15 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
       }
       await page.getByTestId(`${prefix}-option-${expected}`).focus();
       await page.keyboard.press("Space");
+      await page.waitForFunction(
+        (prefix) => !document.querySelector(`[data-testid="${prefix}-submit"]`)?.disabled,
+        prefix,
+      );
+      if (
+        (await page.getByTestId(`${prefix}-option-${expected}`).getAttribute("aria-pressed")) !==
+        "true"
+      )
+        throw new Error("Selected business option is not marked");
       await capture(`${surface}-ready`);
       const before = requests;
       const queueBefore = queueReads;

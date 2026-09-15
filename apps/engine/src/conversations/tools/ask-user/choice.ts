@@ -6,16 +6,17 @@ import { pauseForUserInput } from "./common.ts";
 
 const inputSchema = z
   .object({
-    question: z.string().min(1),
+    question: z.string().min(1).max(240),
     options: z
       .array(
         z.object({
           value: z.string().min(1),
-          label: z.string().min(1),
-          description: z.string().optional(),
+          label: z.string().min(1).max(80),
+          description: z.string().max(180).optional(),
         }),
       )
-      .min(2),
+      .min(2)
+      .max(7),
     /** Optional pre-selected option value — the client renders the
      *  cursor on it so the user confirms with one keypress. Must equal
      *  one of the declared option values. */
