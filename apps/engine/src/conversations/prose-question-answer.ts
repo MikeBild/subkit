@@ -26,3 +26,15 @@ export function resolvedTextAnswer(
   const output = row.output as { value?: unknown } | null;
   return typeof output?.value === "string" ? output.value : null;
 }
+
+/** Show the declared label of a completed selection, never its machine value. */
+export function resolvedChoiceAnswer(
+  row: Pick<Elicitation, "tool_name" | "status" | "input" | "output">,
+): string | null {
+  if (row.tool_name !== "ask_user_choice" || row.status !== "resolved") return null;
+  const output = row.output as { value?: unknown } | null;
+  const input = row.input as { options?: unknown } | null;
+  if (typeof output?.value !== "string" || !Array.isArray(input?.options)) return null;
+  const option = input.options.find((item) => item?.value === output.value);
+  return typeof option?.label === "string" ? option.label : null;
+}

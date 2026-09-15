@@ -7,6 +7,16 @@ export const LOCALE_TAGS: Record<Locale, string> = {
 };
 
 const EN = {
+  "chat.schedule.pending": "Automatic runs still paused",
+  "chat.schedule.effect":
+    "Answering or saving a draft does not release scheduled runs. Review the workflow's run permission.",
+  "chat.schedule.review": "Review automatic runs",
+  "chat.choice.expired": "Question expired",
+  "chat.choice.cancelled": "Question cancelled",
+  "chat.choice.title": "Your answer is needed",
+  "chat.choice.select": "Choose an option",
+  "chat.choice.submit": "Send selection",
+  "chat.choice.hint": "Choose an option in the question above to continue.",
   "chat.mode.label": "Authoring mode",
   "chat.mode.default": "System default — autonomous preparation",
   "chat.mode.auto": "Autonomous preparation",
@@ -1489,6 +1499,16 @@ const EN = {
 export type TranslationKey = keyof typeof EN;
 
 const DE: Record<TranslationKey, string> = {
+  "chat.schedule.pending": "Automatische Läufe noch blockiert",
+  "chat.schedule.effect":
+    "Antworten oder Entwürfe speichern gibt den Zeitplan nicht frei. Prüfe die Ausführungsfreigabe des Workflows.",
+  "chat.schedule.review": "Automatische Läufe prüfen",
+  "chat.choice.expired": "Rückfrage abgelaufen",
+  "chat.choice.cancelled": "Rückfrage abgebrochen",
+  "chat.choice.title": "Deine Antwort wird benötigt",
+  "chat.choice.select": "Option auswählen",
+  "chat.choice.submit": "Auswahl senden",
+  "chat.choice.hint": "Wähle eine Option in der Rückfrage oben, um fortzufahren.",
   "chat.mode.label": "Entwurfsmodus",
   "chat.mode.default": "Systemstandard — autonome Vorbereitung",
   "chat.mode.auto": "Autonome Vorbereitung",

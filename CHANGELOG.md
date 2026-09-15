@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 8.0.12 — 2026-09-15
+
+### Fixed
+
+- Chat choice questions can be answered directly in the transcript or Working
+  Context. Choices show explicit selection and submission, shared processing
+  and error states, and prevent duplicate or expired answers.
+- Completed choice questions display the selected label and an answered receipt
+  after reload. Chat responses refresh the decision queue immediately; Working
+  Context links held schedules to their remaining execution permission review.
+
 ## 8.0.1 — 2026-09-12
 
 ### Fixed
