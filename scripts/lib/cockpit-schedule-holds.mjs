@@ -108,6 +108,12 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
     if (await cards.count()) throw new Error("Holds leaked into suggestions");
     await page.getByTestId("decisions-section-decisions").click();
     await page.getByTestId("decisions-chip-all").click();
+    await page.getByTestId("decisions-chip-0").click();
+    await stand.visit(page, "decisions?bucket=blocked");
+    await card.waitFor();
+    if ((await page.getByTestId("decisions-chip-2").getAttribute("aria-pressed")) !== "true")
+      throw new Error("Overview blocked link must override a saved unrelated kind filter");
+    await page.getByTestId("decisions-chip-all").click();
     await card.getByRole("link").click();
     await page.getByTestId("detail-workflows").waitFor();
     await page.getByTestId("authority-grant-open").waitFor();

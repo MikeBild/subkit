@@ -50,6 +50,9 @@ interface Preferences {
 
 function readPreferences(): Preferences {
   try {
+    if (new URLSearchParams(window.location.search).get("bucket") === "blocked") {
+      return { kinds: ["schedule"] };
+    }
     const raw = window.localStorage.getItem(PREFERENCE_KEY);
     if (!raw) return { kinds: [] };
     const parsed = JSON.parse(raw) as Partial<Preferences>;
