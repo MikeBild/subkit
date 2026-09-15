@@ -39,6 +39,10 @@ New authoring work starts in Chat. Resource pages provide search, inspection, re
 links into a contextual conversation; they do not create a second workflow-authoring state machine.
 Approvals remain explicit and are resolved through the conversation's governed response endpoint.
 
+## Saved preparation and automatic operation
+
+A fresh saved-workflow checkpoint displays “Workflow saved” in the chat header and working context. It never means activation or execution authority. A held schedule remains an open operating decision after a chat answer or draft save. Show this distinction directly in the chat, including the remaining held-schedule count and a review link to the workflow’s execution-authority section. Pending questions take precedence; hide the operating handoff while a turn is running. Re-read the held schedules before claiming the block is resolved.
+
 ## Interaction and presentation rules
 
 The Cockpit composes the checked-in shadcn components for navigation, menus, cards, tables, sheets,

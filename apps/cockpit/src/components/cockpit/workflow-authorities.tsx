@@ -206,6 +206,7 @@ export function WorkflowAuthorities({
   const hold = holds.data?.find((schedule) => schedule.workflow_id === workflowId);
   return (
     <section
+      id="workflow-authorities"
       data-family-slot="workflow-authorities"
       data-testid="workflow-authorities"
       className="flex min-w-0 flex-col gap-3"

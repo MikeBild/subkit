@@ -2,6 +2,11 @@
 
 import { describe, expect, test } from "bun:test";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import {
+  createEmptyDraftDocument,
+  withWorkflowDraft,
+  withWorkflowPersisted,
+} from "../authoring-state.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
 import type { ConversationRecord, DraftDocument } from "../types.ts";
 
@@ -182,5 +187,59 @@ describe("buildResumeSummary", () => {
     // say how long is left is the gap this field closes.
     expect(s.pending_approval?.expires_at).toBe("2026-08-18T12:00:00.000Z");
     expect(s.one_sentence.toLowerCase()).toContain("approval");
+  });
+});
+
+describe("saved workflow resume", () => {
+  function saved() {
+    const draft = withWorkflowDraft(createEmptyDraftDocument("workflow_authoring"), {
+      name: "Weekly report",
+      slug: "weekly-report",
+      steps: [{ id: "result", kind: "transform", config: { expression: "1" } }],
+    });
+    return withWorkflowPersisted(draft, {
+      kind: "workflow",
+      id: "workflow-1",
+      name: "Weekly report",
+      slug: "weekly-report",
+      version_id: "version-6",
+      version: 6,
+      environment: null,
+      saved_at: new Date(TEST_NOW_MS).toISOString(),
+      persistence_kind: "draft",
+      draft_version_id: "version-6",
+      current_version_id: "version-5",
+    });
+  }
+  test("saving finishes preparation without claiming activation or asking to save again", () => {
+    const result = buildResumeSummary({
+      conversation: conv({ target_workflow_id: "workflow-1" }),
+      draft: saved(),
+    });
+    expect(result.stage).toBe("workflow_saved");
+    expect(result.unsaved).toBe(false);
+    expect(result.next_action).toContain("Review activation");
+    expect(result.next_action).not.toContain("Commit the workflow");
+  });
+  test("a stale saved checkpoint does not hide unsaved changes", () => {
+    const draft = saved();
+    if (!draft.state) throw new Error("missing authoring state");
+    draft.state.workflow_mutation_seq += 1;
+    const result = buildResumeSummary({ conversation: conv(), draft });
+    expect(result.stage).not.toBe("workflow_saved");
+    expect(result.unsaved).toBe(true);
+  });
+  test("a real pending decision takes priority over the saved checkpoint", () => {
+    const result = buildResumeSummary({
+      conversation: conv(),
+      draft: saved(),
+      pendingElicitation: {
+        id: "pending",
+        tool_name: "ask_user_confirm",
+        expires_at: "2099-01-01T00:00:00Z",
+      },
+    });
+    expect(result.stage).toBe("awaiting_approval");
+    expect(result.unsaved).toBe(false);
   });
 });

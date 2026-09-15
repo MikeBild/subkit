@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 8.0.15 — 2026-09-15
+
+### Fixed
+
+- Saved workflow preparation now has its own resume state instead of appearing
+  unsaved or ready to save again. Outstanding questions still take precedence.
+- Chat shows remaining blocked schedules separately from answered questions,
+  explains their count, and links directly to automatic-run permission review.
+  The handoff disappears when fresh schedule data confirms the hold is resolved.
+
 ## 8.0.14 — 2026-09-15
 
 ### Fixed

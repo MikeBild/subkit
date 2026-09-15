@@ -13,6 +13,7 @@ const STAGES = [
   { stage: "connector_saved", kind: "none", name: null },
   { stage: "workflow_drafting", kind: "workflow", name: "Monatsreport" },
   { stage: "workflow_ready_to_commit", kind: "workflow", name: "Monatsreport" },
+  { stage: "workflow_saved", kind: "workflow", name: "Monatsreport" },
   { stage: "onboarding", kind: "none", name: null },
 ] as const;
 
