@@ -1237,7 +1237,10 @@ const EN = {
   "chat.stop": "Stop",
   "chat.toggleContext": "Toggle working context",
   "chat.failed": "Action failed",
-  "chat.failedDescription": "The action did not complete. Review your connection and try again.",
+  "chat.textQuestionSummary": "A question is waiting for your answer.",
+  "chat.replyHint": "Answer the question below to continue.",
+  "chat.pendingQuestionRequired": "Answer the open question using its controls to continue.",
+  "chat.failedDescription": "The request could not be completed. Your input has been kept.",
   "chat.empty.title": "What should SubKit accomplish?",
   "chat.empty.description":
     "Describe the outcome. The agent can inspect, verify, preview and request approval here.",
@@ -2739,8 +2742,12 @@ const DE: Record<TranslationKey, string> = {
   "chat.stop": "Stoppen",
   "chat.toggleContext": "Arbeitskontext ein- oder ausblenden",
   "chat.failed": "Aktion fehlgeschlagen",
+  "chat.textQuestionSummary": "Eine Rückfrage wartet auf deine Antwort.",
+  "chat.replyHint": "Beantworte die Rückfrage unten, um fortzufahren.",
+  "chat.pendingQuestionRequired":
+    "Beantworte die offene Rückfrage über ihre Auswahl, um fortzufahren.",
   "chat.failedDescription":
-    "Die Aktion wurde nicht abgeschlossen. Prüf die Verbindung und versuch es erneut.",
+    "Die Anfrage konnte nicht abgeschlossen werden. Deine Eingabe bleibt erhalten.",
   "chat.empty.title": "Was soll SubKit erreichen?",
   "chat.empty.description":
     "Beschreib das Ergebnis. Der Agent kann hier prüfen, verifizieren, testen und Freigaben anfordern.",

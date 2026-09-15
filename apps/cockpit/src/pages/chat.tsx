@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { List, MessageSquarePlus, PanelRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ApiError,
   apiRequest,
   type Conversation,
   type ConversationReference,
@@ -709,7 +710,12 @@ export function ChatPage() {
       const connectorId = params.get("connector_id");
       return sendConversationTurn(
         activeId
-          ? { conversationId: activeId, message, references }
+          ? {
+              conversationId: activeId,
+              message,
+              references,
+              pendingElicitation: detail.data?.resume_summary?.pending_approval,
+            }
           : {
               message,
               references,
@@ -721,6 +727,11 @@ export function ChatPage() {
             },
         onEvent,
       );
+    },
+    onError: async () => {
+      // A rejected answer may refer to a question resolved in another tab.
+      // Refresh its state; never replay the person's answer automatically.
+      await queryClient.invalidateQueries({ queryKey: ["conversation", activeId] });
     },
     onSuccess: async (result) => {
       setSelection({ kind: "existing", id: result.conversation.id });
@@ -795,7 +806,7 @@ export function ChatPage() {
     return (id: string) => known.get(id) ?? null;
   }, [createdResources, referencedResources, resume?.active_target]);
   const session = useSession();
-  const status = send.isPending ? "streaming" : send.isError ? "error" : "ready";
+  const status = send.isPending ? "streaming" : "ready";
   const ordered = useMemo(
     () =>
       [...(conversations.data?.items ?? [])].sort((a, b) =>
@@ -817,11 +828,13 @@ export function ChatPage() {
   // Only an outcome the reader can act on gets a chip; the rest is the
   // resting state and the row already carries it.
   const badge =
-    activeRow?.outcome === "awaiting_you"
-      ? { label: t("chat.outcome.awaiting_you"), urgent: true }
-      : activeRow?.outcome === "in_progress" || (!activeRow && current?.status === "active")
-        ? { label: t("chat.outcome.in_progress"), urgent: false }
-        : null;
+    send.isPending || decide.isPending
+      ? { label: t("chat.outcome.in_progress"), urgent: false }
+      : resume?.pending_approval || activeRow?.outcome === "awaiting_you"
+        ? { label: t("chat.outcome.awaiting_you"), urgent: true }
+        : activeRow?.outcome === "in_progress" || (!activeRow && current?.status === "active")
+          ? { label: t("chat.outcome.in_progress"), urgent: false }
+          : null;
   // Titles are prose the model wrote: internal references never reach a row.
   const listRows = useMemo(
     () =>
@@ -977,7 +990,13 @@ export function ChatPage() {
         {send.error && (
           <Alert variant="destructive" className="m-4 mb-0" data-testid="chat-error">
             <AlertTitle>{t("chat.failed")}</AlertTitle>
-            <AlertDescription>{t("chat.failedDescription")}</AlertDescription>
+            <AlertDescription>
+              {t(
+                send.error instanceof ApiError && send.error.code === "pending_elicitation_blocked"
+                  ? "chat.pendingQuestionRequired"
+                  : "chat.failedDescription",
+              )}
+            </AlertDescription>
           </Alert>
         )}
 
@@ -1118,6 +1137,11 @@ export function ChatPage() {
           data-testid="chat-composer-area"
         >
           <div className={COLUMN}>
+            {resume?.pending_approval?.tool_name === "ask_user_text" && !send.isPending && (
+              <p className="mb-2 text-sm text-muted-foreground" data-testid="chat-reply-hint">
+                {t("chat.replyHint")}
+              </p>
+            )}
             {(send.isPending || decide.isPending) && (
               <div
                 role="status"
