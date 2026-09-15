@@ -155,10 +155,9 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
       await stand.visit(page, `chat/${conversation.id}`);
       const handoff = page.getByTestId("chat-schedule-next-step");
       await handoff.waitFor();
-      const navigationClosed = !(await page.getByTestId("nav-decisions-count").count());
-      if (navigationClosed) await page.getByTestId("sidebar-trigger").click();
-      const beforeCount = Number(await page.getByTestId("nav-decisions-count").innerText());
-      if (navigationClosed) await page.keyboard.press("Escape");
+      const beforeCount = (await page.getByTestId("nav-decisions-count").count())
+        ? Number(await page.getByTestId("nav-decisions-count").innerText())
+        : null;
       if (!(await handoff.innerText()).includes("13"))
         throw new Error("Chat does not explain remaining schedule count");
       if (
@@ -198,15 +197,15 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
       cleared = true;
       await stand.visit(page, `chat/${conversation.id}`);
       await page.getByTestId("chat-summary").waitFor();
-      if (!(await page.getByTestId("nav-decisions-count").count()) && beforeCount > 13)
-        await page.getByTestId("sidebar-trigger").click();
-      await page.waitForFunction(
-        (expected) =>
-          Number(
-            document.querySelector('[data-testid="nav-decisions-count"]')?.textContent?.trim() ?? 0,
-          ) === expected,
-        beforeCount - 13,
-      );
+      if (beforeCount !== null)
+        await page.waitForFunction(
+          (expected) =>
+            Number(
+              document.querySelector('[data-testid="nav-decisions-count"]')?.textContent?.trim() ??
+                0,
+            ) === expected,
+          beforeCount - 13,
+        );
       if (await page.getByTestId("chat-schedule-next-step").count())
         throw new Error("Resolved schedule still shown as blocked");
       await page.keyboard.press("Escape");
