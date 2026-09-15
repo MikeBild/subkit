@@ -1383,7 +1383,11 @@ export function ChatPage() {
                   <dt className="text-xs text-muted-foreground">{t("chat.schedule.pending")}</dt>
                   <dd className="mt-1 flex flex-col gap-2">
                     <p>{t("chat.schedule.effect")}</p>
-                    <a href={catalogHref("workflow", targetWorkflowId)} className="underline">
+                    <a
+                      href={catalogHref("workflow", targetWorkflowId)}
+                      className="underline"
+                      data-testid="chat-context-review-schedule"
+                    >
                       {t("chat.schedule.review")}
                     </a>
                   </dd>
