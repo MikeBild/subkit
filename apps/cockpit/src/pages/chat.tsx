@@ -553,7 +553,14 @@ function ChatMessage({
           return (
             <Tool
               key={`${message.id}-tool-${partIndex}`}
-              defaultOpen={tool.state !== "output-available"}
+              defaultOpen={
+                tool.state !== "output-available" &&
+                !(
+                  tool.type === "dynamic-tool" &&
+                  tool.toolName === "ask_user_confirm" &&
+                  tool.state === "output-denied"
+                )
+              }
               data-testid={`chat-message-${messageIndex}-tool-${partIndex}`}
             >
               {tool.type === "dynamic-tool" ? (
