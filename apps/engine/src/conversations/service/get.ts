@@ -13,7 +13,7 @@ import {
 } from "../../db/schema/index.ts";
 import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
 import { loadDraft } from "../draft.ts";
-import { proseQuestionAnswer } from "../prose-question-answer.ts";
+import { resolvedTextAnswer } from "../prose-question-answer.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
 import type {
   ConversationCreatedResource,
@@ -90,7 +90,7 @@ export async function getConversation(
   const transcriptMessages = [
     ...msgs,
     ...textAnswers.flatMap((answer) => {
-      const text = proseQuestionAnswer(answer);
+      const text = resolvedTextAnswer(answer);
       return text === null
         ? []
         : [
@@ -105,6 +105,13 @@ export async function getConversation(
           ];
     }),
   ].sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
+  const answeredTextCalls = new Map(
+    textAnswers.flatMap((answer) =>
+      answer.tool_call_id && resolvedTextAnswer(answer) !== null
+        ? [[answer.tool_call_id, answer.id] as const]
+        : [],
+    ),
+  );
   const conversationRecord = rowToRecord(row);
   const pendingElicitationRows = await exec
     .select()
@@ -168,13 +175,19 @@ export async function getConversation(
         conversation_id: c.conversation_id,
         tool: c.tool,
         input: c.input,
-        output: c.output,
+        output:
+          c.tool === "ask_user_text" && answeredTextCalls.has(c.id)
+            ? { status: "resolved", elicitation_id: answeredTextCalls.get(c.id) }
+            : c.output,
         approval_required: c.approval_required,
         created_at: c.created_at.toISOString(),
         parent_message_id: c.parent_message_id,
         confirmation_state: c.confirmation_state,
         approved_at: c.approved_at ? c.approved_at.toISOString() : null,
-        outcome: (c.outcome as ConversationToolCallRecord["outcome"]) ?? null,
+        outcome:
+          c.tool === "ask_user_text" && answeredTextCalls.has(c.id)
+            ? "ok"
+            : ((c.outcome as ConversationToolCallRecord["outcome"]) ?? null),
       }),
     ),
     draft,

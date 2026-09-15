@@ -16,7 +16,13 @@ export function isProseQuestionElicitation(
 
 /** Text only: confirmations, forms and unanswered questions are never chat messages. */
 export function proseQuestionAnswer(row: Elicitation): string | null {
-  if (!isProseQuestionElicitation(row) || row.status !== "resolved") return null;
+  return isProseQuestionElicitation(row) ? resolvedTextAnswer(row) : null;
+}
+
+export function resolvedTextAnswer(
+  row: Pick<Elicitation, "tool_name" | "status" | "output">,
+): string | null {
+  if (row.tool_name !== "ask_user_text" || row.status !== "resolved") return null;
   const output = row.output as { value?: unknown } | null;
   return typeof output?.value === "string" ? output.value : null;
 }
