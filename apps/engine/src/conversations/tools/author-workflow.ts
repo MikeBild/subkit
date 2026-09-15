@@ -26,6 +26,20 @@ const inputSchema = z
       .describe(
         "The user's goal VERBATIM — what this workflow should achieve from the end-user's perspective. Quoted into the generation prompt and stashed on the draft for the preview judge.",
       ),
+    name: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "The exact workflow name requested by the user. Applied to the draft before preview and saving; never defer naming to a persisted metadata update.",
+      ),
+    slug: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9-]*$/)
+      .optional()
+      .describe(
+        "The exact lowercase workflow identifier requested by the user, when supplied. Preserved over the generated identifier before preview.",
+      ),
     connector_ids: z
       .array(z.string())
       .default([])
@@ -46,12 +60,12 @@ const inputSchema = z
 export const authorWorkflowTool: ConversationTool = {
   name: "author_workflow",
   description:
-    "THE canonical entry for authoring a NEW or fully-replaced workflow. One call runs the engine-side pipeline — ground in the named connectors (recorded endpoint samples + docs), generate the COMPLETE definition (JavaScript transforms by default), evaluate it against recorded evidence with bounded auto-repair — and returns the evaluated draft. Then call dry_run_workflow.",
+    "THE canonical entry for authoring a NEW or fully-replaced workflow. One call runs the engine-side pipeline — ground in the named connectors (recorded endpoint samples + docs), generate the COMPLETE definition (JavaScript transforms by default), evaluate it against recorded evidence with bounded auto-repair — and returns the evaluated draft. Set the requested name and slug on the draft, inspect it, then call dry_run_workflow.",
   use_case:
     "Use whenever the user asks to build/create/author a workflow. This is THE builder; apply targeted follow-up edits afterwards with edit_workflow_patch.",
   important_notes: [
     "Writes to the conversation draft only — dry_run_workflow is the next step; a green, judged preview auto-commits.",
-    "Pass the user's goal VERBATIM. It grounds generation and drives the post-preview judge.",
+    "Pass the user's goal VERBATIM and pass any explicitly requested name/slug in their fields. Verify them before preview, which can save immediately. Do not defer requested naming to update_workflow after saving.",
     "When the user supplied (or you can infer) an example input payload, pass it as `input_example`. It is persisted as the workflow's sample and becomes the input contract the run/dry-run present — a far more reliable idiom than hand-writing an input_schema. A run/dry-run TEST payload is a separate thing and is never written into the workflow.",
     "Name every connector the workflow should call (ids or slugs) — their recorded endpoint samples and docs ground the generation. Probe a connector first when it has never been called; recorded shapes make the difference between a grounded draft and a guessed one.",
     "The result's `recorded_eval` may carry findings and verified `repair` proposals. The draft is stashed regardless — apply repairs via edit_workflow_patch, then preview.",
@@ -99,6 +113,10 @@ export const authorWorkflowTool: ConversationTool = {
       };
     }
 
+    // User-specified identity is authoritative, not a suggestion to the generation model.
+    if (args.name !== undefined) result.definition.name = args.name;
+    if (args.slug !== undefined) result.definition.slug = args.slug;
+
     emitRecordedEvalSignals({
       tool: "author_workflow",
       conversation_id: ctx.conversation_id,
@@ -130,10 +148,18 @@ export const authorWorkflowTool: ConversationTool = {
     // contract survives into `run_workflow` / the `wf_<slug>` tool schema. This
     // is the author's canonical example; a run/dry-run TEST payload is separate
     // and is never written into the definition. `null` is treated as "unset".
-    if (args.input_example !== undefined && args.input_example !== null) {
+    if (
+      args.name !== undefined ||
+      args.slug !== undefined ||
+      (args.input_example !== undefined && args.input_example !== null)
+    ) {
       const withSample = {
         ...getWorkflowDraft(ctx.getDraft()),
-        input_schema_sample: args.input_example,
+        ...(args.name !== undefined ? { name: args.name } : {}),
+        ...(args.slug !== undefined ? { slug: args.slug } : {}),
+        ...(args.input_example !== undefined && args.input_example !== null
+          ? { input_schema_sample: args.input_example }
+          : {}),
       };
       await ctx.setDraft(
         withWorkflowDraft(ctx.getDraft(), withSample, "workflow_authored_one_shot"),

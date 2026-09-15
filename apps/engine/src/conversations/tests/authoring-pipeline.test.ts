@@ -526,6 +526,30 @@ describe("author_workflow — tool envelope", () => {
     },
   );
 
+  tw(
+    "explicit identity is retained before preview even when generation chooses another name",
+    async () => {
+      getMockProvider().generateOverrides.generate = () => structuredClone(VALID_DEF);
+      const toolCtx = makeCtx();
+      const result = await authorWorkflowTool.execute(toolCtx, {
+        goal: "Prepare the requested workflow",
+        name: "Requested report",
+        slug: "requested-report",
+      });
+      expect(result.ok).toBe(true);
+      expect(result.data).toMatchObject({
+        definition: { name: "Requested report", slug: "requested-report" },
+        workflow: { name: "Requested report", slug: "requested-report" },
+        persistence: "draft_only",
+      });
+      expect(toolCtx.getDraft().workflow).toMatchObject({
+        name: "Requested report",
+        slug: "requested-report",
+      });
+      expect(fetchCalls).toBe(0);
+    },
+  );
+
   tw("generation failure surfaces as a typed envelope, not a throw", async () => {
     getMockProvider().generateOverrides.generate = () => ({ nope: true });
     const toolCtx = makeCtx();
