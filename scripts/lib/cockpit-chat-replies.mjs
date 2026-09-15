@@ -9,6 +9,7 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
   const pending = {
     id: "text-question",
     tool_name: "ask_user_text",
+    tool_call_id: "text-question-call",
     summary: "Which colour?",
     expires_at: "2099-01-01T00:00:00Z",
   };
@@ -24,6 +25,31 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
     route.fulfill({
       json: {
         ...original,
+        tool_calls: [
+          { id: pending.tool_call_id, tool: kind, input: { question: pending.summary } },
+        ],
+        messages: [
+          {
+            id: "question-message",
+            role: "assistant",
+            created_at: conversation.updated_at,
+            parts: [
+              { type: "text", text: pending.summary },
+              {
+                type: "tool_call",
+                call_id: pending.tool_call_id,
+                tool: kind,
+                input: { question: pending.summary },
+              },
+              {
+                type: "tool_result",
+                call_id: pending.tool_call_id,
+                output: { status: waiting ? "awaiting_input" : "resolved" },
+                outcome: waiting ? "pending" : "ok",
+              },
+            ],
+          },
+        ],
         conversation: { ...original.conversation, status: waiting ? "awaiting_input" : "active" },
         resume_summary: {
           ...original.resume_summary,
@@ -64,6 +90,13 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
       await input.waitFor();
       if (!raced) {
         await page.getByTestId("chat-reply-hint").waitFor();
+        if (
+          await page
+            .getByTestId("chat-transcript")
+            .locator('[data-testid$="-approve"], [data-testid$="-decline"]')
+            .count()
+        )
+          throw new Error("A text question displays binary approval actions");
         await capture("question");
       }
       await input.fill("Blau, bitte nur vorbereiten.");
