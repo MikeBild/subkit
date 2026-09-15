@@ -166,11 +166,14 @@ async function hydrateBoundWorkflow(
         .limit(1);
       const current = WorkflowDefSchema.safeParse(normalized.workflow);
       const persisted = WorkflowDefSchema.safeParse(version?.dag);
-      if (
-        !current.success ||
-        !persisted.success ||
-        canonicalJson(current.data) !== canonicalJson(persisted.data)
-      ) {
+      // Legacy definitions can predate today's validation schema. Identical
+      // stored content is still saved; schema validity is a separate check.
+      const sameDefinition =
+        current.success && persisted.success
+          ? canonicalJson(current.data) === canonicalJson(persisted.data)
+          : version &&
+            canonicalJson(normalized.workflow) === canonicalJson(workflowDraftFromDag(version.dag));
+      if (!sameDefinition) {
         state.workflow_mutation_seq += 1;
         return refreshDraftSummary({ ...normalized, state });
       }
