@@ -136,7 +136,7 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
         prefix,
       );
       if (
-        (await page.getByTestId(`${prefix}-option-${expected}`).getAttribute("aria-pressed")) !==
+        (await page.getByTestId(`${prefix}-option-${expected}`).getAttribute("aria-checked")) !==
         "true"
       )
         throw new Error("Selected business option is not marked");
