@@ -123,3 +123,14 @@ describe("cockpit chat resume", () => {
     );
   });
 });
+
+test("business choices are questions rather than authority requests in the chat header", () => {
+  for (const t of [de, en]) {
+    const line = resumeSummaryLine(
+      { stage: "awaiting_approval", pending_approval: { tool_name: "ask_user_choice" } },
+      t,
+    );
+    expect(line).toBe(t("chat.choice.hint"));
+    expect(line).not.toMatch(/Freigabe|approval/i);
+  }
+});

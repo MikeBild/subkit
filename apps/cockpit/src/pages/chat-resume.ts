@@ -96,6 +96,7 @@ export function resumeSummaryLine(
   t: Translate,
 ): string {
   if (!resume) return t("chat.summary");
+  if (resume.pending_approval?.tool_name === "ask_user_choice") return t("chat.choice.hint");
   if (resume.pending_approval?.tool_name === "ask_user_text") return t("chat.textQuestionSummary");
   const key = SENTENCE_KEYS[resume.stage?.toLowerCase() ?? ""];
   if (!key) return t("chat.summary.inProgress");
