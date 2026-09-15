@@ -3,7 +3,7 @@
 // service operation, so it lives in its own file with no upstream
 // service-layer imports.
 
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
 import {
   conversationElicitations,
@@ -15,6 +15,7 @@ import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
 import { loadDraft } from "../draft.ts";
 import { resolvedTextAnswer } from "../prose-question-answer.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
+import { interpretConfirmDecision } from "../tools/ask-user/interpret-confirm.ts";
 import type {
   ConversationCreatedResource,
   ConversationDetail,
@@ -75,17 +76,43 @@ export async function getConversation(
     )
     .orderBy(asc(conversationToolCalls.created_at));
   const draft = await loadDraft(tenant_id, id, exec);
-  const textAnswers = await exec
+  const answeredElicitations = await exec
     .select()
     .from(conversationElicitations)
     .where(
       and(
         eq(conversationElicitations.tenant_id, tenant_id),
         eq(conversationElicitations.conversation_id, id),
-        eq(conversationElicitations.status, "resolved"),
-        eq(conversationElicitations.tool_name, "ask_user_text"),
+        or(
+          and(
+            eq(conversationElicitations.status, "resolved"),
+            eq(conversationElicitations.tool_name, "ask_user_text"),
+          ),
+          and(
+            inArray(conversationElicitations.status, ["resolved", "cancelled", "timeout"]),
+            eq(conversationElicitations.tool_name, "ask_user_confirm"),
+          ),
+        ),
       ),
     );
+  const textAnswers = answeredElicitations.filter((answer) => answer.tool_name === "ask_user_text");
+  const confirmations = new Map(
+    answeredElicitations.flatMap((answer) =>
+      answer.tool_name === "ask_user_confirm" && answer.tool_call_id
+        ? [
+            [
+              answer.tool_call_id,
+              {
+                ...answer,
+                accepted:
+                  answer.status === "resolved" &&
+                  interpretConfirmDecision(answer.output) === "confirmed",
+              },
+            ] as const,
+          ]
+        : [],
+    ),
+  );
   // Project the canonical answer row into the transcript; do not duplicate it in storage.
   const transcriptMessages = [
     ...msgs,
@@ -128,6 +155,7 @@ export async function getConversation(
   const pendingElicitation = pendingElicitationRows[0]
     ? {
         id: pendingElicitationRows[0].id,
+        tool_call_id: pendingElicitationRows[0].tool_call_id,
         tool_name: pendingElicitationRows[0].tool_name,
         summary:
           typeof (pendingElicitationRows[0].input as { summary?: unknown })?.summary === "string"
@@ -178,7 +206,17 @@ export async function getConversation(
         output:
           c.tool === "ask_user_text" && answeredTextCalls.has(c.id)
             ? { status: "resolved", elicitation_id: answeredTextCalls.get(c.id) }
-            : c.output,
+            : confirmations.has(c.id)
+              ? {
+                  status:
+                    confirmations.get(c.id)?.status === "resolved"
+                      ? confirmations.get(c.id)?.accepted
+                        ? "resolved"
+                        : "declined"
+                      : confirmations.get(c.id)?.status,
+                  elicitation_id: confirmations.get(c.id)?.id,
+                }
+              : c.output,
         approval_required: c.approval_required,
         created_at: c.created_at.toISOString(),
         parent_message_id: c.parent_message_id,
@@ -187,7 +225,11 @@ export async function getConversation(
         outcome:
           c.tool === "ask_user_text" && answeredTextCalls.has(c.id)
             ? "ok"
-            : ((c.outcome as ConversationToolCallRecord["outcome"]) ?? null),
+            : confirmations.has(c.id)
+              ? confirmations.get(c.id)?.accepted
+                ? "ok"
+                : "denied"
+              : ((c.outcome as ConversationToolCallRecord["outcome"]) ?? null),
       }),
     ),
     draft,
