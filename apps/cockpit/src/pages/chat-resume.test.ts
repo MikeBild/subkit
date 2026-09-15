@@ -101,6 +101,21 @@ describe("cockpit chat resume", () => {
     expect(labels).not.toContain(translate("de", "chat.context.ready"));
   });
 
+  test("distinguishes a text question from an execution approval", () => {
+    expect(
+      resumeSummaryLine(
+        { stage: "awaiting_approval", pending_approval: { tool_name: "ask_user_text" } },
+        de,
+      ),
+    ).toBe(translate("de", "chat.textQuestionSummary"));
+    expect(
+      resumeSummaryLine(
+        { stage: "awaiting_approval", pending_approval: { tool_name: "ask_user_confirm" } },
+        de,
+      ),
+    ).not.toBe(translate("de", "chat.textQuestionSummary"));
+  });
+
   test("keeps the English catalog usable for an English reader", () => {
     expect(resumeSummaryLine({ stage: "connector_saved", active_target: null }, en)).toBe(
       translate("en", "chat.resume.connectorSaved"),

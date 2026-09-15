@@ -14,6 +14,7 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string | null;
   readonly traceId: string | null;
+  readonly details: Record<string, unknown> | null;
 
   constructor(status: number, body: unknown, traceId: string | null) {
     const record = isRecord(body) ? body : {};
@@ -22,6 +23,7 @@ export class ApiError extends Error {
     this.status = status;
     this.code = typeof record.code === "string" ? record.code : null;
     this.traceId = traceId;
+    this.details = isRecord(record.details) ? record.details : null;
   }
 }
 
@@ -173,20 +175,52 @@ export type SendConversationTurnInput = {
   message: string;
   references?: readonly ConversationReference[];
 } & (
-  | { conversationId: string; target?: never }
+  | {
+      conversationId: string;
+      target?: never;
+      pendingElicitation?: { id: string; tool_name: string } | null;
+    }
   | { conversationId?: null; target?: ConversationTarget; permissionMode?: "auto" | "ask" | "plan" }
 );
 
-export function sendConversationTurn(
+export async function sendConversationTurn(
   input: SendConversationTurnInput,
   onEvent?: (event: ConversationStreamEvent) => void,
 ): Promise<ConversationRun> {
   if (input.conversationId) {
-    return streamConversation(
-      `/v1/conversations/${encodeURIComponent(input.conversationId)}/messages`,
-      { message: input.message, ...withReferences(input.references) },
-      onEvent,
-    );
+    const path = `/v1/conversations/${encodeURIComponent(input.conversationId)}`;
+    const answerText = (id: string) =>
+      streamConversation(
+        `${path}/elicitations/${encodeURIComponent(id)}/respond`,
+        { output: { value: input.message } },
+        onEvent,
+      );
+    // A typed reply answers a text question; it never becomes a boolean approval.
+    if (input.pendingElicitation?.tool_name === "ask_user_text") {
+      return answerText(input.pendingElicitation.id);
+    }
+    try {
+      return await streamConversation(
+        `${path}/messages`,
+        { message: input.message, ...withReferences(input.references) },
+        onEvent,
+      );
+    } catch (error) {
+      // A question may have appeared after the detail snapshot was read. The
+      // append guard did not persist the message, so resolve that exact prompt once.
+      const pending =
+        error instanceof ApiError && error.code === "pending_elicitation_blocked"
+          ? error.details?.pending_elicitation
+          : null;
+      if (
+        isRecord(pending) &&
+        pending.tool_name === "ask_user_text" &&
+        typeof pending.id === "string"
+      ) {
+        return answerText(pending.id);
+      }
+      throw error;
+    }
   }
   return streamConversation(
     "/v1/conversations",

@@ -265,6 +265,11 @@ immediately. The transcript follows growing output at the live edge; scrolling b
 following. Sending another message or jumping to the latest message resumes it. Streaming
 assistant rows are not top-aligned turn anchors. Switching conversations opens at the latest message.
 
+Text entered while an `ask_user_text` question is pending answers that exact question through
+the elicitation response endpoint. A stale detail snapshot can recover once from the typed append
+guard; ordinary failures are never replayed. Text answers are never converted into boolean
+approvals. Pending questions receive an actionable hint, not a connection-failure message.
+
 ### Product-family evidence
 
 The shared contract is copied into each repository; no Cockpit imports another product at runtime.
