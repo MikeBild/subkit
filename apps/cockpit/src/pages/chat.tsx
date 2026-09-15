@@ -1114,7 +1114,7 @@ export function ChatPage() {
           !pendingDecision &&
           !pendingChoice &&
           status === "ready" && (
-            <Alert className="m-4 mb-0" data-testid="chat-schedule-next-step">
+            <Alert className="mx-4 mt-4 w-auto shrink-0" data-testid="chat-schedule-next-step">
               <AlertTitle>{t("chat.schedule.pending")}</AlertTitle>
               <AlertDescription>
                 <p>{t("chat.schedule.effect")}</p>
