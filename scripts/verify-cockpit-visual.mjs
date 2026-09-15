@@ -6,6 +6,7 @@ import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
 import { verifyChatApprovals } from "./lib/cockpit-chat-approvals.mjs";
+import { verifyChatChoices } from "./lib/cockpit-chat-choices.mjs";
 import { verifyChatReplies } from "./lib/cockpit-chat-replies.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
@@ -2115,6 +2116,9 @@ for (const locale of variants) {
       shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
         fullPage: false,
       }),
+    );
+    await verifyChatChoices(page, stand, conversation, locale.name, (state) =>
+      shoot(page, `${locale.artifact}-${viewport.name}-chat-choice-${state}`, { fullPage: false }),
     );
     await verifyChatReplies(page, stand, conversation, locale.name, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-chat-reply-${state}`, { fullPage: false }),
