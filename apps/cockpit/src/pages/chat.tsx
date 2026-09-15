@@ -66,6 +66,7 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
+  useMessageScroller,
 } from "@/components/ui/message-scroller";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -82,6 +83,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Spinner } from "@/components/ui/spinner";
 import { formatDateTime, formatRelativeTime, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { nameIdentifiers, type ResolvedIdentifier } from "@/lib/identifiers";
@@ -601,6 +603,14 @@ function ChatMessage({
   );
 }
 
+function FollowSubmittedTurn({ submittedAt }: { submittedAt: number }) {
+  const { scrollToEnd } = useMessageScroller();
+  useEffect(() => {
+    if (submittedAt) scrollToEnd({ behavior: "instant" });
+  }, [submittedAt, scrollToEnd]);
+  return null;
+}
+
 function selectionFromPath(initialPrompt: string): ConversationSelection {
   if (initialPrompt || window.location.pathname.endsWith("/chat/new")) return { kind: "new" };
   const match = window.location.pathname.match(/\/chat\/([^/?]+)$/);
@@ -971,7 +981,8 @@ export function ChatPage() {
           </Alert>
         )}
 
-        <MessageScrollerProvider>
+        <MessageScrollerProvider key={activeId ?? "new"} autoScroll>
+          <FollowSubmittedTurn submittedAt={send.submittedAt} />
           <MessageScroller className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
             {/* `both-edges` is the operative part, the same as the shared page
                 frame: the primitive's default utility sets plain `stable`, so
@@ -982,7 +993,7 @@ export function ChatPage() {
               style={{ scrollbarGutter: "stable both-edges" }}
             >
               <MessageScrollerContent className={COLUMN}>
-                {messages.length === 0 ? (
+                {messages.length === 0 && !send.isPending ? (
                   // `place-items-center` on a box taller than the scroller splits
                   // the overflow between top and bottom, and the top half is
                   // clipped — which is where the icon sat. `m-auto` centres the
@@ -1004,10 +1015,7 @@ export function ChatPage() {
                   </div>
                 ) : (
                   messages.map((message, index) => (
-                    <MessageScrollerItem
-                      key={message.id}
-                      scrollAnchor={index === messages.length - 1}
-                    >
+                    <MessageScrollerItem key={message.id}>
                       <ChatMessage
                         message={message}
                         messageIndex={index}
@@ -1020,8 +1028,19 @@ export function ChatPage() {
                     </MessageScrollerItem>
                   ))
                 )}
+                {send.isPending && send.variables?.message && (
+                  <MessageScrollerItem>
+                    <Message align="end">
+                      <MessageContent>
+                        <Bubble>
+                          <BubbleContent>{send.variables.message}</BubbleContent>
+                        </Bubble>
+                      </MessageContent>
+                    </Message>
+                  </MessageScrollerItem>
+                )}
                 {liveCalls.length > 0 && (
-                  <MessageScrollerItem scrollAnchor={!streamedText && streamedDiffs.length === 0}>
+                  <MessageScrollerItem>
                     {/* `liveTick` is the render trigger: the interval bumps it so
                         the ages below re-read the clock. Reading it here is what
                         makes that dependency visible instead of incidental. */}
@@ -1054,7 +1073,7 @@ export function ChatPage() {
                   </MessageScrollerItem>
                 )}
                 {streamedDiffs.length > 0 && (
-                  <MessageScrollerItem scrollAnchor={!streamedText}>
+                  <MessageScrollerItem>
                     <div className="grid gap-3" data-testid="chat-streamed-diffs">
                       {streamedDiffs.map((diff, index) => (
                         <DiffCard
@@ -1070,7 +1089,7 @@ export function ChatPage() {
                   </MessageScrollerItem>
                 )}
                 {streamedText && (
-                  <MessageScrollerItem scrollAnchor>
+                  <MessageScrollerItem>
                     <Message align="start">
                       <MessageContent>
                         <Bubble variant="ghost">
@@ -1099,6 +1118,25 @@ export function ChatPage() {
           data-testid="chat-composer-area"
         >
           <div className={COLUMN}>
+            {(send.isPending || decide.isPending) && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="mb-2 flex items-center gap-2 text-sm text-muted-foreground"
+                data-testid="chat-activity"
+              >
+                <Spinner aria-hidden="true" aria-label={undefined} />
+                <span>
+                  {t(
+                    anyLive
+                      ? "chat.activity.working"
+                      : streamedText
+                        ? "chat.activity.responding"
+                        : "chat.activity.thinking",
+                  )}
+                </span>
+              </div>
+            )}
             <PromptInputProvider
               key={activeId ?? "new"}
               initialInput={selection.kind === "new" ? initialPrompt : ""}
