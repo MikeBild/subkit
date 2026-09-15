@@ -14,6 +14,7 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
+import { workflowUsesSandboxedJs } from "../workflows/runtime-annotation.ts";
 import { buildScopeAtStep } from "../workflows/scope-shape.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
 import { normalizeWorkflowDraft } from "./authoring-state/normalize.ts";
@@ -166,6 +167,17 @@ async function hydrateBoundWorkflow(
         .limit(1);
       const current = WorkflowDefSchema.safeParse(normalized.workflow);
       const persisted = WorkflowDefSchema.safeParse(version?.dag);
+      // Saving a JavaScript workflow adds a runtime stamp that was never an
+      // authored edit. Compare with that exact saved stamp, not today's
+      // runtime version; retain explicit runtime edits as real differences.
+      if (
+        current.success &&
+        persisted.success &&
+        current.data.runtime === undefined &&
+        workflowUsesSandboxedJs(current.data)
+      ) {
+        current.data.runtime = persisted.data.runtime;
+      }
       // Legacy definitions can predate today's validation schema. Identical
       // stored content is still saved; schema validity is a separate check.
       const sameDefinition =
