@@ -234,6 +234,10 @@ export const workflowsSchedules = pgTable(
     // 10-minute outage cannot fan-out into 10 instant repeats of a
     // `* * * * *` schedule. NULL means "never fired" — first enqueue is
     // unconditional.
+    admission_hold: jsonb("admission_hold").$type<{
+      reason_code: "execution_authority_required" | "execution_authority_unavailable";
+      observed_at: string;
+    }>(),
     last_enqueued_at: timestamp("last_enqueued_at", { withTimezone: true }),
     ...timestamps,
   },

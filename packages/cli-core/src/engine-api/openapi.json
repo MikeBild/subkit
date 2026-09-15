@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "8.0.1",
+    "version": "8.0.2",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -6554,6 +6554,29 @@
           "workflow_id": {
             "type": "string"
           },
+          "admission_hold": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "reason_code": {
+                "type": "string",
+                "enum": [
+                  "execution_authority_required",
+                  "execution_authority_unavailable"
+                ]
+              },
+              "observed_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "reason_code",
+              "observed_at"
+            ]
+          },
           "workflow_slug": {
             "type": [
               "string",
@@ -6592,6 +6615,7 @@
         "required": [
           "id",
           "workflow_id",
+          "admission_hold",
           "workflow_slug",
           "workflow_name",
           "cron",

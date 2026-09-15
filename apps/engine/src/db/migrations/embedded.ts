@@ -78,6 +78,7 @@ import sql0057ShortZemo from "./0057_short_zemo.sql" with { type: "text" };
 import sql0058CalmNightThrasher from "./0058_calm_night_thrasher.sql" with { type: "text" };
 import sql0059DecisionEvidenceCleanup from "./0059_decision_evidence_cleanup.sql" with { type: "text" };
 import sql0060DecisionEvidenceIdentity from "./0060_decision_evidence_identity.sql" with { type: "text" };
+import sql0061CalmTheExecutioner from "./0061_calm_the_executioner.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -163,6 +164,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0058_calm_night_thrasher": sql0058CalmNightThrasher,
   "0059_decision_evidence_cleanup": sql0059DecisionEvidenceCleanup,
   "0060_decision_evidence_identity": sql0060DecisionEvidenceIdentity,
+  "0061_calm_the_executioner": sql0061CalmTheExecutioner,
 };
 
 const journal = journalMeta as unknown as Journal;

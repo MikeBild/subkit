@@ -711,6 +711,7 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
 
     if (path === "/v1/cockpit/bootstrap") return json(route, BOOTSTRAP);
     if (path === "/v1/operator/health-digest") return json(route, healthDigest(gateOpen));
+    if (path === "/v1/schedules") return json(route, { schedules: [], total: 0 });
     if (path === "/v1/operational-overview") return json(route, operationalOverview(gateOpen));
 
     // The three decision sources follow `gateOpen` too: the badge, Zone A and
