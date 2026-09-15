@@ -168,6 +168,11 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       UNION ALL
       SELECT created_at, FALSE AS blocking FROM skill_candidates
        WHERE tenant_id = ${tenantId} AND status = 'proposed' AND pattern_kind NOT IN ('failure_pattern', 'authoring_capability')
+      UNION ALL
+      SELECT s.created_at, TRUE AS blocking FROM workflows_schedules s
+        JOIN workflows w ON w.id = s.workflow_id AND w.tenant_id = s.tenant_id
+       WHERE s.tenant_id = ${tenantId} AND NOT s.paused AND s.admission_hold IS NOT NULL
+         AND w.deleted_at IS NULL AND w.lifecycle <> 'archived'
     ), finished AS (
       SELECT status, source_kind, request_source FROM executions
        WHERE tenant_id = ${tenantId} AND finished_at >= now() - interval '24 hours'
@@ -209,19 +214,22 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
     ? Math.round(blockingScore * 0.5 + successRatio * 100 * 0.3 + connectorRatio * 100 * 0.2)
     : null;
   const healthState: HealthState =
-    healthScore === null
-      ? "unknown"
-      : healthScore >= 90
-        ? "healthy"
-        : healthScore >= 70
-          ? "limited"
-          : "critical";
+    blocked > 0
+      ? "critical"
+      : healthScore === null
+        ? "unknown"
+        : healthScore >= 90
+          ? "healthy"
+          : healthScore >= 70
+            ? "limited"
+            : "critical";
   const core = (input: Parameters<typeof metric>[0]) => metric({ ...input, required: true });
   const blockedMetric = core({
     id: "decisions.blocked",
     label: "Blocked",
-    definition: "Conversations waiting for human input before work can continue.",
-    relevance: "The authoring loop is paused until a person answers.",
+    definition: "Scheduled workflows whose last admission was held for execution review.",
+    relevance:
+      "Review the workflow effects and its finite execution authority; no run is queued while held.",
     kind: "count",
     value: blocked,
     unit: "count",
@@ -281,6 +289,13 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       labelId: "operational.open_health",
       prometheus: "subkit_operational_health_score",
     }),
+    severity: (healthState === "critical"
+      ? "critical"
+      : healthState === "healthy"
+        ? "healthy"
+        : healthState === "limited"
+          ? "urgent"
+          : "unknown") as Severity,
     state: healthState,
     components: [
       {

@@ -569,6 +569,7 @@ export const AuditAction = {
   WEBHOOK_TRIGGER_FAILED_VERIFICATION: "webhook.trigger.failed_verification",
   WEBHOOK_TRIGGER_UNBOUND: "webhook.trigger.unbound",
   SCHEDULE_TRIGGER_BOUND: "schedule.trigger.bound",
+  SCHEDULE_ADMISSION_CHANGED: "schedule.admission.changed",
   SCHEDULE_TRIGGER_FIRED: "schedule.trigger.fired",
   SCHEDULE_TRIGGER_UNBOUND: "schedule.trigger.unbound",
 

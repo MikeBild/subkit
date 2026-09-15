@@ -183,6 +183,32 @@ export function DecisionsPage() {
       }
     >
       <div className="grid gap-6">
+        {section === "decisions" &&
+          queue.heldSchedules.map((schedule) => (
+            <Alert key={schedule.id} variant="destructive" data-testid="schedule-admission-held">
+              <AlertTitle>
+                {schedule.workflow_name ?? schedule.workflow_slug ?? t("schedules.held.title")}
+              </AlertTitle>
+              <AlertDescription>
+                <p>
+                  {t(
+                    schedule.admission_hold?.reason_code === "execution_authority_required"
+                      ? "schedules.held.concrete"
+                      : "schedules.held.authority",
+                  )}
+                </p>
+                <p>
+                  {schedule.cron} · {schedule.timezone} · {schedule.execution_mode}
+                </p>
+                <a
+                  href={`/cockpit/workflows/${encodeURIComponent(schedule.workflow_id)}`}
+                  className="underline underline-offset-4"
+                >
+                  {t("schedules.held.review")}
+                </a>
+              </AlertDescription>
+            </Alert>
+          ))}
         <fieldset className="flex flex-wrap gap-2" aria-label={t("nav.decisions")}>
           {(["decisions", "suggestions", "questions"] as const).map((value) => (
             <Button
@@ -328,7 +354,7 @@ export function DecisionsPage() {
                       {t("decisions.showAll")}
                     </Button>
                   </div>
-                ) : (
+                ) : queue.heldSchedules.length > 0 ? null : (
                   <div
                     className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
                     data-testid="decisions-empty"

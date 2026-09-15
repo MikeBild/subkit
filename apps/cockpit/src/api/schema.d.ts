@@ -17684,6 +17684,12 @@ export interface components {
         ScheduleEntry: {
             id: string;
             workflow_id: string;
+            admission_hold: {
+                /** @enum {string} */
+                reason_code: "execution_authority_required" | "execution_authority_unavailable";
+                /** Format: date-time */
+                observed_at: string;
+            } | null;
             workflow_slug: string | null;
             workflow_name: string | null;
             cron: string;

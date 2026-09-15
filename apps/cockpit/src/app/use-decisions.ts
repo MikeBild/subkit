@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/api/client";
 import {
+  type HeldSchedule,
   listAwaitingConversations,
+  listHeldSchedules,
   listProposedPatchCandidates,
   listProposedSkillCandidates,
 } from "@/api/decisions";
@@ -36,6 +38,7 @@ export interface DecisionSources {
 }
 
 export interface DecisionQueue {
+  heldSchedules: HeldSchedule[];
   items: DecisionItem[];
   /** Resolves the ids a decision carries to names, so the context columns can
    *  say which workflow rather than "Workflow". */
@@ -109,10 +112,11 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
     refetchInterval: 60_000,
     staleTime: 30_000,
     queryFn: async () => {
-      const [patches, skills, conversations] = await Promise.all([
+      const [patches, skills, conversations, heldSchedules] = await Promise.all([
         sources.patches ? listProposedPatchCandidates() : null,
         sources.skills ? listProposedSkillCandidates() : null,
         sources.conversations ? listAwaitingConversations() : null,
+        sources.patches ? listHeldSchedules() : [],
       ]);
       const items: DecisionItem[] = [
         ...(patches?.items ?? []).map((candidate) => {
@@ -143,6 +147,7 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
         ),
       ];
       return {
+        heldSchedules,
         // Deduplicated here, not at the card: two sources may hand out the same
         // row, and one position is one decision on every surface that shows it.
         items: [...new Map(items.map((item) => [decisionKey(item), item])).values()],
@@ -157,11 +162,20 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
 
   const items = query.data?.items ?? [];
   const now = Date.now();
+  const heldSchedules = query.data?.heldSchedules ?? [];
+  const open = query.data
+    ? countOpenDecisions({ items, totals: query.data.totals, nowMs: now })
+    : null;
+  if (open) {
+    open.total += heldSchedules.length;
+    open.subsets.blocking += heldSchedules.length;
+  }
   return {
+    heldSchedules,
     items,
     names: nameIndex,
     canReadRuns: permissions.includes("execution:read"),
-    open: query.data ? countOpenDecisions({ items, totals: query.data.totals, nowMs: now }) : null,
+    open,
     overdue: hasOverdue(items.filter(isDecidable), now),
     isPending: query.isPending,
     isFetching: query.isFetching,

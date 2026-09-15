@@ -6,6 +6,7 @@ import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
+import { verifyScheduleHolds } from "./lib/cockpit-schedule-holds.mjs";
 import { verifyWorkflowAuthorities } from "./lib/cockpit-workflow-authorities.mjs";
 import { verifyWorkflowPreview } from "./lib/cockpit-workflow-preview.mjs";
 
@@ -561,6 +562,7 @@ async function mockApi(route) {
       recent_conversations: [],
     });
   }
+  if (path === "/v1/schedules") return json(route, { schedules: [], total: 0 });
   if (path === "/v1/operational-overview") return json(route, operationalOverview());
   if (path === "/v1/conversations" && request.method() === "GET") {
     // The status filter is answered, not ignored. It used to be: the decisions
@@ -2101,6 +2103,11 @@ for (const locale of variants) {
         fullPage: false,
       });
     }
+    await verifyScheduleHolds(page, stand, uuid, locale.name, operationalOverview, (state) =>
+      shoot(page, `${locale.artifact}-${viewport.name}-schedule-held-${state}`, {
+        fullPage: false,
+      }),
+    );
     await verifyWorkflowPreview(page, stand, uuid, locale.name);
     await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-workflow-authority-${state}`, {
