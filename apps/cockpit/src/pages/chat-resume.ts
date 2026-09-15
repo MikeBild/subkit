@@ -36,6 +36,7 @@ export interface ResumeSummaryLike {
 type Translate = (key: TranslationKey, values?: Record<string, string>) => string;
 
 const SENTENCE_KEYS: Partial<Record<string, TranslationKey>> = {
+  workflow_saved: "chat.resume.workflowSaved",
   awaiting_approval: "chat.resume.awaitingApproval",
   connector_ready_to_save: "chat.resume.connectorReadyToSave",
   connector_drafting: "chat.resume.connectorDrafting",
@@ -45,6 +46,7 @@ const SENTENCE_KEYS: Partial<Record<string, TranslationKey>> = {
 };
 
 const NEXT_ACTION_KEYS: Partial<Record<string, TranslationKey>> = {
+  workflow_saved: "chat.schedule.effect",
   awaiting_approval: "chat.resume.next.approval",
   connector_drafting: "chat.resume.next.probeConnector",
   connector_ready_to_save: "chat.resume.next.saveConnector",
@@ -54,6 +56,7 @@ const NEXT_ACTION_KEYS: Partial<Record<string, TranslationKey>> = {
 };
 
 const STAGE_KEYS: Partial<Record<string, TranslationKey>> = {
+  workflow_saved: "chat.resume.stage.workflowSaved",
   onboarding: "chat.context.onboarding",
   awaiting_approval: "chat.resume.stage.awaitingApproval",
   connector_drafting: "chat.resume.stage.connectorDrafting",

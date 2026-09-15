@@ -6,6 +6,7 @@
 // nor a single-turn session). Purely a projection over the persisted
 // conversation row + draft — no side effects, no model calls.
 
+import { refreshDraftSummary } from "./authoring-state.ts";
 import type { ConversationRecord, DraftDocument, WorkflowDraftPreviewSummary } from "./types.ts";
 
 type ConnectorProbe = NonNullable<NonNullable<DraftDocument["connector"]>["latest_probe"]>;
@@ -70,7 +71,14 @@ export function shouldShowResumeSummary(params: BuildResumeSummaryParams): boole
 
 export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSummary {
   const { conversation, draft } = params;
-  const d: Partial<DraftDocument> = draft ?? {};
+  const d: Partial<DraftDocument> = draft ? refreshDraftSummary(draft) : {};
+  const workflowSaved =
+    d.summary?.checkpoints.some(
+      (checkpoint) =>
+        checkpoint.key === "workflow_persisted" &&
+        checkpoint.status === "fresh" &&
+        checkpoint.ok === true,
+    ) ?? false;
   const connector = d.connector ?? null;
   const connectorSaved = typeof connector?.saved_connector_id === "string";
   const workflow = d.workflow;
@@ -127,6 +135,7 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
     connector,
     connectorSaved,
     hasWorkflow,
+    workflowSaved,
     probe,
     preview,
     pendingApproval,
@@ -136,6 +145,7 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
     activeKind,
     connectorSaved,
     hasWorkflow,
+    workflowSaved,
     probe,
     preview,
     pendingApproval,
@@ -161,7 +171,7 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
     stage,
     last_successful_probe: lastProbe,
     last_successful_preview: lastPreview,
-    unsaved: activeKind === "connector" ? !connectorSaved : hasWorkflow,
+    unsaved: activeKind === "connector" ? !connectorSaved : hasWorkflow && !workflowSaved,
     pending_approval: pendingApproval,
     next_action: nextAction,
     one_sentence: oneSentence,
@@ -173,6 +183,7 @@ interface NextActionInputs {
   connector: NonNullable<DraftDocument["connector"]> | null;
   connectorSaved: boolean;
   hasWorkflow: boolean;
+  workflowSaved: boolean;
   probe: ConnectorProbe | null;
   preview: WorkflowDraftPreviewSummary | null;
   pendingApproval: ResumeSummary["pending_approval"];
@@ -189,6 +200,8 @@ function computeNextAction(p: NextActionInputs): string {
     return "Save the connector draft now that the probe succeeded.";
   }
   if (p.activeKind === "workflow" || (p.connectorSaved && p.hasWorkflow)) {
+    if (p.workflowSaved)
+      return "Workflow saved. Review activation and automatic-run permission in the workflow.";
     if (p.preview?.ok !== true) {
       return "Preview a step or the whole workflow before committing.";
     }
@@ -203,7 +216,13 @@ function computeNextAction(p: NextActionInputs): string {
 function computeStage(
   p: Pick<
     NextActionInputs,
-    "activeKind" | "connectorSaved" | "hasWorkflow" | "probe" | "preview" | "pendingApproval"
+    | "activeKind"
+    | "connectorSaved"
+    | "hasWorkflow"
+    | "workflowSaved"
+    | "probe"
+    | "preview"
+    | "pendingApproval"
   >,
 ): string {
   if (p.pendingApproval) return "awaiting_approval";
@@ -212,6 +231,7 @@ function computeStage(
     return "connector_drafting";
   }
   if (p.activeKind === "workflow" || (p.connectorSaved && p.hasWorkflow)) {
+    if (p.workflowSaved) return "workflow_saved";
     if (p.preview?.ok === true) return "workflow_ready_to_commit";
     return "workflow_drafting";
   }
@@ -244,6 +264,8 @@ function buildOneSentence(p: OneSentenceInputs): string {
       return `You were setting up ${target}${env}; the probe succeeded. ${p.nextAction}`;
     case "connector_drafting":
       return `You were drafting ${target}${env} but have not probed it yet. ${p.nextAction}`;
+    case "workflow_saved":
+      return `You saved ${target}. ${p.nextAction}`;
     case "workflow_ready_to_commit":
       return `You were authoring ${target}; the last preview succeeded. ${p.nextAction}`;
     case "workflow_drafting":

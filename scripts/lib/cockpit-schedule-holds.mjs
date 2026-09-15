@@ -28,7 +28,9 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
         index % 2 === 0 ? "execution_authority_required" : "execution_authority_unavailable",
     },
   }));
-  const schedules = (route) => route.fulfill({ json: { schedules: heldSchedules, total: 13 } });
+  let cleared = false;
+  const schedules = (route) =>
+    route.fulfill({ json: { schedules: cleared ? [] : heldSchedules, total: cleared ? 0 : 13 } });
   const overview = (route) => {
     const data = snapshot();
     Object.assign(data.core.blocked, { value: 13, severity: "critical", value_state: "observed" });
@@ -118,6 +120,94 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
     await page.getByTestId("detail-workflows").waitFor();
     await page.getByTestId("authority-grant-open").waitFor();
     await page.getByTestId("authority-schedule-held").waitFor();
+
+    const conversations = await page.evaluate(async () =>
+      (await fetch("/v1/conversations")).json(),
+    );
+    const conversation = conversations.items[0];
+    const original = await page.evaluate(
+      async (id) => (await fetch(`/v1/conversations/${id}`)).json(),
+      conversation.id,
+    );
+    const pattern = `**/v1/conversations/${conversation.id}`;
+    const saved = (route) =>
+      route.fulfill({
+        json: {
+          ...original,
+          elicitations: [],
+          resume_summary: {
+            ...original.resume_summary,
+            stage: "workflow_saved",
+            unsaved: false,
+            pending_approval: null,
+            active_target: {
+              kind: "workflow",
+              id: workflowId,
+              name: "Held publishing workflow",
+              slug: "held-publishing",
+              environment: "prod",
+            },
+          },
+        },
+      });
+    await page.route(pattern, saved);
+    try {
+      await stand.visit(page, `chat/${conversation.id}`);
+      const handoff = page.getByTestId("chat-schedule-next-step");
+      await handoff.waitFor();
+      const beforeCount = Number(await page.getByTestId("nav-decisions-count").innerText());
+      if (!(await handoff.innerText()).includes("13"))
+        throw new Error("Chat does not explain remaining schedule count");
+      if (
+        !(await page.getByTestId("chat-summary").innerText()).includes(
+          locale === "de" ? "gespeichert" : "Saved",
+        )
+      )
+        throw new Error("Saved workflow still presented as unfinished preparation");
+      if (
+        (await page.getByTestId("chat-status").innerText()) !==
+        (locale === "de" ? "Workflow gespeichert" : "Workflow saved")
+      )
+        throw new Error("Saved workflow still presented as running");
+      await capture("chat-saved-handoff");
+      await page.getByTestId("chat-context-toggle").click();
+      if (
+        !(await page.getByTestId("chat-context-checkpoint").innerText()).includes(
+          locale === "de" ? "Keine ungespeicherten Änderungen" : "No unsaved changes",
+        )
+      )
+        throw new Error("Saved checkpoint shown as unsaved");
+      if (
+        !(await page.getByTestId("chat-context-review-schedule").getAttribute("href")).endsWith(
+          "#workflow-authorities",
+        )
+      )
+        throw new Error("Context does not link to run permission");
+      await page.keyboard.press("Escape");
+      await page.getByTestId("chat-review-schedule").click();
+      await page.getByTestId("workflow-authorities").waitFor();
+      if (!page.url().endsWith("#workflow-authorities"))
+        throw new Error("Handoff lost its review destination");
+      await page.getByTestId("authority-grant-open").click();
+      await page.getByTestId("authority-grant-cancel").waitFor();
+      await capture("chat-run-review");
+      await page.getByTestId("authority-grant-cancel").click();
+      cleared = true;
+      await stand.visit(page, `chat/${conversation.id}`);
+      await page.getByTestId("chat-summary").waitFor();
+      await page.waitForFunction(
+        (expected) =>
+          Number(
+            document.querySelector('[data-testid="nav-decisions-count"]')?.textContent?.trim() ?? 0,
+          ) === expected,
+        beforeCount - 13,
+      );
+      if (await page.getByTestId("chat-schedule-next-step").count())
+        throw new Error("Resolved schedule still shown as blocked");
+      await capture("chat-hold-resolved");
+    } finally {
+      await page.unroute(pattern, saved);
+    }
   } finally {
     await page.unroute(schedulePattern, schedules);
     await page.unroute(overviewPattern, overview);

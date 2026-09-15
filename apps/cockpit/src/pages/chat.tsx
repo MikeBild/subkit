@@ -952,9 +952,11 @@ export function ChatPage() {
       ? { label: t("chat.outcome.in_progress"), urgent: false }
       : resume?.pending_approval || activeRow?.outcome === "awaiting_you"
         ? { label: t("chat.outcome.awaiting_you"), urgent: true }
-        : activeRow?.outcome === "in_progress" || (!activeRow && current?.status === "active")
-          ? { label: t("chat.outcome.in_progress"), urgent: false }
-          : null;
+        : resume?.stage === "workflow_saved"
+          ? { label: t("chat.resume.stage.workflowSaved"), urgent: false }
+          : activeRow?.outcome === "in_progress" || (!activeRow && current?.status === "active")
+            ? { label: t("chat.outcome.in_progress"), urgent: false }
+            : null;
   // Titles are prose the model wrote: internal references never reach a row.
   const listRows = useMemo(
     () =>
@@ -1106,6 +1108,30 @@ export function ChatPage() {
             <p className="text-xs text-muted-foreground">{t("chat.mode.boundary")}</p>
           </div>
         </header>
+
+        {heldTarget &&
+          targetWorkflowId &&
+          !pendingDecision &&
+          !pendingChoice &&
+          status === "ready" && (
+            <Alert className="m-4 mb-0" data-testid="chat-schedule-next-step">
+              <AlertTitle>{t("chat.schedule.pending")}</AlertTitle>
+              <AlertDescription>
+                <p>{t("chat.schedule.effect")}</p>
+                <p>
+                  {t("chat.schedule.count", { count: String(decisionQueue.heldSchedules.length) })}
+                </p>
+                <Button asChild variant="outline" size="sm">
+                  <a
+                    href={`${catalogHref("workflow", targetWorkflowId)}#workflow-authorities`}
+                    data-testid="chat-review-schedule"
+                  >
+                    {t("chat.schedule.review")}
+                  </a>
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
 
         {send.error && (
           <Alert variant="destructive" className="m-4 mb-0" data-testid="chat-error">
@@ -1384,7 +1410,7 @@ export function ChatPage() {
                   <dd className="mt-1 flex flex-col gap-2">
                     <p>{t("chat.schedule.effect")}</p>
                     <a
-                      href={catalogHref("workflow", targetWorkflowId)}
+                      href={`${catalogHref("workflow", targetWorkflowId)}#workflow-authorities`}
                       className="underline"
                       data-testid="chat-context-review-schedule"
                     >
