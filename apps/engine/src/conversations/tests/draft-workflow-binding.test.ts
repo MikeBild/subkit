@@ -6,6 +6,11 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import {
+  createEmptyDraftDocument,
+  withWorkflowDraft,
+  withWorkflowPersisted,
+} from "../authoring-state.ts";
 import { loadDraft } from "../draft.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
@@ -117,5 +122,95 @@ describe("loadDraft", () => {
         version: 4,
       }),
     ]);
+  });
+});
+
+describe("legacy saved-state reconciliation", () => {
+  test("compares the exact saved version and preserves unsaved edits without writing", async () => {
+    const definition = {
+      name: "Report",
+      slug: "legacy-report",
+      steps: [{ id: "result", kind: "transform", language: "javascript", expression: "return 1;" }],
+    };
+    const [workflow] = await ctx.testDb.db
+      .insert(workflows)
+      .values({
+        tenant_id: ctx.tenant_id,
+        name: definition.name,
+        slug: definition.slug,
+        lifecycle: "draft",
+      })
+      .returning();
+    if (!workflow) throw new Error("missing workflow");
+    const [version] = await ctx.testDb.db
+      .insert(workflowVersions)
+      .values({ tenant_id: ctx.tenant_id, workflow_id: workflow.id, version: 1, dag: definition })
+      .returning();
+    if (!version) throw new Error("missing version");
+    const saved = withWorkflowPersisted(
+      withWorkflowDraft(createEmptyDraftDocument("workflow_authoring"), definition),
+      {
+        kind: "workflow",
+        id: workflow.id,
+        name: definition.name,
+        slug: definition.slug,
+        version_id: version.id,
+        version: 1,
+        environment: null,
+        saved_at: "2026-09-15T10:00:00Z",
+      },
+    );
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        status: "active",
+        target_workflow_id: workflow.id,
+        draft: saved,
+      })
+      .returning();
+    if (!conversation) throw new Error("missing conversation");
+    const unchanged = await loadDraft(ctx.tenant_id, conversation.id, ctx.testDb.db);
+    expect(unchanged.summary?.checkpoints.find((c) => c.key === "workflow_persisted")?.status).toBe(
+      "fresh",
+    );
+    // Reproduce the old editor: change content without advancing its revision.
+    const legacy = structuredClone(saved);
+    legacy.workflow.name = "Revised report";
+    await ctx.testDb.db
+      .update(conversations)
+      .set({ draft: legacy })
+      .where(eq(conversations.id, conversation.id));
+    const [snapshot] = await ctx.testDb.db
+      .insert(conversationDrafts)
+      .values({
+        tenant_id: ctx.tenant_id,
+        conversation_id: conversation.id,
+        ordinal: "000001",
+        snapshot: legacy,
+      })
+      .returning();
+    if (!snapshot) throw new Error("missing snapshot");
+    const repaired = await loadDraft(ctx.tenant_id, conversation.id, ctx.testDb.db);
+    expect(repaired.workflow.name).toBe("Revised report");
+    expect(repaired.summary?.checkpoints.find((c) => c.key === "workflow_persisted")?.status).toBe(
+      "stale",
+    );
+    const [stored] = await ctx.testDb.db
+      .select({ draft: conversations.draft })
+      .from(conversations)
+      .where(eq(conversations.id, conversation.id));
+    expect(stored?.draft).toEqual(legacy);
+    const [storedSnapshot] = await ctx.testDb.db
+      .select({ snapshot: conversationDrafts.snapshot })
+      .from(conversationDrafts)
+      .where(eq(conversationDrafts.id, snapshot.id));
+    expect(storedSnapshot?.snapshot).toEqual(legacy);
+    const wrongTenant = await loadDraft(
+      "00000000-0000-4000-8000-000000000099",
+      conversation.id,
+      ctx.testDb.db,
+    );
+    expect(wrongTenant.workflow.name).not.toBe("Revised report");
   });
 });

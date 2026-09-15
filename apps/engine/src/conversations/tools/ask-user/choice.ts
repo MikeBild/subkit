@@ -35,7 +35,7 @@ const inputSchema = z
 export const askUserChoiceTool: ConversationTool = {
   name: "ask_user_choice",
   description:
-    "Ask the user to pick exactly one option from a list of choices (2-4 options; put the recommended option first and give each a one-line `description`). The client renders a Select prompt; the user's selected value resumes the loop. Pre-select the recommended value via `default`.",
+    "Ask one short business question (2–4 clear options). Use the user’s language: timing, recipients, intended outcome; no tool names or technical steps. Put the evidence-based recommendation first; each description explains the effect in one sentence. Never ask whether to perform routine preparation. The selected value resumes the loop; a recommendation is not approval.",
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {

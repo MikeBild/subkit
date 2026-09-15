@@ -41,6 +41,7 @@ import {
   emptySummary,
 } from "./authoring-state/summary.ts";
 import { pruneTracesForMutation, retainFingerprintValidTraces } from "./step-fingerprint.ts";
+import { canonicalJson } from "./text-line-diff.ts";
 import type {
   AuthoringCheckpointKey,
   AuthoringCheckpointRecord,
@@ -176,6 +177,11 @@ function applyWorkflowMutation(
   const state = cloneState(normalized.state ?? createEmptyState("workflow"));
   state.mode = "workflow";
   state.stage = workflow.steps.length > 0 ? "workflow_draft_started" : "workflow_targeted";
+  // Every changed definition invalidates whole-workflow evidence and the saved
+  // checkpoint. Per-step evidence is retained below only for unchanged steps.
+  if (canonicalJson(normalized.workflow) !== canonicalJson(workflow)) {
+    state.workflow_mutation_seq += 1;
+  }
   // Judge breaker hygiene (P3): `blocks_since_commit` is a MONOTONIC
   // count of judge blocks since the last successful commit — a same-goal
   // edit must NOT reset it, or a model churning edits between blocks

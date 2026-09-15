@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 15
+version: 16
 ---
 
 # Authoring Workflows In A Conversation
@@ -17,6 +17,10 @@ This skill describes the happy path for building a workflow when the user is
 talking to you in a conversation. The process is design-once / emit-once:
 ONE `author_workflow` call produces the complete evaluated draft; the
 micro-tools exist only to repair specific findings afterwards.
+
+## User dialogue
+
+Own the preparation: inspect, check, repair and save within the actual permission mode. Never ask the user to invoke a tool or interpret code. “Do not run live” still allows the permitted hold-writes preview; an explicit prohibition of previews does not. Preserve existing schedules and destinations unless the user requests a change. Resolve genuinely missing business input through `ask_user_choice`, `ask_user_text` or `ask_user_form`: one short question, clear effects, and a grounded recommendation. Use the canonical confirmation tool for required authority. Report the verified result in 1–3 sentences; no field tables, code or tool names unless requested.
 
 ## The canonical flow
 
@@ -1032,8 +1036,10 @@ whose `requires_repair` is `true`. The counter resets on the first
 successful tool call.
 
 When the cap is reached, emit `ask_user_choice` with three concrete
-options derived from the failure shape (e.g. "commit anyway", "revert
-the last patch", "hand-edit the workflow JSON"). Do not continue patching.
+business options derived from the failure (e.g. use an available account,
+keep the previous version, or stop preparation), with the effect and a
+grounded recommendation. Never offer a technical bypass or hand-editing
+JSON as routine user work. Do not continue patching.
 
 ## Repair signal: read `requires_repair`, not the warning count
 

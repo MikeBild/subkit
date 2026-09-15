@@ -12,17 +12,24 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
     expires_at: "2099-01-01T00:00:00Z",
   };
   const input = {
-    question: locale === "de" ? "Wie soll ich fortfahren?" : "How should I continue?",
+    question:
+      locale === "de"
+        ? "Wann soll der Bericht erscheinen?"
+        : "When should the report be published?",
     options: [
       {
         value: "preview",
-        label: locale === "de" ? "Vorschau prüfen" : "Check preview",
-        description: "Preview before saving.",
+        label: locale === "de" ? "Montags (empfohlen)" : "Mondays (recommended)",
+        description:
+          locale === "de"
+            ? "Der Bericht folgt auf die wöchentliche Sammlung."
+            : "The report follows the weekly collection.",
       },
       {
         value: "cancel",
-        label: locale === "de" ? "Abbrechen" : "Cancel",
-        description: "Keep the draft unchanged.",
+        label: locale === "de" ? "Dienstags" : "Tuesdays",
+        description:
+          locale === "de" ? "Ein zusätzlicher Tag für die Prüfung." : "An extra day for review.",
       },
     ],
   };
@@ -116,8 +123,14 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
       if (!(await action.isDisabled())) throw new Error("Choice was implicitly selected");
       if (!(await page.getByTestId("chat-composer-input").isDisabled()))
         throw new Error("Unanswerable free-text composer remains active");
-      await page.getByTestId(`${prefix}-select`).click();
-      await page.getByTestId(`${prefix}-option-${expected}`).click();
+      for (const option of input.options) {
+        if (!(await page.getByTestId(`${prefix}-option-${option.value}`).isVisible()))
+          throw new Error("Business options are hidden behind another control");
+        if (!(await card.innerText()).includes(option.description))
+          throw new Error("Option effect is hidden before selection");
+      }
+      await page.getByTestId(`${prefix}-option-${expected}`).focus();
+      await page.keyboard.press("Space");
       await capture(`${surface}-ready`);
       const before = requests;
       const queueBefore = queueReads;
@@ -180,7 +193,6 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
     fail = true;
     expected = "preview";
     await stand.visit(page, `chat/${conversation.id}`);
-    await page.getByTestId("chat-message-0-choice-select").click();
     await page.getByTestId("chat-message-0-choice-option-preview").click();
     release = null;
     await page.getByTestId("chat-message-0-choice-submit").click();
@@ -213,7 +225,6 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
         throw new Error("Legacy preparation has no readable recommendation");
       if (!(await page.getByTestId(`${prefix}-submit`).isDisabled()))
         throw new Error("Recommendation selected an answer implicitly");
-      await page.getByTestId(`${prefix}-select`).click();
       const recommended = page.getByTestId(`${prefix}-option-dryrun`);
       if (!/recommended|empfohlen/.test(await recommended.innerText()))
         throw new Error("Recommended preparation option missing");

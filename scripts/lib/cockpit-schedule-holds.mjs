@@ -130,6 +130,7 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
       conversation.id,
     );
     const pattern = `**/v1/conversations/${conversation.id}`;
+    let unsaved = false;
     const saved = (route) =>
       route.fulfill({
         json: {
@@ -137,8 +138,8 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
           elicitations: [],
           resume_summary: {
             ...original.resume_summary,
-            stage: "workflow_saved",
-            unsaved: false,
+            stage: unsaved ? "workflow_drafting" : "workflow_saved",
+            unsaved,
             pending_approval: null,
             active_target: {
               kind: "workflow",
@@ -194,6 +195,13 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
       await page.getByTestId("authority-grant-cancel").waitFor();
       await capture("chat-run-review");
       await page.getByTestId("authority-grant-cancel").click();
+      unsaved = true;
+      await stand.visit(page, `chat/${conversation.id}`);
+      await page.getByTestId("chat-continue-preparation").waitFor();
+      if (await page.getByTestId("chat-schedule-next-step").count())
+        throw new Error("Run authorization offered before preparation is complete");
+      await capture("chat-unsaved-next-step");
+      unsaved = false;
       cleared = true;
       await stand.visit(page, `chat/${conversation.id}`);
       await page.getByTestId("chat-summary").waitFor();
