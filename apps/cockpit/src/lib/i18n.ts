@@ -20,8 +20,7 @@ const EN = {
 
   "chat.resume.workflowSaved": "Saved {target}.",
   "chat.resume.stage.workflowSaved": "Workflow saved",
-  "chat.schedule.count":
-    "The decision count still includes {count} blocked schedule(s). Answering this chat question does not release them.",
+  "chat.schedule.count": "The {count} blocked schedule(s) still count as open decisions.",
   "chat.schedule.pending": "Automatic runs still paused",
   "chat.schedule.effect":
     "Answering or saving a draft does not release scheduled runs. Review the workflow's run permission.",
@@ -1514,10 +1513,10 @@ const EN = {
 export type TranslationKey = keyof typeof EN;
 
 const DE: Record<TranslationKey, string> = {
-  "chat.resume.workflowSaved": "{target} gespeichert.",
+  "chat.resume.workflowSaved": "Du hast {target} gespeichert.",
   "chat.resume.stage.workflowSaved": "Workflow gespeichert",
   "chat.schedule.count":
-    "Der Entscheidungszähler enthält weiterhin {count} blockierte Zeitpläne. Die beantwortete Chat-Rückfrage gibt diese nicht frei.",
+    "Die {count} blockierten Zeitpläne zählen weiterhin als offene Entscheidungen.",
   "chat.schedule.pending": "Automatische Läufe noch blockiert",
   "chat.schedule.effect":
     "Antworten oder Entwürfe speichern gibt den Zeitplan nicht frei. Prüfe die Ausführungsfreigabe des Workflows.",
