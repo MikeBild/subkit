@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { ApiError, apiRequest } from "@/api/client";
 import { useSession } from "@/app/session";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +47,7 @@ export function GrantWorkflowAuthority({
   versionLabel,
   disabled = false,
   triggerLabel,
+  triggerVariant = "outline",
   triggerTestId = "authority-grant-open",
 }: {
   workflowId: string;
@@ -62,6 +63,7 @@ export function GrantWorkflowAuthority({
   versionLabel?: string;
   disabled?: boolean;
   triggerLabel?: string;
+  triggerVariant?: "default" | "outline";
   triggerTestId?: string;
 }) {
   const { t, dateTime, locale } = useI18n();
@@ -167,6 +169,12 @@ export function GrantWorkflowAuthority({
       onSingleRun?.();
     },
   });
+  const actionError = grant.error ?? activateOnly.error;
+  const sessionExpired =
+    actionError instanceof ApiError &&
+    (actionError.status === 401 ||
+      actionError.code === "human_session_expired" ||
+      actionError.code === "human_session_required");
   const busy = prepare.isPending || grant.isPending || activateOnly.isPending;
   const unsupported = review && !review.eligible_for_repeated_runs;
   const deliveries =
@@ -196,7 +204,7 @@ export function GrantWorkflowAuthority({
   return (
     <Dialog open={open} onOpenChange={openDialog}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" disabled={disabled} data-testid={triggerTestId}>
+        <Button variant={triggerVariant} size="sm" disabled={disabled} data-testid={triggerTestId}>
           {triggerLabel ?? t(onGrant ? "decisions.applyAndAuthorize" : "authority.grantOpen")}
         </Button>
       </DialogTrigger>
@@ -445,8 +453,16 @@ export function GrantWorkflowAuthority({
           )}
           {(grant.error || activateOnly.error) && (
             <Alert variant="destructive">
-              <AlertTitle>{t("authority.grantFailed")}</AlertTitle>
-              <AlertDescription>{t("authority.grantFailedDescription")}</AlertDescription>
+              <AlertTitle>
+                {t(sessionExpired ? "authority.sessionExpired" : "authority.grantFailed")}
+              </AlertTitle>
+              <AlertDescription>
+                {t(
+                  sessionExpired
+                    ? "authority.sessionExpiredHint"
+                    : "authority.grantFailedDescription",
+                )}
+              </AlertDescription>
             </Alert>
           )}
         </div>
@@ -459,24 +475,35 @@ export function GrantWorkflowAuthority({
           >
             {t("common.cancel")}
           </Button>
-          {(prepare.error ||
-            grant.error ||
-            incomplete ||
-            (boundsVisible && !input && !invalidRuns && !invalidHours)) && (
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => {
-                grant.reset();
-                setReview(null);
-                prepare.reset();
-                prepare.mutate(environment);
-              }}
-              data-testid="authority-prepare"
-            >
-              {t("authority.prepare")}
+          {sessionExpired && (
+            <Button asChild data-testid="authority-sign-in">
+              <a
+                data-testid="authority-sign-in"
+                href={`/v1/identity/cockpit-login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+              >
+                {t("authority.signIn")}
+              </a>
             </Button>
           )}
+          {!sessionExpired &&
+            (prepare.error ||
+              grant.error ||
+              incomplete ||
+              (boundsVisible && !input && !invalidRuns && !invalidHours)) && (
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  grant.reset();
+                  setReview(null);
+                  prepare.reset();
+                  prepare.mutate(environment);
+                }}
+                data-testid="authority-prepare"
+              >
+                {t("authority.prepare")}
+              </Button>
+            )}
           {unsupported ? (
             <>
               {onAdjust ? (

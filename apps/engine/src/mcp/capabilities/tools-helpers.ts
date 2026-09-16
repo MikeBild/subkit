@@ -122,19 +122,12 @@ export async function buildRunWorkflowNeedsInput(p: {
 
   const supplied = normalizeWorkflowInput(args.input);
   const suppliedMap = workflowInputRecord(supplied);
-  const suppliedIsEmpty =
-    supplied === null ||
-    supplied === undefined ||
-    (typeof supplied === "object" &&
-      !Array.isArray(supplied) &&
-      Object.keys(suppliedMap).length === 0) ||
-    (typeof supplied === "string" && supplied.trim().length === 0);
   const missing = contract.required.filter((k) => {
     const v = suppliedMap[k];
     return v === undefined || v === null || (typeof v === "string" && v.trim() === "");
   });
   // Fully satisfied — let the real dispatch run.
-  if (!suppliedIsEmpty && missing.length === 0) return null;
+  if (missing.length === 0) return null;
 
   const missingNames = missing.length > 0 ? missing : contract.required;
   const schemaProps =

@@ -1169,9 +1169,7 @@ export function ChatPage() {
               <AlertTitle>{t("chat.schedule.pending")}</AlertTitle>
               <AlertDescription>
                 <p>{t("chat.schedule.effect")}</p>
-                <p>
-                  {t("chat.schedule.count", { count: String(decisionQueue.heldSchedules.length) })}
-                </p>
+                <p>{t("chat.schedule.completion")}</p>
                 <ChatAutomationReview
                   workflowId={targetWorkflowId}
                   environment={heldTarget.execution_mode}

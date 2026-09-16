@@ -74,8 +74,13 @@ const EN = {
     "Continue preparing the current change. Keep the requested behavior, schedule and destinations. Perform the permitted checks and save when allowed. Do not activate or run live. Ask only for missing business input using a short dialogue. Summarize the result briefly without code or tool names.",
   "chat.schedule.pending": "Automatic runs still paused",
   "chat.schedule.effect":
-    "Review what this workflow may do automatically. It needs permission before it can start.",
-  "chat.schedule.review": "Review automatic runs",
+    "Automatic runs are not approved yet. A saved change or a one-time run does not enable the schedule.",
+  "chat.schedule.review": "Review and allow automatic runs",
+  "chat.schedule.completion": "Confirm below to resolve this workflow’s open decision.",
+  "authority.sessionExpired": "Please sign in again",
+  "authority.sessionExpiredHint":
+    "Your session is no longer valid. Nothing was approved. Sign in, then review and confirm here again.",
+  "authority.signIn": "Sign in and return here",
   "chat.choice.expired": "Question expired",
   "chat.choice.cancelled": "Question cancelled",
   "chat.choice.title": "Your answer is needed",
@@ -1638,8 +1643,14 @@ const DE: Record<TranslationKey, string> = {
     "Setze die Vorbereitung der aktuellen Änderung fort. Behalte das gewünschte Verhalten, den Zeitplan und die Ziele bei. Übernimm die erlaubten Prüfungen und speichere, soweit erlaubt. Nicht aktivieren oder live ausführen. Frage nur nach fehlenden fachlichen Angaben in einem kurzen Dialog. Fasse das Ergebnis kurz ohne Code oder Tool-Namen zusammen.",
   "chat.schedule.pending": "Automatische Läufe noch blockiert",
   "chat.schedule.effect":
-    "Prüfe, was dieser Ablauf automatisch tun darf. Erst mit Freigabe kann er starten.",
-  "chat.schedule.review": "Automatische Läufe prüfen",
+    "Automatische Läufe sind noch nicht freigegeben. Eine gespeicherte Änderung oder ein einzelner Versand aktiviert den Zeitplan noch nicht.",
+  "chat.schedule.review": "Automatische Läufe prüfen und freigeben",
+  "chat.schedule.completion":
+    "Mit deiner Bestätigung erledigst du die offene Entscheidung für diesen Ablauf.",
+  "authority.sessionExpired": "Bitte erneut anmelden",
+  "authority.sessionExpiredHint":
+    "Deine Sitzung ist nicht mehr gültig. Es wurde nichts freigegeben. Melde dich an und bestätige anschließend hier erneut.",
+  "authority.signIn": "Anmelden und hier fortfahren",
   "chat.choice.preparation.question":
     "Prüfe den Ablauf vor dem Speichern. Wir empfehlen diese Prüfung: Sie kann Fehler erkennen, ohne etwas zu veröffentlichen.",
   "chat.choice.preparation.dryrun": "Zuerst prüfen (empfohlen)",

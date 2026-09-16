@@ -632,3 +632,88 @@ describe("MCP tools/call — run_workflow missing required input (W4.5 anti-spir
     }
   });
 });
+
+test("run_workflow surfaces continued failures as partial success requiring diagnosis", async () => {
+  const slug = "continued-failure-report";
+  const created = await journeyFetch(ctx, "/v1/workflows", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Continued failure report",
+      slug,
+      steps: [
+        {
+          kind: "transform",
+          id: "broken",
+          language: "javascript",
+          expression: 'throw new Error("missing report source");',
+          on_error: "continue",
+        },
+        {
+          kind: "transform",
+          id: "done",
+          language: "javascript",
+          expression: "return { finished: true };",
+        },
+      ],
+    }),
+  });
+  expect(created.status).toBeLessThan(300);
+  const client = await connect();
+  try {
+    const result = await client.callTool({
+      name: "run_workflow",
+      arguments: {
+        workflow: slug,
+        environment: "dev",
+        execute_writes: false,
+      },
+    });
+    const blocks = result.content as Array<{ type: string; text?: string }>;
+    const body = JSON.parse(blocks.find((b) => b.type === "text")?.text ?? "{}");
+    expect(result.isError).toBe(true);
+    expect(body.details.status).toBe("partial_success");
+    expect(body.details.requires_repair).toBe(true);
+    expect(body.details.diagnosis_available).toBe(true);
+    expect(
+      body.details.summary.checkpoints.find((c: { key: string }) => c.key === "workflow_previewed")
+        .ok,
+    ).toBe(false);
+  } finally {
+    await client.close();
+  }
+});
+
+test("run_workflow accepts omitted and empty input when declared fields are optional", async () => {
+  const slug = "optional-input-report";
+  const created = await journeyFetch(ctx, "/v1/workflows", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Optional input report",
+      slug,
+      input_schema: { type: "object", properties: { runId: { type: "string" } } },
+      steps: [{ kind: "request", id: "probe", method: "GET", url: `${mockBase}/test` }],
+    }),
+  });
+  expect(created.status).toBeLessThan(300);
+  const client = await connect();
+  try {
+    for (const input of [undefined, {}]) {
+      const result = await client.callTool({
+        name: "run_workflow",
+        arguments: {
+          workflow: slug,
+          environment: "dev",
+          execute_writes: false,
+          ...(input ? { input } : {}),
+        },
+      });
+      expect(result.isError).toBeFalsy();
+      const blocks = result.content as Array<{ type: string; text?: string }>;
+      const body = JSON.parse(blocks.find((b) => b.type === "text")?.text ?? "{}");
+      expect(body.status).toBe("succeeded");
+      expect(body.error_code).toBeUndefined();
+    }
+  } finally {
+    await client.close();
+  }
+});

@@ -264,3 +264,20 @@ describe("resolveWorkflowInputContract — precedence", () => {
     expect(resolveWorkflowInputContract(dag)).toBeNull();
   });
 });
+
+for (const required of [undefined, []]) {
+  it(`honors declared optional inputs with required=${JSON.stringify(required)}`, () => {
+    const contract = resolveWorkflowInputContract({
+      name: "automatic-report",
+      input_schema: {
+        type: "object",
+        properties: { runId: { type: "string" } },
+        ...(required ? { required } : {}),
+      },
+      steps: [],
+    });
+    expect(contract?.source).toBe("declared");
+    expect(contract?.required).toEqual([]);
+    expect(contract?.properties).toEqual(["runId"]);
+  });
+}

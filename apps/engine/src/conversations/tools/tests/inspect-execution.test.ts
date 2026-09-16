@@ -61,7 +61,13 @@ function makeCtx(): ToolContext & { draft: DraftDocument } {
 async function seedExecution(opts: {
   tenant: string;
   status?: "succeeded" | "failed";
-  steps: Array<{ step_key: string; kind?: string; status?: string; output_preview?: unknown }>;
+  steps: Array<{
+    step_key: string;
+    kind?: string;
+    status?: string;
+    output_preview?: unknown;
+    request_meta?: Record<string, unknown>;
+  }>;
 }): Promise<string> {
   const [exec] = await ctx.db
     .insert(executions)
@@ -85,12 +91,62 @@ async function seedExecution(opts: {
       status: s.status ?? "succeeded",
       duration_ms: 7,
       ...(s.output_preview !== undefined ? { output_preview: s.output_preview } : {}),
+      ...(s.request_meta !== undefined ? { request_meta: s.request_meta } : {}),
     });
   }
   return exec.id;
 }
 
 describe("inspect_execution · whole-execution diagnosis", () => {
+  test("recognizes persisted held requests even when output has no warnings", async () => {
+    const execution_id = await seedExecution({
+      tenant: tenant_id,
+      steps: [
+        {
+          step_key: "send",
+          output_preview: null,
+          request_meta: { driver: "http", extras: { held: true } },
+        },
+      ],
+    });
+    const result = await inspectExecutionTool.execute(makeCtx(), { execution_id });
+    const data = result.data as {
+      diagnosis: { reason: string; warning_sources: Array<{ code: string }> };
+    };
+    expect(data.diagnosis.reason).toContain("not performed");
+    expect(data.diagnosis.reason).toContain("not evidence of live execution");
+    expect(data.diagnosis.warning_sources[0]?.code).toBe("held_preview_no_writes");
+  });
+
+  test("does not report clean verification when a continued step failed", async () => {
+    const execution_id = await seedExecution({
+      tenant: tenant_id,
+      steps: [
+        { step_key: "read_ingest", status: "failed" },
+        { step_key: "result", status: "succeeded" },
+      ],
+    });
+    const result = await inspectExecutionTool.execute(makeCtx(), { execution_id });
+    const data = result.data as { diagnosis: { reason: string } };
+    expect(data.diagnosis.reason).toContain("1 step failed");
+    expect(data.diagnosis.reason).toContain("not a successful verification");
+    expect(data.diagnosis.reason).not.toContain("no warnings");
+  });
+
+  test("does not claim skipped actions were verified", async () => {
+    const execution_id = await seedExecution({
+      tenant: tenant_id,
+      steps: [
+        { step_key: "read", status: "succeeded" },
+        { step_key: "publish", status: "skipped" },
+      ],
+    });
+    const result = await inspectExecutionTool.execute(makeCtx(), { execution_id });
+    const data = result.data as { diagnosis: { reason: string } };
+    expect(data.diagnosis.reason).toContain("1 skipped step");
+    expect(data.diagnosis.reason).toContain("not verified or performed");
+  });
+
   test("returns {execution, diagnosis} with per-step diagnosis for an explicit id", async () => {
     const execution_id = await seedExecution({
       tenant: tenant_id,

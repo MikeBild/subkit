@@ -678,3 +678,45 @@ test("activation rejects callers without a human browser session", async () => {
     ),
   ).rejects.toMatchObject({ code: "human_session_required" });
 });
+
+test("an actively used browser session can approve after its original sliding deadline", async () => {
+  const f = await fixture();
+  const now = await databaseNow(ctx.db);
+  await ctx.db
+    .update(sessions)
+    .set({
+      expires_at: new Date(now.getTime() - 60_000),
+      absolute_expires_at: new Date(now.getTime() + 60 * 60_000),
+      last_seen_at: now,
+    })
+    .where(eq(sessions.id, f.session.id));
+  const authority = await grantWorkflowAuthority(f.workflow.id, f.input, f.context);
+  expect(authority.workflow_version_id).toBe(f.version.id);
+  await revokeWorkflowAuthority(f.workflow.id, authority.id, f.context);
+});
+
+for (const expired of ["absolute", "idle"] as const) {
+  test(`a signed session past its ${expired} deadline cannot approve`, async () => {
+    const f = await fixture();
+    const now = await databaseNow(ctx.db);
+    await ctx.db
+      .update(sessions)
+      .set({
+        expires_at: new Date(now.getTime() + 60 * 60_000),
+        absolute_expires_at: new Date(
+          now.getTime() + (expired === "absolute" ? -60_000 : 60 * 60_000),
+        ),
+        last_seen_at: new Date(now.getTime() - (expired === "idle" ? 9 * 60 * 60_000 : 0)),
+      })
+      .where(eq(sessions.id, f.session.id));
+    await expect(grantWorkflowAuthority(f.workflow.id, f.input, f.context)).rejects.toMatchObject({
+      code: "human_session_expired",
+    });
+    expect(
+      await ctx.db
+        .select()
+        .from(workflowExecutionAuthorities)
+        .where(eq(workflowExecutionAuthorities.workflow_id, f.workflow.id)),
+    ).toHaveLength(0);
+  });
+}

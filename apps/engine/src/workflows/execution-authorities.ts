@@ -1,7 +1,11 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
-import { browserSessionForPrincipal, verifyBrowserCsrf } from "../auth/browser-session.ts";
+import {
+  browserSessionForPrincipal,
+  SESSION_SLIDING_TTL_MS,
+  verifyBrowserCsrf,
+} from "../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import {
@@ -117,8 +121,8 @@ async function lockLiveSession(tx: Executor, session: Awaited<ReturnType<typeof 
         eq(sessions.tenant_id, session.tenant_id),
         eq(sessions.user_id, session.user_id),
         isNull(sessions.revoked_at),
-        sql`${sessions.expires_at} > clock_timestamp()`,
-        sql`(${sessions.absolute_expires_at} IS NULL OR ${sessions.absolute_expires_at} > clock_timestamp())`,
+        sql`coalesce(${sessions.absolute_expires_at}, ${sessions.expires_at}) > clock_timestamp()`,
+        sql`coalesce(${sessions.last_seen_at}, ${sessions.created_at}) > clock_timestamp() - (${SESSION_SLIDING_TTL_MS} * interval '1 millisecond')`,
       ),
     )
     .for("share")
