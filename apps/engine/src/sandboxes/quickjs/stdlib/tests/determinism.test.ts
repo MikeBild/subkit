@@ -88,3 +88,13 @@ describe("sk.now()/sk.uuid() determinism is tamper-proof", () => {
     expect(r.output).toEqual([FIXED_NOW, FIXED_NOW, FIXED_NOW, FIXED_NOW, FIXED_NOW]);
   });
 });
+
+test("legacy Date calls share the fixed clock while explicit dates retain their meaning", async () => {
+  const { output } = await runJs({
+    // allow-wall-clock: guest source must exercise the fixed legacy Date API itself.
+    code: "return [Date.now(), new Date().getTime(), new Date(0).getTime(), Date.parse('2020-01-01T00:00:00Z'), new Date() instanceof Date];",
+    input: {},
+    clock: { now_ms: FIXED_NOW, seed: SEED },
+  });
+  expect(output).toEqual([FIXED_NOW, FIXED_NOW, 0, 1577836800000, true]);
+});

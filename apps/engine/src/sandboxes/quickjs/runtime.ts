@@ -250,6 +250,33 @@ export async function runJs<T = unknown>(opts: RunJsOptions): Promise<SandboxRun
     }
     stdlibResult.value.dispose();
 
+    if (opts.clock) {
+      const dateResult = context.evalCode(
+        `(() => {
+        const NativeDate = Date;
+        const instant = sk.now();
+        function FixedDate(...args) {
+          if (!new.target) return new NativeDate(instant).toString();
+          return Reflect.construct(NativeDate, args.length ? args : [instant], new.target);
+        }
+        Object.setPrototypeOf(FixedDate, NativeDate);
+        FixedDate.prototype = NativeDate.prototype;
+        Object.defineProperty(FixedDate, "now", { value: () => instant });
+        globalThis.Date = FixedDate;
+      })()`,
+        "execution-clock.js",
+      );
+      if (dateResult.error) {
+        const err = dumpError(context, dateResult.error);
+        dateResult.error.dispose();
+        throw new SandboxStdlibInitError(
+          `execution clock init failed: ${err.message}`,
+          makeStats(),
+        );
+      }
+      dateResult.value.dispose();
+    }
+
     // Marshal the input by JSON-encoding it on the host, shipping the
     // string into the VM, and parsing it there. This avoids building
     // arbitrarily-deep handle trees by hand.

@@ -346,6 +346,16 @@ export class SchedulerReconciler {
   /** Signatures of currently-installed desired state, keyed by schedule key. */
   private installed: Map<string, string> = new Map();
   private stopped = false;
+  private inFlight = new Set<Promise<unknown>>();
+
+  private track<T>(task: Promise<T>): Promise<T> {
+    this.inFlight.add(task);
+    void task.then(
+      () => this.inFlight.delete(task),
+      () => this.inFlight.delete(task),
+    );
+    return task;
+  }
   /** Last instant the files-cleanup cron ran. Used as an in-process
    *  throttle so the 60 s reconciler tick only fires the cleanup once
    *  per `FILES_CLEANUP_CADENCE_MS`. Multi-instance overlap is safe —
@@ -394,10 +404,12 @@ export class SchedulerReconciler {
 
   async start(): Promise<void> {
     this.stopped = false;
-    await this.reconcileOnce();
+    await this.track(this.reconcileOnce());
+    if (this.stopped) return;
     const period = this.opts.intervalMs ?? 60_000;
     this.timer = setInterval(() => {
-      this.reconcileOnce().catch((err) => {
+      if (this.stopped) return;
+      this.track(this.reconcileOnce()).catch((err) => {
         logger.error({
           module: "scheduler",
           action: "reconcile_failed",
@@ -420,6 +432,10 @@ export class SchedulerReconciler {
       clearInterval(t);
       this.everyTimers.delete(key);
     }
+    await Promise.allSettled([...this.inFlight]);
+    // A reconcile already in progress may have installed another timer.
+    for (const timer of this.everyTimers.values()) clearInterval(timer);
+    this.everyTimers.clear();
     this.installed.clear();
   }
 
@@ -672,7 +688,8 @@ export class SchedulerReconciler {
       const prior = this.everyTimers.get(key);
       if (prior) clearInterval(prior);
       const timer = setInterval(() => {
-        void this.fireEvery(key, def).catch((err) => {
+        if (this.stopped) return;
+        void this.track(this.fireEvery(key, def)).catch((err) => {
           logScheduleFireFailure(
             err,
             {
