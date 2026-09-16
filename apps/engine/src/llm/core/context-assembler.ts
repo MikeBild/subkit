@@ -573,6 +573,7 @@ export async function assembleEnhancedPrompt(
     // invalidate the stable prefix above.
     if (baseVolatile) vol(baseVolatile);
     if (authoringContext) vol(authoringContext);
+    if (p.automation_context) vol(p.automation_context);
     if (referencedEntitiesBlock) vol(referencedEntitiesBlock);
     lastSections = sections.map((text) => ({ text, volatile: volatileTexts.has(text) }));
     return sections.join("\n\n");

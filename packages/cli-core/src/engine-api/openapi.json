@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "8.0.26",
+    "version": "8.0.27",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -4544,6 +4544,62 @@
                 "rewrites_target": {
                   "type": "boolean"
                 },
+                "report_delivery": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "gmail_report"
+                      ]
+                    },
+                    "to": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+                    },
+                    "from": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+                    },
+                    "content_type": {
+                      "type": "string",
+                      "enum": [
+                        "text/plain",
+                        "text/html"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "to",
+                    "from",
+                    "content_type"
+                  ],
+                  "additionalProperties": false
+                },
+                "read_query": {
+                  "type": "object",
+                  "properties": {
+                    "fixed": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "variable": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 100
+                    }
+                  },
+                  "required": [
+                    "fixed",
+                    "variable"
+                  ],
+                  "additionalProperties": false
+                },
                 "operation": {
                   "type": "string"
                 },
@@ -4636,6 +4692,31 @@
           "execution_shape": {
             "$ref": "#/components/schemas/AuthorityExecutionShape"
           },
+          "schedules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cron": {
+                  "type": "string"
+                },
+                "timezone": {
+                  "type": "string"
+                },
+                "next_run_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "cron",
+                "timezone",
+                "next_run_at"
+              ]
+            }
+          },
           "suggested_bounds": {
             "type": "object",
             "properties": {
@@ -4664,6 +4745,7 @@
           "eligible_for_repeated_runs",
           "unavailable_steps",
           "execution_shape",
+          "schedules",
           "suggested_bounds"
         ]
       },
@@ -26589,6 +26671,283 @@
           },
           "500": {
             "description": "Internal — engine bug or schema regression.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/{id}/automation-status": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Read verified readiness of this workflow's schedules",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current status, never a permission grant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schedules": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "schedule_id": {
+                            "type": "string"
+                          },
+                          "workflow_id": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "paused",
+                              "activation_required",
+                              "input_required",
+                              "repair_required",
+                              "approval_required",
+                              "authorized",
+                              "verification_unavailable"
+                            ]
+                          },
+                          "ready": {
+                            "type": "boolean"
+                          },
+                          "cron": {
+                            "type": "string"
+                          },
+                          "timezone": {
+                            "type": "string"
+                          },
+                          "environment": {
+                            "type": "string",
+                            "enum": [
+                              "dev",
+                              "prod"
+                            ]
+                          },
+                          "next_run_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "schedule_id",
+                          "workflow_id",
+                          "state",
+                          "ready",
+                          "cron",
+                          "timezone",
+                          "environment",
+                          "next_run_at"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "schedules"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/{id}/versions/{version_id}/prepare-authority": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Prepare a held report preview without granting permission or sending",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "version_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "environment": {
+                    "type": "string",
+                    "enum": [
+                      "dev",
+                      "prod"
+                    ]
+                  }
+                },
+                "required": [
+                  "environment"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preparation completed; review the current boundary next",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "prepared": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "prepared"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
             "content": {
               "application/json": {
                 "schema": {

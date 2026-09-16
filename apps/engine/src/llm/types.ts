@@ -175,6 +175,8 @@ export interface AssembleContextParams {
    * must be masked before this string reaches the assembler.
    */
   authoring_context?: string;
+  /** Server-verified execution permission. Never discard under context pressure. */
+  automation_context?: string;
   /**
    * Objects the user @-mentioned on this turn, already resolved by
    * `conversations/references.ts`. `block` is the full rendering; the

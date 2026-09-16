@@ -10,6 +10,12 @@ import { authorityConnectorConfiguration } from "./authority-configuration.ts";
 import { authorityExecutionShape } from "./authority-execution-shape.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "./effect-manifest.ts";
+import { supportsReportDelivery } from "./report-delivery-boundary.ts";
+
+import {
+  proposeReportDeliveryBoundaries,
+  type ReportDeliveryBoundaries,
+} from "./report-delivery-proposal.ts";
 import { WorkflowDefSchema } from "./types.ts";
 
 const inputSchema = z
@@ -38,7 +44,7 @@ function displayTarget(url: URL): string | null {
 export async function resolveWorkflowEffectManifest(
   raw: unknown,
   db: Executor,
-  options: { include_review?: boolean } = {},
+  options: { include_review?: boolean; report_boundaries?: ReportDeliveryBoundaries } = {},
 ) {
   const input = inputSchema.parse(raw);
   const [version] = await db
@@ -65,6 +71,7 @@ export async function resolveWorkflowEffectManifest(
       code: "workflow_version_unavailable",
     });
   const definition = WorkflowDefSchema.parse(version.dag);
+  let reportBoundaries = options.report_boundaries;
   const bindings: ResolvedEffectBinding[] = [];
   const unavailable_steps: string[] = [];
   for (const step of definition.steps) {
@@ -103,10 +110,15 @@ export async function resolveWorkflowEffectManifest(
     } catch {
       // A malformed or unresolved URL is an unbound target, never a probe.
     }
+    if (reportBoundaries === undefined && supportsReportDelivery(step, target))
+      reportBoundaries = await proposeReportDeliveryBoundaries(input, db);
     const configuration = authorityConnectorConfiguration(connector);
     bindings.push({
       tenant_id: input.tenant_id,
       step_id: step.id,
+      ...(reportBoundaries?.[step.id] && supportsReportDelivery(step, target)
+        ? { report_delivery: reportBoundaries?.[step.id] }
+        : {}),
       connector_id: step.connector_id ?? null,
       driver,
       environment: system?.environment ?? input.execution_environment,
@@ -114,10 +126,18 @@ export async function resolveWorkflowEffectManifest(
       target,
       configuration_digest: workflowJsonDigest(configuration),
       credential_binding_digest: credentials ? workflowJsonDigest(credentials.binding) : null,
+      // Template documentation examples are digest-bound but never substituted
+      // into a request; only runtime connector fields can rewrite its target.
       // A cursor can inject response data into an arbitrary body recipient or
       // query parameter. Pagination therefore needs concrete-run review until
       // target-safe parameter constraints are implemented.
-      rewrites_target: Boolean(step.pagination) || JSON.stringify(configuration).includes("${"),
+      rewrites_target:
+        Boolean(step.pagination) ||
+        JSON.stringify({
+          base_url: connector?.base_url,
+          dsn: connector?.dsn,
+          config: connector?.config,
+        }).includes("${"),
     });
   }
   const compiled = compileWorkflowEffectManifest({

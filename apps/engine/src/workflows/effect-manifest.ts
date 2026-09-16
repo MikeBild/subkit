@@ -4,6 +4,14 @@
 import { z } from "@hono/zod-openapi";
 import { classifyHttpSideEffect, inferGraphqlOperation } from "@shared/index.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
+import {
+  hasRuntimeValue,
+  ReadQueryBoundarySchema,
+  ReportDeliveryBoundarySchema,
+  readQueryBoundary,
+  supportsReadQuery,
+  supportsReportDelivery,
+} from "./report-delivery-boundary.ts";
 import { JsonValueSchema, type RequestStep, WorkflowDefSchema } from "./types.ts";
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
@@ -24,6 +32,7 @@ export const ResolvedEffectBindingSchema = z
     configuration_digest: digest,
     credential_binding_digest: digest.nullable(),
     rewrites_target: z.boolean(),
+    report_delivery: ReportDeliveryBoundarySchema.optional(),
   })
   .strict();
 export type ResolvedEffectBinding = z.infer<typeof ResolvedEffectBindingSchema>;
@@ -64,6 +73,7 @@ export const WorkflowEffectManifestSchema = z
     execution_options_digest: digest,
     effects: z.array(
       ResolvedEffectBindingSchema.extend({
+        read_query: ReadQueryBoundarySchema.optional(),
         operation: z.string(),
         effect: z.enum(["read", "write", "unknown", "destructive"]),
       }),
@@ -73,12 +83,6 @@ export const WorkflowEffectManifestSchema = z
   .strict()
   .openapi("WorkflowEffectManifest");
 export type WorkflowEffectManifest = z.infer<typeof WorkflowEffectManifestSchema>;
-
-function hasRuntimeValue(value: unknown): boolean {
-  if (typeof value === "string") return value.includes("${");
-  if (Array.isArray(value)) return value.some(hasRuntimeValue);
-  return value !== null && typeof value === "object" && Object.values(value).some(hasRuntimeValue);
-}
 
 function operationOf(step: RequestStep, driver: ResolvedEffectBinding["driver"]): string {
   if (driver === "mcp") {
@@ -183,15 +187,29 @@ export function compileWorkflowEffectManifest(raw: unknown): {
     // may change a recipient in its body, not just a hostname in its URL.
     if (
       !binding.target ||
-      hasRuntimeValue(step) ||
+      (hasRuntimeValue(step) &&
+        !(
+          binding.driver === "http" &&
+          (supportsReadQuery(step) ||
+            (binding.report_delivery && supportsReportDelivery(step, binding.target)))
+        )) ||
       hasRuntimeValue(binding.target) ||
       binding.rewrites_target
     )
       issue("dynamic_request");
+    if (binding.report_delivery && !supportsReportDelivery(step, binding.target))
+      issue("binding_mismatch");
     const effect = effectOf(step, binding);
     if (effect === "unknown") issue("unknown_effect");
     if (effect === "destructive") issue("destructive_effect");
-    manifest.effects.push({ ...binding, operation: operationOf(step, binding.driver), effect });
+    manifest.effects.push({
+      ...binding,
+      ...(binding.driver === "http" && supportsReadQuery(step)
+        ? { read_query: readQueryBoundary(step) }
+        : {}),
+      operation: operationOf(step, binding.driver),
+      effect,
+    });
   }
   manifest.effects.sort((a, b) => (a.step_id < b.step_id ? -1 : a.step_id > b.step_id ? 1 : 0));
   manifest.issues.sort((a, b) =>

@@ -44,6 +44,30 @@ afterAll(async () => {
 }, 30_000);
 
 describe.skipIf(skip)("context-assembler skill-body trim", () => {
+  test("execution permission survives dropping a large authoring context", async () => {
+    const params = {
+      tenant_id: ctx.tenant_id,
+      flow: "converse" as const,
+      user_turns: [{ role: "user" as const, content: "Is the schedule ready?" }],
+      model: "mock",
+    };
+    const baseline = await assembleEnhancedPrompt({ ...params, max_tokens: 50_000 }, ctx.testDb.db);
+    const evidence =
+      "AUTOMATIC OPERATION: single run completed; schedule repair_required; ready=false";
+    const prompt = await assembleEnhancedPrompt(
+      {
+        ...params,
+        max_tokens: baseline.token_counts.total + 500,
+        authoring_context: "Large historical authoring context. ".repeat(10_000),
+        automation_context: evidence,
+      },
+      ctx.testDb.db,
+    );
+    expect(prompt.system).toContain(evidence);
+    expect(prompt.system).not.toContain("Large historical authoring context.");
+    expect(prompt.token_counts.total).toBeLessThanOrEqual(baseline.token_counts.total + 500);
+  });
+
   test("ambient skill body renders in summary form — body never inlined", async () => {
     // Without a load_skill call, the 40k-char skill body must NOT
     // appear in the prompt — only the summary form (title +
