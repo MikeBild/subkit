@@ -48,14 +48,18 @@
 // `translateAutoPersistError`, `ErrorTranslationContext`, and
 // `SyntheticToolResult` from this barrel.
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
-import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
+import {
+  conversationElicitations,
+  conversations,
+  conversationToolCalls,
+} from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { approvedDispatchOutcome } from "../../execution/tool-approval-dispatch.ts";
@@ -1500,6 +1504,7 @@ export async function maybeAutoPersistFromElicitation(
         commit_intent_kind: intent.kind,
         tool: toolName,
         ok: result.ok,
+        ...(result.pause ? { follow_up_elicitation_id: result.pause.elicitation_id } : {}),
         ...(prepared ? { preparation: true } : {}),
         conversation_id: p.conversation_id,
         ...(result.ok || prepared ? {} : { error_code: result.error_code ?? null }),
@@ -1516,5 +1521,21 @@ export async function maybeAutoPersistFromElicitation(
     synthetic,
     intent,
   });
+  // A confirmed tool can itself ask the person to sign in. Attach that next
+  // dialog to the persisted synthetic invocation so reloads can render it.
+  if (result.pause) {
+    await p.db
+      .update(conversationElicitations)
+      .set({ tool_call_id: callId })
+      .where(
+        and(
+          eq(conversationElicitations.tenant_id, p.tenant_id),
+          eq(conversationElicitations.conversation_id, p.conversation_id),
+          eq(conversationElicitations.id, result.pause.elicitation_id),
+          eq(conversationElicitations.status, "pending"),
+          isNull(conversationElicitations.tool_call_id),
+        ),
+      );
+  }
   return { dispatched: true, synthetic_result: synthetic, synthetic_tool_call_id: callId };
 }
