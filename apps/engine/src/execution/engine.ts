@@ -95,6 +95,13 @@ export type { ScopeEnvelope } from "./engine/envelope.ts";
  *  `step.for_each_concurrency`. */
 const DEFAULT_FOR_EACH_CONCURRENCY = 8;
 
+function hasHeldOutput(result: StepResult): boolean {
+  return (
+    result.held === true ||
+    (result.warnings?.some((warning) => warning.code === HELD_PREVIEW_WARNING_CODE) ?? false)
+  );
+}
+
 /**
  * Resolve how many `for_each` iterations may run concurrently.
  *
@@ -531,6 +538,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     };
     let childHeld = false;
     const recordHeldChild = (key: string, child: StepRunContext, result: RunStepOutcome) => {
+      if (hasHeldOutput(result.result)) childHeld = true;
+      for (const warning of result.result.warnings ?? []) {
+        warningsAccum.push({ ...warning, step_key: key });
+      }
       if (!result.result.held) return;
       childHeld = true;
       stepSummaries.push({
@@ -1058,7 +1069,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     // Hold-writes: a held step's response data does not exist — record
     // it so downstream dependents skip explicitly (see the labeled
     // skip above) instead of resolving placeholders against null.
-    if (outcome.result.held) {
+    if (hasHeldOutput(outcome.result)) {
       heldOrSkippedStepIds.add(step.id);
     }
     if (outcome.result.warnings?.length) {
@@ -1213,7 +1224,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             // in THIS iteration's body skip explicitly. The envelopes
             // above already carry `held` + `held_request` (envelopeFor)
             // so each iteration's artifact rides the loop accumulator.
-            if (bodyOutcome.result.held) {
+            if (hasHeldOutput(bodyOutcome.result)) {
               iterationHeldIds.add(bodyStep.id);
             }
             const bodyFailed =
@@ -1472,7 +1483,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                 branchScope[branchStepId] = envelopeFor(branchOutcome);
                 recordHeldChild(branchStepId, branchCtx, branchOutcome);
                 branchOutput[branchStepId] = envelopeFor(branchOutcome);
-                if (branchOutcome.result.held) {
+                if (hasHeldOutput(branchOutcome.result)) {
                   branchHeldIds.add(branchStepId);
                 }
                 if (
@@ -1778,7 +1789,9 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     warningsAccum.push({
       code: HELD_PREVIEW_WARNING_CODE,
       message:
-        `Preview run (hold_writes): ${heldWriteSteps.length} write step(s) held` +
+        (heldWriteSteps.length > 0
+          ? `Preview run (hold_writes): ${heldWriteSteps.length} write step(s) held`
+          : "Preview run (hold_writes): writes held in called workflows") +
         `${skippedDepSteps.length > 0 ? ` and ${skippedDepSteps.length} dependent step(s) skipped` : ""}` +
         ` — NOTHING was written to any external system. The returned output is from upstream` +
         ` read/transform steps only.`,
@@ -2265,6 +2278,9 @@ async function runCallStep(
     });
     return {
       status: child.status === "succeeded" ? "succeeded" : "failed",
+      // A successful child preview can still hold every external write.
+      // Preserve its evidence when the parent summarizes the call.
+      ...(child.warnings?.length ? { warnings: child.warnings } : {}),
       output: {
         execution_id: child.execution_id,
         status: child.status,

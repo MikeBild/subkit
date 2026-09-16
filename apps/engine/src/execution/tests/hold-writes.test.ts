@@ -112,6 +112,48 @@ function hitsFor(path: string): Array<{ method: string; url: string }> {
 }
 
 describe("hold-writes · HTTP", () => {
+  test("child preview warnings survive the parent call without dispatching writes", async () => {
+    hits.length = 0;
+    const child = await createWorkflowRow(ctx, {
+      name: "held-child-warning",
+      steps: [{ kind: "request", id: "send", method: "POST", url: `${mock.baseUrl}/child-send` }],
+    });
+    const parent = await createWorkflowRow(ctx, {
+      name: "held-parent-warning",
+      steps: [
+        { kind: "call", id: "call_child", workflow_id: child.workflow_id },
+        {
+          kind: "request",
+          id: "read_created",
+          method: "GET",
+          url: `${mock.baseUrl}/created/\${scope.call_child.data.output.id}`,
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id: parent.workflow_id },
+      input: null,
+      options: { hold_writes: true },
+    });
+    expect(result.status).toBe("succeeded");
+    expect(hitsFor("/child-send")).toHaveLength(0);
+    expect(hitsFor("/created/")).toHaveLength(0);
+    expect(result.steps.find((step) => step.step_key === "read_created")?.status).toBe("skipped");
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({
+        code: "held_preview_no_writes",
+        step_key: "call_child",
+      }),
+    );
+    const rows = await ctx.testDb.db
+      .select()
+      .from(executionSteps)
+      .where(eq(executionSteps.execution_id, result.execution_id));
+    expect(JSON.stringify(rows[0]?.output_preview)).toContain("held_preview_no_writes");
+  });
+
   test("read executes live, write is held with the materialized request, dependent is skipped", async () => {
     hits.length = 0;
     const { workflow_id } = await createWorkflowRow(ctx, {

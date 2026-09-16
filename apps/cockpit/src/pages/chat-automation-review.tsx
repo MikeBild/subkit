@@ -114,7 +114,8 @@ export function ChatAutomationReview({
       onAdjust={onAdjust}
       initialEnvironment={environment}
       triggerTestId={testId}
-      triggerLabel={t(draft ? "chat.activation.review" : "chat.schedule.review")}
+      triggerLabel={t("chat.schedule.review")}
+      triggerVariant="default"
     />
   );
 }
