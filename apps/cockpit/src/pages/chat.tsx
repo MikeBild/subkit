@@ -955,7 +955,7 @@ export function ChatPage() {
     refetchInterval: 15000,
   });
   const readySchedules =
-    automationStatus.data?.schedules.filter((schedule) => schedule.ready) ?? [];
+    automationStatus.data?.schedules?.filter((schedule) => schedule.ready) ?? [];
   const status = send.isPending || decide.isPending ? "streaming" : "ready";
   const ordered = useMemo(
     () =>
