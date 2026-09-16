@@ -51,7 +51,12 @@ export function ChatAutomationReview({
     return (
       <div role="status" className="flex flex-col gap-2">
         <p>{t("chat.activation.failed")}</p>
-        <Button variant="outline" size="sm" onClick={() => void workflow.refetch()}>
+        <Button
+          variant="outline"
+          size="sm"
+          data-testid="chat-activation-retry"
+          onClick={() => void workflow.refetch()}
+        >
           {t("chat.activation.retry")}
         </Button>
       </div>
