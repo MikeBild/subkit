@@ -13,6 +13,7 @@ const EN = {
   "chat.activation.scheduleChanged":
     "This change also updates when the workflow runs. Check the schedule in the saved change before applying it.",
 
+  "chat.activation.singleTitle": "Prepare one run",
   "chat.activation.singleHelp":
     "Automatic runs cannot yet be allowed because their final requests vary. Prepare one run and review its actual effect before anything is sent.",
   "chat.singleRun.title": "Run once now?",
@@ -1573,6 +1574,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.activation.scheduleChanged":
     "Diese Änderung passt auch den Ausführungszeitpunkt an. Prüfe den Zeitplan in der gespeicherten Änderung vor der Übernahme.",
 
+  "chat.activation.singleTitle": "Einzelnen Lauf vorbereiten",
   "chat.activation.singleHelp":
     "Automatische Läufe können noch nicht freigegeben werden, weil ihre endgültigen Anfragen variieren. Bereite einen einzelnen Lauf vor und prüfe seine konkrete Wirkung, bevor etwas gesendet wird.",
   "chat.singleRun.title": "Jetzt einmal ausführen?",
