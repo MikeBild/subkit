@@ -51,3 +51,29 @@ test("requires a readable question and does not label other decisions as inactiv
   detail.tool_calls[0]!.input = { question: "  " };
   expect(chatApproval(detail)).toBeNull();
 });
+
+test("renders a policy confirmation attached to the actual OAuth tool", () => {
+  const detail = fixture();
+  detail.tool_calls[0]!.tool = "authenticate_oauth";
+  detail.tool_calls[0]!.input = { connector_id: "connection-1" };
+  detail.resume_summary!.pending_approval!.prompt = {
+    question: "Policy requires confirmation before running authenticate_oauth. Proceed?",
+    intent_kind: "execute_tool",
+  };
+  expect(chatApproval(detail)).toMatchObject({
+    id: "elicitation-2",
+    toolCallId: "call-1",
+    oauth: "start",
+  });
+  detail.resume_summary!.pending_approval!.prompt = {
+    question: "Have you completed the authorization?",
+    intent_kind: "oauth_completed",
+    authorization_url: "https://provider.example/authorize?state=fixture",
+  };
+  expect(chatApproval(detail)).toMatchObject({
+    oauth: "complete",
+    authorizationUrl: "https://provider.example/authorize?state=fixture",
+  });
+  detail.resume_summary!.pending_approval!.tool_call_id = "different-call";
+  expect(chatApproval(detail)).toBeNull();
+});

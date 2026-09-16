@@ -42,11 +42,33 @@ export function ChatApprovalCard({
     <Card size="sm" tone="question" data-testid={testId}>
       <CardHeader>
         <CardTitle>
-          {t(approval.savesInactiveWorkflow ? "chat.decision.saveTitle" : "chat.decision.title")}
+          {t(
+            approval.oauth
+              ? "chat.reauth.title"
+              : approval.savesInactiveWorkflow
+                ? "chat.decision.saveTitle"
+                : "chat.decision.title",
+          )}
         </CardTitle>
-        <CardDescription>{readable(approval.question)}</CardDescription>
+        <CardDescription>
+          {approval.oauth
+            ? t(approval.oauth === "start" ? "chat.oauth.startHelp" : "chat.oauth.completeHelp")
+            : readable(approval.question)}
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        {approval.authorizationUrl && !expired && (
+          <Button asChild>
+            <a
+              href={approval.authorizationUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid={`${testId}-sign-in`}
+            >
+              {t("chat.oauth.signIn")}
+            </a>
+          </Button>
+        )}
         {approval.savesInactiveWorkflow && <p>{t("chat.decision.saveEffect")}</p>}
         {approval.description && (
           <details>
@@ -75,7 +97,9 @@ export function ChatApprovalCard({
           {t("chat.approval.decline")}
         </Button>
         <Button
-          disabled={busy || expired}
+          disabled={
+            busy || expired || (approval.oauth === "complete" && !approval.authorizationUrl)
+          }
           onClick={() => onDecision(approval.id, true)}
           data-testid={`${testId}-approve`}
         >
@@ -83,9 +107,13 @@ export function ChatApprovalCard({
           {t(
             busy
               ? "chat.decision.processing"
-              : approval.savesInactiveWorkflow
-                ? "chat.decision.save"
-                : "chat.approval.approve",
+              : approval.oauth
+                ? approval.oauth === "start"
+                  ? "chat.oauth.start"
+                  : "chat.oauth.check"
+                : approval.savesInactiveWorkflow
+                  ? "chat.decision.save"
+                  : "chat.approval.approve",
           )}
         </Button>
       </CardFooter>

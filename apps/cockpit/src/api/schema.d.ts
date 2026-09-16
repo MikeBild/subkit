@@ -19630,6 +19630,11 @@ export interface components {
                     tool_call_id?: string | null;
                     tool_name: string;
                     summary: string;
+                    prompt?: {
+                        question: string;
+                        intent_kind?: string;
+                        authorization_url?: string;
+                    };
                     expires_at: string;
                 } | null;
                 next_action: string;
