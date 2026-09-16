@@ -5,6 +5,7 @@ export async function verifyChatOAuth(page, stand, conversation, locale) {
     async (id) => (await fetch(`/v1/conversations/${id}`)).json(),
     conversation.id,
   );
+  const origin = new URL(page.url()).origin;
   let stage = 0;
   let replies = 0;
   let visits = 0;
@@ -21,6 +22,21 @@ export async function verifyChatOAuth(page, stand, conversation, locale) {
             role: "assistant",
             created_at: conversation.updated_at,
             parts: [
+              {
+                type: "tool_call",
+                call_id: "old-link",
+                tool: "request_connector_reauth",
+                input: {},
+              },
+              {
+                type: "tool_result",
+                call_id: "old-link",
+                outcome: "ok",
+                output: {
+                  reauth_url: `${origin}/v1/connectors/00000000-0000-4000-8000-000000000001/oauth/start?grant=fixture`,
+                  expires_at: "2000-01-01T00:00:00Z",
+                },
+              },
               {
                 type: "tool_call",
                 call_id: "oauth-call",
@@ -85,6 +101,17 @@ export async function verifyChatOAuth(page, stand, conversation, locale) {
     await stand.visit(page, `chat/${conversation.id}`);
     const card = page.getByTestId("chat-message-0-approval");
     await card.waitFor();
+    await page
+      .getByRole("button", {
+        name: locale === "de" ? "Anmeldung fortsetzen" : "Continue sign-in",
+        exact: true,
+      })
+      .click();
+    await page.getByTestId("chat-context-approval").waitFor();
+    if (replies || visits)
+      throw new Error("Returning to an existing dialog must not submit anything");
+    await page.keyboard.press("Escape");
+
     if ((await card.innerText()).includes("Technical policy"))
       throw new Error("Technical prompt leaked into sign-in dialog");
     await card

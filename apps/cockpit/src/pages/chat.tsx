@@ -568,6 +568,7 @@ function ChatMessage({
               <ChatReauthCard
                 key={`${message.id}-reauth-${partIndex}`}
                 action={reauth}
+                pending={Boolean(approval || choice)}
                 busy={approvalBusy}
                 onRenew={onReauth}
               />
@@ -1235,7 +1236,11 @@ export function ChatPage() {
                         }
                         onApproval={submitApproval}
                         nameFor={nameFor}
-                        onReauth={(action) =>
+                        onReauth={(action) => {
+                          if (pendingDecision || pendingChoice) {
+                            setContextOpen(true);
+                            return;
+                          }
                           send.mutate({
                             message: t("chat.reauth.prompt"),
                             references: [
@@ -1245,8 +1250,8 @@ export function ChatPage() {
                                 label: action.label || t("chat.reauth.title"),
                               },
                             ],
-                          })
-                        }
+                          });
+                        }}
                         onDecision={(toolCallId, approved) =>
                           decide.mutate({ toolCallId, approved })
                         }
