@@ -85,6 +85,24 @@ function bareIdentifier(segment: TextSegment): string | null {
   return new RegExp(`^${IDENTIFIER_PATTERN.source}$`, "i").test(inner) ? inner : null;
 }
 
+// Link destinations are executable data, including bare OAuth URLs emitted by
+// connector tools. Never run identifier naming over them. Work on surrounding
+// prose directly rather than placeholders that could collide with user text.
+const LINK_TARGET_PATTERN =
+  /\]\((?:\\.|[^\\)\n])*\)|(?:https?:\/\/|\/(?:v1|cockpit)\/)[^\s<>`]+|^ {0,3}\[[^\]\n]+\]:[^\n]+/gm;
+
+function nameProse(text: string, name: (id: string) => string): string {
+  let result = "";
+  let end = 0;
+  for (const match of text.matchAll(LINK_TARGET_PATTERN)) {
+    const start = match.index ?? 0;
+    result += text.slice(end, start).replace(IDENTIFIER_PATTERN, name);
+    result += match[0];
+    end = start + match[0].length;
+  }
+  return result + text.slice(end).replace(IDENTIFIER_PATTERN, name);
+}
+
 export function nameIdentifiers(
   text: string,
   resolve: (id: string) => ResolvedIdentifier | null,
@@ -103,7 +121,7 @@ export function nameIdentifiers(
       // set in monospace reads as a value the reader is meant to copy.
       if (bare) return name(bare);
       if (segment.code) return segment.text;
-      return segment.text.replace(IDENTIFIER_PATTERN, name);
+      return nameProse(segment.text, name);
     })
     .join("");
 }
