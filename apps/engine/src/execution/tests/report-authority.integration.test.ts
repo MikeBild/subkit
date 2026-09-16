@@ -11,7 +11,9 @@ import {
   sessions,
   users,
   workflowExecutionAuthorities,
+  workflows,
   workflowsSchedules,
+  workflowVersions,
 } from "../../db/schema/index.ts";
 import { inspectScheduleAutomation } from "../../scheduler/automation-status.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
@@ -179,7 +181,19 @@ async function fixture(withRead = false) {
       db,
       principal,
     );
-  return { raw, wf, schedule, inspect, prepare, automaticPrepare, grant, run };
+  return {
+    raw,
+    wf,
+    schedule,
+    inspect,
+    prepare,
+    automaticPrepare,
+    grant,
+    run,
+    principal,
+    request,
+    now,
+  };
 }
 
 test("preview -> human recurring grant -> schedule resolved -> two changing reports without another approval", async () => {
@@ -299,4 +313,62 @@ test("preview cannot borrow a report recipient from another environment or tenan
   await expect(
     previewWorkflowAuthority({ ...input, tenant_id: f.wf.workflow_id }, ctx.testDb.db),
   ).rejects.toMatchObject({ code: "workflow_version_unavailable" });
+});
+
+test("a reviewed report draft is activated and resolves only its own held decision atomically", async () => {
+  const f = await fixture();
+  const other = await fixture();
+  const db = ctx.testDb.db;
+  const [original] = await db
+    .select()
+    .from(workflowVersions)
+    .where(eq(workflowVersions.id, f.wf.version_id));
+  if (!original) throw new Error("missing version");
+  const [draft] = await db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: ctx.tenantId,
+      workflow_id: f.wf.workflow_id,
+      version: 2,
+      dag: original.dag,
+    })
+    .returning();
+  if (!draft) throw new Error("missing draft");
+  await db
+    .update(workflows)
+    .set({ draft_version_id: draft.id })
+    .where(eq(workflows.id, f.wf.workflow_id));
+  const reviewInput = {
+    tenant_id: ctx.tenantId,
+    workflow_id: f.wf.workflow_id,
+    workflow_version_id: draft.id,
+    execution_environment: "dev" as const,
+  };
+  await prepareReportAuthority(reviewInput, db, f.principal);
+  const preview = await previewWorkflowAuthority(reviewInput, db);
+  expect(preview.eligible_for_repeated_runs).toBe(true);
+  await grantWorkflowAuthority(
+    f.wf.workflow_id,
+    {
+      workflow_version_id: draft.id,
+      execution_environment: "dev",
+      expected_manifest_digest: preview.digest,
+      valid_from: f.now.toISOString(),
+      valid_until: new Date(f.now.getTime() + 3600000).toISOString(),
+      max_runs: 2,
+      activation: { expected_current_version_id: f.wf.version_id },
+    },
+    { db, principal: f.principal, request: f.request },
+  );
+  const [current] = await db.select().from(workflows).where(eq(workflows.id, f.wf.workflow_id));
+  expect(current?.current_version_id).toBe(draft.id);
+  expect(current?.draft_version_id).toBeNull();
+  const held = await db
+    .select()
+    .from(workflowsSchedules)
+    .where(eq(workflowsSchedules.tenant_id, ctx.tenantId));
+  const resolved = held.find((row) => row.id === f.schedule.id)!;
+  expect(resolved.admission_hold).toBeNull();
+  expect(held.find((row) => row.id === other.schedule.id)?.admission_hold).not.toBeNull();
+  expect((await inspectScheduleAutomation(resolved, db)).ready).toBe(true);
 });
