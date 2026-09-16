@@ -7,6 +7,19 @@ export const LOCALE_TAGS: Record<Locale, string> = {
 };
 
 const EN = {
+  "authority.report.title": "Allow scheduled reports?",
+  "authority.report.description":
+    "Approve future reports within the limits below. Nothing is sent now.",
+  "authority.report.recipients": "Fixed delivery",
+  "authority.report.delivery": "From {from} to {to}",
+  "authority.report.variable":
+    "Subject and report contents may change. Additional recipients and attachments are not allowed.",
+  "authority.report.next": "Next scheduled time: {time} ({zone})",
+  "authority.report.confirm": "Allow scheduled delivery",
+  "chat.automation.ready": "Automatic operation enabled",
+  "chat.automation.readyHint":
+    "This schedule has valid permission. Its blocked decision is resolved.",
+
   "chat.activation.stepsChanged":
     "Updated steps: {count}. Review their destinations and effects below.",
   "chat.activation.scheduleKept": "The existing schedule is kept.",
@@ -1568,6 +1581,18 @@ const EN = {
 export type TranslationKey = keyof typeof EN;
 
 const DE: Record<TranslationKey, string> = {
+  "authority.report.title": "Regelmäßige Berichte freigeben?",
+  "authority.report.description":
+    "Erlaube künftige Berichte innerhalb der folgenden Grenzen. Jetzt wird nichts versendet.",
+  "authority.report.recipients": "Fester Versand",
+  "authority.report.delivery": "Von {from} an {to}",
+  "authority.report.variable":
+    "Betreff und Berichtsinhalt dürfen sich ändern. Zusätzliche Empfänger und Anhänge sind nicht erlaubt.",
+  "authority.report.next": "Nächster geplanter Termin: {time} ({zone})",
+  "authority.report.confirm": "Regelmäßigen Versand freigeben",
+  "chat.automation.ready": "Automatischer Betrieb freigegeben",
+  "chat.automation.readyHint":
+    "Dieser Zeitplan hat eine gültige Freigabe. Seine offene Entscheidung ist erledigt.",
   "chat.activation.stepsChanged":
     "Geänderte Schritte: {count}. Prüfe unten ihre Ziele und Wirkungen.",
   "chat.activation.scheduleKept": "Der bestehende Zeitplan bleibt erhalten.",

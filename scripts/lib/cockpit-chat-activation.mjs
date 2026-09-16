@@ -78,6 +78,11 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
       draft_version_id: completed ? null : draftId,
     }),
   );
+  await route(`**/v1/workflows/${workflowId}/automation-status`, (r) =>
+    fulfill(r, {
+      schedules: [{ ready: completed, next_run_at: "2026-10-01T08:00:00.000Z", timezone: "UTC" }],
+    }),
+  );
   await route(`**/v1/workflows/${workflowId}/draft`, (r) =>
     fulfill(r, {
       workflow_id: workflowId,
@@ -100,10 +105,26 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
         workflow_id: workflowId,
         workflow_version_id: draftId,
         execution_environment: "prod",
-        effects: [],
+        effects: unsupported
+          ? []
+          : [
+              {
+                step_id: "send",
+                effect: "write",
+                operation: "POST",
+                target: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+                report_delivery: {
+                  kind: "gmail_report",
+                  from: "sender@example.test",
+                  to: "recipient@example.test",
+                  content_type: "text/html",
+                },
+              },
+            ],
         issues: [],
       },
       execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
+      schedules: [{ cron: "0 8 * * *", timezone: "UTC", next_run_at: "2026-10-01T08:00:00.000Z" }],
       suggested_bounds: {
         valid_from: new Date(preparedAt).toISOString(),
         valid_until: new Date(preparedAt + 86400000).toISOString(),
@@ -189,6 +210,13 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
     await action.click();
     await page.getByTestId("authority-grant-confirm").waitFor();
     if (grants) throw new Error("Opening review granted permission");
+    await page.getByTestId("authority-report-boundary").waitFor();
+    if (
+      !(await page.getByTestId("authority-report-boundary").innerText()).includes(
+        "recipient@example.test",
+      )
+    )
+      throw new Error("Missing reviewed recipient");
     await page.getByTestId("authority-grant-confirm").click();
     await page.getByTestId("authority-prepare").waitFor();
     if (!(await page.getByTestId("authority-grant-confirm").isDisabled()))
@@ -198,6 +226,7 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
     await page.getByTestId("authority-grant-confirm").click();
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     await page.getByTestId("chat-schedule-next-step").waitFor({ state: "hidden" });
+    await page.getByTestId("chat-automation-ready").waitFor();
     const after = await decisionCount();
     if (after !== before - 1)
       throw new Error(`Decision count did not decrease once: ${before} -> ${after}`);
@@ -205,6 +234,7 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
     await page.getByTestId("chat-transcript").waitFor();
     if (await page.getByTestId("chat-schedule-next-step").count())
       throw new Error("Completed decision returned after reload");
+    await page.getByTestId("chat-automation-ready").waitFor();
     completed = false;
     unsupported = true;
     await page.reload();

@@ -805,3 +805,57 @@ test("chat activation is browser-bound, rejects stale review, and never dispatch
       .where(eq(workflowExecutionAuthorities.workflow_id, f.workflow.id)),
   ).toHaveLength(0);
 });
+
+test("held report preparation works for a saved draft and cannot grant, activate or send", async () => {
+  const f = await fixture();
+  await ctx.db
+    .update(workflowVersions)
+    .set({
+      dag: {
+        name: "Report",
+        steps: [
+          {
+            id: "send",
+            kind: "request",
+            method: "POST",
+            url: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow expression
+            body: { raw: "${input.raw}" },
+            max_retries: 0,
+          },
+        ],
+      },
+    })
+    .where(eq(workflowVersions.id, f.version.id));
+  const preparePath = `${f.base}/versions/${f.version.id}/prepare-authority`;
+  expect(
+    (
+      await app.request(preparePath, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ environment: "dev" }),
+      })
+    ).status,
+  ).toBe(401);
+  // No supplied input means the MIME recipient cannot be prepared; this must
+  // never turn a held or failed preparation into an execution grant.
+  const prepared = await app.request(preparePath, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify({ environment: "dev" }),
+  });
+  expect(prepared.status).toBe(200);
+  const preview = await app.request(f.previewPath, { headers: browserHeaders });
+  expect(await preview.json()).toMatchObject({ eligible_for_repeated_runs: false });
+  const [workflow] = await ctx.db.select().from(workflows).where(eq(workflows.id, f.workflow.id));
+  expect(workflow?.lifecycle).toBe("draft");
+  const authorities = await ctx.db
+    .select()
+    .from(workflowExecutionAuthorities)
+    .where(eq(workflowExecutionAuthorities.workflow_id, f.workflow.id));
+  expect(authorities).toHaveLength(0);
+  expect((await app.request(`${f.base}/automation-status`)).status).toBe(401);
+  const status = await app.request(`${f.base}/automation-status`, { headers: browserHeaders });
+  expect(status.status).toBe(200);
+  expect(await status.json()).toEqual({ schedules: [] });
+});

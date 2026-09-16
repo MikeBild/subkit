@@ -21,6 +21,7 @@ import { can } from "../rbac/evaluator.ts";
 import { activateReviewedDraft } from "./activate-reviewed-draft.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import { resolveWorkflowEffectManifest } from "./effect-resolution.ts";
+import type { ReportDeliveryBoundaries } from "./report-delivery-proposal.ts";
 import { normalizeWorkflowRunInput } from "./run-input.ts";
 import { WorkflowDefSchema } from "./types.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
@@ -62,7 +63,7 @@ export function previewWorkflowAuthority(
     execution_environment: "dev" | "prod";
   },
   db: Executor,
-  options: { include_review?: boolean } = {},
+  options: { include_review?: boolean; report_boundaries?: ReportDeliveryBoundaries } = {},
 ) {
   return resolveWorkflowEffectManifest(
     {

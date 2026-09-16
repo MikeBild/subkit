@@ -64,7 +64,7 @@ export function GrantWorkflowAuthority({
   triggerLabel?: string;
   triggerTestId?: string;
 }) {
-  const { t, dateTime } = useI18n();
+  const { t, dateTime, locale } = useI18n();
   const [open, setOpen] = useState(false);
   const client = useQueryClient();
   const session = useSession();
@@ -84,9 +84,24 @@ export function GrantWorkflowAuthority({
     mutationFn: async (env: "dev" | "prod") => {
       const targetVersion = prepareVersion ? await prepareVersion() : versionId;
       setReviewVersionId(targetVersion);
-      return apiRequest<WorkflowAuthorityPreview>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(targetVersion)}/authority-preview?environment=${env}`,
-      );
+      const url = `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(targetVersion)}/authority-preview?environment=${env}`;
+      let result = await apiRequest<WorkflowAuthorityPreview>(url);
+      if (
+        !result.eligible_for_repeated_runs &&
+        result.manifest.effects.some(
+          (effect) =>
+            effect.target === "https://gmail.googleapis.com/gmail/v1/users/me/messages/send" &&
+            !effect.report_delivery,
+        ) &&
+        session.permissions.includes("workflow:run")
+      ) {
+        await apiRequest(
+          `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(targetVersion)}/prepare-authority`,
+          { method: "POST", body: JSON.stringify({ environment: env }) },
+        );
+        result = await apiRequest<WorkflowAuthorityPreview>(url);
+      }
+      return result;
     },
     onSuccess: (review) => {
       setRuns(String(review.suggested_bounds.max_runs));
@@ -119,6 +134,7 @@ export function GrantWorkflowAuthority({
     },
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["workflow-authorities", workflowId] });
+      await client.invalidateQueries({ queryKey: ["workflow-automation-status", workflowId] });
       await client.invalidateQueries({ queryKey: ["decisions"] });
       await client.invalidateQueries({ queryKey: ["operational-overview"] });
       await client.invalidateQueries({ queryKey: ["patch-candidate"] });
@@ -153,6 +169,11 @@ export function GrantWorkflowAuthority({
   });
   const busy = prepare.isPending || grant.isPending || activateOnly.isPending;
   const unsupported = review && !review.eligible_for_repeated_runs;
+  const deliveries =
+    review?.manifest.effects.flatMap((effect) =>
+      effect.report_delivery ? [effect.report_delivery] : [],
+    ) ?? [];
+  const recurringReport = deliveries.length > 0 && !unsupported;
   const incomplete = review?.execution_shape.requests.some(
     (request) => request.request_review_truncated || request.opaque_payload_omitted,
   );
@@ -186,33 +207,64 @@ export function GrantWorkflowAuthority({
         <DialogHeader className="-mx-4 -mt-4 shrink-0 bg-accent/10 px-4 py-4 pr-12">
           <DialogTitle>
             {t(
-              unsupported
-                ? onSingleRun
-                  ? "chat.activation.singleTitle"
-                  : "authority.adjustTitle"
-                : activation
-                  ? "chat.activation.title"
-                  : onGrant
-                    ? "decisions.applyAndAuthorize"
-                    : "authority.grantOpen",
+              recurringReport
+                ? "authority.report.title"
+                : unsupported
+                  ? onSingleRun
+                    ? "chat.activation.singleTitle"
+                    : "authority.adjustTitle"
+                  : activation
+                    ? "chat.activation.title"
+                    : onGrant
+                      ? "decisions.applyAndAuthorize"
+                      : "authority.grantOpen",
             )}
           </DialogTitle>
           <DialogDescription>
             {t(
-              unsupported
-                ? onSingleRun
-                  ? "chat.activation.singleHelp"
-                  : "authority.adjustDescription"
-                : activation
-                  ? "chat.activation.description"
-                  : onGrant
-                    ? "decisions.applyAndAuthorizeDescription"
-                    : "authority.grantDescription",
+              recurringReport
+                ? "authority.report.description"
+                : unsupported
+                  ? onSingleRun
+                    ? "chat.activation.singleHelp"
+                    : "authority.adjustDescription"
+                  : activation
+                    ? "chat.activation.description"
+                    : onGrant
+                      ? "decisions.applyAndAuthorizeDescription"
+                      : "authority.grantDescription",
             )}
           </DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
           {reviewContent}
+          {recurringReport && (
+            <Alert data-testid="authority-report-boundary" className="bg-accent/10">
+              <AlertTitle>{t("authority.report.recipients")}</AlertTitle>
+              <AlertDescription>
+                {deliveries.map((delivery, index) => (
+                  <p key={`${delivery.to}:${index}`}>
+                    {t("authority.report.delivery", { from: delivery.from, to: delivery.to })}
+                  </p>
+                ))}
+                <p>{t("authority.report.variable")}</p>
+                {review?.schedules?.map((schedule, index) => (
+                  <p key={index}>
+                    {t("authority.report.next", {
+                      time: schedule.next_run_at
+                        ? new Intl.DateTimeFormat(locale, {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                            timeZone: schedule.timezone,
+                          }).format(new Date(schedule.next_run_at))
+                        : t("common.unknown"),
+                      zone: schedule.timezone,
+                    })}
+                  </p>
+                ))}
+              </AlertDescription>
+            </Alert>
+          )}
           {unsupported && !onSingleRun && (
             <Alert data-testid="authority-needs-adjustment">
               <AlertTitle>{t("schedules.held.status")}</AlertTitle>
@@ -320,7 +372,10 @@ export function GrantWorkflowAuthority({
                   {dateTime(input.valid_until)}
                 </p>
               )}
-              <details open={!unsupported} data-testid="authority-effect-details">
+              <details
+                open={!unsupported && !recurringReport}
+                data-testid="authority-effect-details"
+              >
                 <summary className="cursor-pointer text-sm font-medium">
                   {t("authority.effects")}
                 </summary>
@@ -469,13 +524,15 @@ export function GrantWorkflowAuthority({
               {t(
                 grant.isPending
                   ? "authority.granting"
-                  : activation
-                    ? "chat.activation.confirm"
-                    : onGrant
-                      ? "decisions.applyAndAuthorize"
-                      : Number(runs) === 1
-                        ? "authority.grantConfirmOne"
-                        : "authority.grantConfirm",
+                  : recurringReport
+                    ? "authority.report.confirm"
+                    : activation
+                      ? "chat.activation.confirm"
+                      : onGrant
+                        ? "decisions.applyAndAuthorize"
+                        : Number(runs) === 1
+                          ? "authority.grantConfirmOne"
+                          : "authority.grantConfirm",
                 { count: runs },
               )}
             </Button>

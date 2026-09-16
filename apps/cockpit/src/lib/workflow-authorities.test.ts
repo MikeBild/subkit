@@ -44,6 +44,7 @@ const during = Date.parse("2026-01-01T12:00:00.000Z");
 
 const preview: WorkflowAuthorityPreview = {
   manifest: authority.effect_manifest,
+  schedules: [],
   digest: "a".repeat(64),
   eligible_for_repeated_runs: true,
   unavailable_steps: [],
