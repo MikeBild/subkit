@@ -1282,6 +1282,12 @@ const EN = {
   "chat.mention.unresolved": "No longer exists or not accessible",
   "chat.submit": "Send message",
   "authority.grantSaved": "Permission saved. The decision status has been refreshed.",
+  "chat.oauth.startHelp": "Prepare sign-in for this connection. Then sign in with your provider.",
+  "chat.oauth.completeHelp":
+    "Sign in with your provider in the new tab. Then return here to check the connection.",
+  "chat.oauth.start": "Prepare sign-in",
+  "chat.oauth.signIn": "Sign in with provider",
+  "chat.oauth.check": "Check sign-in",
   "chat.reauth.title": "Reconnect your account",
   "chat.reauth.help": "Sign in with the provider in a new tab. Then return to this conversation.",
   "chat.reauth.expired": "This sign-in link has expired. Request a new one to continue.",
@@ -2838,6 +2844,13 @@ const DE: Record<TranslationKey, string> = {
   "chat.mention.unresolved": "Nicht mehr vorhanden oder nicht zugänglich",
   "chat.submit": "Nachricht senden",
   "authority.grantSaved": "Freigabe gespeichert. Der Entscheidungsstatus wurde aktualisiert.",
+  "chat.oauth.startHelp":
+    "Bereite die Anmeldung für diese Verbindung vor. Melde dich danach beim Anbieter an.",
+  "chat.oauth.completeHelp":
+    "Melde dich beim Anbieter im neuen Tab an. Kehre danach zurück und prüfe die Verbindung.",
+  "chat.oauth.start": "Anmeldung vorbereiten",
+  "chat.oauth.signIn": "Beim Anbieter anmelden",
+  "chat.oauth.check": "Anmeldung prüfen",
   "chat.reauth.title": "Konto erneut verbinden",
   "chat.reauth.help":
     "Melde dich beim Anbieter im neuen Tab an. Kehre danach in diesen Chat zurück.",

@@ -853,6 +853,7 @@ export interface ConversationResumeSummary {
     id: string;
     tool_call_id?: string | null;
     tool_name: string;
+    prompt?: { question: string; intent_kind?: string; authorization_url?: string };
     summary: string;
     /** When this approval lapses — mirrors `ResumeSummary` in `resume.ts`;
      *  the two shapes are hand-duplicated and must move together. */

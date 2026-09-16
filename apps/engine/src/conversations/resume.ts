@@ -27,6 +27,7 @@ export interface ResumeSummary {
     id: string;
     tool_call_id?: string | null;
     tool_name: string;
+    prompt?: { question: string; intent_kind?: string; authorization_url?: string };
     summary: string;
     /** When this approval lapses. The only real deadline in the product;
      *  without it a client cannot tell "running out" from "just waiting". */
@@ -43,6 +44,7 @@ export interface BuildResumeSummaryParams {
     id: string;
     tool_call_id?: string | null;
     tool_name: string;
+    input?: unknown;
     summary?: string | null;
     /** ISO instant the prompt lapses. Carried through so the resume banner —
      *  and the decision queue reading it — can say how long is left. */
@@ -129,6 +131,7 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
           : {}),
         tool_name: pendingElicitation.tool_name,
         summary: pendingElicitation.summary ?? "",
+        ...pendingPrompt(pendingElicitation.input),
         expires_at: pendingElicitation.expires_at,
       }
     : null;
@@ -278,4 +281,31 @@ function buildOneSentence(p: OneSentenceInputs): string {
     default:
       return `You have an in-progress conversation. ${p.nextAction}`;
   }
+}
+
+/** Project the dialog fields only; never expose its execution or approval capability. */
+export function pendingPrompt(input: unknown): {
+  prompt?: { question: string; intent_kind?: string; authorization_url?: string };
+} {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const value = input as Record<string, unknown>;
+  if (typeof value.question !== "string" || !value.question.trim()) return {};
+  const intent = value.commit_intent as { kind?: unknown } | undefined;
+  let authorizationUrl: string | undefined;
+  if (intent?.kind === "oauth_completed" && typeof value.authorization_url === "string") {
+    try {
+      const url = new URL(value.authorization_url);
+      if (url.protocol === "https:" && !url.username && !url.password)
+        authorizationUrl = value.authorization_url;
+    } catch {
+      /* Invalid destinations are never clickable. */
+    }
+  }
+  return {
+    prompt: {
+      question: value.question,
+      ...(typeof intent?.kind === "string" ? { intent_kind: intent.kind } : {}),
+      ...(authorizationUrl ? { authorization_url: authorizationUrl } : {}),
+    },
+  };
 }

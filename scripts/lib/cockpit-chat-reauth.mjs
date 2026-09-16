@@ -45,7 +45,10 @@ export async function verifyChatReauth(page, stand, conversation) {
                   },
                 },
               },
-              { type: "text", text: `Anmelden: ${href}\n\n[Verbindung öffnen](${href})` },
+              {
+                type: "text",
+                text: `Anmelden: ${href}\n\n[Verbindung öffnen](${href.replace("https:", "http:")})`,
+              },
             ],
           },
         ],
@@ -82,8 +85,8 @@ export async function verifyChatReauth(page, stand, conversation) {
     const links = page.getByTestId("message-link");
     if ((await links.count()) !== 2) throw new Error("Bare or markdown sign-in link missing");
     for (const link of await links.all())
-      if ((await link.getAttribute("href")) !== href)
-        throw new Error("Chat presentation corrupted OAuth URL");
+      if ((await link.getAttribute("href")) !== "#chat-account-connection")
+        throw new Error("Model-generated link bypassed the structured sign-in card");
     if ((await page.getByTestId("chat-transcript").innerText()).includes("synthetic-ui-test"))
       throw new Error("Sign-in token leaked into the visible link label");
     if (visits) throw new Error("Rendering consumed a single-use grant");
