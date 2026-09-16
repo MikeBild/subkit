@@ -1288,6 +1288,9 @@ const EN = {
   "chat.oauth.start": "Prepare sign-in",
   "chat.oauth.signIn": "Sign in with provider",
   "chat.oauth.check": "Check sign-in",
+  "chat.reauth.pendingHelp":
+    "A question is already waiting for you. Answer it to continue signing in.",
+  "chat.reauth.continue": "Continue sign-in",
   "chat.reauth.title": "Reconnect your account",
   "chat.reauth.help": "Sign in with the provider in a new tab. Then return to this conversation.",
   "chat.reauth.expired": "This sign-in link has expired. Request a new one to continue.",
@@ -2851,6 +2854,9 @@ const DE: Record<TranslationKey, string> = {
   "chat.oauth.start": "Anmeldung vorbereiten",
   "chat.oauth.signIn": "Beim Anbieter anmelden",
   "chat.oauth.check": "Anmeldung prüfen",
+  "chat.reauth.pendingHelp":
+    "Eine Rückfrage wartet bereits auf dich. Beantworte sie, um die Anmeldung fortzusetzen.",
+  "chat.reauth.continue": "Anmeldung fortsetzen",
   "chat.reauth.title": "Konto erneut verbinden",
   "chat.reauth.help":
     "Melde dich beim Anbieter im neuen Tab an. Kehre danach in diesen Chat zurück.",
