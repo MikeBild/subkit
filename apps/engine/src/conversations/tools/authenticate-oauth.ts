@@ -690,11 +690,15 @@ function dbPauseForOAuth(
   connectorId: string,
   connectorSlug: string,
 ): Promise<ToolResult> {
-  return pauseForUserInput(ctx, {
-    tool_name: "ask_user_confirm",
-    summary: message,
-    input: oauthApprovalInput(authorizationUrl, redirectUri, message, connectorId, connectorSlug),
-  });
+  return pauseForUserInput(
+    ctx,
+    {
+      tool_name: "ask_user_confirm",
+      summary: message,
+      input: oauthApprovalInput(authorizationUrl, redirectUri, message, connectorId, connectorSlug),
+    },
+    { authorizationUrl },
+  );
 }
 
 /**

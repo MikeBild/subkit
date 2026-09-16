@@ -177,11 +177,17 @@ async function secretElicitationBlockedOverMcp(
 export async function pauseForUserInput(
   ctx: ToolContext,
   p: { tool_name: AskUserToolName; summary: string; input: unknown },
+  engineAuthorization?: { authorizationUrl: string },
 ): Promise<ToolResult> {
   // The model occasionally echoes a user-pasted secret back into the
   // question/summary it asks with — scrub the whole payload before any
   // path (bridge, DB pause, elicitation row) can persist or render it.
   p = scrubAskUserPayload(p);
+  // This argument is supplied only by the engine's OAuth starter, never by a
+  // model tool schema. State and PKCE are protocol data, not prose to redact.
+  if (engineAuthorization && p.input && typeof p.input === "object" && !Array.isArray(p.input)) {
+    p = { ...p, input: { ...p.input, authorization_url: engineAuthorization.authorizationUrl } };
+  }
   // ── D7: no secret is ever elicited as chat text over MCP ───────────
   // Scoped to `surface === "mcp"`: sk-cli (sk_headless/sk_interactive)
   // and the web portal are secure input surfaces — a local operator may
