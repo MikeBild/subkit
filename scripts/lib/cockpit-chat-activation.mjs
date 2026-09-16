@@ -90,6 +90,8 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
   await route(`**/v1/workflows/${workflowId}/versions/*/authority-preview?*`, (r) => {
     if (!r.request().url().includes(draftId))
       throw new Error("Chat reviewed the older active version");
+    // Use one instant so the suggested duration is exactly 24 whole hours.
+    const preparedAt = Date.now();
     return fulfill(r, {
       digest: "a".repeat(64),
       eligible_for_repeated_runs: !unsupported,
@@ -103,8 +105,8 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
       },
       execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
       suggested_bounds: {
-        valid_from: new Date().toISOString(),
-        valid_until: new Date(Date.now() + 86400000).toISOString(),
+        valid_from: new Date(preparedAt).toISOString(),
+        valid_until: new Date(preparedAt + 86400000).toISOString(),
         max_runs: 3,
       },
     });
