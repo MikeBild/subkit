@@ -8,7 +8,9 @@ import {
   workflowsSchedules,
 } from "../../db/schema/index.ts";
 import {
+  ActivateWorkflowDraftSchema,
   AuthorityExecutionShapeSchema,
+  activateWorkflowDraft,
   GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
   previewWorkflowAuthority,
@@ -78,7 +80,8 @@ const failures = Object.fromEntries(
   ]),
 );
 const response = {
-  description: "Exact local authority; does not activate or enqueue a workflow",
+  description:
+    "Exact local authority; explicit activation promotes the reviewed draft atomically; never enqueues a run",
   content: { "application/json": { schema: authoritySchema } },
 };
 const preview = createRoute({
@@ -95,6 +98,33 @@ const preview = createRoute({
     200: {
       description: "Read-only review with finite default bounds",
       content: { "application/json": { schema: previewSchema } },
+    },
+    ...failures,
+  },
+});
+const activateDraft = createRoute({
+  method: "post",
+  path: "/v1/workflows/{id}/activate-draft",
+  tags: ["workflows"],
+  summary:
+    "Activate a reviewed saved draft from a human browser without authorizing or starting runs",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: workflowParam,
+    body: { content: { "application/json": { schema: ActivateWorkflowDraftSchema } } },
+  },
+  responses: {
+    200: {
+      description: "Activated without execution authority",
+      content: {
+        "application/json": {
+          schema: z.object({
+            workflow_version_id: z.string().uuid(),
+            activated: z.literal(true),
+            execution_authorized: z.literal(false),
+          }),
+        },
+      },
     },
     ...failures,
   },
@@ -172,6 +202,7 @@ function translate(error: unknown): never {
     authority_permission_denied: 403,
     authority_window_invalid: 400,
     authority_manifest_changed: 409,
+    authority_activation_changed: 409,
     authority_effect_unbound: 409,
     authority_revoked: 409,
   };
@@ -283,6 +314,21 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
   app.use("/v1/workflows/:id/execution-authorities", (c, next) =>
     (c.req.method === "GET" ? readAuthorities : writeAuthority)(c, next),
   );
+  app.use("/v1/workflows/:id/activate-draft", writeAuthority);
+  app.openapi(activateDraft, async (c) => {
+    try {
+      return c.json(
+        await activateWorkflowDraft(c.req.valid("param").id, c.req.valid("json"), {
+          principal: requireAuth(c),
+          request: c.req.raw,
+          db: c.get("db"),
+        }),
+        200,
+      );
+    } catch (error) {
+      return translate(error);
+    }
+  });
   app.openapi(list, async (c) => {
     const { tenant_id } = requireAuth(c);
     const { id } = c.req.valid("param");

@@ -45,15 +45,21 @@ export function ChatApprovalCard({
           {t(
             approval.oauth
               ? "chat.reauth.title"
-              : approval.savesInactiveWorkflow
-                ? "chat.decision.saveTitle"
-                : "chat.decision.title",
+              : approval.singleRun
+                ? "chat.singleRun.title"
+                : approval.savesInactiveWorkflow
+                  ? "chat.decision.saveTitle"
+                  : "chat.decision.title",
           )}
         </CardTitle>
         <CardDescription>
           {approval.oauth
             ? t(approval.oauth === "start" ? "chat.oauth.startHelp" : "chat.oauth.completeHelp")
-            : readable(approval.question)}
+            : approval.singleRun
+              ? t("chat.singleRun.effect", {
+                  name: approval.workflowName ?? t("chat.singleRun.thisWorkflow"),
+                })
+              : readable(approval.question)}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -70,10 +76,12 @@ export function ChatApprovalCard({
           </Button>
         )}
         {approval.savesInactiveWorkflow && <p>{t("chat.decision.saveEffect")}</p>}
-        {approval.description && (
+        {(approval.description || approval.singleRun) && (
           <details>
             <summary className="cursor-pointer">{t("chat.decision.details")}</summary>
-            <p className="mt-2 text-sm text-muted-foreground">{readable(approval.description)}</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {readable(approval.description ?? approval.question)}
+            </p>
           </details>
         )}
         <p className="text-xs text-muted-foreground">
@@ -111,9 +119,11 @@ export function ChatApprovalCard({
                 ? approval.oauth === "start"
                   ? "chat.oauth.start"
                   : "chat.oauth.check"
-                : approval.savesInactiveWorkflow
-                  ? "chat.decision.save"
-                  : "chat.approval.approve",
+                : approval.singleRun
+                  ? "chat.singleRun.confirm"
+                  : approval.savesInactiveWorkflow
+                    ? "chat.decision.save"
+                    : "chat.approval.approve",
           )}
         </Button>
       </CardFooter>

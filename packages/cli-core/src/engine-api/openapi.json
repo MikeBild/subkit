@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "8.0.25",
+    "version": "8.0.26",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -16585,6 +16585,22 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 10000
+              },
+              "activation": {
+                "type": "object",
+                "properties": {
+                  "expected_current_version_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "expected_current_version_id"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
@@ -26584,6 +26600,155 @@
         }
       }
     },
+    "/v1/workflows/{id}/activate-draft": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Activate a reviewed saved draft from a human browser without authorizing or starting runs",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "workflow_version_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "expected_current_version_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "expected_manifest_digest": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "execution_environment": {
+                    "type": "string",
+                    "enum": [
+                      "dev",
+                      "prod"
+                    ]
+                  }
+                },
+                "required": [
+                  "workflow_version_id",
+                  "expected_current_version_id",
+                  "expected_manifest_digest",
+                  "execution_environment"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Activated without execution authority",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "workflow_version_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "activated": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "execution_authorized": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    }
+                  },
+                  "required": [
+                    "workflow_version_id",
+                    "activated",
+                    "execution_authorized"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workflows/{id}/execution-authorities": {
       "get": {
         "tags": [
@@ -26755,6 +26920,22 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 10000
+                  },
+                  "activation": {
+                    "type": "object",
+                    "properties": {
+                      "expected_current_version_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      }
+                    },
+                    "required": [
+                      "expected_current_version_id"
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "required": [
@@ -26772,7 +26953,7 @@
         },
         "responses": {
           "201": {
-            "description": "Exact local authority; does not activate or enqueue a workflow",
+            "description": "Exact local authority; explicit activation promotes the reviewed draft atomically; never enqueues a run",
             "content": {
               "application/json": {
                 "schema": {
@@ -26975,7 +27156,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Exact local authority; does not activate or enqueue a workflow",
+            "description": "Exact local authority; explicit activation promotes the reviewed draft atomically; never enqueues a run",
             "content": {
               "application/json": {
                 "schema": {
@@ -27070,7 +27251,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Exact local authority; does not activate or enqueue a workflow",
+            "description": "Exact local authority; explicit activation promotes the reviewed draft atomically; never enqueues a run",
             "content": {
               "application/json": {
                 "schema": {

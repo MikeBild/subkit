@@ -9,6 +9,7 @@ import { runExecution } from "../../../../execution/engine.ts";
 import { admitWorkflowRun } from "../../../../execution/workflow-run-admission.ts";
 import { logger } from "../../../../logging/logger.ts";
 import { recordAuthoringGateBlock } from "../../../../observability/instrumentation.ts";
+import { workflowExecutionEnvironment } from "../../../../workflows/execution-environment.ts";
 import { resolveWorkflowInputContract } from "../../../../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../../../../workflows/lookup.ts";
 import { gateWorkflowRunRbac } from "../../../../workflows/rbac.ts";
@@ -38,7 +39,12 @@ const Input = z
     // chars, anything beyond is a hallucination).
     workflow: z.string().min(1).max(256).optional(),
     input: workflowInputSlot.optional(),
-    environment: z.enum(["dev", "prod"]).default("dev"),
+    environment: z
+      .enum(["dev", "prod"])
+      .optional()
+      .describe(
+        "Use the workflow schedule environment when omitted; specify only for an explicit environment change.",
+      ),
     /** Makes this run safe to repeat: a second call with the same key in this
      *  tenant starts nothing and returns the first run with
      *  `idempotent_replay: true`. Same contract as POST /v1/executions. */
@@ -172,6 +178,8 @@ export const runWorkflowTool: ConversationTool = {
     }
     const wf = await ctx.engineClient.workflows.get(workflowId);
     if (!wf) return { ok: false, data: withStatus({ error: "workflow_not_found" }, "failed") };
+    const environment =
+      args.environment ?? (await workflowExecutionEnvironment(ctx.db, ctx.tenant_id, workflowId));
     const bound = currentDraft.state?.persisted_resources.find(
       (resource) => resource.kind === "workflow" && resource.id === workflowId,
     );
@@ -185,11 +193,12 @@ export const runWorkflowTool: ConversationTool = {
           {
             error_code: "workflow_activation_required",
             message:
-              "The saved draft is not the active workflow version. Review and activate that exact version before running it; saving a draft grants no execution authority.",
+              "The saved change needs human review in the cockpit chat. Use the saved-change review dialog shown in this chat to apply it and allow bounded runs. Do not ask the user to call an API or leave the chat. No live run has occurred.",
             workflow_id: workflowId,
             draft_version_id: bound?.version_id ?? wf.draft_version_id,
             current_version_id: wf.current_version_id,
-            next_best_actions: ["inspect_workflow_draft", "dry_run_workflow"],
+            next_best_actions: [],
+            user_action: "review_saved_change_in_chat",
           },
           "failed",
         ),
@@ -295,7 +304,7 @@ export const runWorkflowTool: ConversationTool = {
               payload: {
                 workflow_id: workflowId,
                 workflow_slug: wf.slug,
-                environment: args.environment,
+                environment,
                 input_partial: suppliedMap,
                 // Asking for missing values must not widen an explicit
                 // preparation request. A true flag is deliberately not
@@ -432,7 +441,7 @@ export const runWorkflowTool: ConversationTool = {
       }
       ctx.onLog?.(
         "info",
-        `running workflow ${wf.slug} (v${wf.current_version}) in env=${args.environment}`,
+        `running workflow ${wf.slug} (v${wf.current_version}) in env=${environment}`,
       );
       // A live-run flag (even in confirmed tool arguments) is not a version-
       // bound authority. Every generic start uses the same durable admission.
@@ -442,7 +451,7 @@ export const runWorkflowTool: ConversationTool = {
           tenant_id: ctx.tenant_id,
           workflow_id: workflowId,
           workflow_version_id: wf.current_version_id,
-          execution_environment: args.environment,
+          execution_environment: environment,
           request_source: "chat",
           input: suppliedInput ?? null,
           ...(args.idempotency_key ? { idempotency_key: args.idempotency_key } : {}),
@@ -492,7 +501,7 @@ export const runWorkflowTool: ConversationTool = {
           request_source: "chat",
           trace_id: null,
           principal: ctx.principal,
-          execution_mode: args.environment,
+          execution_mode: environment,
           ...(admitted ? { existing_execution_id: admitted.execution_id } : {}),
           ...(args.idempotency_key ? { idempotency_key: args.idempotency_key } : {}),
           ...(holdWrites ? { hold_writes: true } : {}),
@@ -548,7 +557,7 @@ export const runWorkflowTool: ConversationTool = {
         metadata: {
           conversation_id: ctx.conversation_id,
           workflow_id: workflowId,
-          environment: args.environment,
+          environment,
           final_status: result.status,
           // a held run vs a live (writes-dispatched) run must be
           // distinguishable in the audit log so "did this run actually
@@ -809,7 +818,7 @@ export const runWorkflowTool: ConversationTool = {
         workflow_id: workflowId,
         workflow_version_id: wf.current_version_id,
         status: payloadStatus,
-        environment: args.environment,
+        environment,
         warnings_count: result.warnings?.length ?? 0,
         recorded_at: new Date().toISOString(),
         diagnosis_available: diagnosisAvailable,

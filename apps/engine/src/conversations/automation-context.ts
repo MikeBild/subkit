@@ -13,7 +13,7 @@ export async function renderAutomationContext(
 ): Promise<string> {
   if (!workflow_id) return "";
   const rule =
-    "AUTOMATIC OPERATION: A saved or active workflow, an unpaused cadence, a successful held-write preview, and an answer to a business question are NOT execution permission. Never promise a next automatic run without fresh authorized status. If blocked, report the remaining action and direct the user to the automatic-run review in this chat; never ask to keep an already agreed schedule again.";
+    "AUTOMATIC OPERATION: A saved or active workflow, an unpaused cadence, a successful held-write preview, and an answer to a business question are NOT execution permission. Never promise a next automatic run without fresh authorized status. If blocked, report the remaining action and direct the user to the automatic-run review in this chat; never ask to keep an already agreed schedule again. The chat provides a saved-change review dialog: it can atomically apply a draft and authorize supported bounded runs. For variable effects it can apply the draft without granting repeated runs, then prepare one concrete run for human review via the saved wf_<slug> tool. Keep the user in this chat; never provide external API commands or try engine calls through call_connector. Explain the next action in one sentence without tool names.";
   if (
     !principal ||
     principal.tenant_id !== tenant_id ||

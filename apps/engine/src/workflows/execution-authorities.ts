@@ -18,6 +18,7 @@ import {
 import { WORKFLOW_TIMEOUT_DEFAULT_MS } from "../execution/timeouts.ts";
 import { invalidateOperationalOverview } from "../operator/index.ts";
 import { can } from "../rbac/evaluator.ts";
+import { activateReviewedDraft } from "./activate-reviewed-draft.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import { resolveWorkflowEffectManifest } from "./effect-resolution.ts";
 import { normalizeWorkflowRunInput } from "./run-input.ts";
@@ -32,6 +33,10 @@ export const GrantWorkflowAuthoritySchema = z
     valid_from: z.string().datetime({ offset: true }),
     valid_until: z.string().datetime({ offset: true }),
     max_runs: z.number().int().min(1).max(10_000),
+    activation: z
+      .object({ expected_current_version_id: z.string().uuid().nullable() })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -198,6 +203,56 @@ async function resolveGrantedScheduleHold(
   }
 }
 
+export const ActivateWorkflowDraftSchema = z
+  .object({
+    workflow_version_id: z.string().uuid(),
+    expected_current_version_id: z.string().uuid().nullable(),
+    expected_manifest_digest: z.string().regex(/^[a-f0-9]{64}$/),
+    execution_environment: z.enum(["dev", "prod"]),
+  })
+  .strict();
+
+/** Explicit human activation, without a grant or dispatch, also for one-shot-only effects. */
+export async function activateWorkflowDraft(
+  workflow_id: string,
+  raw: unknown,
+  context: HumanContext,
+) {
+  const input = ActivateWorkflowDraftSchema.parse(raw);
+  const session = await requireHuman(context, workflow_id);
+  const { db, principal } = context;
+  await db.transaction(async (tx) => {
+    await lockLiveSession(tx, session);
+    const workflow = await lockWorkflowForVersionWrite(tx, principal.tenant_id, workflow_id);
+    if (!workflow) fail("workflow_version_unavailable", "workflow version unavailable");
+    const preview = await previewWorkflowAuthority(
+      {
+        tenant_id: principal.tenant_id,
+        workflow_id,
+        workflow_version_id: input.workflow_version_id,
+        execution_environment: input.execution_environment,
+      },
+      tx,
+    );
+    if (preview.digest !== input.expected_manifest_digest)
+      fail("authority_manifest_changed", "the reviewed boundary changed; review again");
+    await activateReviewedDraft(
+      tx,
+      workflow,
+      input.workflow_version_id,
+      input.expected_current_version_id,
+      principal.id,
+      true,
+    );
+  });
+  invalidateOperationalOverview(principal.tenant_id);
+  return {
+    workflow_version_id: input.workflow_version_id,
+    activated: true as const,
+    execution_authorized: false as const,
+  };
+}
+
 export async function grantWorkflowAuthority(
   workflow_id: string,
   raw: unknown,
@@ -274,6 +329,18 @@ export async function grantWorkflowAuthority(
       .limit(1);
     if (existing?.revoked_at)
       fail("authority_revoked", "this exact grant was revoked; review a new boundary");
+    if (input.activation) {
+      await activateReviewedDraft(
+        tx,
+        workflow,
+        input.workflow_version_id,
+        input.activation.expected_current_version_id,
+        principal.id,
+        Boolean(existing),
+      );
+      workflow.current_version_id = input.workflow_version_id;
+      workflow.lifecycle = "active";
+    }
     if (existing) {
       await resolveGrantedScheduleHold(
         existing,

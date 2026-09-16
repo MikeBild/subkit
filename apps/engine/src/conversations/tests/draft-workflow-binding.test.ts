@@ -179,6 +179,43 @@ describe("legacy saved-state reconciliation", () => {
     expect(unchanged.summary?.checkpoints.find((c) => c.key === "workflow_persisted")?.status).toBe(
       "fresh",
     );
+    const [oldVersion] = await ctx.testDb.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenant_id,
+        workflow_id: workflow.id,
+        version: 2,
+        dag: { ...definition, runtime: { stdlib_version: "1.6.0" } },
+      })
+      .returning();
+    if (!oldVersion) throw new Error("missing previous active version");
+    await ctx.testDb.db
+      .update(workflows)
+      .set({ current_version_id: oldVersion.id, draft_version_id: version.id })
+      .where(eq(workflows.id, workflow.id));
+    const inheritedRuntime = structuredClone(saved);
+    if (!inheritedRuntime.state) throw new Error("missing state");
+    inheritedRuntime.workflow.runtime = { stdlib_version: "1.6.0" };
+    const savedRef = inheritedRuntime.state.persisted_resources.find((r) => r.kind === "workflow");
+    if (!savedRef) throw new Error("missing saved binding");
+    savedRef.current_version_id = oldVersion.id;
+    inheritedRuntime.state.workflow_mutation_seq += 1;
+    await ctx.testDb.db
+      .update(conversations)
+      .set({ draft: inheritedRuntime })
+      .where(eq(conversations.id, conversation.id));
+    const reconciledRuntime = await loadDraft(ctx.tenant_id, conversation.id, ctx.testDb.db);
+    expect(
+      reconciledRuntime.summary?.checkpoints.find((c) => c.key === "workflow_persisted")?.status,
+    ).toBe("fresh");
+    await ctx.testDb.db
+      .update(workflows)
+      .set({ current_version_id: version.id, draft_version_id: null })
+      .where(eq(workflows.id, workflow.id));
+    const activatedRuntime = await loadDraft(ctx.tenant_id, conversation.id, ctx.testDb.db);
+    expect(
+      activatedRuntime.summary?.checkpoints.find((c) => c.key === "workflow_persisted")?.status,
+    ).toBe("fresh");
     const runtimeEdit = structuredClone(saved);
     runtimeEdit.workflow.runtime = { stdlib_version: "2.0.0" };
     await ctx.testDb.db

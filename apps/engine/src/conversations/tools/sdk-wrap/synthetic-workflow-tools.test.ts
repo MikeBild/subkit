@@ -17,9 +17,15 @@ import { AuditAction } from "../../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { auditLog } from "../../../db/schema/audit.ts";
 import { tenants } from "../../../db/schema/identity.ts";
-import { conversations, workflows, workflowVersions } from "../../../db/schema/index.ts";
+import {
+  conversations,
+  workflows,
+  workflowsSchedules,
+  workflowVersions,
+} from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { resetMockProvider } from "../../../llm/mock-provider.ts";
+import { workflowExecutionEnvironment } from "../../../workflows/execution-environment.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import type { TurnSignals } from "./state.ts";
@@ -449,4 +455,56 @@ describe("buildSyntheticWorkflowTools — RBAC denial", () => {
       );
     expect(audit.length).toBeGreaterThanOrEqual(0);
   });
+});
+
+test("saved workflow execution follows its schedule environment and ignores paused schedules", async () => {
+  const [wf] = await tdb.db
+    .insert(workflows)
+    .values({
+      tenant_id: tenantId,
+      name: "Environment selection",
+      slug: "environment-selection",
+      lifecycle: "draft",
+    })
+    .returning();
+  if (!wf) throw new Error("missing workflow");
+  expect(await workflowExecutionEnvironment(tdb.db, tenantId, wf.id)).toBe("dev");
+  await tdb.db
+    .insert(workflowsSchedules)
+    .values({ tenant_id: tenantId, workflow_id: wf.id, cron: "0 8 * * *", execution_mode: "prod" });
+  expect(await workflowExecutionEnvironment(tdb.db, tenantId, wf.id)).toBe("prod");
+  await tdb.db
+    .update(workflowsSchedules)
+    .set({ paused: true })
+    .where(
+      and(eq(workflowsSchedules.tenant_id, tenantId), eq(workflowsSchedules.workflow_id, wf.id)),
+    );
+  expect(await workflowExecutionEnvironment(tdb.db, tenantId, wf.id)).toBe("dev");
+});
+
+test("saved tool executes the configured production environment instead of hardcoded dev", async () => {
+  const workflow = await seedTool("production-report");
+  await tdb.db.insert(workflowsSchedules).values({
+    tenant_id: tenantId,
+    workflow_id: workflow.id,
+    cron: "0 8 * * *",
+    execution_mode: "prod",
+  });
+  const logMessages: string[] = [];
+  const tools = await buildSyntheticWorkflowTools({
+    db: tdb.db,
+    principal: makePrincipal(),
+    ctx: makeCtx({ onLog: (_level, msg) => logMessages.push(msg) }),
+    signals: makeTurnSignals(),
+    events: [],
+  });
+  const tool = tools["wf_production-report"];
+  if (!tool?.execute) throw new Error("missing workflow tool");
+  const result = (await tool.execute(
+    {},
+    { toolCallId: "production-test", messages: [], context: {} },
+  )) as { ok: boolean };
+  expect(result.ok).toBe(true);
+  expect(logMessages.some((message) => message.includes("env=prod"))).toBe(true);
+  expect(requests).toBe(1);
 });

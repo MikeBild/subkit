@@ -153,7 +153,7 @@ async function hydrateBoundWorkflow(
     const ref = normalized.summary?.persisted_resources.find(
       (item) => item.kind === "workflow" && item.id === target_workflow_id,
     );
-    if (state && saved?.status === "fresh" && ref?.version_id) {
+    if (state && saved?.ok === true && ref?.version_id) {
       const [version] = await exec
         .select({ dag: workflowVersions.dag })
         .from(workflowVersions)
@@ -167,16 +167,30 @@ async function hydrateBoundWorkflow(
         .limit(1);
       const current = WorkflowDefSchema.safeParse(normalized.workflow);
       const persisted = WorkflowDefSchema.safeParse(version?.dag);
-      // Saving a JavaScript workflow adds a runtime stamp that was never an
-      // authored edit. Compare with that exact saved stamp, not today's
-      // runtime version; retain explicit runtime edits as real differences.
-      if (
-        current.success &&
-        persisted.success &&
-        current.data.runtime === undefined &&
-        workflowUsesSandboxedJs(current.data)
-      ) {
-        current.data.runtime = persisted.data.runtime;
+      // A saved JavaScript draft receives a server-owned runtime stamp. Older
+      // chat snapshots may still carry the previously active stamp. Reconcile
+      // only that proven inherited value; explicit different runtime edits remain edits.
+      if (current.success && persisted.success && workflowUsesSandboxedJs(current.data)) {
+        // Keep the saved base stable even after the reviewed draft is activated.
+        const [active] = await exec
+          .select({ dag: workflowVersions.dag })
+          .from(workflowVersions)
+          .where(
+            and(
+              eq(workflowVersions.tenant_id, tenant_id),
+              eq(workflowVersions.workflow_id, target_workflow_id),
+              eq(workflowVersions.id, ref.current_version_id ?? ref.version_id),
+            ),
+          )
+          .limit(1);
+        const activeDefinition = WorkflowDefSchema.safeParse(active?.dag);
+        if (
+          current.data.runtime === undefined ||
+          (activeDefinition.success &&
+            canonicalJson(current.data.runtime) === canonicalJson(activeDefinition.data.runtime))
+        ) {
+          current.data.runtime = persisted.data.runtime;
+        }
       }
       // Legacy definitions can predate today's validation schema. Identical
       // stored content is still saved; schema validity is a separate check.
@@ -185,7 +199,12 @@ async function hydrateBoundWorkflow(
           ? canonicalJson(current.data) === canonicalJson(persisted.data)
           : version &&
             canonicalJson(normalized.workflow) === canonicalJson(workflowDraftFromDag(version.dag));
-      if (!sameDefinition) {
+      if (sameDefinition) {
+        const checkpoint = state.checkpoints.workflow_persisted;
+        if (checkpoint) checkpoint.mutation_seq = state.workflow_mutation_seq;
+        return refreshDraftSummary({ ...normalized, state });
+      }
+      if (saved.status === "fresh") {
         state.workflow_mutation_seq += 1;
         return refreshDraftSummary({ ...normalized, state });
       }

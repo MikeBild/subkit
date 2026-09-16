@@ -19,6 +19,8 @@ const bubbleVariants = cva(
   {
     variants: {
       variant: {
+        question:
+          "max-w-full *:data-[slot=bubble-content]:bg-accent/10 *:data-[slot=bubble-content]:border-accent/25 *:data-[slot=bubble-content]:text-foreground",
         default:
           "*:data-[slot=bubble-content]:bg-primary *:data-[slot=bubble-content]:text-primary-foreground [&>[data-slot=bubble-content]:is(button,a):hover]:bg-primary/80",
         secondary:

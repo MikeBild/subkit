@@ -57,6 +57,7 @@ import {
   listWorkflowToolsForTenant,
   type WorkflowToolDescriptor,
 } from "../../../workflows/catalog.ts";
+import { workflowExecutionEnvironment } from "../../../workflows/execution-environment.ts";
 import { gateWorkflowRunRbac } from "../../../workflows/rbac.ts";
 import { createElicitation } from "../../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
@@ -228,14 +229,15 @@ async function executeSyntheticRun(
 
   const inputForRun = Object.keys(workflowInput).length > 0 ? workflowInput : null;
 
-  ctx.onLog?.("info", `running workflow ${entry.slug} in env=dev`);
   try {
+    const environment = await workflowExecutionEnvironment(db, ctx.tenant_id, entry.workflow_id);
+    ctx.onLog?.("info", `running workflow ${entry.slug} in env=${environment}`);
     const policies = p.toolPolicies ?? {};
     const specificPolicy = policies[name] ?? policies.run_workflow;
     const decision = decideToolMode({
       tool: "run_workflow",
       category: "tenant_write",
-      input: { environment: "dev" },
+      input: { environment },
       overrides: specificPolicy ? { run_workflow: specificPolicy } : {},
       permission_mode: p.permissionMode ?? ctx.permission_mode ?? null,
     });
@@ -243,7 +245,7 @@ async function executeSyntheticRun(
       {
         tenant_id: ctx.tenant_id,
         workflow_id: entry.workflow_id,
-        execution_environment: "dev",
+        execution_environment: environment,
         request_source: "chat",
         input: inputForRun,
         ...(decision.mode !== "no_confirm" ? { hold_writes: true } : {}),
@@ -263,7 +265,7 @@ async function executeSyntheticRun(
         request_source: "chat",
         trace_id: null,
         principal,
-        execution_mode: "dev",
+        execution_mode: environment,
         existing_execution_id: admitted.execution_id,
         hold_writes: admitted.hold_writes,
       },
@@ -350,8 +352,8 @@ async function executeSyntheticRun(
         via: "chat",
         // Not a policy-table verdict: the RUN held its writes.
         reason: "held_writes",
-        // The synthetic chat palette always runs in dev (see runExecution above).
-        execution_mode: "dev",
+        // Use the same schedule environment that admission and execution checked.
+        execution_mode: environment,
         args: workflowInput,
         prepared_execution_id: result.execution_id,
         // Chat reaches a human in-band, so the portal is a fallback here rather
@@ -542,7 +544,7 @@ async function executeSyntheticRun(
           conversation_id: ctx.conversation_id,
           workflow_id: entry.workflow_id,
           tool: name,
-          environment: "dev",
+          environment,
           final_status: result.status,
           workflow_version_id: admitted.workflow_version_id,
           execution_authority_id: admitted.execution_authority_id,
@@ -580,6 +582,10 @@ async function executeSyntheticRun(
       workflow_id: entry.workflow_id,
       workflow_slug: entry.slug,
       error: msg,
+      error_code:
+        typeof (err as { code?: unknown })?.code === "string"
+          ? (err as { code: string }).code
+          : "workflow_run_failed",
     };
     await updateToolCallOutput(db, toolCallId, output, "error");
     events.push({
