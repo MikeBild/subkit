@@ -626,12 +626,7 @@ export const runWorkflowTool: ConversationTool = {
       // LLM into the patch loop the skill explicitly forbids.
       const isPartialSuccess =
         result.status === "succeeded" &&
-        (result.steps.some(
-          (step) =>
-            step.status === "failed" || step.status === "timed_out" || step.status === "aborted",
-        ) ||
-          (result.warnings ?? []).some((warning) => warning.code === "step_failed_continued") ||
-          hasUnresolvedIdentifierWarning ||
+        (hasUnresolvedIdentifierWarning ||
           loopStepRanWithEmptyBody ||
           hasTransformEmptyExtractionWarning ||
           hasLoopOverUnresolvedWarning);
