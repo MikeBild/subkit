@@ -570,6 +570,8 @@ async function mockApi(route) {
       recent_conversations: [],
     });
   }
+  if (/^\/v1\/workflows\/[^/]+\/automation-status$/.test(path))
+    return json(route, { schedules: [] });
   if (path === "/v1/schedules") return json(route, { schedules: [], total: 0 });
   if (path === "/v1/operational-overview") return json(route, operationalOverview());
   if (path === "/v1/conversations" && request.method() === "GET") {
