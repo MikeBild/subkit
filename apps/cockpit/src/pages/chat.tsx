@@ -100,6 +100,7 @@ import { cn } from "@/lib/utils";
 import { useMentionCandidates } from "@/queries/mention-sources";
 import { type ChatApproval, chatApproval } from "./chat-approval";
 import { ChatApprovalCard } from "./chat-approval-card";
+import { ChatAutomationReview } from "./chat-automation-review";
 import { type ChatChoice, chatChoice } from "./chat-choice";
 import { ChatChoiceCard } from "./chat-choice-card";
 import { ConversationList } from "./chat-conversation-list";
@@ -923,7 +924,7 @@ export function ChatPage() {
   const decisionQueue = useDecisionQueue(session.permissions);
   const targetWorkflowId =
     resume?.active_target.kind === "workflow" ? resume.active_target.id : null;
-  const heldTarget = decisionQueue.heldSchedules.some(
+  const heldTarget = decisionQueue.heldSchedules.find(
     (schedule) => schedule.workflow_id === targetWorkflowId,
   );
   const status = send.isPending || decide.isPending ? "streaming" : "ready";
@@ -1142,14 +1143,11 @@ export function ChatPage() {
                 <p>
                   {t("chat.schedule.count", { count: String(decisionQueue.heldSchedules.length) })}
                 </p>
-                <Button asChild variant="outline" size="sm">
-                  <a
-                    href={`${catalogHref("workflow", targetWorkflowId)}#workflow-authorities`}
-                    data-testid="chat-review-schedule"
-                  >
-                    {t("chat.schedule.review")}
-                  </a>
-                </Button>
+                <ChatAutomationReview
+                  workflowId={targetWorkflowId}
+                  environment={heldTarget.execution_mode}
+                  testId="chat-review-schedule"
+                />
               </AlertDescription>
             </Alert>
           )}
@@ -1258,7 +1256,12 @@ export function ChatPage() {
                               {call.toolName ? actionLabel(t, call.toolName) : t("tool.action")}
                             </span>
                             {call.logTail && (
-                              <span className="min-w-0 truncate">{call.logTail}</span>
+                              <details className="min-w-0 w-full">
+                                <summary>{t("chat.activity.details")}</summary>
+                                <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words">
+                                  {call.logTail}
+                                </pre>
+                              </details>
                             )}
                             {running !== null && (
                               <span className="tabular-nums">
@@ -1430,13 +1433,11 @@ export function ChatPage() {
                   <dt className="text-xs text-muted-foreground">{t("chat.schedule.pending")}</dt>
                   <dd className="mt-1 flex flex-col gap-2">
                     <p>{t("chat.schedule.effect")}</p>
-                    <a
-                      href={`${catalogHref("workflow", targetWorkflowId)}#workflow-authorities`}
-                      className="underline"
-                      data-testid="chat-context-review-schedule"
-                    >
-                      {t("chat.schedule.review")}
-                    </a>
+                    <ChatAutomationReview
+                      workflowId={targetWorkflowId}
+                      environment={heldTarget.execution_mode}
+                      testId="chat-context-review-schedule"
+                    />
                   </dd>
                 </div>
               )}

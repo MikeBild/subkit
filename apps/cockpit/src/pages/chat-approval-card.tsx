@@ -39,7 +39,7 @@ export function ChatApprovalCard({
   const readable = (value: string) =>
     hideTechnicalIdentifiers(value, t("tool.referenceHiddenInline"));
   return (
-    <Card size="sm" data-testid={testId}>
+    <Card size="sm" tone="question" data-testid={testId}>
       <CardHeader>
         <CardTitle>
           {t(approval.savesInactiveWorkflow ? "chat.decision.saveTitle" : "chat.decision.title")}

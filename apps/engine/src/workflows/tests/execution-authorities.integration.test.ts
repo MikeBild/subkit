@@ -13,9 +13,11 @@ import {
   users,
   workflowExecutionAuthorities,
   workflows,
+  workflowsSchedules,
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { inspectScheduleAutomation } from "../../scheduler/automation-status.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import {
   grantWorkflowAuthority,
@@ -32,7 +34,7 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function fixture() {
+async function fixture(extraDefinition: Record<string, unknown> = {}) {
   const slug = `authority-grant-${++counter}`;
   const [tenant] = await ctx.db.insert(tenants).values({ slug, display_name: slug }).returning();
   if (!tenant) throw new Error("missing tenant fixture");
@@ -52,6 +54,7 @@ async function fixture() {
       workflow_id: workflow.id,
       version: 1,
       dag: {
+        ...extraDefinition,
         name: slug,
         steps: [
           {
@@ -265,4 +268,243 @@ test("audit failure rolls the grant back", async () => {
       ),
     );
   }
+});
+
+test("reviewed active authority resolves exactly its held schedule, audited and retry-safe", async () => {
+  const f = await fixture();
+  await ctx.db
+    .update(workflows)
+    .set({ lifecycle: "active", current_version_id: f.version.id })
+    .where(and(eq(workflows.tenant_id, f.workflow.tenant_id), eq(workflows.id, f.workflow.id)));
+  const hold = {
+    reason_code: "execution_authority_unavailable" as const,
+    observed_at: f.input.valid_from,
+  };
+  const [schedule] = await ctx.db
+    .insert(workflowsSchedules)
+    .values({
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      cron: "0 9 * * *",
+      timezone: "UTC",
+      execution_mode: "dev",
+      admission_hold: hold,
+    })
+    .returning();
+  if (!schedule) throw new Error("missing schedule");
+  expect((await inspectScheduleAutomation(schedule, ctx.db)).state).toBe("approval_required");
+  const [other] = await ctx.db
+    .insert(workflows)
+    .values({
+      tenant_id: f.workflow.tenant_id,
+      slug: "unrelated-hold",
+      name: "Other report",
+      lifecycle: "draft",
+    })
+    .returning();
+  if (!other) throw new Error("missing unrelated workflow");
+  await ctx.db.insert(workflowsSchedules).values({
+    tenant_id: f.workflow.tenant_id,
+    workflow_id: other.id,
+    cron: "0 10 * * *",
+    execution_mode: "dev",
+    admission_hold: hold,
+  });
+  const countOpen = async () =>
+    (
+      await ctx.db
+        .select()
+        .from(workflowsSchedules)
+        .where(
+          and(
+            eq(workflowsSchedules.tenant_id, f.workflow.tenant_id),
+            sql`${workflowsSchedules.admission_hold} IS NOT NULL`,
+          ),
+        )
+    ).length;
+  expect(await countOpen()).toBe(2);
+  const authority = await grantWorkflowAuthority(f.workflow.id, f.input, f.context);
+  const read = async () =>
+    (
+      await ctx.db
+        .select()
+        .from(workflowsSchedules)
+        .where(
+          and(
+            eq(workflowsSchedules.tenant_id, f.workflow.tenant_id),
+            eq(workflowsSchedules.id, schedule.id),
+          ),
+        )
+    )[0];
+  expect((await read())?.admission_hold).toBeNull();
+  expect(await countOpen()).toBe(1);
+  expect((await inspectScheduleAutomation(schedule, ctx.db)).state).toBe("authorized");
+  await grantWorkflowAuthority(f.workflow.id, f.input, f.context);
+  const audit = await ctx.db
+    .select()
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, f.workflow.tenant_id),
+        eq(auditLog.resource_id, schedule.id),
+        eq(auditLog.action, "schedule.admission.changed"),
+      ),
+    );
+  expect(audit).toHaveLength(1);
+  expect(audit[0]?.metadata).toMatchObject({
+    state: "authorized",
+    execution_authority_id: authority.id,
+  });
+  await revokeWorkflowAuthority(f.workflow.id, authority.id, f.context);
+  expect((await inspectScheduleAutomation(schedule, ctx.db)).ready).toBe(false);
+});
+
+for (const scenario of [
+  "inactive",
+  "different_environment",
+  "future",
+  "exhausted",
+  "missing_input",
+] as const) {
+  test(`a ${scenario} authority does not resolve a held schedule`, async () => {
+    const f = await fixture(
+      scenario === "missing_input"
+        ? {
+            input_schema: {
+              type: "object",
+              required: ["report"],
+              properties: { report: { type: "string" } },
+            },
+          }
+        : {},
+    );
+    if (scenario !== "inactive")
+      await ctx.db
+        .update(workflows)
+        .set({ lifecycle: "active", current_version_id: f.version.id })
+        .where(and(eq(workflows.tenant_id, f.workflow.tenant_id), eq(workflows.id, f.workflow.id)));
+    const hold = {
+      reason_code: "execution_authority_unavailable" as const,
+      observed_at: f.input.valid_from,
+    };
+    const [schedule] = await ctx.db
+      .insert(workflowsSchedules)
+      .values({
+        tenant_id: f.workflow.tenant_id,
+        workflow_id: f.workflow.id,
+        cron: "0 9 * * *",
+        timezone: "UTC",
+        execution_mode: scenario === "different_environment" ? "prod" : "dev",
+        admission_hold: hold,
+      })
+      .returning();
+    if (!schedule) throw new Error("missing schedule");
+    const input =
+      scenario === "future"
+        ? {
+            ...f.input,
+            valid_from: new Date(Date.parse(f.input.valid_from) + 60_000).toISOString(),
+          }
+        : f.input;
+    const authority = await grantWorkflowAuthority(f.workflow.id, input, f.context);
+    if (scenario === "exhausted") {
+      await ctx.db
+        .update(workflowExecutionAuthorities)
+        .set({ reserved_runs: authority.max_runs })
+        .where(
+          and(
+            eq(workflowExecutionAuthorities.tenant_id, f.workflow.tenant_id),
+            eq(workflowExecutionAuthorities.id, authority.id),
+          ),
+        );
+      await ctx.db
+        .update(workflowsSchedules)
+        .set({ admission_hold: hold })
+        .where(
+          and(
+            eq(workflowsSchedules.tenant_id, f.workflow.tenant_id),
+            eq(workflowsSchedules.id, schedule.id),
+          ),
+        );
+      await grantWorkflowAuthority(f.workflow.id, input, f.context);
+    }
+    const [observed] = await ctx.db
+      .select()
+      .from(workflowsSchedules)
+      .where(
+        and(
+          eq(workflowsSchedules.tenant_id, f.workflow.tenant_id),
+          eq(workflowsSchedules.id, schedule.id),
+        ),
+      );
+    expect(observed?.admission_hold).toEqual(hold);
+    expect((await inspectScheduleAutomation(schedule, ctx.db)).ready).toBe(false);
+  });
+}
+
+test("automation evidence rejects expired, changed-version and cross-tenant grants", async () => {
+  const f = await fixture();
+  await ctx.db
+    .update(workflows)
+    .set({ lifecycle: "active", current_version_id: f.version.id })
+    .where(and(eq(workflows.tenant_id, f.workflow.tenant_id), eq(workflows.id, f.workflow.id)));
+  const [schedule] = await ctx.db
+    .insert(workflowsSchedules)
+    .values({
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      cron: "0 9 * * *",
+      timezone: "UTC",
+      execution_mode: "dev",
+    })
+    .returning();
+  if (!schedule) throw new Error("missing schedule");
+  const preview = await previewWorkflowAuthority(
+    {
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      workflow_version_id: f.version.id,
+      execution_environment: "dev",
+    },
+    ctx.db,
+  );
+  const now = Date.parse(f.input.valid_from);
+  await ctx.db.insert(workflowExecutionAuthorities).values({
+    tenant_id: f.workflow.tenant_id,
+    workflow_id: f.workflow.id,
+    workflow_version_id: f.version.id,
+    effect_manifest_digest: preview.digest,
+    effect_manifest: preview.manifest,
+    execution_environment: "dev",
+    target_constraints: { targets: [] },
+    valid_from: new Date(now - 7200000),
+    valid_until: new Date(now - 3600000),
+    max_runs: 1,
+    created_by: f.context.principal.id,
+  });
+  expect((await inspectScheduleAutomation(schedule, ctx.db)).state).toBe("approval_required");
+  await grantWorkflowAuthority(f.workflow.id, f.input, f.context);
+  const [v2] = await ctx.db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      version: 2,
+      dag: f.version.dag,
+    })
+    .returning();
+  if (!v2) throw new Error("missing version");
+  await ctx.db
+    .update(workflows)
+    .set({ current_version_id: v2.id })
+    .where(and(eq(workflows.tenant_id, f.workflow.tenant_id), eq(workflows.id, f.workflow.id)));
+  expect((await inspectScheduleAutomation(schedule, ctx.db)).state).toBe("approval_required");
+  expect(
+    (
+      await inspectScheduleAutomation(
+        { ...schedule, tenant_id: "00000000-0000-4000-8000-000000000099" },
+        ctx.db,
+      )
+    ).ready,
+  ).toBe(false);
 });

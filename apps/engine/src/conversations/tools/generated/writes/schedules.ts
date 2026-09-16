@@ -5,6 +5,7 @@
 // MCP clients see these as `tenant.create_schedule` / `tenant.list_schedules` / etc.
 
 import { z } from "@hono/zod-openapi";
+import { inspectScheduleAutomation } from "../../../../scheduler/automation-status.ts";
 import {
   createSchedule,
   deleteSchedule,
@@ -43,6 +44,9 @@ function scheduleView(row: ScheduleRow): Record<string, unknown> {
     timezone: row.timezone,
     execution_mode: row.execution_mode,
     paused: row.paused,
+    admission_hold: row.admission_hold,
+    readiness_note:
+      "Not paused does not mean authorized. A preview or a saved draft never releases a blocked schedule.",
     input: row.input,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -118,7 +122,7 @@ const ListInput = z
 export const listSchedulesTool: ConversationTool = {
   name: "list_schedules",
   description:
-    "List all scheduled runs in the tenant, optionally filtered by workflow_id. Returns the current cadence, paused flag, and last update timestamp for each schedule.",
+    "Inspect schedules and their current execution permission. Before claiming automatic operation, inspect automation.state: repair_required needs supported fixed effects, approval_required needs the human review dialog. Keeping a cadence is not granting permission. This read never runs or authorizes anything.",
   inputSchema: ListInput,
   category: "tenant_read",
   // Symmetric with the typed fast-path (`schedule:read`): the read is
@@ -136,7 +140,12 @@ export const listSchedulesTool: ConversationTool = {
     return {
       ok: true,
       data: {
-        items: rows.map(scheduleView),
+        items: await Promise.all(
+          rows.map(async (row) => ({
+            ...scheduleView(row),
+            automation: await inspectScheduleAutomation(row, ctx.db),
+          })),
+        ),
         total,
         returned: rows.length,
         offset: 0,
