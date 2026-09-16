@@ -8,6 +8,10 @@ import {
   workflowsSchedules,
 } from "../../db/schema/index.ts";
 import {
+  nextScheduleTime,
+  workflowAutomationView,
+} from "../../scheduler/workflow-automation-view.ts";
+import {
   ActivateWorkflowDraftSchema,
   AuthorityExecutionShapeSchema,
   activateWorkflowDraft,
@@ -18,6 +22,8 @@ import {
   suggestAuthorityBounds,
   WorkflowEffectManifestSchema,
 } from "../../workflows/index.ts";
+import { prepareReportAuthority } from "../../workflows/prepare-report-authority.ts";
+import { reportBoundariesFromManifest } from "../../workflows/report-delivery-proposal.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -63,6 +69,9 @@ const previewSchema = z
     eligible_for_repeated_runs: z.boolean(),
     unavailable_steps: z.array(z.string()),
     execution_shape: AuthorityExecutionShapeSchema,
+    schedules: z.array(
+      z.object({ cron: z.string(), timezone: z.string(), next_run_at: z.string().nullable() }),
+    ),
     suggested_bounds: z.object({
       valid_from: z.string().datetime(),
       valid_until: z.string().datetime(),
@@ -98,6 +107,68 @@ const preview = createRoute({
     200: {
       description: "Read-only review with finite default bounds",
       content: { "application/json": { schema: previewSchema } },
+    },
+    ...failures,
+  },
+});
+const automationStatus = createRoute({
+  method: "get",
+  path: "/v1/workflows/{id}/automation-status",
+  tags: ["workflows"],
+  summary: "Read verified readiness of this workflow's schedules",
+  security: [{ bearerAuth: [] }],
+  request: { params: workflowParam },
+  responses: {
+    200: {
+      description: "Current status, never a permission grant",
+      content: {
+        "application/json": {
+          schema: z.object({
+            schedules: z.array(
+              z.object({
+                schedule_id: z.string(),
+                workflow_id: z.string(),
+                state: z.enum([
+                  "paused",
+                  "activation_required",
+                  "input_required",
+                  "repair_required",
+                  "approval_required",
+                  "authorized",
+                  "verification_unavailable",
+                ]),
+                ready: z.boolean(),
+                cron: z.string(),
+                timezone: z.string(),
+                environment: z.enum(["dev", "prod"]),
+                next_run_at: z.string().nullable(),
+              }),
+            ),
+          }),
+        },
+      },
+    },
+    ...failures,
+  },
+});
+const prepareReport = createRoute({
+  method: "post",
+  path: "/v1/workflows/{id}/versions/{version_id}/prepare-authority",
+  tags: ["workflows"],
+  summary: "Prepare a held report preview without granting permission or sending",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: workflowParam.extend({ version_id: z.string().uuid() }),
+    body: {
+      content: {
+        "application/json": { schema: z.object({ environment: z.enum(["dev", "prod"]) }).strict() },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Preparation completed; review the current boundary next",
+      content: { "application/json": { schema: z.object({ prepared: z.literal(true) }) } },
     },
     ...failures,
   },
@@ -205,6 +276,8 @@ function translate(error: unknown): never {
     authority_activation_changed: 409,
     authority_effect_unbound: 409,
     authority_revoked: 409,
+    authority_preparation_ambiguous: 409,
+    authority_preparation_failed: 409,
   };
   if (typeof code === "string" && statuses[code])
     throw new HttpError(statuses[code], code, (error as Error).message);
@@ -262,6 +335,7 @@ async function readAuthority(db: Db, tenant_id: string, workflow_id: string, aut
           execution_environment: row.execution_environment,
         },
         db,
+        { report_boundaries: reportBoundariesFromManifest(row.effect_manifest) },
       );
       if (current.digest !== row.effect_manifest_digest) state = "invalidated";
       else if (!current.eligible_for_repeated_runs) state = "unavailable";
@@ -315,6 +389,48 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
     (c.req.method === "GET" ? readAuthorities : writeAuthority)(c, next),
   );
   app.use("/v1/workflows/:id/activate-draft", writeAuthority);
+  app.use(
+    "/v1/workflows/:id/versions/:version_id/prepare-authority",
+    requirePermission("workflow:run", (c) => ({ type: "workflow", id: c.req.param("id") ?? "" })),
+  );
+  app.use("/v1/workflows/:id/versions/:version_id/prepare-authority", readAuthorities);
+  app.use("/v1/workflows/:id/automation-status", readAuthorities);
+  app.use("/v1/workflows/:id/automation-status", requirePermission("schedule:read"));
+  app.openapi(automationStatus, async (c) => {
+    const clock = await c.get("db").execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
+    const now = clock.rows[0]?.now;
+    if (!now) throw new Error("database clock unavailable");
+    return c.json(
+      {
+        schedules: await workflowAutomationView(
+          requireAuth(c).tenant_id,
+          c.req.valid("param").id,
+          c.get("db"),
+          new Date(now),
+        ),
+      },
+      200,
+    );
+  });
+  app.openapi(prepareReport, async (c) => {
+    const principal = requireAuth(c);
+    const { id, version_id } = c.req.valid("param");
+    try {
+      await prepareReportAuthority(
+        {
+          tenant_id: principal.tenant_id,
+          workflow_id: id,
+          workflow_version_id: version_id,
+          execution_environment: c.req.valid("json").environment,
+        },
+        c.get("db"),
+        principal,
+      );
+      return c.json({ prepared: true as const }, 200);
+    } catch (error) {
+      return translate(error);
+    }
+  });
   app.openapi(activateDraft, async (c) => {
     try {
       return c.json(
@@ -431,6 +547,10 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
         {
           ...result,
           execution_shape: result.execution_shape,
+          schedules: schedules.map((schedule) => ({
+            ...schedule,
+            next_run_at: nextScheduleTime(schedule.cron, schedule.timezone, new Date(now)),
+          })),
           suggested_bounds: suggestAuthorityBounds(new Date(now), schedules),
         },
         200,

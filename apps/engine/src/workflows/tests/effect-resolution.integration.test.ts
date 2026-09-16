@@ -236,3 +236,27 @@ test("connectorless credential-bearing URLs never become reusable display target
   expect(result.manifest.effects[0]?.target).toBeNull();
   expect(JSON.stringify(result)).not.toContain("fixture-secret");
 });
+
+test("documentation placeholders do not turn a fixed request into a dynamic target", async () => {
+  const f = await fixture();
+  await ctx.db
+    .update(connectors)
+    .set({
+      template_snapshot: {
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: documentation fixture
+        documentation: { examples: ["GET /items/${id}"] },
+      },
+    })
+    .where(eq(connectors.id, f.connector.id));
+  const result = await resolveWorkflowEffectManifest(f.input, ctx.db);
+  expect(result.eligible_for_repeated_runs).toBe(true);
+  expect(result.manifest.effects[0]?.rewrites_target).toBe(false);
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime configuration fixture
+  await ctx.db
+    .update(connectors)
+    .set({ config: { static_headers: { "X-Target": "${input.destination}" } } })
+    .where(eq(connectors.id, f.connector.id));
+  expect((await resolveWorkflowEffectManifest(f.input, ctx.db)).eligible_for_repeated_runs).toBe(
+    false,
+  );
+});

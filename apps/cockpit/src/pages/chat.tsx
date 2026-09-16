@@ -945,6 +945,17 @@ export function ChatPage() {
   const heldTarget = decisionQueue.heldSchedules.find(
     (schedule) => schedule.workflow_id === targetWorkflowId,
   );
+  const automationStatus = useQuery({
+    queryKey: ["workflow-automation-status", targetWorkflowId],
+    enabled: Boolean(targetWorkflowId && session.permissions.includes("schedule:read")),
+    queryFn: () =>
+      apiRequest<{ schedules: { ready: boolean; next_run_at: string | null; timezone: string }[] }>(
+        `/v1/workflows/${encodeURIComponent(targetWorkflowId!)}/automation-status`,
+      ),
+    refetchInterval: 15000,
+  });
+  const readySchedules =
+    automationStatus.data?.schedules.filter((schedule) => schedule.ready) ?? [];
   const status = send.isPending || decide.isPending ? "streaming" : "ready";
   const ordered = useMemo(
     () =>
@@ -1173,6 +1184,33 @@ export function ChatPage() {
               </AlertDescription>
             </Alert>
           )}
+
+        {!heldTarget && !resume?.unsaved && readySchedules.length > 0 && status === "ready" && (
+          <Alert
+            className="mx-4 mt-4 w-auto shrink-0 border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30"
+            data-testid="chat-automation-ready"
+          >
+            <AlertTitle>{t("chat.automation.ready")}</AlertTitle>
+            <AlertDescription>
+              <p>{t("chat.automation.readyHint")}</p>
+              {readySchedules.map(
+                (schedule, index) =>
+                  schedule.next_run_at && (
+                    <p key={`${schedule.next_run_at}-${index}`}>
+                      {t("authority.report.next", {
+                        time: new Intl.DateTimeFormat(locale, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                          timeZone: schedule.timezone,
+                        }).format(new Date(schedule.next_run_at)),
+                        zone: schedule.timezone,
+                      })}
+                    </p>
+                  ),
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
 
         {send.error && (
           <Alert variant="destructive" className="m-4 mb-0" data-testid="chat-error">

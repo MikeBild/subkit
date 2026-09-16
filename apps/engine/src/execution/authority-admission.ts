@@ -14,6 +14,8 @@ import { RequestSourceSchema } from "../observability/service-metadata.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import { WorkflowEffectManifestSchema } from "../workflows/effect-manifest.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
+import { assertReadQuery, assertReportDelivery } from "../workflows/report-delivery-boundary.ts";
+import { reportBoundariesFromManifest } from "../workflows/report-delivery-proposal.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { JsonValueSchema, WorkflowDefSchema } from "../workflows/types.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
@@ -278,6 +280,8 @@ export async function assertExecutionAuthorityCurrent(
         "execution_authority_changed",
         "the loaded request configuration is outside its approved boundary",
       );
+    if (effect.report_delivery) assertReportDelivery(effect.report_delivery, snapshot.request);
+    if (effect.read_query) assertReadQuery(effect.read_query, effect.target, snapshot.request);
     const system = effect.connector_id
       ? await loadConnectorSystem(
           tenant_id,
@@ -320,6 +324,7 @@ export async function assertExecutionAuthorityCurrent(
       execution_environment: boundary.execution_environment,
     },
     db,
+    { report_boundaries: reportBoundariesFromManifest(boundary.effect_manifest) },
   );
   if (!current.eligible_for_repeated_runs || current.digest !== boundary.effect_manifest_digest)
     fail(

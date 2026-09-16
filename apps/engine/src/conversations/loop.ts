@@ -676,13 +676,18 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       };
     }
   }
+  const automationContext = await renderAutomationContext(
+    p.tenant_id,
+    workflowIdForTurn,
+    p.principal,
+    p.db,
+  );
   const authoringContext = [
     renderAuthoringContextBlock({
       draft,
       user_message: currentUserText,
       document_analysis: documentAnalysisSummary,
     }),
-    await renderAutomationContext(p.tenant_id, p.workflow_id, p.principal, p.db),
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -828,6 +833,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           : {}),
         ...(p.surface ? { surface: p.surface } : {}),
         ...(authoringContext ? { authoring_context: authoringContext } : {}),
+        ...(automationContext ? { automation_context: automationContext } : {}),
         ...(authoringHint ? { authoring_hint: authoringHint } : {}),
         ...(authoringConnectorIds.length > 0
           ? { authoring_connector_ids: authoringConnectorIds }
@@ -1241,6 +1247,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       enabled: cacheSupported,
       ttl: "1h",
     });
+    const liveAutomation = await renderAutomationContext(
+      p.tenant_id,
+      ctx.workflow_id ??
+        (draft.summary?.active_target.kind === "workflow"
+          ? draft.summary.active_target.id
+          : undefined),
+      p.principal,
+      p.db,
+    );
+    if (liveAutomation) systemMessages.push({ role: "system", content: liveAutomation });
     // Activity ticker: flip the CLI status line to "composing" before
     // we hand off to the provider. Without this the user sees only
     // the spinner for the LLM-generation phase (often 30–90s) with no

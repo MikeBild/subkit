@@ -1,3 +1,7 @@
+import {
+  GMAIL_SEND_TARGET,
+  inspectReportMessage,
+} from "../../../workflows/report-delivery-boundary.ts";
 // HTTP request step driver. Handles:
 //   - retry policy (5 attempts max, 200ms base, 30s cap, +/- 20% jitter)
 //   - 429 + Retry-After (cap 1h)
@@ -809,6 +813,10 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       method: held.method,
       url: held.url,
     };
+    const report =
+      held.method === "POST" && held.url === GMAIL_SEND_TARGET
+        ? inspectReportMessage(held.body)
+        : null;
     return heldStepResult({
       ...held,
       request_meta: {
@@ -817,6 +825,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           ...held.request_meta?.extras,
           ...(proof ? { prepared_request_proof: proof } : {}),
           ...(review ? { prepared_request_review: review } : {}),
+          ...(report ? { report_delivery_proposal: report.boundary } : {}),
         },
       },
     });

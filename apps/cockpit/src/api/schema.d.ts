@@ -4489,6 +4489,196 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workflows/{id}/automation-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read verified readiness of this workflow's schedules */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Current status, never a permission grant */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            schedules: {
+                                schedule_id: string;
+                                workflow_id: string;
+                                /** @enum {string} */
+                                state: "paused" | "activation_required" | "input_required" | "repair_required" | "approval_required" | "authorized" | "verification_unavailable";
+                                ready: boolean;
+                                cron: string;
+                                timezone: string;
+                                /** @enum {string} */
+                                environment: "dev" | "prod";
+                                next_run_at: string | null;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/{id}/versions/{version_id}/prepare-authority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare a held report preview without granting permission or sending */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    version_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        environment: "dev" | "prod";
+                    };
+                };
+            };
+            responses: {
+                /** @description Preparation completed; review the current boundary next */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @enum {boolean} */
+                            prepared: true;
+                        };
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows/{id}/activate-draft": {
         parameters: {
             query?: never;
@@ -17244,6 +17434,20 @@ export interface components {
                 configuration_digest: string;
                 credential_binding_digest: string | null;
                 rewrites_target: boolean;
+                report_delivery?: {
+                    /** @enum {string} */
+                    kind: "gmail_report";
+                    to: string;
+                    from: string;
+                    /** @enum {string} */
+                    content_type: "text/plain" | "text/html";
+                };
+                read_query?: {
+                    fixed: {
+                        [key: string]: string;
+                    };
+                    variable: string[];
+                };
                 operation: string;
                 /** @enum {string} */
                 effect: "read" | "write" | "unknown" | "destructive";
@@ -17260,6 +17464,11 @@ export interface components {
             eligible_for_repeated_runs: boolean;
             unavailable_steps: string[];
             execution_shape: components["schemas"]["AuthorityExecutionShape"];
+            schedules: {
+                cron: string;
+                timezone: string;
+                next_run_at: string | null;
+            }[];
             suggested_bounds: {
                 /** Format: date-time */
                 valid_from: string;
