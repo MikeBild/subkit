@@ -73,6 +73,7 @@ import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.t
 import { resolveAttachmentSlugsInText } from "./attachments.ts";
 import { expandPriorFailuresFromToolCalls } from "./authoring-critic/prior-failures.ts";
 import { hasInProgressWorkflowDraft, startNewWorkflowDraft } from "./authoring-state.ts";
+import { renderAutomationContext } from "./automation-context.ts";
 import { type Citation, harvestCitations } from "./citations.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
 import type { ElicitationBridge } from "./elicitation-bridge.ts";
@@ -675,11 +676,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       };
     }
   }
-  const authoringContext = renderAuthoringContextBlock({
-    draft,
-    user_message: currentUserText,
-    document_analysis: documentAnalysisSummary,
-  });
+  const authoringContext = [
+    renderAuthoringContextBlock({
+      draft,
+      user_message: currentUserText,
+      document_analysis: documentAnalysisSummary,
+    }),
+    await renderAutomationContext(p.tenant_id, p.workflow_id, p.principal, p.db),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   // Connectors bound to this conversation's draft — the assembler's
   // "Recorded endpoint samples" section loads the latest recorded
   // response shapes for exactly these ids (payload-first authoring

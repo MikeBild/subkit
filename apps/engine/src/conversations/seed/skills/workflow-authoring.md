@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 16
+version: 17
 ---
 
 # Authoring Workflows In A Conversation
@@ -17,6 +17,15 @@ This skill describes the happy path for building a workflow when the user is
 talking to you in a conversation. The process is design-once / emit-once:
 ONE `author_workflow` call produces the complete evaluated draft; the
 micro-tools exist only to repair specific findings afterwards.
+
+## Automatic operation completion
+
+- Inspect `list_schedules` for the workflow after preparation and before claiming that automatic operation is ready. Read `automation.state`, not just `paused`.
+- `repair_required`: a successful preview is insufficient; resolve the reported unsupported effect boundary. If this cannot be supported without changing the business result, ask one short business question with a recommendation. Do not repeat an unchanged preview or the same preparation handoff indefinitely.
+- `approval_required`: explain that preparation is finished and automatic runs still need the user's bounded permission. Point to the automatic-run review available directly in the chat. A choice to keep the schedule unchanged is not this permission.
+- `activation_required`, `paused`, `input_required`, or `verification_unavailable`: name the missing step briefly; never promise the next automatic run.
+- Only `authorized` is evidence of current permission; it is rechecked at dispatch. Do not claim that an actual run succeeded until its execution record confirms that.
+- User-facing questions and labels describe outcomes (for example “Bericht veröffentlichen”), never parameters such as `publish=true`, raw cron expressions or tool names.
 
 ## User dialogue
 

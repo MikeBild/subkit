@@ -21,6 +21,8 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
   const heldSchedules = Array.from({ length: 13 }, (_, index) => ({
     ...schedule,
     id: `${workflowId}-${index}`,
+    workflow_id:
+      index === 0 ? workflowId : `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
     workflow_name: index === 0 ? "Held publishing workflow" : `Scheduled workflow ${index + 1}`,
     admission_hold: {
       ...schedule.admission_hold,
@@ -30,7 +32,12 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
   }));
   let cleared = false;
   const schedules = (route) =>
-    route.fulfill({ json: { schedules: cleared ? [] : heldSchedules, total: cleared ? 0 : 13 } });
+    route.fulfill({
+      json: {
+        schedules: cleared ? heldSchedules.slice(1) : heldSchedules,
+        total: cleared ? 12 : 13,
+      },
+    });
   const overview = (route) => {
     const data = snapshot();
     Object.assign(data.core.blocked, { value: 13, severity: "critical", value_state: "observed" });
@@ -180,18 +187,14 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
         )
       )
         throw new Error("Saved checkpoint shown as unsaved");
-      if (
-        !(await page.getByTestId("chat-context-review-schedule").getAttribute("href")).endsWith(
-          "#workflow-authorities",
-        )
-      )
-        throw new Error("Context does not link to run permission");
+      await page.getByTestId("chat-context-review-schedule").click();
+      await page.getByTestId("authority-grant-cancel").waitFor();
+      if (!page.url().includes(`/chat/${conversation.id}`)) throw new Error("Review left the chat");
+      await page.getByTestId("authority-grant-cancel").click();
+      await page.getByTestId("authority-grant-cancel").waitFor({ state: "hidden" });
       await page.keyboard.press("Escape");
+      await page.getByTestId("chat-context-review-schedule").waitFor({ state: "hidden" });
       await page.getByTestId("chat-review-schedule").click();
-      await page.getByTestId("workflow-authorities").waitFor();
-      if (!page.url().endsWith("#workflow-authorities"))
-        throw new Error("Handoff lost its review destination");
-      await page.getByTestId("authority-grant-open").click();
       await page.getByTestId("authority-grant-cancel").waitFor();
       await capture("chat-run-review");
       await page.getByTestId("authority-grant-cancel").click();
@@ -226,7 +229,70 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
         await page.unroute(continuePattern);
       }
       unsaved = false;
-      cleared = true;
+      const previewPattern = `**/v1/workflows/${workflowId}/versions/*/authority-preview?*`;
+      const grantPattern = `**/v1/workflows/${workflowId}/execution-authorities`;
+      let review;
+      let grants = 0;
+      await page.route(previewPattern, async (route) => {
+        const url = new URL(route.request().url());
+        const from = new Date().toISOString();
+        review = {
+          digest: "a".repeat(64),
+          manifest: {
+            workflow_id: workflowId,
+            workflow_version_id: url.pathname.split("/").at(-2),
+            execution_environment: "prod",
+            effects: [],
+          },
+          eligible_for_repeated_runs: true,
+          unavailable_steps: [],
+          suggested_bounds: {
+            valid_from: from,
+            valid_until: new Date(Date.parse(from) + 86400000).toISOString(),
+            max_runs: 1,
+          },
+          execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
+        };
+        await route.fulfill({ json: review });
+      });
+      await page.route(grantPattern, async (route) => {
+        if (route.request().method() !== "POST") return route.fallback();
+        const body = route.request().postDataJSON();
+        if (
+          body.workflow_version_id !== review.manifest.workflow_version_id ||
+          body.execution_environment !== "prod" ||
+          body.expected_manifest_digest !== review.digest
+        )
+          throw new Error("Chat grant lost its reviewed boundary");
+        grants++;
+        cleared = true;
+        await route.fulfill({
+          status: 201,
+          json: { ...body, id: workflowId, ready_for_new_run: true },
+        });
+      });
+      try {
+        await page.getByTestId("chat-review-schedule").click();
+        await page.getByTestId("authority-grant-review").waitFor();
+        if (cleared || grants) throw new Error("Opening review resolved the decision");
+        await page.getByTestId("authority-grant-confirm").click();
+        await page.getByTestId("authority-grant-cancel").waitFor({ state: "hidden" });
+        if (grants !== 1) throw new Error("Decision was not completed by one explicit grant");
+        await page.getByTestId("chat-schedule-next-step").waitFor({ state: "hidden" });
+        if (beforeCount !== null)
+          await page.waitForFunction(
+            (expected) =>
+              Number(
+                document
+                  .querySelector('[data-testid="nav-decisions-count"]')
+                  ?.textContent?.trim() ?? 0,
+              ) === expected,
+            beforeCount - 1,
+          );
+      } finally {
+        await page.unroute(previewPattern);
+        await page.unroute(grantPattern);
+      }
       await stand.visit(page, `chat/${conversation.id}`);
       await page.getByTestId("chat-summary").waitFor();
       if (beforeCount !== null)
@@ -236,7 +302,7 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
               document.querySelector('[data-testid="nav-decisions-count"]')?.textContent?.trim() ??
                 0,
             ) === expected,
-          beforeCount - 13,
+          beforeCount - 1,
         );
       if (await page.getByTestId("chat-schedule-next-step").count())
         throw new Error("Resolved schedule still shown as blocked");
