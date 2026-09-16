@@ -172,7 +172,7 @@ describe("sdk helper parity — find_workflow (defaulted field in required)", ()
 // designed, not a bug.
 // ---------------------------------------------------------------------------
 
-describe("sdk helper parity — run_workflow (input map + defaulted environment)", () => {
+describe("sdk helper parity — run_workflow (input map + inherited environment)", () => {
   it("input is no longer the empty schema `{}`", () => {
     const s = schema("run_workflow");
     const props = s.properties as Record<string, Record<string, unknown>>;
@@ -183,12 +183,12 @@ describe("sdk helper parity — run_workflow (input map + defaulted environment)
     expect(input).not.toEqual({});
   });
 
-  it('environment carries its default("dev") but stays in required (pipeStrategy:output)', () => {
+  it("environment stays optional so the saved schedule selects the runtime environment", () => {
     const s = schema("run_workflow");
-    expect(s.required).toContain("environment");
+    expect(s.required ?? []).not.toContain("environment");
     const props = s.properties as Record<string, Record<string, unknown>>;
     expect(props.environment?.enum).toEqual(["dev", "prod"]);
-    expect(props.environment?.default).toBe("dev");
+    expect(props.environment?.default).toBeUndefined();
   });
 
   it("root seals with additionalProperties:false and no $ref/$defs", () => {
