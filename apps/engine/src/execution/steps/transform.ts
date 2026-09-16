@@ -130,7 +130,7 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
       // `new Date()`/`Date.now()`/`Math.random()`.
       clock: {
         now_ms: p.ctx.started_at.getTime(),
-        seed: `${p.ctx.execution_id}:${p.step.id}`,
+        seed: `${p.ctx.evaluation_seed ?? p.ctx.execution_id}:${p.step.id}`,
       },
     });
     const raced = await Promise.race([

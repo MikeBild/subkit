@@ -70,7 +70,7 @@ async function runLoopBody(
           // calling `sk.now()` in a data_selector silently gets the epoch.
           clock: {
             now_ms: p.ctx.started_at.getTime(),
-            seed: `${p.ctx.execution_id}:${p.step.id}`,
+            seed: `${p.ctx.evaluation_seed ?? p.ctx.execution_id}:${p.step.id}`,
           },
         });
         collection = (out as { output: unknown }).output;

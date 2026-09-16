@@ -14,6 +14,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Workflows needing concrete effect review can prepare a single run in the same
   conversation. Human confirmation resumes the reviewed environment, without
   external API instructions or a hardcoded development-mode fallback.
+- Confirmed single runs retain the preparation clock and generated identifiers,
+  while fresh reads and exact outbound effect checks remain enforced.
 - Saved-state reconciliation preserves the original version binding across
   activation and reload while still detecting genuine unsaved changes.
 - User messages and decision dialogs have a visible blue tint and short action
