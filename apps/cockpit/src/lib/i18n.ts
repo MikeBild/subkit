@@ -7,6 +7,38 @@ export const LOCALE_TAGS: Record<Locale, string> = {
 };
 
 const EN = {
+  "chat.activation.stepsChanged":
+    "Updated steps: {count}. Review their destinations and effects below.",
+  "chat.activation.scheduleKept": "The existing schedule is kept.",
+  "chat.activation.scheduleChanged":
+    "This change also updates when the workflow runs. Check the schedule in the saved change before applying it.",
+
+  "chat.activation.singleHelp":
+    "Automatic runs cannot yet be allowed because their final requests vary. Prepare one run and review its actual effect before anything is sent.",
+  "chat.singleRun.title": "Run once now?",
+  "chat.singleRun.effect":
+    "Run “{name}” once, including its external actions. This does not approve future scheduled runs.",
+  "chat.singleRun.thisWorkflow": "this workflow",
+  "chat.singleRun.confirm": "Run once",
+  "chat.activation.singleConfirm": "Use change and prepare one run",
+  "chat.activation.singlePrepare": "Prepare one run",
+  "chat.activation.singlePrompt":
+    "Prepare one run of this workflow. Use its saved workflow tool to show the exact result, recipients and effects for my approval in this chat. Do not send anything before that approval. Explain the result briefly without API commands or tool names.",
+
+  "chat.activation.title": "Use this change",
+  "chat.activation.description":
+    "Use the saved change and allow automatic runs within the limits below. No run starts immediately.",
+  "chat.activation.confirm": "Use change and allow runs",
+  "chat.activation.saved":
+    "Change applied and permission saved. Automatic runs have been checked again.",
+  "chat.activation.review": "Review saved change",
+  "chat.activation.loading": "Loading saved change…",
+  "chat.activation.failed": "The saved change could not be loaded.",
+  "chat.activation.retry": "Try again",
+  "chat.activation.version": "Saved change: version {version}",
+  "chat.activation.active": "Currently in use: {version}",
+  "chat.activation.none": "Not yet in use",
+
   "chat.choice.preparation.question":
     "Check the workflow before saving. We recommend this check because it can reveal errors without publishing anything.",
   "chat.choice.preparation.dryrun": "Check first (recommended)",
@@ -1535,6 +1567,38 @@ const EN = {
 export type TranslationKey = keyof typeof EN;
 
 const DE: Record<TranslationKey, string> = {
+  "chat.activation.stepsChanged":
+    "Geänderte Schritte: {count}. Prüfe unten ihre Ziele und Wirkungen.",
+  "chat.activation.scheduleKept": "Der bestehende Zeitplan bleibt erhalten.",
+  "chat.activation.scheduleChanged":
+    "Diese Änderung passt auch den Ausführungszeitpunkt an. Prüfe den Zeitplan in der gespeicherten Änderung vor der Übernahme.",
+
+  "chat.activation.singleHelp":
+    "Automatische Läufe können noch nicht freigegeben werden, weil ihre endgültigen Anfragen variieren. Bereite einen einzelnen Lauf vor und prüfe seine konkrete Wirkung, bevor etwas gesendet wird.",
+  "chat.singleRun.title": "Jetzt einmal ausführen?",
+  "chat.singleRun.effect":
+    "„{name}“ einmal ausführen, einschließlich seiner externen Aktionen. Künftige automatische Läufe werden damit nicht freigegeben.",
+  "chat.singleRun.thisWorkflow": "diesen Ablauf",
+  "chat.singleRun.confirm": "Einmal ausführen",
+  "chat.activation.singleConfirm": "Übernehmen und Einzellauf vorbereiten",
+  "chat.activation.singlePrepare": "Einzellauf vorbereiten",
+  "chat.activation.singlePrompt":
+    "Bereite einen einzelnen Lauf dieses Ablaufs vor. Nutze sein gespeichertes Workflow-Werkzeug, um mir das konkrete Ergebnis, die Empfänger und Wirkungen hier im Chat zur Freigabe zu zeigen. Vor dieser Freigabe nichts senden. Erkläre das Ergebnis kurz ohne API-Befehle oder Tool-Namen.",
+
+  "chat.activation.title": "Änderung übernehmen",
+  "chat.activation.description":
+    "Die gespeicherte Änderung übernehmen und automatische Läufe in den folgenden Grenzen erlauben. Es startet nicht sofort ein Lauf.",
+  "chat.activation.confirm": "Übernehmen und Läufe erlauben",
+  "chat.activation.saved":
+    "Änderung übernommen und Freigabe gespeichert. Automatische Läufe wurden erneut geprüft.",
+  "chat.activation.review": "Gespeicherte Änderung prüfen",
+  "chat.activation.loading": "Gespeicherte Änderung wird geladen…",
+  "chat.activation.failed": "Die gespeicherte Änderung konnte nicht geladen werden.",
+  "chat.activation.retry": "Erneut versuchen",
+  "chat.activation.version": "Gespeicherte Änderung: Version {version}",
+  "chat.activation.active": "Bisher verwendet: {version}",
+  "chat.activation.none": "Noch nicht verwendet",
+
   "chat.resume.workflowSaved": "Du hast {target} gespeichert.",
   "chat.resume.stage.workflowSaved": "Workflow gespeichert",
   "chat.schedule.count":

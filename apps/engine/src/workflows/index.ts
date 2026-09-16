@@ -11,6 +11,8 @@ export * from "./draft-schemas.ts";
 export * from "./drafts.ts";
 export { WorkflowEffectManifestSchema } from "./effect-manifest.ts";
 export {
+  ActivateWorkflowDraftSchema,
+  activateWorkflowDraft,
   GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
   previewWorkflowAuthority,
