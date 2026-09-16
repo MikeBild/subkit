@@ -295,7 +295,13 @@ export function pendingPrompt(input: unknown): {
   if (intent?.kind === "oauth_completed" && typeof value.authorization_url === "string") {
     try {
       const url = new URL(value.authorization_url);
-      if (url.protocol === "https:" && !url.username && !url.password)
+      if (
+        (url.protocol === "https:" ||
+          (url.protocol === "http:" &&
+            ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))) &&
+        !url.username &&
+        !url.password
+      )
         authorizationUrl = value.authorization_url;
     } catch {
       /* Invalid destinations are never clickable. */
