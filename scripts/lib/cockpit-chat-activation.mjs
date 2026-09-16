@@ -152,8 +152,14 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
   });
   const decisionCount = async () => {
     const count = page.getByTestId("nav-decisions-count");
-    const mobile = !(await count.count());
-    if (mobile) await page.getByTestId("sidebar-trigger").click();
+    // A refetch can briefly remove the badge. It does not mean the viewport
+    // became mobile: toggling the desktop sidebar then would hide the result.
+    const mobile = page.viewportSize().width < 768;
+    const sidebar = page.locator('[data-slot="sidebar"]');
+    const needsOpen = mobile
+      ? !(await page.locator('[data-slot="sidebar"][data-mobile="true"]').isVisible())
+      : (await sidebar.getAttribute("data-state")) === "collapsed";
+    if (needsOpen) await page.getByTestId("sidebar-trigger").click();
     await count.waitFor();
     const value = Number(await count.innerText());
     if (mobile) {
@@ -168,6 +174,11 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
     await stand.visit(page, `chat/${conversation.id}`);
     const action = page.getByTestId("chat-review-schedule");
     await action.waitFor();
+    if (
+      page.viewportSize().width >= 768 &&
+      (await page.locator('[data-slot="sidebar"]').getAttribute("data-state")) === "expanded"
+    )
+      await page.getByTestId("sidebar-trigger").click();
     const before = await decisionCount();
     const bubble = page.getByTestId("chat-message-0-text-0");
     await bubble.waitFor();
