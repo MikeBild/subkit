@@ -123,3 +123,26 @@ describe("nameIdentifiers — a bare identifier in backticks", () => {
     expect(out).toBe(`Die ${HIDDEN} davon`);
   });
 });
+
+describe("functional links survive identifier presentation", () => {
+  const url = `https://engine.example.test/v1/connectors/${ID}/oauth/start?grant=test-token&state=${OTHER}#${ID}`;
+  for (const text of [
+    url,
+    `[Gmail verbinden](${url})`,
+    `<${url}>`,
+    `**${url}**`,
+    `[Öffnen](/v1/connectors/${ID}/oauth/start?grant=test-token)`,
+    `[Öffnen](../connectors/${ID})`,
+    `[Gmail][login]\n\n[login]: ${url}`,
+  ]) {
+    test(`preserves link target: ${text.slice(0, 45)}`, () => {
+      expect(nameIdentifiers(text, known, HIDDEN)).toBe(text);
+      expect(nameIdentifiers(text, () => null, HIDDEN)).toBe(text);
+    });
+  }
+  test("still names prose surrounding a functional URL", () => {
+    expect(nameIdentifiers(`Connector ${OTHER}: ${url} — Workflow ${ID}.`, known, HIDDEN)).toBe(
+      `Connector ${HIDDEN}: ${url} — Workflow [Monatsreport](/cockpit/workflows/wf-1).`,
+    );
+  });
+});

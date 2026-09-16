@@ -7,6 +7,7 @@ import { AuditAction } from "../apps/engine/src/audit/types.ts";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
 import { verifyChatApprovals } from "./lib/cockpit-chat-approvals.mjs";
 import { verifyChatChoices } from "./lib/cockpit-chat-choices.mjs";
+import { verifyChatReauth } from "./lib/cockpit-chat-reauth.mjs";
 import { verifyChatReplies } from "./lib/cockpit-chat-replies.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
@@ -2123,6 +2124,7 @@ for (const locale of variants) {
     await verifyChatReplies(page, stand, conversation, locale.name, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-chat-reply-${state}`, { fullPage: false }),
     );
+    await verifyChatReauth(page, stand, conversation);
     await verifyChatActivity(page, stand, conversation, locale.name, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-chat-activity-${state}`, {
         fullPage: false,
