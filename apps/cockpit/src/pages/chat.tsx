@@ -105,7 +105,10 @@ import { type ChatChoice, chatChoice } from "./chat-choice";
 import { ChatChoiceCard } from "./chat-choice-card";
 import { ConversationList } from "./chat-conversation-list";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
+import { CHAT_MARKDOWN_COMPONENTS } from "./chat-message-link";
 import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
+import { type ChatReauth, chatReauth } from "./chat-reauth";
+import { ChatReauthCard } from "./chat-reauth-card";
 import { collectReferencedResources, referencesFromPart } from "./chat-references";
 import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "./chat-resume";
 import { activeConversationId, type ConversationSelection } from "./chat-selection";
@@ -463,6 +466,7 @@ function ChatMessage({
   approvalError,
   onApproval,
   onDecision,
+  onReauth,
   nameFor,
 }: {
   message: UiMessage;
@@ -475,6 +479,7 @@ function ChatMessage({
   approvalError: boolean;
   onApproval: (id: string, approved: boolean) => void;
   onDecision: (toolCallId: string, approved: boolean) => void;
+  onReauth: (action: ChatReauth) => void;
   /** What this conversation knows about the identifiers it mentions. */
   nameFor: (id: string) => ResolvedIdentifier | null;
 }) {
@@ -523,7 +528,7 @@ function ChatMessage({
                       testIdPrefix={`chat-message-${messageIndex}-text-${group.index}`}
                     />
                   ) : (
-                    <MessageResponse>
+                    <MessageResponse components={CHAT_MARKDOWN_COMPONENTS}>
                       {nameIdentifiers(text, nameFor, t("tool.referenceHiddenInline"))}
                     </MessageResponse>
                   )}
@@ -557,6 +562,16 @@ function ChatMessage({
               />
             );
           }
+          const reauth = chatReauth(tool, window.location.origin);
+          if (reauth)
+            return (
+              <ChatReauthCard
+                key={`${message.id}-reauth-${partIndex}`}
+                action={reauth}
+                busy={approvalBusy}
+                onRenew={onReauth}
+              />
+            );
           const candidateId = patchCandidateId(tool);
           const verdict = toolPartVerdict(tool);
           const stale = isStaleCall({
@@ -1220,6 +1235,18 @@ export function ChatPage() {
                         }
                         onApproval={submitApproval}
                         nameFor={nameFor}
+                        onReauth={(action) =>
+                          send.mutate({
+                            message: t("chat.reauth.prompt"),
+                            references: [
+                              {
+                                type: "connector",
+                                id: action.connectorId,
+                                label: action.label || t("chat.reauth.title"),
+                              },
+                            ],
+                          })
+                        }
                         onDecision={(toolCallId, approved) =>
                           decide.mutate({ toolCallId, approved })
                         }
