@@ -166,6 +166,7 @@ export async function getConversation(
         id: pendingElicitationRows[0].id,
         tool_call_id: pendingElicitationRows[0].tool_call_id,
         tool_name: pendingElicitationRows[0].tool_name,
+        input: pendingElicitationRows[0].input,
         summary:
           typeof (pendingElicitationRows[0].input as { summary?: unknown })?.summary === "string"
             ? ((pendingElicitationRows[0].input as { summary?: string }).summary ?? null)

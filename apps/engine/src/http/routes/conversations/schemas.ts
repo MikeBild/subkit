@@ -183,6 +183,13 @@ export const ConversationDetailSchema = z
             tool_call_id: z.string().nullable().optional(),
             tool_name: z.string(),
             summary: z.string(),
+            prompt: z
+              .object({
+                question: z.string(),
+                intent_kind: z.string().optional(),
+                authorization_url: z.string().optional(),
+              })
+              .optional(),
             /** When this approval lapses. Non-null: the column is NOT NULL and
              *  `elicitationExpiry` stamps every row. */
             expires_at: z.string(),

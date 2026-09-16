@@ -266,3 +266,31 @@ describe("saved workflow resume", () => {
     expect(result.unsaved).toBe(false);
   });
 });
+
+test("reload preserves the pending OAuth dialog without exposing execution payloads", () => {
+  const summary = buildResumeSummary({
+    conversation: conv({ status: "awaiting_input" }),
+    draft: null,
+    pendingElicitation: {
+      id: "oauth-pause",
+      tool_call_id: "authenticate-call",
+      tool_name: "ask_user_confirm",
+      expires_at: "2099-01-01T00:00:00Z",
+      input: {
+        question: "Signed in?",
+        authorization_url: "https://provider.example/authorize?state=fixture",
+        commit_intent: { kind: "oauth_completed", payload: { private: "not-for-display" } },
+      },
+    },
+  });
+  expect(summary.pending_approval).toMatchObject({
+    id: "oauth-pause",
+    tool_call_id: "authenticate-call",
+    prompt: {
+      question: "Signed in?",
+      intent_kind: "oauth_completed",
+      authorization_url: "https://provider.example/authorize?state=fixture",
+    },
+  });
+  expect(JSON.stringify(summary)).not.toContain("not-for-display");
+});

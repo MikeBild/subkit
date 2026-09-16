@@ -8,7 +8,7 @@ export function ChatMessageLink({ href, children, ...props }: ComponentProps<"a"
   try {
     const url = new URL(href ?? "", window.location.origin);
     signIn =
-      url.origin === window.location.origin &&
+      url.hostname === window.location.hostname &&
       /^\/v1\/connectors\/[0-9a-f-]{36}\/oauth\/start$/i.test(url.pathname) &&
       Boolean(url.searchParams.get("grant"));
   } catch {
@@ -19,8 +19,18 @@ export function ChatMessageLink({ href, children, ...props }: ComponentProps<"a"
       {...props}
       className="font-medium text-primary underline underline-offset-4"
       data-testid="message-link"
-      href={href}
-      {...(signIn ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+      href={signIn ? "#chat-account-connection" : href}
+      onClick={
+        signIn
+          ? (event) => {
+              event.preventDefault();
+              document
+                .querySelectorAll('[data-testid="chat-reauth-card"]')
+                .item(document.querySelectorAll('[data-testid="chat-reauth-card"]').length - 1)
+                ?.scrollIntoView({ block: "center" });
+            }
+          : props.onClick
+      }
     >
       {signIn ? t("chat.reauth.open") : children}
     </a>
