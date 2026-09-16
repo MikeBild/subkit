@@ -534,6 +534,7 @@ async function mockApi(route) {
         "workflow:read",
         "workflow:write",
         "workflow:run",
+        "schedule:read",
         "execution:read",
         "connector:read",
         "connector:write",
