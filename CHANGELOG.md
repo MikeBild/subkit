@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 8.0.26 — 2026-09-16
+
+### Fixed
+
+- Saved workflow changes can be reviewed and activated directly in chat. Supported
+  automatic-run permissions are bound to the exact reviewed version and applied
+  atomically; stale reviews and duplicate submissions cannot widen permission.
+- Workflows needing concrete effect review can prepare a single run in the same
+  conversation. Human confirmation resumes the reviewed environment, without
+  external API instructions or a hardcoded development-mode fallback.
+- Saved-state reconciliation preserves the original version binding across
+  activation and reload while still detecting genuine unsaved changes.
+- User messages and decision dialogs have a visible blue tint and short action
+  labels. Decision counts refresh only when the underlying hold is resolved.
+
 ## 8.0.15 — 2026-09-15
 
 ### Fixed
