@@ -4,6 +4,17 @@ SubKit implements the copied `cockpit-ui` family contract without importing runt
 sibling product. The Cockpit is built, embedded and released with SubKit; it has its own routes,
 session boundary, API facade and deployment lifecycle.
 
+## Completion of a blocked automatic run
+
+An answered question, a checked repair, a saved version and permission to run are distinct facts.
+The engine supplies current schedule permission to the chat. A held-write preview cannot prove live
+readiness. After preparation, the same bounded execution review opens inside the chat and working
+context. Only a currently valid grant for the exact active version and environment resolves its
+schedule hold; the transition is audited and the decision queue is refreshed. An inactive version,
+missing input or a changed, expired, revoked or exhausted boundary never fabricates completion.
+Questions and human-review cards use a subtle accent-blue surface, with visible options and effects.
+Raw runtime messages stay in collapsed technical details.
+
 ## Product adaptation
 
 The home surface is a persistent, governed conversation rather than a dashboard. It combines the

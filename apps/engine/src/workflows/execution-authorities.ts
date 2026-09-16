@@ -4,15 +4,24 @@ import { AuditAction, auditAwait } from "../audit/index.ts";
 import { browserSessionForPrincipal, verifyBrowserCsrf } from "../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db, Executor } from "../db/client.ts";
-import { sessions, workflowExecutionAuthorities, workflowVersions } from "../db/schema/index.ts";
+import {
+  sessions,
+  workflowExecutionAuthorities,
+  workflowsSchedules,
+  workflowVersions,
+} from "../db/schema/index.ts";
+import { validateAgainstJsonSchema } from "../execution/engine/envelope.ts";
 import {
   REQUEST_MAX_RETRIES_DEFAULT,
   REQUEST_TIMEOUT_DEFAULT_MS,
 } from "../execution/steps/request.ts";
 import { WORKFLOW_TIMEOUT_DEFAULT_MS } from "../execution/timeouts.ts";
+import { invalidateOperationalOverview } from "../operator/index.ts";
 import { can } from "../rbac/evaluator.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import { resolveWorkflowEffectManifest } from "./effect-resolution.ts";
+import { normalizeWorkflowRunInput } from "./run-input.ts";
+import { WorkflowDefSchema } from "./types.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 
 export const GrantWorkflowAuthoritySchema = z
@@ -111,6 +120,84 @@ async function lockLiveSession(tx: Executor, session: Awaited<ReturnType<typeof 
   if (!live) fail("human_session_expired", "the human session has expired or was revoked");
 }
 
+async function resolveGrantedScheduleHold(
+  authority: typeof workflowExecutionAuthorities.$inferSelect,
+  activeVersion: string | null,
+  tx: Executor,
+) {
+  if (activeVersion !== authority.workflow_version_id) return;
+  const schedules = await tx
+    .select({ id: workflowsSchedules.id, input: workflowsSchedules.input })
+    .from(workflowsSchedules)
+    .where(
+      and(
+        eq(workflowsSchedules.tenant_id, authority.tenant_id),
+        eq(workflowsSchedules.workflow_id, authority.workflow_id),
+        eq(workflowsSchedules.execution_mode, authority.execution_environment),
+        eq(workflowsSchedules.paused, false),
+        sql`${workflowsSchedules.admission_hold} IS NOT NULL`,
+        sql`${authority.valid_from}::timestamptz <= clock_timestamp()`,
+        sql`${authority.valid_until}::timestamptz > clock_timestamp()`,
+        sql`${authority.reserved_runs} < ${authority.max_runs}`,
+        sql`${authority.revoked_at}::timestamptz IS NULL`,
+      ),
+    )
+    .for("update");
+  if (!schedules.length) return;
+  const [version] = await tx
+    .select({ dag: workflowVersions.dag })
+    .from(workflowVersions)
+    .where(
+      and(
+        eq(workflowVersions.tenant_id, authority.tenant_id),
+        eq(workflowVersions.workflow_id, authority.workflow_id),
+        eq(workflowVersions.id, authority.workflow_version_id),
+      ),
+    )
+    .limit(1);
+  const definition = WorkflowDefSchema.parse(version?.dag);
+  for (const schedule of schedules) {
+    if (
+      definition.input_schema &&
+      !validateAgainstJsonSchema(
+        normalizeWorkflowRunInput(schedule.input) ?? null,
+        definition.input_schema,
+        "$input",
+      ).valid
+    )
+      continue;
+    await tx
+      .update(workflowsSchedules)
+      .set({ admission_hold: null })
+      .where(
+        and(
+          eq(workflowsSchedules.tenant_id, authority.tenant_id),
+          eq(workflowsSchedules.id, schedule.id),
+        ),
+      );
+    await auditAwait(
+      {
+        tenant_id: authority.tenant_id,
+        actor_type: "user",
+        actor_id: authority.created_by,
+        action: AuditAction.SCHEDULE_ADMISSION_CHANGED,
+        resource_type: "workflow_schedule",
+        resource_id: schedule.id,
+        result: "success",
+        metadata: {
+          request_source: "ui",
+          state: "authorized",
+          reason_code: null,
+          workflow_id: authority.workflow_id,
+          workflow_version_id: authority.workflow_version_id,
+          execution_authority_id: authority.id,
+        },
+      },
+      tx,
+    );
+  }
+}
+
 export async function grantWorkflowAuthority(
   workflow_id: string,
   raw: unknown,
@@ -119,7 +206,7 @@ export async function grantWorkflowAuthority(
   const input = GrantWorkflowAuthoritySchema.parse(raw);
   const session = await requireHuman(context, workflow_id);
   const { db, principal } = context;
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     await lockLiveSession(tx, session);
     const workflow = await lockWorkflowForVersionWrite(tx, principal.tenant_id, workflow_id);
     if (!workflow) fail("workflow_version_unavailable", "workflow version unavailable");
@@ -187,7 +274,14 @@ export async function grantWorkflowAuthority(
       .limit(1);
     if (existing?.revoked_at)
       fail("authority_revoked", "this exact grant was revoked; review a new boundary");
-    if (existing) return existing;
+    if (existing) {
+      await resolveGrantedScheduleHold(
+        existing,
+        workflow.lifecycle === "active" ? workflow.current_version_id : null,
+        tx,
+      );
+      return existing;
+    }
     const targets = [
       ...new Set(
         preview.manifest.effects.flatMap((effect) => (effect.target ? [effect.target] : [])),
@@ -231,8 +325,15 @@ export async function grantWorkflowAuthority(
       },
       tx,
     );
+    await resolveGrantedScheduleHold(
+      authority,
+      workflow.lifecycle === "active" ? workflow.current_version_id : null,
+      tx,
+    );
     return authority;
   });
+  invalidateOperationalOverview(principal.tenant_id);
+  return result;
 }
 
 export async function revokeWorkflowAuthority(

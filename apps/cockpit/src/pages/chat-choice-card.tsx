@@ -48,7 +48,7 @@ export function ChatChoiceCard({
   const readable = (text: string) =>
     hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"));
   return (
-    <Card size="sm" data-testid={testId}>
+    <Card size="sm" tone="question" data-testid={testId}>
       <CardHeader>
         <CardTitle>{t("chat.choice.title")}</CardTitle>
         <CardDescription>{readable(presentation.question)}</CardDescription>

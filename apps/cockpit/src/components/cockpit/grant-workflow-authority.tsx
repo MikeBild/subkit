@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
+import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { useSession } from "@/app/session";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -41,6 +42,8 @@ export function GrantWorkflowAuthority({
   initialEnvironment = "dev",
   versionLabel,
   disabled = false,
+  triggerLabel,
+  triggerTestId = "authority-grant-open",
 }: {
   workflowId: string;
   versionId: string;
@@ -50,6 +53,8 @@ export function GrantWorkflowAuthority({
   initialEnvironment?: "dev" | "prod";
   versionLabel?: string;
   disabled?: boolean;
+  triggerLabel?: string;
+  triggerTestId?: string;
 }) {
   const { t, dateTime } = useI18n();
   const [open, setOpen] = useState(false);
@@ -109,7 +114,10 @@ export function GrantWorkflowAuthority({
       await client.invalidateQueries({ queryKey: ["decisions"] });
       await client.invalidateQueries({ queryKey: ["operational-overview"] });
       await client.invalidateQueries({ queryKey: ["patch-candidate"] });
+      await client.invalidateQueries({ queryKey: ["workflow-schedule-holds"] });
+      await client.invalidateQueries({ queryKey: ["chat-automation-workflow", workflowId] });
       setOpen(false);
+      toast.success(t("authority.grantSaved"));
     },
   });
   const busy = prepare.isPending || grant.isPending;
@@ -135,8 +143,8 @@ export function GrantWorkflowAuthority({
   return (
     <Dialog open={open} onOpenChange={openDialog}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" disabled={disabled} data-testid="authority-grant-open">
-          {t(onGrant ? "decisions.applyAndAuthorize" : "authority.grantOpen")}
+        <Button variant="outline" size="sm" disabled={disabled} data-testid={triggerTestId}>
+          {triggerLabel ?? t(onGrant ? "decisions.applyAndAuthorize" : "authority.grantOpen")}
         </Button>
       </DialogTrigger>
       <DialogContent
