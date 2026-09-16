@@ -19,7 +19,9 @@ export {
   revokeWorkflowAuthority,
 } from "./execution-authorities.ts";
 export * from "./input-schema-synth.ts";
+export { prepareReportAuthority } from "./prepare-report-authority.ts";
 export * from "./prior-workflows.ts";
+export { reportBoundariesFromManifest } from "./report-delivery-proposal.ts";
 export * from "./service.ts";
 export * from "./types.ts";
 export * from "./validator.ts";
