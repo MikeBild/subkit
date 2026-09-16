@@ -183,11 +183,13 @@ export function GrantWorkflowAuthority({
         closeLabel={t("common.close")}
         className="flex max-h-[85svh] flex-col overflow-hidden sm:max-w-2xl"
       >
-        <DialogHeader className="shrink-0">
+        <DialogHeader className="-mx-4 -mt-4 shrink-0 bg-accent/10 px-4 py-4 pr-12">
           <DialogTitle>
             {t(
               unsupported
-                ? "authority.adjustTitle"
+                ? onSingleRun
+                  ? "chat.activation.singleTitle"
+                  : "authority.adjustTitle"
                 : activation
                   ? "chat.activation.title"
                   : onGrant
@@ -198,7 +200,9 @@ export function GrantWorkflowAuthority({
           <DialogDescription>
             {t(
               unsupported
-                ? "authority.adjustDescription"
+                ? onSingleRun
+                  ? "chat.activation.singleHelp"
+                  : "authority.adjustDescription"
                 : activation
                   ? "chat.activation.description"
                   : onGrant
@@ -209,7 +213,7 @@ export function GrantWorkflowAuthority({
         </DialogHeader>
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
           {reviewContent}
-          {unsupported && (
+          {unsupported && !onSingleRun && (
             <Alert data-testid="authority-needs-adjustment">
               <AlertTitle>{t("schedules.held.status")}</AlertTitle>
               <AlertDescription>
