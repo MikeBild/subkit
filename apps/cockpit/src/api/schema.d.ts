@@ -4489,6 +4489,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workflows/{id}/activate-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a reviewed saved draft from a human browser without authorizing or starting runs */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        workflow_version_id: string;
+                        /** Format: uuid */
+                        expected_current_version_id: string | null;
+                        expected_manifest_digest: string;
+                        /** @enum {string} */
+                        execution_environment: "dev" | "prod";
+                    };
+                };
+            };
+            responses: {
+                /** @description Activated without execution authority */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            workflow_version_id: string;
+                            /** @enum {boolean} */
+                            activated: true;
+                            /** @enum {boolean} */
+                            execution_authorized: false;
+                        };
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid, unavailable or unauthorized authority boundary */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows/{id}/execution-authorities": {
         parameters: {
             query?: never;
@@ -4592,11 +4694,15 @@ export interface paths {
                         /** Format: date-time */
                         valid_until: string;
                         max_runs: number;
+                        activation?: {
+                            /** Format: uuid */
+                            expected_current_version_id: string | null;
+                        };
                     };
                 };
             };
             responses: {
-                /** @description Exact local authority; does not activate or enqueue a workflow */
+                /** @description Exact local authority; explicit activation promotes the reviewed draft atomically; never enqueues a run */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -4764,7 +4870,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Exact local authority; does not activate or enqueue a workflow */
+                /** @description Exact local authority; explicit activation promotes the reviewed draft atomically; never enqueues a run */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -4850,7 +4956,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Exact local authority; does not activate or enqueue a workflow */
+                /** @description Exact local authority; explicit activation promotes the reviewed draft atomically; never enqueues a run */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -20208,6 +20314,10 @@ export interface components {
                 /** Format: date-time */
                 valid_until: string;
                 max_runs: number;
+                activation?: {
+                    /** Format: uuid */
+                    expected_current_version_id: string | null;
+                };
             };
         };
         RejectPatchCandidateBody: {

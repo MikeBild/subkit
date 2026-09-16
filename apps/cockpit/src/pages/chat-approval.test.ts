@@ -77,3 +77,18 @@ test("renders a policy confirmation attached to the actual OAuth tool", () => {
   detail.resume_summary!.pending_approval!.tool_call_id = "different-call";
   expect(chatApproval(detail)).toBeNull();
 });
+
+test("held writes use a native single-run decision bound to the original pending call", () => {
+  const detail = fixture();
+  detail.tool_calls[0]!.tool = "wf_daily_report";
+  detail.resume_summary!.pending_approval!.prompt = {
+    question: "Perform held writes?",
+    intent_kind: "commit_held_workflow_writes",
+  };
+  expect(chatApproval(detail)).toMatchObject({
+    singleRun: true,
+    toolCallId: "call-1",
+    id: "elicitation-2",
+    savesInactiveWorkflow: false,
+  });
+});

@@ -763,3 +763,45 @@ test("repair review and finite authority apply atomically and remain settled aft
   });
   expect(retry.status).toBe(409);
 });
+
+test("chat activation is browser-bound, rejects stale review, and never dispatches or grants", async () => {
+  const f = await fixture();
+  await ctx.db
+    .update(workflows)
+    .set({ draft_version_id: f.version.id })
+    .where(eq(workflows.id, f.workflow.id));
+  const body = {
+    workflow_version_id: f.version.id,
+    expected_current_version_id: null,
+    expected_manifest_digest: f.body.expected_manifest_digest,
+    execution_environment: "dev",
+  };
+  const send = (headers: Record<string, string>, payload = body) =>
+    app.request(`${f.base}/activate-draft`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+  expect(
+    (await send({ authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" }))
+      .status,
+  ).toBe(403);
+  const noCsrf = { ...browserHeaders };
+  delete noCsrf["x-subkit-csrf"];
+  expect((await send(noCsrf)).status).toBe(403);
+  expect(
+    (await send(browserHeaders, { ...body, expected_manifest_digest: "0".repeat(64) })).status,
+  ).toBe(409);
+  const response = await send(browserHeaders);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ activated: true, execution_authorized: false });
+  expect((await send(browserHeaders)).status).toBe(200);
+  const [row] = await ctx.db.select().from(workflows).where(eq(workflows.id, f.workflow.id));
+  expect(row).toMatchObject({ current_version_id: f.version.id, draft_version_id: null });
+  expect(
+    await ctx.db
+      .select()
+      .from(workflowExecutionAuthorities)
+      .where(eq(workflowExecutionAuthorities.workflow_id, f.workflow.id)),
+  ).toHaveLength(0);
+});

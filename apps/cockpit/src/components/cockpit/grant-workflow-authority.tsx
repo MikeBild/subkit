@@ -36,6 +36,10 @@ import {
 export function GrantWorkflowAuthority({
   workflowId,
   versionId,
+  activation,
+  onCompleted,
+  onSingleRun,
+  onAdjust,
   prepareVersion,
   onGrant,
   reviewContent,
@@ -47,6 +51,10 @@ export function GrantWorkflowAuthority({
 }: {
   workflowId: string;
   versionId: string;
+  activation?: { expected_current_version_id: string | null };
+  onCompleted?: () => void;
+  onSingleRun?: () => void;
+  onAdjust?: () => void;
   prepareVersion?: () => Promise<string>;
   onGrant?: (input: NonNullable<ReturnType<typeof authorityGrantInput>>) => Promise<unknown>;
   reviewContent?: ReactNode;
@@ -105,7 +113,7 @@ export function GrantWorkflowAuthority({
         `/v1/workflows/${encodeURIComponent(workflowId)}/execution-authorities`,
         {
           method: "POST",
-          body: JSON.stringify(checked),
+          body: JSON.stringify({ ...checked, ...(activation ? { activation } : {}) }),
         },
       );
     },
@@ -116,11 +124,34 @@ export function GrantWorkflowAuthority({
       await client.invalidateQueries({ queryKey: ["patch-candidate"] });
       await client.invalidateQueries({ queryKey: ["workflow-schedule-holds"] });
       await client.invalidateQueries({ queryKey: ["chat-automation-workflow", workflowId] });
+      await client.invalidateQueries({ queryKey: ["conversation"] });
+      await client.invalidateQueries({ queryKey: ["workflows"] });
+      onCompleted?.();
       setOpen(false);
-      toast.success(t("authority.grantSaved"));
+      toast.success(t(activation ? "chat.activation.saved" : "authority.grantSaved"));
     },
   });
-  const busy = prepare.isPending || grant.isPending;
+  const activateOnly = useMutation({
+    mutationFn: async () => {
+      if (!review || !activation) throw new Error("activation_review_missing");
+      return apiRequest(`/v1/workflows/${encodeURIComponent(workflowId)}/activate-draft`, {
+        method: "POST",
+        body: JSON.stringify({
+          workflow_version_id: reviewVersionId,
+          expected_current_version_id: activation.expected_current_version_id,
+          expected_manifest_digest: review.digest,
+          execution_environment: environment,
+        }),
+      });
+    },
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ["chat-automation-workflow", workflowId] });
+      await client.invalidateQueries({ queryKey: ["conversation"] });
+      setOpen(false);
+      onSingleRun?.();
+    },
+  });
+  const busy = prepare.isPending || grant.isPending || activateOnly.isPending;
   const unsupported = review && !review.eligible_for_repeated_runs;
   const incomplete = review?.execution_shape.requests.some(
     (request) => request.request_review_truncated || request.opaque_payload_omitted,
@@ -135,6 +166,7 @@ export function GrantWorkflowAuthority({
     setReview(null);
     prepare.reset();
     grant.reset();
+    activateOnly.reset();
     if (value) {
       setEnvironment(initialEnvironment);
       prepare.mutate(initialEnvironment);
@@ -156,18 +188,22 @@ export function GrantWorkflowAuthority({
             {t(
               unsupported
                 ? "authority.adjustTitle"
-                : onGrant
-                  ? "decisions.applyAndAuthorize"
-                  : "authority.grantOpen",
+                : activation
+                  ? "chat.activation.title"
+                  : onGrant
+                    ? "decisions.applyAndAuthorize"
+                    : "authority.grantOpen",
             )}
           </DialogTitle>
           <DialogDescription>
             {t(
               unsupported
                 ? "authority.adjustDescription"
-                : onGrant
-                  ? "decisions.applyAndAuthorizeDescription"
-                  : "authority.grantDescription",
+                : activation
+                  ? "chat.activation.description"
+                  : onGrant
+                    ? "decisions.applyAndAuthorizeDescription"
+                    : "authority.grantDescription",
             )}
           </DialogDescription>
         </DialogHeader>
@@ -177,7 +213,7 @@ export function GrantWorkflowAuthority({
             <Alert data-testid="authority-needs-adjustment">
               <AlertTitle>{t("schedules.held.status")}</AlertTitle>
               <AlertDescription>
-                {t("authority.unsupportedSteps", {
+                {t(onSingleRun ? "chat.activation.singleHelp" : "authority.unsupportedSteps", {
                   steps: review?.unavailable_steps.join(", ") || t("authority.effects"),
                 })}
               </AlertDescription>
@@ -348,7 +384,7 @@ export function GrantWorkflowAuthority({
               )}
             </div>
           )}
-          {grant.error && (
+          {(grant.error || activateOnly.error) && (
             <Alert variant="destructive">
               <AlertTitle>{t("authority.grantFailed")}</AlertTitle>
               <AlertDescription>{t("authority.grantFailedDescription")}</AlertDescription>
@@ -383,11 +419,43 @@ export function GrantWorkflowAuthority({
             </Button>
           )}
           {unsupported ? (
-            <Button asChild>
-              <a href={adjustUrl} data-testid="authority-adjust">
-                {t("authority.adjust")}
-              </a>
-            </Button>
+            <>
+              {onAdjust ? (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setOpen(false);
+                    onAdjust();
+                  }}
+                  data-testid="authority-adjust"
+                >
+                  {t("authority.adjust")}
+                </Button>
+              ) : (
+                <Button asChild>
+                  <a href={adjustUrl} data-testid="authority-adjust">
+                    {t("authority.adjust")}
+                  </a>
+                </Button>
+              )}
+              {onSingleRun && (
+                <Button
+                  disabled={busy || Boolean(activateOnly.error) || Boolean(incomplete)}
+                  data-testid="authority-single-run"
+                  onClick={() => {
+                    if (activation) activateOnly.mutate();
+                    else {
+                      setOpen(false);
+                      onSingleRun();
+                    }
+                  }}
+                >
+                  {t(
+                    activation ? "chat.activation.singleConfirm" : "chat.activation.singlePrepare",
+                  )}
+                </Button>
+              )}
+            </>
           ) : (
             <Button
               disabled={busy || !input || Boolean(grant.error)}
@@ -397,11 +465,13 @@ export function GrantWorkflowAuthority({
               {t(
                 grant.isPending
                   ? "authority.granting"
-                  : onGrant
-                    ? "decisions.applyAndAuthorize"
-                    : Number(runs) === 1
-                      ? "authority.grantConfirmOne"
-                      : "authority.grantConfirm",
+                  : activation
+                    ? "chat.activation.confirm"
+                    : onGrant
+                      ? "decisions.applyAndAuthorize"
+                      : Number(runs) === 1
+                        ? "authority.grantConfirmOne"
+                        : "authority.grantConfirm",
                 { count: runs },
               )}
             </Button>

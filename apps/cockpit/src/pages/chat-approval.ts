@@ -8,6 +8,8 @@ export interface ChatApproval {
   savesInactiveWorkflow: boolean;
   expiresAt: string;
   oauth?: "start" | "complete";
+  singleRun?: boolean;
+  workflowName?: string;
   authorizationUrl?: string;
 }
 
@@ -36,6 +38,9 @@ export function chatApproval(detail: ConversationDetail | undefined): ChatApprov
     description: typeof intent.description === "string" ? intent.description : null,
     savesInactiveWorkflow: intent.kind === "save_workflow_draft",
     expiresAt: pending.expires_at,
+    ...(intent.kind === "commit_held_workflow_writes"
+      ? { singleRun: true, workflowName: detail?.resume_summary?.active_target?.name ?? undefined }
+      : {}),
     ...(call.tool === "authenticate_oauth"
       ? {
           oauth: (pending.prompt?.intent_kind === "oauth_completed" ? "complete" : "start") as

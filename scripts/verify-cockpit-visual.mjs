@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
+import { verifyChatActivation } from "./lib/cockpit-chat-activation.mjs";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
 import { verifyChatApprovals } from "./lib/cockpit-chat-approvals.mjs";
 import { verifyChatChoices } from "./lib/cockpit-chat-choices.mjs";
@@ -2127,6 +2128,7 @@ for (const locale of variants) {
     );
     await verifyChatReauth(page, stand, conversation);
     await verifyChatOAuth(page, stand, conversation, locale.name);
+    await verifyChatActivation(page, stand, conversation, locale.name);
     await verifyChatActivity(page, stand, conversation, locale.name, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-chat-activity-${state}`, {
         fullPage: false,

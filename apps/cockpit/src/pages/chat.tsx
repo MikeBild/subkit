@@ -485,9 +485,7 @@ function ChatMessage({
 }) {
   const { t, locale } = useI18n();
   const from = message.role === "user" ? "user" : "assistant";
-  // Both roles get the same column: a dark bubble on the right made the
-  // reader's own words the loudest thing on the page and cut the usable width
-  // of every question to 80%. Who spoke is a label, not a shape.
+  // Keep the shared reading column; a soft question tone distinguishes user input.
   return (
     <Message
       align="start"
@@ -517,7 +515,11 @@ function ChatMessage({
             if (!text) return null;
             const mentions = from === "user" ? referencesFromPart(group.part) : null;
             return (
-              <Bubble key={`${message.id}-text-${group.index}`} variant="ghost" align="start">
+              <Bubble
+                key={`${message.id}-text-${group.index}`}
+                variant={from === "user" ? "question" : "ghost"}
+                align="start"
+              >
                 <BubbleContent data-testid={`chat-message-${messageIndex}-text-${group.index}`}>
                   {mentions && mentions.references.length > 0 ? (
                     <MentionChips
@@ -1163,6 +1165,10 @@ export function ChatPage() {
                   workflowId={targetWorkflowId}
                   environment={heldTarget.execution_mode}
                   testId="chat-review-schedule"
+                  onPrepareSingleRun={() =>
+                    send.mutate({ message: t("chat.activation.singlePrompt") })
+                  }
+                  onAdjust={() => send.mutate({ message: t("authority.adjustPrompt") })}
                 />
               </AlertDescription>
             </Alert>
@@ -1469,6 +1475,14 @@ export function ChatPage() {
                       workflowId={targetWorkflowId}
                       environment={heldTarget.execution_mode}
                       testId="chat-context-review-schedule"
+                      onPrepareSingleRun={() => {
+                        setContextOpen(false);
+                        send.mutate({ message: t("chat.activation.singlePrompt") });
+                      }}
+                      onAdjust={() => {
+                        setContextOpen(false);
+                        send.mutate({ message: t("authority.adjustPrompt") });
+                      }}
                     />
                   </dd>
                 </div>

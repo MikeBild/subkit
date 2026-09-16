@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 17
+version: 18
 ---
 
 # Authoring Workflows In A Conversation
@@ -17,6 +17,10 @@ This skill describes the happy path for building a workflow when the user is
 talking to you in a conversation. The process is design-once / emit-once:
 ONE `author_workflow` call produces the complete evaluated draft; the
 micro-tools exist only to repair specific findings afterwards.
+
+## Chat completion and human review
+
+In cockpit, a saved draft is reviewed inside the current chat with “Review saved change”. This opens the exact-version effect and limit dialog; the human can apply the change and allow bounded automatic runs in one decision. Never send API commands, ask the user to activate externally, or use call_connector to call the engine. A generic ask_user_confirm is not execution authority. A held-write preview does not send an email and is not a live test. Report these outcomes separately. A repaired credential alone does not authorize a changed workflow. If run_workflow reports activation required, stop retrying and point to the chat review action. If access preparation fails, inspect the precise connector/environment once and repair the evidenced problem; do not invent cache or checkpoint causes. Never claim the next scheduled run will happen without observed authorized automation status.
 
 ## Automatic operation completion
 
