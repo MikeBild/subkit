@@ -554,7 +554,9 @@ export function withLatestPreview(
       "workflow_validated",
       tool_name,
       true,
-      "End-to-end dry-run completed without errors — counts as validation.",
+      preview.warnings?.length
+        ? "Preview completed with warnings. Review the recorded warnings; not every action was verified. This grants no live execution permission."
+        : "Preview completed successfully for preparation. This grants no live execution permission.",
     );
   }
   return refreshDraftSummary({

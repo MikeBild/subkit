@@ -633,7 +633,7 @@ describe("MCP tools/call — run_workflow missing required input (W4.5 anti-spir
   });
 });
 
-test("run_workflow surfaces continued failures as partial success requiring diagnosis", async () => {
+test("run_workflow keeps tolerated failures visible without falsely claiming clean verification", async () => {
   const slug = "continued-failure-report";
   const created = await journeyFetch(ctx, "/v1/workflows", {
     method: "POST",
@@ -670,14 +670,13 @@ test("run_workflow surfaces continued failures as partial success requiring diag
     });
     const blocks = result.content as Array<{ type: string; text?: string }>;
     const body = JSON.parse(blocks.find((b) => b.type === "text")?.text ?? "{}");
-    expect(result.isError).toBe(true);
-    expect(body.details.status).toBe("partial_success");
-    expect(body.details.requires_repair).toBe(true);
-    expect(body.details.diagnosis_available).toBe(true);
+    expect(result.isError).toBeFalsy();
+    expect(body.status).toBe("succeeded");
+    expect(body.requires_repair).toBe(false);
+    expect(body.diagnosis_available).toBe(true);
     expect(
-      body.details.summary.checkpoints.find((c: { key: string }) => c.key === "workflow_previewed")
-        .ok,
-    ).toBe(false);
+      body.summary.checkpoints.find((c: { key: string }) => c.key === "workflow_validated").summary,
+    ).toContain("completed with warnings");
   } finally {
     await client.close();
   }
