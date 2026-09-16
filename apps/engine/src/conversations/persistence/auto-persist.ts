@@ -915,7 +915,7 @@ export async function maybeAutoPersistFromElicitation(
           tool: toolName,
           surface: "chat",
           via: "chat",
-          execution_mode: "dev",
+          // No ambient environment: the persisted human-reviewed approval selects it.
         });
         if (!claim.ok) {
           result = { ok: false, error_code: claim.code, message: claim.message, data: {} };
@@ -1034,10 +1034,8 @@ export async function maybeAutoPersistFromElicitation(
             request_source: "chat",
             trace_id: null,
             principal: p.principal,
-            // The synthetic chat palette always previews in dev, and
-            // `consumeApproval` rejects a claim that contradicts the stored
-            // environment — so the replay runs where the preview ran.
-            execution_mode: "dev",
+            // Replay the approved environment, even if the schedule changed since preparation.
+            execution_mode: claim.execution_mode ?? "dev",
             self_healing: { enabled: false },
             tool_approval_id: claim.approval_id,
           },

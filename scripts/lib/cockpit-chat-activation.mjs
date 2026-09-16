@@ -150,11 +150,25 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
       body: `event: outcome\ndata: ${JSON.stringify({ conversation, status: "active" })}\n\n`,
     });
   });
+  const decisionCount = async () => {
+    const count = page.getByTestId("nav-decisions-count");
+    const mobile = !(await count.count());
+    if (mobile) await page.getByTestId("sidebar-trigger").click();
+    await count.waitFor();
+    const value = Number(await count.innerText());
+    if (mobile) {
+      await page
+        .locator('[data-slot="sheet-overlay"]')
+        .click({ position: { x: page.viewportSize().width - 8, y: 20 } });
+      await page.locator('[data-slot="sidebar"][data-mobile="true"]').waitFor({ state: "hidden" });
+    }
+    return value;
+  };
   try {
     await stand.visit(page, `chat/${conversation.id}`);
     const action = page.getByTestId("chat-review-schedule");
     await action.waitFor();
-    const before = Number(await page.getByTestId("nav-decisions-count").innerText());
+    const before = await decisionCount();
     const bubble = page.getByTestId("chat-message-0-text-0");
     await bubble.waitFor();
     if ((await bubble.evaluate((n) => getComputedStyle(n).backgroundColor)) === "rgba(0, 0, 0, 0)")
@@ -171,7 +185,7 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
     await page.getByTestId("authority-grant-confirm").click();
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     await page.getByTestId("chat-schedule-next-step").waitFor({ state: "hidden" });
-    const after = Number(await page.getByTestId("nav-decisions-count").innerText());
+    const after = await decisionCount();
     if (after !== before - 1)
       throw new Error(`Decision count did not decrease once: ${before} -> ${after}`);
     await page.reload();

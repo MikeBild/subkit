@@ -18,6 +18,7 @@ import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { auditLog } from "../../../db/schema/audit.ts";
 import { tenants } from "../../../db/schema/identity.ts";
 import {
+  conversationElicitations,
   conversations,
   workflows,
   workflowsSchedules,
@@ -26,6 +27,8 @@ import {
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { resetMockProvider } from "../../../llm/mock-provider.ts";
 import { workflowExecutionEnvironment } from "../../../workflows/execution-environment.ts";
+import { humanChatAnswer } from "../../answer-actor.ts";
+import { maybeAutoPersistFromElicitation } from "../../persistence/auto-persist.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import type { TurnSignals } from "./state.ts";
@@ -44,7 +47,7 @@ function makePrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrin
     kind: "user",
     // UUID-shape so audit-write doesn't fail validation when a deny path
     // commits a POLICY_DENIED row.
-    id: "00000000-0000-0000-0000-0000000000fc",
+    id: "00000000-0000-4000-8000-0000000000fc",
     tenant_id: tenantId,
     roles: ["admin"],
     ...overrides,
@@ -506,5 +509,96 @@ test("saved tool executes the configured production environment instead of hardc
   )) as { ok: boolean };
   expect(result.ok).toBe(true);
   expect(logMessages.some((message) => message.includes("env=prod"))).toBe(true);
+  expect(requests).toBe(1);
+});
+
+test("production preparation pauses in chat and human approval dispatches once in its reviewed environment", async () => {
+  const workflow = await seedTool("production-delivery");
+  const [version] = await tdb.db
+    .select()
+    .from(workflowVersions)
+    .where(
+      and(eq(workflowVersions.tenant_id, tenantId), eq(workflowVersions.workflow_id, workflow.id)),
+    );
+  if (!version) throw new Error("missing version");
+  await tdb.db
+    .update(workflowVersions)
+    .set({
+      dag: {
+        name: "Daily delivery",
+        slug: "production-delivery",
+        steps: [
+          {
+            id: "send",
+            kind: "request",
+            method: "POST",
+            url: requestUrl,
+            body: { message: "Reviewed test message" },
+          },
+        ],
+      },
+    })
+    .where(and(eq(workflowVersions.tenant_id, tenantId), eq(workflowVersions.id, version.id)));
+  await tdb.db.insert(workflowsSchedules).values({
+    tenant_id: tenantId,
+    workflow_id: workflow.id,
+    cron: "0 8 * * *",
+    execution_mode: "prod",
+  });
+  const signals = makeTurnSignals();
+  const tools = await buildSyntheticWorkflowTools({
+    db: tdb.db,
+    principal: makePrincipal(),
+    ctx: makeCtx(),
+    signals,
+    events: [],
+  });
+  const tool = tools["wf_production-delivery"];
+  if (!tool?.execute) throw new Error("missing delivery tool");
+  const result = await tool.execute(
+    {},
+    { toolCallId: "production-write-test", messages: [], context: {} },
+  );
+  expect(result).toMatchObject({ pause: { tool_name: "ask_user_confirm" } });
+  expect(signals.pendingElicitation?.tool_name).toBe("ask_user_confirm");
+  expect(requests).toBe(0);
+  const [question] = await tdb.db
+    .select()
+    .from(conversationElicitations)
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, tenantId),
+        eq(conversationElicitations.conversation_id, conversationId),
+      ),
+    );
+  expect(question?.input).toMatchObject({ commit_intent: { kind: "commit_held_workflow_writes" } });
+  if (!question) throw new Error("missing decision");
+  // A changed schedule must not redirect the already-reviewed one-shot operation.
+  await tdb.db
+    .update(workflowsSchedules)
+    .set({ execution_mode: "dev" })
+    .where(
+      and(
+        eq(workflowsSchedules.tenant_id, tenantId),
+        eq(workflowsSchedules.workflow_id, workflow.id),
+      ),
+    );
+  const principal = makePrincipal();
+  const answer = {
+    tenant_id: tenantId,
+    conversation_id: conversationId,
+    actor_id: principal.id,
+    principal,
+    answer_actor: humanChatAnswer(principal),
+    elicitation_output: { confirmed: true },
+    elicitation: question,
+    surface: "web" as const,
+    db: tdb.db,
+  };
+  const completed = await maybeAutoPersistFromElicitation(answer);
+  expect(completed.synthetic_result).toMatchObject({ ok: true, data: { status: "succeeded" } });
+  expect(requests).toBe(1);
+  const repeated = await maybeAutoPersistFromElicitation(answer);
+  expect(repeated.synthetic_result?.ok).toBe(false);
   expect(requests).toBe(1);
 });

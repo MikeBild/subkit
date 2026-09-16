@@ -997,11 +997,9 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
     expect(objectHash).toBe(stringHash);
   });
 
-  test("run_workflow WITHOUT an explicit environment resolves to the 'dev' default BEFORE policyDecide runs", async () => {
-    // Regression lock: canonicalizeArgs() must apply the Zod
-    // `.default("dev")` BEFORE policyDecide() reads `args.environment`.
-    // Omission must remain the documented dev environment at execution, even
-    // though ordinary dev and prod calls now share local authority admission.
+  test("run_workflow preserves an omitted environment for schedule-aware execution admission", async () => {
+    // Canonicalization must not insert dev before the workflow has been resolved.
+    // The execution layer inherits its saved schedule and enforces local authority.
     const received: Array<Record<string, unknown>> = [];
     const registry = buildRegistry([runWorkflowStub((args) => received.push(args))]);
     const envelope = await dispatchTool(
@@ -1010,6 +1008,6 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
     );
     expect(envelope.status).toBe("ok");
     expect(received).toHaveLength(1);
-    expect(received[0]?.environment).toBe("dev");
+    expect(received[0]?.environment).toBeUndefined();
   });
 });
