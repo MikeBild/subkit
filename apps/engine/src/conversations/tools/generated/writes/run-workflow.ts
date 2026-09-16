@@ -245,7 +245,7 @@ export const runWorkflowTool: ConversationTool = {
         const v = suppliedMap[k];
         return v === undefined || v === null || (typeof v === "string" && v.trim() === "");
       });
-      if ((suppliedInputIsEmpty || missingRequired.length > 0) && propertyNames.length > 0) {
+      if (missingRequired.length > 0 && propertyNames.length > 0) {
         const requiredSet = new Set(requiredKeys);
         const fields = propertyNames.map((name) => {
           const prop =
@@ -626,7 +626,12 @@ export const runWorkflowTool: ConversationTool = {
       // LLM into the patch loop the skill explicitly forbids.
       const isPartialSuccess =
         result.status === "succeeded" &&
-        (hasUnresolvedIdentifierWarning ||
+        (result.steps.some(
+          (step) =>
+            step.status === "failed" || step.status === "timed_out" || step.status === "aborted",
+        ) ||
+          (result.warnings ?? []).some((warning) => warning.code === "step_failed_continued") ||
+          hasUnresolvedIdentifierWarning ||
           loopStepRanWithEmptyBody ||
           hasTransformEmptyExtractionWarning ||
           hasLoopOverUnresolvedWarning);
@@ -744,12 +749,12 @@ export const runWorkflowTool: ConversationTool = {
       const previewedDraft = withLatestPreview(
         currentDraft,
         {
-          ok: result.status === "succeeded",
+          ok: payloadStatus === "succeeded",
           step_id:
             result.steps.find((s) => s.status !== "succeeded")?.step_key ??
             result.steps[result.steps.length - 1]?.step_key ??
             "(end)",
-          summary: `run_workflow finished with status ${result.status}`,
+          summary: `run_workflow finished with status ${payloadStatus}`,
           ...(hasWarnings && result.warnings ? { warnings: result.warnings } : {}),
           ...(requiresRepair ? { requires_repair: true } : {}),
           step_traces: persistedStepTraces,

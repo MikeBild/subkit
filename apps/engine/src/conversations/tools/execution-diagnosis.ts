@@ -10,6 +10,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
+import { HELD_PREVIEW_WARNING_CODE } from "../../execution/types.ts";
 import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { LatestDiagnosisSummary } from "../types.ts";
 import { truncateForLlm } from "./truncate.ts";
@@ -27,9 +28,25 @@ export type ExecutionDiagnosisResult =
   | { found: true; execution: ExecutionSummary; diagnosis: LatestDiagnosisSummary }
   | { found: false };
 
-function summarizeReason(status: string, warningCount: number, stepCount: number): string {
+function summarizeReason(
+  status: string,
+  warningCount: number,
+  stepCount: number,
+  failedCount: number,
+  skippedCount: number,
+  heldCount: number,
+): string {
+  if (failedCount > 0) {
+    return `Execution finished with status ${status}, but ${failedCount} step${failedCount === 1 ? "" : "s"} failed. The workflow continued after errors; this is not a successful verification. Inspect the failing steps.`;
+  }
   if (status !== "succeeded") {
     return `Execution finished with status ${status}; inspect the failing steps before editing the workflow.`;
+  }
+  if (heldCount > 0) {
+    return `Preview completed with held writes in ${heldCount} step${heldCount === 1 ? "" : "s"}. Those actions were not performed. This is not evidence of live execution or permission for automatic runs.`;
+  }
+  if (skippedCount > 0) {
+    return `Execution succeeded with ${skippedCount} skipped step${skippedCount === 1 ? "" : "s"} and ${warningCount} warnings across ${stepCount} steps. Skipped actions were not verified or performed; inspect their reasons before claiming readiness.`;
   }
   if (warningCount > 0) {
     return `Execution succeeded with ${warningCount} warning${warningCount === 1 ? "" : "s"} across ${stepCount} step${stepCount === 1 ? "" : "s"}.`;
@@ -102,6 +119,20 @@ export async function buildExecutionDiagnosis(
         });
       }
     }
+    const meta = row.request_meta as { extras?: { held?: unknown } } | null;
+    if (
+      meta?.extras?.held === true &&
+      !warning_sources.some(
+        (warning) =>
+          warning.step_key === row.step_key && warning.code === HELD_PREVIEW_WARNING_CODE,
+      )
+    ) {
+      warning_sources.push({
+        step_key: row.step_key,
+        code: HELD_PREVIEW_WARNING_CODE,
+        identifier: null,
+      });
+    }
     const previewValue =
       previewRecord && Object.hasOwn(previewRecord, "value")
         ? previewRecord.value
@@ -126,7 +157,14 @@ export async function buildExecutionDiagnosis(
   const diagnosis: LatestDiagnosisSummary = {
     execution_id: execution.id,
     recorded_at: new Date().toISOString(),
-    reason: summarizeReason(execution.status, warning_sources.length, steps.length),
+    reason: summarizeReason(
+      execution.status,
+      warning_sources.length,
+      steps.length,
+      steps.filter((step) => ["failed", "timed_out", "aborted"].includes(step.status)).length,
+      steps.filter((step) => step.status === "skipped").length,
+      warning_sources.filter((warning) => warning.code === HELD_PREVIEW_WARNING_CODE).length,
+    ),
     warning_sources,
     steps,
   };

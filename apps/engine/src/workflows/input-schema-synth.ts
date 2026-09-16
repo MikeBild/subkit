@@ -340,9 +340,10 @@ export function resolveWorkflowInputContract(dag: WorkflowDef): WorkflowInputCon
       ? Object.keys(schema.properties as Record<string, unknown>)
       : [];
   if (properties.length === 0) return null;
-  const required =
-    Array.isArray(schema.required) && schema.required.length > 0
-      ? schema.required.filter((k): k is string => typeof k === "string")
+  const required = Array.isArray(schema.required)
+    ? schema.required.filter((k): k is string => typeof k === "string")
+    : source === "declared"
+      ? []
       : properties;
   return { schema, source, properties, required };
 }

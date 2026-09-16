@@ -11,6 +11,7 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
   let completed = false,
     unsupported = false,
     conflict = true,
+    expiredSession = false,
     grants = 0,
     activations = 0,
     messages = 0;
@@ -142,6 +143,11 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
     )
       throw new Error("Activation lost its exact reviewed boundary");
     grants++;
+    if (expiredSession)
+      return r.fulfill({
+        status: 403,
+        json: { code: "human_session_expired", message: "expired" },
+      });
     if (conflict)
       return r.fulfill({
         status: 409,
@@ -222,7 +228,22 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
     if (!(await page.getByTestId("authority-grant-confirm").isDisabled()))
       throw new Error("Conflict did not block stale confirmation");
     conflict = false;
+    expiredSession = true;
     await page.getByTestId("authority-prepare").click();
+    await page.getByTestId("authority-grant-confirm").click();
+    const signIn = page.getByTestId("authority-sign-in");
+    await signIn.waitFor();
+    if (
+      !(await signIn.getAttribute("href")).includes(
+        encodeURIComponent(`/cockpit/chat/${conversation.id}`),
+      )
+    )
+      throw new Error("Session recovery lost the current conversation");
+    if (await page.getByTestId("authority-prepare").count())
+      throw new Error("Expired session incorrectly offered a grant retry");
+    await page.getByTestId("authority-grant-cancel").click();
+    expiredSession = false;
+    await action.click();
     await page.getByTestId("authority-grant-confirm").click();
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     await page.getByTestId("chat-schedule-next-step").waitFor({ state: "hidden" });
@@ -245,7 +266,7 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
     if (
       activations !== 1 ||
       messages !== 1 ||
-      grants !== 2 ||
+      grants !== 3 ||
       !page.url().includes(`/chat/${conversation.id}`)
     )
       throw new Error("One-shot handoff did not stay in chat exactly once");

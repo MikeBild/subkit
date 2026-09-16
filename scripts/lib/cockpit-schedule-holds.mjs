@@ -166,8 +166,12 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
       const beforeCount = (await page.getByTestId("nav-decisions-count").count())
         ? Number(await page.getByTestId("nav-decisions-count").innerText())
         : null;
-      if (!(await handoff.innerText()).includes("13"))
-        throw new Error("Chat does not explain remaining schedule count");
+      if (
+        !(await handoff.innerText()).includes(
+          locale === "de" ? "für diesen Ablauf" : "this workflow",
+        )
+      )
+        throw new Error("Chat does not explain which decision confirmation resolves");
       if (
         !(await page.getByTestId("chat-summary").innerText()).includes(
           locale === "de" ? "gespeichert" : "Saved",
