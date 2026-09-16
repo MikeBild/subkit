@@ -40,6 +40,7 @@ let conversationId: string;
 let server: ReturnType<typeof createServer>;
 let requestUrl: string;
 let requests = 0;
+let receivedBody = "";
 
 function makePrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrincipal {
   return {
@@ -99,10 +100,15 @@ beforeAll(async () => {
   if (!t) throw new Error("tenant seed failed");
   tenantId = t.id;
   // Exercise the real HTTP driver without depending on a public network endpoint.
-  server = createServer((_request, response) => {
+  server = createServer((request, response) => {
+    request.on("data", (chunk) => {
+      receivedBody += chunk.toString();
+    });
     requests += 1;
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ok: true }));
+    request.on("end", () => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true }));
+    });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -118,6 +124,7 @@ afterAll(async () => {
 beforeEach(async () => {
   resetMockProvider();
   requests = 0;
+  receivedBody = "";
   // Fresh conversation per test
   const [conv] = await tdb.db
     .insert(conversations)
@@ -529,11 +536,19 @@ test("production preparation pauses in chat and human approval dispatches once i
         slug: "production-delivery",
         steps: [
           {
+            id: "prepare",
+            kind: "transform",
+            lang: "js",
+            // allow-wall-clock: guest source tests the server-fixed Date shim, not the host clock.
+            expression: "return { instant: Date.now(), stable: sk.now(), id: sk.uuid() };",
+          },
+          {
             id: "send",
+            depends_on: ["prepare"],
             kind: "request",
             method: "POST",
             url: requestUrl,
-            body: { message: "Reviewed test message" },
+            body: "${scope.prepare.data}",
           },
         ],
       },
@@ -595,9 +610,16 @@ test("production preparation pauses in chat and human approval dispatches once i
     surface: "web" as const,
     db: tdb.db,
   };
+  await Bun.sleep(30); // A human decides after the preparation clock has advanced.
   const completed = await maybeAutoPersistFromElicitation(answer);
   expect(completed.synthetic_result).toMatchObject({ ok: true, data: { status: "succeeded" } });
   expect(requests).toBe(1);
+  expect(JSON.parse(receivedBody)).toMatchObject({
+    instant: expect.any(Number),
+    stable: expect.any(Number),
+    id: expect.any(String),
+  });
+  expect(JSON.parse(receivedBody).instant).toBe(JSON.parse(receivedBody).stable);
   const repeated = await maybeAutoPersistFromElicitation(answer);
   expect(repeated.synthetic_result?.ok).toBe(false);
   expect(requests).toBe(1);

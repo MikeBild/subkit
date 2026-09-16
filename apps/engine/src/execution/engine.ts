@@ -73,6 +73,7 @@ import {
 import { type RunStepOutcome, runStep } from "./step-runner.ts";
 import { classifyRequestStepSideEffects } from "./steps/request/side-effects.ts";
 import { MAX_CALL_DEPTH, WORKFLOW_TIMEOUT_DEFAULT_MS } from "./timeouts.ts";
+import { preparedApprovalClock } from "./tool-approval-dispatch.ts";
 import {
   type ExecutionStatus,
   HELD_PREVIEW_WARNING_CODE,
@@ -208,16 +209,23 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     );
   }
 
-  // Single execution instant: persisted as the row's `started_at` (via
-  // markExecutionRunning) AND reused as the one clock every sandbox reads —
-  // the per-step transforms (`ctx.started_at`) and the workflow-scope
-  // output_transform/validation functions alike. So `sk.now()` mirrors the
-  // execution's `started_at` and is identical across all sandboxes in a run
-  // (`sk.uuid()` is stable via the `execution_id`-derived seed). A fresh
-  // re-run gets its own instant — sk.now() is consistent within one run and
-  // equals the persisted row, not byte-identical across separate runs.
+  // Persist actual start time, but replay an approved preparation's evaluation
+  // clock/seed so time-dependent requests still match the reviewed proof.
   const execution_started_at_date = new Date();
-  const execution_started_at = execution_started_at_date.getTime();
+  const preparedClock =
+    opts.tool_approval_id && resolved.source_kind === "saved"
+      ? await preparedApprovalClock(
+          db,
+          tenant_id,
+          opts.tool_approval_id,
+          resolved.workflow_id,
+          resolved.workflow_version_id,
+          execution_mode,
+          normalizedInput,
+        )
+      : null;
+  const evaluationInstant = preparedClock?.instant ?? execution_started_at_date;
+  const execution_started_at = evaluationInstant.getTime();
 
   // Persist queued execution row (unless one already exists — the queue
   // worker passes `existing_execution_id` so the HTTP-created row is
@@ -239,6 +247,8 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         input: normalizedInput ?? null,
         idempotency_key: opts.idempotency_key ?? null,
       });
+
+  const evaluationSeed = preparedClock?.seed ?? execution_id;
 
   // Wire abort: external signal (if any) feeds into the per-execution
   // controller. The controller is registered so cancel API can find it.
@@ -504,9 +514,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       depth,
       signal,
       scope,
-      // One instant for the whole execution (== persisted row `started_at`),
+      // One evaluation instant for the whole execution (or its preparation),
       // shared by every step + the workflow-scope sandboxes.
-      started_at: execution_started_at_date,
+      started_at: evaluationInstant,
+      evaluation_seed: evaluationSeed,
       workflow_slug: resolved.workflow_slug,
       trace_id: opts.trace_id ?? null,
       principal: opts.principal ?? null,
@@ -555,7 +566,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         // wiring as steps/transform.ts.
         {
           now_ms: ctx.started_at.getTime(),
-          seed: `${execution_id}:${step.id}`,
+          seed: `${evaluationSeed}:${step.id}`,
         },
       );
       // Circuit-breaker preflight (audit H1): when the target connector's
@@ -1141,7 +1152,8 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               depth,
               signal,
               scope: childScope,
-              started_at: new Date(),
+              started_at: evaluationInstant,
+              evaluation_seed: evaluationSeed,
               workflow_slug: resolved.workflow_slug,
               trace_id: opts.trace_id ?? null,
               principal: opts.principal ?? null,
@@ -1426,7 +1438,8 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                   depth,
                   signal,
                   scope: branchScope,
-                  started_at: new Date(),
+                  started_at: evaluationInstant,
+                  evaluation_seed: evaluationSeed,
                   workflow_slug: resolved.workflow_slug,
                   trace_id: opts.trace_id ?? null,
                   principal: opts.principal ?? null,
@@ -1661,7 +1674,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           input: lastOutput,
           clock: {
             now_ms: execution_started_at,
-            seed: `${execution_id}:output_transform`,
+            seed: `${evaluationSeed}:output_transform`,
           },
         });
         if (result.output !== undefined) lastOutput = result.output;
@@ -1881,7 +1894,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         input: lastOutput,
         clock: {
           now_ms: execution_started_at,
-          seed: `${execution_id}:validation`,
+          seed: `${evaluationSeed}:validation`,
         },
       });
       const verdict = result.output;

@@ -76,6 +76,8 @@ export interface ExecutionContext {
   scope: Record<string, unknown>;
   // Per-execution counters
   started_at: Date;
+  /** Server-bound preparation seed for an approved replay. */
+  evaluation_seed?: string;
   // Workflow definition for nested call lookups
   workflow_slug: string;
   // Logger fields shared by every emitted log line.

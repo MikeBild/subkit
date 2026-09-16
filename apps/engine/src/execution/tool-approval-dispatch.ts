@@ -343,3 +343,59 @@ export async function approvedDispatchOutcome(db: Db, tenant: string, executionI
     write_attempts_reserved: attempts.reduce((total, [, entry]) => total + entry.attempts, 0),
   };
 }
+
+/** Reuse only the server-recorded preparation clock and seed. Fresh reads and
+ * exact outbound proof checks still run; no cached step outputs are replayed. */
+export async function preparedApprovalClock(
+  db: Db,
+  tenant: string,
+  approvalId: string,
+  workflowId: string,
+  versionId: string,
+  mode: string,
+  input: unknown,
+): Promise<{ instant: Date; seed: string }> {
+  const [approval] = await db
+    .select()
+    .from(toolApprovals)
+    .where(
+      and(
+        eq(toolApprovals.tenant_id, tenant),
+        eq(toolApprovals.id, approvalId),
+        isNotNull(toolApprovals.granted_at),
+        isNotNull(toolApprovals.consumed_at),
+        isNull(toolApprovals.declined_at),
+        sql`${toolApprovals.expires_at} > clock_timestamp()`,
+      ),
+    )
+    .limit(1);
+  const binding = approval && decryptPreview(approval)?.prepared_workflow;
+  if (
+    !binding ||
+    binding.workflow_id !== workflowId ||
+    binding.workflow_version_id !== versionId ||
+    binding.execution_mode !== mode ||
+    approval.execution_mode !== mode ||
+    binding.input_digest !== preparedInputDigest(input)
+  )
+    denied("prepared_effect_changed");
+  const [prepared] = await db
+    .select()
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, tenant),
+        eq(executions.id, binding.execution_id),
+        eq(executions.workflow_id, workflowId),
+        eq(executions.workflow_version_id, versionId),
+        eq(executions.execution_mode, binding.execution_mode),
+        eq(executions.hold_writes, true),
+        eq(executions.status, "succeeded"),
+        isNull(executions.abort_requested_at),
+      ),
+    )
+    .limit(1);
+  if (!prepared?.started_at || preparedInputDigest(prepared.input) !== binding.input_digest)
+    denied("prepared_effect_changed");
+  return { instant: prepared.started_at, seed: prepared.id };
+}
