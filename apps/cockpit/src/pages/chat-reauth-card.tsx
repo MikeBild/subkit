@@ -7,10 +7,12 @@ import type { ChatReauth } from "./chat-reauth";
 export function ChatReauthCard({
   action,
   busy,
+  pending = false,
   onRenew,
 }: {
   action: ChatReauth;
   busy: boolean;
+  pending?: boolean;
   onRenew: (action: ChatReauth) => void;
 }) {
   const { t } = useI18n();
@@ -24,12 +26,20 @@ export function ChatReauthCard({
     <Card size="sm" tone="question" data-testid="chat-reauth-card">
       <CardHeader>
         <CardTitle>{t("chat.reauth.title")}</CardTitle>
-        <CardDescription>{t(expired ? "chat.reauth.expired" : "chat.reauth.help")}</CardDescription>
+        <CardDescription>
+          {t(
+            pending
+              ? "chat.reauth.pendingHelp"
+              : expired
+                ? "chat.reauth.expired"
+                : "chat.reauth.help",
+          )}
+        </CardDescription>
       </CardHeader>
       <CardFooter>
-        {expired ? (
+        {pending || expired ? (
           <Button disabled={busy} onClick={() => onRenew(action)} data-testid="chat-reauth-renew">
-            {t("chat.reauth.renew")}
+            {t(pending ? "chat.reauth.continue" : "chat.reauth.renew")}
           </Button>
         ) : (
           <Button asChild>
