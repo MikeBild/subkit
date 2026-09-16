@@ -7,23 +7,20 @@ import {
   workflows,
   workflowsSchedules,
 } from "../../db/schema/index.ts";
-import {
-  nextScheduleTime,
-  workflowAutomationView,
-} from "../../scheduler/workflow-automation-view.ts";
+import { nextScheduleTime, workflowAutomationView } from "../../scheduler/index.ts";
 import {
   ActivateWorkflowDraftSchema,
   AuthorityExecutionShapeSchema,
   activateWorkflowDraft,
   GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
+  prepareReportAuthority,
   previewWorkflowAuthority,
+  reportBoundariesFromManifest,
   revokeWorkflowAuthority,
   suggestAuthorityBounds,
   WorkflowEffectManifestSchema,
 } from "../../workflows/index.ts";
-import { prepareReportAuthority } from "../../workflows/prepare-report-authority.ts";
-import { reportBoundariesFromManifest } from "../../workflows/report-delivery-proposal.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
