@@ -90,7 +90,11 @@ export async function getConversation(
           ),
           and(
             inArray(conversationElicitations.status, ["resolved", "cancelled", "timeout"]),
-            inArray(conversationElicitations.tool_name, ["ask_user_confirm", "ask_user_choice"]),
+            inArray(conversationElicitations.tool_name, [
+              "ask_user_confirm",
+              "ask_user_choice",
+              "ask_user_form",
+            ]),
           ),
         ),
       ),
@@ -102,6 +106,25 @@ export async function getConversation(
     answeredElicitations.flatMap((answer) =>
       answer.tool_name === "ask_user_choice" && answer.tool_call_id && answer.status !== "resolved"
         ? [[answer.tool_call_id, answer] as const]
+        : [],
+    ),
+  );
+  const closedForms = new Map(
+    answeredElicitations.flatMap((answer) =>
+      answer.tool_name === "ask_user_form" && answer.tool_call_id
+        ? [
+            [
+              answer.tool_call_id,
+              {
+                id: answer.id,
+                status:
+                  answer.status === "resolved" &&
+                  interpretConfirmDecision(answer.output) === "declined"
+                    ? "cancelled"
+                    : answer.status,
+              },
+            ] as const,
+          ]
         : [],
     ),
   );
@@ -214,41 +237,53 @@ export async function getConversation(
         tool: c.tool,
         input: c.input,
         output:
-          (c.tool === "ask_user_text" || c.tool === "ask_user_choice") &&
-          answeredTextCalls.has(c.id)
-            ? { status: "resolved", elicitation_id: answeredTextCalls.get(c.id) }
-            : closedChoices.has(c.id)
-              ? {
-                  status: closedChoices.get(c.id)?.status,
-                  elicitation_id: closedChoices.get(c.id)?.id,
-                }
-              : confirmations.has(c.id)
+          closedForms.has(c.id) &&
+          (c.tool === "ask_user_form" ||
+            ((c.outcome === "pending" || c.outcome === null) &&
+              closedForms.get(c.id)?.status !== "resolved"))
+            ? { status: closedForms.get(c.id)?.status, elicitation_id: closedForms.get(c.id)?.id }
+            : (c.tool === "ask_user_text" || c.tool === "ask_user_choice") &&
+                answeredTextCalls.has(c.id)
+              ? { status: "resolved", elicitation_id: answeredTextCalls.get(c.id) }
+              : closedChoices.has(c.id)
                 ? {
-                    status:
-                      confirmations.get(c.id)?.status === "resolved"
-                        ? confirmations.get(c.id)?.accepted
-                          ? "resolved"
-                          : "declined"
-                        : confirmations.get(c.id)?.status,
-                    elicitation_id: confirmations.get(c.id)?.id,
+                    status: closedChoices.get(c.id)?.status,
+                    elicitation_id: closedChoices.get(c.id)?.id,
                   }
-                : c.output,
+                : confirmations.has(c.id)
+                  ? {
+                      status:
+                        confirmations.get(c.id)?.status === "resolved"
+                          ? confirmations.get(c.id)?.accepted
+                            ? "resolved"
+                            : "declined"
+                          : confirmations.get(c.id)?.status,
+                      elicitation_id: confirmations.get(c.id)?.id,
+                    }
+                  : c.output,
         approval_required: c.approval_required,
         created_at: c.created_at.toISOString(),
         parent_message_id: c.parent_message_id,
         confirmation_state: c.confirmation_state,
         approved_at: c.approved_at ? c.approved_at.toISOString() : null,
         outcome:
-          (c.tool === "ask_user_text" || c.tool === "ask_user_choice") &&
-          answeredTextCalls.has(c.id)
-            ? "ok"
-            : closedChoices.has(c.id)
-              ? "denied"
-              : confirmations.has(c.id)
-                ? confirmations.get(c.id)?.accepted
-                  ? "ok"
-                  : "denied"
-                : ((c.outcome as ConversationToolCallRecord["outcome"]) ?? null),
+          closedForms.has(c.id) &&
+          (c.tool === "ask_user_form" ||
+            ((c.outcome === "pending" || c.outcome === null) &&
+              closedForms.get(c.id)?.status !== "resolved"))
+            ? closedForms.get(c.id)?.status === "resolved"
+              ? "ok"
+              : "denied"
+            : (c.tool === "ask_user_text" || c.tool === "ask_user_choice") &&
+                answeredTextCalls.has(c.id)
+              ? "ok"
+              : closedChoices.has(c.id)
+                ? "denied"
+                : confirmations.has(c.id)
+                  ? confirmations.get(c.id)?.accepted
+                    ? "ok"
+                    : "denied"
+                  : ((c.outcome as ConversationToolCallRecord["outcome"]) ?? null),
       }),
     ),
     draft,

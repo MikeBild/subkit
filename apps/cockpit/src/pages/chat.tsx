@@ -640,10 +640,13 @@ function ChatMessage({
           });
           const answeredQuestion =
             tool.type === "dynamic-tool" &&
-            (tool.toolName === "ask_user_choice" || tool.toolName === "ask_user_text") &&
+            (tool.toolName === "ask_user_choice" ||
+              tool.toolName === "ask_user_text" ||
+              tool.toolName === "ask_user_form") &&
             verdict.outcome === "ok";
           const choiceStatus =
-            tool.type === "dynamic-tool" && tool.toolName === "ask_user_choice"
+            tool.type === "dynamic-tool" &&
+            (tool.toolName === "ask_user_choice" || tool.toolName === "ask_user_form")
               ? (tool.output as { status?: string } | undefined)?.status
               : null;
           const outcomeKey =
