@@ -71,6 +71,9 @@ export function checkDecline(toolName: string, output: unknown): DeclineSignal |
     return { error_code: "user_declined", reason: "operator_dismissed_elicitation" };
   }
   const out = (output ?? {}) as Record<string, unknown>;
+  if (interpretConfirmDecision(out) === "declined") {
+    return { error_code: "user_declined", reason: "operator_rejected_confirmation" };
+  }
   if (toolName === "ask_user_confirm") {
     // Route through the shared interpreter so the portal (`approved`),
     // MCP, and sk-cli spellings are read identically. Write-safety: only

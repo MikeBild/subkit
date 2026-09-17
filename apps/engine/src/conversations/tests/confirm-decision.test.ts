@@ -125,3 +125,15 @@ describe("validateElicitationAnswer(ask_user_confirm)", () => {
     }
   });
 });
+
+test("declining a form never treats the decline marker as submitted input", () => {
+  expect(checkDecline("ask_user_form", { declined: true })).toEqual({
+    error_code: "user_declined",
+    reason: "operator_rejected_confirmation",
+  });
+  expect(
+    checkDecline("ask_user_form", { confirmed: false, values: { recipient: "must-not-run" } })
+      ?.error_code,
+  ).toBe("user_declined");
+  expect(checkDecline("ask_user_form", { values: { enabled: false } })).toBeNull();
+});
