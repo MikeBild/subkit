@@ -1,8 +1,15 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { workflows, workflowsSchedules, workflowVersions } from "../../db/schema/index.ts";
+import {
+  executionSteps,
+  executions,
+  workflows,
+  workflowsSchedules,
+  workflowVersions,
+} from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
+import { inspectHeldPreviewEvidence } from "../../workflows/report-delivery-proposal.ts";
 import { renderAutomationContext } from "../automation-context.ts";
 import { listSchedulesTool } from "../tools/generated/writes/schedules.ts";
 import { reviewWorkflowAutomationTool } from "../tools/review-workflow-automation.ts";
@@ -148,6 +155,74 @@ test("current blocked status overrides historical preview success without exposi
     ctx.testDb.db,
   );
   expect(draftContext).toContain(draft.id);
+  const [heldRun] = await ctx.testDb.db
+    .insert(executions)
+    .values({
+      tenant_id: ctx.tenant_id,
+      workflow_id: workflow.id,
+      workflow_version_id: draft.id,
+      hold_writes: true,
+      status: "succeeded",
+      execution_mode: "prod",
+      request_source: "ui",
+    })
+    .returning();
+  if (!heldRun) throw new Error("missing held run");
+  await ctx.testDb.db.insert(executionSteps).values([
+    {
+      tenant_id: ctx.tenant_id,
+      execution_id: heldRun.id,
+      step_key: "fetch_report",
+      kind: "request",
+      status: "succeeded",
+      request_meta: { extras: { held: true }, secret: "must-not-leak" },
+    },
+    {
+      tenant_id: ctx.tenant_id,
+      execution_id: heldRun.id,
+      step_key: "send_email",
+      kind: "request",
+      status: "skipped",
+    },
+  ]);
+  const evidenceInput = {
+    tenant_id: ctx.tenant_id,
+    workflow_id: workflow.id,
+    workflow_version_id: draft.id,
+    execution_environment: "prod" as const,
+  };
+  const evidence = await inspectHeldPreviewEvidence(evidenceInput, ctx.testDb.db);
+  expect(evidence).toMatchObject({
+    status: "succeeded",
+    steps: expect.arrayContaining([
+      { step_id: "fetch_report", status: "succeeded", held: true, report_boundary_observed: false },
+      { step_id: "send_email", status: "skipped", held: false, report_boundary_observed: false },
+    ]),
+  });
+  expect(JSON.stringify(evidence)).not.toContain("must-not-leak");
+  expect(
+    await inspectHeldPreviewEvidence(
+      { ...evidenceInput, execution_environment: "dev" },
+      ctx.testDb.db,
+    ),
+  ).toBeNull();
+  expect(
+    await inspectHeldPreviewEvidence(
+      { ...evidenceInput, workflow_version_id: version.id },
+      ctx.testDb.db,
+    ),
+  ).toBeNull();
+  expect(
+    await inspectHeldPreviewEvidence(
+      { ...evidenceInput, tenant_id: "00000000-0000-4000-8000-000000000099" },
+      ctx.testDb.db,
+    ),
+  ).toBeNull();
+  const evidenceReview = await reviewWorkflowAutomationTool.execute(reviewContext, {
+    workflow_id: workflow.id,
+  });
+  expect(JSON.stringify(evidenceReview)).toContain('"preview_evidence"');
+  expect(JSON.stringify(evidenceReview)).toContain('"status":"skipped"');
   expect(draftContext).toContain("changed_send");
   const otherTenant = "00000000-0000-4000-8000-000000000099";
   const missing = await reviewWorkflowAutomationTool.execute(

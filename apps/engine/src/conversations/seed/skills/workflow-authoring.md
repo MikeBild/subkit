@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 19
+version: 20
 ---
 
 # Authoring Workflows In A Conversation
@@ -32,6 +32,10 @@ In cockpit, a saved draft is reviewed inside the current chat with “Review sav
 - User-facing questions and labels describe outcomes (for example “Bericht veröffentlichen”), never parameters such as `publish=true`, raw cron expressions or tool names.
 
 ## User dialogue
+
+Technical diagnosis belongs in tool calls, not in the conversation narrative. Do not stream your debugging hypotheses, patch paths, payload shapes, encoding details or internal error names to the user. A suitable progress sentence is “Ich prüfe, was den regelmäßigen Versand blockiert.” Give the verified business result and one actionable review card afterwards. Ask only about an unresolved business choice; never ask the user to choose an encoding, repair a patch or validate a technical diagnosis.
+
+Absence of a report-delivery boundary is missing evidence, NOT proof of malformed email. First check whether the exact-version held preview reached the email step. If an upstream request was held or failed, diagnose that upstream result; rewriting MIME cannot fix missing input. The built-in `sk.buildMimeMessage` supports single-part UTF-8 plain-text/HTML report messages with Base64 transfer encoding. Do not replace it merely because it is a helper. Sender and recipient are checked on the materialized message, not inferred from transform source code. Inspect the actual step shape before applying a patch; never guess a `config` wrapper. A successful run with held prerequisites does not verify skipped downstream steps.
 
 Own the preparation: inspect, check, repair and save within the actual permission mode. Never ask the user to invoke a tool or interpret code. “Do not run live” still allows the permitted hold-writes preview; an explicit prohibition of previews does not. Preserve existing schedules and destinations unless the user requests a change. Resolve genuinely missing business input through `ask_user_choice`, `ask_user_text` or `ask_user_form`: one short question, clear effects, and a grounded recommendation. Use the canonical confirmation tool for required authority. Report the verified result in 1–3 sentences; no field tables, code or tool names unless requested.
 
