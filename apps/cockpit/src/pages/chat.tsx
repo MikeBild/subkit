@@ -12,6 +12,7 @@ import {
   renameConversation,
   respondToChatApproval,
   respondToChatChoice,
+  respondToChatForm,
   respondToToolCall,
   sendConversationTurn,
   setConversationHidden,
@@ -105,6 +106,8 @@ import { chatAutomationSummary, chatAutomationTool } from "./chat-automation-too
 import { type ChatChoice, chatChoice } from "./chat-choice";
 import { ChatChoiceCard } from "./chat-choice-card";
 import { ConversationList } from "./chat-conversation-list";
+import { type ChatForm, chatForm } from "./chat-form";
+import { ChatFormCard } from "./chat-form-card";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 import { CHAT_MARKDOWN_COMPONENTS } from "./chat-message-link";
 import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
@@ -462,6 +465,8 @@ function ChatMessage({
   pendingApprovalId,
   approval,
   choice,
+  form,
+  onForm,
   onChoice,
   approvalBusy,
   approvalError,
@@ -476,6 +481,8 @@ function ChatMessage({
   pendingApprovalId: string | null;
   approval: ChatApproval | null;
   choice: ChatChoice | null;
+  form: ChatForm | null;
+  onForm: (id: string, output: Record<string, unknown>) => void;
   onChoice: (id: string, value: string) => void;
   approvalBusy: boolean;
   approvalError: boolean;
@@ -559,6 +566,17 @@ function ChatMessage({
               />
             );
           }
+          if (form?.toolCallId === tool.toolCallId)
+            return (
+              <ChatFormCard
+                key={`${message.id}-form-${partIndex}`}
+                form={form}
+                busy={approvalBusy}
+                error={approvalError}
+                onAnswer={onForm}
+                testId={`chat-message-${messageIndex}-form`}
+              />
+            );
           if (choice?.toolCallId === tool.toolCallId) {
             return (
               <ChatChoiceCard
@@ -604,7 +622,7 @@ function ChatMessage({
               <ChatReauthCard
                 key={`${message.id}-reauth-${partIndex}`}
                 action={reauth}
-                pending={Boolean(approval || choice)}
+                pending={Boolean(approval || choice || form)}
                 busy={approvalBusy}
                 onRenew={onReauth}
               />
@@ -873,19 +891,23 @@ export function ChatPage() {
       elicitationId,
       approved,
       choiceValue,
+      formOutput,
     }: {
       toolCallId?: string;
       elicitationId?: string;
       approved?: boolean;
       choiceValue?: string;
+      formOutput?: Record<string, unknown>;
     }) => {
       setStreamedText("");
       setStreamedDiffs([]);
       setLiveCalls([]);
       return elicitationId
-        ? choiceValue !== undefined
-          ? respondToChatChoice(activeId ?? "", elicitationId, choiceValue, onTurnEvent)
-          : respondToChatApproval(activeId ?? "", elicitationId, approved === true, onTurnEvent)
+        ? formOutput !== undefined
+          ? respondToChatForm(activeId ?? "", elicitationId, formOutput, onTurnEvent)
+          : choiceValue !== undefined
+            ? respondToChatChoice(activeId ?? "", elicitationId, choiceValue, onTurnEvent)
+            : respondToChatApproval(activeId ?? "", elicitationId, approved === true, onTurnEvent)
         : respondToToolCall(activeId ?? "", toolCallId ?? "", approved === true);
     },
     onSuccess: () => {
@@ -917,6 +939,12 @@ export function ChatPage() {
     send.reset();
     decide.mutate({ elicitationId, choiceValue });
   };
+  const submitForm = (elicitationId: string, formOutput: Record<string, unknown>) => {
+    if (decisionLock.current || send.isPending || decide.isPending) return;
+    decisionLock.current = true;
+    send.reset();
+    decide.mutate({ elicitationId, formOutput });
+  };
   const hide = useMutation({
     mutationFn: ({ id, hidden }: { id: string; hidden: boolean }) =>
       setConversationHidden(id, hidden),
@@ -936,6 +964,7 @@ export function ChatPage() {
   const resume = detail.data?.resume_summary;
   const pendingDecision = chatApproval(detail.data);
   const pendingChoice = chatChoice(detail.data);
+  const pendingForm = useMemo(() => chatForm(detail.data), [detail.data]);
   const createdResources = detail.data?.created_resources ?? [];
   const referencedResources = useMemo(() => collectReferencedResources(messages), [messages]);
   // Everything this conversation is known to be about: what it made, and what
@@ -1179,7 +1208,7 @@ export function ChatPage() {
           </Alert>
         )}
 
-        {decide.isError && !pendingDecision && !pendingChoice && (
+        {decide.isError && !pendingDecision && !pendingChoice && !pendingForm && (
           <Alert variant="destructive" className="m-4 mb-0" data-testid="chat-decision-error">
             <AlertDescription>{t("chat.decision.failed")}</AlertDescription>
           </Alert>
@@ -1222,15 +1251,22 @@ export function ChatPage() {
                       <ChatMessage
                         message={message}
                         messageIndex={index}
-                        pendingApprovalId={pendingDecision?.toolCallId ?? null}
+                        pendingApprovalId={
+                          pendingDecision?.toolCallId ??
+                          pendingChoice?.toolCallId ??
+                          pendingForm?.toolCallId ??
+                          null
+                        }
                         approval={pendingDecision}
                         choice={pendingChoice}
+                        form={pendingForm}
+                        onForm={submitForm}
                         onChoice={submitChoice}
                         approvalBusy={send.isPending || decide.isPending}
                         approvalError={
                           decide.isError &&
                           decide.variables?.elicitationId ===
-                            (pendingDecision?.id ?? pendingChoice?.id)
+                            (pendingDecision?.id ?? pendingChoice?.id ?? pendingForm?.id)
                         }
                         onApproval={submitApproval}
                         nameFor={nameFor}
@@ -1247,7 +1283,7 @@ export function ChatPage() {
                           })
                         }
                         onReauth={(action) => {
-                          if (pendingDecision || pendingChoice) {
+                          if (pendingDecision || pendingChoice || pendingForm) {
                             setContextOpen(true);
                             return;
                           }
@@ -1352,6 +1388,7 @@ export function ChatPage() {
                     targetWorkflowId &&
                     !pendingDecision &&
                     !pendingChoice &&
+                    !pendingForm &&
                     status === "ready" && (
                       <Alert className="bg-accent/10" data-testid="chat-preparation-next-step">
                         <AlertTitle>{t("chat.preparation.title")}</AlertTitle>
@@ -1373,6 +1410,7 @@ export function ChatPage() {
                     targetWorkflowId &&
                     !pendingDecision &&
                     !pendingChoice &&
+                    !pendingForm &&
                     status === "ready" && (
                       <Alert className="bg-accent/10" data-testid="chat-schedule-next-step">
                         <AlertTitle>{t("chat.schedule.pending")}</AlertTitle>
@@ -1438,7 +1476,7 @@ export function ChatPage() {
           data-testid="chat-composer-area"
         >
           <div className={COLUMN}>
-            {pendingChoice && (
+            {(pendingChoice || pendingForm) && (
               <p className="mb-2 text-sm text-muted-foreground" data-testid="chat-choice-hint">
                 {t("chat.choice.hint")}
               </p>
@@ -1472,7 +1510,9 @@ export function ChatPage() {
               initialInput={selection.kind === "new" ? initialPrompt : ""}
             >
               <ChatComposer
-                disabled={send.isPending || decide.isPending || Boolean(pendingChoice)}
+                disabled={
+                  send.isPending || decide.isPending || Boolean(pendingChoice || pendingForm)
+                }
                 status={status}
                 onStop={() => cancel.mutate()}
                 onSend={(message, references) => send.mutateAsync({ message, references })}
@@ -1507,6 +1547,15 @@ export function ChatPage() {
                 />
               </div>
             )}
+            {pendingForm && (
+              <ChatFormCard
+                form={pendingForm}
+                busy={decide.isPending}
+                error={decide.isError}
+                onAnswer={submitForm}
+                testId="chat-context-form"
+              />
+            )}
             {pendingDecision && (
               <div className="p-4 pb-0">
                 <ChatApprovalCard
@@ -1514,7 +1563,8 @@ export function ChatPage() {
                   busy={send.isPending || decide.isPending}
                   error={
                     decide.isError &&
-                    decide.variables?.elicitationId === (pendingDecision?.id ?? pendingChoice?.id)
+                    decide.variables?.elicitationId ===
+                      (pendingDecision?.id ?? pendingChoice?.id ?? pendingForm?.id)
                   }
                   onDecision={submitApproval}
                   testId="chat-context-approval"
@@ -1538,7 +1588,7 @@ export function ChatPage() {
                   {localizedTarget(resume?.active_target.name || resume?.active_target.kind, t)}
                 </dd>
               </div>
-              {!pendingDecision && !pendingChoice && (
+              {!pendingDecision && !pendingChoice && !pendingForm && (
                 <div data-testid="chat-context-next-action">
                   <dt className="text-xs text-muted-foreground">{t("chat.context.nextAction")}</dt>
                   <dd className="mt-1">{resumeNextAction(resume?.stage, t)}</dd>
@@ -1643,7 +1693,7 @@ export function ChatPage() {
                   )}
                 </dd>
               </div>
-              {resume?.pending_approval && !pendingDecision && !pendingChoice && (
+              {resume?.pending_approval && !pendingDecision && !pendingChoice && !pendingForm && (
                 <div
                   className="rounded-lg border border-warning/40 bg-warning/10 p-3"
                   data-testid="chat-context-approval"

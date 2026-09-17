@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { respondToChatApproval, respondToChatChoice, sendConversationTurn } from "./client";
+import {
+  respondToChatApproval,
+  respondToChatChoice,
+  respondToChatForm,
+  sendConversationTurn,
+} from "./client";
 
 const originalFetch = globalThis.fetch;
 
@@ -211,4 +216,22 @@ test("choice submits exactly the declared value to the canonical request route",
   const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
   expect(path).toBe("/v1/conversations/conversation-1/elicitations/request-1/respond");
   expect(JSON.parse(String(init.body))).toEqual({ output: { value: "dryrun" } });
+});
+
+test("form submission and cancellation use the exact pending elicitation endpoint", async () => {
+  const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+    outcomeResponse(),
+  );
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  await respondToChatForm("conversation/1", "form/1", { values: { days: 7, include: false } });
+  await respondToChatForm("conversation/1", "form/1", { declined: true });
+  expect(fetchMock.mock.calls[0]?.[0]).toBe(
+    "/v1/conversations/conversation%2F1/elicitations/form%2F1/respond",
+  );
+  expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+    output: { values: { days: 7, include: false } },
+  });
+  expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+    output: { declined: true },
+  });
 });

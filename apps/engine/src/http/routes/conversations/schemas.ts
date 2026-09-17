@@ -1,3 +1,4 @@
+import { ResumeFormFieldSchema } from "../../../conversations/resume-form.ts";
 // Shared Zod schemas, types, and SSE-frame helpers for the
 // conversations REST surface. Every per-sub-resource module imports
 // from here.
@@ -188,6 +189,7 @@ export const ConversationDetailSchema = z
                 question: z.string(),
                 intent_kind: z.string().optional(),
                 authorization_url: z.string().optional(),
+                fields: z.array(ResumeFormFieldSchema).optional(),
               })
               .optional(),
             /** When this approval lapses. Non-null: the column is NOT NULL and
