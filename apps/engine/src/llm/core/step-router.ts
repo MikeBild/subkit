@@ -115,8 +115,8 @@ export interface StepRouterParams {
    * narrowing drops it (e.g. `run_workflow`, a `tenant_write` tool, on
    * the `workflow_previewed` stage), the SDK throws
    * `Tool '<name>' not found in provided tools` and the turn fails.
-   * The router must therefore always re-add this tool to any narrowed
-   * `activeTools` set. The tool stays policy-gated downstream — being
+   * The router re-adds it for step zero only and overrides toolChoice
+   * to auto on subsequent steps. The tool stays policy-gated downstream — being
    * visible to the model is not the same as bypassing confirmation.
    */
   forcedTool?: string | null;
@@ -522,7 +522,7 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
   const activeTools = activeToolsForStage(
     signals.stage,
     toolsByName,
-    params.forcedTool,
+    params.stepNumber === 0 ? params.forcedTool : null,
     signals.hasPersistedWorkflow === true,
   );
   if (activeTools !== undefined) {
@@ -536,7 +536,10 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
   // turn — leaving the user to retype "yes" to continue. Force a tool
   // call on this step so the model proceeds with the workflow side of
   // the request instead of stopping on the promise.
-  let toolChoice: StepDecision["toolChoice"];
+  // Intent selects the first action, not every subsequent model step. Keeping
+  // the stream-level forced choice would prevent diagnosis or a final answer.
+  let toolChoice: StepDecision["toolChoice"] =
+    params.forcedTool && params.stepNumber > 0 ? "auto" : undefined;
   let systemNudge: string | undefined;
   if (signals.multiArtifactIntent === true && priorStepWasSuccessfulConnectorAutoPersist(params)) {
     // Anthropic API rejects thinking + forced tool_choice; the policy
