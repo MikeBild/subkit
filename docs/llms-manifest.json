@@ -242,6 +242,12 @@
     },
     {
       "audience": "developers",
+      "path": "docs/developers/bounded-content-publication.md",
+      "title": "Bounded content publication",
+      "summary": "SubKit supports the documented ContentKit markdown revision and site release protocol as a finite repeated-run boundary."
+    },
+    {
+      "audience": "developers",
       "path": "docs/developers/bounded-report-delivery.md",
       "title": "Scheduled report decisions",
       "summary": "A saved draft, successful held preview and one-off send do not authorize future scheduled deliveries."
