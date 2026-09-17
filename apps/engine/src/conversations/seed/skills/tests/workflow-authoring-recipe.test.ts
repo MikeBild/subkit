@@ -8,6 +8,9 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { loadSkillSeedsFromContent } from "../../../../skills/seed.ts";
+import { autoloadForToolCall, autoloadForUserTurn } from "../../../skill-autoload.ts";
+
 const ROOT = join(import.meta.dir, "..");
 const workflowAuthoring = readFileSync(join(ROOT, "workflow-authoring.md"), "utf-8");
 const errorRecovery = readFileSync(join(ROOT, "error-recovery.md"), "utf-8");
@@ -134,4 +137,31 @@ describe("error-recovery.md · 5-failure cap", () => {
   test("notes the counter resets on first success", () => {
     expect(errorRecovery).toMatch(/resets on the first successful tool call/);
   });
+});
+
+test("existing chats load repair guidance before an automation permission handoff", () => {
+  const parsed = loadSkillSeedsFromContent([
+    { file: "workflow-authoring.md", content: workflowAuthoring },
+  ]);
+  expect(parsed.errors).toEqual([]);
+  const skill = parsed.skills[0];
+  if (!skill) throw new Error("missing shipped skill");
+  const catalog = [skill];
+  for (const user_text of [
+    "Bereite die fehlende Freigabe vor",
+    "Bitte automatisch laufen lassen",
+    "Prepare automatic operation",
+  ]) {
+    expect(
+      autoloadForUserTurn({ user_text, first_turn: false, surface: "cockpit" }, catalog, []),
+    ).toContain("workflow-authoring");
+  }
+  for (const tool of [
+    "inspect_workflow",
+    "list_schedules",
+    "review_workflow_automation",
+    "run_workflow",
+  ]) {
+    expect(autoloadForToolCall({ tool, input: {} }, catalog, [])).toContain("workflow-authoring");
+  }
 });
