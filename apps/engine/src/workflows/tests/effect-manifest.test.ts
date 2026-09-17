@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { workflowJsonDigest } from "../canonical-json.ts";
 import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "../effect-manifest.ts";
 import { readPathBoundary, readPathTarget } from "../read-path-boundary.ts";
+import { storageBoundary, storageTarget } from "../storage-boundary.ts";
 import { WorkflowDefSchema } from "../types.ts";
 
 const tenant = "00000000-0000-4000-8000-000000000001";
@@ -243,4 +244,44 @@ test("a reusable path authority must bind the exact reviewed identifier template
   input.bindings[0]!.read_path = boundary;
   input.bindings[0]!.rewrites_target = true;
   expect(compileWorkflowEffectManifest(input).eligible_for_repeated_runs).toBe(false);
+});
+
+test("S3 recurring authority requires an explicit folder profile bound to the authored limits", () => {
+  const input = fixture({
+    method: "PUT",
+    path: undefined,
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
+    body: "${input.report}",
+    s3: {
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
+      key: "${input.key}",
+      content_type: "application/json",
+      scope: { key_prefix: "reports/daily/", max_bytes: 1000 },
+    },
+  });
+  const step = input.definition.steps[0];
+  if (step?.kind !== "request") throw new Error("request missing");
+  const storage = storageBoundary(step, "https://store.example.test/bucket/")!;
+  input.bindings[0] = {
+    ...input.bindings[0]!,
+    driver: "s3",
+    storage,
+    target: storageTarget(storage),
+  };
+  const result = compileWorkflowEffectManifest(input);
+  expect(result.eligible_for_repeated_runs).toBe(true);
+  expect(result.manifest.effects[0]?.storage?.key_prefix).toBe("reports/daily/");
+  for (const changed of [{ key_prefix: "private/" }, { max_bytes: 2000 }, { operation: "GET" }]) {
+    const tampered = {
+      ...input,
+      bindings: [{ ...input.bindings[0], storage: { ...storage, ...changed } }],
+    };
+    expect(compileWorkflowEffectManifest(tampered).eligible_for_repeated_runs).toBe(false);
+  }
+  expect(
+    compileWorkflowEffectManifest({
+      ...input,
+      bindings: [{ ...input.bindings[0], storage: undefined }],
+    }).eligible_for_repeated_runs,
+  ).toBe(false);
 });

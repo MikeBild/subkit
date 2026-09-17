@@ -17,6 +17,7 @@ import {
   supportsReadQuery,
   supportsReportDelivery,
 } from "./report-delivery-boundary.ts";
+import { StorageBoundarySchema, storageBoundary, storageTarget } from "./storage-boundary.ts";
 import { JsonValueSchema, type RequestStep, WorkflowDefSchema } from "./types.ts";
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
@@ -40,6 +41,7 @@ export const ResolvedEffectBindingSchema = z
     report_delivery: ReportDeliveryBoundarySchema.optional(),
     content_publication: ContentPublicationBoundarySchema.optional(),
     read_path: ReadPathBoundarySchema.optional(),
+    storage: StorageBoundarySchema.optional(),
   })
   .strict();
 export type ResolvedEffectBinding = z.infer<typeof ResolvedEffectBindingSchema>;
@@ -190,6 +192,15 @@ export function compileWorkflowEffectManifest(raw: unknown): {
     )
       issue("binding_mismatch");
     if (binding.environment !== input.execution_environment) issue("environment_mismatch");
+    const storage =
+      binding.driver === "s3" && binding.storage
+        ? storageBoundary(step, binding.storage.base_url)
+        : null;
+    const supportedStorage =
+      storage &&
+      workflowJsonDigest(storage) === workflowJsonDigest(binding.storage) &&
+      binding.target === storageTarget(storage);
+    if (binding.storage && !supportedStorage) issue("binding_mismatch");
     const readPath =
       binding.driver === "http" && binding.read_path
         ? readPathBoundary(step, binding.read_path.origin)
@@ -224,11 +235,12 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       !binding.target ||
       (hasRuntimeValue(step) &&
         !(
-          binding.driver === "http" &&
-          (supportedReadPath ||
-            supportedContent ||
-            supportsReadQuery(step) ||
-            (binding.report_delivery && supportsReportDelivery(step, binding.target)))
+          supportedStorage ||
+          (binding.driver === "http" &&
+            (supportedReadPath ||
+              supportedContent ||
+              supportsReadQuery(step) ||
+              (binding.report_delivery && supportsReportDelivery(step, binding.target))))
         )) ||
       hasRuntimeValue(binding.target) ||
       binding.rewrites_target

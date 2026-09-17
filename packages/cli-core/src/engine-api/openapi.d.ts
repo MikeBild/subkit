@@ -17468,6 +17468,17 @@ export interface components {
                     segments: (string | null)[];
                     search: string;
                 };
+                storage?: {
+                    /** Format: uri */
+                    base_url: string;
+                    key_prefix: string;
+                    /** @enum {string} */
+                    operation: "GET" | "HEAD" | "LIST" | "PUT";
+                    max_bytes: number;
+                    max_keys: number;
+                    paginate: boolean;
+                    content_type: string | null;
+                };
                 read_query?: {
                     fixed: {
                         [key: string]: string;
@@ -17649,6 +17660,10 @@ export interface components {
                 };
             };
             s3?: {
+                scope?: {
+                    key_prefix: string;
+                    max_bytes: number;
+                };
                 key?: string;
                 prefix?: string;
                 /** @enum {string} */

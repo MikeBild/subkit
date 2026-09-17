@@ -193,6 +193,13 @@ const EN = {
   "authority.effects": "Operations and external targets",
   "authority.noEffects": "No connector effects in this manifest.",
   "authority.unboundTarget": "Target not bound",
+  "authority.storage.write": "Save report files",
+  "authority.storage.read": "Read report files",
+  "authority.storage.folder": "Folder: {folder}",
+  "authority.storage.writeScope":
+    "File names and contents may change. Existing files in this folder may be replaced. Maximum {bytes} bytes per file.",
+  "authority.storage.listScope": "List up to {count} files per lookup within this folder.",
+  "authority.storage.readScope": "Read files within this folder.",
   "authority.readPath":
     "Read records in this collection. Record IDs may change; the server and collection stay fixed.",
   "authority.digest": "Effect manifest digest",
@@ -1813,6 +1820,13 @@ const DE: Record<TranslationKey, string> = {
   "authority.effects": "Operationen und externe Ziele",
   "authority.noEffects": "Keine Connector-Wirkungen in diesem Manifest.",
   "authority.unboundTarget": "Ziel nicht gebunden",
+  "authority.storage.write": "Berichtsdateien speichern",
+  "authority.storage.read": "Berichtsdateien lesen",
+  "authority.storage.folder": "Ordner: {folder}",
+  "authority.storage.writeScope":
+    "Dateinamen und Inhalte dürfen wechseln. Vorhandene Dateien in diesem Ordner können ersetzt werden. Höchstens {bytes} Bytes je Datei.",
+  "authority.storage.listScope": "Bis zu {count} Dateien pro Listenabruf innerhalb dieses Ordners.",
+  "authority.storage.readScope": "Dateien innerhalb dieses Ordners lesen.",
   "authority.readPath":
     "Einträge dieser Sammlung lesen. Ihre IDs dürfen wechseln; Server und Sammlung bleiben fest.",
   "authority.digest": "Prüfsumme des Wirkungsmanifests",

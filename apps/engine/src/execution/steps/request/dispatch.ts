@@ -1511,6 +1511,9 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             connector,
             method,
             path: reqPath,
+            ...(s3Spec?.scope
+              ? { before_dispatch: beforeDispatch, signal, timeout_ms: timeoutMs }
+              : {}),
           };
           if (resolvedStepBody !== undefined && resolvedStepBody !== null) {
             params.body =

@@ -32,8 +32,13 @@ export const AuthorityExecutionShapeSchema = z
  */
 export function authorityExecutionShape(
   definition: WorkflowDef,
-  bindings: readonly Pick<ResolvedEffectBinding, "step_id" | "driver">[],
+  bindings: readonly Pick<ResolvedEffectBinding, "step_id" | "driver" | "storage">[],
 ): z.infer<typeof AuthorityExecutionShapeSchema> {
+  const storage = new Map(
+    bindings
+      .filter((binding) => binding.storage)
+      .map((binding) => [binding.step_id, binding.storage]),
+  );
   const drivers = new Map(bindings.map((binding) => [binding.step_id, binding.driver]));
   return {
     requests: definition.steps.flatMap((step) =>
@@ -42,6 +47,13 @@ export function authorityExecutionShape(
             {
               step_id: step.id,
               ...authorityRequestReview(step),
+              ...(storage.has(step.id)
+                ? {
+                    redacted_request_json: JSON.stringify(storage.get(step.id), null, 2),
+                    request_review_truncated: false,
+                    opaque_payload_omitted: false,
+                  }
+                : {}),
               retry_policy_max_attempts: ["http", "graphql", "mcp"].includes(
                 drivers.get(step.id) ?? "",
               )

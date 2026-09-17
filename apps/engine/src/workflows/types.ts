@@ -4,8 +4,8 @@
 // wait_for_event, branch, parallel, loop.
 
 import { z } from "@hono/zod-openapi";
-
 import { FileRefSchema } from "../api/files-schemas.ts";
+import { StorageScopeSchema } from "./storage-boundary.ts";
 import { looksLikeJsonObjectOrArray, parseHeaderLines } from "./types-helpers.ts";
 import {
   MarkdownConfigSchema,
@@ -393,6 +393,7 @@ export const RequestStepSchema = z
      */
     s3: z
       .object({
+        scope: StorageScopeSchema.optional(),
         key: z.string().optional(),
         prefix: z.string().optional(),
         parse_as: z.enum(["json", "text", "base64", "bytes"]).optional(),

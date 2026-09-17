@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 22
+version: 23
 ---
 
 # Authoring Workflows In A Conversation
@@ -30,6 +30,12 @@ In cockpit, a saved draft is reviewed inside the current chat with “Review sav
 - `activation_required`, `paused`, `input_required`, or `verification_unavailable`: name the missing step briefly; never promise the next automatic run.
 - Only `authorized` is evidence of current permission; it is rechecked at dispatch. Do not claim that an actual run succeeded until its execution record confirms that.
 - User-facing questions and labels describe outcomes (for example “Bericht veröffentlichen”), never parameters such as `publish=true`, raw cron expressions or tool names.
+
+## Bounded report storage
+
+For recurring S3 report reads and writes, inspect the current draft and its actual keys before patching. A request may propose `s3.scope: { key_prefix, max_bytes }`: a fixed, narrow folder ending in `/` and a maximum UTF-8 write size (at most 10000000 bytes). GET, HEAD, LIST and PUT are supported; DELETE is not. Keep existing business folders and choose a justified file-size limit; never broaden to an entire bucket to make review pass. LIST also uses fixed `max_keys` and `paginate` limits. File names and PUT contents may vary only inside the reviewed boundary. Metadata, range reads, presigned links and multipart uploads are not supported by this recurring profile.
+
+This scope is a proposal, never permission. Prepare and preview the change, then use `review_workflow_automation` for the human's exact-version review in chat. Explain which report folder may be read or written and that saving can replace existing files there. Do not ask the user to edit JSON, choose patch indices, or understand storage protocol options. Read the actual draft structure before each patch. If other effects remain unsupported, diagnose those instead of claiming the whole workflow is ready.
 
 ## User dialogue
 

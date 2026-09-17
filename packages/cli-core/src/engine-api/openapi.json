@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "8.0.42",
+    "version": "8.0.43",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -4708,6 +4708,59 @@
                   ],
                   "additionalProperties": false
                 },
+                "storage": {
+                  "type": "object",
+                  "properties": {
+                    "base_url": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "key_prefix": {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 512
+                    },
+                    "operation": {
+                      "type": "string",
+                      "enum": [
+                        "GET",
+                        "HEAD",
+                        "LIST",
+                        "PUT"
+                      ]
+                    },
+                    "max_bytes": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 10000000
+                    },
+                    "max_keys": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 10000
+                    },
+                    "paginate": {
+                      "type": "boolean"
+                    },
+                    "content_type": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 200
+                    }
+                  },
+                  "required": [
+                    "base_url",
+                    "key_prefix",
+                    "operation",
+                    "max_bytes",
+                    "max_keys",
+                    "paginate",
+                    "content_type"
+                  ],
+                  "additionalProperties": false
+                },
                 "read_query": {
                   "type": "object",
                   "properties": {
@@ -5454,6 +5507,26 @@
           "s3": {
             "type": "object",
             "properties": {
+              "scope": {
+                "type": "object",
+                "properties": {
+                  "key_prefix": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 512
+                  },
+                  "max_bytes": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 10000000
+                  }
+                },
+                "required": [
+                  "key_prefix",
+                  "max_bytes"
+                ],
+                "additionalProperties": false
+              },
               "key": {
                 "type": "string"
               },
