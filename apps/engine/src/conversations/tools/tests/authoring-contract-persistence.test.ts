@@ -6,7 +6,11 @@
 
 import { describe, expect, test } from "bun:test";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
-import { buildGateError, buildPersistencePayload } from "../authoring-contract.ts";
+import {
+  buildDraftMutationPayload,
+  buildGateError,
+  buildPersistencePayload,
+} from "../authoring-contract.ts";
 
 // ---------------------------------------------------------------------------
 // Minimal DraftDocument fixture — mirrors the pattern used in authoring-state.test.ts
@@ -119,4 +123,38 @@ describe("buildGateError", () => {
     expect(result.error).toBe("MY_ERROR");
     expect(result.error_code).toBe("MY_ERROR");
   });
+});
+
+test("mutation and gate summaries retain diagnosis status without duplicating large response bodies", () => {
+  const draft = makeDraft();
+  if (!draft.state) throw new Error("expected normalized state");
+  draft.state.latest_diagnosis = {
+    execution_id: "execution-one",
+    recorded_at: "2026-01-01T00:00:00.000Z",
+    reason: "Inspect failure",
+    warning_sources: [],
+    steps: [
+      {
+        step_key: "read",
+        kind: "request",
+        status: "failed",
+        duration_ms: 1,
+        error: { code: "upstream_failed" },
+        output_preview: "PRIVATE_RESPONSE".repeat(30000),
+        request_meta: { body: "PRIVATE_REQUEST".repeat(10000) },
+      },
+    ],
+  };
+  for (const payload of [
+    buildGateError(draft, { error_code: "patch_invalid", message: "Fix the field" }),
+    buildDraftMutationPayload(draft),
+  ]) {
+    const text = JSON.stringify(payload);
+    expect(text.length).toBeLessThan(12000);
+    expect(text).toContain("upstream_failed");
+    expect(text).not.toContain("PRIVATE_RESPONSE");
+    expect(text).not.toContain("PRIVATE_REQUEST");
+    expect(text).toContain("checkpoints");
+  }
+  expect(draft.state.latest_diagnosis.steps[0]?.output_preview).toContain("PRIVATE_RESPONSE");
 });
