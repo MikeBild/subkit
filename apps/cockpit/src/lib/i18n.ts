@@ -74,9 +74,10 @@ const EN = {
     "Continue preparing the current change. Keep the requested behavior, schedule and destinations. Perform the permitted checks and save when allowed. Do not activate or run live. Ask only for missing business input using a short dialogue. Summarize the result briefly without code or tool names.",
   "chat.schedule.pending": "Automatic runs still paused",
   "chat.schedule.effect":
-    "Automatic runs are not approved yet. A saved change or a one-time run does not enable the schedule.",
-  "chat.schedule.review": "Review and allow automatic runs",
-  "chat.schedule.completion": "Confirm below to resolve this workflow’s open decision.",
+    "Automatic runs for this workflow are not approved yet. Review the next step before granting permission.",
+  "chat.schedule.review": "Review next step",
+  "chat.schedule.completion":
+    "The decision is resolved only when the schedule has valid permission.",
   "authority.sessionExpired": "Please sign in again",
   "authority.sessionExpiredHint":
     "Your session is no longer valid. Nothing was approved. Sign in, then review and confirm here again.",
@@ -98,10 +99,10 @@ const EN = {
   "chat.mode.boundary":
     "Prepare changes here. Activation and live actions need a separate permission.",
   "authority.unsupportedSteps": "Review these steps: {steps}",
-  "authority.adjustTitle": "Adjust the workflow first",
+  "authority.adjustTitle": "Automatic operation is not ready for approval",
   "authority.adjustDescription":
-    "Some actions or targets cannot be approved for scheduled runs yet. Prepare a change, then review the updated version.",
-  "authority.adjust": "Prepare adjustment",
+    "SubKit cannot yet verify the allowed actions of this workflow. Investigate the cause here in chat. A single test run does not resolve this open decision.",
+  "authority.adjust": "Investigate in this chat",
   "authority.adjustPrompt":
     "Prepare this workflow for automatic operation. Check the existing schedule and destinations; keep them unless I request a change. Perform the permitted checks yourself and save the prepared changes when allowed. Do not activate, authorize live effects, or run live. If a business decision is missing, ask one short question with clear options and a recommendation. Explain the result and next action briefly, without code or tool names.",
   "authority.incompleteTitle": "Request details are incomplete",
@@ -1643,10 +1644,10 @@ const DE: Record<TranslationKey, string> = {
     "Setze die Vorbereitung der aktuellen Änderung fort. Behalte das gewünschte Verhalten, den Zeitplan und die Ziele bei. Übernimm die erlaubten Prüfungen und speichere, soweit erlaubt. Nicht aktivieren oder live ausführen. Frage nur nach fehlenden fachlichen Angaben in einem kurzen Dialog. Fasse das Ergebnis kurz ohne Code oder Tool-Namen zusammen.",
   "chat.schedule.pending": "Automatische Läufe noch blockiert",
   "chat.schedule.effect":
-    "Automatische Läufe sind noch nicht freigegeben. Eine gespeicherte Änderung oder ein einzelner Versand aktiviert den Zeitplan noch nicht.",
-  "chat.schedule.review": "Automatische Läufe prüfen und freigeben",
+    "Automatische Läufe sind für diesen Ablauf noch nicht freigegeben. Prüfe den nächsten Schritt, bevor du eine Freigabe erteilst.",
+  "chat.schedule.review": "Nächsten Schritt prüfen",
   "chat.schedule.completion":
-    "Mit deiner Bestätigung erledigst du die offene Entscheidung für diesen Ablauf.",
+    "Die Entscheidung ist erst erledigt, wenn der Zeitplan eine gültige Freigabe hat.",
   "authority.sessionExpired": "Bitte erneut anmelden",
   "authority.sessionExpiredHint":
     "Deine Sitzung ist nicht mehr gültig. Es wurde nichts freigegeben. Melde dich an und bestätige anschließend hier erneut.",
@@ -1678,10 +1679,10 @@ const DE: Record<TranslationKey, string> = {
   "chat.mode.boundary":
     "Hier bereitest du Änderungen vor. Aktivieren und live ausführen erfordern eine eigene Freigabe.",
   "authority.unsupportedSteps": "Diese Schritte prüfen: {steps}",
-  "authority.adjustTitle": "Zuerst Workflow anpassen",
+  "authority.adjustTitle": "Automatik noch nicht freigabefähig",
   "authority.adjustDescription":
-    "Einige Aktionen oder Ziele können noch nicht für automatische Läufe freigegeben werden. Anpassung vorbereiten, danach die neue Version prüfen.",
-  "authority.adjust": "Anpassung vorbereiten",
+    "SubKit kann die erlaubten Aktionen dieses Ablaufs noch nicht eindeutig prüfen. Lass die Ursache hier im Chat untersuchen. Ein einzelner Testlauf erledigt diese offene Entscheidung nicht.",
+  "authority.adjust": "Ursache im Chat prüfen",
   "authority.adjustPrompt":
     "Bereite diesen Ablauf für den automatischen Betrieb vor. Prüfe den bestehenden Zeitplan und die Ziele; ändere sie nur auf meinen Wunsch. Übernimm die erlaubten Prüfungen selbst und speichere die vorbereiteten Änderungen, soweit erlaubt. Nicht aktivieren, keine Live-Wirkungen freigeben oder ausführen. Fehlt eine fachliche Entscheidung, stelle eine kurze Frage mit klaren Auswahlmöglichkeiten und einer Empfehlung. Erkläre Ergebnis und nächsten Schritt kurz, ohne Code oder Tool-Namen.",
   "authority.incompleteTitle": "Anfragedetails fehlen",
