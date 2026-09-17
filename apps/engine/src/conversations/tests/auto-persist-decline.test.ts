@@ -255,3 +255,37 @@ describe("auto-persist — decline path", () => {
     expect(conn).toHaveLength(0);
   });
 });
+
+test("form cancellation with otherwise complete values never commits its intent", async () => {
+  const conversation_id = await seedConversationWithDraft("cancel-complete-form");
+  const output = { declined: true, values: { token: "would-be-secret" } };
+  const elicitation = await insertCarrier({
+    conversation_id,
+    tool_name: "ask_user_form",
+    output,
+    input: {
+      question: "Save?",
+      fields: [{ name: "token", label: "Token", type: "text" }],
+      commit_intent: {
+        kind: "save_connector_draft",
+        payload: { credential: { mode: "bearer", token: "would-be-secret" }, environment: "dev" },
+        description: "Save",
+      },
+    },
+  });
+  const result = await maybeAutoPersistFromElicitation({
+    tenant_id,
+    conversation_id,
+    actor_id: null,
+    answer_actor: TEST_HUMAN_ANSWER,
+    elicitation_output: output,
+    elicitation,
+    db: ctx.db,
+  });
+  expect(result.synthetic_result?.error_code).toBe("user_declined");
+  const saved = await ctx.db
+    .select()
+    .from(connectors)
+    .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.slug, "cancel-complete-form")));
+  expect(saved).toHaveLength(0);
+});
