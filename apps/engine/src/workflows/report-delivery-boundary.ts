@@ -70,7 +70,7 @@ export function inspectReportMessage(body: unknown): {
     if (
       !content ||
       (headers.has("content-transfer-encoding") &&
-        !["7bit", "8bit"].includes(headers.get("content-transfer-encoding")!))
+        !["7bit", "8bit", "base64"].includes(headers.get("content-transfer-encoding")!))
     )
       return null;
     const parsed = ReportDeliveryBoundarySchema.safeParse({
@@ -80,10 +80,21 @@ export function inspectReportMessage(body: unknown): {
       content_type: content[1]!.toLowerCase(),
     });
     if (!parsed.success) return null;
+    let text = message.slice(end + 4);
+    if (headers.get("content-transfer-encoding") === "base64") {
+      // Decode only the single text body. Envelope headers remain exact and
+      // multipart messages/attachments remain outside this report profile.
+      const encoded = text.replace(/\r\n/g, "");
+      if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded))
+        return null;
+      const decoded = Buffer.from(encoded, "base64");
+      if (decoded.toString("base64") !== encoded) return null;
+      text = new TextDecoder("utf-8", { fatal: true }).decode(decoded);
+    }
     return {
       boundary: parsed.data,
       subject: headers.get("subject")!,
-      text: message.slice(end + 4),
+      text,
     };
   } catch {
     return null;

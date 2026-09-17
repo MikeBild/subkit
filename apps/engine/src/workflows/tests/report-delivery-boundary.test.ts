@@ -31,6 +31,32 @@ test("changing report contents keeps the reviewed recipient and sender", () => {
     assertReportDelivery(boundary, request(mime("", boundary.to, "Tomorrow's new report"))),
   ).not.toThrow();
 });
+test("built-in MIME helper reports retain their envelope and decode for review", async () => {
+  const html = "<p>Größe → vollständig</p>".repeat(20);
+  const result = await runJs<{ raw: string }>({
+    code: "return sk.buildMimeMessage(input);",
+    input: { from: boundary.from, to: boundary.to, subject: "Daily report", html },
+    clock: null,
+  });
+  const body = { raw: result.output!.raw };
+  expect(inspectReportMessage(body)).toEqual({ boundary, subject: "Daily report", text: html });
+  expect(() => assertReportDelivery(boundary, request(body))).not.toThrow();
+  expect(() =>
+    assertReportDelivery({ ...boundary, to: "other@example.test" }, request(body)),
+  ).toThrow();
+});
+test("encoded report body rejects malformed bytes and never introduces recipients", () => {
+  const header = "\r\nContent-Transfer-Encoding: base64";
+  for (const text of ["%%%", "YQ", "YR==", "/w==", "YQ==\n", "YQ==\r\nBcc: hidden@example.test"])
+    expect(inspectReportMessage(mime(header, boundary.to, text))).toBeNull();
+  const text = "Bcc: hidden@example.test\r\nContent-Type: multipart/mixed";
+  const body = mime(header, boundary.to, Buffer.from(text).toString("base64"));
+  expect(inspectReportMessage(body)?.text).toBe(text);
+  expect(inspectReportMessage(body)?.boundary).toEqual(boundary);
+  expect(
+    inspectReportMessage(mime(`${header}\r\nBcc: hidden@example.test`, boundary.to, "YQ==")),
+  ).toBeNull();
+});
 test("recipient injection, unsupported MIME and extra payload options fail closed", () => {
   for (const headers of [
     "\r\nBcc: hidden@example.test",
