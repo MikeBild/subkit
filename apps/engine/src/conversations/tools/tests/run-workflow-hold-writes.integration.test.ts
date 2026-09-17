@@ -29,8 +29,14 @@ import {
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../../execution/tests/setup.ts";
 import { workflowPreparationInput } from "../../../workflows/preparation-input.ts";
-import { createEmptyDraftDocument } from "../../authoring-state.ts";
+import {
+  bindPersistedWorkflow,
+  createEmptyDraftDocument,
+  withWorkflowDraft,
+} from "../../authoring-state.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
+import { draftPreviewInput } from "../draft-preview-input.ts";
+import { dryRunWorkflowTool } from "../dry-run-workflow.ts";
 import { runWorkflowTool } from "../generated/writes/run-workflow.ts";
 import type { ToolContext } from "../index.ts";
 
@@ -311,6 +317,28 @@ describe.skipIf(skip)("saved schedule preparation", () => {
       tenant = convCtx.tenant_id,
     ) => workflowPreparationInput(db, tenant, workflow_id, env, args);
     expect(await resolve({ execute_writes: false })).toEqual({ project: "saved-project" });
+    const boundDraft = bindPersistedWorkflow(createEmptyDraftDocument(), {
+      kind: "workflow",
+      id: workflow_id,
+      slug: "rw-schedule-preparation",
+      name: "Scheduled report",
+      version_id: null,
+      version: null,
+      environment: "dev",
+      saved_at: "2026-01-01T00:00:00.000Z",
+    });
+    expect(await draftPreviewInput(db, convCtx.tenant_id, boundDraft, "dev", undefined)).toEqual({
+      project: "saved-project",
+    });
+    expect(await draftPreviewInput(db, convCtx.tenant_id, boundDraft, "dev", {})).toEqual({});
+    expect(await draftPreviewInput(db, convCtx.tenant_id, boundDraft, "dev", null)).toBeNull();
+    expect(
+      await draftPreviewInput(db, convCtx.tenant_id, boundDraft, "prod", undefined),
+    ).toBeUndefined();
+    expect(
+      await draftPreviewInput(db, convCtx.tenant_id, createEmptyDraftDocument(), "dev", undefined),
+    ).toBeUndefined();
+
     expect(await resolve({ execute_writes: false, input: {} })).toEqual({});
     expect(await resolve({ execute_writes: false, input: { project: "explicit" } })).toEqual({
       project: "explicit",
@@ -333,6 +361,42 @@ describe.skipIf(skip)("saved schedule preparation", () => {
     expect(hits.filter((hit) => hit.url.startsWith("/send"))).toHaveLength(0);
     const audit = await latestRunWorkflowAuditRow();
     expect((audit?.metadata as Record<string, unknown> | undefined)?.execute_writes).toBe(false);
+    let previewDraft = withWorkflowDraft(
+      boundDraft,
+      {
+        ...boundDraft.workflow,
+        name: "Scheduled report",
+        steps: [
+          {
+            id: "read",
+            kind: "request",
+            method: "GET",
+            url: `${mock.baseUrl}/data/\${input.project}`,
+          },
+          {
+            id: "send",
+            kind: "request",
+            method: "POST",
+            url: `${mock.baseUrl}/send`,
+            depends_on: ["read"],
+          },
+        ],
+      },
+      "test_schedule_preview",
+    );
+    const previewCtx = makeCtx({
+      conversation_id: await seedConversation(),
+      principal: makePrincipal(convCtx.tenant_id, convCtx.user_id),
+    });
+    previewCtx.getDraft = () => previewDraft;
+    previewCtx.setDraft = async (next) => {
+      previewDraft = next;
+    };
+    hits.length = 0;
+    await dryRunWorkflowTool.execute(previewCtx, { environment: "dev" });
+    expect(hits.some((hit) => hit.url === "/data/saved-project")).toBe(true);
+    expect(hits.filter((hit) => hit.url.startsWith("/send"))).toHaveLength(0);
+    expect(previewDraft.latest_preview?.input).toEqual({ project: "saved-project" });
     const savedRuns = await db
       .select({ input: executions.input })
       .from(executions)

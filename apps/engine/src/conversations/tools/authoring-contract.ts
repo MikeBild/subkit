@@ -116,6 +116,24 @@ export function buildAuthNextPhase(authType: string | undefined): {
   };
 }
 
+/** Keep lifecycle evidence, not duplicated response bodies, in every mutation/error. */
+function compactSummary(
+  summary: ReturnType<typeof getAuthoringSnapshot>["summary"],
+): ReturnType<typeof getAuthoringSnapshot>["summary"] {
+  if (!summary?.latest_diagnosis) return summary;
+  return {
+    ...summary,
+    latest_diagnosis: {
+      ...summary.latest_diagnosis,
+      steps: summary.latest_diagnosis.steps.map(({ output_preview, request_meta, ...step }) => {
+        void output_preview;
+        void request_meta;
+        return step;
+      }),
+    },
+  };
+}
+
 export function buildGateError(
   draft: DraftDocument,
   args: {
@@ -146,7 +164,7 @@ export function buildGateError(
     mode: snapshot.mode,
     stage: snapshot.stage,
     lifecycle_state: snapshot.lifecycle_state,
-    summary: snapshot.summary,
+    summary: compactSummary(snapshot.summary),
     persistence: "draft_only" as const,
     ...(args.extra ?? {}),
   };
@@ -200,7 +218,9 @@ export function buildLifecyclePayload(
           (item) => item.kind === activeTarget.kind && item.id === activeTarget.id,
         ) ?? null)
       : null;
-  const summary = options?.readOnly ? slimSummaryForReadOnly(snapshot.summary) : snapshot.summary;
+  const summary = options?.readOnly
+    ? slimSummaryForReadOnly(snapshot.summary)
+    : compactSummary(snapshot.summary);
   return {
     mode: snapshot.mode,
     stage: snapshot.stage,

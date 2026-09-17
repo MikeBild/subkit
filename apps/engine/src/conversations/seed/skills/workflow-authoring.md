@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 25
+version: 26
 ---
 
 # Authoring Workflows In A Conversation
@@ -30,6 +30,10 @@ In cockpit, a saved draft is reviewed inside the current chat with “Review sav
 - `activation_required`, `paused`, `input_required`, or `verification_unavailable`: name the missing step briefly; never promise the next automatic run.
 - Only `authorized` is evidence of current permission; it is rechecked at dispatch. Do not claim that an actual run succeeded until its execution record confirms that.
 - User-facing questions and labels describe outcomes (for example “Bericht veröffentlichen”), never parameters such as `publish=true`, raw cron expressions or tool names.
+
+## Preview existing scheduled work with its real settings
+
+When repairing a scheduled workflow, omit `input` from `dry_run_workflow` to reuse the single enabled schedule in the selected environment. Do not send an empty object or fabricate IDs, sites, repositories or dates: reads contact real systems. If schedules are ambiguous, inspect them and ask only the missing business choice. A preview failure caused by absent or invented input is not evidence that the workflow works; repair the input and rerun. Never propose a forced save to conceal that failure. Use `inspect_workflow_draft` with `step_ids` for targeted current configuration rather than repeatedly loading full old execution results.
 
 ## Target existing steps by ID
 
