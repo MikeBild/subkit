@@ -61,6 +61,7 @@ export interface ConverseMockStep {
 
 class MockProvider {
   calls: MockCall[] = [];
+  toolChoices: Array<{ type: string; toolName?: string } | undefined> = [];
   /** When set, the very next call with this model fails with this kind. */
   failureByModel: Map<string, MockFailure> = new Map();
   /** Canned generator overrides by flow — tests may patch these. */
@@ -95,6 +96,7 @@ class MockProvider {
     this.failureByModel = new Map();
     this.generateOverrides = {};
     this.conversePlans = new Map();
+    this.toolChoices = [];
     this.converseCursors = new Map();
     this.cacheSeenKey = new Set();
     this.defaultCriticPassWarned = false;
