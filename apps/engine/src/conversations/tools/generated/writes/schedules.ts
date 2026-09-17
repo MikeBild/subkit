@@ -122,7 +122,7 @@ const ListInput = z
 export const listSchedulesTool: ConversationTool = {
   name: "list_schedules",
   description:
-    "Inspect schedules and their current execution permission. Before claiming automatic operation, inspect automation.state: repair_required needs supported fixed effects, approval_required needs the human review dialog. Keeping a cadence is not granting permission. This read never runs or authorizes anything.",
+    "Inspect schedules and their current execution permission. Before claiming automatic operation, inspect automation.state: repair_required needs supported fixed effects, approval_required needs the human review dialog. Keeping a cadence is not granting permission. Use review_workflow_automation to show the real recurring-run review in chat; never use ask_user_confirm for recurring authority. This read never runs or authorizes anything.",
   inputSchema: ListInput,
   category: "tenant_read",
   // Symmetric with the typed fast-path (`schedule:read`): the read is

@@ -101,6 +101,7 @@ import { useMentionCandidates } from "@/queries/mention-sources";
 import { type ChatApproval, chatApproval } from "./chat-approval";
 import { ChatApprovalCard } from "./chat-approval-card";
 import { ChatAutomationReview } from "./chat-automation-review";
+import { chatAutomationTool } from "./chat-automation-tool";
 import { type ChatChoice, chatChoice } from "./chat-choice";
 import { ChatChoiceCard } from "./chat-choice-card";
 import { ConversationList } from "./chat-conversation-list";
@@ -467,6 +468,7 @@ function ChatMessage({
   onApproval,
   onDecision,
   onReauth,
+  onAutomationAdjust,
   nameFor,
 }: {
   message: UiMessage;
@@ -480,6 +482,7 @@ function ChatMessage({
   onApproval: (id: string, approved: boolean) => void;
   onDecision: (toolCallId: string, approved: boolean) => void;
   onReauth: (action: ChatReauth) => void;
+  onAutomationAdjust: (workflowId: string) => void;
   /** What this conversation knows about the identifiers it mentions. */
   nameFor: (id: string) => ResolvedIdentifier | null;
 }) {
@@ -564,6 +567,26 @@ function ChatMessage({
               />
             );
           }
+          const automation = chatAutomationTool(tool);
+          if (automation && automation.environments.length > 0)
+            return (
+              <div
+                key={`${message.id}-automation-${partIndex}`}
+                className="rounded-xl border border-accent/30 bg-accent/10 p-4"
+                data-testid="chat-automation-tool"
+              >
+                <p className="mb-3 font-medium">{t("authority.title")}</p>
+                {automation.environments.map((environment) => (
+                  <ChatAutomationReview
+                    key={environment}
+                    workflowId={automation.workflowId}
+                    environment={environment}
+                    testId="chat-automation-tool-review"
+                    onAdjust={() => onAutomationAdjust(automation.workflowId)}
+                  />
+                ))}
+              </div>
+            );
           const reauth = chatReauth(tool, window.location.origin);
           if (reauth)
             return (
@@ -1207,6 +1230,18 @@ export function ChatPage() {
                         }
                         onApproval={submitApproval}
                         nameFor={nameFor}
+                        onAutomationAdjust={(workflowId) =>
+                          send.mutate({
+                            message: t("authority.adjustPrompt"),
+                            references: [
+                              {
+                                type: "workflow",
+                                id: workflowId,
+                                label: t("chat.singleRun.thisWorkflow"),
+                              },
+                            ],
+                          })
+                        }
                         onReauth={(action) => {
                           if (pendingDecision || pendingChoice) {
                             setContextOpen(true);

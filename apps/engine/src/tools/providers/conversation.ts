@@ -382,6 +382,7 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
   list_schedules: {
     permission: "schedule:read",
   },
+  review_workflow_automation: { permission: "schedule:read" },
 };
 
 /** Fall back to the tool's OWN `permission` declaration when the table above
