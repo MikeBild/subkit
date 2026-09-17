@@ -18,9 +18,17 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
-import { auditLog, conversations, workflows, workflowVersions } from "../../../db/schema/index.ts";
+import {
+  auditLog,
+  conversations,
+  executions,
+  workflows,
+  workflowsSchedules,
+  workflowVersions,
+} from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../../execution/tests/setup.ts";
+import { workflowPreparationInput } from "../../../workflows/preparation-input.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import { runWorkflowTool } from "../generated/writes/run-workflow.ts";
@@ -283,5 +291,65 @@ describe.skipIf(skip)("run_workflow (negative: wrong-tenant isolation at lookup 
     // Cross-tenant isolation: the lookup is tenant-scoped, so the wrong tenant
     // sees workflow_not_found rather than a permission error.
     expect(data.error_code).toBe("workflow_not_found");
+  }, 60_000);
+});
+
+describe.skipIf(skip)("saved schedule preparation", () => {
+  test("uses scheduled input only for explicit preparation and preserves explicit input", async () => {
+    const workflow_id = await seedTwoStepWorkflow("rw-schedule-preparation");
+    const db = convCtx.testDb.db;
+    await db.insert(workflowsSchedules).values({
+      tenant_id: convCtx.tenant_id,
+      workflow_id,
+      cron: "0 7 * * *",
+      execution_mode: "dev",
+      input: { project: "saved-project" },
+    });
+    const resolve = (
+      args: { input?: Record<string, unknown>; execute_writes?: boolean },
+      env: "dev" | "prod" = "dev",
+      tenant = convCtx.tenant_id,
+    ) => workflowPreparationInput(db, tenant, workflow_id, env, args);
+    expect(await resolve({ execute_writes: false })).toEqual({ project: "saved-project" });
+    expect(await resolve({ execute_writes: false, input: {} })).toEqual({});
+    expect(await resolve({ execute_writes: false, input: { project: "explicit" } })).toEqual({
+      project: "explicit",
+    });
+    expect(await resolve({ execute_writes: true })).toBeUndefined();
+    expect(await resolve({})).toBeUndefined();
+    expect(await resolve({ execute_writes: false }, "prod")).toBeUndefined();
+    expect(
+      await resolve({ execute_writes: false }, "dev", "00000000-0000-4000-8000-000000000099"),
+    ).toBeUndefined();
+    hits.length = 0;
+    const result = await runWorkflowTool.execute(
+      makeCtx({
+        conversation_id: await seedConversation(),
+        principal: makePrincipal(convCtx.tenant_id, convCtx.user_id),
+      }),
+      { workflow: workflow_id, environment: "dev", execute_writes: false },
+    );
+    expect((result.data as Record<string, unknown>).writes_held).toBe(true);
+    expect(hits.filter((hit) => hit.url.startsWith("/send"))).toHaveLength(0);
+    const audit = await latestRunWorkflowAuditRow();
+    expect((audit?.metadata as Record<string, unknown> | undefined)?.execute_writes).toBe(false);
+    const savedRuns = await db
+      .select({ input: executions.input })
+      .from(executions)
+      .where(
+        and(eq(executions.tenant_id, convCtx.tenant_id), eq(executions.workflow_id, workflow_id)),
+      );
+    expect(savedRuns).toHaveLength(1);
+    expect(savedRuns[0]?.input).toEqual({ project: "saved-project" });
+    await db
+      .update(workflowsSchedules)
+      .set({ paused: true })
+      .where(
+        and(
+          eq(workflowsSchedules.tenant_id, convCtx.tenant_id),
+          eq(workflowsSchedules.workflow_id, workflow_id),
+        ),
+      );
+    expect(await resolve({ execute_writes: false })).toBeUndefined();
   }, 60_000);
 });

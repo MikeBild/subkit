@@ -18,7 +18,7 @@ const part = (output: unknown) =>
     input: { workflow_id: id },
     output,
   }) as ToolPart;
-test("a held prerequisite is not presented as a successful report or an approval task", () => {
+test("held steps do not invent a report failure or imply approval readiness", () => {
   const review = {
     eligible_for_repeated_runs: false,
     unavailable_steps: ["send_email"],
@@ -26,7 +26,7 @@ test("a held prerequisite is not presented as a successful report or an approval
   };
   const result = (row: Record<string, unknown>) =>
     part({ ...data, schedules: [{ workflow_id: id, environment: "prod", ...row }] });
-  expect(chatAutomationSummary(result({ state: "repair_required", review }))).toBe("upstream");
+  expect(chatAutomationSummary(result({ state: "repair_required", review }))).toBe("repair");
   expect(
     chatAutomationSummary(
       result({

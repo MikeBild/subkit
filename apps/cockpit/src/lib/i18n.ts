@@ -87,7 +87,7 @@ const EN = {
     "SubKit cannot yet verify the actions of this workflow. Saving the change has not resolved the open decision.",
   "chat.automationCard.review.title": "Ready for your review",
   "chat.automationCard.review.hint":
-    "Review the destinations and limits below. Approving allows future scheduled runs; nothing is sent immediately.",
+    "Review the destinations and limits below. Approving allows future scheduled runs; no run starts now.",
   "chat.automationCard.unknown.title": "Current status needs checking",
   "chat.automationCard.unknown.hint":
     "Open the check below to read the current workflow status. This does not start a run.",
@@ -1674,7 +1674,7 @@ const DE: Record<TranslationKey, string> = {
     "SubKit kann die Aktionen dieses Ablaufs noch nicht vollständig prüfen. Das Speichern der Änderung hat die offene Entscheidung noch nicht erledigt.",
   "chat.automationCard.review.title": "Bereit für deine Prüfung",
   "chat.automationCard.review.hint":
-    "Prüfe unten Ziele und Grenzen. Deine Freigabe erlaubt künftige geplante Läufe; jetzt wird nichts versendet.",
+    "Prüfe unten Ziele und Grenzen. Deine Freigabe erlaubt künftige geplante Läufe; jetzt startet kein Lauf.",
   "chat.automationCard.unknown.title": "Aktuellen Stand prüfen",
   "chat.automationCard.unknown.hint":
     "Öffne die Prüfung unten, um den aktuellen Stand des Ablaufs abzurufen. Dabei startet kein Lauf.",
