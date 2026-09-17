@@ -94,6 +94,7 @@ import {
 import { applyRecency, parseLoadedSkills } from "./loop/skill-recency.ts";
 import {
   abstainedStopCondition,
+  automationReviewStopCondition,
   committedStopCondition,
   noProgressRepairStopCondition,
   pausedStopCondition,
@@ -1626,6 +1627,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         // the model demonstrably holds) still ended the turn.
         abstainedStopCondition,
         pausedStopCondition,
+        automationReviewStopCondition,
         committedStopCondition,
         turnLoopBudgetStopCondition,
         // No-progress repair stop: N consecutive dry_run_workflow results
