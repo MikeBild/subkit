@@ -60,11 +60,29 @@ describe("input-schema edge cases · per tool", () => {
     expect(j.required).toContain("goal");
   });
 
-  test("edit_workflow_patch — `patches` is a required array of ops", () => {
+  test("edit_workflow_patch — positional and stable-ID arrays are exclusive alternatives", () => {
     const j = jsonSchema("edit_workflow_patch");
     const props = j.properties as Record<string, { type?: string }>;
     expect(props.patches?.type).toBe("array");
-    expect(j.required).toContain("patches");
+    expect(props.step_patches?.type).toBe("array");
+    const schema = getTool("edit_workflow_patch")!.inputSchema;
+    expect(schema.safeParse({}).success).toBe(false);
+    expect(schema.safeParse({ patches: [], step_patches: [] }).success).toBe(false);
+    expect(
+      schema.safeParse({ patches: [{ op: "replace", path: "/name", value: "Report" }] }).success,
+    ).toBe(true);
+    expect(
+      schema.safeParse({
+        step_patches: [
+          {
+            op: "add",
+            step_id: "store",
+            path: "/s3/scope",
+            value: { key_prefix: "reports/", max_bytes: 1000 },
+          },
+        ],
+      }).success,
+    ).toBe(true);
   });
 
   test("ask_user_choice — options is an array of objects with id+label", () => {

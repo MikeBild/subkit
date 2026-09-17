@@ -34,6 +34,7 @@ import { stampStepTraceFingerprints } from "../step-fingerprint.ts";
 import type { JudgeBreakerState } from "../types.ts";
 import { authorConnectorWriteWarnings } from "./author-build-warnings.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
+import { draftPreviewInput } from "./draft-preview-input.ts";
 import {
   buildDryRunCacheKey,
   buildStepPrefixHash,
@@ -74,7 +75,7 @@ const inputSchema = z
 export const dryRunWorkflowTool: ConversationTool = {
   name: "dry_run_workflow",
   description:
-    "Run the entire draft workflow via runExecution (source=draft), producing an auditable executions row. Read steps execute for real; WRITE steps are always HELD — resolved for inspection but never dispatched, even with execute_writes:true. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval. External destinations must come from the user, never fabricated placeholders.",
+    "Run the entire draft workflow via runExecution (source=draft), producing an auditable executions row. Read steps execute for real; WRITE steps are always HELD — resolved for inspection but never dispatched, even with execute_writes:true. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval. Omit input when repairing an existing scheduled workflow: the engine reuses its single enabled schedule in this environment. Explicit input, including {}, is preserved. Never invent dummy identifiers or destinations for real read requests. External destinations must come from the user, never fabricated placeholders.",
   inputSchema,
   category: "draft_write" as const,
   authoring_resource: "workflow",
@@ -346,6 +347,27 @@ export const dryRunWorkflowTool: ConversationTool = {
       onLog: ctx.onLog,
     });
 
+    let previewInput: unknown;
+    try {
+      previewInput = await draftPreviewInput(
+        ctx.db,
+        ctx.tenant_id,
+        ctx.getDraft(),
+        effectiveEnvironment,
+        args.input,
+      );
+    } catch (error) {
+      return {
+        ok: false,
+        data: buildGateError(ctx.getDraft(), {
+          error_code: "preview_input_unavailable",
+          message:
+            error instanceof Error ? error.message : "Could not resolve saved preview inputs",
+          next_best_actions: ["list_schedules", "ask_user_form"],
+        }),
+      };
+    }
+
     ctx.onLog?.(
       "info",
       `dry-running ${steps.length} step${steps.length === 1 ? "" : "s"} (env=${effectiveEnvironment})`,
@@ -359,7 +381,7 @@ export const dryRunWorkflowTool: ConversationTool = {
       tenant_id: ctx.tenant_id,
       execution_mode: effectiveEnvironment,
       draft: definition,
-      input: args.input ?? null,
+      input: previewInput ?? null,
     });
     const cached = readDryRunCache(cacheKey);
     let run: Awaited<ReturnType<typeof runExecution>>;
@@ -386,7 +408,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           tenant_id: ctx.tenant_id,
           execution_mode: effectiveEnvironment,
           draft: { steps, ...(draft.name ? { name: draft.name } : {}) },
-          input: args.input ?? null,
+          input: previewInput ?? null,
           stepIndex: i,
         });
         const fixture = readStepFixture(prefixHash);
@@ -409,7 +431,7 @@ export const dryRunWorkflowTool: ConversationTool = {
             definition,
             ...(draft.name ? { name: draft.name } : {}),
           },
-          input: args.input ?? null,
+          input: previewInput ?? null,
           options: {
             request_source: "chat",
             execution_mode: effectiveEnvironment,
@@ -482,7 +504,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           tenant_id: ctx.tenant_id,
           execution_mode: effectiveEnvironment,
           draft: { steps, ...(draft.name ? { name: draft.name } : {}) },
-          input: args.input ?? null,
+          input: previewInput ?? null,
           stepIndex: i,
         });
         writeStepFixture(prefixHash, envelope);
@@ -523,7 +545,7 @@ export const dryRunWorkflowTool: ConversationTool = {
         tenant_id: ctx.tenant_id,
         conversation_id: ctx.conversation_id,
         scope: previewScope,
-        input: args.input ?? null,
+        input: previewInput ?? null,
       });
     }
 
@@ -757,7 +779,7 @@ export const dryRunWorkflowTool: ConversationTool = {
         // available) match the structural repair warnings exactly.
         ...(dryRunRequiresRepair || judgeBlocked ? { requires_repair: true } : {}),
         step_traces: persistedStepTraces,
-        input: args.input ?? null,
+        input: previewInput ?? null,
       },
       "dry_run_workflow",
       "workflow_previewed",
@@ -1109,7 +1131,7 @@ export const dryRunWorkflowTool: ConversationTool = {
       runError: run.error ?? null,
       output_transform: draft.output_transform,
       previewScope,
-      input: args.input ?? null,
+      input: previewInput ?? null,
       tenant_id: ctx.tenant_id,
       db: ctx.db,
       ...(signal ? { signal } : {}),
