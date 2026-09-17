@@ -36,7 +36,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await ctx.cleanup();
 });
-async function fixture(withRead: boolean | "path" = false) {
+async function fixture(withRead: boolean | "path" | "analytics" = false) {
   const raw = Buffer.from(
     "From: sender@example.test\r\nTo: recipient@example.test\r\nSubject: Report\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\nReport",
   ).toString("base64url");
@@ -49,14 +49,23 @@ async function fixture(withRead: boolean | "path" = false) {
             {
               id: "read",
               kind: "request" as const,
-              method: "GET" as const,
+              method: withRead === "analytics" ? ("POST" as const) : ("GET" as const),
+              body:
+                withRead === "analytics"
+                  ? {
+                      dateRanges: [{ startDate: "yesterday", endDate: "yesterday" }],
+                      metrics: [{ name: "activeUsers" }],
+                    }
+                  : undefined,
               url:
-                withRead === "path"
-                  ? // biome-ignore lint/suspicious/noTemplateCurlyInString: bounded identifier
-                    "https://metrics.example.test/v2/projects/${input.window}/resources"
-                  : "https://metrics.example.test/history",
+                withRead === "analytics"
+                  ? "https://analyticsdata.googleapis.com/v1beta/properties/123:runReport"
+                  : withRead === "path"
+                    ? // biome-ignore lint/suspicious/noTemplateCurlyInString: bounded identifier
+                      "https://metrics.example.test/v2/projects/${input.window}/resources"
+                    : "https://metrics.example.test/history",
               query:
-                withRead === "path"
+                withRead === "path" || withRead === "analytics"
                   ? undefined
                   : {
                       host_id: "fixed-resource",
@@ -406,5 +415,51 @@ test("reviewed identifier path permits changing project reads and blocks path es
     expect(bad.status).toBe("failed");
     expect(reads).toBe(before);
     expect(sends).toBe(1);
+  });
+});
+
+test("documented Analytics report reads execute in preview while email remains held", async () => {
+  const f = await fixture("analytics");
+  let reads = 0;
+  const remote = Object.assign(
+    async (url: string | URL | Request, init?: RequestInit) => {
+      expect(String(url)).toBe(
+        "https://analyticsdata.googleapis.com/v1beta/properties/123:runReport",
+      );
+      expect(init?.method).toBe("POST");
+      expect(init?.redirect).toBe("manual");
+      reads++;
+      return Response.json({ rows: [] });
+    },
+    { preconnect: () => {} },
+  ) as typeof fetch;
+  await withDriverFetchForTests(remote, async () => {
+    await f.automaticPrepare();
+    expect(reads).toBe(1);
+    expect((await f.inspect()).eligible_for_repeated_runs).toBe(true);
+    expect((await inspectScheduleAutomation(f.schedule, ctx.testDb.db)).ready).toBe(false);
+  });
+});
+
+test("documented report reads cannot delegate preview permission through a redirect", async () => {
+  const f = await fixture("analytics");
+  let requests = 0;
+  const remote = Object.assign(
+    async (_url: string | URL | Request, init?: RequestInit) => {
+      requests++;
+      expect(init?.redirect).toBe("manual");
+      return new Response(null, {
+        status: 307,
+        headers: { location: "https://other.example.test/write" },
+      });
+    },
+    { preconnect: () => {} },
+  ) as typeof fetch;
+  await withDriverFetchForTests(remote, async () => {
+    await expect(f.automaticPrepare()).rejects.toMatchObject({
+      code: "authority_preparation_failed",
+    });
+    expect(requests).toBe(1);
+    expect((await f.inspect()).eligible_for_repeated_runs).toBe(false);
   });
 });
