@@ -424,9 +424,17 @@ function activeToolsForStage(
   switch (stage) {
     case "connector_targeted":
     case "workflow_targeted":
-    case "diagnosing":
       // Discover phase — favour reads.
       return keep((t) => t.category === "tenant_read");
+    case "diagnosing":
+      // Diagnosis is the prerequisite for repairing an executed workflow.
+      // Keep inert workflow editing reachable in the same chat; external
+      // effects and persistence still pass their existing tool-level gates.
+      return keep(
+        (t) =>
+          t.category === "tenant_read" ||
+          (t.category === "draft_write" && t.authoring_resource === "workflow"),
+      );
     case "connector_draft_started":
     case "connector_inspected":
     case "connector_validated":
