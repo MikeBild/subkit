@@ -572,6 +572,7 @@ function ChatMessage({
             );
           }
           const automation = chatAutomationTool(tool);
+          const automationSummary = chatAutomationSummary(tool);
           if (automation && automation.environments.length > 0)
             return (
               <div
@@ -580,20 +581,21 @@ function ChatMessage({
                 data-testid="chat-automation-tool"
               >
                 <p className="mb-2 font-medium">
-                  {t(`chat.automationCard.${chatAutomationSummary(tool)}.title`)}
+                  {t(`chat.automationCard.${automationSummary}.title`)}
                 </p>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  {t(`chat.automationCard.${chatAutomationSummary(tool)}.hint`)}
+                  {t(`chat.automationCard.${automationSummary}.hint`)}
                 </p>
-                {automation.environments.map((environment) => (
-                  <ChatAutomationReview
-                    key={environment}
-                    workflowId={automation.workflowId}
-                    environment={environment}
-                    testId="chat-automation-tool-review"
-                    onAdjust={() => onAutomationAdjust(automation.workflowId)}
-                  />
-                ))}
+                {automationSummary !== "authorized" &&
+                  automation.environments.map((environment) => (
+                    <ChatAutomationReview
+                      key={environment}
+                      workflowId={automation.workflowId}
+                      environment={environment}
+                      testId="chat-automation-tool-review"
+                      onAdjust={() => onAutomationAdjust(automation.workflowId)}
+                    />
+                  ))}
               </div>
             );
           const reauth = chatReauth(tool, window.location.origin);
