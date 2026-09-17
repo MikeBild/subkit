@@ -4,6 +4,10 @@
 import { z } from "@hono/zod-openapi";
 import { classifyHttpSideEffect, inferGraphqlOperation } from "@shared/index.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
+import {
+  ContentPublicationBoundarySchema,
+  supportsContentPublication,
+} from "./content-publication-boundary.ts";
 import { ReadPathBoundarySchema, readPathBoundary, readPathTarget } from "./read-path-boundary.ts";
 import {
   hasRuntimeValue,
@@ -34,6 +38,7 @@ export const ResolvedEffectBindingSchema = z
     credential_binding_digest: digest.nullable(),
     rewrites_target: z.boolean(),
     report_delivery: ReportDeliveryBoundarySchema.optional(),
+    content_publication: ContentPublicationBoundarySchema.optional(),
     read_path: ReadPathBoundarySchema.optional(),
   })
   .strict();
@@ -194,6 +199,25 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       workflowJsonDigest(readPath) === workflowJsonDigest(binding.read_path) &&
       binding.target === readPathTarget(readPath);
     if (binding.read_path && !supportedReadPath) issue("binding_mismatch");
+    const supportedContent =
+      binding.driver === "http" &&
+      binding.content_publication &&
+      supportsContentPublication(step, binding.content_publication, binding.target);
+    if (binding.content_publication && !supportedContent) issue("binding_mismatch");
+    if (binding.content_publication?.kind === "content_release") {
+      const publication = binding.content_publication;
+      for (const source of publication.sources) {
+        const producer = bindings.get(source.step_id);
+        if (
+          producer?.connector_id !== binding.connector_id ||
+          producer?.content_publication?.kind !== "content_revision" ||
+          producer.content_publication.origin !== publication.origin ||
+          workflowJsonDigest(producer.content_publication.item_ids) !==
+            workflowJsonDigest(source.item_ids)
+        )
+          issue("binding_mismatch");
+      }
+    }
     // Conservative first version: runtime substitutions anywhere in a request
     // may change a recipient in its body, not just a hostname in its URL.
     if (
@@ -202,6 +226,7 @@ export function compileWorkflowEffectManifest(raw: unknown): {
         !(
           binding.driver === "http" &&
           (supportedReadPath ||
+            supportedContent ||
             supportsReadQuery(step) ||
             (binding.report_delivery && supportsReportDelivery(step, binding.target)))
         )) ||
