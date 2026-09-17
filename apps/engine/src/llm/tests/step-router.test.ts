@@ -311,7 +311,11 @@ describe("prepareStep — forced tool survives activeTools narrowing (FIX 4 / BU
     // activeTools — if it is missing the SDK throws
     // `Tool 'run_workflow' not found in provided tools`.
     const decision = prepareStep(
-      baseParams({ signals: { stage: "workflow_previewed" }, forcedTool: "run_workflow" }),
+      baseParams({
+        signals: { stage: "workflow_previewed" },
+        stepNumber: 0,
+        forcedTool: "run_workflow",
+      }),
     );
     expect(decision?.activeTools).toBeDefined();
     expect(decision?.activeTools).toContain("run_workflow");
@@ -322,7 +326,11 @@ describe("prepareStep — forced tool survives activeTools narrowing (FIX 4 / BU
 
   it("narrowing still drops tenant_write tools that are NOT the forced tool", () => {
     const decision = prepareStep(
-      baseParams({ signals: { stage: "workflow_previewed" }, forcedTool: "run_workflow" }),
+      baseParams({
+        signals: { stage: "workflow_previewed" },
+        stepNumber: 0,
+        forcedTool: "run_workflow",
+      }),
     );
     expect(decision?.activeTools).not.toContain("save_workflow_draft");
   });
@@ -480,7 +488,9 @@ describe("prepareStep — pre-persistence stages drop tools requiring a persiste
     // `Tool 'run_workflow' not found in provided tools` and the turn
     // fails.
     for (const stage of PRE_PERSISTENCE_STAGES) {
-      const decision = prepareStep(baseParams({ signals: { stage }, forcedTool: "run_workflow" }));
+      const decision = prepareStep(
+        baseParams({ signals: { stage }, stepNumber: 0, forcedTool: "run_workflow" }),
+      );
       expect(decision?.activeTools).toBeDefined();
       expect(decision?.activeTools).toContain("run_workflow");
       // At these draft stages the category narrowing (tenant_read +
@@ -568,6 +578,7 @@ describe("prepareStep — live-state gate drops persisted-workflow tools across 
     const decision = prepareStep(
       baseParams({
         signals: { stage: "idle", hasPersistedWorkflow: false },
+        stepNumber: 0,
         forcedTool: "run_workflow",
       }),
     );
@@ -577,5 +588,30 @@ describe("prepareStep — live-state gate drops persisted-workflow tools across 
     expect(decision?.activeTools).not.toContain("create_schedule");
     expect(decision?.activeTools).toContain("delete_workflow");
     expect(decision?.activeTools).toContain("update_workflow");
+  });
+});
+
+describe("intent-directed execution hands control back after the first step", () => {
+  it("releases the forced tool even when the full palette needs no narrowing", () => {
+    const decision = prepareStep(
+      baseParams({
+        stepNumber: 1,
+        forcedTool: "run_workflow",
+        signals: { stage: "workflow_executed", hasPersistedWorkflow: true },
+      }),
+    );
+    expect(decision?.toolChoice).toBe("auto");
+  });
+  it("does not reinsert the execution tool into a later narrowed review step", () => {
+    const decision = prepareStep(
+      baseParams({
+        stepNumber: 2,
+        forcedTool: "run_workflow",
+        signals: { stage: "workflow_previewed", hasPersistedWorkflow: true },
+      }),
+    );
+    expect(decision?.toolChoice).toBe("auto");
+    expect(decision?.activeTools).not.toContain("run_workflow");
+    expect(decision?.activeTools).toContain("inspect_workflow");
   });
 });

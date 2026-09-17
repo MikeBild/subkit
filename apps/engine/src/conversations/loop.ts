@@ -1534,9 +1534,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             toolsByName,
             signals: stepRouterSignals,
             turnThinkingEnabled: thinkingThisTurn,
-            // Thread the turn-level forced tool so `activeTools` narrowing
-            // can never drop it — the AI SDK validates the forced tool
-            // against every step's `activeTools` set.
+            // Keep the requested first tool visible, then release the forced
+            // choice so later steps can diagnose the result or answer.
             forcedTool: preferredTool,
           });
           if (!decision) return elision ? { messages: elision.messages } : {};
@@ -1588,6 +1587,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
               });
             }
           }
+          if (!forceNoTools && decision.toolChoice !== undefined)
+            result.toolChoice = decision.toolChoice;
           if (decision.activeTools !== undefined) {
             result.activeTools = decision.activeTools;
             logger.debug({

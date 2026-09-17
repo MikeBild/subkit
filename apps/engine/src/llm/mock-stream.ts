@@ -159,6 +159,7 @@ export function createMockLanguageModel(modelId = "mock-converse"): MockLanguage
         }
       }
 
+      singleton.toolChoices.push(options.toolChoice);
       const lastUser = findLastUserText(options.prompt);
       singleton.calls.push({
         model: modelId,
