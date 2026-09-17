@@ -83,3 +83,26 @@ describe("edit_workflow_patch — steps must stay an array", () => {
     expect((result.data as { patches?: unknown }).patches).toEqual(patches);
   });
 });
+
+test("invalid paths return compact actual step guidance without the draft payload", async () => {
+  const draft = draftWithOneStep();
+  draft.workflow.steps[0] = {
+    kind: "request",
+    id: "report",
+    method: "PUT",
+    connector_id: "00000000-0000-4000-8000-000000000001",
+    s3: { key: "reports/file.json" },
+    body: "PRIVATE_REPORT_PAYLOAD".repeat(10000),
+  };
+  const result = await applyWorkflowPatchToDraft(ctxFor(draft), [
+    { op: "add", path: "/steps/9/config/s3/path_prefix", value: "reports/" },
+  ]);
+  expect(result.ok).toBe(false);
+  const serialized = JSON.stringify(result.data);
+  expect(serialized).not.toContain("PRIVATE_REPORT_PAYLOAD");
+  expect(serialized.length).toBeLessThan(12000);
+  expect(result.data).toMatchObject({
+    error_code: "patch_invalid",
+    step_paths: [{ id: "report", path: "/steps/0", storage_scope_path: "/steps/0/s3/scope" }],
+  });
+});

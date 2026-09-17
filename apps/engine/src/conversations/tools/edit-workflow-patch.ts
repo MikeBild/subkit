@@ -97,11 +97,24 @@ export async function applyWorkflowPatchToDraft(
         ok: false,
         data: buildGateError(currentDraft, {
           error_code: "patch_invalid",
-          message: err instanceof Error ? err.message : String(err),
+          message: `${(err instanceof Error ? err.message : String(err)).split("\n")[0]?.slice(0, 300)}. The draft remains editable in this conversation. Inspect the actual step index and fields; do not infer a missing mode or permission from an invalid JSON path.`,
           recommended_mode: "workflow",
           next_best_actions: ["inspect_workflow_draft"],
           extra: {
-            patches,
+            patches: patches.map(({ op, path }) => ({ op, path })),
+            step_paths: (workflowDraft.steps ?? []).map((step, index) => ({
+              id: step.id,
+              path: `/steps/${index}`,
+              fields: Object.keys(step),
+              ...(step.kind === "request" && step.s3
+                ? {
+                    s3_fields: Object.keys(step.s3),
+                    storage_scope_path: `/steps/${index}/s3/scope`,
+                  }
+                : {}),
+            })),
+            repair_hint:
+              "Use existing fields directly under each step, without a config wrapper. For S3 recurring boundaries use s3.scope with key_prefix and max_bytes, never path_prefix. Inspect the relevant step before patching; no external setup is required.",
           },
         }),
       };
