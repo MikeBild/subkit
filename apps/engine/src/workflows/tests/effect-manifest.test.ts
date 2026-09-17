@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { workflowJsonDigest } from "../canonical-json.ts";
 import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "../effect-manifest.ts";
+import { readPathBoundary, readPathTarget } from "../read-path-boundary.ts";
 import { WorkflowDefSchema } from "../types.ts";
 
 const tenant = "00000000-0000-4000-8000-000000000001";
@@ -220,4 +221,26 @@ test("a locally sandboxed preparation-only version has no invented external effe
   expect(result.manifest.effects).toEqual([]);
   expect(result.manifest.issues).toEqual([]);
   expect(result.eligible_for_repeated_runs).toBe(true);
+});
+
+test("a reusable path authority must bind the exact reviewed identifier template", () => {
+  const input = fixture({
+    method: "GET",
+    body: undefined,
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow runtime template
+    path: "/v2/projects/${item.id}/resources",
+  });
+  const step = input.definition.steps[0];
+  if (step?.kind !== "request") throw new Error("request missing");
+  const boundary = readPathBoundary(step, "https://example.test");
+  if (!boundary) throw new Error("boundary missing");
+  input.bindings[0]!.read_path = boundary;
+  input.bindings[0]!.target = readPathTarget(boundary);
+  const good = compileWorkflowEffectManifest(input);
+  expect(good.eligible_for_repeated_runs).toBe(true);
+  input.bindings[0]!.read_path = { ...boundary, segments: ["", "v2", null, null, "resources"] };
+  expect(compileWorkflowEffectManifest(input).eligible_for_repeated_runs).toBe(false);
+  input.bindings[0]!.read_path = boundary;
+  input.bindings[0]!.rewrites_target = true;
+  expect(compileWorkflowEffectManifest(input).eligible_for_repeated_runs).toBe(false);
 });

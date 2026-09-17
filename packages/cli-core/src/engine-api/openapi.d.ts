@@ -17442,6 +17442,12 @@ export interface components {
                     /** @enum {string} */
                     content_type: "text/plain" | "text/html";
                 };
+                read_path?: {
+                    /** Format: uri */
+                    origin: string;
+                    segments: (string | null)[];
+                    search: string;
+                };
                 read_query?: {
                     fixed: {
                         [key: string]: string;

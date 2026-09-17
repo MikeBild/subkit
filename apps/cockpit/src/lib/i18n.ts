@@ -157,6 +157,8 @@ const EN = {
   "authority.effects": "Operations and external targets",
   "authority.noEffects": "No connector effects in this manifest.",
   "authority.unboundTarget": "Target not bound",
+  "authority.readPath":
+    "Read records in this collection. Record IDs may change; the server and collection stay fixed.",
   "authority.digest": "Effect manifest digest",
   "authority.revoke": "Revoke authority",
   "authority.revokeTitle": "Revoke this exact authority?",
@@ -1739,6 +1741,8 @@ const DE: Record<TranslationKey, string> = {
   "authority.effects": "Operationen und externe Ziele",
   "authority.noEffects": "Keine Connector-Wirkungen in diesem Manifest.",
   "authority.unboundTarget": "Ziel nicht gebunden",
+  "authority.readPath":
+    "Einträge dieser Sammlung lesen. Ihre IDs dürfen wechseln; Server und Sammlung bleiben fest.",
   "authority.digest": "Prüfsumme des Wirkungsmanifests",
   "authority.revoke": "Freigabe widerrufen",
   "authority.revokeTitle": "Diese exakte Freigabe widerrufen?",

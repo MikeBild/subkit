@@ -406,6 +406,7 @@ export function GrantWorkflowAuthority({
                           : t("authority.directRequest")}
                       </p>
                       <p className="break-all">{effect.target ?? t("authority.unboundTarget")}</p>
+                      {effect.read_path && <p>{t("authority.readPath")}</p>}
                     </div>
                   ))}
                   {review.execution_shape.requests.map((request) => (
