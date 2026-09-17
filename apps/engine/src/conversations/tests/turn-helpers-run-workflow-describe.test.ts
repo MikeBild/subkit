@@ -16,10 +16,19 @@ test("a readiness card is not followed by a technical fallback summary", () => {
       type: "tool_result" as const,
       call_id: "review",
       tool: "review_workflow_automation",
-      output: { ok: true, data: { presentation: "automation_readiness_card" } },
+      output: {
+        ok: true,
+        data: { kind: "workflow_automation_review", presentation: "automation_readiness_card" },
+      },
     },
   ];
   expect(classifyFallbackSynthesis({ events, loopWarnings: 0 })).toBeNull();
+  expect(
+    classifyFallbackSynthesis({
+      events: [{ ...events[0]!, output: events[0]!.output.data }],
+      loopWarnings: 0,
+    }),
+  ).toBeNull();
   expect(
     classifyFallbackSynthesis({
       events: [{ ...events[0]!, output: { ok: false, error_code: "workflow_not_found" } }],
