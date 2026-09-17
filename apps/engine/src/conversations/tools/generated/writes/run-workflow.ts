@@ -12,6 +12,7 @@ import { recordAuthoringGateBlock } from "../../../../observability/instrumentat
 import { workflowExecutionEnvironment } from "../../../../workflows/execution-environment.ts";
 import { resolveWorkflowInputContract } from "../../../../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../../../../workflows/lookup.ts";
+import { workflowPreparationInput } from "../../../../workflows/preparation-input.ts";
 import { gateWorkflowRunRbac } from "../../../../workflows/rbac.ts";
 import { buildScopeAtStep } from "../../../../workflows/scope-shape.ts";
 import type { WorkflowDef } from "../../../../workflows/types.ts";
@@ -114,7 +115,7 @@ function withStatus(
 export const runWorkflowTool: ConversationTool = {
   name: "run_workflow",
   description:
-    "FALLBACK for executing an ALREADY-SAVED workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. Every start requires matching local execution authority; otherwise writes are HELD and the envelope reports writes_held + held_step_ids. Use execute_writes: false for preparation without spending a live run. Setting execute_writes: true does not grant authority or bypass limits. For an exact one-shot human decision, use the prepared `wf_<slug>` tool. To verify a DRAFT, use `dry_run_workflow`, never `run_workflow`. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `author_workflow` (then `edit_workflow_patch` for edits).",
+    "FALLBACK for executing an ALREADY-SAVED workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. Every start requires matching local execution authority; otherwise writes are HELD and the envelope reports writes_held + held_step_ids. Use execute_writes: false for preparation without spending a live run. When input is omitted for this held preparation, the engine uses the single enabled schedule in the selected environment. Explicit input, including {}, is never replaced. Setting execute_writes: true does not grant authority or bypass limits. For an exact one-shot human decision, use the prepared `wf_<slug>` tool. To verify a DRAFT, use `dry_run_workflow`, never `run_workflow`. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `author_workflow` (then `edit_workflow_patch` for edits).",
   inputSchema: Input,
   category: "tenant_write",
   // A workflow *run*, not a config mutation — consistent with the `wf_`
@@ -230,7 +231,13 @@ export const runWorkflowTool: ConversationTool = {
     const inputContract = resolveWorkflowInputContract(wf.definition as WorkflowDef);
     // `workflowInputSlot` normalized the slot to a record (or left it absent)
     // at the dispatch boundary — a stringified payload can no longer reach here.
-    const suppliedInput = args.input;
+    const suppliedInput = await workflowPreparationInput(
+      ctx.db,
+      ctx.tenant_id,
+      workflowId,
+      environment,
+      args,
+    );
     const suppliedInputIsEmpty =
       suppliedInput === undefined || Object.keys(suppliedInput).length === 0;
     if (inputContract) {

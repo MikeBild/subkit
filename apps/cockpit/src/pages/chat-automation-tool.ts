@@ -6,7 +6,7 @@ const record = (value: unknown): value is Record<string, unknown> =>
 
 export function chatAutomationSummary(
   tool: ToolPart,
-): "authorized" | "upstream" | "repair" | "review" | "unknown" {
+): "authorized" | "repair" | "review" | "unknown" {
   if (!chatAutomationTool(tool) || !record(tool.output)) return "unknown";
   const data = record(tool.output.data) ? tool.output.data : tool.output;
   const rows = (data.schedules as unknown[])
@@ -17,24 +17,8 @@ export function chatAutomationSummary(
   const blocked = rows.filter(
     (row) => record(row.review) && row.review.eligible_for_repeated_runs === false,
   );
-  if (
-    blocked.some((row) => {
-      const review = row.review as Record<string, unknown>;
-      const evidence = review.preview_evidence;
-      return (
-        record(evidence) &&
-        Array.isArray(evidence.steps) &&
-        evidence.steps.some(
-          (step) =>
-            record(step) &&
-            step.held === true &&
-            Array.isArray(review.unavailable_steps) &&
-            !review.unavailable_steps.includes(step.step_id),
-        )
-      );
-    })
-  )
-    return "upstream";
+  // A held step can be an intentional publication hold. It does not prove
+  // that prerequisite reads failed or that this workflow sends a report.
   if (blocked.length > 0) return "repair";
   if (rows.every((row) => record(row.review) && row.review.eligible_for_repeated_runs === true))
     return "review";
