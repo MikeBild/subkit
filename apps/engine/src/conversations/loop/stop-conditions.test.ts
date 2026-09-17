@@ -5,11 +5,23 @@
 import { describe, expect, test } from "bun:test";
 import {
   abstainedStopCondition,
+  automationReviewStopCondition,
   committedStopCondition,
   MAX_STALLED_REPAIR_PREVIEWS,
   noProgressRepairStopCondition,
   pausedStopCondition,
 } from "./stop-conditions.ts";
+
+test("completed readiness card ends narration; failed or legacy reviews continue", () => {
+  const data = { kind: "workflow_automation_review", presentation: "automation_readiness_card" };
+  const run = (output: unknown, toolName = "review_workflow_automation") =>
+    automationReviewStopCondition({ steps: [{ toolResults: [{ toolName, output }] }] });
+  expect(run({ ok: true, data })).toBe(true);
+  expect(run({ ok: false, data })).toBe(false);
+  expect(run({ ok: true, data: { kind: data.kind } })).toBe(false);
+  expect(run({ ok: true, data }, "other_tool")).toBe(false);
+  expect(run(null)).toBe(false);
+});
 
 describe("committedStopCondition", () => {
   test("returns false on empty step list", () => {

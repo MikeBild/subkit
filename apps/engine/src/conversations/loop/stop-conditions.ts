@@ -18,6 +18,26 @@ interface StepShape {
   toolResults: ReadonlyArray<{ output?: unknown }>;
 }
 
+/** A completed review hands control to a deterministic, localized chat card.
+ * Do not ask another model turn to paraphrase internal evidence into instructions. */
+export const automationReviewStopCondition = ({
+  steps,
+}: {
+  steps: ReadonlyArray<StepShapeWithToolName>;
+}): boolean =>
+  steps.at(-1)?.toolResults.some((result) => {
+    if (result.toolName !== "review_workflow_automation") return false;
+    const output = result.output as {
+      ok?: unknown;
+      data?: { kind?: unknown; presentation?: unknown };
+    } | null;
+    return (
+      output?.ok === true &&
+      output.data?.kind === "workflow_automation_review" &&
+      output.data.presentation === "automation_readiness_card"
+    );
+  }) ?? false;
+
 /**
  * Consecutive identical-blocking `dry_run_workflow` results that stop the
  * turn. A preview that keeps coming back `requires_repair` with the SAME

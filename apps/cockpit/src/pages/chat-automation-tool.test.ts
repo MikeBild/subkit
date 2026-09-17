@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ToolPart } from "@/components/ai-elements/tool";
-import { chatAutomationTool } from "./chat-automation-tool";
+import { chatAutomationSummary, chatAutomationTool } from "./chat-automation-tool";
 import { groupMessageParts } from "./chat-transcript";
 
 const id = "00000000-0000-4000-8000-000000000001";
@@ -18,6 +18,30 @@ const part = (output: unknown) =>
     input: { workflow_id: id },
     output,
   }) as ToolPart;
+test("a held prerequisite is not presented as a successful report or an approval task", () => {
+  const review = {
+    eligible_for_repeated_runs: false,
+    unavailable_steps: ["send_email"],
+    preview_evidence: { status: "succeeded", steps: [{ step_id: "fetch_report", held: true }] },
+  };
+  const result = (row: Record<string, unknown>) =>
+    part({ ...data, schedules: [{ workflow_id: id, environment: "prod", ...row }] });
+  expect(chatAutomationSummary(result({ state: "repair_required", review }))).toBe("upstream");
+  expect(
+    chatAutomationSummary(
+      result({
+        review: { ...review, preview_evidence: { steps: [{ step_id: "send_email", held: true }] } },
+      }),
+    ),
+  ).toBe("repair");
+  expect(
+    chatAutomationSummary(
+      result({ state: "approval_required", review: { eligible_for_repeated_runs: true } }),
+    ),
+  ).toBe("review");
+  expect(chatAutomationSummary(result({ state: "authorized", ready: true }))).toBe("authorized");
+  expect(chatAutomationSummary(result({ state: "authorized", ready: false }))).toBe("unknown");
+});
 test("server review stays actionable in the transcript and uses the bound workflow", () => {
   for (const output of [data, { ok: true, data }]) {
     expect(chatAutomationTool(part(output))).toEqual({ workflowId: id, environments: ["prod"] });

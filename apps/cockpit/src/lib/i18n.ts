@@ -76,6 +76,21 @@ const EN = {
   "chat.schedule.effect":
     "Automatic runs for this workflow are not approved yet. Review the next step before granting permission.",
   "chat.schedule.review": "Review next step",
+  "chat.automationCard.authorized.title": "Automatic runs are approved",
+  "chat.automationCard.authorized.hint":
+    "Permission is available for the current schedule. No further approval is needed now.",
+  "chat.automationCard.upstream.title": "Report verification is incomplete",
+  "chat.automationCard.upstream.hint":
+    "Required data requests were not executed during the check. The report could not be verified, so recurring delivery cannot yet be approved. There is no decision for you to make yet.",
+  "chat.automationCard.repair.title": "Preparation needs correction",
+  "chat.automationCard.repair.hint":
+    "SubKit cannot yet verify the actions of this workflow. Saving the change has not resolved the open decision.",
+  "chat.automationCard.review.title": "Ready for your review",
+  "chat.automationCard.review.hint":
+    "Review the destinations and limits below. Approving allows future scheduled runs; nothing is sent immediately.",
+  "chat.automationCard.unknown.title": "Current status needs checking",
+  "chat.automationCard.unknown.hint":
+    "Open the check below to read the current workflow status. This does not start a run.",
   "chat.schedule.completion":
     "The decision is resolved only when the schedule has valid permission.",
   "authority.sessionExpired": "Please sign in again",
@@ -1648,6 +1663,21 @@ const DE: Record<TranslationKey, string> = {
   "chat.schedule.effect":
     "Automatische Läufe sind für diesen Ablauf noch nicht freigegeben. Prüfe den nächsten Schritt, bevor du eine Freigabe erteilst.",
   "chat.schedule.review": "Nächsten Schritt prüfen",
+  "chat.automationCard.authorized.title": "Automatische Läufe sind freigegeben",
+  "chat.automationCard.authorized.hint":
+    "Für den aktuellen Zeitplan liegt eine Freigabe vor. Du musst jetzt nichts weiter freigeben.",
+  "chat.automationCard.upstream.title": "Bericht noch nicht vollständig geprüft",
+  "chat.automationCard.upstream.hint":
+    "Benötigte Daten wurden bei der Prüfung nicht abgerufen. Deshalb konnte der Bericht noch nicht geprüft werden und der regelmäßige Versand ist noch nicht freigabefähig. Du musst dazu noch nichts entscheiden.",
+  "chat.automationCard.repair.title": "Vorbereitung muss korrigiert werden",
+  "chat.automationCard.repair.hint":
+    "SubKit kann die Aktionen dieses Ablaufs noch nicht vollständig prüfen. Das Speichern der Änderung hat die offene Entscheidung noch nicht erledigt.",
+  "chat.automationCard.review.title": "Bereit für deine Prüfung",
+  "chat.automationCard.review.hint":
+    "Prüfe unten Ziele und Grenzen. Deine Freigabe erlaubt künftige geplante Läufe; jetzt wird nichts versendet.",
+  "chat.automationCard.unknown.title": "Aktuellen Stand prüfen",
+  "chat.automationCard.unknown.hint":
+    "Öffne die Prüfung unten, um den aktuellen Stand des Ablaufs abzurufen. Dabei startet kein Lauf.",
   "chat.schedule.completion":
     "Die Entscheidung ist erst erledigt, wenn der Zeitplan eine gültige Freigabe hat.",
   "authority.sessionExpired": "Bitte erneut anmelden",

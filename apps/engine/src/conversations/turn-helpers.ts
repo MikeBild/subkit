@@ -62,6 +62,12 @@ export function classifyFallbackSynthesis(params: {
   events: ReadonlyArray<TurnEvent>;
   loopWarnings: number;
 }): { text: string; reason: FallbackSynthesisReason } | null {
+  const latest = params.events.filter((event) => event.type === "tool_result").at(-1);
+  if (latest?.type === "tool_result" && latest.tool === "review_workflow_automation") {
+    const output = latest.output as { ok?: unknown; data?: { presentation?: unknown } } | null;
+    if (output?.ok === true && output.data?.presentation === "automation_readiness_card")
+      return null;
+  }
   const nextPrompt = pickFreshestNextPrompt(params.events);
   if (nextPrompt) return { text: nextPrompt, reason: "next_prompt_from_tool" };
   const text = synthesizeFallbackMessage(params);

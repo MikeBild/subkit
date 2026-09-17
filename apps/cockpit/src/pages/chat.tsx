@@ -101,7 +101,7 @@ import { useMentionCandidates } from "@/queries/mention-sources";
 import { type ChatApproval, chatApproval } from "./chat-approval";
 import { ChatApprovalCard } from "./chat-approval-card";
 import { ChatAutomationReview } from "./chat-automation-review";
-import { chatAutomationTool } from "./chat-automation-tool";
+import { chatAutomationSummary, chatAutomationTool } from "./chat-automation-tool";
 import { type ChatChoice, chatChoice } from "./chat-choice";
 import { ChatChoiceCard } from "./chat-choice-card";
 import { ConversationList } from "./chat-conversation-list";
@@ -579,7 +579,12 @@ function ChatMessage({
                 className="rounded-xl border border-accent/30 bg-accent/10 p-4"
                 data-testid="chat-automation-tool"
               >
-                <p className="mb-3 font-medium">{t("authority.title")}</p>
+                <p className="mb-2 font-medium">
+                  {t(`chat.automationCard.${chatAutomationSummary(tool)}.title`)}
+                </p>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  {t(`chat.automationCard.${chatAutomationSummary(tool)}.hint`)}
+                </p>
                 {automation.environments.map((environment) => (
                   <ChatAutomationReview
                     key={environment}
