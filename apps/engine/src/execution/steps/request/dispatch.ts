@@ -115,6 +115,7 @@ import { RequestError } from "./errors.ts";
 import { promoteResponseToFile } from "./file-output.ts";
 import { runGraphqlWithRetry } from "./graphql-retry.ts";
 import { runMcpWithRetry } from "./mcp-retry.ts";
+import { isDocumentedReadOperation } from "./read-operations.ts";
 import {
   backoffMs,
   isIdempotent,
@@ -752,10 +753,13 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   });
   const beforeDispatch = async (credential = credentialSnapshot, request?: MaterializedRequest) => {
     try {
-      return await p.ctx.before_external_request?.({
+      const documentedRead = p.step.side_effects !== "write" && isDocumentedReadOperation(request);
+      const policy = await p.ctx.before_external_request?.({
         ...authoritySnapshot(credential),
+        ...(documentedRead ? { requires_review: false } : {}),
         ...(request ? { request } : {}),
       });
+      return documentedRead ? { redirect: "manual" as const } : policy;
     } catch (error) {
       throw new RequestError(
         `Execution authority could not be verified: ${(error as { code?: string }).code ?? "authority_check_failed"}; review the current boundary.`,
@@ -766,6 +770,16 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     }
   };
   const beforeHttpDispatch = (request: MaterializedRequest) => {
+    if (
+      p.ctx.hold_writes &&
+      requestRequiresPreparationHold(p.step, activeConnector?.driver) &&
+      (p.step.side_effects === "write" || !isDocumentedReadOperation(request))
+    ) {
+      throw new RequestError(
+        "Preview request is no longer a supported read operation",
+        "authority_invalid",
+      );
+    }
     const key = request.headers["Idempotency-Key"];
     const suffix =
       idempotencyBase && key?.startsWith(`${idempotencyBase}:`)
@@ -2127,6 +2141,20 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // write never starts its page loop). `last_meta` (no `status`, it
   // never ran) keeps the persisted request_meta diagnosable, with an
   // explicit `extras.held` marker.
+  if (
+    holdThisStep &&
+    p.step.side_effects !== "write" &&
+    !p.step.pagination &&
+    !p.resolved_multipart &&
+    !p.resolved_body_file &&
+    isDocumentedReadOperation({
+      method: p.step.method ?? "GET",
+      url: heldRequestUrl,
+      headers,
+      body: heldRequestBody as MaterializedRequest["body"],
+    })
+  )
+    holdThisStep = false;
   if (holdThisStep) {
     clearTimeout(timer);
     return heldHttpResult({
