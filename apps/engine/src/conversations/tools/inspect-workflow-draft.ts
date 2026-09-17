@@ -6,27 +6,30 @@ import type { WorkflowDraftStepPreview } from "../types.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
-const inputSchema = z.object({}).openapi("InspectWorkflowDraftToolInput");
+const inputSchema = z
+  .object({
+    step_ids: z.array(z.string().min(1)).min(1).max(64).optional(),
+    include_preview: z.boolean().optional().default(false),
+  })
+  .openapi("InspectWorkflowDraftToolInput");
 
 export const inspectWorkflowDraftTool: ConversationTool = {
   name: "inspect_workflow_draft",
   description:
-    "Inspect the current workflow draft, including step order, validation summary, latest preview, and the recommended next action. Each step entry is enriched with its most recent output_preview + scope_at_step (when a dry-run / run has been recorded) so the LLM can author downstream transforms / loops against real shapes.",
+    "Inspect current draft step IDs, request settings and next action without large execution payloads. Use step_ids to retrieve full configuration of specific steps; use those IDs with edit_workflow_patch.step_patches instead of guessing indices. Set include_preview only when output shapes are needed. Configuration-only repairs do not need get_raw_result.",
   inputSchema,
   category: "draft_write",
   authoring_resource: "workflow",
-  async execute(ctx): Promise<ToolResult> {
+  async execute(ctx, rawArgs): Promise<ToolResult> {
+    const args = inputSchema.parse(rawArgs);
     const nextDraft = withWorkflowInspection(ctx.getDraft());
     await ctx.setDraft(nextDraft);
     const workflow = getWorkflowDraft(nextDraft);
 
-    // Index latest_preview.step_traces by step_id so each step entry
-    // can carry its own preview side-by-side with config. Pre-fix
-    // the LLM had to call inspect_workflow as a separate step round-
-    // trip to read scope shapes per step; now they ride along on
-    // every inspect_workflow_draft call.
+    // Repairing configuration does not require execution payloads.
+    // Preview shapes remain available explicitly for selected steps.
     const traceById = new Map<string, WorkflowDraftStepPreview>();
-    const traces = nextDraft.latest_preview?.step_traces;
+    const traces = args.include_preview ? nextDraft.latest_preview?.step_traces : undefined;
     if (Array.isArray(traces)) {
       for (const t of traces) traceById.set(t.step_id, t);
     }
@@ -48,8 +51,9 @@ export const inspectWorkflowDraftTool: ConversationTool = {
             slug: workflow.slug ?? null,
             description: workflow.description ?? null,
             step_count: workflow.steps.length,
-            steps: workflow.steps.map((step, index) => {
+            steps: workflow.steps.flatMap((step, index) => {
               const id = typeof step.id === "string" ? step.id : `step-${index + 1}`;
+              if (args.step_ids && !args.step_ids.includes(id)) return [];
               const trace = traceById.get(id);
               // surface each step's side-effect class so the agent
               // knows which steps DISPATCH (sends, writes) and never
@@ -73,6 +77,15 @@ export const inspectWorkflowDraftTool: ConversationTool = {
                 kind: typeof step.kind === "string" ? step.kind : "unknown",
                 side_effect: sideEffect,
                 fields: Object.keys(step).sort(),
+                ...(args.step_ids ? { configuration: step } : {}),
+                ...(step.kind === "request"
+                  ? {
+                      method: step.method,
+                      connector_id: step.connector_id,
+                      s3: step.s3,
+                      url: step.url,
+                    }
+                  : {}),
                 ...(trace
                   ? {
                       latest_preview: {
@@ -88,12 +101,23 @@ export const inspectWorkflowDraftTool: ConversationTool = {
                         ...(trace.error_code ? { error_code: trace.error_code } : {}),
                       },
                     }
-                  : { latest_preview: { status: "no_result" } }),
+                  : {
+                      latest_preview: {
+                        status: args.include_preview ? "no_result" : "not_requested",
+                      },
+                    }),
               };
             }),
             edges: workflow.edges ?? [],
           },
-          latest_preview: nextDraft.latest_preview ?? null,
+          latest_preview: nextDraft.latest_preview
+            ? {
+                ok: nextDraft.latest_preview.ok,
+                summary: nextDraft.latest_preview.summary,
+                requires_repair: nextDraft.latest_preview.requires_repair,
+                warnings: nextDraft.latest_preview.warnings,
+              }
+            : null,
         },
         { readOnly: true },
       ),
