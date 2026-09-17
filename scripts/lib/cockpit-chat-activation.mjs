@@ -34,6 +34,28 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
           created_at: conversation.updated_at,
           parts: [{ type: "text", text: "Bitte den Bericht vorbereiten." }],
         },
+        {
+          id: "automation-review",
+          role: "assistant",
+          created_at: conversation.updated_at,
+          parts: [
+            {
+              type: "dynamic-tool",
+              toolName: "review_workflow_automation",
+              toolCallId: "review-automation",
+              state: "output-available",
+              input: { workflow_id: workflowId },
+              output: {
+                ok: true,
+                data: {
+                  kind: "workflow_automation_review",
+                  workflow_id: workflowId,
+                  schedules: [{ workflow_id: workflowId, environment: "prod" }],
+                },
+              },
+            },
+          ],
+        },
       ],
       resume_summary: {
         ...original.resume_summary,
@@ -216,7 +238,8 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
   };
   try {
     await stand.visit(page, `chat/${conversation.id}`);
-    const action = page.getByTestId("chat-review-schedule");
+    const action = page.getByTestId("chat-automation-tool-review");
+    await page.getByTestId("chat-transcript").getByTestId("chat-automation-tool").waitFor();
     await action.waitFor();
     if (
       page.viewportSize().width >= 768 &&

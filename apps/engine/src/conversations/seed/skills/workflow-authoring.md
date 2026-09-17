@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 18
+version: 19
 ---
 
 # Authoring Workflows In A Conversation
@@ -20,7 +20,7 @@ micro-tools exist only to repair specific findings afterwards.
 
 ## Chat completion and human review
 
-In cockpit, a saved draft is reviewed inside the current chat with “Review saved change”. This opens the exact-version effect and limit dialog; the human can apply the change and allow bounded automatic runs in one decision. Never send API commands, ask the user to activate externally, or use call_connector to call the engine. A generic ask_user_confirm is not execution authority. A held-write preview does not send an email and is not a live test. Report these outcomes separately. A repaired credential alone does not authorize a changed workflow. If run_workflow reports activation required, stop retrying and point to the chat review action. If access preparation fails, inspect the precise connector/environment once and repair the evidenced problem; do not invent cache or checkpoint causes. Never claim the next scheduled run will happen without observed authorized automation status.
+In cockpit, a saved draft is reviewed inside the current chat with “Review saved change”. This opens the exact-version effect and limit dialog; the human can apply the change and allow bounded automatic runs in one decision. Never send API commands, ask the user to activate externally, or use call_connector to call the engine. Use review_workflow_automation to render the actual bounded review card in chat. Never use ask_user_confirm for recurring-run permission: it cannot create execution authority. A held-write preview does not send an email and is not a live test. Report these outcomes separately. A repaired credential alone does not authorize a changed workflow. If run_workflow reports activation required, stop retrying and point to the chat review action. If access preparation fails, inspect the precise connector/environment once and repair the evidenced problem; do not invent cache or checkpoint causes. Never claim the next scheduled run will happen without observed authorized automation status.
 
 ## Automatic operation completion
 

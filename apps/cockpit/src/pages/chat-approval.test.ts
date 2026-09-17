@@ -92,3 +92,16 @@ test("held writes use a native single-run decision bound to the original pending
     savesInactiveWorkflow: false,
   });
 });
+
+test("a single-run intent cannot be presented as recurring permission by model wording", () => {
+  const detail = fixture();
+  detail.tool_calls[0]!.input = {
+    question: "Approve recurring delivery?",
+    commit_intent: {
+      kind: "run_workflow",
+      payload: { execute_writes: true },
+      description: "Authorize recurring delivery",
+    },
+  };
+  expect(chatApproval(detail)).toMatchObject({ singleRun: true, savesInactiveWorkflow: false });
+});
