@@ -1,4 +1,4 @@
-import { ResumeFormFieldSchema } from "../../../conversations/resume-form.ts";
+import { ResumeFormFieldSchema } from "../../../conversations/index.ts";
 // Shared Zod schemas, types, and SSE-frame helpers for the
 // conversations REST surface. Every per-sub-resource module imports
 // from here.
