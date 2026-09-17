@@ -8,13 +8,19 @@ side_effects: write
 idempotency: naturally
 maturity: stable
 tags: [driver, s3, object-store]
-version: 4
+version: 5
 ---
 
 # S3 And MinIO Connectors
 
 The `s3` driver talks to any S3-compatible object store: AWS S3, MinIO,
 Cloudflare R2, DigitalOcean Spaces. Same connector config, same step shape.
+
+## Recurring report permission
+
+A supported bounded storage proposal lives at `steps[index].s3.scope`, with exactly `key_prefix` (a fixed narrow existing folder ending `/`) and `max_bytes` (positive integer, at most 10000000, enforced for PUT). There is no `path_prefix` field and no `config` wrapper on a request step. Inspect the current draft's actual step indices before patching. Never guess an index from a different version or a narrative list.
+
+Keep the full existing folder including namespace segments. GET, HEAD, LIST and PUT can use this proposal; DELETE cannot. LIST additionally binds fixed `max_keys` and `paginate`. Recurring scope does not support metadata, range, presign or multipart options. This is draft preparation only: after validation and held-write preview, the human reviews folders, replacement effects and finite run limits through `review_workflow_automation` in the same chat. Do not claim permission exists until schedule automation is authorized. Explain report folders and outcomes to the user, not JSON fields or patch instructions.
 
 ## Connector config paths
 
