@@ -254,9 +254,38 @@ test("documentation placeholders do not turn a fixed request into a dynamic targ
   // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime configuration fixture
   await ctx.db
     .update(connectors)
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
     .set({ config: { static_headers: { "X-Target": "${input.destination}" } } })
     .where(eq(connectors.id, f.connector.id));
   expect((await resolveWorkflowEffectManifest(f.input, ctx.db)).eligible_for_repeated_runs).toBe(
     false,
   );
+});
+
+test("resolves S3 scope from the loaded connector without a network probe", async () => {
+  const f = await fixture({
+    method: "PUT",
+    path: undefined,
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
+    body: "${input.report}",
+    s3: {
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
+      key: "${input.key}",
+      content_type: "application/json",
+      scope: { key_prefix: "reports/daily/", max_bytes: 1000 },
+    },
+  });
+  await ctx.db
+    .update(connectors)
+    .set({
+      driver: "s3",
+      base_url: null,
+      config: { endpoint: "https://store.example.test", bucket: "bucket", region: "us-east-1" },
+    })
+    .where(eq(connectors.tenant_id, f.input.tenant_id));
+  const result = await resolveWorkflowEffectManifest(f.input, ctx.db, { include_review: true });
+  expect(result.eligible_for_repeated_runs).toBe(true);
+  expect(result.manifest.effects[0]?.storage?.base_url).toBe("https://store.example.test/bucket/");
+  expect(result.execution_shape?.requests[0]?.opaque_payload_omitted).toBe(false);
+  expect(result.execution_shape?.requests[0]?.redacted_request_json).toContain("reports/daily/");
 });

@@ -183,6 +183,8 @@ export function GrantWorkflowAuthority({
       effect.content_publication?.kind === "content_release" ? [effect.content_publication] : [],
     ) ?? [];
   const recurringContent = publications.length > 0 && !unsupported;
+  const storageScopes =
+    review?.manifest.effects.flatMap((effect) => (effect.storage ? [effect.storage] : [])) ?? [];
   const incomplete = review?.execution_shape.requests.some(
     (request) => request.request_review_truncated || request.opaque_payload_omitted,
   );
@@ -297,6 +299,30 @@ export function GrantWorkflowAuthority({
                 </AlertDescription>
               </Alert>
             ))}
+          {storageScopes.map((scope, index) => (
+            <Alert key={index} data-testid="authority-storage-boundary" className="bg-accent/10">
+              <AlertTitle>
+                {t(
+                  scope.operation === "PUT" ? "authority.storage.write" : "authority.storage.read",
+                )}
+              </AlertTitle>
+              <AlertDescription>
+                <p>{t("authority.storage.folder", { folder: scope.key_prefix })}</p>
+                <p className="break-all">{scope.base_url}</p>
+                {scope.operation === "PUT" ? (
+                  <p>
+                    {t("authority.storage.writeScope", {
+                      bytes: new Intl.NumberFormat(locale).format(scope.max_bytes),
+                    })}
+                  </p>
+                ) : scope.operation === "LIST" ? (
+                  <p>{t("authority.storage.listScope", { count: scope.max_keys })}</p>
+                ) : (
+                  <p>{t("authority.storage.readScope")}</p>
+                )}
+              </AlertDescription>
+            </Alert>
+          ))}
           {recurringReport && (
             <Alert data-testid="authority-report-boundary" className="bg-accent/10">
               <AlertTitle>{t("authority.report.recipients")}</AlertTitle>
