@@ -12,6 +12,14 @@ import {
 } from "../db/schema/index.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
+import {
+  assertContentRelease,
+  assertContentRevision,
+} from "../workflows/content-publication-boundary.ts";
+import {
+  contentBoundariesFromManifest,
+  loadContentRevisionReceipts,
+} from "../workflows/content-publication-proposal.ts";
 import { WorkflowEffectManifestSchema } from "../workflows/effect-manifest.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
 import { assertReadPath } from "../workflows/read-path-boundary.ts";
@@ -282,6 +290,14 @@ export async function assertExecutionAuthorityCurrent(
         "the loaded request configuration is outside its approved boundary",
       );
     if (effect.report_delivery) assertReportDelivery(effect.report_delivery, snapshot.request);
+    if (effect.content_publication?.kind === "content_revision")
+      assertContentRevision(effect.content_publication, snapshot.request);
+    if (effect.content_publication?.kind === "content_release")
+      assertContentRelease(
+        effect.content_publication,
+        snapshot.request,
+        await loadContentRevisionReceipts(db, tenant_id, execution_id),
+      );
     if (effect.read_path) assertReadPath(effect.read_path, snapshot.request);
     if (effect.read_query) assertReadQuery(effect.read_query, effect.target, snapshot.request);
     const system = effect.connector_id
@@ -326,7 +342,10 @@ export async function assertExecutionAuthorityCurrent(
       execution_environment: boundary.execution_environment,
     },
     db,
-    { report_boundaries: reportBoundariesFromManifest(boundary.effect_manifest) },
+    {
+      report_boundaries: reportBoundariesFromManifest(boundary.effect_manifest),
+      content_boundaries: contentBoundariesFromManifest(boundary.effect_manifest),
+    },
   );
   if (!current.eligible_for_repeated_runs || current.digest !== boundary.effect_manifest_digest)
     fail(

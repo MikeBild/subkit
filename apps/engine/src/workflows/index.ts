@@ -7,6 +7,10 @@ export { suggestAuthorityBounds } from "./authority-suggestions.ts";
 export * from "./catalog-view.ts";
 export * from "./categorize.ts";
 export * from "./connector-refs.ts";
+export {
+  contentBoundariesFromManifest,
+  contentPublicationLabels,
+} from "./content-publication-proposal.ts";
 export * from "./draft-schemas.ts";
 export * from "./drafts.ts";
 export { WorkflowEffectManifestSchema } from "./effect-manifest.ts";

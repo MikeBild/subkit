@@ -12,6 +12,8 @@ import {
   ActivateWorkflowDraftSchema,
   AuthorityExecutionShapeSchema,
   activateWorkflowDraft,
+  contentBoundariesFromManifest,
+  contentPublicationLabels,
   GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
   prepareReportAuthority,
@@ -64,6 +66,8 @@ const previewSchema = z
     manifest: WorkflowEffectManifestSchema,
     digest: z.string(),
     eligible_for_repeated_runs: z.boolean(),
+    preparation_required: z.boolean().optional(),
+    content_items: z.array(z.object({ id: z.string().uuid(), label: z.string() })).optional(),
     unavailable_steps: z.array(z.string()),
     execution_shape: AuthorityExecutionShapeSchema,
     schedules: z.array(
@@ -332,7 +336,10 @@ async function readAuthority(db: Db, tenant_id: string, workflow_id: string, aut
           execution_environment: row.execution_environment,
         },
         db,
-        { report_boundaries: reportBoundariesFromManifest(row.effect_manifest) },
+        {
+          report_boundaries: reportBoundariesFromManifest(row.effect_manifest),
+          content_boundaries: contentBoundariesFromManifest(row.effect_manifest),
+        },
       );
       if (current.digest !== row.effect_manifest_digest) state = "invalidated";
       else if (!current.eligible_for_repeated_runs) state = "unavailable";
@@ -530,7 +537,11 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
       if (!now) throw new Error("database clock unavailable");
       const schedules = await c
         .get("db")
-        .select({ cron: workflowsSchedules.cron, timezone: workflowsSchedules.timezone })
+        .select({
+          cron: workflowsSchedules.cron,
+          timezone: workflowsSchedules.timezone,
+          input: workflowsSchedules.input,
+        })
         .from(workflowsSchedules)
         .where(
           and(
@@ -544,8 +555,13 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
         {
           ...result,
           execution_shape: result.execution_shape,
+          content_items: contentPublicationLabels(
+            result.manifest,
+            schedules.map((schedule) => schedule.input),
+          ),
           schedules: schedules.map((schedule) => ({
-            ...schedule,
+            cron: schedule.cron,
+            timezone: schedule.timezone,
             next_run_at: nextScheduleTime(schedule.cron, schedule.timezone, new Date(now)),
           })),
           suggested_bounds: suggestAuthorityBounds(new Date(now), schedules),

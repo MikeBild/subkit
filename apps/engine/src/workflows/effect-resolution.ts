@@ -9,6 +9,15 @@ import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { authorityConnectorConfiguration } from "./authority-configuration.ts";
 import { authorityExecutionShape } from "./authority-execution-shape.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
+import {
+  ContentReleaseBoundarySchema,
+  contentPublicationShape,
+  supportsContentPublication,
+} from "./content-publication-boundary.ts";
+import {
+  type ContentPublicationBoundaries,
+  proposeContentPublicationBoundaries,
+} from "./content-publication-proposal.ts";
 import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "./effect-manifest.ts";
 import { readPathBoundary, readPathTarget } from "./read-path-boundary.ts";
 import { supportsReportDelivery } from "./report-delivery-boundary.ts";
@@ -45,7 +54,11 @@ function displayTarget(url: URL): string | null {
 export async function resolveWorkflowEffectManifest(
   raw: unknown,
   db: Executor,
-  options: { include_review?: boolean; report_boundaries?: ReportDeliveryBoundaries } = {},
+  options: {
+    include_review?: boolean;
+    report_boundaries?: ReportDeliveryBoundaries;
+    content_boundaries?: ContentPublicationBoundaries;
+  } = {},
 ) {
   const input = inputSchema.parse(raw);
   const [version] = await db
@@ -72,6 +85,16 @@ export async function resolveWorkflowEffectManifest(
       code: "workflow_version_unavailable",
     });
   const definition = WorkflowDefSchema.parse(version.dag);
+  const contentBoundaries =
+    options.content_boundaries ??
+    (await proposeContentPublicationBoundaries(
+      input,
+      definition.steps
+        .filter((step) => step.kind === "request" && step.method === "PUT")
+        .map((step) => step.id),
+      db,
+    ));
+  const contentShapes = new Map<string, ReturnType<typeof contentPublicationShape>>();
   let reportBoundaries = options.report_boundaries;
   const bindings: ResolvedEffectBinding[] = [];
   const unavailable_steps: string[] = [];
@@ -113,12 +136,22 @@ export async function resolveWorkflowEffectManifest(
     }
     const readPath = driver === "http" ? readPathBoundary(step, connector?.base_url) : null;
     if (readPath) target = readPathTarget(readPath);
+    const contentShape =
+      driver === "http" ? contentPublicationShape(step, connector?.base_url ?? target) : null;
+    contentShapes.set(step.id, contentShape);
+    const contentBoundary = contentBoundaries[step.id];
+    const supportedContent =
+      contentShape &&
+      contentBoundary &&
+      supportsContentPublication(step, contentBoundary, contentShape.target);
+    if (supportedContent) target = contentShape.target;
     if (reportBoundaries === undefined && supportsReportDelivery(step, target))
       reportBoundaries = await proposeReportDeliveryBoundaries(input, db);
     const configuration = authorityConnectorConfiguration(connector);
     bindings.push({
       tenant_id: input.tenant_id,
       step_id: step.id,
+      ...(supportedContent ? { content_publication: contentBoundary } : {}),
       ...(readPath ? { read_path: readPath } : {}),
       ...(reportBoundaries?.[step.id] && supportsReportDelivery(step, target)
         ? { report_delivery: reportBoundaries?.[step.id] }
@@ -144,6 +177,33 @@ export async function resolveWorkflowEffectManifest(
         }).includes("${"),
     });
   }
+  // A release publishes only receipts from approved revision-producing steps
+  // on this same connection. Runtime verifies the complete fixed member set.
+  for (const binding of bindings) {
+    const shape = contentShapes.get(binding.step_id);
+    if (binding.content_publication || shape?.kind !== "content_release") continue;
+    // Rechecking an existing grant must use its immutable boundary, never
+    // expand it from a newer preview or silently invent a missing profile.
+    if (options.content_boundaries !== undefined) continue;
+    const sources = bindings.flatMap((source) =>
+      source.connector_id === binding.connector_id &&
+      source.content_publication?.kind === "content_revision" &&
+      source.content_publication.origin === shape.origin
+        ? [{ step_id: source.step_id, item_ids: source.content_publication.item_ids }]
+        : [],
+    );
+    const publication = ContentReleaseBoundarySchema.safeParse({
+      kind: "content_release",
+      origin: shape.origin,
+      site_id: shape.site_id,
+      reason: shape.reason,
+      sources: sources.sort((a, b) => (a.step_id < b.step_id ? -1 : a.step_id > b.step_id ? 1 : 0)),
+    });
+    if (publication.success) {
+      binding.content_publication = publication.data;
+      binding.target = shape.target;
+    }
+  }
   const compiled = compileWorkflowEffectManifest({
     ...input,
     execution_options_digest: workflowJsonDigest({
@@ -156,6 +216,13 @@ export async function resolveWorkflowEffectManifest(
   unavailable_steps.sort();
   return {
     ...compiled,
+    preparation_required: bindings.some(
+      (binding) =>
+        (contentShapes.get(binding.step_id)?.kind === "content_revision" &&
+          !binding.content_publication) ||
+        (binding.target === "https://gmail.googleapis.com/gmail/v1/users/me/messages/send" &&
+          !binding.report_delivery),
+    ),
     ...(options.include_review
       ? { execution_shape: authorityExecutionShape(definition, bindings) }
       : {}),

@@ -1,5 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import type { MaterializedRequest } from "../execution/prepared-request.ts";
+import { hasRuntimeValue } from "./report-delivery-boundary.ts";
+import type { RequestStep } from "./types.ts";
 
 // Public ContentKit protocol: immutable markdown revisions and a release that
 // overlays exactly those revisions. Retiring existing content is not included.
@@ -47,11 +49,125 @@ export const ContentReleaseBoundarySchema = z
   .refine(
     ({ sources }) =>
       new Set(sources.map((source) => source.step_id)).size === sources.length &&
+      sources.reduce((count, source) => count + source.item_ids.length, 0) <= 100 &&
       new Set(sources.flatMap((source) => source.item_ids)).size ===
         sources.reduce((count, source) => count + source.item_ids.length, 0),
   );
 export type ContentRevisionBoundary = z.infer<typeof ContentRevisionBoundarySchema>;
 export type ContentReleaseBoundary = z.infer<typeof ContentReleaseBoundarySchema>;
+export const ContentPublicationBoundarySchema = z.union([
+  ContentRevisionBoundarySchema,
+  ContentReleaseBoundarySchema,
+]);
+export type ContentPublicationBoundary = z.infer<typeof ContentPublicationBoundarySchema>;
+
+/** Supported authored shapes. Only markdown and a whole item identifier may
+ * vary for revisions; only revision IDs may vary for a release. */
+export function contentPublicationShape(step: RequestStep, baseUrl: string | null) {
+  const { body, path, url, ...fixed } = step;
+  if (
+    !baseUrl ||
+    step.pagination ||
+    step.query ||
+    step.multipart ||
+    step.xml ||
+    (path && url) ||
+    hasRuntimeValue(fixed)
+  )
+    return null;
+  const authored = path ?? url;
+  if (!authored) return null;
+  const masked = authored.replace(
+    /\$\{(?:item|input|scope)(?:\.[A-Za-z_][A-Za-z0-9_]*)+\}/g,
+    "BOUND_ITEM",
+  );
+  if (hasRuntimeValue(masked) || /[%\\]/.test(masked)) return null;
+  try {
+    const target = new URL(masked, baseUrl);
+    if (
+      target.username ||
+      target.password ||
+      target.search ||
+      target.hash ||
+      !["http:", "https:"].includes(target.protocol) ||
+      target.host.toLowerCase().includes("bound_item")
+    )
+      return null;
+    const revision = /^\/v1\/content\/([^/]+)\/revisions$/.exec(target.pathname);
+    if (
+      step.method === "PUT" &&
+      revision &&
+      typeof body === "string" &&
+      (revision[1] === "BOUND_ITEM" || identifier.safeParse(revision[1]).success) &&
+      inspectContentRevisionRequest({
+        method: "PUT",
+        url: target.href.replace("BOUND_ITEM", "00000000-0000-4000-8000-000000000001"),
+        headers: step.headers ?? {},
+        body: "profile check",
+      })
+    ) {
+      return {
+        kind: "content_revision" as const,
+        origin: target.origin,
+        item_id: revision[1] === "BOUND_ITEM" ? null : revision[1]!,
+        target: `${target.origin}/v1/content/{approved-item}/revisions`,
+      };
+    }
+    const release = /^\/v1\/sites\/([^/]+)\/releases$/.exec(target.pathname);
+    const payload = z
+      .object({ revision_ids: z.unknown(), reason: z.string().max(1_000).optional() })
+      .strict()
+      .safeParse(body);
+    if (
+      step.method === "POST" &&
+      release &&
+      identifier.safeParse(release[1]).success &&
+      payload.success &&
+      payload.data.revision_ids !== undefined &&
+      !hasRuntimeValue(payload.data.reason) &&
+      requestUrl({ method: "POST", url: target.href, headers: step.headers ?? {}, body: null }) &&
+      /^application\/json(?:;\s*charset=utf-8)?$/i.test(
+        contentType({ method: "POST", url: target.href, headers: step.headers ?? {}, body: null }),
+      )
+    )
+      return {
+        kind: "content_release" as const,
+        origin: target.origin,
+        site_id: release[1]!,
+        reason: payload.data.reason ?? null,
+        target: target.href,
+      };
+  } catch {
+    /* An unresolved target is not a supported profile. */
+  }
+  return null;
+}
+
+export function supportsContentPublication(
+  step: RequestStep,
+  boundary: ContentPublicationBoundary,
+  target: string | null,
+): boolean {
+  const shape = contentPublicationShape(step, boundary.origin);
+  if (
+    !shape ||
+    shape.kind !== boundary.kind ||
+    shape.target !== target ||
+    shape.origin !== boundary.origin
+  )
+    return false;
+  if (boundary.kind === "content_revision" && shape.kind === "content_revision")
+    return (
+      shape.item_id === null ||
+      (boundary.item_ids.length === 1 && boundary.item_ids[0] === shape.item_id)
+    );
+  return (
+    boundary.kind === "content_release" &&
+    shape.kind === "content_release" &&
+    shape.site_id === boundary.site_id &&
+    shape.reason === boundary.reason
+  );
+}
 
 /** A receipt must be captured by the driver from the successful raw response,
  * before authored selectors/transforms. Admission must load receipts only from

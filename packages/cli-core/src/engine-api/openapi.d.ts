@@ -17442,6 +17442,26 @@ export interface components {
                     /** @enum {string} */
                     content_type: "text/plain" | "text/html";
                 };
+                content_publication?: {
+                    /** @enum {string} */
+                    kind: "content_revision";
+                    /** Format: uri */
+                    origin: string;
+                    item_ids: string[];
+                    max_bytes: number;
+                } | {
+                    /** @enum {string} */
+                    kind: "content_release";
+                    /** Format: uri */
+                    origin: string;
+                    /** Format: uuid */
+                    site_id: string;
+                    reason: string | null;
+                    sources: {
+                        step_id: string;
+                        item_ids: string[];
+                    }[];
+                };
                 read_path?: {
                     /** Format: uri */
                     origin: string;
@@ -17468,6 +17488,12 @@ export interface components {
             manifest: components["schemas"]["WorkflowEffectManifest"];
             digest: string;
             eligible_for_repeated_runs: boolean;
+            preparation_required?: boolean;
+            content_items?: {
+                /** Format: uuid */
+                id: string;
+                label: string;
+            }[];
             unavailable_steps: string[];
             execution_shape: components["schemas"]["AuthorityExecutionShape"];
             schedules: {

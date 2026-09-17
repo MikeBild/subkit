@@ -7,6 +7,14 @@ export const LOCALE_TAGS: Record<Locale, string> = {
 };
 
 const EN = {
+  "authority.content.title": "Allow scheduled publication?",
+  "authority.content.description":
+    "Update and publish the listed content on the existing schedule. Nothing is published now.",
+  "authority.content.members": "Update {count} fixed content items",
+  "authority.content.scope":
+    "Only new revisions of these items, up to 1 MB each, may be published to this site. Other items and removals are excluded.",
+  "authority.content.targets": "Content and publication destination",
+  "authority.content.confirm": "Allow scheduled publication",
   "authority.report.title": "Allow scheduled reports?",
   "authority.report.description":
     "Approve future reports within the limits below. Nothing is sent now.",
@@ -1604,6 +1612,14 @@ const EN = {
 export type TranslationKey = keyof typeof EN;
 
 const DE: Record<TranslationKey, string> = {
+  "authority.content.title": "Regelmäßige Veröffentlichung freigeben?",
+  "authority.content.description":
+    "Die aufgeführten Inhalte werden nach dem bestehenden Zeitplan aktualisiert und veröffentlicht. Jetzt wird nichts veröffentlicht.",
+  "authority.content.members": "{count} festgelegte Inhalte aktualisieren",
+  "authority.content.scope":
+    "Nur neue Fassungen dieser Inhalte mit jeweils höchstens 1 MB dürfen auf dieser Website veröffentlicht werden. Weitere Inhalte und Löschungen sind ausgeschlossen.",
+  "authority.content.targets": "Betroffene Inhalte und Veröffentlichungsziel",
+  "authority.content.confirm": "Regelmäßige Veröffentlichung freigeben",
   "authority.report.title": "Regelmäßige Berichte freigeben?",
   "authority.report.description":
     "Erlaube künftige Berichte innerhalb der folgenden Grenzen. Jetzt wird nichts versendet.",
