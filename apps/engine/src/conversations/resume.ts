@@ -1,3 +1,5 @@
+import type { ResumeFormField } from "./resume-form.ts";
+import { resumeFormFields } from "./resume-form.ts";
 // Resume summary for conversations.
 //
 // Surfaces a single-sentence "where were we / what next" banner whenever
@@ -27,7 +29,12 @@ export interface ResumeSummary {
     id: string;
     tool_call_id?: string | null;
     tool_name: string;
-    prompt?: { question: string; intent_kind?: string; authorization_url?: string };
+    prompt?: {
+      question: string;
+      intent_kind?: string;
+      authorization_url?: string;
+      fields?: ResumeFormField[];
+    };
     summary: string;
     /** When this approval lapses. The only real deadline in the product;
      *  without it a client cannot tell "running out" from "just waiting". */
@@ -285,11 +292,17 @@ function buildOneSentence(p: OneSentenceInputs): string {
 
 /** Project the dialog fields only; never expose its execution or approval capability. */
 export function pendingPrompt(input: unknown): {
-  prompt?: { question: string; intent_kind?: string; authorization_url?: string };
+  prompt?: {
+    question: string;
+    intent_kind?: string;
+    authorization_url?: string;
+    fields?: ResumeFormField[];
+  };
 } {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {};
   const value = input as Record<string, unknown>;
   if (typeof value.question !== "string" || !value.question.trim()) return {};
+  const fields = resumeFormFields(value.fields);
   const intent = value.commit_intent as { kind?: unknown } | undefined;
   let authorizationUrl: string | undefined;
   if (intent?.kind === "oauth_completed" && typeof value.authorization_url === "string") {
@@ -310,6 +323,7 @@ export function pendingPrompt(input: unknown): {
   return {
     prompt: {
       question: value.question,
+      ...(fields ? { fields } : {}),
       ...(typeof intent?.kind === "string" ? { intent_kind: intent.kind } : {}),
       ...(authorizationUrl ? { authorization_url: authorizationUrl } : {}),
     },

@@ -290,3 +290,16 @@ export function respondToToolCall(
 export function logout(): Promise<void> {
   return apiRequest("/v1/identity/logout", { method: "POST" });
 }
+
+export function respondToChatForm(
+  conversationId: string,
+  elicitationId: string,
+  output: Record<string, unknown>,
+  onEvent?: (event: ConversationStreamEvent) => void,
+): Promise<ConversationRun> {
+  return streamConversation(
+    `/v1/conversations/${encodeURIComponent(conversationId)}/elicitations/${encodeURIComponent(elicitationId)}/respond`,
+    { output },
+    onEvent,
+  );
+}

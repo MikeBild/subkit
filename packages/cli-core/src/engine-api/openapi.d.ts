@@ -19981,6 +19981,19 @@ export interface components {
                         question: string;
                         intent_kind?: string;
                         authorization_url?: string;
+                        fields?: {
+                            name: string;
+                            label: string;
+                            /** @enum {string} */
+                            type: "text" | "number" | "boolean" | "select" | "json" | "multi";
+                            required?: boolean;
+                            placeholder?: string;
+                            options?: string[] | {
+                                value: string;
+                                label: string;
+                            }[];
+                            default?: string | number | boolean | string[];
+                        }[];
                     };
                     expires_at: string;
                 } | null;
