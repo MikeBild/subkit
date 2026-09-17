@@ -54,7 +54,7 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function fixture(driver: "http" | "graphql" = "http", steps = 1, withOAuth = false) {
+async function fixture(driver: "http" | "graphql" | "s3" = "http", steps = 1, withOAuth = false) {
   const slug = `authority-runtime-${++sequence}`;
   const db = ctx.testDb.db;
   const [connector] = await db
@@ -67,6 +67,16 @@ async function fixture(driver: "http" | "graphql" = "http", steps = 1, withOAuth
       auth_type: withOAuth ? "oauth2" : "none",
       environment: "dev",
       base_url: `${mock.baseUrl}/endpoint`,
+      ...(driver === "s3"
+        ? {
+            config: {
+              endpoint: mock.baseUrl,
+              bucket: "reports",
+              region: "us-east-1",
+              force_path_style: true,
+            },
+          }
+        : {}),
       ...(withOAuth
         ? {
             config: {
@@ -111,9 +121,19 @@ async function fixture(driver: "http" | "graphql" = "http", steps = 1, withOAuth
       kind: "request",
       connector_id: connector.id,
       ...(index > 0 ? { depends_on: [`send${index - 1}`] } : {}),
-      ...(driver === "http"
-        ? { method: "POST", path: "/messages", body: { recipient: "reviewed@example.test" } }
-        : { graphql: { operation: "mutation", query: "mutation { sendMessage { id } }" } }),
+      ...(driver === "s3"
+        ? {
+            method: "PUT",
+            body: "report",
+            s3: {
+              // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime key boundary fixture
+              key: "${input.key}",
+              scope: { key_prefix: "daily/", max_bytes: 1000 },
+            },
+          }
+        : driver === "http"
+          ? { method: "POST", path: "/messages", body: { recipient: "reviewed@example.test" } }
+          : { graphql: { operation: "mutation", query: "mutation { sendMessage { id } }" } }),
       max_retries: 2,
       retry_backoff_ms: 50,
     })),
@@ -155,14 +175,14 @@ async function fixture(driver: "http" | "graphql" = "http", steps = 1, withOAuth
   return {
     authority,
     connector,
-    async run() {
+    async run(input: Record<string, unknown> = {}) {
       const admitted = await admitAuthorizedWorkflowExecution(
         {
           tenant_id: ctx.tenantId,
           workflow_id: workflow.workflow_id,
           execution_environment: "dev",
           request_source: "api",
-          input: {},
+          input,
         },
         db,
       );
@@ -170,7 +190,7 @@ async function fixture(driver: "http" | "graphql" = "http", steps = 1, withOAuth
         db,
         tenant_id: ctx.tenantId,
         source: { kind: "saved", workflow_id: workflow.workflow_id },
-        input: {},
+        input,
         options: { existing_execution_id: admitted.execution_id },
       });
     },
@@ -257,3 +277,18 @@ for (const driver of ["http", "graphql"] as const) {
     expect(writes).toBe(1);
   });
 }
+
+test("S3 runtime enforces the reviewed folder before any outbound write", async () => {
+  const f = await fixture("s3");
+  let requests = 0;
+  mock.setHandler((_, res) => {
+    requests++;
+    res.writeHead(200, { etag: '"fixture"' });
+    res.end();
+  });
+  expect((await f.run({ key: "daily/report.json" })).status).toBe("succeeded");
+  expect(requests).toBe(1);
+  const denied = await f.run({ key: "private/report.json" });
+  expect(denied.status).toBe("failed");
+  expect(requests).toBe(1);
+});

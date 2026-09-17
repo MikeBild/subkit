@@ -11,6 +11,8 @@ let server: Server;
 let endpoint: string;
 let requests: string[] = [];
 let redirect = false;
+let listMode: "normal" | "repeat" | "outside" | "missing" = "normal";
+let queries: URLSearchParams[] = [];
 let connector: NonNullable<Awaited<ReturnType<typeof loadConnectorSystem>>>["connector"];
 let tenant: string;
 beforeAll(async () => {
@@ -18,6 +20,18 @@ beforeAll(async () => {
   server = createServer((req, res) => {
     requests.push(`${req.method} ${new URL(req.url ?? "/", endpoint).pathname}`);
     req.resume();
+    const query = new URL(req.url ?? "/", endpoint).searchParams;
+    queries.push(query);
+    if (query.get("list-type") === "2" && !redirect) {
+      const second = query.has("continuation-token");
+      const key = listMode === "outside" ? "private/secret" : `reports/${second ? "b" : "a"}.json`;
+      const truncated = !second || listMode === "repeat";
+      res.writeHead(200, { "content-type": "application/xml" });
+      res.end(
+        `<ListBucketResult><IsTruncated>${truncated}</IsTruncated><Contents><Key>${key}</Key><Size>4</Size><ETag>&quot;sample&quot;</ETag><LastModified>2026-01-01T00:00:00.000Z</LastModified></Contents>${truncated && listMode !== "missing" ? "<NextContinuationToken>next+token</NextContinuationToken>" : ""}</ListBucketResult>`,
+      );
+      return;
+    }
     if (redirect) {
       res.writeHead(307, { location: `${endpoint}/unapproved-target` });
       res.end();
@@ -77,6 +91,8 @@ afterAll(async () => {
 });
 beforeEach(() => {
   requests = [];
+  queries = [];
+  listMode = "normal";
   redirect = false;
 });
 
@@ -136,4 +152,124 @@ describe("bound S3 object dispatch", () => {
     ).rejects.toMatchObject({ code: "authority_invalid" });
     expect(requests).toEqual(["PUT /bucket/object"]);
   });
+});
+
+test("bounded LIST rechecks authority per page and preserves the scoped query", async () => {
+  let checks = 0;
+  const observations: unknown[] = [];
+  const result = await executeS3Request({
+    db: testDb.db,
+    tenant_id: tenant,
+    connector,
+    method: "LIST",
+    path: "/reports/",
+    maxKeys: 2,
+    paginate: true,
+    before_dispatch: async (_credential, request) => {
+      observations.push(request);
+      checks += 1;
+      return { redirect: "manual" };
+    },
+  });
+  expect(checks).toBe(2);
+  expect(observations).toHaveLength(2);
+  expect(JSON.stringify(observations)).not.toMatch(/CANARY|Authorization|X-Amz/);
+  expect(requests).toEqual(["GET /bucket/", "GET /bucket/"]);
+  expect(queries.map((query) => query.get("prefix"))).toEqual(["reports/", "reports/"]);
+  expect(queries.map((query) => query.get("max-keys"))).toEqual(["2", "1"]);
+  expect(queries[1]!.get("continuation-token")).toBe("next+token");
+  expect(result.body).toMatchObject({ count: 2, truncated: false, paginated: true });
+});
+
+test("revocation before LIST page two prevents its dispatch", async () => {
+  let checks = 0;
+  await expect(
+    executeS3Request({
+      db: testDb.db,
+      tenant_id: tenant,
+      connector,
+      method: "LIST",
+      path: "/reports/",
+      maxKeys: 2,
+      paginate: true,
+      before_dispatch: async () => {
+        if (++checks === 2) throw new Error("revoked");
+        return { redirect: "manual" };
+      },
+    }),
+  ).rejects.toThrow("revoked");
+  expect(requests).toHaveLength(1);
+});
+for (const mode of ["repeat", "outside", "missing"] as const) {
+  test(`bounded LIST rejects ${mode} page evidence`, async () => {
+    listMode = mode;
+    await expect(
+      executeS3Request({
+        db: testDb.db,
+        tenant_id: tenant,
+        connector,
+        method: "LIST",
+        path: "/reports/",
+        maxKeys: 10,
+        paginate: true,
+        before_dispatch: async () => ({ redirect: "manual" }),
+      }),
+    ).rejects.toThrow("invalid or out-of-scope");
+    expect(requests.length).toBeLessThanOrEqual(2);
+  });
+}
+test("bounded LIST stops at the approved key cap", async () => {
+  const result = await executeS3Request({
+    db: testDb.db,
+    tenant_id: tenant,
+    connector,
+    method: "LIST",
+    path: "/reports/",
+    maxKeys: 1,
+    paginate: true,
+    before_dispatch: async () => ({ redirect: "manual" }),
+  });
+  expect(requests).toHaveLength(1);
+  expect(result.body).toMatchObject({ count: 1, truncated: true });
+});
+test("bounded LIST does not follow redirects", async () => {
+  redirect = true;
+  await expect(
+    executeS3Request({
+      db: testDb.db,
+      tenant_id: tenant,
+      connector,
+      method: "LIST",
+      path: "/reports/",
+      maxKeys: 1,
+      before_dispatch: async () => ({ redirect: "manual" }),
+    }),
+  ).rejects.toMatchObject({ code: "authority_invalid" });
+  expect(requests).toHaveLength(1);
+});
+
+test("bounded PUT exposes exactly the JSON content type to the authority gate", async () => {
+  const seen: unknown[] = [];
+  await executeS3Request({
+    db: testDb.db,
+    tenant_id: tenant,
+    connector,
+    method: "PUT",
+    path: "/reports/daily.json",
+    body: "{}",
+    contentType: "application/json",
+    before_dispatch: async (_credential, request) => {
+      seen.push(request);
+      return { redirect: "manual" };
+    },
+  });
+  expect(seen).toEqual([
+    {
+      method: "PUT",
+      url: `${endpoint}/bucket/reports/daily.json`,
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    },
+  ]);
+  expect(requests).toEqual(["PUT /bucket/reports/daily.json"]);
 });

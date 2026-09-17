@@ -21,10 +21,15 @@ import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { ConnectorView } from "../types.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
-import type { RequestDispatchPolicy, ResolvedConnectorCredential } from "./http.ts";
+import type {
+  HttpDispatchObservation,
+  RequestDispatchPolicy,
+  ResolvedConnectorCredential,
+} from "./http.ts";
 import type { DriverProbeResult } from "./index.ts";
 import { classifyS3ProbeError } from "./probe-classify.ts";
 import { executeBoundS3Request } from "./s3-bound-dispatch.ts";
+import { executeBoundS3List } from "./s3-bound-list.ts";
 
 export interface S3ConnectorConfig {
   region: string;
@@ -225,6 +230,7 @@ export async function executeS3Request(p: {
       ResolvedConnectorCredential,
       "credential_id" | "credential_revision" | "connection_authority"
     >,
+    request?: HttpDispatchObservation,
   ) => Promise<RequestDispatchPolicy | undefined>;
   signal?: AbortSignal;
   timeout_ms?: number;
@@ -268,6 +274,13 @@ export async function executeS3Request(p: {
     credential_revision,
   } = await resolveS3Credentials(p.db, p.tenant_id, p.connector, p.credential_override);
   const client = buildS3Client({ connector: p.connector, credentials });
+  if (p.before_dispatch && p.method === "LIST")
+    return executeBoundS3List({
+      client,
+      params: p,
+      credentials,
+      credential: { credential_id, credential_revision, connection_authority: null },
+    });
   if (p.before_dispatch)
     return executeBoundS3Request({
       client,

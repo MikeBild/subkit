@@ -26,6 +26,7 @@ import {
   proposeReportDeliveryBoundaries,
   type ReportDeliveryBoundaries,
 } from "./report-delivery-proposal.ts";
+import { storageBaseUrl, storageBoundary, storageTarget } from "./storage-boundary.ts";
 import { WorkflowDefSchema } from "./types.ts";
 
 const inputSchema = z
@@ -134,6 +135,9 @@ export async function resolveWorkflowEffectManifest(
     } catch {
       // A malformed or unresolved URL is an unbound target, never a probe.
     }
+    const storage =
+      driver === "s3" ? storageBoundary(step, storageBaseUrl(connector?.config)) : null;
+    if (storage) target = storageTarget(storage);
     const readPath = driver === "http" ? readPathBoundary(step, connector?.base_url) : null;
     if (readPath) target = readPathTarget(readPath);
     const contentShape =
@@ -153,6 +157,7 @@ export async function resolveWorkflowEffectManifest(
       step_id: step.id,
       ...(supportedContent ? { content_publication: contentBoundary } : {}),
       ...(readPath ? { read_path: readPath } : {}),
+      ...(storage ? { storage } : {}),
       ...(reportBoundaries?.[step.id] && supportsReportDelivery(step, target)
         ? { report_delivery: reportBoundaries?.[step.id] }
         : {}),

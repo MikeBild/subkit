@@ -85,7 +85,7 @@ export function ChatFormCard({
         <CardDescription>{question}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {form.fields.map((field) => (
+        {form.fields.map((field, fieldIndex) => (
           <Field key={field.name}>
             <FieldLabel htmlFor={`${testId}-${field.name}`}>
               {field.label === field.name ? (fieldLabels[field.name] ?? field.label) : field.label}
@@ -93,6 +93,7 @@ export function ChatFormCard({
             </FieldLabel>
             {field.type === "boolean" ? (
               <Checkbox
+                data-testid={`${testId}-field-${fieldIndex}`}
                 id={`${testId}-${field.name}`}
                 disabled={busy || expired}
                 checked={values[field.name] === true}
@@ -104,13 +105,20 @@ export function ChatFormCard({
                 value={String(values[field.name] ?? "")}
                 onValueChange={(value) => set(field.name, value)}
               >
-                <SelectTrigger id={`${testId}-${field.name}`}>
+                <SelectTrigger
+                  data-testid={`${testId}-field-${fieldIndex}`}
+                  id={`${testId}-${field.name}`}
+                >
                   <SelectValue placeholder={t("chat.choice.select")} />
                 </SelectTrigger>
                 <SelectContent>
-                  {field.options?.map((option) =>
+                  {field.options?.map((option, optionIndex) =>
                     typeof option === "object" ? (
-                      <SelectItem key={option.value} value={option.value}>
+                      <SelectItem
+                        data-testid={`${testId}-field-${fieldIndex}-option-${optionIndex}`}
+                        key={option.value}
+                        value={option.value}
+                      >
                         {option.label}
                       </SelectItem>
                     ) : null,
@@ -119,10 +127,11 @@ export function ChatFormCard({
               </Select>
             ) : field.type === "multi" ? (
               <div className="flex flex-col gap-2">
-                {field.options?.map((option) =>
+                {field.options?.map((option, optionIndex) =>
                   typeof option === "string" ? (
                     <label key={option} htmlFor={`${testId}-${field.name}-${option}`}>
                       <Checkbox
+                        data-testid={`${testId}-field-${fieldIndex}-option-${optionIndex}`}
                         id={`${testId}-${field.name}-${option}`}
                         disabled={busy || expired}
                         checked={
@@ -148,6 +157,7 @@ export function ChatFormCard({
               </div>
             ) : field.type === "json" ? (
               <Textarea
+                data-testid={`${testId}-field-${fieldIndex}`}
                 id={`${testId}-${field.name}`}
                 disabled={busy || expired}
                 value={String(values[field.name] ?? "")}
@@ -156,6 +166,7 @@ export function ChatFormCard({
               />
             ) : (
               <Input
+                data-testid={`${testId}-field-${fieldIndex}`}
                 id={`${testId}-${field.name}`}
                 type={field.type === "number" ? "number" : "text"}
                 disabled={busy || expired}
@@ -171,6 +182,7 @@ export function ChatFormCard({
       </CardContent>
       <CardFooter className="gap-2">
         <Button
+          data-testid={`${testId}-cancel`}
           variant="outline"
           disabled={busy || expired}
           onClick={() => onAnswer(form.id, { declined: true })}
@@ -178,6 +190,7 @@ export function ChatFormCard({
           {t("chat.form.cancel")}
         </Button>
         <Button
+          data-testid={`${testId}-submit`}
           disabled={busy || expired || output === null}
           onClick={() => output && onAnswer(form.id, { values: output })}
         >
