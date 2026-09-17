@@ -8,6 +8,61 @@ import {
 
 export type ReportDeliveryBoundaries = Record<string, ReportDeliveryBoundary>;
 
+/** Evidence for repair diagnosis, without credentials or message contents.
+ * A succeeded held run can still contain unexecuted dependent steps. */
+export async function inspectHeldPreviewEvidence(
+  input: {
+    tenant_id: string;
+    workflow_id: string;
+    workflow_version_id: string;
+    execution_environment: "dev" | "prod";
+  },
+  db: Executor,
+) {
+  const [run] = await db
+    .select({ id: executions.id, status: executions.status })
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, input.tenant_id),
+        eq(executions.workflow_id, input.workflow_id),
+        eq(executions.workflow_version_id, input.workflow_version_id),
+        eq(executions.execution_mode, input.execution_environment),
+        eq(executions.hold_writes, true),
+      ),
+    )
+    .orderBy(desc(executions.created_at), desc(executions.id))
+    .limit(1);
+  if (!run) return null;
+  const steps = await db
+    .select({
+      step_id: executionSteps.step_key,
+      status: executionSteps.status,
+      meta: executionSteps.request_meta,
+    })
+    .from(executionSteps)
+    .where(
+      and(eq(executionSteps.tenant_id, input.tenant_id), eq(executionSteps.execution_id, run.id)),
+    );
+  return {
+    execution_id: run.id,
+    status: run.status,
+    steps: steps.map(({ step_id, status, meta }) => {
+      const extras = (
+        meta as { extras?: { held?: boolean; report_delivery_proposal?: unknown } } | null
+      )?.extras;
+      return {
+        step_id,
+        status,
+        held: extras?.held === true,
+        report_boundary_observed: ReportDeliveryBoundarySchema.safeParse(
+          extras?.report_delivery_proposal,
+        ).success,
+      };
+    }),
+  };
+}
+
 /** Existing human-approved boundaries survive changing report content and
  * preview retention. Without a grant, derive a proposal from an exact-version
  * successful held run. This read never executes or authorizes anything. */
