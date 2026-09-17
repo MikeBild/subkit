@@ -101,6 +101,7 @@ const PRODUCT_TOOLS = [
   "preview_patch_candidate",
   "probe_connector",
   "read_knowledge",
+  "review_workflow_automation",
   "run_workflow",
   "save_learning",
   "search_docs",
@@ -188,6 +189,7 @@ const AUTHORING_TOOLS = [
   "probe_connector",
   "propose_schema_migration",
   "read_knowledge",
+  "review_workflow_automation",
   "run_workflow",
   "save_learning",
   "search_docs",
@@ -302,6 +304,7 @@ const ADMIN_TOOLS = [
   // session that needed it was an MCP client, and a recovery tool that is not
   // reachable from the surface where the damage happens is not a recovery tool.
   "restore_workflow_version",
+  "review_workflow_automation",
   "revoke_api_key",
   "revoke_portal_token",
   "run_workflow",

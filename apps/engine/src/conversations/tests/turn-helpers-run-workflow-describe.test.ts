@@ -9,6 +9,25 @@
 
 import { describe, expect, test } from "bun:test";
 import { classifyFallbackSynthesis, synthesizeFallbackMessage } from "../turn-helpers.ts";
+
+test("a readiness card is not followed by a technical fallback summary", () => {
+  const events = [
+    {
+      type: "tool_result" as const,
+      call_id: "review",
+      tool: "review_workflow_automation",
+      output: { ok: true, data: { presentation: "automation_readiness_card" } },
+    },
+  ];
+  expect(classifyFallbackSynthesis({ events, loopWarnings: 0 })).toBeNull();
+  expect(
+    classifyFallbackSynthesis({
+      events: [{ ...events[0]!, output: { ok: false, error_code: "workflow_not_found" } }],
+      loopWarnings: 0,
+    }),
+  ).not.toBeNull();
+});
+
 import type { TurnEvent } from "../types.ts";
 
 function toolResultEvent(tool: string, output: Record<string, unknown>): TurnEvent {
