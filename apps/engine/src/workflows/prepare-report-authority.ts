@@ -3,7 +3,6 @@ import type { Db } from "../db/client.ts";
 import { runExecution } from "../execution/engine.ts";
 import { listSchedules } from "../scheduler/repo.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
-import { GMAIL_SEND_TARGET } from "./report-delivery-boundary.ts";
 
 /** Prepare an actual held delivery when its recipient has not been observed.
  * This cannot activate a version, send a message or create an execution grant. */
@@ -18,16 +17,7 @@ export async function prepareReportAuthority(
   principal: ResolvedPrincipal,
 ) {
   const preview = await previewWorkflowAuthority(input, db);
-  if (
-    preview.eligible_for_repeated_runs ||
-    !preview.manifest.effects.some(
-      (effect) =>
-        effect.target === GMAIL_SEND_TARGET &&
-        effect.operation === "POST" &&
-        !effect.report_delivery,
-    )
-  )
-    return;
+  if (preview.eligible_for_repeated_runs || !preview.preparation_required) return;
   const schedules = (await listSchedules(db, input.tenant_id, input.workflow_id)).rows.filter(
     (row) => row.execution_mode === input.execution_environment && !row.paused,
   );
@@ -54,7 +44,7 @@ export async function prepareReportAuthority(
     },
   });
   if (result.status !== "succeeded")
-    throw Object.assign(new Error("The report preview did not complete; no message was sent"), {
+    throw Object.assign(new Error("The preparation did not complete; external writes were held"), {
       code: "authority_preparation_failed",
     });
 }

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "8.0.39",
+    "version": "8.0.40",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -4577,6 +4577,108 @@
                   ],
                   "additionalProperties": false
                 },
+                "content_publication": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "content_revision"
+                          ]
+                        },
+                        "origin": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "item_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "minItems": 1,
+                          "maxItems": 100
+                        },
+                        "max_bytes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000000
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "origin",
+                        "item_ids",
+                        "max_bytes"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "content_release"
+                          ]
+                        },
+                        "origin": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "site_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "reason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "maxLength": 1000
+                        },
+                        "sources": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "step_id": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "item_ids": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "format": "uuid"
+                                },
+                                "minItems": 1,
+                                "maxItems": 100
+                              }
+                            },
+                            "required": [
+                              "step_id",
+                              "item_ids"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1,
+                          "maxItems": 100
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "origin",
+                        "site_id",
+                        "reason",
+                        "sources"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
                 "read_path": {
                   "type": "object",
                   "properties": {
@@ -4711,6 +4813,28 @@
           },
           "eligible_for_repeated_runs": {
             "type": "boolean"
+          },
+          "preparation_required": {
+            "type": "boolean"
+          },
+          "content_items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "label"
+              ]
+            }
           },
           "unavailable_steps": {
             "type": "array",

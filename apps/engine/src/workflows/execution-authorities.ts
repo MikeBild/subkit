@@ -24,6 +24,7 @@ import { invalidateOperationalOverview } from "../operator/index.ts";
 import { can } from "../rbac/evaluator.ts";
 import { activateReviewedDraft } from "./activate-reviewed-draft.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
+import type { ContentPublicationBoundaries } from "./content-publication-proposal.ts";
 import { resolveWorkflowEffectManifest } from "./effect-resolution.ts";
 import type { ReportDeliveryBoundaries } from "./report-delivery-proposal.ts";
 import { normalizeWorkflowRunInput } from "./run-input.ts";
@@ -67,7 +68,11 @@ export function previewWorkflowAuthority(
     execution_environment: "dev" | "prod";
   },
   db: Executor,
-  options: { include_review?: boolean; report_boundaries?: ReportDeliveryBoundaries } = {},
+  options: {
+    include_review?: boolean;
+    report_boundaries?: ReportDeliveryBoundaries;
+    content_boundaries?: ContentPublicationBoundaries;
+  } = {},
 ) {
   return resolveWorkflowEffectManifest(
     {

@@ -133,7 +133,20 @@ test("held preview records fixed item evidence without publishing or creating a 
     expect(extras?.content_revision_receipt).toBeUndefined();
     expect(writes).toBe(0);
     // Evidence alone cannot grant repeated writes or resolve a decision.
-    expect((await f.inspect()).eligible_for_repeated_runs).toBe(false);
+    const review = await f.inspect();
+    expect(review.eligible_for_repeated_runs).toBe(true);
+    await expect(
+      admitAuthorizedWorkflowExecution(
+        {
+          tenant_id: ctx.tenantId,
+          workflow_id: review.manifest.workflow_id,
+          execution_environment: "dev",
+          request_source: "scheduler",
+          input: {},
+        },
+        ctx.testDb.db,
+      ),
+    ).rejects.toMatchObject({ code: "execution_authority_unavailable" });
   });
 });
 

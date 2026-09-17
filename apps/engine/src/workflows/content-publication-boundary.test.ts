@@ -5,9 +5,12 @@ import {
   assertContentRevision,
   ContentReleaseBoundarySchema,
   type ContentRevisionReceipt,
+  contentPublicationShape,
   inspectContentRevisionRequest,
   inspectContentRevisionResponse,
+  supportsContentPublication,
 } from "./content-publication-boundary.ts";
+import { WorkflowDefSchema } from "./types.ts";
 
 const origin = "https://content.example.test";
 const itemA = "00000000-0000-4000-8000-000000000001";
@@ -50,6 +53,47 @@ const receipts: ContentRevisionReceipt[] = [
   { step_id: "update", origin, item_id: itemA, revision_id: revisionA },
   { step_id: "update", origin, item_id: itemB, revision_id: revisionB },
 ];
+
+test("only the documented authored revision shape can acquire a reusable boundary", () => {
+  const request = {
+    id: "update",
+    connector_id: site,
+    kind: "request",
+    method: "PUT",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored identifier substitution
+    path: "/v1/content/${item.item_id}/revisions",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored content substitution
+    body: "${item.markdown}",
+    headers: { "Content-Type": "text/markdown" },
+  };
+  const parsed = (change: Record<string, unknown> = {}) => {
+    const step = WorkflowDefSchema.parse({ name: "Boundary", steps: [{ ...request, ...change }] })
+      .steps[0]!;
+    if (step.kind !== "request") throw new Error("expected request");
+    return step;
+  };
+  const shape = contentPublicationShape(parsed(), origin);
+  expect(shape?.kind).toBe("content_revision");
+  expect(supportsContentPublication(parsed(), revisionBoundary, shape?.target ?? null)).toBe(true);
+  for (const change of [
+    { method: "DELETE" },
+    { headers: { "Content-Type": "application/json" } },
+    { headers: { "Content-Type": "text/markdown", "X-HTTP-Method-Override": "DELETE" } },
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: reject variable origin
+    { path: "https://${input.host}/v1/content/${item.item_id}/revisions" },
+    { query: { publish: "true" } },
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: reject variable header
+    { headers: { "Content-Type": "${input.type}" } },
+  ])
+    expect(contentPublicationShape(parsed(change), origin)).toBeNull();
+  expect(
+    supportsContentPublication(
+      parsed(),
+      { ...revisionBoundary, origin: "https://other.example.test" },
+      shape?.target ?? null,
+    ),
+  ).toBe(false);
+});
 
 describe("bounded markdown revision", () => {
   test("allows changing content for each fixed approved member", () => {

@@ -90,11 +90,7 @@ export function GrantWorkflowAuthority({
       let result = await apiRequest<WorkflowAuthorityPreview>(url);
       if (
         !result.eligible_for_repeated_runs &&
-        result.manifest.effects.some(
-          (effect) =>
-            effect.target === "https://gmail.googleapis.com/gmail/v1/users/me/messages/send" &&
-            !effect.report_delivery,
-        ) &&
+        result.preparation_required &&
         session.permissions.includes("workflow:run")
       ) {
         await apiRequest(
@@ -182,6 +178,11 @@ export function GrantWorkflowAuthority({
       effect.report_delivery ? [effect.report_delivery] : [],
     ) ?? [];
   const recurringReport = deliveries.length > 0 && !unsupported;
+  const publications =
+    review?.manifest.effects.flatMap((effect) =>
+      effect.content_publication?.kind === "content_release" ? [effect.content_publication] : [],
+    ) ?? [];
+  const recurringContent = publications.length > 0 && !unsupported;
   const incomplete = review?.execution_shape.requests.some(
     (request) => request.request_review_truncated || request.opaque_payload_omitted,
   );
@@ -215,33 +216,87 @@ export function GrantWorkflowAuthority({
         <DialogHeader className="-mx-4 -mt-4 shrink-0 bg-accent/10 px-4 py-4 pr-12">
           <DialogTitle>
             {t(
-              recurringReport
-                ? "authority.report.title"
-                : unsupported
-                  ? "authority.adjustTitle"
-                  : activation
-                    ? "chat.activation.title"
-                    : onGrant
-                      ? "decisions.applyAndAuthorize"
-                      : "authority.grantOpen",
+              recurringContent
+                ? "authority.content.title"
+                : recurringReport
+                  ? "authority.report.title"
+                  : unsupported
+                    ? "authority.adjustTitle"
+                    : activation
+                      ? "chat.activation.title"
+                      : onGrant
+                        ? "decisions.applyAndAuthorize"
+                        : "authority.grantOpen",
             )}
           </DialogTitle>
           <DialogDescription>
             {t(
-              recurringReport
-                ? "authority.report.description"
-                : unsupported
-                  ? "authority.adjustDescription"
-                  : activation
-                    ? "chat.activation.description"
-                    : onGrant
-                      ? "decisions.applyAndAuthorizeDescription"
-                      : "authority.grantDescription",
+              recurringContent
+                ? "authority.content.description"
+                : recurringReport
+                  ? "authority.report.description"
+                  : unsupported
+                    ? "authority.adjustDescription"
+                    : activation
+                      ? "chat.activation.description"
+                      : onGrant
+                        ? "decisions.applyAndAuthorizeDescription"
+                        : "authority.grantDescription",
             )}
           </DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
           {reviewContent}
+          {recurringContent &&
+            publications.map((publication, index) => (
+              <Alert key={index} data-testid="authority-content-boundary" className="bg-accent/10">
+                <AlertTitle>
+                  {t("authority.content.members", {
+                    count: publication.sources.reduce((n, source) => n + source.item_ids.length, 0),
+                  })}
+                </AlertTitle>
+                <AlertDescription>
+                  <p>{publication.origin}</p>
+                  <ul>
+                    {publication.sources.flatMap((source) =>
+                      source.item_ids.flatMap((id) => {
+                        const label = review?.content_items?.find((item) => item.id === id)?.label;
+                        return label ? [<li key={id}>{label}</li>] : [];
+                      }),
+                    )}
+                  </ul>
+                  <p>{t("authority.content.scope")}</p>
+                  <details>
+                    <summary>{t("authority.content.targets")}</summary>
+                    <ul>
+                      {publication.sources.flatMap((source) =>
+                        source.item_ids.map((id) => (
+                          <li
+                            key={id}
+                            className="break-all"
+                          >{`${publication.origin}/v1/content/${id}`}</li>
+                        )),
+                      )}
+                    </ul>
+                    <p className="break-all">{`${publication.origin}/v1/sites/${publication.site_id}`}</p>
+                  </details>
+                  {review?.schedules?.map((schedule, scheduleIndex) => (
+                    <p key={scheduleIndex}>
+                      {t("authority.report.next", {
+                        time: schedule.next_run_at
+                          ? new Intl.DateTimeFormat(locale, {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                              timeZone: schedule.timezone,
+                            }).format(new Date(schedule.next_run_at))
+                          : t("common.unknown"),
+                        zone: schedule.timezone,
+                      })}
+                    </p>
+                  ))}
+                </AlertDescription>
+              </Alert>
+            ))}
           {recurringReport && (
             <Alert data-testid="authority-report-boundary" className="bg-accent/10">
               <AlertTitle>{t("authority.report.recipients")}</AlertTitle>
@@ -377,7 +432,7 @@ export function GrantWorkflowAuthority({
                 </p>
               )}
               <details
-                open={!unsupported && !recurringReport}
+                open={!unsupported && !recurringReport && !recurringContent}
                 data-testid="authority-effect-details"
               >
                 <summary className="cursor-pointer text-sm font-medium">
@@ -548,15 +603,17 @@ export function GrantWorkflowAuthority({
               {t(
                 grant.isPending
                   ? "authority.granting"
-                  : recurringReport
-                    ? "authority.report.confirm"
-                    : activation
-                      ? "chat.activation.confirm"
-                      : onGrant
-                        ? "decisions.applyAndAuthorize"
-                        : Number(runs) === 1
-                          ? "authority.grantConfirmOne"
-                          : "authority.grantConfirm",
+                  : recurringContent
+                    ? "authority.content.confirm"
+                    : recurringReport
+                      ? "authority.report.confirm"
+                      : activation
+                        ? "chat.activation.confirm"
+                        : onGrant
+                          ? "decisions.applyAndAuthorize"
+                          : Number(runs) === 1
+                            ? "authority.grantConfirmOne"
+                            : "authority.grantConfirm",
                 { count: runs },
               )}
             </Button>
