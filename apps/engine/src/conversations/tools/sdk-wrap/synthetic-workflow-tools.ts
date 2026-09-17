@@ -109,7 +109,7 @@ function buildOneSyntheticWorkflowTool(
   return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
     // AI SDK 7: coerce tool output to JSON-safe for the model (see json-safe-output.ts).
     toModelOutput: jsonSafeModelOutput,
-    description: `${entry.description} — saved workflow, runs in dev. Dispatches /workflows run ${entry.slug}. Uses a matching local execution authority when one exists and respects stricter approval settings; otherwise write steps resolve without dispatching. If it reports writes_held, nothing was written and the turn pauses for the operator. Do not re-run to bypass that decision.`,
+    description: `${entry.description} — perform this saved workflow now. For inspection, repair verification, preview, or preparation for recurring operation use run_workflow with execute_writes: false instead; this tool may pause for a one-shot live execution decision. Dispatches /workflows run ${entry.slug}. Uses a matching local execution authority when one exists and respects stricter approval settings; otherwise write steps resolve without dispatching. If it reports writes_held, nothing was written and the turn pauses for the operator. Do not re-run to bypass that decision.`,
     // The workflow's authored schema, verbatim. No confirm marker: the operator
     // — not the model — releases the held writes, through the elicitation this
     // tool raises. A model-settable approval slot would be the escape hatch.

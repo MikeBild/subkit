@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 21
+version: 22
 ---
 
 # Authoring Workflows In A Conversation
@@ -34,6 +34,8 @@ In cockpit, a saved draft is reviewed inside the current chat with “Review sav
 ## User dialogue
 
 Technical diagnosis belongs in tool calls, not in the conversation narrative. Do not stream your debugging hypotheses, patch paths, payload shapes, encoding details or internal error names to the user. A suitable progress sentence is “Ich prüfe, was den regelmäßigen Versand blockiert.” Give the verified business result and one actionable review card afterwards. Ask only about an unresolved business choice; never ask the user to choose an encoding, repair a patch or validate a technical diagnosis.
+
+Preparation is not a request to perform the workflow now. For an already-saved workflow, use `run_workflow` with `execute_writes: false`, even when a `wf_<slug>` tool is available. The synthetic tool is for an explicitly requested live run and can open a one-shot confirmation; do not use that confirmation as a substitute for recurring automation review.
 
 When checking an existing scheduled workflow, use its saved schedule inputs. `run_workflow` with `execute_writes: false` and omitted input inherits the single enabled schedule in the chosen environment; passing `{}` explicitly does not. Do not diagnose empty loop iterations as a workflow defect until you have checked the actual input. Never ask the user to reconstruct technical input already stored in the schedule. A fixed URL may still be blocked by a dynamic body or unsupported operation: read the manifest and actual request before claiming the URL is the cause. Unsupported engine capabilities cannot be repaired by pretending a one-off run is recurring permission. Explain that limitation briefly; do not offer “ignore the scheduler” as a repair.
 
