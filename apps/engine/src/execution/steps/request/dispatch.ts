@@ -1,4 +1,8 @@
 import {
+  inspectContentRevisionRequest,
+  inspectContentRevisionResponse,
+} from "../../../workflows/content-publication-boundary.ts";
+import {
   GMAIL_SEND_TARGET,
   inspectReportMessage,
 } from "../../../workflows/report-delivery-boundary.ts";
@@ -769,7 +773,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       );
     }
   };
-  const beforeHttpDispatch = (request: MaterializedRequest) => {
+  let lastMaterializedHttpRequest: MaterializedRequest | undefined;
+  const beforeHttpDispatch = async (request: MaterializedRequest) => {
     if (
       p.ctx.hold_writes &&
       requestRequiresPreparationHold(p.step, activeConnector?.driver) &&
@@ -785,12 +790,16 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       idempotencyBase && key?.startsWith(`${idempotencyBase}:`)
         ? key.slice(idempotencyBase.length + 1)
         : null;
-    return beforeDispatch(credentialSnapshot, {
+    const policy = await beforeDispatch(credentialSnapshot, {
       ...request,
       ...(key !== undefined && suffix !== null && /^(0|[1-9][0-9]*)$/.test(suffix)
         ? { generated_idempotency: { key, page: Number(suffix) } }
         : {}),
     });
+    // Keep the actual checked request in memory only. Revision provenance below
+    // records just resource identities, never headers, credentials or content.
+    lastMaterializedHttpRequest = request;
+    return policy;
   };
   const heldHttpResult = (held: HeldStepResultParams) => {
     const proof = held.url
@@ -831,6 +840,15 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       held.method === "POST" && held.url === GMAIL_SEND_TARGET
         ? inspectReportMessage(held.body)
         : null;
+    const contentRevision =
+      held.url && !p.resolved_multipart && !p.resolved_body_file
+        ? inspectContentRevisionRequest({
+            method: held.method,
+            url: held.url,
+            headers: held.headers ?? {},
+            body: held.body,
+          })
+        : null;
     return heldStepResult({
       ...held,
       request_meta: {
@@ -840,6 +858,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           ...(proof ? { prepared_request_proof: proof } : {}),
           ...(review ? { prepared_request_review: review } : {}),
           ...(report ? { report_delivery_proposal: report.boundary } : {}),
+          ...(contentRevision ? { content_revision_proposal: contentRevision } : {}),
         },
       },
     });
@@ -2277,6 +2296,14 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             };
           })
         : await callDoOnePage();
+      const contentRevisionReceipt = lastMaterializedHttpRequest
+        ? inspectContentRevisionResponse({
+            step_id: p.step.id,
+            request: lastMaterializedHttpRequest,
+            status: res.status,
+            body: res.body,
+          })
+        : null;
       // Per-run LLM-token budget — post-call accounting. Parse the
       // provider's `usage` envelope, fold the prompt + completion
       // tokens into the run accumulator, and audit the outbound call
@@ -2494,7 +2521,17 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           // tolerated
         }
       }
-      const producedExtras = producedFileId ? { extras: { produced_file_id: producedFileId } } : {};
+      const producedExtras =
+        producedFileId || contentRevisionReceipt
+          ? {
+              extras: {
+                ...(producedFileId ? { produced_file_id: producedFileId } : {}),
+                ...(contentRevisionReceipt
+                  ? { content_revision_receipt: contentRevisionReceipt }
+                  : {}),
+              },
+            }
+          : {};
       last_meta = connectorResolution
         ? {
             driver: "http",
