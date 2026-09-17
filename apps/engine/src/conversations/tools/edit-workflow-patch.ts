@@ -33,6 +33,7 @@ import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { getLastPreview } from "./last-preview-store.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
+import { resolveStepPatches, StepPatchSchema } from "./step-targeted-patch.ts";
 
 const PatchOp = z.discriminatedUnion("op", [
   z.object({ op: z.literal("add"), path: z.string(), value: z.unknown() }),
@@ -45,21 +46,41 @@ const PatchOp = z.discriminatedUnion("op", [
 
 const inputSchema = z
   .object({
-    patches: z.array(PatchOp).min(1).max(64),
+    patches: z.array(PatchOp).min(1).max(64).optional(),
+    step_patches: z.array(StepPatchSchema).min(1).max(64).optional(),
   })
+  .refine(
+    (value) => Boolean(value.patches) !== Boolean(value.step_patches),
+    "Provide exactly one of patches or step_patches",
+  )
   .openapi("EditWorkflowPatchToolInput");
 
 export const editWorkflowPatchTool: ConversationTool = {
   name: "edit_workflow_patch",
   description:
-    "THE workflow editor. Apply an RFC 6902 JSON Patch array to the workflow draft: append/replace a step (`add /steps/-`, `replace /steps/N`), set a single field or header (`replace /steps/N/headers/Accept`), retarget references, add an edge (`add /edges/-`), or reorder steps (`move`). Coordinated multi-edits land atomically. The patched draft must still validate; partial application is never persisted.",
+    "THE workflow editor. Prefer step_patches for edits inside existing top-level steps: each entry has step_id, op, path relative to that step (e.g. /s3/scope), and value for add/replace/test. The server resolves stable IDs against the current draft; never count step indices. Do not mix step_patches with patches. Apply an RFC 6902 JSON Patch array to the workflow draft: append/replace a step (`add /steps/-`, `replace /steps/N`), set a single field or header (`replace /steps/N/headers/Accept`), retarget references, add an edge (`add /edges/-`), or reorder steps (`move`). Coordinated multi-edits land atomically. The patched draft must still validate; partial application is never persisted.",
   inputSchema,
   category: "draft_write" as const,
   authoring_resource: "workflow",
   requires_draft: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    return applyWorkflowPatchToDraft(ctx, args.patches as ToolDiff[]);
+    let patches: ToolDiff[];
+    try {
+      patches = args.step_patches
+        ? resolveStepPatches(getWorkflowDraft(ctx.getDraft()).steps ?? [], args.step_patches)
+        : (args.patches as ToolDiff[]);
+    } catch (error) {
+      return {
+        ok: false,
+        data: buildGateError(ctx.getDraft(), {
+          error_code: "patch_target_invalid",
+          message: error instanceof Error ? error.message : "Invalid step target",
+          next_best_actions: ["inspect_workflow_draft"],
+        }),
+      };
+    }
+    return applyWorkflowPatchToDraft(ctx, patches);
   },
 };
 
@@ -114,7 +135,7 @@ export async function applyWorkflowPatchToDraft(
                 : {}),
             })),
             repair_hint:
-              "Use existing fields directly under each step, without a config wrapper. For S3 recurring boundaries use s3.scope with key_prefix and max_bytes, never path_prefix. Inspect the relevant step before patching; no external setup is required.",
+              "Use step_patches with step_id and a relative path to avoid positional guesses. Use existing fields directly under each step, without a config wrapper. For S3 recurring boundaries use s3.scope with key_prefix and max_bytes, never path_prefix. Inspect the relevant step before patching; no external setup is required.",
           },
         }),
       };
