@@ -46,12 +46,12 @@ describe("run_workflow tool — field rename: workflow not workflow_id", () => {
     expect(desc).not.toContain("workflow_id=");
   });
 
-  test("run_workflow description contains FALLBACK language (it's the fallback path)", () => {
+  test("run_workflow distinguishes held preparation from a live one-shot", () => {
     expect(runWorkflowTool).toBeDefined();
     const desc = runWorkflowTool!.description ?? "";
-    // The CP2 rename gave run_workflow a FALLBACK label since wf_<slug>
-    // tools are the primary path
-    expect(desc.toUpperCase()).toContain("FALLBACK");
+    expect(desc).toContain("execute_writes: false");
+    expect(desc).toContain("Do not use wf_<slug> for preparation");
+    expect(desc).toContain("one-shot human decision");
   });
 });
 

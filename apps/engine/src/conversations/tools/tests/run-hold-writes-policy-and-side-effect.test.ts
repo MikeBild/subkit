@@ -226,3 +226,43 @@ describe("inspect_workflow_draft side_effect labels", () => {
     expect(step?.side_effect).toBe("write");
   });
 });
+
+it("configuration inspection stays small after a large preview and targets steps by ID", async () => {
+  const draft = draftWithSteps([
+    {
+      id: "store",
+      kind: "request",
+      method: "PUT",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: engine expression fixture
+      s3: { key: "reports/${input.day}" },
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: engine expression fixture
+      body: "${input.report}",
+    },
+    { id: "unrelated", kind: "transform", expression: "return input;" },
+  ]);
+  const large = "PRIVATE_EXECUTION_PAYLOAD".repeat(25000);
+  draft.latest_preview = {
+    ok: true,
+    summary: "Preview succeeded",
+    preview: large,
+    step_traces: [{ step_id: "store", status: "succeeded", output_preview: large }],
+  } as NonNullable<DraftDocument["latest_preview"]>;
+  const result = await inspectWorkflowDraftTool.execute(makeDraftCtx(draft), {});
+  const text = JSON.stringify(result.data);
+  expect(text.length).toBeLessThan(12000);
+  expect(text).not.toContain("PRIVATE_EXECUTION_PAYLOAD");
+  expect(text).toContain("reports/");
+  const selected = await inspectWorkflowDraftTool.execute(makeDraftCtx(draft), {
+    step_ids: ["store"],
+  });
+  const data = selected.data as {
+    workflow: { steps: Array<{ id: string; configuration: unknown }> };
+  };
+  expect(data.workflow.steps).toHaveLength(1);
+  expect(data.workflow.steps[0]?.configuration).toEqual(draft.workflow.steps[0]);
+  const preview = await inspectWorkflowDraftTool.execute(makeDraftCtx(draft), {
+    step_ids: ["store"],
+    include_preview: true,
+  });
+  expect(JSON.stringify(preview.data)).toContain("PRIVATE_EXECUTION_PAYLOAD");
+});
