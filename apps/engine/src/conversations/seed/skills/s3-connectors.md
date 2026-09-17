@@ -8,7 +8,7 @@ side_effects: write
 idempotency: naturally
 maturity: stable
 tags: [driver, s3, object-store]
-version: 5
+version: 6
 ---
 
 # S3 And MinIO Connectors
@@ -18,7 +18,7 @@ Cloudflare R2, DigitalOcean Spaces. Same connector config, same step shape.
 
 ## Recurring report permission
 
-A supported bounded storage proposal lives at `steps[index].s3.scope`, with exactly `key_prefix` (a fixed narrow existing folder ending `/`) and `max_bytes` (positive integer, at most 10000000, enforced for PUT). There is no `path_prefix` field and no `config` wrapper on a request step. Inspect the current draft's actual step indices before patching. Never guess an index from a different version or a narrative list.
+A supported bounded storage proposal lives at `steps[index].s3.scope`, with exactly `key_prefix` (a fixed narrow existing folder ending `/`) and `max_bytes` (positive integer, at most 10000000, enforced for PUT). There is no `path_prefix` field and no `config` wrapper on a request step. Use `edit_workflow_patch` with `step_patches: [{step_id, op: "add", path: "/s3/scope", value: {key_prefix, max_bytes}}]` to set the scope on each inspected top-level step. The server resolves IDs against the current draft. Never guess numeric indices or overwrite the full S3 configuration.
 
 Keep the full existing folder including namespace segments. GET, HEAD, LIST and PUT can use this proposal; DELETE cannot. LIST additionally binds fixed `max_keys` and `paginate`. Recurring scope does not support metadata, range, presign or multipart options. This is draft preparation only: after validation and held-write preview, the human reviews folders, replacement effects and finite run limits through `review_workflow_automation` in the same chat. Do not claim permission exists until schedule automation is authorized. Explain report folders and outcomes to the user, not JSON fields or patch instructions.
 

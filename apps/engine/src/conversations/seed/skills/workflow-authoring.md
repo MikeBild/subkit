@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 24
+version: 25
 ---
 
 # Authoring Workflows In A Conversation
@@ -30,6 +30,10 @@ In cockpit, a saved draft is reviewed inside the current chat with “Review sav
 - `activation_required`, `paused`, `input_required`, or `verification_unavailable`: name the missing step briefly; never promise the next automatic run.
 - Only `authorized` is evidence of current permission; it is rechecked at dispatch. Do not claim that an actual run succeeded until its execution record confirms that.
 - User-facing questions and labels describe outcomes (for example “Bericht veröffentlichen”), never parameters such as `publish=true`, raw cron expressions or tool names.
+
+## Target existing steps by ID
+
+For a field change inside an existing top-level step, prefer `edit_workflow_patch` with `step_patches: [{step_id, op, path, value}]`. The path is relative to that step, e.g. `/s3/scope` or `/expression`. The engine resolves the stable ID against the current draft, so you must not count numeric positions from a long workflow or use a `config` wrapper. Use ordinary `patches` only for workflow-level structure changes. Never mix the two forms. Both use the same validation and inert-draft persistence gates.
 
 ## Repair preparation before handoff
 

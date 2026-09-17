@@ -14,7 +14,7 @@
 import { describe, expect, test } from "bun:test";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import type { DraftDocument } from "../types.ts";
-import { applyWorkflowPatchToDraft } from "./edit-workflow-patch.ts";
+import { applyWorkflowPatchToDraft, editWorkflowPatchTool } from "./edit-workflow-patch.ts";
 import type { ToolContext } from "./index.ts";
 
 function draftWithOneStep(): DraftDocument {
@@ -105,4 +105,47 @@ test("invalid paths return compact actual step guidance without the draft payloa
     error_code: "patch_invalid",
     step_paths: [{ id: "report", path: "/steps/0", storage_scope_path: "/steps/0/s3/scope" }],
   });
+});
+
+test("step-ID edits pass through the canonical validation and draft persistence path", async () => {
+  let draft = draftWithOneStep();
+  draft.workflow.steps = [
+    { id: "build", kind: "transform", language: "javascript", expression: "return 1;" },
+    {
+      id: "store",
+      kind: "request",
+      method: "PUT",
+      connector_id: "00000000-0000-4000-8000-000000000001",
+      s3: { key: "reports/file.json" },
+      body: "report",
+    },
+  ];
+  const ctx = {
+    ...ctxFor(draft),
+    getDraft: () => draft,
+    setDraft: async (next: DraftDocument) => {
+      draft = next;
+    },
+  } as ToolContext;
+  const result = await editWorkflowPatchTool.execute(ctx, {
+    step_patches: [
+      {
+        step_id: "store",
+        op: "add",
+        path: "/s3/scope",
+        value: { key_prefix: "reports/", max_bytes: 1000 },
+      },
+    ],
+  });
+  expect(result.ok).toBe(true);
+  expect(draft.workflow.steps[1]).toMatchObject({
+    id: "store",
+    s3: { key: "reports/file.json", scope: { key_prefix: "reports/", max_bytes: 1000 } },
+  });
+  const before = JSON.stringify(draft);
+  const rejected = await editWorkflowPatchTool.execute(ctx, {
+    step_patches: [{ step_id: "store", op: "replace", path: "/method", value: "INVALID" }],
+  });
+  expect(rejected.ok).toBe(false);
+  expect(JSON.stringify(draft)).toBe(before);
 });
