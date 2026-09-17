@@ -4,6 +4,7 @@
 import { z } from "@hono/zod-openapi";
 import { classifyHttpSideEffect, inferGraphqlOperation } from "@shared/index.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
+import { ReadPathBoundarySchema, readPathBoundary, readPathTarget } from "./read-path-boundary.ts";
 import {
   hasRuntimeValue,
   ReadQueryBoundarySchema,
@@ -33,6 +34,7 @@ export const ResolvedEffectBindingSchema = z
     credential_binding_digest: digest.nullable(),
     rewrites_target: z.boolean(),
     report_delivery: ReportDeliveryBoundarySchema.optional(),
+    read_path: ReadPathBoundarySchema.optional(),
   })
   .strict();
 export type ResolvedEffectBinding = z.infer<typeof ResolvedEffectBindingSchema>;
@@ -183,6 +185,15 @@ export function compileWorkflowEffectManifest(raw: unknown): {
     )
       issue("binding_mismatch");
     if (binding.environment !== input.execution_environment) issue("environment_mismatch");
+    const readPath =
+      binding.driver === "http" && binding.read_path
+        ? readPathBoundary(step, binding.read_path.origin)
+        : null;
+    const supportedReadPath =
+      readPath &&
+      workflowJsonDigest(readPath) === workflowJsonDigest(binding.read_path) &&
+      binding.target === readPathTarget(readPath);
+    if (binding.read_path && !supportedReadPath) issue("binding_mismatch");
     // Conservative first version: runtime substitutions anywhere in a request
     // may change a recipient in its body, not just a hostname in its URL.
     if (
@@ -190,7 +201,8 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       (hasRuntimeValue(step) &&
         !(
           binding.driver === "http" &&
-          (supportsReadQuery(step) ||
+          (supportedReadPath ||
+            supportsReadQuery(step) ||
             (binding.report_delivery && supportsReportDelivery(step, binding.target)))
         )) ||
       hasRuntimeValue(binding.target) ||

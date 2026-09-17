@@ -325,8 +325,9 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
     messages = 0;
     opaque = false;
     await page.reload();
-    await action.waitFor();
-    await action.click();
+    const singleRunEntry = page.getByTestId("chat-review-schedule");
+    await singleRunEntry.waitFor();
+    await singleRunEntry.click();
     await page.getByTestId("authority-single-run").click();
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     if (

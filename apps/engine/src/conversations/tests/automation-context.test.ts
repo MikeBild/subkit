@@ -98,6 +98,57 @@ test("current blocked status overrides historical preview success without exposi
   });
   const after = await renderAutomationContext(ctx.tenant_id, workflow.id, principal, ctx.testDb.db);
   expect(after).toContain('"state":"approval_required"');
+  const [draft] = await ctx.testDb.db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: ctx.tenant_id,
+      workflow_id: workflow.id,
+      version: 2,
+      dag: {
+        name: "Changed report",
+        steps: [
+          {
+            id: "changed_send",
+            kind: "request",
+            method: "POST",
+            url: "https://example.test/${input.target}",
+          },
+        ],
+      },
+    })
+    .returning();
+  if (!draft) throw new Error("missing draft");
+  await ctx.testDb.db
+    .update(workflows)
+    .set({ draft_version_id: draft.id })
+    .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.id, workflow.id)));
+  const draftReview = await reviewWorkflowAutomationTool.execute(reviewContext, {
+    workflow_id: workflow.id,
+  });
+  expect(draftReview).toMatchObject({
+    data: {
+      schedules: [
+        {
+          state: "approval_required",
+          ready: false,
+          review: {
+            workflow_version_id: draft.id,
+            is_draft: true,
+            eligible_for_repeated_runs: false,
+            issues: [{ step_id: "changed_send", code: "dynamic_request" }],
+          },
+        },
+      ],
+    },
+  });
+  const draftContext = await renderAutomationContext(
+    ctx.tenant_id,
+    workflow.id,
+    principal,
+    ctx.testDb.db,
+  );
+  expect(draftContext).toContain(draft.id);
+  expect(draftContext).toContain("changed_send");
   const otherTenant = "00000000-0000-4000-8000-000000000099";
   const missing = await reviewWorkflowAutomationTool.execute(
     {

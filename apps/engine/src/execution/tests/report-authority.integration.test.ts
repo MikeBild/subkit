@@ -36,7 +36,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await ctx.cleanup();
 });
-async function fixture(withRead = false) {
+async function fixture(withRead: boolean | "path" = false) {
   const raw = Buffer.from(
     "From: sender@example.test\r\nTo: recipient@example.test\r\nSubject: Report\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\nReport",
   ).toString("base64url");
@@ -50,12 +50,19 @@ async function fixture(withRead = false) {
               id: "read",
               kind: "request" as const,
               method: "GET" as const,
-              url: "https://metrics.example.test/history",
-              query: {
-                host_id: "fixed-resource",
-                // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow query substitution
-                end: "${input.window}",
-              },
+              url:
+                withRead === "path"
+                  ? // biome-ignore lint/suspicious/noTemplateCurlyInString: bounded identifier
+                    "https://metrics.example.test/v2/projects/${input.window}/resources"
+                  : "https://metrics.example.test/history",
+              query:
+                withRead === "path"
+                  ? undefined
+                  : {
+                      host_id: "fixed-resource",
+                      // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow query substitution
+                      end: "${input.window}",
+                    },
               max_retries: 0,
             },
           ]
@@ -151,14 +158,14 @@ async function fixture(withRead = false) {
       { db, request, principal },
     );
   };
-  const run = async (value = raw) => {
+  const run = async (value = raw, resource: string | number = value.length) => {
     const admitted = await admitAuthorizedWorkflowExecution(
       {
         tenant_id: ctx.tenantId,
         workflow_id: wf.workflow_id,
         execution_environment: "dev",
         request_source: "scheduler",
-        input: { raw: value, window: value.length },
+        input: { raw: value, window: resource },
       },
       db,
     );
@@ -166,7 +173,7 @@ async function fixture(withRead = false) {
       tenant_id: ctx.tenantId,
       db,
       source: { kind: "saved", workflow_id: wf.workflow_id },
-      input: { raw: value, window: value.length },
+      input: { raw: value, window: resource },
       options: { existing_execution_id: admitted.execution_id, principal },
     });
   };
@@ -371,4 +378,33 @@ test("a reviewed report draft is activated and resolves only its own held decisi
   expect(resolved.admission_hold).toBeNull();
   expect(held.find((row) => row.id === other.schedule.id)?.admission_hold).not.toBeNull();
   expect((await inspectScheduleAutomation(resolved, db)).ready).toBe(true);
+});
+
+test("reviewed identifier path permits changing project reads and blocks path escape before dispatch", async () => {
+  const f = await fixture("path");
+  let reads = 0;
+  let sends = 0;
+  const remote = Object.assign(
+    async (_url: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === "GET") {
+        reads++;
+        return Response.json({ resources: [] });
+      }
+      sends++;
+      return Response.json({ id: "sent" });
+    },
+    { preconnect: () => {} },
+  ) as typeof fetch;
+  await withDriverFetchForTests(remote, async () => {
+    await f.prepare();
+    expect((await f.inspect()).eligible_for_repeated_runs).toBe(true);
+    await f.grant();
+    const good = await f.run(f.raw, "project-123");
+    expect(good.status).toBe("succeeded");
+    const before = reads;
+    const bad = await f.run(f.raw, "../../secrets");
+    expect(bad.status).toBe("failed");
+    expect(reads).toBe(before);
+    expect(sends).toBe(1);
+  });
 });
