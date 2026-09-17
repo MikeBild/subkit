@@ -396,6 +396,11 @@ function activeToolsForStage(
       // when none is bound. Survives only when the operator
       // explicitly forces one (handled above).
       if (dropPersistedRequired && t.requires_persisted_workflow === true) return false;
+      // Inspecting a saved workflow must not hide its canonical runner.
+      // The outer turn palette still enforces explicit no-run and target
+      // selection; the runner itself enforces RBAC and exact local authority.
+      // Do not expose unrelated writes or re-add tools absent from that palette.
+      if (n === "run_workflow" && hasPersistedWorkflow) return true;
       return predicate(t);
     });
     return kept;

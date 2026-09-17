@@ -602,7 +602,7 @@ describe("intent-directed execution hands control back after the first step", ()
     );
     expect(decision?.toolChoice).toBe("auto");
   });
-  it("does not reinsert the execution tool into a later narrowed review step", () => {
+  it("keeps the bound runner optional rather than forcing it again after review", () => {
     const decision = prepareStep(
       baseParams({
         stepNumber: 2,
@@ -611,7 +611,38 @@ describe("intent-directed execution hands control back after the first step", ()
       }),
     );
     expect(decision?.toolChoice).toBe("auto");
-    expect(decision?.activeTools).not.toContain("run_workflow");
+    expect(decision?.activeTools).toContain("run_workflow");
     expect(decision?.activeTools).toContain("inspect_workflow");
+  });
+});
+
+describe("saved workflow inspection keeps preparation reachable", () => {
+  const stages = [
+    "workflow_targeted",
+    "diagnosing",
+    "workflow_inspected",
+    "workflow_validated",
+    "workflow_previewed",
+  ] as const;
+  for (const stage of stages) {
+    it(`keeps the bound runner after ${stage} without exposing unrelated writes`, () => {
+      const decision = prepareStep(baseParams({ signals: { stage, hasPersistedWorkflow: true } }));
+      expect(decision?.activeTools).toContain("run_workflow");
+      expect(decision?.activeTools).not.toContain("create_schedule");
+      expect(decision?.activeTools).not.toContain("delete_workflow");
+      expect(
+        prepareStep(baseParams({ signals: { stage, hasPersistedWorkflow: false } }))?.activeTools,
+      ).not.toContain("run_workflow");
+    });
+  }
+  it("does not restore a runner removed by the outer no-run or target gate", () => {
+    const { run_workflow: _runner, ...toolsByName } = TOOLS;
+    const decision = prepareStep(
+      baseParams({
+        toolsByName,
+        signals: { stage: "workflow_inspected", hasPersistedWorkflow: true },
+      }),
+    );
+    expect(decision?.activeTools).not.toContain("run_workflow");
   });
 });
