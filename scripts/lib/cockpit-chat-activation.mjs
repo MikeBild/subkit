@@ -10,6 +10,7 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
   const draftId = "00000000-0000-4000-8000-000000000042";
   let completed = false,
     unsupported = false,
+    opaque = false,
     conflict = true,
     expiredSession = false,
     grants = 0,
@@ -124,7 +125,21 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
             ],
         issues: [],
       },
-      execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
+      execution_shape: {
+        requests: opaque
+          ? [
+              {
+                step_id: "store",
+                request_review_truncated: false,
+                opaque_payload_omitted: true,
+                redacted_request_json: "{}",
+                retry_policy_max_attempts: 1,
+              },
+            ]
+          : [],
+        iterations: [],
+        run_limit_is_request_limit: false,
+      },
       schedules: [{ cron: "0 8 * * *", timezone: "UTC", next_run_at: "2026-10-01T08:00:00.000Z" }],
       suggested_bounds: {
         valid_from: new Date(preparedAt).toISOString(),
@@ -258,6 +273,34 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
     await page.getByTestId("chat-automation-ready").waitFor();
     completed = false;
     unsupported = true;
+    opaque = true;
+    await page.reload();
+    await action.waitFor();
+    const inTranscript = await page
+      .getByTestId("chat-transcript")
+      .getByTestId("chat-schedule-next-step")
+      .count();
+    if (inTranscript !== 1) throw new Error("Next action is outside the chronological transcript");
+    await action.click();
+    if (await page.getByTestId("authority-single-run").count())
+      throw new Error("Unavailable one-shot action still displayed");
+    if (await page.getByTestId("authority-incomplete").count())
+      throw new Error("Unsupported actions mislabeled as missing details");
+    if (!(await page.getByTestId("authority-adjust").isEnabled()))
+      throw new Error("No actionable recovery in unsupported review");
+    await page.getByTestId("authority-adjust").click();
+    await page.getByRole("dialog").waitFor({ state: "hidden" });
+    if (
+      messages !== 1 ||
+      activations !== 0 ||
+      grants !== 3 ||
+      !page.url().includes(`/chat/${conversation.id}`)
+    )
+      throw new Error(
+        "Unsupported review did not continue in the same chat without granting permission",
+      );
+    messages = 0;
+    opaque = false;
     await page.reload();
     await action.waitFor();
     await action.click();
