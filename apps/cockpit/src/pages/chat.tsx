@@ -488,6 +488,10 @@ function ChatMessage({
 }) {
   const { t, locale } = useI18n();
   const from = message.role === "user" ? "user" : "assistant";
+  const groups = groupMessageParts(message.parts, pendingApprovalId).filter(
+    (group) => group.kind !== "part" || Boolean(textFromPart(group.part)?.trim()),
+  );
+  if (groups.length === 0) return null;
   // Keep the shared reading column; a soft question tone distinguishes user input.
   return (
     <Message
@@ -499,7 +503,7 @@ function ChatMessage({
         <MessageHeader data-testid={`chat-message-${messageIndex}-role`}>
           {t(from === "user" ? "chat.role.you" : "chat.role.assistant")}
         </MessageHeader>
-        {groupMessageParts(message.parts, pendingApprovalId).map((group) => {
+        {groups.map((group) => {
           if (group.kind === "background") {
             return (
               <BackgroundTools
@@ -633,14 +637,7 @@ function ChatMessage({
           return (
             <Tool
               key={`${message.id}-tool-${partIndex}`}
-              defaultOpen={
-                tool.state !== "output-available" &&
-                !(
-                  tool.type === "dynamic-tool" &&
-                  (tool.toolName === "ask_user_confirm" || tool.toolName === "ask_user_choice") &&
-                  tool.state === "output-denied"
-                )
-              }
+              defaultOpen={false}
               data-testid={`chat-message-${messageIndex}-tool-${partIndex}`}
             >
               {tool.type === "dynamic-tool" ? (

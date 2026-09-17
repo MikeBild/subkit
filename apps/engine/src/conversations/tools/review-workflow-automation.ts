@@ -1,6 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { inspectScheduleAutomation } from "../../scheduler/automation-status.ts";
-import { listSchedules } from "../../scheduler/repo.ts";
+import { inspectAutomationReview } from "../automation-review.ts";
 import type { ConversationTool } from "./index.ts";
 
 const Input = z.object({ workflow_id: z.string().uuid() });
@@ -15,20 +14,13 @@ export const reviewWorkflowAutomationTool: ConversationTool = {
   permission: { action: "schedule:read", resourceType: "schedule" },
   async execute(ctx, raw) {
     const { workflow_id } = Input.parse(raw);
-    const workflow = await ctx.engineClient.workflows.get(workflow_id);
-    if (!workflow) return { ok: false, error_code: "workflow_not_found" };
-    const { rows } = await listSchedules(ctx.db, ctx.tenant_id, workflow_id);
+    const review = await inspectAutomationReview(ctx.db, ctx.tenant_id, workflow_id);
+    if (!review) return { ok: false, error_code: "workflow_not_found" };
     return {
       ok: true,
       data: {
         kind: "workflow_automation_review",
-        workflow_id,
-        schedules: await Promise.all(
-          rows.map(async (row) => ({
-            environment: row.execution_mode,
-            ...(await inspectScheduleAutomation(row, ctx.db)),
-          })),
-        ),
+        ...review,
         next_action:
           "Use the review card in this chat. It rechecks the latest saved version. Do not ask a generic confirmation, run or activate anything, or claim permission was granted. Only authorized schedule state confirms completion.",
       },

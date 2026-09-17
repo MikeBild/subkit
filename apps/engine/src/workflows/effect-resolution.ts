@@ -10,6 +10,7 @@ import { authorityConnectorConfiguration } from "./authority-configuration.ts";
 import { authorityExecutionShape } from "./authority-execution-shape.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "./effect-manifest.ts";
+import { readPathBoundary, readPathTarget } from "./read-path-boundary.ts";
 import { supportsReportDelivery } from "./report-delivery-boundary.ts";
 
 import {
@@ -110,12 +111,15 @@ export async function resolveWorkflowEffectManifest(
     } catch {
       // A malformed or unresolved URL is an unbound target, never a probe.
     }
+    const readPath = driver === "http" ? readPathBoundary(step, connector?.base_url) : null;
+    if (readPath) target = readPathTarget(readPath);
     if (reportBoundaries === undefined && supportsReportDelivery(step, target))
       reportBoundaries = await proposeReportDeliveryBoundaries(input, db);
     const configuration = authorityConnectorConfiguration(connector);
     bindings.push({
       tenant_id: input.tenant_id,
       step_id: step.id,
+      ...(readPath ? { read_path: readPath } : {}),
       ...(reportBoundaries?.[step.id] && supportsReportDelivery(step, target)
         ? { report_delivery: reportBoundaries?.[step.id] }
         : {}),

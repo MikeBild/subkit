@@ -14,6 +14,7 @@ import { RequestSourceSchema } from "../observability/service-metadata.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import { WorkflowEffectManifestSchema } from "../workflows/effect-manifest.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
+import { assertReadPath } from "../workflows/read-path-boundary.ts";
 import { assertReadQuery, assertReportDelivery } from "../workflows/report-delivery-boundary.ts";
 import { reportBoundariesFromManifest } from "../workflows/report-delivery-proposal.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
@@ -281,6 +282,7 @@ export async function assertExecutionAuthorityCurrent(
         "the loaded request configuration is outside its approved boundary",
       );
     if (effect.report_delivery) assertReportDelivery(effect.report_delivery, snapshot.request);
+    if (effect.read_path) assertReadPath(effect.read_path, snapshot.request);
     if (effect.read_query) assertReadQuery(effect.read_query, effect.target, snapshot.request);
     const system = effect.connector_id
       ? await loadConnectorSystem(
