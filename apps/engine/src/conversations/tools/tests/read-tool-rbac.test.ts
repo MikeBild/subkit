@@ -42,6 +42,7 @@ import { getStatusSummaryTool } from "../generated/status.ts";
 import { listSchedulesTool } from "../generated/writes/schedules.ts";
 import { listCapabilityGapsTool } from "../list-capability-gaps.ts";
 import { listSkillsTool } from "../list-skills.ts";
+import { reviewWorkflowAutomationTool } from "../review-workflow-automation.ts";
 
 type PermCase = {
   tool: {
@@ -54,6 +55,7 @@ type PermCase = {
 };
 
 const GATED: PermCase[] = [
+  { tool: reviewWorkflowAutomationTool, action: "schedule:read", resourceType: "schedule" },
   { tool: listAllSkillsTool, action: "skill:read", resourceType: "skill" },
   { tool: getSkillTool, action: "skill:read", resourceType: "skill", resourceIdArg: "id" },
   { tool: listSkillsTool, action: "skill:read", resourceType: "skill" },

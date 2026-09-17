@@ -38,7 +38,7 @@ export function chatApproval(detail: ConversationDetail | undefined): ChatApprov
     description: typeof intent.description === "string" ? intent.description : null,
     savesInactiveWorkflow: intent.kind === "save_workflow_draft",
     expiresAt: pending.expires_at,
-    ...(intent.kind === "commit_held_workflow_writes"
+    ...(intent.kind === "commit_held_workflow_writes" || intent.kind === "run_workflow"
       ? { singleRun: true, workflowName: detail?.resume_summary?.active_target?.name ?? undefined }
       : {}),
     ...(call.tool === "authenticate_oauth"

@@ -60,6 +60,7 @@ async function inspectScheduleAutomationChecked(schedule: ScheduleRow, db: Execu
       state: "repair_required",
       ready: false,
       unavailable_steps: preview.unavailable_steps,
+      issues: preview.manifest.issues,
     } as const;
   const [authority] = await db
     .select({ id: workflowExecutionAuthorities.id })

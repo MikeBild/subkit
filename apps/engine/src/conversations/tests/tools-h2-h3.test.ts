@@ -51,6 +51,7 @@ describe("conversation tools — registration", () => {
     "find_workflow",
     "find_connector",
     "request_connector_reauth",
+    "review_workflow_automation",
     "find_skill",
     "find_role",
     "find_user",

@@ -318,6 +318,7 @@ export const CHAT_READONLY_TOOLS: ReadonlySet<string> = new Set([
   "find_skill",
   // schedules (read)
   "list_schedules",
+  "review_workflow_automation",
   // execution dispatch — gated by execution-tool gate + RBAC + confirm
   "run_workflow",
 ]);
