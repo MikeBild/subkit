@@ -1577,7 +1577,7 @@ export function ChatPage() {
                 <dd className="mt-1 font-medium">
                   {decide.isPending
                     ? t("chat.decision.processing")
-                    : pendingChoice
+                    : pendingChoice || pendingForm
                       ? t("chat.choice.title")
                       : resumeStageLabel(resume?.stage, t)}
                 </dd>

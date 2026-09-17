@@ -36,6 +36,19 @@ export function ChatFormCard({
   testId: string;
 }) {
   const { t } = useI18n();
+  const fieldLabels: Record<string, string> = {
+    linkedin: t("chat.form.linkedin"),
+    period_end: t("chat.form.periodEnd"),
+    ga4_property: t("chat.form.analytics"),
+    github_owner: t("chat.form.githubOwner"),
+    github_repositories: t("chat.form.repositories"),
+    search_console_site: t("chat.form.searchSite"),
+    wikikit_report_space: t("chat.form.knowledgeSpace"),
+    contentkit_report_site: t("chat.form.reportSite"),
+  };
+  const question = /^Workflow ".+" needs the following inputs? to run:$/.test(form.question)
+    ? t("chat.form.runQuestion")
+    : form.question;
   const [values, setValues] = useState<Record<string, string | boolean | string[]>>({});
   const [now, setNow] = useState(Date.now);
   const initialized = useRef<string | null>(null);
@@ -69,13 +82,13 @@ export function ChatFormCard({
     <Card tone="question" size="sm" data-testid={testId}>
       <CardHeader>
         <CardTitle>{t("chat.form.title")}</CardTitle>
-        <CardDescription>{form.question}</CardDescription>
+        <CardDescription>{question}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {form.fields.map((field) => (
           <Field key={field.name}>
             <FieldLabel htmlFor={`${testId}-${field.name}`}>
-              {field.label}
+              {field.label === field.name ? (fieldLabels[field.name] ?? field.label) : field.label}
               {field.required ? " *" : ""}
             </FieldLabel>
             {field.type === "boolean" ? (

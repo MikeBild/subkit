@@ -48,6 +48,7 @@ export {
   clearDraftCredential,
   setDraftCredential,
 } from "./persistence/draft-credential-cache.ts";
+export { ResumeFormFieldSchema } from "./resume-form.ts";
 export * from "./service.ts";
 // Re-exported so the replay path can drop since-unresolvable citations before
 // the footer, mirroring the live loop's governance filter.
