@@ -218,9 +218,7 @@ export function GrantWorkflowAuthority({
               recurringReport
                 ? "authority.report.title"
                 : unsupported
-                  ? onSingleRun
-                    ? "chat.activation.singleTitle"
-                    : "authority.adjustTitle"
+                  ? "authority.adjustTitle"
                   : activation
                     ? "chat.activation.title"
                     : onGrant
@@ -233,9 +231,7 @@ export function GrantWorkflowAuthority({
               recurringReport
                 ? "authority.report.description"
                 : unsupported
-                  ? onSingleRun
-                    ? "chat.activation.singleHelp"
-                    : "authority.adjustDescription"
+                  ? "authority.adjustDescription"
                   : activation
                     ? "chat.activation.description"
                     : onGrant
@@ -283,7 +279,7 @@ export function GrantWorkflowAuthority({
               </AlertDescription>
             </Alert>
           )}
-          {incomplete && (
+          {incomplete && !unsupported && (
             <Alert data-testid="authority-incomplete">
               <AlertTitle>{t("authority.incompleteTitle")}</AlertTitle>
               <AlertDescription>{t("authority.incompleteDescription")}</AlertDescription>
@@ -488,7 +484,7 @@ export function GrantWorkflowAuthority({
           {!sessionExpired &&
             (prepare.error ||
               grant.error ||
-              incomplete ||
+              (incomplete && !unsupported) ||
               (boundsVisible && !input && !invalidRuns && !invalidHours)) && (
               <Button
                 variant="outline"
@@ -508,7 +504,7 @@ export function GrantWorkflowAuthority({
             <>
               {onAdjust ? (
                 <Button
-                  variant="outline"
+                  variant="default"
                   onClick={() => {
                     setOpen(false);
                     onAdjust();
@@ -524,7 +520,7 @@ export function GrantWorkflowAuthority({
                   </a>
                 </Button>
               )}
-              {onSingleRun && (
+              {onSingleRun && !incomplete && (
                 <Button
                   disabled={busy || Boolean(activateOnly.error) || Boolean(incomplete)}
                   data-testid="authority-single-run"

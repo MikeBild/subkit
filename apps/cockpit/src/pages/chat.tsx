@@ -1139,77 +1139,6 @@ export function ChatPage() {
           </div>
         </header>
 
-        {resume?.unsaved &&
-          targetWorkflowId &&
-          !pendingDecision &&
-          !pendingChoice &&
-          status === "ready" && (
-            <Alert className="mx-4 mt-4 w-auto shrink-0" data-testid="chat-preparation-next-step">
-              <AlertTitle>{t("chat.preparation.title")}</AlertTitle>
-              <AlertDescription>
-                <p>{t("chat.preparation.effect")}</p>
-                <Button
-                  size="sm"
-                  onClick={() => send.mutate({ message: t("chat.preparation.prompt") })}
-                  data-testid="chat-continue-preparation"
-                >
-                  {t("chat.preparation.continue")}
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
-
-        {heldTarget &&
-          !resume?.unsaved &&
-          targetWorkflowId &&
-          !pendingDecision &&
-          !pendingChoice &&
-          status === "ready" && (
-            <Alert className="mx-4 mt-4 w-auto shrink-0" data-testid="chat-schedule-next-step">
-              <AlertTitle>{t("chat.schedule.pending")}</AlertTitle>
-              <AlertDescription>
-                <p>{t("chat.schedule.effect")}</p>
-                <p>{t("chat.schedule.completion")}</p>
-                <ChatAutomationReview
-                  workflowId={targetWorkflowId}
-                  environment={heldTarget.execution_mode}
-                  testId="chat-review-schedule"
-                  onPrepareSingleRun={() =>
-                    send.mutate({ message: t("chat.activation.singlePrompt") })
-                  }
-                  onAdjust={() => send.mutate({ message: t("authority.adjustPrompt") })}
-                />
-              </AlertDescription>
-            </Alert>
-          )}
-
-        {!heldTarget && !resume?.unsaved && readySchedules.length > 0 && status === "ready" && (
-          <Alert
-            className="mx-4 mt-4 w-auto shrink-0 border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30"
-            data-testid="chat-automation-ready"
-          >
-            <AlertTitle>{t("chat.automation.ready")}</AlertTitle>
-            <AlertDescription>
-              <p>{t("chat.automation.readyHint")}</p>
-              {readySchedules.map(
-                (schedule, index) =>
-                  schedule.next_run_at && (
-                    <p key={`${schedule.next_run_at}-${index}`}>
-                      {t("authority.report.next", {
-                        time: new Intl.DateTimeFormat(locale, {
-                          dateStyle: "medium",
-                          timeStyle: "short",
-                          timeZone: schedule.timezone,
-                        }).format(new Date(schedule.next_run_at)),
-                        zone: schedule.timezone,
-                      })}
-                    </p>
-                  ),
-              )}
-            </AlertDescription>
-          </Alert>
-        )}
-
         {send.error && (
           <Alert variant="destructive" className="m-4 mb-0" data-testid="chat-error">
             <AlertTitle>{t("chat.failed")}</AlertTitle>
@@ -1379,6 +1308,80 @@ export function ChatPage() {
                     </Message>
                   </MessageScrollerItem>
                 )}
+                <MessageScrollerItem data-testid="chat-next-action">
+                  {resume?.unsaved &&
+                    targetWorkflowId &&
+                    !pendingDecision &&
+                    !pendingChoice &&
+                    status === "ready" && (
+                      <Alert className="bg-accent/10" data-testid="chat-preparation-next-step">
+                        <AlertTitle>{t("chat.preparation.title")}</AlertTitle>
+                        <AlertDescription>
+                          <p>{t("chat.preparation.effect")}</p>
+                          <Button
+                            size="sm"
+                            onClick={() => send.mutate({ message: t("chat.preparation.prompt") })}
+                            data-testid="chat-continue-preparation"
+                          >
+                            {t("chat.preparation.continue")}
+                          </Button>
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                  {heldTarget &&
+                    !resume?.unsaved &&
+                    targetWorkflowId &&
+                    !pendingDecision &&
+                    !pendingChoice &&
+                    status === "ready" && (
+                      <Alert className="bg-accent/10" data-testid="chat-schedule-next-step">
+                        <AlertTitle>{t("chat.schedule.pending")}</AlertTitle>
+                        <AlertDescription>
+                          <p>{t("chat.schedule.effect")}</p>
+                          <ChatAutomationReview
+                            workflowId={targetWorkflowId}
+                            environment={heldTarget.execution_mode}
+                            testId="chat-review-schedule"
+                            onPrepareSingleRun={() =>
+                              send.mutate({ message: t("chat.activation.singlePrompt") })
+                            }
+                            onAdjust={() => send.mutate({ message: t("authority.adjustPrompt") })}
+                          />
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                  {!heldTarget &&
+                    !resume?.unsaved &&
+                    readySchedules.length > 0 &&
+                    status === "ready" && (
+                      <Alert
+                        className="bg-accent/10 border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30"
+                        data-testid="chat-automation-ready"
+                      >
+                        <AlertTitle>{t("chat.automation.ready")}</AlertTitle>
+                        <AlertDescription>
+                          <p>{t("chat.automation.readyHint")}</p>
+                          {readySchedules.map(
+                            (schedule, index) =>
+                              schedule.next_run_at && (
+                                <p key={`${schedule.next_run_at}-${index}`}>
+                                  {t("authority.report.next", {
+                                    time: new Intl.DateTimeFormat(locale, {
+                                      dateStyle: "medium",
+                                      timeStyle: "short",
+                                      timeZone: schedule.timezone,
+                                    }).format(new Date(schedule.next_run_at)),
+                                    zone: schedule.timezone,
+                                  })}
+                                </p>
+                              ),
+                          )}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                </MessageScrollerItem>
               </MessageScrollerContent>
             </MessageScrollerViewport>
             {/* One name, not two: the caption below IS the accessible name, so
