@@ -1,6 +1,6 @@
 // Unit tests for the converse-loop step router.
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import type { ConversationTool } from "../../conversations/tools/index.ts";
 import {
   prepareStep,
@@ -645,4 +645,25 @@ describe("saved workflow inspection keeps preparation reachable", () => {
     );
     expect(decision?.activeTools).not.toContain("run_workflow");
   });
+});
+
+test("diagnosis keeps same-chat workflow repair available without exposing unrelated writes", () => {
+  const decision = prepareStep(
+    baseParams({ signals: { stage: "diagnosing", hasPersistedWorkflow: true } }),
+  );
+  expect(decision?.activeTools).toContain("edit_workflow_patch");
+  expect(decision?.activeTools).toContain("inspect_workflow");
+  expect(decision?.activeTools).not.toContain("probe_connector_draft");
+  expect(decision?.activeTools).not.toContain("delete_workflow");
+  expect(decision?.activeTools).not.toContain("save_workflow_draft");
+  const withoutEditor = { ...TOOLS };
+  delete withoutEditor.edit_workflow_patch;
+  expect(
+    prepareStep(
+      baseParams({
+        toolsByName: withoutEditor,
+        signals: { stage: "diagnosing", hasPersistedWorkflow: true },
+      }),
+    )?.activeTools,
+  ).not.toContain("edit_workflow_patch");
 });
