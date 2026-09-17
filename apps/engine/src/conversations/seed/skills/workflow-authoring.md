@@ -3,12 +3,12 @@ slug: workflow-authoring
 scope: global
 title: Authoring Workflows In A Conversation
 description: The canonical recipe for turning a user intent into a committed sk workflow draft.
-activates_when: [{"kind":"tool","tool":"author_workflow"},{"kind":"tool","tool":"edit_workflow_patch"},{"kind":"tool","tool":"approve_discovery_artifact"},{"kind":"tool","tool":"preview_attachment"}]
+activates_when: [{"kind":"tool","tool":"author_workflow"},{"kind":"tool","tool":"edit_workflow_patch"},{"kind":"tool","tool":"approve_discovery_artifact"},{"kind":"tool","tool":"preview_attachment"},{"kind":"tool","tool":"inspect_workflow"},{"kind":"tool","tool":"list_schedules"},{"kind":"tool","tool":"review_workflow_automation"},{"kind":"tool","tool":"run_workflow"},{"kind":"intent_keyword","word":"freigabe"},{"kind":"intent_keyword","word":"automatisch"},{"kind":"intent_keyword","word":"automatic"},{"kind":"intent_keyword","word":"recurring"}]
 side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 23
+version: 24
 ---
 
 # Authoring Workflows In A Conversation
@@ -30,6 +30,10 @@ In cockpit, a saved draft is reviewed inside the current chat with “Review sav
 - `activation_required`, `paused`, `input_required`, or `verification_unavailable`: name the missing step briefly; never promise the next automatic run.
 - Only `authorized` is evidence of current permission; it is rechecked at dispatch. Do not claim that an actual run succeeded until its execution record confirms that.
 - User-facing questions and labels describe outcomes (for example “Bericht veröffentlichen”), never parameters such as `publish=true`, raw cron expressions or tool names.
+
+## Repair preparation before handoff
+
+When a user asks to prepare missing recurring permission, inspect the saved definition and current readiness first. A repeated successful held-write preview does not repair missing boundaries. If a supported boundary is missing, prepare the actual inert draft change and verify it; do not merely describe the problem or call it ready. Preserve the full existing storage key prefix (including namespace segments such as `v1/`), schedule, destinations and business inputs. Use a readiness card only after actual preparation or to explain a specific remaining unsupported capability. Do not say the user's approval is the only missing action while `automation.state` is `repair_required`.
 
 ## Bounded report storage
 
