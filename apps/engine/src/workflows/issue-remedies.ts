@@ -90,7 +90,8 @@ const REQUEST_BOUNDARY_REMEDY =
   "copy the value from the saved schedule input (`list_schedules`), for `item.*` list every value " +
   'the `for_each` source can yield. Only when the values CANNOT be listed use `{class: "…"}`: ' +
   "`uuid` or `integer` or `identifier` for an id that comes from an earlier step, `date` " +
-  "(YYYY-MM-DD) or `timestamp` (UTC, ending in Z) for a time window. A class approves every value " +
+  "(YYYY-MM-DD) or `timestamp` (UTC text ending in Z) for a time window — a window given as unix " +
+  "seconds is `integer`; read the real value in the last run before choosing. A class approves every value " +
   "of that form, so never use one where a list is possible, and never on a DELETE. Placeholders " +
   "in the body need no entry. `max_body_bytes` is the largest UTF-8 body this step may send (0 for GET/HEAD): size " +
   "it from the workflow's own limits (for example its batch cap times the bytes per item, plus " +

@@ -74,7 +74,7 @@ services:
       ]
 
   engine:
-    image: ${SUBKIT_IMAGE:-mikebild/subkit:${SUBKIT_IMAGE_TAG:-8.0.67}}
+    image: ${SUBKIT_IMAGE:-mikebild/subkit:${SUBKIT_IMAGE_TAG:-8.0.68}}
     restart: unless-stopped
     depends_on:
       postgres:

@@ -34,6 +34,16 @@ import type { RequestStep } from "./types.ts";
 
 /** A placeholder expression without its `${}`: `input.site`, `item.id`, `scope.plan.data.id`. */
 const expression = z.string().regex(/^(?:item|input|scope)(?:\.[A-Za-z_][A-Za-z0-9_]*)+$/);
+// A record reports a bad key as a bare "Invalid key in record", which sent an
+// author guessing: it keyed a rule by the query parameter's NAME.
+const VARIABLES_KEY_ERROR =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
+  "a `variables` key is the placeholder expression without its `${}`, rooted at `input`, " +
+  "`scope` or `item` — for example `scope.window.data.start` or `item.id`. A query " +
+  "parameter's name or a path segment's label is not a key.";
+const variablesError = (issue: { code?: string }) =>
+  issue.code === "invalid_key" ? VARIABLES_KEY_ERROR : undefined;
+
 /**
  * A value an approved variable may take, exactly as it is sent: unreserved URL
  * characters, `:` (a segment such as `team:42` or `123:runReport`), and
@@ -100,7 +110,7 @@ export const RequestBoundaryScopeSchema = z
      * One entry per `${…}` that is a whole path segment or a whole query value,
      * keyed by the expression. `{}` when neither varies.
      */
-    variables: z.record(expression, rule),
+    variables: z.record(expression, rule, { error: variablesError }),
     max_body_bytes: z.number().int().min(0).max(10_000_000),
     // A reviewed ceiling shown to the human. NOT a per-run count the engine
     // enforces yet — nothing counts dispatches across a run (see
@@ -133,7 +143,7 @@ export const RequestBoundarySchema = z
       .array(z.union([z.string(), z.object({ var: expression }).strict()]))
       .min(2)
       .max(50),
-    variables: z.record(expression, rule),
+    variables: z.record(expression, rule, { error: variablesError }),
     // The key set is exact: `fixed` keys carry a literal value, `variable` keys
     // a value held to its rule. The array is always present, `[]` when nothing
     // varies, so a boundary approved before query values could vary keeps its
@@ -398,20 +408,47 @@ function matchTarget(boundary: RequestBoundary, url: URL): boolean {
   });
 }
 
+/**
+ * What is wrong with a query, in terms an author can act on. A VALUE is named
+ * only for a declared variable — that is workflow data. An unexpected key is
+ * named without its value, which a connector may have filled with a credential.
+ */
+export type RequestQueryViolation =
+  | { reason: "unexpected_key" | "missing_key" | "duplicate_key" | "fixed_value"; key: string }
+  | { reason: "variable_value"; key: string; value: string; rule: string };
+
 /** The query part of the same judgement: an exact key set, never a superset. */
-function matchQuery(boundary: RequestBoundary, url: URL): boolean {
+function queryViolation(boundary: RequestBoundary, url: URL): RequestQueryViolation | null {
   const keys = [...url.searchParams.keys()];
+  const duplicate = keys.find((key, index) => keys.indexOf(key) !== index);
+  if (duplicate !== undefined) return { reason: "duplicate_key", key: duplicate };
   const fixedKeys = Object.keys(boundary.query.fixed);
-  if (
-    new Set(keys).size !== keys.length ||
-    keys.length !== fixedKeys.length + boundary.query.variable.length ||
-    fixedKeys.some((key) => url.searchParams.get(key) !== boundary.query.fixed[key])
-  )
-    return false;
-  return boundary.query.variable.every((entry) => {
-    const value = url.searchParams.get(entry.key);
-    return value !== null && valueAllowed(boundary.variables[entry.var], value);
-  });
+  const reviewed = new Set([...fixedKeys, ...boundary.query.variable.map((entry) => entry.key)]);
+  const unexpected = keys.find((key) => !reviewed.has(key));
+  if (unexpected !== undefined) return { reason: "unexpected_key", key: unexpected };
+  const missing = [...reviewed].find((key) => !url.searchParams.has(key));
+  if (missing !== undefined) return { reason: "missing_key", key: missing };
+  const changed = fixedKeys.find((key) => url.searchParams.get(key) !== boundary.query.fixed[key]);
+  if (changed !== undefined) return { reason: "fixed_value", key: changed };
+  for (const entry of boundary.query.variable) {
+    const value = url.searchParams.get(entry.key) ?? "";
+    const variableRule = boundary.variables[entry.var];
+    if (!valueAllowed(variableRule, value))
+      return {
+        reason: "variable_value",
+        key: entry.key,
+        value: value.slice(0, 100),
+        rule: !variableRule
+          ? "no rule"
+          : "enum" in variableRule
+            ? `enum of ${variableRule.enum.length} value(s)`
+            : `class ${variableRule.class}`,
+      };
+  }
+  return null;
+}
+function matchQuery(boundary: RequestBoundary, url: URL): boolean {
+  return queryViolation(boundary, url) === null;
 }
 
 /** Why a materialized request is outside a boundary. Carries sizes, never content. */
@@ -419,7 +456,7 @@ export type RequestBoundaryViolation =
   | { kind: "boundary_invalid" | "request_missing" | "unsupported_body" | "url_invalid" }
   | { kind: "method"; actual: string; reviewed: string }
   | { kind: "target"; reviewed: string; actual: string }
-  | { kind: "query" }
+  | { kind: "query"; detail: RequestQueryViolation }
   | { kind: "body_forbidden"; method: string }
   | { kind: "body_size"; bytes: number; max_body_bytes: number };
 
@@ -455,7 +492,8 @@ export function requestBoundaryViolation(
       reviewed: requestBoundaryTarget(reviewed),
       actual: `${url.origin}${url.pathname}`.slice(0, 300),
     };
-  if (!matchQuery(reviewed, url)) return { kind: "query" };
+  const query = queryViolation(reviewed, url);
+  if (query) return { kind: "query", detail: query };
   if (reviewed.method === "GET" || reviewed.method === "HEAD")
     return request.body !== null && request.body !== undefined
       ? { kind: "body_forbidden", method: reviewed.method }
@@ -480,8 +518,18 @@ export function describeRequestBoundaryViolation(violation: RequestBoundaryViola
       return `the resolved URL ${violation.actual} is not ${violation.reviewed} with an approved value for every variable`;
     case "method":
       return `the method is ${violation.actual} but the boundary was compiled for ${violation.reviewed}`;
-    case "query":
-      return "the query does not have exactly the reviewed keys, a fixed value differs, or a varying value is outside its rule";
+    case "query": {
+      const { detail } = violation;
+      if (detail.reason === "variable_value")
+        return `the query value \`${detail.key}\` is "${detail.value}", which is outside its rule (${detail.rule})`;
+      if (detail.reason === "fixed_value")
+        return `the query parameter \`${detail.key}\` no longer has the fixed value the step declares`;
+      if (detail.reason === "missing_key")
+        return `the query parameter \`${detail.key}\` the step declares is missing from the request`;
+      if (detail.reason === "duplicate_key")
+        return `the query parameter \`${detail.key}\` appears more than once`;
+      return `the request carries a query parameter \`${detail.key}\` the step does not declare`;
+    }
     case "body_forbidden":
       return `a ${violation.method} request under a boundary may not carry a body`;
     case "unsupported_body":

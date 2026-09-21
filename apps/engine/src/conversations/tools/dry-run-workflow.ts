@@ -583,6 +583,13 @@ export const dryRunWorkflowTool: ConversationTool = {
       run.steps.find((s) => s.status !== "succeeded") ??
       null;
     const stoppedId = stoppedStep?.step_key ?? null;
+    // The message has to belong to the step it is attributed to: with several
+    // failures in one run, the last step's summary described a different one.
+    const stoppedError =
+      stoppedStep?.status === "failed" && stoppedStep.error && typeof stoppedStep.error === "object"
+        ? (stoppedStep.error as { message?: unknown }).message
+        : null;
+    const stoppedMessage = typeof stoppedError === "string" ? stoppedError : null;
 
     const fallbackStep = steps[steps.length - 1];
     const matchedStep = lastStepSummary
@@ -1178,7 +1185,7 @@ export const dryRunWorkflowTool: ConversationTool = {
     // top-level `message` summarizeToolFailure lifts into the tool.failed log.
     const previewSummary =
       run.status !== "succeeded"
-        ? `Run stopped at step \`${stoppedForDraft}\`: ${lastStep?.summary ?? run.error?.message ?? "unknown error"}`
+        ? `Run stopped at step \`${stoppedForDraft}\`: ${stoppedMessage ?? lastStep?.summary ?? run.error?.message ?? "unknown error"}`
         : judgeExhausted && judgeOutcome && judgeOutcome.verdict !== "skipped"
           ? `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"} without errors, but after ${judgeDoneSignal?.attempts ?? "several"} attempts the preview still does not satisfy the user's goal (judge verdict: ${judgeOutcome.verdict}): ${judgeOutcome.reason}${judgeOutcome.missing.length > 0 ? ` Missing: ${judgeOutcome.missing.join("; ")}.` : ""} It was NOT committed. STOP re-running dry_run_workflow — tell the user what is missing and ask how to proceed, or commit as-is via save_workflow_draft.`
           : judgeBlocked && judgeOutcome && judgeOutcome.verdict !== "skipped"
