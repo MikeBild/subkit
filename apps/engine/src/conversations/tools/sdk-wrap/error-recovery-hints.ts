@@ -35,7 +35,7 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   workflow_activation_required:
     "the saved draft is not the active workflow version. Saving did not authorize a live run. Inspect and preview the draft with inspect_workflow_draft / dry_run_workflow; the cockpit chat provides a saved-change review dialog that atomically activates the exact version and grants bounded execution permission after human confirmation. Direct the user to that chat action in one short sentence. Never provide an API command, use call_connector against the engine, or say they must leave the chat. Do not run an older active version as a substitute or retry with execute_writes.",
   draft_base_not_observed:
-    "open the existing workflow in an authoring session to observe its saved draft version before replacing it. Keep local edits; a force flag or an old active-version approval cannot stand in for that observation.",
+    "this conversation has not observed the workflow's saved draft, so it cannot replace it: either another author saved a draft, or the active version changed since this conversation began. Local edits here are kept. Tell the user in one plain sentence that the prepared change must continue in a new chat opened from the workflow page, where the current saved version is loaded first. A force flag or an old active-version approval cannot stand in for that observation.",
   draft_conflict:
     "another author changed the saved draft. Preserve local edits, inspect the current saved version, and reconcile the differences before saving. Do not retry blindly or replace the expected version with an unreviewed value.",
   // restore_workflow_version — the recovery tool. Its own failures must not
