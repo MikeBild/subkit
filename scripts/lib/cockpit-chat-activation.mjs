@@ -144,6 +144,27 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
                   content_type: "text/html",
                 },
               },
+              // A reviewed folder that REMOVES files. The dialog once labelled
+              // every non-PUT storage operation "read", so a removal was
+              // presented to its approver as a read. The assertions below are
+              // hostile on purpose: the word must be there, the ceiling must
+              // be there, and the read label must be absent.
+              {
+                step_id: "purge",
+                effect: "destructive",
+                operation: "DELETE",
+                target: "https://store.example.test/bucket/reports/expired/*",
+                storage: {
+                  base_url: "https://store.example.test/bucket/",
+                  key_prefix: "reports/expired/",
+                  operation: "DELETE",
+                  max_bytes: 10,
+                  max_keys: 1000,
+                  paginate: false,
+                  content_type: null,
+                  max_deletes: 4321,
+                },
+              },
             ],
         issues: [],
       },
@@ -261,6 +282,18 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
       )
     )
       throw new Error("Missing reviewed recipient");
+    const removal = page.getByTestId("authority-storage-boundary-destructive");
+    await removal.waitFor();
+    const removalText = await removal.innerText();
+    if (!removalText.includes("reports/expired/")) throw new Error("Removal folder not shown");
+    if (!removalText.replace(/[.,\u202f\u00a0 ]/g, "").includes("4321"))
+      throw new Error("Removal ceiling not shown to the approver");
+    if (!/löschen|delete/i.test(removalText))
+      throw new Error("A removal boundary does not say that it deletes");
+    if (/\blesen\b|\bread\b/i.test(removalText))
+      throw new Error("A removal boundary is presented to the approver as a read");
+    if ((await page.getByTestId("authority-storage-boundary").count()) !== 0)
+      throw new Error("A removal boundary was also rendered as a non-destructive panel");
     await page.getByTestId("authority-grant-confirm").click();
     await page.getByTestId("authority-prepare").waitFor();
     if (!(await page.getByTestId("authority-grant-confirm").isDisabled()))
