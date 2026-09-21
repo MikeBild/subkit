@@ -15,8 +15,8 @@ import {
   HttpRequestInvalidError,
   parseResponseBody,
   probeHttpConnector,
-  resolveUrl,
 } from "../drivers/http.ts";
+import { resolveUrl } from "../drivers/resolve-url.ts";
 import { createConnector, getConnector } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
 

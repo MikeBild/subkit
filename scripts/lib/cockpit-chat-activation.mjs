@@ -165,6 +165,44 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
                   max_deletes: 4321,
                 },
               },
+              // An author-declared request boundary. The numbers are unusual on
+              // purpose so the assertions cannot pass on a number that merely
+              // happens to be on the page. The panel has to show where the
+              // request goes, the only value the variable may take, both
+              // ceilings, and that the content is NOT what was approved.
+              {
+                step_id: "retire",
+                effect: "write",
+                operation: "POST",
+                target: "https://api.example.test/v2/sites/{input.site}/releases",
+                boundary: {
+                  base_url: "https://api.example.test/v2",
+                  method: "POST",
+                  origin: "https://api.example.test",
+                  segments: ["", "v2", "sites", { var: "input.site" }, "releases"],
+                  variables: { "input.site": { enum: ["site-alpha"] } },
+                  query: { fixed: {}, variable: [] },
+                  max_body_bytes: 54321,
+                  max_calls: 7,
+                },
+              },
+              {
+                step_id: "drop",
+                effect: "destructive",
+                operation: "DELETE",
+                target: "https://api.example.test/v2/sites/{input.site}/cache",
+                boundary: {
+                  base_url: "https://api.example.test/v2",
+                  method: "DELETE",
+                  origin: "https://api.example.test",
+                  segments: ["", "v2", "sites", { var: "input.site" }, "cache"],
+                  variables: { "input.site": { enum: ["site-alpha"] } },
+                  query: { fixed: {}, variable: [] },
+                  max_body_bytes: 0,
+                  max_calls: 1,
+                  destructive: true,
+                },
+              },
             ],
         issues: [],
       },
@@ -294,6 +332,31 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
       throw new Error("A removal boundary is presented to the approver as a read");
     if ((await page.getByTestId("authority-storage-boundary").count()) !== 0)
       throw new Error("A removal boundary was also rendered as a non-destructive panel");
+    const sendPanels = page.getByTestId("authority-request-boundary");
+    await sendPanels.first().waitFor();
+    if ((await sendPanels.count()) !== 1)
+      throw new Error("A request removal was also rendered as a non-destructive panel");
+    const sendText = await sendPanels.first().innerText();
+    const sendDigits = sendText.replace(/[.,\u202f\u00a0 ]/g, "");
+    if (!sendText.includes("/v2/sites/{input.site}/releases"))
+      throw new Error("Request boundary does not show its reviewed target");
+    if (!sendText.includes("site-alpha"))
+      throw new Error("Request boundary does not show the only value its variable may take");
+    if (!sendDigits.includes("54321")) throw new Error("Request size ceiling not shown");
+    if (!/\b7\b/.test(sendText)) throw new Error("Request call ceiling not shown");
+    if (!/not yet counted|noch nicht mitgezählt/i.test(sendText))
+      throw new Error("The call ceiling is presented as enforced, which it is not yet");
+    if (!/run time|Laufzeit/i.test(sendText))
+      throw new Error("The approver is not told that the content is decided at run time");
+    if (/\blesen\b|\bread\b/i.test(sendText))
+      throw new Error("A sending request boundary is presented to the approver as a read");
+    const dropPanel = page.getByTestId("authority-request-boundary-destructive");
+    if ((await dropPanel.count()) !== 1) throw new Error("Request removal panel missing");
+    const dropText = await dropPanel.innerText();
+    if (!/löschen|delete/i.test(dropText))
+      throw new Error("A request removal does not say that it deletes");
+    if (!dropText.includes("/v2/sites/{input.site}/cache"))
+      throw new Error("Request removal does not show its reviewed target");
     await page.getByTestId("authority-grant-confirm").click();
     await page.getByTestId("authority-prepare").waitFor();
     if (!(await page.getByTestId("authority-grant-confirm").isDisabled()))

@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { presentRequestBoundary } from "@/lib/authority-request";
 import { presentStorageScope } from "@/lib/authority-storage";
 import { useI18n } from "@/lib/i18n-context";
 import {
@@ -186,6 +187,8 @@ export function GrantWorkflowAuthority({
   const recurringContent = publications.length > 0 && !unsupported;
   const storageScopes =
     review?.manifest.effects.flatMap((effect) => (effect.storage ? [effect.storage] : [])) ?? [];
+  const requestBoundaries =
+    review?.manifest.effects.flatMap((effect) => (effect.boundary ? [effect.boundary] : [])) ?? [];
   const incomplete = review?.execution_shape.requests.some(
     (request) => request.request_review_truncated || request.opaque_payload_omitted,
   );
@@ -320,6 +323,44 @@ export function GrantWorkflowAuthority({
                   <p>{t("authority.storage.folder", { folder: scope.key_prefix })}</p>
                   <p className="break-all">{scope.base_url}</p>
                   <p>{t(shown.detail, shown.values)}</p>
+                </AlertDescription>
+              </Alert>
+            );
+          })}
+          {requestBoundaries.map((boundary, index) => {
+            const shown = presentRequestBoundary(boundary, (value) =>
+              new Intl.NumberFormat(locale).format(value),
+            );
+            return (
+              <Alert
+                key={index}
+                data-testid={
+                  shown.destructive
+                    ? "authority-request-boundary-destructive"
+                    : "authority-request-boundary"
+                }
+                variant={shown.destructive ? "destructive" : "default"}
+                className={shown.destructive ? undefined : "bg-accent/10"}
+              >
+                <AlertTitle>{t(shown.title)}</AlertTitle>
+                <AlertDescription>
+                  <p className="break-all">
+                    {t("authority.boundary.target", {
+                      method: boundary.method,
+                      target: shown.target,
+                    })}
+                  </p>
+                  {shown.variables.map((variable) => (
+                    <p key={variable.name}>
+                      {t("authority.boundary.variable", {
+                        name: variable.name,
+                        values: variable.values,
+                      })}
+                    </p>
+                  ))}
+                  <p>{t(shown.body.key, shown.body.values)}</p>
+                  <p>{t("authority.boundary.calls", { count: shown.calls })}</p>
+                  <p>{t("authority.boundary.contentNotice")}</p>
                 </AlertDescription>
               </Alert>
             );

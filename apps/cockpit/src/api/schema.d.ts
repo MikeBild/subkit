@@ -17480,6 +17480,32 @@ export interface components {
                     content_type: string | null;
                     max_deletes?: number;
                 };
+                boundary?: {
+                    /** Format: uri */
+                    base_url: string | null;
+                    /** @enum {string} */
+                    method: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS";
+                    /** Format: uri */
+                    origin: string;
+                    segments: (string | {
+                        var: string;
+                    })[];
+                    variables: {
+                        [key: string]: {
+                            enum: string[];
+                        };
+                    };
+                    query: {
+                        fixed: {
+                            [key: string]: string;
+                        };
+                        variable: string[];
+                    };
+                    max_body_bytes: number;
+                    max_calls: number;
+                    /** @enum {boolean} */
+                    destructive?: true;
+                };
                 read_query?: {
                     fixed: {
                         [key: string]: string;
@@ -17611,6 +17637,17 @@ export interface components {
             path?: string;
             /** Format: uuid */
             connector_id?: string;
+            boundary?: {
+                variables: {
+                    [key: string]: {
+                        enum: string[];
+                    };
+                };
+                max_body_bytes: number;
+                max_calls: number;
+                /** @enum {boolean} */
+                destructive?: true;
+            };
             headers?: {
                 [key: string]: string;
             } | string;

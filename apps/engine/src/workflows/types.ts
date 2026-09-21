@@ -5,6 +5,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { FileRefSchema } from "../api/files-schemas.ts";
+import { RequestBoundaryScopeSchema } from "./request-boundary.ts";
 import { StorageScopeSchema } from "./storage-boundary.ts";
 import { looksLikeJsonObjectOrArray, parseHeaderLines } from "./types-helpers.ts";
 import {
@@ -270,6 +271,12 @@ export const RequestStepSchema = z
     url: z.string().optional(),
     path: z.string().optional(),
     connector_id: z.string().uuid().optional(),
+    // What may vary on this request and how far, stated by the author and
+    // reviewed by a human before recurring runs (workflows/request-boundary.ts).
+    // Optional with NO default on purpose: a default would change the parsed
+    // definition of every stored workflow and with it the digest every live
+    // grant is bound to.
+    boundary: RequestBoundaryScopeSchema.optional(),
     // headers accepts either a record or a multi-line
     // "Name: Value" string (one per line). The string form is a
     // convenience for LLM-authored steps that often emit headers as a

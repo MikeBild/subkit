@@ -206,6 +206,18 @@ const EN = {
   "authority.storage.unknown": "Unrecognised storage action",
   "authority.storage.unknownScope":
     "This dialog cannot describe the action “{operation}”. Do not approve it until the action is understood.",
+  "authority.boundary.read": "Read from a fixed address",
+  "authority.boundary.send": "Send to a fixed address",
+  "authority.boundary.delete": "Delete at a fixed address",
+  "authority.boundary.unknown": "Unrecognised request type",
+  "authority.boundary.target": "{method} {target}",
+  "authority.boundary.variable": "{name} may only be: {values}",
+  "authority.boundary.bodyLimit": "At most {bytes} bytes of content per request.",
+  "authority.boundary.noBody": "Sends no content.",
+  "authority.boundary.calls":
+    "Reviewed ceiling: {count} requests per run. This number is reviewed, but not yet counted by the system.",
+  "authority.boundary.contentNotice":
+    "The content is decided at run time. This approval limits where the request goes and how large it is — not what it contains, for example which records it changes or removes.",
   "authority.readPath":
     "Read records in this collection. Record IDs may change; the server and collection stay fixed.",
   "authority.digest": "Effect manifest digest",
@@ -1839,6 +1851,18 @@ const DE: Record<TranslationKey, string> = {
   "authority.storage.unknown": "Unbekannte Speicher-Aktion",
   "authority.storage.unknownScope":
     "Dieser Dialog kann die Aktion „{operation}“ nicht beschreiben. Bitte nicht freigeben, solange die Aktion nicht geklärt ist.",
+  "authority.boundary.read": "Von einer festen Adresse lesen",
+  "authority.boundary.send": "An eine feste Adresse senden",
+  "authority.boundary.delete": "An einer festen Adresse löschen",
+  "authority.boundary.unknown": "Unbekannte Anfrageart",
+  "authority.boundary.target": "{method} {target}",
+  "authority.boundary.variable": "{name} darf nur sein: {values}",
+  "authority.boundary.bodyLimit": "Höchstens {bytes} Bytes Inhalt je Anfrage.",
+  "authority.boundary.noBody": "Sendet keinen Inhalt.",
+  "authority.boundary.calls":
+    "Geprüfte Obergrenze: {count} Anfragen pro Lauf. Diese Zahl ist geprüft, wird vom System aber noch nicht mitgezählt.",
+  "authority.boundary.contentNotice":
+    "Der Inhalt entsteht erst zur Laufzeit. Diese Freigabe begrenzt, wohin die Anfrage geht und wie groß sie ist — nicht, was sie enthält, zum Beispiel welche Einträge sie ändert oder entfernt.",
   "authority.readPath":
     "Einträge dieser Sammlung lesen. Ihre IDs dürfen wechseln; Server und Sammlung bleiben fest.",
   "authority.digest": "Prüfsumme des Wirkungsmanifests",
