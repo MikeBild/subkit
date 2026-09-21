@@ -168,7 +168,14 @@ describe("connector re-auth — reactive flag + event", () => {
     expect("reauth_url" in payload).toBe(true);
   });
 
-  test("403 response also flags needs_reauth=true", async () => {
+  // This used to assert the opposite. A 403 is "this identity may not touch
+  // THIS resource" — a wrong id in a path, a scope the grant never covered —
+  // while the credential is alive. Flagging on it took a healthy connector out
+  // of service: every step on it became unavailable, its schedule was held, and
+  // the prepared run that would have cleared the flag was refused for the same
+  // reason. Probe classification and the proactive scan already made this
+  // split (401 credential_invalid, 403 scope_insufficient); dispatch now does.
+  test("a 403 fails the run but leaves the connector in service", async () => {
     await resetConnector();
 
     const { workflow_id } = await createWorkflowRow(ctx, {
@@ -195,7 +202,7 @@ describe("connector re-auth — reactive flag + event", () => {
     expect(result.status).toBe("failed");
 
     const connRow = await queryConnectorRow();
-    expect(connRow.needs_reauth).toBe(true);
+    expect(connRow.needs_reauth).toBe(false);
   });
 });
 
