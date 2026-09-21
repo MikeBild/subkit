@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
+import type { PgBoss } from "pg-boss";
 import {
   browserSessionCookie,
   signBrowserCsrf,
@@ -18,6 +19,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { inspectScheduleAutomation } from "../../scheduler/automation-status.ts";
+import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import {
   activateWorkflowDraft,
@@ -290,6 +292,11 @@ test("reviewed active authority resolves exactly its held schedule, audited and 
       timezone: "UTC",
       execution_mode: "dev",
       admission_hold: hold,
+      // Two days old and never fired: an occurrence has ALREADY been missed
+      // while held. Without this the "nothing fires right after the grant"
+      // assertion below would pass on any code, because a fresh schedule is not
+      // due until its first occurrence after creation anyway.
+      created_at: new Date(new Date(f.input.valid_from).getTime() - 2 * 86_400_000),
     })
     .returning();
   if (!schedule) throw new Error("missing schedule");
@@ -340,6 +347,31 @@ test("reviewed active authority resolves exactly its held schedule, audited and 
   expect((await read())?.admission_hold).toBeNull();
   expect(await countOpen()).toBe(1);
   expect((await inspectScheduleAutomation(schedule, ctx.db)).state).toBe("authorized");
+  // Approving is not running: the dialog promises that no run starts now. The
+  // held occurrence must not fire on the next scheduler tick, so the watermark
+  // moves to the approval. Proven through the scheduler itself, not by reading
+  // the column: a tick right after the grant enqueues nothing, and a tick after
+  // the next cron occurrence enqueues exactly one run.
+  const stamped = (await read())?.last_enqueued_at;
+  expect(stamped).toBeInstanceOf(Date);
+  const sent: unknown[] = [];
+  const reconciler = new SchedulerReconciler({
+    boss: {
+      send: async (_queue: string, payload: unknown) => {
+        sent.push(payload);
+        return "job";
+      },
+    } as unknown as PgBoss,
+    db: ctx.db,
+  });
+  const approvedAt = stamped as Date;
+  await reconciler.reconcileWorkflowSchedules(new Date(approvedAt.getTime() + 60_000));
+  expect(sent).toHaveLength(0);
+  const nextOccurrence = new Date(approvedAt);
+  nextOccurrence.setUTCDate(nextOccurrence.getUTCDate() + 1);
+  nextOccurrence.setUTCHours(9, 1, 0, 0);
+  await reconciler.reconcileWorkflowSchedules(nextOccurrence);
+  expect(sent).toHaveLength(1);
   await grantWorkflowAuthority(f.workflow.id, f.input, f.context);
   const audit = await ctx.db
     .select()

@@ -181,9 +181,19 @@ async function resolveGrantedScheduleHold(
       ).valid
     )
       continue;
+    // Approving is not running. While a schedule is held the scheduler keeps
+    // its missed occurrence due (it restores the watermark after every refused
+    // attempt), so lifting the hold alone makes that occurrence fire on the very
+    // next tick — seconds after the click. The dialog the human just confirmed
+    // says no run starts now and names the next scheduled time; in production a
+    // destructive retention run and a report e-mail both went out within
+    // seconds of an approval instead. Moving the watermark to the moment of
+    // approval makes the statement true: the first run is the first cron
+    // occurrence AFTER the approval, the same rule a newly created schedule
+    // already follows. Occurrences missed while held are not replayed.
     await tx
       .update(workflowsSchedules)
-      .set({ admission_hold: null })
+      .set({ admission_hold: null, last_enqueued_at: sql`clock_timestamp()` })
       .where(
         and(
           eq(workflowsSchedules.tenant_id, authority.tenant_id),
