@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { presentStorageScope } from "@/lib/authority-storage";
 import { useI18n } from "@/lib/i18n-context";
 import {
   AUTHORITY_EFFECT_KEYS,
@@ -299,30 +300,30 @@ export function GrantWorkflowAuthority({
                 </AlertDescription>
               </Alert>
             ))}
-          {storageScopes.map((scope, index) => (
-            <Alert key={index} data-testid="authority-storage-boundary" className="bg-accent/10">
-              <AlertTitle>
-                {t(
-                  scope.operation === "PUT" ? "authority.storage.write" : "authority.storage.read",
-                )}
-              </AlertTitle>
-              <AlertDescription>
-                <p>{t("authority.storage.folder", { folder: scope.key_prefix })}</p>
-                <p className="break-all">{scope.base_url}</p>
-                {scope.operation === "PUT" ? (
-                  <p>
-                    {t("authority.storage.writeScope", {
-                      bytes: new Intl.NumberFormat(locale).format(scope.max_bytes),
-                    })}
-                  </p>
-                ) : scope.operation === "LIST" ? (
-                  <p>{t("authority.storage.listScope", { count: scope.max_keys })}</p>
-                ) : (
-                  <p>{t("authority.storage.readScope")}</p>
-                )}
-              </AlertDescription>
-            </Alert>
-          ))}
+          {storageScopes.map((scope, index) => {
+            const shown = presentStorageScope(scope, (value) =>
+              new Intl.NumberFormat(locale).format(value),
+            );
+            return (
+              <Alert
+                key={index}
+                data-testid={
+                  shown.destructive
+                    ? "authority-storage-boundary-destructive"
+                    : "authority-storage-boundary"
+                }
+                variant={shown.destructive ? "destructive" : "default"}
+                className={shown.destructive ? undefined : "bg-accent/10"}
+              >
+                <AlertTitle>{t(shown.title)}</AlertTitle>
+                <AlertDescription>
+                  <p>{t("authority.storage.folder", { folder: scope.key_prefix })}</p>
+                  <p className="break-all">{scope.base_url}</p>
+                  <p>{t(shown.detail, shown.values)}</p>
+                </AlertDescription>
+              </Alert>
+            );
+          })}
           {recurringReport && (
             <Alert data-testid="authority-report-boundary" className="bg-accent/10">
               <AlertTitle>{t("authority.report.recipients")}</AlertTitle>

@@ -200,6 +200,12 @@ const EN = {
     "File names and contents may change. Existing files in this folder may be replaced. Maximum {bytes} bytes per file.",
   "authority.storage.listScope": "List up to {count} files per lookup within this folder.",
   "authority.storage.readScope": "Read files within this folder.",
+  "authority.storage.delete": "Permanently delete report files",
+  "authority.storage.deleteScope":
+    "Files inside this folder are deleted for good and cannot be restored. Reviewed ceiling: {count} files per run. Every deletion is checked to stay inside this folder; the number per run is a reviewed ceiling and is not yet counted by the system.",
+  "authority.storage.unknown": "Unrecognised storage action",
+  "authority.storage.unknownScope":
+    "This dialog cannot describe the action “{operation}”. Do not approve it until the action is understood.",
   "authority.readPath":
     "Read records in this collection. Record IDs may change; the server and collection stay fixed.",
   "authority.digest": "Effect manifest digest",
@@ -1827,6 +1833,12 @@ const DE: Record<TranslationKey, string> = {
     "Dateinamen und Inhalte dürfen wechseln. Vorhandene Dateien in diesem Ordner können ersetzt werden. Höchstens {bytes} Bytes je Datei.",
   "authority.storage.listScope": "Bis zu {count} Dateien pro Listenabruf innerhalb dieses Ordners.",
   "authority.storage.readScope": "Dateien innerhalb dieses Ordners lesen.",
+  "authority.storage.delete": "Berichtsdateien endgültig löschen",
+  "authority.storage.deleteScope":
+    "Dateien in diesem Ordner werden endgültig gelöscht und lassen sich nicht wiederherstellen. Geprüfte Obergrenze: {count} Dateien pro Lauf. Jede Löschung wird darauf geprüft, in diesem Ordner zu bleiben; die Anzahl pro Lauf ist eine geprüfte Obergrenze und wird vom System noch nicht mitgezählt.",
+  "authority.storage.unknown": "Unbekannte Speicher-Aktion",
+  "authority.storage.unknownScope":
+    "Dieser Dialog kann die Aktion „{operation}“ nicht beschreiben. Bitte nicht freigeben, solange die Aktion nicht geklärt ist.",
   "authority.readPath":
     "Einträge dieser Sammlung lesen. Ihre IDs dürfen wechseln; Server und Sammlung bleiben fest.",
   "authority.digest": "Prüfsumme des Wirkungsmanifests",
