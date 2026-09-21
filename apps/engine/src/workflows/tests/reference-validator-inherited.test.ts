@@ -1,0 +1,62 @@
+// An authoring step answers only for the step references it introduces.
+//
+// The expressions are the production ones that triggered this: shared transform
+// code that reads a step of a sibling workflow behind a test on ANOTHER step, so
+// no guard-syntax heuristic could ever clear them.
+
+import { expect, test } from "bun:test";
+import { partitionStepReferences, validateStepReferences } from "../reference-validator.ts";
+import type { WorkflowDef } from "../types.ts";
+
+const PLAN =
+  "const current = input.scope.rollup_window\n  ? input.scope.rollup_window.data\n  : input.scope.window.data;\nreturn current;";
+
+function def(steps: Array<Record<string, unknown>>): WorkflowDef {
+  return { name: "rollup", steps } as unknown as WorkflowDef;
+}
+const base = () => [
+  { id: "rollup_window", kind: "transform", expression: "return {};" },
+  { id: "comparison_plan", kind: "transform", expression: PLAN },
+];
+const dangling = (steps: Array<Record<string, unknown>>) => validateStepReferences(def(steps));
+
+test("the else-branch read of an absent step is inherited, not introduced", () => {
+  const baseline = dangling(base());
+  expect(baseline.map((e) => e.bad_reference)).toEqual(["window"]);
+  const withField = base().map((s) => (s.id === "rollup_window" ? { ...s, timeout_ms: 5 } : s));
+  const split = partitionStepReferences(dangling(withField), baseline);
+  expect(split.introduced).toEqual([]);
+  expect(split.inherited.map((e) => e.bad_reference)).toEqual(["window"]);
+});
+
+test("the same absent step read from ANOTHER step is introduced", () => {
+  const next = [
+    ...base(),
+    { id: "extra", kind: "transform", expression: "return input.scope.window.data.length;" },
+  ];
+  const split = partitionStepReferences(dangling(next), dangling(base()));
+  expect(split.introduced.map((e) => e.step_id)).toEqual(["extra"]);
+  expect(split.inherited.map((e) => e.step_id)).toEqual(["comparison_plan"]);
+});
+
+test("renaming the step, or editing its expression while keeping the read, stays inherited", () => {
+  const renamed = base().map((s) => (s.id === "comparison_plan" ? { ...s, id: "plan" } : s));
+  expect(partitionStepReferences(dangling(renamed), dangling(base())).introduced).toEqual([]);
+  const edited = base().map((s) =>
+    s.id === "comparison_plan" ? { ...s, expression: `${PLAN}\n// reviewed` } : s,
+  );
+  expect(partitionStepReferences(dangling(edited), dangling(base())).introduced).toEqual([]);
+});
+
+test("removing a step others still name is introduced by the removal", () => {
+  const baseline = dangling(base());
+  const removed = base().filter((s) => s.id !== "rollup_window");
+  const split = partitionStepReferences(dangling(removed), baseline);
+  expect(split.introduced.map((e) => e.bad_reference)).toContain("rollup_window");
+});
+
+test("with nothing to inherit from, every dangling reference is introduced", () => {
+  const split = partitionStepReferences(dangling(base()), []);
+  expect(split.inherited).toEqual([]);
+  expect(split.introduced.map((e) => e.bad_reference)).toEqual(["window"]);
+});
