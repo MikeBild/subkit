@@ -212,6 +212,8 @@ const EN = {
   "authority.boundary.unknown": "Unrecognised request type",
   "authority.boundary.target": "{method} {target}",
   "authority.boundary.variable": "{name} may only be: {values}",
+  "authority.boundary.variableEncoded":
+    "{name} may only be: {values}. Shown exactly as sent; decoded this reads: {decoded}.",
   "authority.boundary.class.identifier":
     "{name} may be any identifier made of letters, digits, “_” and “-” (up to 200 characters).",
   "authority.boundary.class.uuid": "{name} may be any UUID.",
@@ -1871,6 +1873,8 @@ const DE: Record<TranslationKey, string> = {
   "authority.boundary.unknown": "Unbekannte Anfrageart",
   "authority.boundary.target": "{method} {target}",
   "authority.boundary.variable": "{name} darf nur sein: {values}",
+  "authority.boundary.variableEncoded":
+    "{name} darf nur sein: {values}. Genau so wird es gesendet; entschlüsselt heißt das: {decoded}.",
   "authority.boundary.class.identifier":
     "{name} darf jede Kennung aus Buchstaben, Ziffern, „_“ und „-“ sein (bis 200 Zeichen).",
   "authority.boundary.class.uuid": "{name} darf jede UUID sein.",
