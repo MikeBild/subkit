@@ -85,6 +85,7 @@ import {
   inferStateDrivenFollowUpTool,
 } from "./intent-detector.ts";
 import { RUN_VERB_RE } from "./intent-patterns.ts";
+import { abstentionDecision } from "./loop/abstention-gate.ts";
 import { resolveConversationAttemptRoutes } from "./loop/attempt-route.ts";
 import {
   DEFAULT_BUDGET,
@@ -2370,7 +2371,30 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         // Rate-limited to ONE abstention per turn so a flaky check cannot spam
         // elicitations — the faithfulness case takes precedence in its prompt
         // wording because it is the stronger honesty signal.
-        if (commitAbstains || faithfulnessAbstains) {
+        // A verdict must never cancel a question a human is already being
+        // asked. Creating an elicitation supersedes every pending one (a
+        // load-bearing rule — the model must never see two open ask_user_*
+        // forms), so an abstention raised after the turn ended on the model's
+        // own question silently replaced that question with this one. In
+        // production it cancelled a real choice, put an untranslated internal
+        // prompt in its place that no surface renders, and cost the user the
+        // whole turn. The verdict is already logged above in full; when a
+        // question is pending it stays a logged note.
+        const abstention = abstentionDecision({
+          commitAbstains,
+          faithfulnessAbstains,
+          hasPendingQuestion: Boolean(signals.pendingElicitation),
+        });
+        if (abstention === "skip_pending_question") {
+          logger.info({
+            module: "llm",
+            action: "critic.abstention.skipped_pending_question",
+            msg: "abstention not raised: the turn already ended on a pending human question",
+            conversation_id: p.conversation_id,
+            tenant_id: p.tenant_id,
+            source: faithfulnessAbstains ? "source_faithful.abstention" : "critic.abstention",
+          });
+        } else if (abstention === "raise") {
           const abstain = faithfulnessAbstains
             ? {
                 source: "source_faithful.abstention" as const,
