@@ -235,9 +235,9 @@ export function assertStorageRequest(
   if (storageKeyViolation(boundary, key, request.body) !== null) deny();
 }
 
-/** Why an object key or its content is outside a folder boundary. Sizes, never content. */
+/** Why an object key or its content is outside a folder boundary. The key and sizes, never content. */
 export type StorageKeyViolation =
-  | { kind: "outside_folder"; key_prefix: string }
+  | { kind: "outside_folder"; key_prefix: string; key: string }
   | { kind: "key_invalid" }
   | { kind: "body_size"; bytes: number; max_bytes: number }
   | { kind: "body_not_text" | "body_forbidden" };
@@ -254,7 +254,7 @@ export function storageKeyViolation(
   body: unknown,
 ): StorageKeyViolation | null {
   if (!key.startsWith(boundary.key_prefix))
-    return { kind: "outside_folder", key_prefix: boundary.key_prefix };
+    return { kind: "outside_folder", key_prefix: boundary.key_prefix, key: key.slice(0, 200) };
   if (boundary.operation === "LIST") return body == null ? null : { kind: "body_forbidden" };
   if (
     key.split("/").some((part) => !part || part === "." || part === "..") ||
@@ -274,7 +274,7 @@ export function storageKeyViolation(
 export function describeStorageKeyViolation(violation: StorageKeyViolation): string {
   switch (violation.kind) {
     case "outside_folder":
-      return `the key is not under \`s3.scope.key_prefix\` "${violation.key_prefix}"`;
+      return `the key "${violation.key}" is not under \`s3.scope.key_prefix\` "${violation.key_prefix}"`;
     case "body_size":
       return `the content is ${violation.bytes} bytes but \`s3.scope.max_bytes\` is ${violation.max_bytes}`;
     case "key_invalid":
