@@ -24,8 +24,10 @@ author declares a boundary on the step and a human approves it.
 
 `variables` has exactly one entry per placeholder that is a whole path segment or
 a whole query value, keyed by the expression without `${}`. An entry normally
-lists every value it may take: `{ "enum": [...] }`, 1 to 50 values of letters,
-digits, `.`, `_`, `~` and `-`. Where the values cannot be listed — an id produced
+lists every value it may take, written exactly as it is sent: `{ "enum": [...] }`,
+1 to 50 values of letters, digits, `.`, `_`, `~`, `-`, `:` and `%XX` escapes. Values
+are compared byte for byte against the raw segment; an escape that decodes to a
+traversal, a control character or a backslash is refused. Where the values cannot be listed — an id produced
 by an earlier step, a time window — an entry names a value class instead:
 `{ "class": "uuid" }`, `integer`, `identifier`, `date` or `timestamp`. A class
 approves every value of that form, the review dialog says so, and a `DELETE` may

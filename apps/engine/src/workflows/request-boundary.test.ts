@@ -199,7 +199,27 @@ test("a static query is part of the boundary; a GET may not carry a body", () =>
 test("a value that could change the route never gets as far as a boundary", () => {
   // The rule is part of the step schema, so an unusable value is refused where
   // the workflow is parsed — before any compile, review or dispatch.
-  for (const value of ["a/b", "..", "has space", "x?y", "", "a%2Fb"])
+  for (const value of [
+    "a/b",
+    "..",
+    "has space",
+    "x?y",
+    "x#y",
+    "",
+    // An escape is allowed; one that smuggles a traversal, a control character
+    // or a backslash past a server that decodes before routing is not.
+    "%2e%2e",
+    ".%2E",
+    "%2E",
+    "a%2F..%2Fb",
+    "%00",
+    "%0A",
+    "%7F",
+    "a%5Cb",
+    "%zz",
+    "%2",
+    "%C0%AF",
+  ])
     expect(
       RequestStepSchema.safeParse({
         ...release,
@@ -371,4 +391,72 @@ test("a removal may only vary over listed values", () => {
     },
   });
   expect(compileRequestBoundary(removal, BASE).refusal).toBe("delete_requires_enum");
+});
+
+// ── Segments an API spells with `:` or percent-escapes ───────────────────────
+
+const ENCODED_SITE = "https%3A%2F%2Fexample.com%2F";
+const searchQuery = step({
+  method: "POST",
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+  path: "/sites/${scope.target.data.site}/query/${scope.target.data.report}",
+  body: { rows: 10 },
+  boundary: {
+    variables: {
+      "scope.target.data.site": { enum: [ENCODED_SITE, "sc-domain%3Aexample.com"] },
+      "scope.target.data.report": { enum: ["123456789:runReport"] },
+    },
+    max_body_bytes: 100,
+    max_calls: 2,
+  },
+});
+
+test("an escaped or colon-bearing segment is compared exactly as it is sent", () => {
+  const { boundary, refusal } = compileRequestBoundary(searchQuery, BASE);
+  expect(refusal).toBeUndefined();
+  const send = (site: string, report = "123456789:runReport") => ({
+    method: "POST",
+    url: `https://api.example.test/v2/sites/${site}/query/${report}`,
+    headers: {},
+    body: { rows: 10 },
+  });
+  expect(() => assertRequestBoundary(boundary!, send(ENCODED_SITE))).not.toThrow();
+  expect(() => assertRequestBoundary(boundary!, send("sc-domain%3Aexample.com"))).not.toThrow();
+  for (const site of [
+    "https%3a%2f%2fexample.com%2f", // other hex case: not the reviewed bytes
+    "https:%2F%2Fexample.com%2F", // partly decoded
+    "https%253A%252F%252Fexample.com%252F", // double encoded
+    "https%3A%2F%2Fevil.example%2F",
+    "https://example.com/", // decoded: more segments
+    `${ENCODED_SITE}%2F%2E%2E`,
+  ])
+    expect(() => assertRequestBoundary(boundary!, send(site))).toThrow();
+  for (const report of [
+    "123456789:runReportX",
+    "999:runReport",
+    "123456789%3ArunReport",
+    ":runReport",
+  ])
+    expect(() => assertRequestBoundary(boundary!, send(ENCODED_SITE, report))).toThrow();
+});
+
+test("a value that would be read as a URL scheme is caught at review, not at dispatch", () => {
+  const leading = step({
+    method: "GET",
+    // No leading slash: the first segment is the variable itself.
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+    path: "${item.account}/insights",
+    boundary: {
+      variables: { "item.account": { enum: ["do:team:0e489f44-ea42-4bd8-8102-3e3e00827db7"] } },
+      max_body_bytes: 0,
+      max_calls: 1,
+    },
+  });
+  expect(compileRequestBoundary(leading, "https://api.example.test").refusal).toBe(
+    "enum_value_unroutable",
+  );
+  // The same value behind a literal segment routes where it was reviewed.
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+  const behind = step({ ...leading, path: "/billing/${item.account}/insights" });
+  expect(compileRequestBoundary(behind, "https://api.example.test").refusal).toBeUndefined();
 });

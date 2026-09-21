@@ -280,6 +280,8 @@ test("workflow-authoring names the request boundary, its patch path and its limi
   expect(body).toContain("max_body_bytes");
   expect(body).toContain("max_calls");
   expect(body).toContain("destructive: true");
-  expect(body).toContain("Not coverable yet");
+  // What needs a minimal re-author, and what cannot be covered at all.
+  expect(body).toContain("Re-author minimally");
+  expect(body).toContain("Not coverable at all yet");
   expect(body).toContain("does not count yet");
 });

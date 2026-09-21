@@ -44,6 +44,14 @@ export interface RequestBoundaryPresentation {
   declaredDestructive: boolean;
 }
 
+function readable(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 const CLASS_KEYS: Record<string, TranslationKey> = {
   identifier: "authority.boundary.class.identifier",
   uuid: "authority.boundary.class.uuid",
@@ -63,11 +71,19 @@ export function presentRequestBoundary(
   let unknownRule = false;
   const variables = Object.entries(boundary.variables).map(
     ([name, entry]): RequestBoundaryPresentation["variables"][number] => {
-      if ("enum" in entry)
-        return {
-          key: "authority.boundary.variable" as const,
-          values: { name, values: entry.enum.join(", ") },
-        };
+      if ("enum" in entry) {
+        const values = entry.enum.join(", ");
+        // A percent-escaped value is what gets sent, but not what a person reads.
+        const decoded = entry.enum.some((value) => value.includes("%"))
+          ? entry.enum.map(readable).join(", ")
+          : null;
+        return decoded === null
+          ? { key: "authority.boundary.variable" as const, values: { name, values } }
+          : {
+              key: "authority.boundary.variableEncoded" as const,
+              values: { name, values, decoded },
+            };
+      }
       const key = CLASS_KEYS[entry.class];
       if (key) return { key, values: { name } };
       unknownRule = true;
