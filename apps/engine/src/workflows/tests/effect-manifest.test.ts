@@ -285,3 +285,53 @@ test("S3 recurring authority requires an explicit folder profile bound to the au
     }).eligible_for_repeated_runs,
   ).toBe(false);
 });
+
+test("a removal becomes grantable only with a declared ceiling, and stays visibly destructive", () => {
+  const input = fixture({
+    method: "DELETE",
+    path: undefined,
+    // A removal carries no body; the default fixture body would be refused, which
+    // is itself the behaviour asserted in the boundary suite.
+    body: undefined,
+    s3: {
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
+      key: "${item.key}",
+      scope: { key_prefix: "reports/daily/", max_bytes: 10, max_deletes: 500 },
+    },
+  });
+  const step = input.definition.steps[0];
+  if (step?.kind !== "request") throw new Error("request missing");
+  const storage = storageBoundary(step, "https://store.example.test/bucket/")!;
+  input.bindings[0] = {
+    ...input.bindings[0]!,
+    driver: "s3",
+    storage,
+    target: storageTarget(storage),
+  };
+  const result = compileWorkflowEffectManifest(input);
+  expect(result.manifest.issues).toEqual([]);
+  expect(result.eligible_for_repeated_runs).toBe(true);
+  // The reviewer must still see what this step does. Only the blocking issue is
+  // lifted; the effect itself is unchanged.
+  expect(result.manifest.effects[0]?.effect).toBe("destructive");
+  expect(result.manifest.effects[0]?.storage?.max_deletes).toBe(500);
+  // Strip the ceiling from the stored binding and the boundary no longer parses
+  // at all, so the compile fails loudly instead of quietly returning an
+  // ineligible manifest. That is the fail-closed direction: a DELETE boundary
+  // without a ceiling is not a workflow to report on, it is an impossible input.
+  const { max_deletes: _ceiling, ...noCeiling } = storage;
+  expect(() =>
+    compileWorkflowEffectManifest({
+      ...input,
+      bindings: [{ ...input.bindings[0], storage: noCeiling }],
+    }),
+  ).toThrow("max_deletes");
+  // A ceiling that is present but tampered still parses, so it takes the normal
+  // digest-mismatch route and simply becomes ineligible.
+  expect(
+    compileWorkflowEffectManifest({
+      ...input,
+      bindings: [{ ...input.bindings[0], storage: { ...storage, max_deletes: 1 } }],
+    }).eligible_for_repeated_runs,
+  ).toBe(false);
+});
