@@ -15,6 +15,7 @@
 
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
+import { clearConnectorReauth } from "../reauth.ts";
 import type { ConnectorView } from "../types.ts";
 import { probeGraphQLConnector } from "./graphql.ts";
 import { probeHttpConnector } from "./http.ts";
@@ -124,6 +125,37 @@ export async function probeConnector(p: {
       error_code: "connector_disabled",
     };
   }
+  const result = await probeWithDriver(p);
+  // The re-auth state machine's clearing edge is "a successful authenticated
+  // call proves the credential is live" (see connectors/reauth.ts). A probe IS
+  // such a call, so it closes that edge here — the single funnel every probe
+  // surface (REST, MCP, conversation tool, scan runner) already goes through.
+  //
+  // Without this, a connector flagged by a transient or misclassified auth
+  // rejection can only be revived by re-authenticating: the flag blocks both
+  // scheduled admission (workflows/effect-resolution.ts) and prepared runs
+  // (execution/prepared-workflow-references.ts), and those are the only paths
+  // that would otherwise make the successful call that clears it.
+  //
+  // A draft probe carries `credential_override` — it proves something about
+  // the supplied material, not about the persisted row, so it never clears.
+  if (
+    result.ok &&
+    p.credential_override === undefined &&
+    p.connector.needs_reauth &&
+    p.connector.auth_type !== "none"
+  ) {
+    await clearConnectorReauth(p.db, p.tenant_id, p.connector.id);
+  }
+  return result;
+}
+
+async function probeWithDriver(p: {
+  db: Db;
+  tenant_id: string;
+  connector: ConnectorView;
+  credential_override?: DecryptedCredential | null;
+}): Promise<ProbeResult> {
   switch (p.connector.driver) {
     case "http":
       return probeHttpConnector(p);

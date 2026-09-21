@@ -2881,20 +2881,34 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     if (activeConnector) {
       await recordCircuitFailure(p.ctx.db, activeConnector);
     }
-    // Re-auth flag: an authentication rejection (401/403) means the
-    // credential is dead until a human re-authenticates — a SEPARATE concern
-    // from the circuit breaker above. Only the 401/403 subset of http_4xx
-    // sets needs_reauth (a 404/422 must not). The mark is atomic false→true;
-    // we emit the operator notification exactly once, on the transition edge,
-    // in the same transaction as the mark.
+    // Re-auth flag: a 401 means the credential itself was rejected and is dead
+    // until a human re-authenticates — a SEPARATE concern from the circuit
+    // breaker above. Only 401 out of http_4xx sets needs_reauth (404/422 must
+    // not). The mark is atomic false→true; we emit the operator notification
+    // exactly once, on the transition edge, in the same transaction.
+    //
+    // A 403 is deliberately NOT an auth failure. It is the upstream answering
+    // "this identity may not touch THIS resource" — a wrong id in a path, a
+    // scope the grant never covered, a per-resource permission. The credential
+    // is alive. This distinction is the one the rest of the codebase already
+    // makes: probe classification maps 401 to `credential_invalid` and 403 to
+    // `scope_insufficient`, and the proactive scan
+    // (scheduler/connector-reauth-scan-runner.ts) flags ONLY the former.
+    //
+    // Conflating them is not a cosmetic mislabel: the flag makes every step on
+    // the connector unavailable, which holds the workflow's schedule AND
+    // refuses the prepared run that would clear the flag again. One 403 against
+    // a resource the identity never owned could therefore strand a healthy
+    // connector indefinitely. A genuinely dead credential still gets caught —
+    // by its next 401, or by the proactive probe scan.
     if (
       activeConnector &&
       err instanceof RequestError &&
       err.cause_kind === "http_4xx" &&
-      (err.status === 401 || err.status === 403)
+      err.status === 401
     ) {
       await flagConnectorAuthFailure(p.ctx.db, activeConnector, {
-        reason: "request rejected authentication (401/403)",
+        reason: "request rejected the credential (401)",
         workflow_id: p.ctx.workflow_id ?? null,
       });
     }

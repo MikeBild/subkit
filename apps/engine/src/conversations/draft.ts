@@ -153,6 +153,40 @@ async function hydrateBoundWorkflow(
     const ref = normalized.summary?.persisted_resources.find(
       (item) => item.kind === "workflow" && item.id === target_workflow_id,
     );
+    // Legacy chats predate draft-base observations. Observe only an empty
+    // draft slot while their exact active base is still current. This never
+    // adopts another author's draft or resets local changes/checkpoints.
+    // Saving still compares expected_draft_version_id=null atomically.
+    if (state && ref?.version_id && ref.draft_version_id === undefined) {
+      const [head] = await exec
+        .select({
+          current_version_id: workflows.current_version_id,
+          draft_version_id: workflows.draft_version_id,
+        })
+        .from(workflows)
+        .where(
+          and(
+            eq(workflows.tenant_id, tenant_id),
+            eq(workflows.id, target_workflow_id),
+            isNull(workflows.deleted_at),
+          ),
+        )
+        .limit(1);
+      if (head && head.draft_version_id === null && head.current_version_id === ref.version_id) {
+        state.persisted_resources = state.persisted_resources.map((resource) =>
+          resource.kind === "workflow" && resource.id === target_workflow_id
+            ? {
+                ...resource,
+                draft_version_id: null,
+                current_version_id: head.current_version_id,
+                persistence_kind: "active" as const,
+              }
+            : resource,
+        );
+        const refreshed = refreshDraftSummary(normalized);
+        if (refreshed.summary) normalized.summary = refreshed.summary;
+      }
+    }
     if (state && saved?.ok === true && ref?.version_id) {
       const [version] = await exec
         .select({ dag: workflowVersions.dag })
