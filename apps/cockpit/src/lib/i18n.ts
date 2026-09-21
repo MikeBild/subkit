@@ -212,6 +212,18 @@ const EN = {
   "authority.boundary.unknown": "Unrecognised request type",
   "authority.boundary.target": "{method} {target}",
   "authority.boundary.variable": "{name} may only be: {values}",
+  "authority.boundary.class.identifier":
+    "{name} may be any identifier made of letters, digits, “_” and “-” (up to 200 characters).",
+  "authority.boundary.class.uuid": "{name} may be any UUID.",
+  "authority.boundary.class.integer":
+    "{name} may be any whole number without a sign (up to 19 digits).",
+  "authority.boundary.class.date": "{name} may be any date written YYYY-MM-DD.",
+  "authority.boundary.class.timestamp":
+    "{name} may be any UTC time written like 2026-01-31T23:59:59Z.",
+  "authority.boundary.classNotice":
+    "A value limited only by its form is chosen at run time. This approval does not limit which records are addressed, only what the value looks like.",
+  "authority.boundary.unknownRule":
+    "{name} is limited by a rule this dialog cannot describe ({rule}). Do not approve until it is understood.",
   "authority.boundary.bodyLimit": "At most {bytes} bytes of content per request.",
   "authority.boundary.noBody": "Sends no content.",
   "authority.boundary.declaredDestructive":
@@ -1859,6 +1871,18 @@ const DE: Record<TranslationKey, string> = {
   "authority.boundary.unknown": "Unbekannte Anfrageart",
   "authority.boundary.target": "{method} {target}",
   "authority.boundary.variable": "{name} darf nur sein: {values}",
+  "authority.boundary.class.identifier":
+    "{name} darf jede Kennung aus Buchstaben, Ziffern, „_“ und „-“ sein (bis 200 Zeichen).",
+  "authority.boundary.class.uuid": "{name} darf jede UUID sein.",
+  "authority.boundary.class.integer":
+    "{name} darf jede ganze Zahl ohne Vorzeichen sein (bis 19 Stellen).",
+  "authority.boundary.class.date": "{name} darf jedes Datum in der Form JJJJ-MM-TT sein.",
+  "authority.boundary.class.timestamp":
+    "{name} darf jeder UTC-Zeitpunkt in der Form 2026-01-31T23:59:59Z sein.",
+  "authority.boundary.classNotice":
+    "Ein nur der Form nach begrenzter Wert entsteht erst zur Laufzeit. Diese Freigabe begrenzt nicht, welche Einträge angesprochen werden, sondern nur, wie der Wert aussieht.",
+  "authority.boundary.unknownRule":
+    "{name} ist durch eine Regel begrenzt, die dieser Dialog nicht beschreiben kann ({rule}). Bitte nicht freigeben, solange das nicht geklärt ist.",
   "authority.boundary.bodyLimit": "Höchstens {bytes} Bytes Inhalt je Anfrage.",
   "authority.boundary.noBody": "Sendet keinen Inhalt.",
   "authority.boundary.declaredDestructive":

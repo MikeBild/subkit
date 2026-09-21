@@ -597,6 +597,66 @@ describe("hold-writes · HTTP", () => {
     expect(hitsFor("/api/sites/reports/releases")).toHaveLength(1);
   });
 
+  test("a value class and a varying query value are held before anything is sent", async () => {
+    hits.length = 0;
+    const [api] = await ctx.testDb.db
+      .insert(connectors)
+      .values({
+        tenant_id: ctx.tenantId,
+        slug: "classed-hold",
+        display_name: "Classed hold",
+        driver: "http",
+        environment: "dev",
+        auth_type: "none",
+        base_url: `${mock.baseUrl}/api`,
+        config: {},
+      })
+      .returning();
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "hold-declared-classes",
+      steps: [
+        {
+          kind: "request",
+          id: "stats",
+          connector_id: api!.id,
+          method: "GET",
+          path: "/things/${input.id}/stats",
+          query: { since: "${input.since}", tz: "UTC" },
+          boundary: {
+            variables: { "input.id": { class: "integer" }, "input.since": { class: "date" } },
+            max_body_bytes: 0,
+            max_calls: 1,
+          },
+        },
+      ],
+    });
+    const run = (input: Record<string, unknown>) =>
+      runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input,
+      });
+    expect((await run({ id: "42", since: "2026-09-01" })).status).toBe("succeeded");
+    const [sent] = hitsFor("/api/things/42/stats?");
+    expect(
+      new URL(sent?.url ?? "", mock.baseUrl).searchParams.toString().split("&").sort(),
+    ).toEqual(["since=2026-09-01", "tz=UTC"]);
+    for (const input of [
+      { id: "42/../admin", since: "2026-09-01" }, // leaves its segment
+      { id: "007", since: "2026-09-01" }, // not a member of the class
+      { id: "42", since: "2026-09-01&admin=1" }, // tries to be two parameters
+      { id: "42", since: "yesterday" },
+    ]) {
+      const refused = await run(input);
+      expect(refused.status).toBe("failed");
+      expect(
+        (refused.steps.find((s) => s.step_key === "stats")?.error as { code?: string })?.code,
+      ).toBe("request_outside_declared_boundary");
+    }
+    expect(hitsFor("/api/")).toHaveLength(1);
+  });
+
   test("a storage step is held to the folder it declares, in preview exactly like live", async () => {
     // Same contract as the request boundary, for `s3.scope`: a folder that does
     // not cover the key, or a size ceiling below the content, fails here and
