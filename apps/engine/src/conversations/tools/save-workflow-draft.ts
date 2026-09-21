@@ -32,6 +32,7 @@ import {
   commitWorkflowAtomic,
 } from "../persistence/commit-workflow.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { savedDraftReadiness } from "./saved-draft-readiness.ts";
 
 const inputSchema = z
   .object({
@@ -223,6 +224,7 @@ export const saveWorkflowDraftTool: ConversationTool = {
     // Resolve the authoritative slug/id from the commit result — the
     // committed slug is canonical; fall back to the draft snapshot values
     // captured before the commit for the already_persisted path.
+    const readiness = workflow_id ? await savedDraftReadiness(ctx, workflow_id) : null;
     const resolvedSlug = typeof data.slug === "string" ? data.slug : draftSlug;
     const resolvedId = workflow_id;
     const resolvedName = typeof data.name === "string" ? data.name : draftName;
@@ -244,6 +246,7 @@ export const saveWorkflowDraftTool: ConversationTool = {
         },
         re_issued: true,
         audit_reason: auditReason,
+        ...(readiness ? { automation_readiness: readiness } : {}),
         ...(warnings.length > 0 ? { warnings } : {}),
       },
       ...(typeof result.committed_workflow_id === "string"
