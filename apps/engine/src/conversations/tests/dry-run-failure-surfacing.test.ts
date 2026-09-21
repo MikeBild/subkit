@@ -118,6 +118,8 @@ describe("dry_run_workflow · failure surfacing", () => {
     expect(trace.find((t) => t.step_id === "after_publish")?.status).toBe("skipped");
     expect(result.message).toContain("`boom`");
     expect(result.message).not.toContain("`after_publish`");
+    // ...and the text after the colon is that step's own failure.
+    expect(result.message).toContain("intentional step failure");
   });
 
   test("a failed dry-run returns ok:false with a top-level error_code + message", async () => {

@@ -11,8 +11,10 @@ import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
 import {
   assertRequestBoundary,
   compileRequestBoundary,
+  describeRequestBoundaryViolation,
   RequestBoundarySchema,
   requestBoundaryTarget,
+  requestBoundaryViolation,
   VALUE_CLASSES,
 } from "./request-boundary.ts";
 import { RequestStepSchema } from "./types.ts";
@@ -459,4 +461,44 @@ test("a value that would be read as a URL scheme is caught at review, not at dis
   // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   const behind = step({ ...leading, path: "/billing/${item.account}/insights" });
   expect(compileRequestBoundary(behind, "https://api.example.test").refusal).toBeUndefined();
+});
+
+test("a refused query says which parameter, and for a declared variable which value and rule", () => {
+  // An author who declared a time window as `timestamp` while the API takes
+  // unix seconds was told only that "the query differs", and guessed.
+  const { boundary } = compileRequestBoundary(stats, BASE);
+  const describe = (query: string) => {
+    const violation = requestBoundaryViolation(boundary!, {
+      method: "GET",
+      url: statsUrl(ID, query),
+      headers: {},
+      body: null,
+    });
+    return violation ? describeRequestBoundaryViolation(violation) : "";
+  };
+  expect(describe(GOOD_QUERY.replace("2026-09-20T00%3A00%3A00.000Z", "1789026900"))).toBe(
+    'the query value `from` is "1789026900", which is outside its rule (class timestamp)',
+  );
+  expect(describe(GOOD_QUERY.replace("tz=UTC", "tz=CET"))).toContain(
+    "`tz` no longer has the fixed value",
+  );
+  expect(describe("from=2026-09-20T00%3A00%3A00Z&tz=UTC")).toContain(
+    "`to` the step declares is missing",
+  );
+  // A key the step does not declare is named WITHOUT its value: a connector
+  // may have put a credential there.
+  const extra = describe(`${GOOD_QUERY}&api_key=s3cr3t-value`);
+  expect(extra).toContain("`api_key`");
+  expect(extra).not.toContain("s3cr3t-value");
+});
+
+test("a rule keyed by a parameter name is refused with what a key is", () => {
+  const parsed = RequestStepSchema.safeParse({
+    ...stats,
+    boundary: { variables: { start: { class: "integer" } }, max_body_bytes: 0, max_calls: 1 },
+  });
+  expect(parsed.success).toBe(false);
+  const message = parsed.success ? "" : parsed.error.issues.map((issue) => issue.message).join(" ");
+  expect(message).toContain("placeholder expression without its");
+  expect(message).toContain("scope.window.data.start");
 });
