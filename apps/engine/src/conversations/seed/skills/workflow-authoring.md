@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 34
+version: 35
 ---
 
 # Authoring Workflows In A Conversation
@@ -41,7 +41,7 @@ For a field change inside an existing top-level step, prefer `edit_workflow_patc
 
 ## Repair preparation before handoff
 
-When a user asks to prepare missing recurring permission, inspect the saved definition and current readiness first. A repeated successful held-write preview does not repair missing boundaries. If a supported boundary is missing, prepare the actual inert draft change and verify it; do not merely describe the problem or call it ready. Preserve the full existing storage key prefix (including namespace segments such as `v1/`), schedule, destinations and business inputs. Use a readiness card only after actual preparation or to explain a specific remaining unsupported capability. Do not say the user's approval is the only missing action while `automation.state` is `repair_required`.
+When a user asks to prepare missing recurring permission, inspect the saved definition and current readiness first. A repeated successful held-write preview does not repair missing boundaries. If a supported boundary is missing, prepare the actual inert draft change and verify it; do not merely describe the problem or call it ready. Preserve the full existing storage key prefix (including namespace segments such as `v1/`), schedule, destinations and business inputs. Use a readiness card only after actual preparation or to explain a specific remaining unsupported capability. Do not say the user's approval is the only missing action while `automation.state` is `repair_required`. After `save_workflow_draft`, read `automation_readiness` in its result: when `eligible_for_repeated_runs` is false, follow its `repair_guidance` step by step, preview and save again in the SAME turn. Do not call `review_workflow_automation` before it reports eligible — that tool ends the turn with the card, and a human cannot repair a refused boundary from a card. A green preview proves the requests fit their boundaries; only `automation_readiness` says whether every boundary was accepted.
 
 ## Bounded report storage
 

@@ -107,10 +107,13 @@ const REQUEST_BOUNDARY_REMEDY =
  */
 const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = {
   variables_mismatch:
-    "This step already has `boundary`, but `boundary.variables` does not match the path: it needs " +
+    "This step already has `boundary`, but `boundary.variables` does not match the step: it needs " +
     // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
-    "exactly one entry per `${…}` in `path`, keyed by the expression without the `${}`, and no " +
-    "entry for anything that is not in the path. Body placeholders get no entry.",
+    "exactly one entry per `${…}` that is a whole segment of `path` or a whole value in `query`, " +
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
+    "keyed by the expression without the `${}`, and NO entry for anything else. A placeholder that " +
+    "appears only in the body gets no entry — remove it from `variables`; the body is limited by " +
+    "`max_body_bytes` alone.",
   boundary_invalid:
     "This step already has `boundary`, but it does not parse: `variables` maps an expression such " +
     'as `"input.site"` to `{enum: [...]}` (1 to 50 values of letters, digits, `.`, `_`, `~`, `-` ' +
