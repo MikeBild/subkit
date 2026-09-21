@@ -11,6 +11,12 @@ import {
   requestBoundary,
   requestBoundaryViolation,
 } from "../../../workflows/request-boundary.ts";
+import {
+  describeStorageKeyViolation,
+  storageBaseUrl,
+  storageBoundary,
+  storageKeyViolation,
+} from "../../../workflows/storage-boundary.ts";
 // HTTP request step driver. Handles:
 //   - retry policy (5 attempts max, 200ms base, 30s cap, +/- 20% jitter)
 //   - 429 + Retry-After (cap 1h)
@@ -1543,6 +1549,30 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           if (s3Spec?.range !== undefined) params.range = s3Spec.range;
           if (s3Spec?.presign !== undefined) {
             params.presignExpiresIn = s3Spec.presign.expires_in_s;
+          }
+          // A step that declares `s3.scope` is held to it on every run, before
+          // hold-writes: a folder that does not cover the key, or a size
+          // ceiling below the content, must fail the preview rather than the
+          // first scheduled run after a human approved it.
+          if (s3Spec?.scope) {
+            const declared = storageBoundary(p.step, storageBaseUrl(connector.config));
+            const violation = declared
+              ? storageKeyViolation(declared, reqPath.replace(/^\//, ""), params.body ?? null)
+              : null;
+            if (violation)
+              return {
+                status: "failed",
+                retry_count: 0,
+                duration_ms: Date.now() - start,
+                error: {
+                  code: "request_outside_declared_boundary",
+                  message:
+                    `This request is outside the folder boundary its step declares: ${describeStorageKeyViolation(violation)}. ` +
+                    "Nothing was sent. Correct `s3.scope` on this step so it covers every key and the " +
+                    "largest content the workflow can produce; do not remove the scope and do not " +
+                    "widen it to the whole bucket.",
+                },
+              };
           }
           // Hold-writes: a PUT/DELETE is materialized (resolved key /
           // path + body) and recorded — the S3 driver never runs.
