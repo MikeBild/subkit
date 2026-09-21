@@ -8,9 +8,9 @@ import {
   classifyHttpProbeStatus,
   deriveAppliedAuthMethod,
   HttpRequestInvalidError,
-  resolveUrl,
   validateOutboundHeaders,
 } from "./http.ts";
+import { resolveUrl } from "./resolve-url.ts";
 
 function makeConnector(overrides: Partial<ConnectorView> = {}): ConnectorView {
   return {

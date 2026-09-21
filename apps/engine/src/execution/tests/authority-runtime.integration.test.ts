@@ -54,7 +54,12 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function fixture(driver: "http" | "graphql" | "s3" = "http", steps = 1, withOAuth = false) {
+async function fixture(
+  driver: "http" | "graphql" | "s3" = "http",
+  steps = 1,
+  withOAuth = false,
+  shape?: Record<string, unknown>,
+) {
   const slug = `authority-runtime-${++sequence}`;
   const db = ctx.testDb.db;
   const [connector] = await db
@@ -121,19 +126,21 @@ async function fixture(driver: "http" | "graphql" | "s3" = "http", steps = 1, wi
       kind: "request",
       connector_id: connector.id,
       ...(index > 0 ? { depends_on: [`send${index - 1}`] } : {}),
-      ...(driver === "s3"
-        ? {
-            method: "PUT",
-            body: "report",
-            s3: {
-              // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime key boundary fixture
-              key: "${input.key}",
-              scope: { key_prefix: "daily/", max_bytes: 1000 },
-            },
-          }
-        : driver === "http"
-          ? { method: "POST", path: "/messages", body: { recipient: "reviewed@example.test" } }
-          : { graphql: { operation: "mutation", query: "mutation { sendMessage { id } }" } }),
+      ...(shape
+        ? shape
+        : driver === "s3"
+          ? {
+              method: "PUT",
+              body: "report",
+              s3: {
+                // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime key boundary fixture
+                key: "${input.key}",
+                scope: { key_prefix: "daily/", max_bytes: 1000 },
+              },
+            }
+          : driver === "http"
+            ? { method: "POST", path: "/messages", body: { recipient: "reviewed@example.test" } }
+            : { graphql: { operation: "mutation", query: "mutation { sendMessage { id } }" } }),
       max_retries: 2,
       retry_backoff_ms: 50,
     })),
@@ -291,4 +298,41 @@ test("S3 runtime enforces the reviewed folder before any outbound write", async 
   const denied = await f.run({ key: "private/report.json" });
   expect(denied.status).toBe("failed");
   expect(requests).toBe(1);
+});
+
+test("an http boundary refuses an unreviewed target or an oversize body before any outbound request", async () => {
+  const bounded = {
+    method: "POST",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime target boundary fixture
+    path: "/sites/${input.site}/releases",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime body boundary fixture
+    body: { retire: "${input.ids}" },
+    boundary: {
+      variables: { "input.site": { enum: ["alpha"] } },
+      max_body_bytes: 100,
+      max_calls: 1,
+    },
+  };
+  const reached: string[] = [];
+  mock.setHandler((req, res) => {
+    reached.push(`${req.method} ${req.url}`);
+    jsonResponse(res, 200, { ok: true });
+  });
+  const target = await fixture("http", 1, false, bounded);
+  expect((await target.run({ site: "alpha", ids: ["a"] })).status).toBe("succeeded");
+  // The connector's base path survives: review and dispatch resolve alike.
+  expect(reached).toEqual(["POST /endpoint/sites/alpha/releases"]);
+  const elsewhere = await target.run({ site: "beta", ids: ["a"] });
+  expect(elsewhere.status).toBe("failed");
+  expect(elsewhere.steps[0]?.error).toMatchObject({ code: "authority_invalid" });
+  expect(reached).toHaveLength(1);
+
+  const size = await fixture("http", 1, false, bounded);
+  const oversize = await size.run({ site: "alpha", ids: "x".repeat(500) });
+  expect(oversize.status).toBe("failed");
+  expect(oversize.steps[0]?.error).toMatchObject({ code: "authority_invalid" });
+  expect(reached).toHaveLength(1);
+  // The same grant still admits what was reviewed.
+  expect((await size.run({ site: "alpha", ids: ["b"] })).status).toBe("succeeded");
+  expect(reached).toHaveLength(2);
 });

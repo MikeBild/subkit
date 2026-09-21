@@ -25,6 +25,7 @@ import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts"
 import { assertReadPath } from "../workflows/read-path-boundary.ts";
 import { assertReadQuery, assertReportDelivery } from "../workflows/report-delivery-boundary.ts";
 import { reportBoundariesFromManifest } from "../workflows/report-delivery-proposal.ts";
+import { assertRequestBoundary } from "../workflows/request-boundary.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { assertStorageRequest } from "../workflows/storage-boundary.ts";
 import { JsonValueSchema, WorkflowDefSchema } from "../workflows/types.ts";
@@ -300,6 +301,7 @@ export async function assertExecutionAuthorityCurrent(
         await loadContentRevisionReceipts(db, tenant_id, execution_id),
       );
     if (effect.storage) assertStorageRequest(effect.storage, snapshot.request);
+    if (effect.boundary) assertRequestBoundary(effect.boundary, snapshot.request);
     if (effect.read_path) assertReadPath(effect.read_path, snapshot.request);
     if (effect.read_query) assertReadQuery(effect.read_query, effect.target, snapshot.request);
     const system = effect.connector_id

@@ -79,7 +79,7 @@ function repairExtras(draft: { steps?: Array<Record<string, unknown>> }): Record
         : {}),
     })),
     repair_hint:
-      "Use step_patches with step_id and a relative path to avoid positional guesses. Use existing fields directly under each step, without a config wrapper. For S3 recurring boundaries use s3.scope with key_prefix and max_bytes, plus max_deletes for a DELETE step, never path_prefix; s3.max_keys and s3.paginate are derived from the step and are not author-set per-prefix limits, so never template them. Inspect the relevant step before patching; no external setup is required.",
+      "Use step_patches with step_id and a relative path to avoid positional guesses. Use existing fields directly under each step, without a config wrapper. For S3 recurring boundaries use s3.scope with key_prefix and max_bytes, plus max_deletes for a DELETE step, never path_prefix; s3.max_keys and s3.paginate are derived from the step and are not author-set per-prefix limits, so never template them. For an HTTP step with a runtime placeholder in its path or body, add `boundary` directly on the step (path `/boundary`) with variables, max_body_bytes and max_calls. Inspect the relevant step before patching; no external setup is required.",
   };
 }
 

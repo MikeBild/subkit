@@ -2,7 +2,7 @@
 // credential, refresh OAuth, or invoke a connector probe.
 import { z } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
-import { resolveUrl } from "../connectors/drivers/http.ts";
+import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
 import { loadConnectorSystem } from "../connectors/system.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
@@ -20,12 +20,17 @@ import {
 } from "./content-publication-proposal.ts";
 import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "./effect-manifest.ts";
 import { readPathBoundary, readPathTarget } from "./read-path-boundary.ts";
-import { supportsReportDelivery } from "./report-delivery-boundary.ts";
-
+import { hasRuntimeValue, supportsReportDelivery } from "./report-delivery-boundary.ts";
 import {
   proposeReportDeliveryBoundaries,
   type ReportDeliveryBoundaries,
 } from "./report-delivery-proposal.ts";
+import {
+  compileRequestBoundary,
+  type RequestBoundary,
+  type RequestBoundaryRefusal,
+  requestBoundaryTarget,
+} from "./request-boundary.ts";
 import {
   compileStorageBoundary,
   type StorageBoundaryRefusal,
@@ -107,6 +112,9 @@ export async function resolveWorkflowEffectManifest(
   // Why an s3 step compiled no boundary. Reported beside the manifest, never
   // inside it: this is repair evidence, and the digest must not depend on it.
   const storage_refusals: Array<{ step_id: string; reason: StorageBoundaryRefusal }> = [];
+  // The same for an HTTP request boundary: why it was refused, beside the
+  // manifest and never inside it.
+  const request_refusals: Array<{ step_id: string; reason: RequestBoundaryRefusal }> = [];
   for (const step of definition.steps) {
     if (step.kind !== "request") continue;
     const system = step.connector_id
@@ -149,7 +157,12 @@ export async function resolveWorkflowEffectManifest(
     if (compiledStorage?.refusal)
       storage_refusals.push({ step_id: step.id, reason: compiledStorage.refusal });
     if (storage) target = storageTarget(storage);
-    const readPath = driver === "http" ? readPathBoundary(step, connector?.base_url) : null;
+    // An authored boundary takes precedence over the derived read profiles, so a
+    // step's target comes from exactly one place. Steps without `boundary` take
+    // bit-for-bit the path they took before — that is what keeps live grants valid.
+    const authoredBoundary = driver === "http" && step.boundary !== undefined;
+    const readPath =
+      driver === "http" && !authoredBoundary ? readPathBoundary(step, connector?.base_url) : null;
     if (readPath) target = readPathTarget(readPath);
     const contentShape =
       driver === "http" ? contentPublicationShape(step, connector?.base_url ?? target) : null;
@@ -162,6 +175,28 @@ export async function resolveWorkflowEffectManifest(
     if (supportedContent) target = contentShape.target;
     if (reportBoundaries === undefined && supportsReportDelivery(step, target))
       reportBoundaries = await proposeReportDeliveryBoundaries(input, db);
+    let boundary: RequestBoundary | null = null;
+    if (driver === "http" && (authoredBoundary || hasRuntimeValue(step))) {
+      const compiled =
+        // A report e-mail or a content publication has its own stricter review
+        // (the recipient, the receipts). `boundary` must not be a way around it.
+        supportsReportDelivery(step, target) || contentShape !== null
+          ? ({ refusal: "stricter_profile_applies" } as const)
+          : // The connector itself appends query parameters (query-mode auth or
+            // `static_query`), so dispatch would never match a reviewed query.
+            connector?.auth_type === "query" ||
+              Object.keys(
+                (connector?.config as { static_query?: Record<string, unknown> } | undefined)
+                  ?.static_query ?? {},
+              ).length > 0
+            ? ({ refusal: "connector_adds_query" } as const)
+            : compileRequestBoundary(step, connector?.base_url ?? null);
+      if (compiled.refusal) request_refusals.push({ step_id: step.id, reason: compiled.refusal });
+      else {
+        boundary = compiled.boundary;
+        target = requestBoundaryTarget(compiled.boundary);
+      }
+    }
     const configuration = authorityConnectorConfiguration(connector);
     bindings.push({
       tenant_id: input.tenant_id,
@@ -169,6 +204,7 @@ export async function resolveWorkflowEffectManifest(
       ...(supportedContent ? { content_publication: contentBoundary } : {}),
       ...(readPath ? { read_path: readPath } : {}),
       ...(storage ? { storage } : {}),
+      ...(boundary ? { boundary } : {}),
       ...(reportBoundaries?.[step.id] && supportsReportDelivery(step, target)
         ? { report_delivery: reportBoundaries?.[step.id] }
         : {}),
@@ -244,6 +280,7 @@ export async function resolveWorkflowEffectManifest(
       : {}),
     unavailable_steps,
     storage_refusals,
+    request_refusals,
     eligible_for_repeated_runs:
       compiled.eligible_for_repeated_runs && unavailable_steps.length === 0,
   };
