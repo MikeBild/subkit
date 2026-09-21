@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 29
+version: 30
 ---
 
 # Authoring Workflows In A Conversation
@@ -416,7 +416,7 @@ chat; the same tools repair in place:
    `error.message`, failing `step_id`, captured response shape. Do not
    paraphrase the error away.
 2. **`diagnose_latest_execution`** — pulls causal trace; do not guess from the bare error.
-3. **Edit the offending step** — `edit_workflow_patch` covers every targeted change: set a single field or header (`replace /steps/N/...`), replace a step body, add or retarget an edge (`add /edges/-`). For schema drift on a request step, `probe_connector` first; if the connector's response shape changed over time, call `propose_schema_migration` (returns a structured rename/add/remove/widen plan against the recorded shape ledger) before deciding how to patch the transform. A saved workflow is changed with `edit_workflow_patch`, however many operations that takes: `author_workflow` regenerates the whole definition and keeps only what the goal restates, so guards and safety checks in the saved version disappear silently. It refuses a workflow this conversation is bound to unless you pass `replace_bound_workflow: true` — do that only for a deliberate redesign the user has agreed to, after telling them what is being replaced.
+3. **Edit the offending step** — `edit_workflow_patch` covers every targeted change: set a single field or header (`replace /steps/N/...`), replace a step body, add or retarget an edge (`add /edges/-`). For schema drift on a request step, `probe_connector` first; if the connector's response shape changed over time, call `propose_schema_migration` (returns a structured rename/add/remove/widen plan against the recorded shape ledger) before deciding how to patch the transform. A saved workflow is changed with `edit_workflow_patch`, however many operations that takes: `author_workflow` regenerates the whole definition and keeps only what the goal restates, so guards and safety checks in the saved version disappear silently. It refuses a workflow this conversation is bound to, and there is no override: patches can replace every step, so any redesign is expressible. If a patch keeps failing, fix what its error names instead of switching tools.
 4. **`validate_draft`** — re-runs structural checks (rarely needed; see below).
 5. **`dry_run_workflow`** — preview the patch. In `auto`, a green judged run may commit inline. In `ask`/`plan`, call `save_workflow_draft` after `save_required: true`; the structured human gate decides. Any structural change must run dry-run first.
 

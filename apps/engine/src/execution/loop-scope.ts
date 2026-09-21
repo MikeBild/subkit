@@ -97,7 +97,7 @@ export async function resolveForEachCollection(
             suggestions.length > 0
               ? ` (did you mean: ${suggestions.map((s) => `\`${s}\``).join(", ")})`
               : ""
-          }`,
+          }. A for_each selector is a JavaScript arrow function over the run scope: \`(sourceData) => sourceData.<step_id>.data.<array_path>\`.`,
           details: {
             for_each: forEachSelector,
             available_scope_keys: scopeKeys.slice(0, 16),

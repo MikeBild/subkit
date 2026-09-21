@@ -55,12 +55,6 @@ const inputSchema = z
       .describe(
         "A concrete SAMPLE of the workflow's input payload (an object with the named keys the run needs, e.g. { markdown: '# Deck', filename: 'deck.md' }). PREFERRED over declaring an input_schema by hand: it grounds generation AND is persisted as the workflow's `input_schema_sample`, from which the run/dry-run input contract (with a real required-list) is derived. This is the author's canonical example — NOT a throwaway test payload passed to dry_run_workflow (those are never written into the workflow).",
       ),
-    replace_bound_workflow: z
-      .boolean()
-      .default(false)
-      .describe(
-        "Set true ONLY for a deliberate wholesale redesign of the workflow this conversation is already bound to, after telling the user exactly what is being replaced. Regeneration keeps only what the goal restates, so guards in the saved version disappear. To change a saved workflow, use edit_workflow_patch instead.",
-      ),
   })
   .openapi("AuthorWorkflowToolInput");
 
@@ -97,20 +91,22 @@ export const authorWorkflowTool: ConversationTool = {
     // bound to a saved workflow that cost a real safety check: a rewrite of a
     // retention workflow dropped the guard that stopped a listing from escaping
     // its partition, passed validation and preview, and was saved. A saved
-    // workflow is changed with edit_workflow_patch; a wholesale redesign stays
-    // possible, but it has to be asked for by name.
+    // workflow is changed with edit_workflow_patch. There is deliberately no
+    // flag to get past this: the first version had one, and the model set it on
+    // its very next call — an escape hatch the caller can open by itself is not
+    // a gate. Patches can replace every step, so nothing is made impossible.
     const draftState = ctx.getDraft().state;
     const bound = draftState ? persistedWorkflowResource(draftState) : null;
     const targetsBound =
       bound !== null &&
       (ctx.getDraft().workflow?.steps?.length ?? 0) > 0 &&
       (args.slug === undefined || args.slug === (bound.slug ?? currentSlug));
-    if (targetsBound && !args.replace_bound_workflow) {
+    if (targetsBound) {
       return {
         ok: false,
         data: buildGateError(ctx.getDraft(), {
           error_code: "rewrite_of_bound_workflow",
-          message: `this conversation is bound to the saved workflow "${bound.slug ?? currentSlug ?? bound.id}"${bound.version ? ` (version ${bound.version})` : ""}. author_workflow regenerates the whole definition and would drop every guard the saved version has that the goal does not restate. Change it with edit_workflow_patch (step_patches by step_id; add steps with op "add" at /steps/-), however many operations that takes. Only for a deliberate wholesale redesign the user has agreed to, repeat this call with replace_bound_workflow: true.`,
+          message: `this conversation is bound to the saved workflow "${bound.slug ?? currentSlug ?? bound.id}"${bound.version ? ` (version ${bound.version})` : ""}. author_workflow regenerates the whole definition and would drop every guard the saved version has that the goal does not restate. Change it with edit_workflow_patch (step_patches by step_id; add steps with op "add" at /steps/-; replace a whole step with op "replace" at /steps/N), however many operations that takes — patches can express any redesign. There is no override for this.`,
           recommended_mode: "workflow",
           next_best_actions: ["inspect_workflow_draft", "edit_workflow_patch"],
         }),
