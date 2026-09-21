@@ -35,14 +35,33 @@ import type { RequestStep } from "./types.ts";
 /** A placeholder expression without its `${}`: `input.site`, `item.id`, `scope.plan.data.id`. */
 const expression = z.string().regex(/^(?:item|input|scope)(?:\.[A-Za-z_][A-Za-z0-9_]*)+$/);
 /**
- * A value an approved variable may take. Unreserved URL characters only, so a
- * value can never introduce a `/`, a query, an encoded traversal or a second
- * segment, and what the reviewer reads is byte-for-byte what may be sent.
+ * A value an approved variable may take, exactly as it is sent: unreserved URL
+ * characters, `:` (a segment such as `team:42` or `123:runReport`), and
+ * `%XX` escapes for an identifier the API wants percent-encoded inside one
+ * segment. Compared byte for byte against the raw segment, never decoded for
+ * the comparison, so what the reviewer reads is what may be sent.
+ *
+ * It can still never leave its segment: a literal `/`, `?` or `#` is not in the
+ * alphabet, an escape that decodes to a control character or a backslash is
+ * refused, and so is a value whose decoded form has a `.` or `..` component —
+ * a server that decodes before routing must not be handed a traversal. A value
+ * that routes differently than reviewed (a leading `scheme:`) fails the
+ * review-time self-check below.
  */
 const enumValue = z
   .string()
-  .regex(/^[A-Za-z0-9._~-]{1,200}$/)
-  .refine((value) => value !== "." && value !== "..");
+  .regex(/^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$/)
+  .refine((value) => {
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(value);
+    } catch {
+      return false;
+    }
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is refused
+    if (/[\u0000-\u001f\u007f\\]/.test(decoded)) return false;
+    return !decoded.split("/").some((part) => part === "." || part === "..");
+  });
 /**
  * For values that cannot be listed. Pinned regex literals, deliberately not Zod
  * helpers: a library upgrade must never change what a live approval means. No

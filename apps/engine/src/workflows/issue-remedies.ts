@@ -97,8 +97,11 @@ const REQUEST_BOUNDARY_REMEDY =
   "the fixed fields), never from a guess — a preview whose request does not fit fails with " +
   "`request_outside_declared_boundary` and names both numbers; " +
   "`max_calls` is the most requests per run (1 without `for_each`). A DELETE also needs " +
-  "`destructive: true`. Not coverable yet: a placeholder in `headers`, a placeholder that is " +
-  "only PART of a path segment or of a query value, a query KEY that varies, and `pagination`.";
+  "`destructive: true`. An enum value is written exactly as it is sent and may contain `:` and " +
+  "`%XX` escapes (for example `123:runReport` or `https%3A%2F%2Fexample.com%2F`). Not coverable " +
+  "as written: a placeholder that is only PART of a path segment or of a query value — build the " +
+  "whole value in a transform and reference that instead. Not coverable at all yet: a placeholder " +
+  "in `headers`, a query KEY that varies, and `pagination`.";
 
 /**
  * A step that ALREADY carries `boundary` (or can never carry one) and still
@@ -116,8 +119,8 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "`max_body_bytes` alone.",
   boundary_invalid:
     "This step already has `boundary`, but it does not parse: `variables` maps an expression such " +
-    'as `"input.site"` to `{enum: [...]}` (1 to 50 values of letters, digits, `.`, `_`, `~`, `-` ' +
-    'only) or to `{class: "identifier" | "uuid" | "integer" | "date" | "timestamp"}`, never both; ' +
+    'as `"input.site"` to `{enum: [...]}` (1 to 50 values of letters, digits, `.`, `_`, `~`, `-`, ' +
+    '`:` and `%XX` escapes, exactly as sent) or to `{class: "identifier" | "uuid" | "integer" | "date" | "timestamp"}`, never both; ' +
     "`max_body_bytes` is an integer from 0 to 10000000; `max_calls` an integer from 1 to " +
     "10000; `destructive` may only be `true`. No other keys.",
   delete_requires_destructive:
@@ -128,9 +131,14 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "each `{class: …}` with `{enum: [every value that may be removed]}`. A removal of anything " +
     "that merely looks like an id is not something a human can approve.",
   partial_segment_placeholder:
-    "`boundary` cannot cover this step yet: a placeholder is only PART of a path segment, or its " +
-    "root is not `input`, `scope` or `item`. Only a placeholder that is a whole segment between " +
-    "two `/` can be bounded today. Do not add `boundary`; say so to the user.",
+    "`boundary` cannot cover this step as written: a placeholder is only PART of a path segment " +
+    "(text before or after it between two `/`), several segments hide in one placeholder, or its " +
+    "root is not `input`, `scope` or `item`. Only a placeholder that is one WHOLE segment can be " +
+    "bounded. Re-author minimally: have a transform (or the step that builds the `for_each` items) " +
+    'produce each whole segment as its own value — for `{id}:action` the full `"123:action"`, for a ' +
+    "multi-segment path one value per segment — reference each as its own whole-segment " +
+    "placeholder, and list the full values in `enum` (a `:` and `%XX` escapes are allowed in a " +
+    "value). Change nothing else in the step.",
   query_placeholder_unsupported:
     "`boundary` cannot cover this step as written: a `query` value mixes text with a placeholder, " +
     "is not a plain string, or names a root other than `input`, `scope` or `item`. Only a query " +

@@ -114,8 +114,10 @@ test("the http remedy is enough on its own to author a boundary", () => {
   expect(remedy).toContain("list_schedules");
   expect(remedy).toContain("max_body_bytes");
   expect(remedy).toContain("max_calls");
-  // And what it cannot do, so the author does not try.
-  expect(remedy).toContain("Not coverable yet");
+  // What needs a minimal re-author, and what it cannot do at all, so the
+  // author neither gives up too early nor tries the impossible.
+  expect(remedy).toContain("build the whole value in a transform");
+  expect(remedy).toContain("Not coverable at all yet");
 });
 
 test("a refused request boundary gets its own reason, not 'add a boundary' again", () => {

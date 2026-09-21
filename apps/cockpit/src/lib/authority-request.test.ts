@@ -111,6 +111,21 @@ describe("presentRequestBoundary", () => {
     );
   });
 
+  test("an escaped value is shown as sent AND as a person reads it", () => {
+    const shown = presentRequestBoundary(
+      {
+        ...base,
+        variables: { "input.site": { enum: ["https%3A%2F%2Fexample.com%2F", "plain"] } },
+      },
+      plain,
+    );
+    const [line] = shown.variables;
+    expect(line?.key).toBe("authority.boundary.variableEncoded");
+    const text = translate("de", line!.key, line!.values);
+    expect(text).toContain("https%3A%2F%2Fexample.com%2F");
+    expect(text).toContain("https://example.com/, plain");
+  });
+
   test("a rule this dialog does not know makes the panel cautious and says why", () => {
     const shown = presentRequestBoundary(
       { ...base, variables: { "input.site": { class: "anything_goes" } } },
