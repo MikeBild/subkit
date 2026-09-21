@@ -268,6 +268,33 @@ describe("autoloadForToolCall — RULES parity matrix", () => {
     expect(out).toContain("workflow-authoring");
   });
 
+  // A repair turn looks nothing like a creation turn: it carries `step_patches`
+  // whose value is a bare `{key_prefix, …}` with no driver anywhere. The
+  // creation-shaped test below kept passing while exactly this case failed in
+  // production, leaving the storage skill unloaded for a chat repairing an S3
+  // workflow. The driver has to come from the workflow draft, not the patch.
+  test("a repair-shaped step_patches call carries no driver of its own", () => {
+    expect(
+      autoloadForToolCall(
+        {
+          tool: "edit_workflow_patch",
+          input: {
+            step_patches: [
+              {
+                step_id: "delete_expired",
+                op: "add",
+                path: "/s3/scope",
+                value: { key_prefix: "reports/a/", max_bytes: 1000, max_deletes: 50 },
+              },
+            ],
+          },
+        },
+        CATALOG,
+        [],
+      ),
+    ).not.toContain("s3-connectors");
+  });
+
   test("edit_workflow_patch with s3 step → adds s3-connectors", () => {
     expect(
       autoloadForToolCall(

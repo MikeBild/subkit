@@ -258,3 +258,14 @@ describe("browser-page-scrape-quirks.md · endpoint selection and reliability", 
     expect(body).toMatch(/9:.*09:|single.digit|replace.*\\b.*\\d/is);
   });
 });
+
+// The bridge from a manifest issue code to the field that fixes it. Without
+// these strings the skill describes what a boundary IS but never says which
+// diagnosis it answers — which is how a model holding `dynamic_request` and a
+// page of report-delivery prose invented its own storage remedy.
+test("s3-connectors names the issue codes its boundary resolves", () => {
+  const body = read("s3-connectors.md");
+  expect(body).toContain("dynamic_request");
+  expect(body).toContain("destructive_effect");
+  expect(body).toContain("max_deletes");
+});

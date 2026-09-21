@@ -8,7 +8,7 @@ side_effects: write
 idempotency: naturally
 maturity: stable
 tags: [driver, s3, object-store]
-version: 7
+version: 8
 ---
 
 # S3 And MinIO Connectors
@@ -17,6 +17,8 @@ The `s3` driver talks to any S3-compatible object store: AWS S3, MinIO,
 Cloudflare R2, DigitalOcean Spaces. Same connector config, same step shape.
 
 ## Recurring report permission
+
+When a workflow's automation review reports `dynamic_request` or `destructive_effect` on a step that uses the s3 driver, the supported remedy is exactly one thing: author `s3.scope` on that step. Nothing else removes those two codes for a storage step. `max_keys` and `paginate` are derived by the engine from the step itself — they can never be set or templated per prefix.
 
 A supported bounded storage proposal lives at `steps[index].s3.scope`, with `key_prefix` (a fixed narrow existing folder ending `/`), `max_bytes` (positive integer, at most 10000000, enforced for PUT), and optionally `max_deletes` (positive integer, at most 10000) when the step removes objects. There is no `path_prefix` field and no `config` wrapper on a request step. Use `edit_workflow_patch` with `step_patches: [{step_id, op: "add", path: "/s3/scope", value: {key_prefix, max_bytes}}]` to set the scope on each inspected top-level step. The server resolves IDs against the current draft. Never guess numeric indices or overwrite the full S3 configuration.
 
