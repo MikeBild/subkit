@@ -52,6 +52,7 @@ import { previewEvidence } from "./preview-evidence.ts";
 import { replacesPersistedWorkflow } from "./state-gate.ts";
 import { buildRawStepResults } from "./step-results.ts";
 import { truncateStepPreviewForLlm } from "./truncate.ts";
+import { unverifiedBoundaries } from "./unverified-boundaries.ts";
 
 const inputSchema = z
   .object({
@@ -623,6 +624,10 @@ export const dryRunWorkflowTool: ConversationTool = {
       : {};
 
     const stoppedForDraft = stoppedId ?? lastStep?.step_id ?? "(end)";
+    const unverifiedBoundaryNotice = unverifiedBoundaries(steps, run.steps);
+    const unverifiedBoundariesField = unverifiedBoundaryNotice
+      ? { unverified_boundaries: unverifiedBoundaryNotice }
+      : {};
     const runWarnings = (run.warnings ?? []).map((w) => ({
       step_key: (w as { step_key?: string | null }).step_key ?? null,
       code: (w as { code?: string }).code ?? "unknown",
@@ -1077,6 +1082,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           step_trace: stepTrace,
           ...finalOutputField,
           ...inheritedReferencesField,
+          ...unverifiedBoundariesField,
           ...stepResultsField,
         },
         ...(typeof commitResult.committed_workflow_id === "string"
@@ -1119,6 +1125,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           step_trace: stepTrace,
           ...finalOutputField,
           ...inheritedReferencesField,
+          ...unverifiedBoundariesField,
           ...stepResultsField,
         },
       };
@@ -1252,6 +1259,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           step_trace: stepTrace,
           ...finalOutputField,
           ...inheritedReferencesField,
+          ...unverifiedBoundariesField,
           ...stepResultsField,
           ...(lastStep
             ? (() => {
