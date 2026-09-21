@@ -438,6 +438,56 @@ export function validateStepReferences(def: WorkflowDef): ReferenceValidationErr
 }
 
 /**
+ * Split a candidate's dangling references into the ones a change INTRODUCED
+ * and the ones the running version already had.
+ *
+ * An authoring step answers only for what it introduces. Shared transform code
+ * deliberately reads steps that exist in a sibling workflow and not in this one
+ * (`scope.a ? scope.a.data : scope.b.data`); refusing an unrelated field change
+ * over such a read made the author rewrite correct production logic to get
+ * past the gate. No guard syntax is inspected — the read in an else-branch is
+ * unguarded on its face — only whether the baseline already had it.
+ *
+ * A baseline reference vouches for a candidate one when field and absent step
+ * match and either the step id does (its expression was edited, the read kept)
+ * or the full text does (the step was renamed). A new read from another step,
+ * or a removed step others still name, is in neither set and stays introduced.
+ */
+export function partitionStepReferences(
+  candidate: ReadonlyArray<ReferenceValidationError>,
+  baseline: ReadonlyArray<ReferenceValidationError>,
+): { introduced: ReferenceValidationError[]; inherited: ReferenceValidationError[] } {
+  const byStep = new Set(
+    baseline.map((e) => JSON.stringify([e.step_id, e.field, e.bad_reference])),
+  );
+  const byText = new Set(
+    baseline.map((e) => JSON.stringify([e.field, e.bad_reference, e.context])),
+  );
+  const introduced: ReferenceValidationError[] = [];
+  const inherited: ReferenceValidationError[] = [];
+  for (const entry of candidate) {
+    const known =
+      byStep.has(JSON.stringify([entry.step_id, entry.field, entry.bad_reference])) ||
+      byText.has(JSON.stringify([entry.field, entry.bad_reference, entry.context]));
+    (known ? inherited : introduced).push(entry);
+  }
+  return { introduced, inherited };
+}
+
+/** One line per dangling reference, with suggestions, for a blocking message. */
+export function describeStepReferences(errors: ReadonlyArray<ReferenceValidationError>): string {
+  return errors
+    .map(
+      (e) =>
+        `step \`${e.step_id}\`.${e.field} → unknown step \`${e.bad_reference}\`` +
+        (e.did_you_mean.length > 0
+          ? ` (did you mean: ${e.did_you_mean.map((s) => `\`${s}\``).join(", ")})`
+          : ""),
+    )
+    .join("; ");
+}
+
+/**
  * Bare-iteration-identifier lint (item_var retirement). Inside a loop
  * body, JSONata must address the current item as `$item` — the bare
  * `item` default and the legacy declared `item_var` name are no longer

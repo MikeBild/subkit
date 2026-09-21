@@ -18,11 +18,11 @@ import {
 } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
 import {
-  validateStepReferences,
+  describeStepReferences,
   validateUnsupportedPlaceholders,
 } from "../../workflows/reference-validator.ts";
 import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
-import type { StepDef } from "../../workflows/types.ts";
+import type { StepDef, WorkflowDef } from "../../workflows/types.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withJudgeBreaker, withLatestPreview } from "../authoring-state.ts";
 import { proposeDryRunRepairs } from "../dry-run-repair.ts";
@@ -45,6 +45,7 @@ import {
   writeStepFixture,
 } from "./dry-run-cache.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { classifyStepReferences } from "./inherited-step-references.ts";
 import { recordLastPreview } from "./last-preview-store.ts";
 import { resolveConversationPrincipal } from "./permission-gate.ts";
 import { previewEvidence } from "./preview-evidence.ts";
@@ -193,36 +194,37 @@ export const dryRunWorkflowTool: ConversationTool = {
       }
     }
 
-    {
-      const refErrors = validateStepReferences({ name: draft.name ?? "draft", steps });
-      if (refErrors.length > 0) {
-        const summary = refErrors
-          .map(
-            (e) =>
-              `step \`${e.step_id}\`.${e.field} → unknown step \`${e.bad_reference}\`` +
-              (e.did_you_mean.length > 0
-                ? ` (did you mean: ${e.did_you_mean.map((s) => `\`${s}\``).join(", ")})`
-                : ""),
-          )
-          .join("; ");
-        recordAuthoringGateBlock({
-          code: "workflow_unresolved_step_reference",
-          tool: "dry_run_workflow",
-        });
-        return {
-          ok: false,
-          data: buildGateError(ctx.getDraft(), {
-            error_code: "workflow_unresolved_step_reference",
-            message: `workflow has unresolved step references: ${summary}`,
-            recommended_mode: "workflow",
-            next_best_actions: ["inspect_workflow_draft", "edit_workflow_patch"],
-            extra: {
-              unresolved_references: refErrors,
-            },
-          }),
-        };
-      }
+    // Only references this draft introduces over the active version block
+    // the run; what production already has is reported, never repaired here.
+    const references = await classifyStepReferences(ctx, "dry_run_workflow", {
+      name: draft.name ?? "draft",
+      ...(draft.slug ? { slug: draft.slug } : {}),
+      steps,
+    } as WorkflowDef);
+    if (references.introduced.length > 0) {
+      recordAuthoringGateBlock({
+        code: "workflow_unresolved_step_reference",
+        tool: "dry_run_workflow",
+      });
+      return {
+        ok: false,
+        data: buildGateError(ctx.getDraft(), {
+          error_code: "workflow_unresolved_step_reference",
+          message: `workflow has unresolved step references: ${describeStepReferences(references.introduced)}`,
+          recommended_mode: "workflow",
+          next_best_actions: ["inspect_workflow_draft", "edit_workflow_patch"],
+          extra: {
+            unresolved_references: references.introduced,
+            ...(references.notice ? { inherited_step_references: references.notice } : {}),
+          },
+        }),
+      };
     }
+    // Envelope-only: never a run warning, those are replayed next turn as
+    // failures to repair.
+    const inheritedReferencesField = references.notice
+      ? { inherited_step_references: references.notice }
+      : {};
 
     // Author build-time permission pre-flight (Stream 4) — best-effort,
     // non-blocking. Computed on the static draft; merged into the surfaced
@@ -1068,6 +1070,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           preview_evidence: previewEvidence(run.steps),
           step_trace: stepTrace,
           ...finalOutputField,
+          ...inheritedReferencesField,
           ...stepResultsField,
         },
         ...(typeof commitResult.committed_workflow_id === "string"
@@ -1109,6 +1112,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           preview_evidence: previewEvidence(run.steps),
           step_trace: stepTrace,
           ...finalOutputField,
+          ...inheritedReferencesField,
           ...stepResultsField,
         },
       };
@@ -1241,6 +1245,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           preview_evidence: previewEvidence(run.steps),
           step_trace: stepTrace,
           ...finalOutputField,
+          ...inheritedReferencesField,
           ...stepResultsField,
           ...(lastStep
             ? (() => {
