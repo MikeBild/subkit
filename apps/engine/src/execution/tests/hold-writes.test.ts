@@ -552,6 +552,9 @@ describe("hold-writes · HTTP", () => {
       expect((denied?.error as { message?: string })?.message).toContain(
         "/api/sites/{input.site}/releases",
       );
+      expect((denied?.error as { message?: string })?.message).toContain(
+        "/api/sites/other/releases",
+      );
     }
     expect(hitsFor("/api/sites/reports/releases")).toHaveLength(0);
     expect(hitsFor("/api/sites/other/releases")).toHaveLength(0);
@@ -648,6 +651,8 @@ describe("hold-writes · HTTP", () => {
       expect(elsewhere.status).toBe("failed");
       expect((outside?.error as { code?: string })?.code).toBe("request_outside_declared_boundary");
       expect((outside?.error as { message?: string })?.message).toContain('"v1/daily/"');
+      // The offending key is named, or the author guesses folders blindly.
+      expect((outside?.error as { message?: string })?.message).toContain('"v1/weekly/a.txt"');
 
       const oversize = await run({ key: "v1/daily/a.txt", content: "x".repeat(64) }, hold);
       const large = oversize.steps.find((s) => s.step_key === "store");

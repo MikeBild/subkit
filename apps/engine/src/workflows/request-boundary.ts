@@ -312,7 +312,7 @@ function matchTarget(boundary: RequestBoundary, url: URL): boolean {
 export type RequestBoundaryViolation =
   | { kind: "boundary_invalid" | "request_missing" | "unsupported_body" | "url_invalid" }
   | { kind: "method"; actual: string; reviewed: string }
-  | { kind: "target"; reviewed: string }
+  | { kind: "target"; reviewed: string; actual: string }
   | { kind: "query" }
   | { kind: "body_forbidden"; method: string }
   | { kind: "body_size"; bytes: number; max_body_bytes: number };
@@ -342,8 +342,13 @@ export function requestBoundaryViolation(
   } catch {
     return { kind: "url_invalid" };
   }
+  // Origin and path only: a query could carry a credential, a path is workflow data.
   if (!matchTarget(reviewed, url))
-    return { kind: "target", reviewed: requestBoundaryTarget(reviewed) };
+    return {
+      kind: "target",
+      reviewed: requestBoundaryTarget(reviewed),
+      actual: `${url.origin}${url.pathname}`.slice(0, 300),
+    };
   if (reviewed.query.variable.length > 0) return { kind: "query" };
   const keys = [...url.searchParams.keys()];
   const fixedKeys = Object.keys(reviewed.query.fixed);
@@ -374,7 +379,7 @@ export function describeRequestBoundaryViolation(violation: RequestBoundaryViola
     case "body_size":
       return `the body is ${violation.bytes} bytes but \`boundary.max_body_bytes\` is ${violation.max_body_bytes}`;
     case "target":
-      return `the resolved URL is not ${violation.reviewed} with an approved value for every variable`;
+      return `the resolved URL ${violation.actual} is not ${violation.reviewed} with an approved value for every variable`;
     case "method":
       return `the method is ${violation.actual} but the boundary was compiled for ${violation.reviewed}`;
     case "query":
