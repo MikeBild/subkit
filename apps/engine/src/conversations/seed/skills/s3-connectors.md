@@ -8,7 +8,7 @@ side_effects: write
 idempotency: naturally
 maturity: stable
 tags: [driver, s3, object-store]
-version: 6
+version: 7
 ---
 
 # S3 And MinIO Connectors
@@ -18,9 +18,9 @@ Cloudflare R2, DigitalOcean Spaces. Same connector config, same step shape.
 
 ## Recurring report permission
 
-A supported bounded storage proposal lives at `steps[index].s3.scope`, with exactly `key_prefix` (a fixed narrow existing folder ending `/`) and `max_bytes` (positive integer, at most 10000000, enforced for PUT). There is no `path_prefix` field and no `config` wrapper on a request step. Use `edit_workflow_patch` with `step_patches: [{step_id, op: "add", path: "/s3/scope", value: {key_prefix, max_bytes}}]` to set the scope on each inspected top-level step. The server resolves IDs against the current draft. Never guess numeric indices or overwrite the full S3 configuration.
+A supported bounded storage proposal lives at `steps[index].s3.scope`, with `key_prefix` (a fixed narrow existing folder ending `/`), `max_bytes` (positive integer, at most 10000000, enforced for PUT), and optionally `max_deletes` (positive integer, at most 10000) when the step removes objects. There is no `path_prefix` field and no `config` wrapper on a request step. Use `edit_workflow_patch` with `step_patches: [{step_id, op: "add", path: "/s3/scope", value: {key_prefix, max_bytes}}]` to set the scope on each inspected top-level step. The server resolves IDs against the current draft. Never guess numeric indices or overwrite the full S3 configuration.
 
-Keep the full existing folder including namespace segments. GET, HEAD, LIST and PUT can use this proposal; DELETE cannot. LIST additionally binds fixed `max_keys` and `paginate`. Recurring scope does not support metadata, range, presign or multipart options. This is draft preparation only: after validation and held-write preview, the human reviews folders, replacement effects and finite run limits through `review_workflow_automation` in the same chat. Do not claim permission exists until schedule automation is authorized. Explain report folders and outcomes to the user, not JSON fields or patch instructions.
+Keep the full existing folder including namespace segments. GET, HEAD, LIST and PUT can use this proposal; DELETE can only when `max_deletes` is also set. Be precise about what that ceiling is: it is a reviewed number shown to the human, and every single call is checked to stay inside the reviewed folder and to carry no body, but nothing counts removals across one run yet — a loop still issues one bounded removal per item. Never present it as a machine-enforced total. A removal step whose folder would have to widen to cover everything it touches should be split into narrower per-folder steps instead. LIST additionally binds fixed `max_keys` and `paginate`. Recurring scope does not support metadata, range, presign or multipart options. This is draft preparation only: after validation and held-write preview, the human reviews folders, replacement effects and finite run limits through `review_workflow_automation` in the same chat. Do not claim permission exists until schedule automation is authorized. Explain report folders and outcomes to the user, not JSON fields or patch instructions.
 
 ## Connector config paths
 
@@ -153,7 +153,8 @@ downstream steps consume `data`.
   "method": "DELETE",
   "connector_id": "<reports_store_connector_id>",
   "s3": {
-    "key": "exports/${input.expired_id}.json"
+    "key": "exports/${input.expired_id}.json",
+    "scope": { "key_prefix": "exports/", "max_bytes": 10, "max_deletes": 500 }
   }
 }
 ```

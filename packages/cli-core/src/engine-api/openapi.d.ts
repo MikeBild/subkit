@@ -17473,11 +17473,12 @@ export interface components {
                     base_url: string;
                     key_prefix: string;
                     /** @enum {string} */
-                    operation: "GET" | "HEAD" | "LIST" | "PUT";
+                    operation: "GET" | "HEAD" | "LIST" | "PUT" | "DELETE";
                     max_bytes: number;
                     max_keys: number;
                     paginate: boolean;
                     content_type: string | null;
+                    max_deletes?: number;
                 };
                 read_query?: {
                     fixed: {
@@ -17663,6 +17664,7 @@ export interface components {
                 scope?: {
                     key_prefix: string;
                     max_bytes: number;
+                    max_deletes?: number;
                 };
                 key?: string;
                 prefix?: string;

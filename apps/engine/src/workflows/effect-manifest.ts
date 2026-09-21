@@ -250,7 +250,20 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       issue("binding_mismatch");
     const effect = effectOf(step, binding);
     if (effect === "unknown") issue("unknown_effect");
-    if (effect === "destructive") issue("destructive_effect");
+    // A removal stays classified `destructive` so the review card keeps showing
+    // it as one. What a reviewed storage boundary removes is the BLOCKING issue
+    // — and only when that boundary reproduces from the step and names a
+    // ceiling, which is the same predicate that exempts it from
+    // `dynamic_request` above.
+    if (
+      effect === "destructive" &&
+      !(
+        supportedStorage &&
+        binding.storage?.operation === "DELETE" &&
+        binding.storage.max_deletes !== undefined
+      )
+    )
+      issue("destructive_effect");
     manifest.effects.push({
       ...binding,
       ...(binding.driver === "http" && supportsReadQuery(step)
