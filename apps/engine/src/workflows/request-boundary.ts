@@ -299,30 +299,43 @@ function matchTarget(boundary: RequestBoundary, url: URL): boolean {
   });
 }
 
-export function assertRequestBoundary(
+/** Why a materialized request is outside a boundary. Carries sizes, never content. */
+export type RequestBoundaryViolation =
+  | { kind: "boundary_invalid" | "request_missing" | "unsupported_body" | "url_invalid" }
+  | { kind: "method"; actual: string; reviewed: string }
+  | { kind: "target"; reviewed: string }
+  | { kind: "query" }
+  | { kind: "body_forbidden"; method: string }
+  | { kind: "body_size"; bytes: number; max_body_bytes: number };
+
+/**
+ * The one judgement of a request against a boundary. Dispatch under an
+ * authority denies on any violation; a run of a step that merely DECLARES a
+ * boundary reports the same violation by name, so a green preview means the
+ * request fits the boundary its step asks a human to approve.
+ */
+export function requestBoundaryViolation(
   boundary: RequestBoundary,
   request: MaterializedRequest | undefined,
-): void {
-  function deny(): never {
-    throw Object.assign(
-      new Error("Request differs from its reviewed target, method or size boundary"),
-      { code: "execution_authority_changed" },
-    );
-  }
+): RequestBoundaryViolation | null {
   const parsed = RequestBoundarySchema.safeParse(boundary);
+  if (!parsed.success) return { kind: "boundary_invalid" };
+  if (!request) return { kind: "request_missing" };
   // A body the assert cannot measure (multipart, a file) is denied, never skipped.
-  if (!parsed.success || !request) deny();
-  if (request.unsupported_body) deny();
+  if (request.unsupported_body) return { kind: "unsupported_body" };
   const reviewed = parsed.data;
-  if (request.method.toUpperCase() !== reviewed.method) deny();
+  const method = request.method.toUpperCase();
+  if (method !== reviewed.method)
+    return { kind: "method", actual: method, reviewed: reviewed.method };
   let url: URL;
   try {
     url = new URL(request.url);
   } catch {
-    deny();
+    return { kind: "url_invalid" };
   }
-  if (!matchTarget(reviewed, url)) deny();
-  if (reviewed.query.variable.length > 0) deny();
+  if (!matchTarget(reviewed, url))
+    return { kind: "target", reviewed: requestBoundaryTarget(reviewed) };
+  if (reviewed.query.variable.length > 0) return { kind: "query" };
   const keys = [...url.searchParams.keys()];
   const fixedKeys = Object.keys(reviewed.query.fixed);
   if (
@@ -330,14 +343,49 @@ export function assertRequestBoundary(
     keys.length !== fixedKeys.length ||
     fixedKeys.some((key) => url.searchParams.get(key) !== reviewed.query.fixed[key])
   )
-    deny();
-  if (reviewed.method === "GET" || reviewed.method === "HEAD") {
-    if (request.body !== null && request.body !== undefined) deny();
-    return;
-  }
-  if (request.body === null || request.body === undefined) return;
+    return { kind: "query" };
+  if (reviewed.method === "GET" || reviewed.method === "HEAD")
+    return request.body !== null && request.body !== undefined
+      ? { kind: "body_forbidden", method: reviewed.method }
+      : null;
+  if (request.body === null || request.body === undefined) return null;
   // Plain JSON.stringify, not the canonicaliser: this is the driver's own wire
   // encoding, and key sorting would change the byte count against the wire.
   const wire = typeof request.body === "string" ? request.body : JSON.stringify(request.body);
-  if (wire === undefined || Buffer.byteLength(wire, "utf8") > reviewed.max_body_bytes) deny();
+  if (wire === undefined) return { kind: "unsupported_body" };
+  const bytes = Buffer.byteLength(wire, "utf8");
+  return bytes > reviewed.max_body_bytes
+    ? { kind: "body_size", bytes, max_body_bytes: reviewed.max_body_bytes }
+    : null;
+}
+
+/** One sentence an author can act on. Names sizes and the reviewed target, never content. */
+export function describeRequestBoundaryViolation(violation: RequestBoundaryViolation): string {
+  switch (violation.kind) {
+    case "body_size":
+      return `the body is ${violation.bytes} bytes but \`boundary.max_body_bytes\` is ${violation.max_body_bytes}`;
+    case "target":
+      return `the resolved URL is not ${violation.reviewed} with an approved value for every variable`;
+    case "method":
+      return `the method is ${violation.actual} but the boundary was compiled for ${violation.reviewed}`;
+    case "query":
+      return "the query parameters differ from the step's static `query`";
+    case "body_forbidden":
+      return `a ${violation.method} request under a boundary may not carry a body`;
+    case "unsupported_body":
+      return "the body cannot be measured (multipart or file)";
+    default:
+      return "the request could not be compared with the boundary";
+  }
+}
+
+export function assertRequestBoundary(
+  boundary: RequestBoundary,
+  request: MaterializedRequest | undefined,
+): void {
+  if (requestBoundaryViolation(boundary, request) !== null)
+    throw Object.assign(
+      new Error("Request differs from its reviewed target, method or size boundary"),
+      { code: "execution_authority_changed" },
+    );
 }

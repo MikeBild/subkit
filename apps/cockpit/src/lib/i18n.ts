@@ -214,6 +214,8 @@ const EN = {
   "authority.boundary.variable": "{name} may only be: {values}",
   "authority.boundary.bodyLimit": "At most {bytes} bytes of content per request.",
   "authority.boundary.noBody": "Sends no content.",
+  "authority.boundary.declaredDestructive":
+    "The author marked this request as one that removes or irreversibly changes data.",
   "authority.boundary.calls":
     "Reviewed ceiling: {count} requests per run. This number is reviewed, but not yet counted by the system.",
   "authority.boundary.contentNotice":
@@ -1859,6 +1861,8 @@ const DE: Record<TranslationKey, string> = {
   "authority.boundary.variable": "{name} darf nur sein: {values}",
   "authority.boundary.bodyLimit": "Höchstens {bytes} Bytes Inhalt je Anfrage.",
   "authority.boundary.noBody": "Sendet keinen Inhalt.",
+  "authority.boundary.declaredDestructive":
+    "Der Autor hat diese Anfrage als eine markiert, die Daten entfernt oder unwiderruflich ändert.",
   "authority.boundary.calls":
     "Geprüfte Obergrenze: {count} Anfragen pro Lauf. Diese Zahl ist geprüft, wird vom System aber noch nicht mitgezählt.",
   "authority.boundary.contentNotice":
