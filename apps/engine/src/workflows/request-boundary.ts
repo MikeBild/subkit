@@ -55,7 +55,16 @@ export const RequestBoundaryScopeSchema = z
     // `authority-execution-shape.ts`, `run_limit_is_request_limit: false`).
     max_calls: z.number().int().min(1).max(10_000),
     /** Required for DELETE, so a removal is never approved by omission. */
-    destructive: z.literal(true).optional(),
+    // The default "expected true" reads as an instruction to set it; the first
+    // author to meet it did exactly that on a request that removes nothing.
+    destructive: z
+      .literal(true, {
+        error:
+          "`destructive` exists only to mark a request that removes or irreversibly changes data, " +
+          "and may then only be `true`. For any other request OMIT the key; do not set it to false " +
+          "and do not set it to true to satisfy this check.",
+      })
+      .optional(),
   })
   .strict();
 export type RequestBoundaryScope = z.infer<typeof RequestBoundaryScopeSchema>;

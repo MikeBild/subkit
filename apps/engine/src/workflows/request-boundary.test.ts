@@ -207,3 +207,18 @@ test("a value that could change the route never gets as far as a boundary", () =
       }).success,
     ).toBe(false);
 });
+
+test("a refused `destructive: false` says to omit the key, not to flip it", () => {
+  // The stock message was "expected true", and an author who had written
+  // `false` on a plain POST changed it to `true` to get past the validator.
+  const parsed = RequestStepSchema.safeParse({
+    ...release,
+    boundary: { ...release.boundary, destructive: false },
+  });
+  expect(parsed.success).toBe(false);
+  const message = parsed.success ? "" : parsed.error.issues.map((issue) => issue.message).join(" ");
+  expect(message).toContain("OMIT the key");
+  expect(message).not.toBe("Invalid input: expected true");
+  // Omitting it is what parses.
+  expect(RequestStepSchema.safeParse(release).success).toBe(true);
+});
