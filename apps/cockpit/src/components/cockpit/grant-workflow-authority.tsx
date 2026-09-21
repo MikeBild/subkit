@@ -358,6 +358,9 @@ export function GrantWorkflowAuthority({
                       })}
                     </p>
                   ))}
+                  {shown.declaredDestructive && (
+                    <p>{t("authority.boundary.declaredDestructive")}</p>
+                  )}
                   <p>{t(shown.body.key, shown.body.values)}</p>
                   <p>{t("authority.boundary.calls", { count: shown.calls })}</p>
                   <p>{t("authority.boundary.contentNotice")}</p>

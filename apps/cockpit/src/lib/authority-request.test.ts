@@ -56,6 +56,22 @@ describe("presentRequestBoundary", () => {
     });
   });
 
+  test("an author's destructive mark on a sending request is shown, never dropped", () => {
+    const shown = presentRequestBoundary({ ...base, destructive: true }, plain);
+    expect(shown).toMatchObject({
+      title: "authority.boundary.send",
+      destructive: true,
+      declaredDestructive: true,
+    });
+    // A DELETE already says so in its title; the extra line is for the others.
+    expect(
+      presentRequestBoundary({ ...base, method: "DELETE", destructive: true }, plain)
+        .declaredDestructive,
+    ).toBe(false);
+    expect(presentRequestBoundary(base, plain).declaredDestructive).toBe(false);
+    expect(translate("de", "authority.boundary.declaredDestructive")).toContain("entfernt");
+  });
+
   test("the copy is honest about what the approval does not cover", () => {
     for (const locale of ["de", "en"] as const) {
       const notice = translate(locale, "authority.boundary.contentNotice");

@@ -4,7 +4,10 @@ import { upsertCredential } from "../../credentials/service.ts";
 import { connectors, workflowExecutionAuthorities } from "../../db/schema/index.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { previewWorkflowAuthority } from "../../workflows/execution-authorities.ts";
-import { admitAuthorizedWorkflowExecution } from "../authority-admission.ts";
+import {
+  admitAuthorizedWorkflowExecution,
+  assertExecutionAuthorityCurrent,
+} from "../authority-admission.ts";
 import { runExecution } from "../engine.ts";
 import {
   createEngineCtx,
@@ -182,6 +185,18 @@ async function fixture(
   return {
     authority,
     connector,
+    admit(input: Record<string, unknown> = {}) {
+      return admitAuthorizedWorkflowExecution(
+        {
+          tenant_id: ctx.tenantId,
+          workflow_id: workflow.workflow_id,
+          execution_environment: "dev",
+          request_source: "api",
+          input,
+        },
+        db,
+      );
+    },
     async run(input: Record<string, unknown> = {}) {
       const admitted = await admitAuthorizedWorkflowExecution(
         {
@@ -324,15 +339,56 @@ test("an http boundary refuses an unreviewed target or an oversize body before a
   expect(reached).toEqual(["POST /endpoint/sites/alpha/releases"]);
   const elsewhere = await target.run({ site: "beta", ids: ["a"] });
   expect(elsewhere.status).toBe("failed");
-  expect(elsewhere.steps[0]?.error).toMatchObject({ code: "authority_invalid" });
+  expect(elsewhere.steps[0]?.error).toMatchObject({ code: "request_outside_declared_boundary" });
   expect(reached).toHaveLength(1);
 
   const size = await fixture("http", 1, false, bounded);
   const oversize = await size.run({ site: "alpha", ids: "x".repeat(500) });
   expect(oversize.status).toBe("failed");
-  expect(oversize.steps[0]?.error).toMatchObject({ code: "authority_invalid" });
+  expect(oversize.steps[0]?.error).toMatchObject({ code: "request_outside_declared_boundary" });
   expect(reached).toHaveLength(1);
   // The same grant still admits what was reviewed.
   expect((await size.run({ site: "alpha", ids: ["b"] })).status).toBe("succeeded");
   expect(reached).toHaveLength(2);
+});
+
+test("the granted boundary is checked again at dispatch, independently of the step's own check", async () => {
+  // A step is already held to the boundary it declares before anything is
+  // sent. The granted manifest is the binding statement, though, so the
+  // authority hook judges the materialized request a second time — reachable
+  // here only by handing it the request directly.
+  const f = await fixture("http", 1, false, {
+    method: "POST",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime target boundary fixture
+    path: "/sites/${input.site}/releases",
+    body: { retire: ["a"] },
+    boundary: {
+      variables: { "input.site": { enum: ["alpha"] } },
+      max_body_bytes: 100,
+      max_calls: 1,
+    },
+  });
+  const manifest = f.authority.effect_manifest as {
+    effects: Array<{ step_id: string; configuration_digest: string }>;
+  };
+  const effect = manifest.effects[0];
+  if (!effect) throw new Error("missing granted effect");
+  const admitted = await f.admit({ site: "alpha" });
+  const check = (url: string, body: unknown) =>
+    assertExecutionAuthorityCurrent(ctx.testDb.db, ctx.tenantId, admitted.execution_id, {
+      step_id: effect.step_id,
+      configuration_digest: effect.configuration_digest,
+      credential_id: null,
+      credential_revision: null,
+      connection_authority: null,
+      request: { method: "POST", url, headers: {}, body: body as never },
+    });
+  const granted = `${mock.baseUrl}/endpoint/sites/alpha/releases`;
+  await expect(check(granted, { retire: ["a"] })).resolves.toBeDefined();
+  await expect(check(`${mock.baseUrl}/endpoint/sites/beta/releases`, {})).rejects.toMatchObject({
+    code: "execution_authority_changed",
+  });
+  await expect(check(granted, { retire: "x".repeat(500) })).rejects.toMatchObject({
+    code: "execution_authority_changed",
+  });
 });

@@ -6,6 +6,11 @@ import {
   GMAIL_SEND_TARGET,
   inspectReportMessage,
 } from "../../../workflows/report-delivery-boundary.ts";
+import {
+  describeRequestBoundaryViolation,
+  requestBoundary,
+  requestBoundaryViolation,
+} from "../../../workflows/request-boundary.ts";
 // HTTP request step driver. Handles:
 //   - retry policy (5 attempts max, 200ms base, 30s cap, +/- 20% jitter)
 //   - 429 + Retry-After (cap 1h)
@@ -2151,6 +2156,38 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         retry_count: 0,
         duration_ms: Date.now() - start,
         error: { code: "request_body_schema_violation", message: bodyErrs.join("; ") },
+      };
+    }
+  }
+
+  // A step that declares `boundary` asks a human to approve exactly that
+  // statement. Hold the materialized request to it here — before hold-writes,
+  // so preview and live dispatch agree — or a green preview hides a request
+  // its own boundary refuses on the first scheduled run.
+  if (p.step.boundary) {
+    const declared = requestBoundary(p.step, activeConnector?.base_url ?? null);
+    const violation = declared
+      ? requestBoundaryViolation(declared, {
+          method: p.step.method ?? "GET",
+          url: heldRequestUrl,
+          headers,
+          body: (heldRequestBody ?? null) as MaterializedRequest["body"],
+          ...(p.resolved_multipart || p.resolved_body_file ? { unsupported_body: true } : {}),
+        })
+      : null;
+    if (violation) {
+      clearTimeout(timer);
+      return {
+        status: "failed",
+        retry_count: 0,
+        duration_ms: Date.now() - start,
+        error: {
+          code: "request_outside_declared_boundary",
+          message:
+            `This request is outside the boundary its step declares: ${describeRequestBoundaryViolation(violation)}. ` +
+            "Nothing was sent. Correct `boundary` on this step so it covers the largest request the " +
+            "workflow's own limits allow, or tighten those limits; do not remove the boundary.",
+        },
       };
     }
   }

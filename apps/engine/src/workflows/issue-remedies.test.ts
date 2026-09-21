@@ -134,3 +134,18 @@ test("a refused request boundary gets its own reason, not 'add a boundary' again
   // The generic case keeps the generic remedy.
   expect(guidance("no_boundary")).toContain("Patch ONLY this step");
 });
+
+test("a step that calls another workflow carries its remedy although it has no driver", () => {
+  // A `call` step never becomes an effect, so there is no driver to key on.
+  // Registered under a driver, this remedy could not be reached and the issue
+  // arrived bare.
+  const [entry] = repairGuidanceForIssues(
+    [{ step_id: "publish_one", code: "unbound_workflow_call" }],
+    [],
+  );
+  expect(entry?.step_id).toBe("publish_one");
+  expect(entry?.instruction).toContain("its own schedule and its own approval");
+  // The discriminator, so the reader can tell which of the two ways applies.
+  expect(entry?.instruction).toContain("passes no `input`");
+  expect(entry?.instruction).toContain("one-off run");
+});

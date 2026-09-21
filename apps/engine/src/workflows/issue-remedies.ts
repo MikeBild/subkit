@@ -87,7 +87,10 @@ const REQUEST_BOUNDARY_REMEDY =
   '`"item.slug"`), each `{enum: [every allowed value]}`; use `{}` when the path has no ' +
   "placeholder. For `input.*` copy the value from the saved schedule input (`list_schedules`); for " +
   "`item.*` list every value the `for_each` source can yield. Placeholders in the body need no " +
-  "entry. `max_body_bytes` is the largest UTF-8 body this step may send (0 for GET/HEAD); " +
+  "entry. `max_body_bytes` is the largest UTF-8 body this step may send (0 for GET/HEAD): size " +
+  "it from the workflow's own limits (for example its batch cap times the bytes per item, plus " +
+  "the fixed fields), never from a guess — a preview whose request does not fit fails with " +
+  "`request_outside_declared_boundary` and names both numbers; " +
   "`max_calls` is the most requests per run (1 without `for_each`). A DELETE also needs " +
   "`destructive: true`. Not coverable yet: a placeholder in `query` or `headers`, a placeholder " +
   "that is only part of a path segment, and `pagination`.";
@@ -173,13 +176,22 @@ const REMEDIES: Partial<Record<ManifestIssueCode, Partial<Record<Driver, string>
   destructive_effect: {
     s3: STORAGE_SCOPE_REMEDY,
   },
-  unbound_workflow_call: {
-    http:
-      "A step that calls another workflow cannot be bound for repeated runs yet. Its effects " +
-      "are not part of this workflow's reviewed boundary, so there is nothing for a human to " +
-      "approve. Inline the work this step delegates, or run the child workflow on its own " +
-      "schedule with its own approval.",
-  },
+};
+
+/**
+ * Remedies for issues on steps that have no driver. A `call` step never becomes
+ * an effect, so a remedy keyed by driver could not be reached for it: the issue
+ * arrived bare, which is how a reader ends up proposing a one-off run instead.
+ */
+const DRIVERLESS_REMEDIES: Partial<Record<ManifestIssueCode, string>> = {
+  unbound_workflow_call:
+    "A step that calls another workflow cannot be bound for repeated runs yet: the child's " +
+    "effects are not part of this workflow's reviewed boundary, so there is nothing for a human " +
+    "to approve. If the call passes no `input` and no later step reads its result, remove the " +
+    "call and give the child workflow its own schedule and its own approval. Otherwise the " +
+    "requests the child makes have to be authored in this workflow so they can be reviewed " +
+    "here. `boundary` and `s3.scope` do nothing on a call step. Say this plainly to the user; do " +
+    "not offer a one-off run as a substitute for recurring approval.",
 };
 
 /**
@@ -196,6 +208,8 @@ export function remedyFor(
 ): string | null {
   if (code === "dynamic_request" && driver === "http" && target === GMAIL_SEND_TARGET)
     return GMAIL_REPORT_REMEDY;
+  const driverless = DRIVERLESS_REMEDIES[code];
+  if (driverless) return driverless;
   if (!driver) return null;
   return REMEDIES[code]?.[driver] ?? null;
 }
