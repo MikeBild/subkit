@@ -55,6 +55,34 @@ const inputSchema = z
   )
   .openapi("EditWorkflowPatchToolInput");
 
+/**
+ * The step map plus the field guidance a failed patch needs to self-correct.
+ *
+ * This used to live inline in the one branch that catches an unapplicable JSON
+ * Pointer. Every other rejection — an unsupported placeholder, a definition that
+ * fails validation — returned the bare error, so the only sentence in the engine
+ * naming `s3.scope` was unreachable from the failures models actually hit. It is
+ * shared now, and it names the derived fields explicitly because templating
+ * `s3.max_keys` was a real invention, not a hypothetical one.
+ */
+function repairExtras(draft: { steps?: Array<Record<string, unknown>> }): Record<string, unknown> {
+  return {
+    step_paths: (draft.steps ?? []).map((step, index) => ({
+      id: step.id,
+      path: `/steps/${index}`,
+      fields: Object.keys(step),
+      ...(step.kind === "request" && step.s3
+        ? {
+            s3_fields: Object.keys(step.s3 as Record<string, unknown>),
+            storage_scope_path: `/steps/${index}/s3/scope`,
+          }
+        : {}),
+    })),
+    repair_hint:
+      "Use step_patches with step_id and a relative path to avoid positional guesses. Use existing fields directly under each step, without a config wrapper. For S3 recurring boundaries use s3.scope with key_prefix and max_bytes, plus max_deletes for a DELETE step, never path_prefix; s3.max_keys and s3.paginate are derived from the step and are not author-set per-prefix limits, so never template them. Inspect the relevant step before patching; no external setup is required.",
+  };
+}
+
 export const editWorkflowPatchTool: ConversationTool = {
   name: "edit_workflow_patch",
   description:
@@ -123,19 +151,7 @@ export async function applyWorkflowPatchToDraft(
           next_best_actions: ["inspect_workflow_draft"],
           extra: {
             patches: patches.map(({ op, path }) => ({ op, path })),
-            step_paths: (workflowDraft.steps ?? []).map((step, index) => ({
-              id: step.id,
-              path: `/steps/${index}`,
-              fields: Object.keys(step),
-              ...(step.kind === "request" && step.s3
-                ? {
-                    s3_fields: Object.keys(step.s3),
-                    storage_scope_path: `/steps/${index}/s3/scope`,
-                  }
-                : {}),
-            })),
-            repair_hint:
-              "Use step_patches with step_id and a relative path to avoid positional guesses. Use existing fields directly under each step, without a config wrapper. For S3 recurring boundaries use s3.scope with key_prefix and max_bytes, never path_prefix. Inspect the relevant step before patching; no external setup is required.",
+            ...repairExtras(workflowDraft),
           },
         }),
       };
@@ -238,6 +254,7 @@ export async function applyWorkflowPatchToDraft(
             extra: {
               unsupported_placeholders: placeholderErrors,
               patch_count: patches.length,
+              ...repairExtras(currentDraft.workflow ?? {}),
             },
           }),
         };
@@ -256,6 +273,7 @@ export async function applyWorkflowPatchToDraft(
           extra: {
             errors: validation.errors,
             patch_count: patches.length,
+            ...repairExtras(currentDraft.workflow ?? {}),
           },
         }),
       };

@@ -54,7 +54,17 @@ export async function resolveScopeFactsForConversation(
     // 2. Connector IDs referenced from the tool input. Single-step
     //    tools point at one (`connector_id` on the input or its `step`
     //    sub-object); `build_workflow` carries an array of steps.
+    //
+    //    …and from the workflow draft itself. A repair turn has no
+    //    connector draft and is called with no tool input, so without
+    //    this the driver set is empty for the whole conversation and a
+    //    driver-scoped skill never activates — which is how a chat
+    //    repairing an S3 workflow ran without the storage skill loaded,
+    //    holding only generic guidance, and invented a boundary field.
+    //    The header above has always described this source; it is the
+    //    code that was missing.
     const referencedIds = collectConnectorIds(toolInput);
+    for (const id of collectConnectorIds(draft.workflow)) referencedIds.add(id);
     if (referencedIds.size > 0) {
       const rows = await db
         .select({
