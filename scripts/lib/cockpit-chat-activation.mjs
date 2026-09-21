@@ -186,6 +186,48 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
                   max_calls: 7,
                 },
               },
+              // A value CLASS and a query value that varies. A class approves a
+              // FORM, not a list: the panel has to say so in words, and a rule
+              // it does not know must never look harmless.
+              {
+                step_id: "stats",
+                effect: "read",
+                operation: "GET",
+                target: "https://api.example.test/v2/sites/{input.site}/stats/{item.id}",
+                boundary: {
+                  base_url: "https://api.example.test/v2",
+                  method: "GET",
+                  origin: "https://api.example.test",
+                  segments: ["", "v2", "sites", { var: "input.site" }, "stats", { var: "item.id" }],
+                  variables: {
+                    "input.site": { enum: ["site-alpha"] },
+                    "item.id": { class: "uuid" },
+                    "scope.window.data.start": { class: "timestamp" },
+                  },
+                  query: {
+                    fixed: { tz: "UTC" },
+                    variable: [{ key: "from", var: "scope.window.data.start" }],
+                  },
+                  max_body_bytes: 0,
+                  max_calls: 31,
+                },
+              },
+              {
+                step_id: "mystery",
+                effect: "read",
+                operation: "GET",
+                target: "https://api.example.test/v2/mystery/{item.key}",
+                boundary: {
+                  base_url: "https://api.example.test/v2",
+                  method: "GET",
+                  origin: "https://api.example.test",
+                  segments: ["", "v2", "mystery", { var: "item.key" }],
+                  variables: { "item.key": { class: "anything_goes" } },
+                  query: { fixed: {}, variable: [] },
+                  max_body_bytes: 0,
+                  max_calls: 1,
+                },
+              },
               // A POST its author marked destructive (it retires records). The
               // mark may only ever make the panel more cautious — it once had
               // no effect at all on anything that was not a DELETE.
@@ -354,8 +396,18 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
       throw new Error("A removal boundary was also rendered as a non-destructive panel");
     const sendPanels = page.getByTestId("authority-request-boundary");
     await sendPanels.first().waitFor();
-    if ((await sendPanels.count()) !== 1)
-      throw new Error("A request removal was also rendered as a non-destructive panel");
+    if ((await sendPanels.count()) !== 2)
+      throw new Error("A cautious request boundary was also rendered as a non-destructive panel");
+    const classText = (await sendPanels.allInnerTexts()).find((text) =>
+      text.includes("/stats/{item.id}"),
+    );
+    if (!classText) throw new Error("The class-bound request is not shown with its target");
+    if (!classText.includes("from={scope.window.data.start}"))
+      throw new Error("A varying query value is missing from the reviewed target");
+    if (!/UUID/.test(classText) || !/UTC/.test(classText))
+      throw new Error("A value class is not described to the approver in words");
+    if (!/only what the value looks like|nur, wie der Wert aussieht/i.test(classText))
+      throw new Error("The approver is not told that a class approves a form, not a list");
     const sendText = await sendPanels.first().innerText();
     const sendDigits = sendText.replace(/[.,\u202f\u00a0 ]/g, "");
     if (!sendText.includes("/v2/sites/{input.site}/releases"))
@@ -371,13 +423,18 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
     if (/\blesen\b|\bread\b/i.test(sendText))
       throw new Error("A sending request boundary is presented to the approver as a read");
     const cautious = page.getByTestId("authority-request-boundary-destructive");
-    if ((await cautious.count()) !== 2)
-      throw new Error("A destructive request boundary is missing or shown as harmless");
+    if ((await cautious.count()) !== 3)
+      throw new Error("A destructive or unrecognised request boundary is shown as harmless");
     const cautiousTexts = await cautious.allInnerTexts();
     const dropText = cautiousTexts.find((text) => text.includes("/v2/sites/{input.site}/cache"));
     if (!dropText) throw new Error("Request removal does not show its reviewed target");
     if (!/löschen|delete/i.test(dropText))
       throw new Error("A request removal does not say that it deletes");
+    const mysteryText = cautiousTexts.find((text) => text.includes("/v2/mystery/{item.key}"));
+    if (!mysteryText || !/anything_goes/.test(mysteryText))
+      throw new Error("An unrecognised rule is not named to the approver");
+    if (!/nicht freigeben|Do not approve/i.test(mysteryText))
+      throw new Error("An unrecognised rule does not warn against approving");
     const archiveText = cautiousTexts.find((text) =>
       text.includes("/v2/sites/{input.site}/archive"),
     );

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "8.0.64",
+    "version": "8.0.65",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -4821,22 +4821,45 @@
                     "variables": {
                       "type": "object",
                       "additionalProperties": {
-                        "type": "object",
-                        "properties": {
-                          "enum": {
-                            "type": "array",
-                            "items": {
-                              "type": "string",
-                              "pattern": "^[A-Za-z0-9._~-]{1,200}$"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "enum": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "pattern": "^[A-Za-z0-9._~-]{1,200}$"
+                                },
+                                "minItems": 1,
+                                "maxItems": 50
+                              }
                             },
-                            "minItems": 1,
-                            "maxItems": 50
+                            "required": [
+                              "enum"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "class": {
+                                "type": "string",
+                                "enum": [
+                                  "identifier",
+                                  "uuid",
+                                  "integer",
+                                  "date",
+                                  "timestamp"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "class"
+                            ],
+                            "additionalProperties": false
                           }
-                        },
-                        "required": [
-                          "enum"
-                        ],
-                        "additionalProperties": false
+                        ]
                       }
                     },
                     "query": {
@@ -4851,9 +4874,24 @@
                         "variable": {
                           "type": "array",
                           "items": {
-                            "type": "string"
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "var": {
+                                "type": "string",
+                                "pattern": "^(?:item|input|scope)(?:\\.[A-Za-z_][A-Za-z0-9_]*)+$"
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "var"
+                            ],
+                            "additionalProperties": false
                           },
-                          "maxItems": 0
+                          "maxItems": 50
                         }
                       },
                       "required": [
@@ -5444,22 +5482,45 @@
               "variables": {
                 "type": "object",
                 "additionalProperties": {
-                  "type": "object",
-                  "properties": {
-                    "enum": {
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "pattern": "^[A-Za-z0-9._~-]{1,200}$"
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9._~-]{1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
                       },
-                      "minItems": 1,
-                      "maxItems": 50
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
                     }
-                  },
-                  "required": [
-                    "enum"
-                  ],
-                  "additionalProperties": false
+                  ]
                 }
               },
               "max_body_bytes": {

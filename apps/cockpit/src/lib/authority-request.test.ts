@@ -21,7 +21,13 @@ describe("presentRequestBoundary", () => {
   test("shows the resolved target, every allowed value and both ceilings", () => {
     const shown = presentRequestBoundary(base, plain);
     expect(shown.target).toBe("https://api.example.test/v2/sites/{input.site}/releases");
-    expect(shown.variables).toEqual([{ name: "input.site", values: "company-cockpit, blog" }]);
+    expect(shown.variables).toEqual([
+      {
+        key: "authority.boundary.variable",
+        values: { name: "input.site", values: "company-cockpit, blog" },
+      },
+    ]);
+    expect(shown.classNotice).toBe(false);
     expect(translate("en", shown.body.key, shown.body.values)).toContain("20000");
     expect(shown.calls).toBe(3);
     expect(shown.destructive).toBe(false);
@@ -70,6 +76,51 @@ describe("presentRequestBoundary", () => {
     ).toBe(false);
     expect(presentRequestBoundary(base, plain).declaredDestructive).toBe(false);
     expect(translate("de", "authority.boundary.declaredDestructive")).toContain("entfernt");
+  });
+
+  test("a value class is described in plain words, with the notice that it approves a form", () => {
+    const shown = presentRequestBoundary(
+      {
+        ...base,
+        method: "GET",
+        max_body_bytes: 0,
+        segments: ["", "v2", "sites", { var: "input.site" }, "stats", { var: "item.id" }],
+        variables: {
+          "input.site": { enum: ["blog"] },
+          "item.id": { class: "uuid" },
+          "scope.window.data.start": { class: "timestamp" },
+        },
+        query: {
+          fixed: { tz: "UTC" },
+          variable: [{ key: "from", var: "scope.window.data.start" }],
+        },
+      },
+      plain,
+    );
+    // The varying query value is part of the target the approver reads.
+    expect(shown.target).toBe(
+      "https://api.example.test/v2/sites/{input.site}/stats/{item.id}?tz=UTC&from={scope.window.data.start}",
+    );
+    expect(shown.classNotice).toBe(true);
+    expect(shown.destructive).toBe(false);
+    const lines = shown.variables.map((line) => translate("de", line.key, line.values));
+    expect(lines[1]).toBe("item.id darf jede UUID sein.");
+    expect(lines[2]).toContain("UTC-Zeitpunkt");
+    expect(translate("en", "authority.boundary.classNotice")).toContain(
+      "only what the value looks like",
+    );
+  });
+
+  test("a rule this dialog does not know makes the panel cautious and says why", () => {
+    const shown = presentRequestBoundary(
+      { ...base, variables: { "input.site": { class: "anything_goes" } } },
+      plain,
+    );
+    expect(shown.destructive).toBe(true);
+    const [line] = shown.variables;
+    expect(line?.key).toBe("authority.boundary.unknownRule");
+    expect(translate("de", line!.key, line!.values)).toContain("anything_goes");
+    expect(translate("de", line!.key, line!.values)).toContain("nicht freigeben");
   });
 
   test("the copy is honest about what the approval does not cover", () => {

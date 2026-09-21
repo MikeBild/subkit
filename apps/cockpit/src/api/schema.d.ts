@@ -17493,13 +17493,19 @@ export interface components {
                     variables: {
                         [key: string]: {
                             enum: string[];
+                        } | {
+                            /** @enum {string} */
+                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp";
                         };
                     };
                     query: {
                         fixed: {
                             [key: string]: string;
                         };
-                        variable: string[];
+                        variable: {
+                            key: string;
+                            var: string;
+                        }[];
                     };
                     max_body_bytes: number;
                     max_calls: number;
@@ -17641,6 +17647,9 @@ export interface components {
                 variables: {
                     [key: string]: {
                         enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp";
                     };
                 };
                 max_body_bytes: number;

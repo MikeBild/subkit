@@ -80,20 +80,25 @@ const STORAGE_REFUSAL_REMEDY: Partial<Record<StorageBoundaryRefusal, string>> = 
 const REQUEST_BOUNDARY_REMEDY =
   'Patch ONLY this step: `edit_workflow_patch` `step_patches: [{step_id, op: "add", path: ' +
   '"/boundary", value: {variables, max_body_bytes, max_calls}}]`. Do not re-author the workflow ' +
-  "and do not change `path`, `body` or `for_each`. `boundary` sits directly on the step beside " +
-  "`method` — not under `s3`, `config` or `body`. `variables` has exactly one entry per " +
+  "and do not change `path`, `query`, `body` or `for_each`. `boundary` sits directly on the step " +
+  "beside `method` — not under `s3`, `config` or `body`. `variables` has exactly one entry per " +
   // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
-  '`${…}` in `path`, keyed by the expression WITHOUT the `${}` (for example `"input.site_id"` or ' +
-  '`"item.slug"`), each `{enum: [every allowed value]}`; use `{}` when the path has no ' +
-  "placeholder. For `input.*` copy the value from the saved schedule input (`list_schedules`); for " +
-  "`item.*` list every value the `for_each` source can yield. Placeholders in the body need no " +
-  "entry. `max_body_bytes` is the largest UTF-8 body this step may send (0 for GET/HEAD): size " +
+  "`${…}` that is a whole segment of `path` or a whole value in `query`, keyed by the expression " +
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
+  'WITHOUT the `${}` (for example `"input.site_id"`, `"item.slug"`, `"scope.window.data.start"`); ' +
+  "use `{}` when neither varies. Each entry is `{enum: [every allowed value]}` — for `input.*` " +
+  "copy the value from the saved schedule input (`list_schedules`), for `item.*` list every value " +
+  'the `for_each` source can yield. Only when the values CANNOT be listed use `{class: "…"}`: ' +
+  "`uuid` or `integer` or `identifier` for an id that comes from an earlier step, `date` " +
+  "(YYYY-MM-DD) or `timestamp` (UTC, ending in Z) for a time window. A class approves every value " +
+  "of that form, so never use one where a list is possible, and never on a DELETE. Placeholders " +
+  "in the body need no entry. `max_body_bytes` is the largest UTF-8 body this step may send (0 for GET/HEAD): size " +
   "it from the workflow's own limits (for example its batch cap times the bytes per item, plus " +
   "the fixed fields), never from a guess — a preview whose request does not fit fails with " +
   "`request_outside_declared_boundary` and names both numbers; " +
   "`max_calls` is the most requests per run (1 without `for_each`). A DELETE also needs " +
-  "`destructive: true`. Not coverable yet: a placeholder in `query` or `headers`, a placeholder " +
-  "that is only part of a path segment, and `pagination`.";
+  "`destructive: true`. Not coverable yet: a placeholder in `headers`, a placeholder that is " +
+  "only PART of a path segment or of a query value, a query KEY that varies, and `pagination`.";
 
 /**
  * A step that ALREADY carries `boundary` (or can never carry one) and still
@@ -109,19 +114,27 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
   boundary_invalid:
     "This step already has `boundary`, but it does not parse: `variables` maps an expression such " +
     'as `"input.site"` to `{enum: [...]}` (1 to 50 values of letters, digits, `.`, `_`, `~`, `-` ' +
-    "only); `max_body_bytes` is an integer from 0 to 10000000; `max_calls` an integer from 1 to " +
+    'only) or to `{class: "identifier" | "uuid" | "integer" | "date" | "timestamp"}`, never both; ' +
+    "`max_body_bytes` is an integer from 0 to 10000000; `max_calls` an integer from 1 to " +
     "10000; `destructive` may only be `true`. No other keys.",
   delete_requires_destructive:
     "This step already has `boundary`; a DELETE additionally needs `destructive: true` inside it, so " +
     "a removal is never approved by omission.",
+  delete_requires_enum:
+    "This step already has `boundary`, but a DELETE may only vary over listed values: replace " +
+    "each `{class: …}` with `{enum: [every value that may be removed]}`. A removal of anything " +
+    "that merely looks like an id is not something a human can approve.",
   partial_segment_placeholder:
     "`boundary` cannot cover this step yet: a placeholder is only PART of a path segment, or its " +
     "root is not `input`, `scope` or `item`. Only a placeholder that is a whole segment between " +
     "two `/` can be bounded today. Do not add `boundary`; say so to the user.",
   query_placeholder_unsupported:
-    "`boundary` cannot cover this step yet: it has a placeholder in `query`. Do not add " +
-    "`boundary`; this waits for query-value support. A GET whose ONLY placeholders are in " +
-    "`query` and whose path is static needs no boundary at all.",
+    "`boundary` cannot cover this step as written: a `query` value mixes text with a placeholder, " +
+    "is not a plain string, or names a root other than `input`, `scope` or `item`. Only a query " +
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
+    'value that is one whole placeholder (`"${scope.window.data.start}"`) can be bounded, with an ' +
+    "entry of its own in `boundary.variables`. Build the full value in a transform first if text " +
+    "has to surround it.",
   runtime_header:
     "`boundary` cannot cover this step: a header value is a runtime placeholder. Make the header " +
     "a literal, or leave this step to concrete-run review.",

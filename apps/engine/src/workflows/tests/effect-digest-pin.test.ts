@@ -253,6 +253,57 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[] }> = {
       }),
     ],
   },
+  // (g) the same boundary kind with what came later: a value CLASS on a path
+  // segment and a query value that varies. It has its own pin so that (f) above
+  // keeps proving that approvals made before these existed did not move.
+  request_boundary_classes_query: {
+    definition: {
+      name: "request boundary classes query",
+      steps: [
+        {
+          id: "stats",
+          kind: "request",
+          connector_id: CONNECTOR,
+          method: "GET",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+          path: "/sites/${input.site}/stats/${item.id}",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+          query: { from: "${scope.window.data.start}", tz: "UTC" },
+          boundary: {
+            variables: {
+              "input.site": { enum: ["company-cockpit"] },
+              "item.id": { class: "uuid" },
+              "scope.window.data.start": { class: "timestamp" },
+            },
+            max_body_bytes: 0,
+            max_calls: 30,
+          },
+        },
+      ],
+    },
+    bindings: [
+      binding("stats", "8d1da1942736f681a07dfa70e42cda092d99f625ba42befeebe74da251169963", {
+        target: "https://api.example.test/v2/sites/{input.site}/stats/{item.id}",
+        boundary: {
+          base_url: "https://api.example.test/v2",
+          method: "GET",
+          origin: "https://api.example.test",
+          segments: ["", "v2", "sites", { var: "input.site" }, "stats", { var: "item.id" }],
+          variables: {
+            "input.site": { enum: ["company-cockpit"] },
+            "item.id": { class: "uuid" },
+            "scope.window.data.start": { class: "timestamp" },
+          },
+          query: {
+            fixed: { tz: "UTC" },
+            variable: [{ key: "from", var: "scope.window.data.start" }],
+          },
+          max_body_bytes: 0,
+          max_calls: 30,
+        },
+      }),
+    ],
+  },
   // (e) the control: no profile at all. If this one moves too, the change is in the
   // core schema or the effect row — not in one boundary.
   static_post: {
@@ -302,6 +353,10 @@ const PINNED: Record<string, { options_digest: string; digest: string }> = {
   request_boundary: {
     options_digest: "149b249e3250bd401a9dda84773021c20e7f1c9ae37a4c3f3915662928126bf6",
     digest: "d69c9ae53d07840949643281d900c61d06273c48179f06e44ee6cfd7533aa41d",
+  },
+  request_boundary_classes_query: {
+    options_digest: "bf16eab60b7a38040a2585b62600b3aeb95e71368282fe1feb6f6f29d2b2af33",
+    digest: "87f1f92b3669908fa7b01364610e81fa976dd4f8a96814efe1daf71c3c0e8332",
   },
   static_post: {
     options_digest: "8f5489e4afd09de4b17a8ae56cbbbe548e12f5fc16bc20295a3207a8ea31e854",
