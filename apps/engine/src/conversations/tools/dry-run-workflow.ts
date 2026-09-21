@@ -574,7 +574,13 @@ export const dryRunWorkflowTool: ConversationTool = {
     }
 
     const lastStepSummary = run.steps[run.steps.length - 1];
-    const stoppedStep = run.steps.find((s) => s.status !== "succeeded") ?? null;
+    // The FAILED step is where the run stopped. A held preview also skips every
+    // step behind a held write, and naming the first of those sent the author
+    // to repair a step that had nothing wrong with it.
+    const stoppedStep =
+      run.steps.find((s) => s.status === "failed") ??
+      run.steps.find((s) => s.status !== "succeeded") ??
+      null;
     const stoppedId = stoppedStep?.step_key ?? null;
 
     const fallbackStep = steps[steps.length - 1];

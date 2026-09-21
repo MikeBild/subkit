@@ -76,6 +76,50 @@ function failingDraft(slug: string): DraftDocument {
 }
 
 describe("dry_run_workflow · failure surfacing", () => {
+  test("the failure names the step that failed, not one skipped behind a held write", async () => {
+    // A preview holds the write, skips what depends on it, and then a later,
+    // independent step fails. The message once named the skipped step.
+    const toolCtx = makeCtx({
+      workflow: {
+        name: "held-then-failed",
+        slug: "held-then-failed",
+        steps: [
+          {
+            id: "publish",
+            kind: "request",
+            method: "POST",
+            url: "https://api.example.test/publish",
+            body: { a: 1 },
+          },
+          {
+            id: "after_publish",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.scope.publish.data;",
+          },
+          {
+            id: "boom",
+            kind: "transform",
+            language: "javascript",
+            expression: "throw new Error('intentional step failure');",
+          },
+        ],
+      },
+      // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+    } as any);
+    const result = (await dryRunWorkflowTool.execute(toolCtx, { input: null })) as {
+      ok: boolean;
+      message?: string;
+      data?: { step_trace?: Array<{ step_id: string; status: string }> };
+    };
+    expect(result.ok).toBe(false);
+    // The fixture really has a skipped step before the failed one.
+    const trace = result.data?.step_trace ?? [];
+    expect(trace.find((t) => t.step_id === "after_publish")?.status).toBe("skipped");
+    expect(result.message).toContain("`boom`");
+    expect(result.message).not.toContain("`after_publish`");
+  });
+
   test("a failed dry-run returns ok:false with a top-level error_code + message", async () => {
     const toolCtx = makeCtx(failingDraft("dry-run-failure-surfacing-step"));
     const result = (await dryRunWorkflowTool.execute(toolCtx, { input: null })) as {
