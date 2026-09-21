@@ -351,13 +351,9 @@ export function GrantWorkflowAuthority({
                     })}
                   </p>
                   {shown.variables.map((variable) => (
-                    <p key={variable.name}>
-                      {t("authority.boundary.variable", {
-                        name: variable.name,
-                        values: variable.values,
-                      })}
-                    </p>
+                    <p key={variable.values.name}>{t(variable.key, variable.values)}</p>
                   ))}
+                  {shown.classNotice && <p>{t("authority.boundary.classNotice")}</p>}
                   {shown.declaredDestructive && (
                     <p>{t("authority.boundary.declaredDestructive")}</p>
                   )}

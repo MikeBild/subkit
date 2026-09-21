@@ -13,6 +13,7 @@ import {
   compileRequestBoundary,
   RequestBoundarySchema,
   requestBoundaryTarget,
+  VALUE_CLASSES,
 } from "./request-boundary.ts";
 import { RequestStepSchema } from "./types.ts";
 
@@ -90,8 +91,11 @@ test("every refusal names its cause", () => {
       },
     }),
   ).toBe("pagination_unsupported");
+  // A query value may vary only as a WHOLE placeholder with a rule of its own.
   // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
-  expect(reason({ query: { since: "${input.since}" } })).toBe("query_placeholder_unsupported");
+  expect(reason({ query: { since: "from-${input.since}" } })).toBe("query_placeholder_unsupported");
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+  expect(reason({ query: { since: "${input.since}" } })).toBe("variables_mismatch");
   // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   expect(reason({ headers: { "x-tenant": "${input.tenant}" } })).toBe("runtime_header");
   // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
@@ -221,4 +225,150 @@ test("a refused `destructive: false` says to omit the key, not to flip it", () =
   expect(message).not.toBe("Invalid input: expected true");
   // Omitting it is what parses.
   expect(RequestStepSchema.safeParse(release).success).toBe(true);
+});
+
+// ── Values that cannot be listed: classes, and query values that vary ────────
+
+const stats = step({
+  method: "GET",
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+  path: "/sites/${input.site}/stats/${item.id}",
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+  query: { from: "${scope.window.data.start}", to: "${scope.window.data.end}", tz: "UTC" },
+  boundary: {
+    variables: {
+      "input.site": { enum: ["blog"] },
+      "item.id": { class: "uuid" },
+      "scope.window.data.start": { class: "timestamp" },
+      "scope.window.data.end": { class: "timestamp" },
+    },
+    max_body_bytes: 0,
+    max_calls: 30,
+  },
+});
+const ID = "3f2c1b9a-7d4e-4c1a-9b8e-2a6f0c5d1e77";
+const statsUrl = (id: string, query: string) =>
+  `https://api.example.test/v2/sites/blog/stats/${id}?${query}`;
+const GOOD_QUERY = "from=2026-09-20T00%3A00%3A00.000Z&to=2026-09-21T00%3A00%3A00Z&tz=UTC";
+
+test("the class patterns are pinned: a live approval must never change meaning", () => {
+  expect(Object.fromEntries(Object.entries(VALUE_CLASSES).map(([k, v]) => [k, v.source]))).toEqual({
+    identifier: "^[A-Za-z0-9_-]{1,200}$",
+    uuid: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+    integer: "^(0|[1-9][0-9]{0,18})$",
+    date: "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$",
+    timestamp: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+  });
+});
+
+test("review and dispatch agree on a class segment and varying query values", () => {
+  const { boundary, refusal } = compileRequestBoundary(stats, BASE);
+  expect(refusal).toBeUndefined();
+  expect(boundary?.query).toEqual({
+    fixed: { tz: "UTC" },
+    variable: [
+      { key: "from", var: "scope.window.data.start" },
+      { key: "to", var: "scope.window.data.end" },
+    ],
+  });
+  const ok = { method: "GET", url: statsUrl(ID, GOOD_QUERY), headers: {}, body: null };
+  expect(() => assertRequestBoundary(boundary!, ok)).not.toThrow();
+});
+
+test("a class denies everything that is not a member, in the path", () => {
+  const { boundary } = compileRequestBoundary(stats, BASE);
+  for (const id of [
+    "", // empty
+    "..",
+    "3f2c1b9a-7d4e-4c1a-9b8e-2a6f0c5d1e7", // 35 characters
+    "{3f2c1b9a-7d4e-4c1a-9b8e-2a6f0c5d1e77}",
+    "3f2c1b9a-7d4e-0c1a-9b8e-2a6f0c5d1e77", // version nibble 0
+    `${ID}%2F..`,
+    `${ID}/extra`,
+    "a%2Fb",
+    "a b",
+  ])
+    expect(() =>
+      assertRequestBoundary(boundary!, {
+        method: "GET",
+        url: statsUrl(id, GOOD_QUERY),
+        headers: {},
+        body: null,
+      }),
+    ).toThrow();
+});
+
+test("a varying query keeps an exact key set and holds each value to its rule", () => {
+  const { boundary } = compileRequestBoundary(stats, BASE);
+  for (const query of [
+    `${GOOD_QUERY}&admin=1`, // extra key
+    "from=2026-09-20T00%3A00%3A00Z&tz=UTC", // missing key
+    `${GOOD_QUERY}&from=2026-09-19T00%3A00%3A00Z`, // duplicate key
+    GOOD_QUERY.replace("from=", "From="), // another key
+    GOOD_QUERY.replace("tz=UTC", "tz=CET"), // changed fixed value
+    GOOD_QUERY.replace("2026-09-20T00%3A00%3A00.000Z", ""), // empty value
+    GOOD_QUERY.replace("2026-09-20T00%3A00%3A00.000Z", "2026-09-20T00%3A00%3A00%2B02%3A00"), // offset
+    GOOD_QUERY.replace("2026-09-20T00%3A00%3A00.000Z", "2026-09-20"), // a date is not a timestamp
+    // One value that tries to be two parameters stays one key and fails its class.
+    GOOD_QUERY.replace("2026-09-20T00%3A00%3A00.000Z", "2026-09-20T00%3A00%3A00Z%26admin%3D1"),
+  ])
+    expect(() =>
+      assertRequestBoundary(boundary!, {
+        method: "GET",
+        url: statsUrl(ID, query),
+        headers: {},
+        body: null,
+      }),
+    ).toThrow("reviewed target, method or size boundary");
+});
+
+test("the other classes accept their members and nothing near them", () => {
+  const compileWith = (cls: string) =>
+    compileRequestBoundary(
+      step({
+        method: "GET",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+        path: "/things/${item.value}",
+        boundary: { variables: { "item.value": { class: cls } }, max_body_bytes: 0, max_calls: 5 },
+      }),
+      BASE,
+    ).boundary!;
+  const passes = (cls: string, value: string) => {
+    try {
+      assertRequestBoundary(compileWith(cls), {
+        method: "GET",
+        url: `https://api.example.test/v2/things/${value}`,
+        headers: {},
+        body: null,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  expect(["0", "42", "9007199254740993"].every((v) => passes("integer", v))).toBe(true);
+  expect(["007", "-1", "1.5", "1".repeat(20), "１２３"].some((v) => passes("integer", v))).toBe(
+    false,
+  );
+  expect(passes("date", "2026-02-28")).toBe(true);
+  expect(["2026-13-01", "2026-1-1", "2026-02-28T00:00:00Z"].some((v) => passes("date", v))).toBe(
+    false,
+  );
+  expect(passes("identifier", "blog-de_2")).toBe(true);
+  expect(["a.b", "a~b", "x".repeat(201)].some((v) => passes("identifier", v))).toBe(false);
+});
+
+test("a removal may only vary over listed values", () => {
+  const removal = step({
+    method: "DELETE",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+    path: "/things/${item.id}",
+    boundary: {
+      variables: { "item.id": { class: "uuid" } },
+      max_body_bytes: 0,
+      max_calls: 1,
+      destructive: true,
+    },
+  });
+  expect(compileRequestBoundary(removal, BASE).refusal).toBe("delete_requires_enum");
 });

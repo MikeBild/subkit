@@ -19,11 +19,12 @@
 //   this target" at review and "is this concrete request inside the boundary"
 //   at dispatch.
 //
-// Scope of this first slice, on purpose: whole path segments bound by an
-// explicit `enum`, a static query, a runtime body bounded by size. Anything it
-// cannot hold to a reviewed statement is REFUSED with a named reason rather
-// than accepted loosely — placeholders in the query or headers, a placeholder
-// that is only part of a segment, pagination.
+// What may vary: whole path segments and whole query VALUES, each bound by an
+// explicit `enum` or, where values cannot be listed (an id from an earlier step,
+// a date), by a named value class; plus a runtime body bounded by size. Anything
+// it cannot hold to a reviewed statement is REFUSED with a named reason rather
+// than accepted loosely — a runtime header, a placeholder that is only part of
+// a segment or of a query value, a query KEY that varies, pagination.
 
 import { z } from "@hono/zod-openapi";
 import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
@@ -42,12 +43,44 @@ const enumValue = z
   .string()
   .regex(/^[A-Za-z0-9._~-]{1,200}$/)
   .refine((value) => value !== "." && value !== "..");
-const rule = z.object({ enum: z.array(enumValue).min(1).max(50) }).strict();
+/**
+ * For values that cannot be listed. Pinned regex literals, deliberately not Zod
+ * helpers: a library upgrade must never change what a live approval means. No
+ * class admits `%`, `/`, `?`, `#` or whitespace, so a raw path segment and its
+ * decoded form are the same string and no decode step exists to disagree on.
+ */
+export const VALUE_CLASSES = {
+  identifier: /^[A-Za-z0-9_-]{1,200}$/,
+  uuid: /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/,
+  integer: /^(0|[1-9][0-9]{0,18})$/,
+  date: /^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/,
+  timestamp: /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$/,
+} as const;
+type ValueClass = keyof typeof VALUE_CLASSES;
+const VALUE_CLASS_NAMES = Object.keys(VALUE_CLASSES) as [ValueClass, ...ValueClass[]];
+/** A worst-case member of each class, for the review-time routing self-check. */
+const CLASS_SAMPLE: Record<ValueClass, string> = {
+  identifier: "a",
+  uuid: "00000000-0000-4000-8000-000000000000",
+  integer: "0",
+  date: "2000-01-01",
+  timestamp: "2000-01-01T00:00:00Z",
+};
+
+// The `enum` branch stays FIRST: a boundary written before classes existed
+// must parse to the byte-identical object, or its approval's digest moves.
+const rule = z.union([
+  z.object({ enum: z.array(enumValue).min(1).max(50) }).strict(),
+  z.object({ class: z.enum(VALUE_CLASS_NAMES) }).strict(),
+]);
 export type RequestVariableRule = z.infer<typeof rule>;
 
 export const RequestBoundaryScopeSchema = z
   .object({
-    /** One entry per `${…}` in the path, keyed by the expression. `{}` for a static path. */
+    /**
+     * One entry per `${…}` that is a whole path segment or a whole query value,
+     * keyed by the expression. `{}` when neither varies.
+     */
     variables: z.record(expression, rule),
     max_body_bytes: z.number().int().min(0).max(10_000_000),
     // A reviewed ceiling shown to the human. NOT a per-run count the engine
@@ -82,11 +115,15 @@ export const RequestBoundarySchema = z
       .min(2)
       .max(50),
     variables: z.record(expression, rule),
-    // `variable` is reserved for query VALUES that may vary. Nothing can populate
-    // it yet; it is part of the shape now so that adding it later cannot move
-    // the digest of a grant made against this version.
+    // The key set is exact: `fixed` keys carry a literal value, `variable` keys
+    // a value held to its rule. The array is always present, `[]` when nothing
+    // varies, so a boundary approved before query values could vary keeps its
+    // digest.
     query: z
-      .object({ fixed: z.record(z.string(), z.string()), variable: z.array(z.string()).max(0) })
+      .object({
+        fixed: z.record(z.string(), z.string()),
+        variable: z.array(z.object({ key: z.string().min(1), var: expression }).strict()).max(50),
+      })
       .strict(),
     max_body_bytes: z.number().int().min(0).max(10_000_000),
     max_calls: z.number().int().min(1).max(10_000),
@@ -95,7 +132,14 @@ export const RequestBoundarySchema = z
   .strict()
   .refine((boundary) => boundary.method !== "DELETE" || boundary.destructive === true, {
     message: "a DELETE request boundary requires destructive: true",
-  });
+  })
+  // "Delete anything that looks like an id" is not a statement to approve.
+  .refine(
+    (boundary) =>
+      boundary.method !== "DELETE" ||
+      Object.values(boundary.variables).every((entry) => "enum" in entry),
+    { message: "a DELETE request boundary may only vary over listed values" },
+  );
 export type RequestBoundary = z.infer<typeof RequestBoundarySchema>;
 
 /**
@@ -114,6 +158,7 @@ export type RequestBoundaryRefusal =
   | "boundary_invalid"
   | "variables_mismatch"
   | "delete_requires_destructive"
+  | "delete_requires_enum"
   | "target_unresolved"
   | "variable_in_base_prefix"
   | "enum_value_unroutable"
@@ -156,7 +201,19 @@ export function compileRequestBoundary(
   if (step.s3 || step.sql || step.mcp || step.graphql || step.xml || step.multipart)
     return refuse("not_http_step");
   if (step.pagination) return refuse("pagination_unsupported");
-  if (hasRuntimeValue(step.query)) return refuse("query_placeholder_unsupported");
+  // A query value may vary only as a WHOLE placeholder; text around one, or a
+  // non-scalar value, cannot be held to a rule.
+  const fixedQuery: Record<string, string> = {};
+  const variableQuery: Array<{ key: string; var: string }> = [];
+  for (const [key, value] of Object.entries(step.query ?? {})) {
+    const whole = typeof value === "string" ? WHOLE_SEGMENT.exec(value) : null;
+    if (whole?.[1] !== undefined && expression.safeParse(whole[1]).success)
+      variableQuery.push({ key, var: whole[1] });
+    else if (hasRuntimeValue(value) || hasRuntimeValue(key))
+      return refuse("query_placeholder_unsupported");
+    else fixedQuery[key] = String(value);
+  }
+  variableQuery.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   if (hasRuntimeValue(step.headers)) return refuse("runtime_header");
   const { body: _body, path: _path, url: _url, query: _query, headers: _headers, ...fixed } = step;
   if (hasRuntimeValue(fixed)) return refuse("runtime_value_outside_path_and_body");
@@ -169,10 +226,13 @@ export function compileRequestBoundary(
   if (!step.boundary) return refuse("no_boundary");
   const scope = RequestBoundaryScopeSchema.safeParse(step.boundary);
   if (!scope.success) return refuse("boundary_invalid");
-  // Exact coverage, both directions: a path placeholder with no rule is
-  // unbounded, and a rule with no placeholder is a stale statement the
-  // reviewer would be approving for nothing.
-  const used = split.segments.flatMap((part) => (typeof part === "string" ? [] : [part.var]));
+  // Exact coverage, both directions: a placeholder with no rule is unbounded,
+  // and a rule with no placeholder is a stale statement the reviewer would be
+  // approving for nothing. One expression, one position.
+  const used = [
+    ...split.segments.flatMap((part) => (typeof part === "string" ? [] : [part.var])),
+    ...variableQuery.map((entry) => entry.var),
+  ];
   const declared = Object.keys(scope.data.variables);
   if (
     new Set(used).size !== used.length ||
@@ -184,6 +244,11 @@ export function compileRequestBoundary(
   if (!(HTTP_METHODS as readonly string[]).includes(method)) return refuse("not_http_step");
   if (method === "DELETE" && scope.data.destructive !== true)
     return refuse("delete_requires_destructive");
+  if (
+    method === "DELETE" &&
+    Object.values(scope.data.variables).some((entry) => !("enum" in entry))
+  )
+    return refuse("delete_requires_enum");
 
   // Resolve through the dispatcher's own resolver, with each variable segment
   // replaced by a token made of unreserved characters so it survives `new URL`.
@@ -237,12 +302,7 @@ export function compileRequestBoundary(
     origin: resolved.origin,
     segments,
     variables: scope.data.variables,
-    query: {
-      fixed: Object.fromEntries(
-        Object.entries(step.query ?? {}).map(([key, value]) => [key, String(value)]),
-      ),
-      variable: [],
-    },
+    query: { fixed: fixedQuery, variable: variableQuery },
     max_body_bytes: scope.data.max_body_bytes,
     max_calls: scope.data.max_calls,
     ...(scope.data.destructive ? { destructive: true as const } : {}),
@@ -250,21 +310,26 @@ export function compileRequestBoundary(
   if (!candidate.success) return refuse("boundary_invalid");
 
   // Every approved value must actually route inside the boundary it produced.
-  // Uses the dispatch-time matcher, so a value that review accepts and dispatch
-  // would deny is caught here, where the author can still fix it.
+  // Uses the dispatch-time judgement on a URL assembled the way the driver
+  // assembles it, so a value that review accepts and dispatch would deny is
+  // caught here, where the author can still fix it. A class is tried with one
+  // worst-case member.
+  const samples = (name: string): string[] => {
+    const entry = scope.data.variables[name];
+    if (!entry) return [""];
+    return "enum" in entry ? entry.enum : [CLASS_SAMPLE[entry.class]];
+  };
   for (const name of declared) {
-    for (const value of scope.data.variables[name]?.enum ?? []) {
+    for (const value of samples(name)) {
+      const pick = (other: string) => (other === name ? value : (samples(other)[0] ?? ""));
       const concrete = split.segments
-        .map((part) =>
-          typeof part === "string"
-            ? part
-            : part.var === name
-              ? value
-              : (scope.data.variables[part.var]?.enum[0] ?? ""),
-        )
+        .map((part) => (typeof part === "string" ? part : pick(part.var)))
         .join("/");
       try {
-        if (!matchTarget(candidate.data, resolveUrl(base_url, concrete)))
+        const url = resolveUrl(base_url, concrete);
+        for (const [key, fixed] of Object.entries(fixedQuery)) url.searchParams.set(key, fixed);
+        for (const entry of variableQuery) url.searchParams.set(entry.key, pick(entry.var));
+        if (!matchTarget(candidate.data, url) || !matchQuery(candidate.data, url))
           return refuse("enum_value_unroutable");
       } catch {
         return refuse("enum_value_unroutable");
@@ -288,9 +353,15 @@ export function requestBoundaryTarget(boundary: RequestBoundary): string {
     .join("/")}`;
 }
 
-/** The one place a concrete segment is judged against its rule. */
-function validateSegment(variableRule: RequestVariableRule | undefined, raw: string): boolean {
-  return variableRule?.enum.includes(raw) === true;
+/**
+ * The one place a concrete value is judged against its rule: a raw path segment
+ * or a decoded query value, which is in both cases exactly the string the
+ * placeholder resolved to.
+ */
+function valueAllowed(variableRule: RequestVariableRule | undefined, value: string): boolean {
+  if (!variableRule) return false;
+  if ("enum" in variableRule) return variableRule.enum.includes(value);
+  return VALUE_CLASSES[variableRule.class]?.test(value) === true;
 }
 
 /** Origin and path only. Shared by the review-time self-check and dispatch. */
@@ -304,7 +375,23 @@ function matchTarget(boundary: RequestBoundary, url: URL): boolean {
     const raw = actual[index] ?? "";
     return typeof expected === "string"
       ? raw === expected
-      : validateSegment(boundary.variables[expected.var], raw);
+      : valueAllowed(boundary.variables[expected.var], raw);
+  });
+}
+
+/** The query part of the same judgement: an exact key set, never a superset. */
+function matchQuery(boundary: RequestBoundary, url: URL): boolean {
+  const keys = [...url.searchParams.keys()];
+  const fixedKeys = Object.keys(boundary.query.fixed);
+  if (
+    new Set(keys).size !== keys.length ||
+    keys.length !== fixedKeys.length + boundary.query.variable.length ||
+    fixedKeys.some((key) => url.searchParams.get(key) !== boundary.query.fixed[key])
+  )
+    return false;
+  return boundary.query.variable.every((entry) => {
+    const value = url.searchParams.get(entry.key);
+    return value !== null && valueAllowed(boundary.variables[entry.var], value);
   });
 }
 
@@ -349,15 +436,7 @@ export function requestBoundaryViolation(
       reviewed: requestBoundaryTarget(reviewed),
       actual: `${url.origin}${url.pathname}`.slice(0, 300),
     };
-  if (reviewed.query.variable.length > 0) return { kind: "query" };
-  const keys = [...url.searchParams.keys()];
-  const fixedKeys = Object.keys(reviewed.query.fixed);
-  if (
-    new Set(keys).size !== keys.length ||
-    keys.length !== fixedKeys.length ||
-    fixedKeys.some((key) => url.searchParams.get(key) !== reviewed.query.fixed[key])
-  )
-    return { kind: "query" };
+  if (!matchQuery(reviewed, url)) return { kind: "query" };
   if (reviewed.method === "GET" || reviewed.method === "HEAD")
     return request.body !== null && request.body !== undefined
       ? { kind: "body_forbidden", method: reviewed.method }
@@ -383,7 +462,7 @@ export function describeRequestBoundaryViolation(violation: RequestBoundaryViola
     case "method":
       return `the method is ${violation.actual} but the boundary was compiled for ${violation.reviewed}`;
     case "query":
-      return "the query parameters differ from the step's static `query`";
+      return "the query does not have exactly the reviewed keys, a fixed value differs, or a varying value is outside its rule";
     case "body_forbidden":
       return `a ${violation.method} request under a boundary may not carry a body`;
     case "unsupported_body":

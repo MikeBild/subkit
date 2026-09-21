@@ -7685,10 +7685,15 @@ author declares a boundary on the step and a human approves it.
 }
 ```
 
-`variables` has exactly one entry per placeholder in the path, keyed by the
-expression without `${}`, listing every value it may take: 1 to 50 values of
-letters, digits, `.`, `_`, `~` and `-`. Placeholders in the body need no entry;
-the body is limited by `max_body_bytes` (0 for a request without a body).
+`variables` has exactly one entry per placeholder that is a whole path segment or
+a whole query value, keyed by the expression without `${}`. An entry normally
+lists every value it may take: `{ "enum": [...] }`, 1 to 50 values of letters,
+digits, `.`, `_`, `~` and `-`. Where the values cannot be listed — an id produced
+by an earlier step, a time window — an entry names a value class instead:
+`{ "class": "uuid" }`, `integer`, `identifier`, `date` or `timestamp`. A class
+approves every value of that form, the review dialog says so, and a `DELETE` may
+not use one. Placeholders in the body need no entry; the body is limited by
+`max_body_bytes` (0 for a request without a body).
 `max_calls` is the reviewed number of requests per run. A `DELETE` additionally
 needs `destructive: true`, so a removal is never approved by omission.
 
@@ -7697,7 +7702,8 @@ of path segments and an exact set of static query parameters, and shows that
 target to the approver with each variable by name. At dispatch the materialized
 request is matched against the same statement by the same code: origin, method,
 every literal segment, every variable segment against its approved values, the
-exact query key set and the body size. Both sides resolve the URL through the
+exact query key set (fixed values byte for byte, varying values against their
+rule) and the body size. Both sides resolve the URL through the
 HTTP driver's own resolver, so a connector base URL that carries a path is part
 of the reviewed target. A request that differs is refused before any network
 call: the step fails with `authority_invalid` and the run ends as failed.
@@ -7716,8 +7722,8 @@ review dialog says so, and an author should say so to the approver. `max_calls`
 is reviewed but not yet counted by the engine.
 
 Not covered, and refused with a named reason rather than silently ignored: a
-placeholder in `query` or `headers`, a placeholder that is only part of a path
-segment, a value containing `/` or needing percent-encoding, a placeholder in
+placeholder in `headers`, a query key that varies, a placeholder that is only
+part of a path segment or of a query value, a value containing `/` or needing percent-encoding, a placeholder in
 the part of the path that overlaps the connector's base path, `pagination`, a
 connector that adds its own query parameters, and any step a stricter profile
 already describes (report e-mail, [content publication](bounded-content-publication.md)).

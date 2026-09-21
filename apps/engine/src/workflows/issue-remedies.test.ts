@@ -128,8 +128,12 @@ test("a refused request boundary gets its own reason, not 'add a boundary' again
     )[0]?.instruction ?? "";
   expect(guidance("variables_mismatch")).toContain("already has `boundary`");
   expect(guidance("variables_mismatch")).not.toContain("Patch ONLY this step");
+  // A query value can vary now, but only as one whole placeholder; the remedy
+  // names that form instead of sending the author back to "add a boundary".
+  expect(guidance("query_placeholder_unsupported")).toContain("one whole placeholder");
+  expect(guidance("query_placeholder_unsupported")).not.toContain("Patch ONLY this step");
+  expect(guidance("delete_requires_enum")).toContain("may only vary over listed values");
   // Some steps cannot be covered at all yet — the honest answer is "do not try".
-  expect(guidance("query_placeholder_unsupported")).toContain("Do not add `boundary`");
   expect(guidance("stricter_profile_applies")).toContain("Do not add `boundary`");
   // The generic case keeps the generic remedy.
   expect(guidance("no_boundary")).toContain("Patch ONLY this step");
