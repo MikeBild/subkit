@@ -46,7 +46,9 @@ const STORAGE_REFUSAL_REMEDY: Partial<Record<StorageBoundaryRefusal, string>> = 
     "`body`. There is no bulk-delete shape: the driver ignores a DELETE body and removes the single " +
     "object named by `s3.key`. Remove `body`, set `s3.key` to the object key (for example " +
     // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
-    "`${item.key}`), and iterate with `for_each` over the keys to remove, one request per object.",
+    "`${item.key}`), and iterate one request per object with a JavaScript selector, for example " +
+    '`for_each: "(sourceData) => sourceData.<list_step_id>.data.items"` — not a placeholder and ' +
+    "not a JSONata reference.",
   query_or_headers_present:
     "This step already has `s3.scope`; the folder boundary is refused because the step sets " +
     "`query` or `headers`. A bounded storage request sends neither — remove both fields.",
