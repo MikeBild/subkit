@@ -594,6 +594,77 @@ describe("hold-writes · HTTP", () => {
     expect(hitsFor("/api/sites/reports/releases")).toHaveLength(1);
   });
 
+  test("a storage step is held to the folder it declares, in preview exactly like live", async () => {
+    // Same contract as the request boundary, for `s3.scope`: a folder that does
+    // not cover the key, or a size ceiling below the content, fails here and
+    // not on the first scheduled run after a human approved it.
+    hits.length = 0;
+    const [store] = await ctx.testDb.db
+      .insert(connectors)
+      .values({
+        tenant_id: ctx.tenantId,
+        slug: "scoped-hold",
+        display_name: "Scoped hold",
+        driver: "s3",
+        environment: "dev",
+        auth_type: "none",
+        base_url: mock.baseUrl,
+        config: {
+          endpoint: mock.baseUrl,
+          bucket: "reports",
+          region: "us-east-1",
+          force_path_style: true,
+        },
+      })
+      .returning();
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "hold-declared-scope",
+      steps: [
+        {
+          kind: "request",
+          id: "store",
+          connector_id: store!.id,
+          method: "PUT",
+          body: "${input.content}",
+          s3: {
+            key: "${input.key}",
+            content_type: "text/plain",
+            scope: { key_prefix: "v1/daily/", max_bytes: 20 },
+          },
+        },
+      ],
+    });
+    const run = (input: Record<string, unknown>, hold: boolean) =>
+      runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input,
+        ...(hold ? { options: { hold_writes: true } } : {}),
+      });
+    for (const hold of [true, false]) {
+      const elsewhere = await run({ key: "v1/weekly/a.txt", content: "ok" }, hold);
+      const outside = elsewhere.steps.find((s) => s.step_key === "store");
+      expect(elsewhere.status).toBe("failed");
+      expect((outside?.error as { code?: string })?.code).toBe("request_outside_declared_boundary");
+      expect((outside?.error as { message?: string })?.message).toContain('"v1/daily/"');
+
+      const oversize = await run({ key: "v1/daily/a.txt", content: "x".repeat(64) }, hold);
+      const large = oversize.steps.find((s) => s.step_key === "store");
+      expect((large?.error as { code?: string })?.code).toBe("request_outside_declared_boundary");
+      expect((large?.error as { message?: string })?.message).toContain(
+        "64 bytes but `s3.scope.max_bytes` is 20",
+      );
+    }
+    expect(hitsFor("/reports/")).toHaveLength(0);
+
+    const held = await run({ key: "v1/daily/a.txt", content: "ok" }, true);
+    expect(held.steps.find((s) => s.step_key === "store")?.held).toBe(true);
+    expect(hitsFor("/reports/")).toHaveLength(0);
+    expect((await run({ key: "v1/daily/a.txt", content: "ok" }, false)).status).toBe("succeeded");
+    expect(hitsFor("/reports/v1/daily/a.txt")).toHaveLength(1);
+  });
+
   test("held_request.body deep-equals the body the live dispatch puts on the wire", async () => {
     // The held artifact claims "this is exactly what would be sent" —
     // pin that claim byte-for-byte against a live dispatch of the same
