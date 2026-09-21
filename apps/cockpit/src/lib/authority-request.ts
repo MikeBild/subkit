@@ -33,6 +33,8 @@ export interface RequestBoundaryPresentation {
   variables: Array<{ name: string; values: string }>;
   body: { key: TranslationKey; values: Record<string, string | number> };
   calls: number;
+  /** The author marked a request that is not a DELETE as removing or irreversible. */
+  declaredDestructive: boolean;
 }
 
 export function presentRequestBoundary(
@@ -60,15 +62,18 @@ export function presentRequestBoundary(
     })),
     body,
     calls: boundary.max_calls,
+    declaredDestructive: boundary.destructive === true && boundary.method !== "DELETE",
   };
+  // An author's `destructive: true` can only make the panel more cautious.
+  const declared = boundary.destructive === true;
   switch (boundary.method) {
     case "GET":
     case "HEAD":
-      return { ...shared, title: "authority.boundary.read", destructive: false };
+      return { ...shared, title: "authority.boundary.read", destructive: declared };
     case "POST":
     case "PUT":
     case "PATCH":
-      return { ...shared, title: "authority.boundary.send", destructive: false };
+      return { ...shared, title: "authority.boundary.send", destructive: declared };
     case "DELETE":
       return { ...shared, title: "authority.boundary.delete", destructive: true };
     default:

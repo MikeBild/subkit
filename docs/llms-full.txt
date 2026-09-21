@@ -7702,6 +7702,14 @@ HTTP driver's own resolver, so a connector base URL that carries a path is part
 of the reviewed target. A request that differs is refused before any network
 call: the step fails with `authority_invalid` and the run ends as failed.
 
+A step is held to the boundary it declares on every run, not only under an
+approval. A preview materializes the request and compares it before anything is
+held or sent; a request that does not fit fails the step with
+`request_outside_declared_boundary` and names the actual and the allowed size or
+the reviewed target. A green preview therefore means the request fits what the
+human is about to be asked to approve. Size `max_body_bytes` from the workflow's
+own limits, such as a batch cap times the bytes per item, not from one preview.
+
 A boundary limits where a request goes and how large it is. It does not limit
 what the body says — which records a release retires, what a page contains. The
 review dialog says so, and an author should say so to the approver. `max_calls`
@@ -7718,8 +7726,9 @@ Storage steps use the storage boundary `s3.scope` instead.
 Regression coverage lives in `request-boundary.test.ts` (compile, refusals,
 denial table including encoded traversal), `effect-manifest.test.ts`
 (eligibility, tampered bindings, removals), `effect-digest-pin.test.ts`
-(existing approvals keep their digest) and `authority-runtime.integration.test.ts`
-(an unapproved value or an oversize body never reaches the remote).
+(existing approvals keep their digest), `authority-runtime.integration.test.ts`
+(an unapproved value or an oversize body never reaches the remote) and
+`hold-writes.test.ts` (preview and live run refuse the same request alike).
 
 <!-- Source: docs/developers/capabilities.md -->
 

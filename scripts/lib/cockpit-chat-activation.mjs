@@ -186,6 +186,26 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
                   max_calls: 7,
                 },
               },
+              // A POST its author marked destructive (it retires records). The
+              // mark may only ever make the panel more cautious — it once had
+              // no effect at all on anything that was not a DELETE.
+              {
+                step_id: "archive",
+                effect: "write",
+                operation: "POST",
+                target: "https://api.example.test/v2/sites/{input.site}/archive",
+                boundary: {
+                  base_url: "https://api.example.test/v2",
+                  method: "POST",
+                  origin: "https://api.example.test",
+                  segments: ["", "v2", "sites", { var: "input.site" }, "archive"],
+                  variables: { "input.site": { enum: ["site-alpha"] } },
+                  query: { fixed: {}, variable: [] },
+                  max_body_bytes: 2048,
+                  max_calls: 1,
+                  destructive: true,
+                },
+              },
               {
                 step_id: "drop",
                 effect: "destructive",
@@ -350,13 +370,20 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
       throw new Error("The approver is not told that the content is decided at run time");
     if (/\blesen\b|\bread\b/i.test(sendText))
       throw new Error("A sending request boundary is presented to the approver as a read");
-    const dropPanel = page.getByTestId("authority-request-boundary-destructive");
-    if ((await dropPanel.count()) !== 1) throw new Error("Request removal panel missing");
-    const dropText = await dropPanel.innerText();
+    const cautious = page.getByTestId("authority-request-boundary-destructive");
+    if ((await cautious.count()) !== 2)
+      throw new Error("A destructive request boundary is missing or shown as harmless");
+    const cautiousTexts = await cautious.allInnerTexts();
+    const dropText = cautiousTexts.find((text) => text.includes("/v2/sites/{input.site}/cache"));
+    if (!dropText) throw new Error("Request removal does not show its reviewed target");
     if (!/löschen|delete/i.test(dropText))
       throw new Error("A request removal does not say that it deletes");
-    if (!dropText.includes("/v2/sites/{input.site}/cache"))
-      throw new Error("Request removal does not show its reviewed target");
+    const archiveText = cautiousTexts.find((text) =>
+      text.includes("/v2/sites/{input.site}/archive"),
+    );
+    if (!archiveText) throw new Error("The author's destructive mark on a POST was dropped");
+    if (!/entfernt|removes/i.test(archiveText))
+      throw new Error("A POST marked destructive does not tell the approver why it is cautious");
     await page.getByTestId("authority-grant-confirm").click();
     await page.getByTestId("authority-prepare").waitFor();
     if (!(await page.getByTestId("authority-grant-confirm").isDisabled()))

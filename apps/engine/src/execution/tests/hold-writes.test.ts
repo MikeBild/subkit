@@ -486,6 +486,114 @@ describe("hold-writes · HTTP", () => {
     expect(hitsFor("/send")).toHaveLength(0);
   });
 
+  test("a step is held to the boundary it declares, in preview exactly like live", async () => {
+    // A boundary is what a human is asked to approve. A preview that stays
+    // green while the materialized request is already outside it hands over a
+    // grant whose first scheduled run fails: the ceiling was guessed, the
+    // preview never compared, and the refusal only existed under an authority.
+    hits.length = 0;
+    const [site] = await ctx.testDb.db
+      .insert(connectors)
+      .values({
+        tenant_id: ctx.tenantId,
+        slug: "bounded-hold",
+        display_name: "Bounded hold",
+        driver: "http",
+        environment: "dev",
+        auth_type: "none",
+        base_url: `${mock.baseUrl}/api`,
+        config: {},
+      })
+      .returning();
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "hold-declared-boundary",
+      steps: [
+        {
+          kind: "request",
+          id: "retire",
+          connector_id: site!.id,
+          method: "POST",
+          side_effects: "write",
+          path: "/sites/${input.site}/releases",
+          body: { retire_item_ids: "${input.ids}" },
+          boundary: {
+            variables: { "input.site": { enum: ["reports"] } },
+            max_body_bytes: 60,
+            max_calls: 1,
+          },
+        },
+      ],
+    });
+    const run = (input: Record<string, unknown>, hold: boolean) =>
+      runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input,
+        ...(hold ? { options: { hold_writes: true } } : {}),
+      });
+    const many = Array.from({ length: 12 }, (_, index) => `item-${index}`);
+    for (const hold of [true, false]) {
+      const oversize = await run({ site: "reports", ids: many }, hold);
+      const step = oversize.steps.find((s) => s.step_key === "retire");
+      expect(oversize.status).toBe("failed");
+      expect(step?.held).toBeUndefined();
+      expect((step?.error as { code?: string })?.code).toBe("request_outside_declared_boundary");
+      // The author gets the two numbers, not just a refusal.
+      const message = (step?.error as { message?: string })?.message ?? "";
+      expect(message).toContain(
+        `${Buffer.byteLength(JSON.stringify({ retire_item_ids: many }))} bytes`,
+      );
+      expect(message).toContain("`boundary.max_body_bytes` is 60");
+
+      const elsewhere = await run({ site: "other", ids: ["a"] }, hold);
+      const denied = elsewhere.steps.find((s) => s.step_key === "retire");
+      expect((denied?.error as { code?: string })?.code).toBe("request_outside_declared_boundary");
+      expect((denied?.error as { message?: string })?.message).toContain(
+        "/api/sites/{input.site}/releases",
+      );
+    }
+    expect(hitsFor("/api/sites/reports/releases")).toHaveLength(0);
+    expect(hitsFor("/api/sites/other/releases")).toHaveLength(0);
+
+    // A static query is part of the statement, and the URL judged here already
+    // carries it: a read under a boundary runs live in a preview and must pass.
+    const { workflow_id: reader } = await createWorkflowRow(ctx, {
+      name: "hold-declared-boundary-read",
+      steps: [
+        {
+          kind: "request",
+          id: "pending",
+          connector_id: site!.id,
+          method: "GET",
+          path: "/spaces/${input.space}/proposals",
+          query: { status: "pending" },
+          boundary: {
+            variables: { "input.space": { enum: ["wiki"] } },
+            max_body_bytes: 0,
+            max_calls: 1,
+          },
+        },
+      ],
+    });
+    const read = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id: reader },
+      input: { space: "wiki" },
+      options: { hold_writes: true },
+    });
+    expect(read.status).toBe("succeeded");
+    expect(hitsFor("/api/spaces/wiki/proposals?status=pending")).toHaveLength(1);
+
+    // Inside the boundary nothing changes: the preview holds, the live run sends.
+    const held = await run({ site: "reports", ids: ["a"] }, true);
+    expect(held.steps.find((s) => s.step_key === "retire")?.held).toBe(true);
+    expect(hitsFor("/api/sites/reports/releases")).toHaveLength(0);
+    expect((await run({ site: "reports", ids: ["a"] }, false)).status).toBe("succeeded");
+    expect(hitsFor("/api/sites/reports/releases")).toHaveLength(1);
+  });
+
   test("held_request.body deep-equals the body the live dispatch puts on the wire", async () => {
     // The held artifact claims "this is exactly what would be sent" —
     // pin that claim byte-for-byte against a live dispatch of the same
