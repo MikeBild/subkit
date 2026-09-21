@@ -19,7 +19,7 @@ import {
   rewriteWorkflowItemVars,
 } from "../../workflows/itemvar-rewrite.ts";
 import {
-  validateStepReferences,
+  describeStepReferences,
   validateUnsupportedPlaceholders,
 } from "../../workflows/reference-validator.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "../../workflows/types.ts";
@@ -31,6 +31,7 @@ import { stepFingerprint } from "../step-fingerprint.ts";
 import { canonicalJson } from "../text-line-diff.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
+import { classifyStepReferences } from "./inherited-step-references.ts";
 import { getLastPreview } from "./last-preview-store.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
 import { resolveStepPatches, StepPatchSchema } from "./step-targeted-patch.ts";
@@ -310,37 +311,35 @@ export async function applyWorkflowPatchToDraft(
       }
     }
 
-    // Reference pre-flight on the patched draft.
-    {
-      const refErrors = validateStepReferences(patched as WorkflowDef);
-      if (refErrors.length > 0) {
-        const summary = refErrors
-          .map(
-            (e) =>
-              `step \`${e.step_id}\`.${e.field} → unknown step \`${e.bad_reference}\`` +
-              (e.did_you_mean.length > 0
-                ? ` (did you mean: ${e.did_you_mean.map((s) => `\`${s}\``).join(", ")})`
-                : ""),
-          )
-          .join("; ");
-        recordAuthoringGateBlock({
-          code: "workflow_unresolved_step_reference",
-          tool: "edit_workflow_patch",
-        });
-        return {
-          ok: false,
-          data: buildGateError(currentDraft, {
-            error_code: "workflow_unresolved_step_reference",
-            message: `patch would leave unresolved step references: ${summary}`,
-            recommended_mode: "workflow",
-            next_best_actions: ["inspect_workflow_draft"],
-            extra: {
-              unresolved_references: refErrors,
-              patch_count: patches.length,
-            },
-          }),
-        };
-      }
+    // Reference pre-flight on the patched draft. Only references this patch
+    // INTRODUCES block it. Shared transform code reads steps of sibling
+    // workflows that are absent here; refusing an unrelated field change over
+    // such a read made the author rewrite correct production logic to get past
+    // the gate. What the active version already had rides along as a notice.
+    const references = await classifyStepReferences(
+      ctx,
+      "edit_workflow_patch",
+      patched as WorkflowDef,
+    );
+    if (references.introduced.length > 0) {
+      recordAuthoringGateBlock({
+        code: "workflow_unresolved_step_reference",
+        tool: "edit_workflow_patch",
+      });
+      return {
+        ok: false,
+        data: buildGateError(currentDraft, {
+          error_code: "workflow_unresolved_step_reference",
+          message: `patch would leave unresolved step references: ${describeStepReferences(references.introduced)}`,
+          recommended_mode: "workflow",
+          next_best_actions: ["inspect_workflow_draft"],
+          extra: {
+            unresolved_references: references.introduced,
+            patch_count: patches.length,
+            ...(references.notice ? { inherited_step_references: references.notice } : {}),
+          },
+        }),
+      };
     }
 
     // Rename-aware evidence carry-over. A `replace /steps/N/id` rename
@@ -437,6 +436,7 @@ export async function applyWorkflowPatchToDraft(
         resource_kind: "workflow",
         extra: {
           patch_count: patches.length,
+          ...(references.notice ? { inherited_step_references: references.notice } : {}),
           steps: patched.steps.length,
           last_step_id: patched.steps[patched.steps.length - 1]?.id ?? null,
           recorded_eval: recordedEval,
