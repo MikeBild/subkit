@@ -160,6 +160,23 @@ export function validateWorkflowDef(
     ids.add(step.id);
   }
   for (const step of wf.steps) {
+    // `for_each` is a JavaScript selector over the run scope. The two forms an
+    // author reaches for by analogy — a `${scope.…}` placeholder and a `$step`
+    // JSONata reference — both parse as strings, validate clean and then fail
+    // at run time with "is not defined", which names neither the mistake nor
+    // the fix. A repair that hit this three times gave up and regenerated the
+    // workflow. Name the right form where the author can still act on it.
+    if (typeof step.for_each === "string") {
+      const selector = step.for_each.trim();
+      if (selector.startsWith("${") || /^\$[A-Za-z_]/.test(selector)) {
+        errors.push({
+          path: `steps.${step.id}.for_each`,
+          message:
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
+            "for_each is a JavaScript arrow function over the run scope, not a placeholder or a JSONata reference. Write it as `(sourceData) => sourceData.<step_id>.data.<array_path>` — for example `(sourceData) => sourceData.list_files.data.items`. Inside the step, each element is then available as `${item.<field>}`.",
+        });
+      }
+    }
     if (step.data_selector) {
       // `loop` step's `data_selector` is a JS arrow function (the source-
       // array selector evaluated by runLoopStep via runJs). It shares the
