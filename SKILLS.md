@@ -22,6 +22,10 @@ bootstrap.
 - `subkit-observability` —
   Metrics, structured logs, traces, drift signals, token-budget accounting.
   Structured logger only; low-cardinality metric labels.
+- `herder` —
+  Drive one goal across many `/loop` wakeups with read-only Explore/Plan subagents
+  and an append-only ledger at `.claude/herder/ledger.jsonl`. Only for an explicitly
+  requested long-running run; the ledger, not memory, is the state.
 
 ## Domain / procedural
 
