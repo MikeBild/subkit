@@ -18,6 +18,7 @@
 // own the conversation.
 
 import type { ManifestIssueCode } from "./effect-manifest.ts";
+import type { RequestBoundaryRefusal } from "./request-boundary.ts";
 import type { StorageBoundaryRefusal } from "./storage-boundary.ts";
 
 type Driver = "http" | "graphql" | "postgres" | "s3" | "mcp";
@@ -70,6 +71,86 @@ const STORAGE_REFUSAL_REMEDY: Partial<Record<StorageBoundaryRefusal, string>> = 
   unsupported_method: "Only GET, HEAD, LIST, PUT and DELETE can be bounded by a storage folder.",
 };
 
+/**
+ * The general remedy for an HTTP step with a runtime placeholder. Written so a
+ * reader holding ONLY this string can author the boundary: past repairs invented
+ * fields from the wrong layer, guessed selector syntax, and re-authored whole
+ * workflows instead of patching one step.
+ */
+const REQUEST_BOUNDARY_REMEDY =
+  'Patch ONLY this step: `edit_workflow_patch` `step_patches: [{step_id, op: "add", path: ' +
+  '"/boundary", value: {variables, max_body_bytes, max_calls}}]`. Do not re-author the workflow ' +
+  "and do not change `path`, `body` or `for_each`. `boundary` sits directly on the step beside " +
+  "`method` — not under `s3`, `config` or `body`. `variables` has exactly one entry per " +
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
+  '`${…}` in `path`, keyed by the expression WITHOUT the `${}` (for example `"input.site_id"` or ' +
+  '`"item.slug"`), each `{enum: [every allowed value]}`; use `{}` when the path has no ' +
+  "placeholder. For `input.*` copy the value from the saved schedule input (`list_schedules`); for " +
+  "`item.*` list every value the `for_each` source can yield. Placeholders in the body need no " +
+  "entry. `max_body_bytes` is the largest UTF-8 body this step may send (0 for GET/HEAD); " +
+  "`max_calls` is the most requests per run (1 without `for_each`). A DELETE also needs " +
+  "`destructive: true`. Not coverable yet: a placeholder in `query` or `headers`, a placeholder " +
+  "that is only part of a path segment, and `pagination`.";
+
+/**
+ * A step that ALREADY carries `boundary` (or can never carry one) and still
+ * compiled none. Each entry names the one thing to change, or says plainly that
+ * nothing the author can do covers it yet — never "add a boundary" again.
+ */
+const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = {
+  variables_mismatch:
+    "This step already has `boundary`, but `boundary.variables` does not match the path: it needs " +
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
+    "exactly one entry per `${…}` in `path`, keyed by the expression without the `${}`, and no " +
+    "entry for anything that is not in the path. Body placeholders get no entry.",
+  boundary_invalid:
+    "This step already has `boundary`, but it does not parse: `variables` maps an expression such " +
+    'as `"input.site"` to `{enum: [...]}` (1 to 50 values of letters, digits, `.`, `_`, `~`, `-` ' +
+    "only); `max_body_bytes` is an integer from 0 to 10000000; `max_calls` an integer from 1 to " +
+    "10000; `destructive` may only be `true`. No other keys.",
+  delete_requires_destructive:
+    "This step already has `boundary`; a DELETE additionally needs `destructive: true` inside it, so " +
+    "a removal is never approved by omission.",
+  partial_segment_placeholder:
+    "`boundary` cannot cover this step yet: a placeholder is only PART of a path segment, or its " +
+    "root is not `input`, `scope` or `item`. Only a placeholder that is a whole segment between " +
+    "two `/` can be bounded today. Do not add `boundary`; say so to the user.",
+  query_placeholder_unsupported:
+    "`boundary` cannot cover this step yet: it has a placeholder in `query`. Do not add " +
+    "`boundary`; this waits for query-value support. A GET whose ONLY placeholders are in " +
+    "`query` and whose path is static needs no boundary at all.",
+  runtime_header:
+    "`boundary` cannot cover this step: a header value is a runtime placeholder. Make the header " +
+    "a literal, or leave this step to concrete-run review.",
+  runtime_value_outside_path_and_body:
+    "This step has a runtime placeholder outside `path` and `body`. Only the path (whole segments) " +
+    "and the body may vary under a boundary; make every other field a literal.",
+  path_unsupported:
+    "`boundary` needs exactly one of `path` or `url`, without `?`, `#`, `%` or `\\`. Move query " +
+    "parameters into the step's `query` object.",
+  pagination_unsupported:
+    "`boundary` cannot cover a paginated step: a cursor can carry response data into the next " +
+    "request. Do not add `boundary`.",
+  variable_in_base_prefix:
+    "This step already has `boundary`, but a path placeholder sits where the connector's base path " +
+    "is matched. Start the path with the literal segments and put the placeholder after them.",
+  enum_value_unroutable:
+    "This step already has `boundary`, but one of its `enum` values does not route to the " +
+    "reviewed target. Use the exact identifier the API expects, with no `/` or encoding.",
+  target_unresolved:
+    "The request target cannot be resolved: the connector has no base URL and the path is not an " +
+    "absolute http(s) URL, or the target carries credentials or a fragment.",
+  connector_adds_query:
+    "`boundary` cannot cover this step: its connector appends query parameters of its own " +
+    "(query-mode authentication or a static query), so no reviewed query could ever match.",
+  stricter_profile_applies:
+    "Do not add `boundary` here: this step is a report e-mail or a content publication, which has " +
+    "its own stricter review of the recipient or the published items.",
+  not_http_step:
+    "`boundary` applies to plain HTTP request steps only. A storage step is bounded with " +
+    "`s3.scope`; SQL, MCP, GraphQL, XML and multipart steps cannot be bounded yet.",
+};
+
 const GMAIL_REPORT_REMEDY =
   "A reviewed report boundary is not available yet; this alone does NOT establish malformed MIME. " +
   "First inspect the exact-version preview: did this email step materialize, or was it skipped " +
@@ -87,6 +168,7 @@ const GMAIL_REPORT_REMEDY =
 const REMEDIES: Partial<Record<ManifestIssueCode, Partial<Record<Driver, string>>>> = {
   dynamic_request: {
     s3: STORAGE_SCOPE_REMEDY,
+    http: REQUEST_BOUNDARY_REMEDY,
   },
   destructive_effect: {
     s3: STORAGE_SCOPE_REMEDY,
@@ -129,9 +211,13 @@ export function repairGuidanceForIssues(
   issues: ReadonlyArray<{ step_id: string; code: ManifestIssueCode }>,
   effects: ReadonlyArray<{ step_id: string; driver: Driver; target: string | null }>,
   storageRefusals: ReadonlyArray<{ step_id: string; reason: StorageBoundaryRefusal }> = [],
+  requestRefusals: ReadonlyArray<{ step_id: string; reason: RequestBoundaryRefusal }> = [],
 ): Array<{ step_id: string; code: ManifestIssueCode; instruction: string }> {
   const byStep = new Map(effects.map((effect) => [effect.step_id, effect]));
   const refusalByStep = new Map(storageRefusals.map((entry) => [entry.step_id, entry.reason]));
+  const requestRefusalByStep = new Map(
+    requestRefusals.map((entry) => [entry.step_id, entry.reason]),
+  );
   const seen = new Set<string>();
   const guidance: Array<{ step_id: string; code: ManifestIssueCode; instruction: string }> = [];
   for (const issue of issues) {
@@ -139,8 +225,13 @@ export function repairGuidanceForIssues(
     // The specific refusal wins over the generic storage remedy. `no_scope`
     // has no entry on purpose: that IS the generic case.
     const refusal = refusalByStep.get(issue.step_id);
+    // `no_boundary` has no entry on purpose: that IS the generic http case.
+    const requestRefusal = requestRefusalByStep.get(issue.step_id);
     const instruction =
       (effect?.driver === "s3" && refusal ? STORAGE_REFUSAL_REMEDY[refusal] : undefined) ??
+      (effect?.driver === "http" && requestRefusal
+        ? REQUEST_REFUSAL_REMEDY[requestRefusal]
+        : undefined) ??
       remedyFor(issue.code, effect?.driver, effect?.target);
     if (!instruction) continue;
     // The compiler can report the same code twice for one step (two failing

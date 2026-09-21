@@ -55,7 +55,7 @@ function binding(step_id: string, request_digest: string, extra: Record<string, 
 }
 
 /**
- * The five shapes the live production authorities actually take. Each is the
+ * The shapes live production authorities take, plus the author-declared boundary. Each is the
  * whole compile input, written out rather than built.
  */
 const SHAPES: Record<string, { definition: unknown; bindings: unknown[] }> = {
@@ -207,6 +207,52 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[] }> = {
       },
     ],
   },
+  // (f) an author-declared request boundary, on a base_url that carries a path.
+  // The path is the point: the reviewed target has to be the one `resolveUrl`
+  // dispatches to (`/v2/sites/…`), and every other shape here uses a path-less
+  // base that cannot tell the two resolvers apart.
+  request_boundary: {
+    definition: {
+      name: "request boundary",
+      steps: [
+        {
+          id: "retire",
+          kind: "request",
+          connector_id: CONNECTOR,
+          method: "POST",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+          path: "/sites/${input.site}/releases",
+          headers: { "content-type": "application/json" },
+          body: {
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+            reason: "retire ${scope.pick.data.count}",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+            retire_item_ids: "${scope.pick.data.ids}",
+          },
+          boundary: {
+            variables: { "input.site": { enum: ["company-cockpit"] } },
+            max_body_bytes: 20000,
+            max_calls: 1,
+          },
+        },
+      ],
+    },
+    bindings: [
+      binding("retire", "47fed950a2f4e773f48ad3fa8e3d0d5a3daee27e112d318e80e5f515faaf180f", {
+        target: "https://api.example.test/v2/sites/{input.site}/releases",
+        boundary: {
+          base_url: "https://api.example.test/v2",
+          method: "POST",
+          origin: "https://api.example.test",
+          segments: ["", "v2", "sites", { var: "input.site" }, "releases"],
+          variables: { "input.site": { enum: ["company-cockpit"] } },
+          query: { fixed: {}, variable: [] },
+          max_body_bytes: 20000,
+          max_calls: 1,
+        },
+      }),
+    ],
+  },
   // (e) the control: no profile at all. If this one moves too, the change is in the
   // core schema or the effect row — not in one boundary.
   static_post: {
@@ -252,6 +298,10 @@ const PINNED: Record<string, { options_digest: string; digest: string }> = {
   content_publication: {
     options_digest: "d6d2d72cbba26fb45f4c9b802766cd5871e90431b47c1913436cc011152d96a0",
     digest: "81637ecac62fee67bb7b27c65d36a4d7e8ea85eb4906a9298e43046b62d3deb0",
+  },
+  request_boundary: {
+    options_digest: "149b249e3250bd401a9dda84773021c20e7f1c9ae37a4c3f3915662928126bf6",
+    digest: "d69c9ae53d07840949643281d900c61d06273c48179f06e44ee6cfd7533aa41d",
   },
   static_post: {
     options_digest: "8f5489e4afd09de4b17a8ae56cbbbe548e12f5fc16bc20295a3207a8ea31e854",

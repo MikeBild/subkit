@@ -17,6 +17,11 @@ import {
   supportsReadQuery,
   supportsReportDelivery,
 } from "./report-delivery-boundary.ts";
+import {
+  RequestBoundarySchema,
+  requestBoundary,
+  requestBoundaryTarget,
+} from "./request-boundary.ts";
 import { StorageBoundarySchema, storageBoundary, storageTarget } from "./storage-boundary.ts";
 import { JsonValueSchema, type RequestStep, WorkflowDefSchema } from "./types.ts";
 
@@ -42,6 +47,7 @@ export const ResolvedEffectBindingSchema = z
     content_publication: ContentPublicationBoundarySchema.optional(),
     read_path: ReadPathBoundarySchema.optional(),
     storage: StorageBoundarySchema.optional(),
+    boundary: RequestBoundarySchema.optional(),
   })
   .strict();
 export type ResolvedEffectBinding = z.infer<typeof ResolvedEffectBindingSchema>;
@@ -201,8 +207,12 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       workflowJsonDigest(storage) === workflowJsonDigest(binding.storage) &&
       binding.target === storageTarget(storage);
     if (binding.storage && !supportedStorage) issue("binding_mismatch");
+    // An authored boundary takes precedence over the derived read profiles. The
+    // same `!step.boundary` guard sits at every place a read profile is
+    // consulted, so a step's target and its dispatch assert come from exactly
+    // one source. A step WITHOUT `boundary` takes the path it always took.
     const readPath =
-      binding.driver === "http" && binding.read_path
+      binding.driver === "http" && !step.boundary && binding.read_path
         ? readPathBoundary(step, binding.read_path.origin)
         : null;
     const supportedReadPath =
@@ -210,6 +220,20 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       workflowJsonDigest(readPath) === workflowJsonDigest(binding.read_path) &&
       binding.target === readPathTarget(readPath);
     if (binding.read_path && !supportedReadPath) issue("binding_mismatch");
+    // One definition, used for BOTH the `dynamic_request` exemption and the
+    // `read_query` assert spread below. Deciding them separately left a gap: a
+    // step whose authored boundary was refused stayed exempt as a read query
+    // while its assert was suppressed — exempt, and checked by nothing.
+    const readQuery = binding.driver === "http" && !step.boundary && supportsReadQuery(step);
+    const recompiledBoundary =
+      binding.driver === "http" && binding.boundary
+        ? requestBoundary(step, binding.boundary.base_url)
+        : null;
+    const supportedBoundary =
+      recompiledBoundary !== null &&
+      workflowJsonDigest(recompiledBoundary) === workflowJsonDigest(binding.boundary) &&
+      binding.target === requestBoundaryTarget(recompiledBoundary);
+    if (binding.boundary && !supportedBoundary) issue("binding_mismatch");
     const supportedContent =
       binding.driver === "http" &&
       binding.content_publication &&
@@ -236,10 +260,14 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       (hasRuntimeValue(step) &&
         !(
           supportedStorage ||
+          // `supportedBoundary` belongs INSIDE the http guard. `supportedStorage`
+          // sits outside it; copying that position would let an author clear an
+          // S3 step's `dynamic_request` without ever declaring a folder.
           (binding.driver === "http" &&
-            (supportedReadPath ||
+            (supportedBoundary ||
+              supportedReadPath ||
               supportedContent ||
-              supportsReadQuery(step) ||
+              readQuery ||
               (binding.report_delivery && supportsReportDelivery(step, binding.target))))
         )) ||
       hasRuntimeValue(binding.target) ||
@@ -261,14 +289,15 @@ export function compileWorkflowEffectManifest(raw: unknown): {
         supportedStorage &&
         binding.storage?.operation === "DELETE" &&
         binding.storage.max_deletes !== undefined
-      )
+      ) &&
+      // An HTTP DELETE is grantable only when its author declared it
+      // destructive and the boundary reproduces from the step.
+      !(supportedBoundary && binding.boundary?.destructive === true)
     )
       issue("destructive_effect");
     manifest.effects.push({
       ...binding,
-      ...(binding.driver === "http" && supportsReadQuery(step)
-        ? { read_query: readQueryBoundary(step) }
-        : {}),
+      ...(readQuery ? { read_query: readQueryBoundary(step) } : {}),
       operation: operationOf(step, binding.driver),
       effect,
     });

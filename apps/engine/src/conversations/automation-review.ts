@@ -65,6 +65,7 @@ export async function inspectAutomationReview(db: Db, tenant_id: string, workflo
               preview?.manifest.issues ?? [],
               preview?.manifest.effects ?? [],
               preview?.storage_refusals ?? [],
+              preview?.request_refusals ?? [],
             ),
           };
         } catch {

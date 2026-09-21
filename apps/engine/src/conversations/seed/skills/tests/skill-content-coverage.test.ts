@@ -269,3 +269,17 @@ test("s3-connectors names the issue codes its boundary resolves", () => {
   expect(body).toContain("destructive_effect");
   expect(body).toContain("max_deletes");
 });
+
+// The same bridge for an http step. The skill has to name the patch path and
+// the limits of the capability: a model that is not told what `boundary` cannot
+// cover keeps adding it to steps that will never compile one.
+test("workflow-authoring names the request boundary, its patch path and its limits", () => {
+  const body = read("workflow-authoring.md");
+  expect(body).toContain("## Bounded requests");
+  expect(body).toContain('path: "/boundary"');
+  expect(body).toContain("max_body_bytes");
+  expect(body).toContain("max_calls");
+  expect(body).toContain("destructive: true");
+  expect(body).toContain("Not coverable yet");
+  expect(body).toContain("does not count yet");
+});

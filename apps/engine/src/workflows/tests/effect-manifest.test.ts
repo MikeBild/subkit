@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { workflowJsonDigest } from "../canonical-json.ts";
 import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "../effect-manifest.ts";
 import { readPathBoundary, readPathTarget } from "../read-path-boundary.ts";
+import { requestBoundary, requestBoundaryTarget } from "../request-boundary.ts";
 import { storageBoundary, storageTarget } from "../storage-boundary.ts";
 import { WorkflowDefSchema } from "../types.ts";
 
@@ -334,4 +335,111 @@ test("a removal becomes grantable only with a declared ceiling, and stays visibl
       bindings: [{ ...input.bindings[0], storage: { ...storage, max_deletes: 1 } }],
     }).eligible_for_repeated_runs,
   ).toBe(false);
+});
+
+// An author-declared request boundary. The fixture base carries a path on
+// purpose: the reviewed target must be the one dispatch resolves, not the one
+// `new URL(path, base)` would produce.
+function boundaryFixture(request: Record<string, unknown> = {}) {
+  const input = fixture({
+    method: "POST",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
+    path: "/sites/${input.site}/releases",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
+    body: { ids: "${scope.pick.data.ids}" },
+    boundary: {
+      variables: { "input.site": { enum: ["company-cockpit"] } },
+      max_body_bytes: 5000,
+      max_calls: 1,
+    },
+    ...request,
+  });
+  const step = input.definition.steps[0];
+  if (step?.kind !== "request") throw new Error("request missing");
+  const boundary = requestBoundary(step, "https://api.example.test/v2");
+  if (boundary)
+    input.bindings[0] = {
+      ...input.bindings[0]!,
+      boundary,
+      target: requestBoundaryTarget(boundary),
+    };
+  return { input, boundary };
+}
+
+test("an authored request boundary makes a runtime path and body grantable", () => {
+  const { input, boundary } = boundaryFixture();
+  expect(boundary).not.toBeNull();
+  const result = compileWorkflowEffectManifest(input);
+  expect(result.manifest.issues).toEqual([]);
+  expect(result.eligible_for_repeated_runs).toBe(true);
+  expect(result.manifest.effects[0]?.target).toBe(
+    "https://api.example.test/v2/sites/{input.site}/releases",
+  );
+  expect(result.manifest.effects[0]?.boundary?.max_body_bytes).toBe(5000);
+});
+
+test("a stored boundary that no longer reproduces from the step is a mismatch", () => {
+  const { input, boundary } = boundaryFixture();
+  for (const changed of [
+    { max_body_bytes: 9_000_000 },
+    { variables: { "input.site": { enum: ["company-cockpit", "another-site"] } } },
+    { origin: "https://evil.example.test" },
+  ]) {
+    const tampered = compileWorkflowEffectManifest({
+      ...input,
+      bindings: [{ ...input.bindings[0], boundary: { ...boundary, ...changed } }],
+    });
+    expect(tampered.manifest.issues.map((issue) => issue.code)).toContain("binding_mismatch");
+    expect(tampered.eligible_for_repeated_runs).toBe(false);
+  }
+});
+
+test("a refused boundary does not fall back to an unchecked read-query exemption", () => {
+  // Shaped like a read query (GET, static path, runtime query value) but the
+  // author ALSO wrote a `boundary`, which this slice must refuse for a query
+  // placeholder. The step used to stay exempt as a read query while the
+  // read_query assert was suppressed — exempt, and checked by nothing.
+  const input = fixture({
+    method: "GET",
+    path: "/reports",
+    body: undefined,
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
+    query: { since: "${input.since}" },
+    boundary: { variables: {}, max_body_bytes: 0, max_calls: 1 },
+  });
+  const result = compileWorkflowEffectManifest(input);
+  expect(result.manifest.issues.map((issue) => issue.code)).toContain("dynamic_request");
+  expect(result.manifest.effects[0]?.read_query).toBeUndefined();
+  expect(result.eligible_for_repeated_runs).toBe(false);
+});
+
+test("an HTTP removal is grantable only when its author declared it destructive", () => {
+  const declared = boundaryFixture({
+    method: "DELETE",
+    body: undefined,
+    boundary: {
+      variables: { "input.site": { enum: ["company-cockpit"] } },
+      max_body_bytes: 0,
+      max_calls: 1,
+      destructive: true,
+    },
+  });
+  const result = compileWorkflowEffectManifest(declared.input);
+  expect(result.manifest.issues).toEqual([]);
+  // Still shown as what it is.
+  expect(result.manifest.effects[0]?.effect).toBe("destructive");
+  // Without the declaration no boundary compiles, so both issues stand.
+  const undeclared = boundaryFixture({
+    method: "DELETE",
+    body: undefined,
+    boundary: {
+      variables: { "input.site": { enum: ["company-cockpit"] } },
+      max_body_bytes: 0,
+      max_calls: 1,
+    },
+  });
+  expect(undeclared.boundary).toBeNull();
+  expect(
+    compileWorkflowEffectManifest(undeclared.input).manifest.issues.map((issue) => issue.code),
+  ).toEqual(expect.arrayContaining(["destructive_effect", "dynamic_request"]));
 });

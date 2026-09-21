@@ -56,6 +56,7 @@
 - [Detailed Agent Navigation](developers/agent-navigation.md): This on-demand reference preserves the former root agent guide.
 - [Bounded content publication](developers/bounded-content-publication.md): SubKit supports the documented ContentKit markdown revision and site release protocol as a finite repeated-run boundary.
 - [Scheduled report decisions](developers/bounded-report-delivery.md): A saved draft, successful held preview and one-off send do not authorize future scheduled deliveries.
+- [Bounded requests](developers/bounded-requests.md): A scheduled workflow runs without a person present, so a person approves its effects once, for a finite number of runs.
 - [Capability matrix](developers/capabilities.md): Every answer here was read out of the code, not out of a feature list.
 - [Coding-Agent Integration (Claude Code & Codex)](developers/coding-agent-integration.md): sk can act as the central knowledge and skill source for your coding agents.
 - [Evidence process — verifying a behavioral / LLM-path change](developers/evidence-process.md): Changes to LLM-driven paths ship proven rather than guessed.

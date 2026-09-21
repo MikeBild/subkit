@@ -9,6 +9,7 @@
 
 import { expect, test } from "bun:test";
 import { remedyFor, repairGuidanceForIssues } from "./issue-remedies.ts";
+import type { RequestBoundaryRefusal } from "./request-boundary.ts";
 
 const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 
@@ -25,7 +26,11 @@ test("a storage step's blocking codes both point at the authored folder boundary
 });
 
 test("the same code on a different driver does not borrow the storage remedy", () => {
-  expect(remedyFor("dynamic_request", "http")).toBeNull();
+  // An HTTP step has its own remedy — the authored `boundary` — and must never be
+  // told to declare a storage folder.
+  const http = remedyFor("dynamic_request", "http");
+  expect(http).toContain('path: "/boundary"');
+  expect(http).not.toContain("s3.scope");
   expect(remedyFor("dynamic_request", "postgres")).toBeNull();
   // An unknown driver (a step the compiler skipped before binding) yields
   // nothing rather than a confidently wrong instruction.
@@ -96,4 +101,36 @@ test("a step with no scope still gets the generic storage remedy", () => {
     [{ step_id: "list_expired", reason: "no_scope" }],
   );
   expect(entry?.instruction).toContain("Author a fixed folder boundary");
+});
+
+test("the http remedy is enough on its own to author a boundary", () => {
+  const remedy = remedyFor("dynamic_request", "http") ?? "";
+  // Patch, do not rewrite — a repair once regenerated a whole saved workflow.
+  expect(remedy).toContain("Patch ONLY this step");
+  expect(remedy).toContain("Do not re-author");
+  // Where it goes, how variables are keyed, and where the values come from.
+  expect(remedy).toContain("directly on the step");
+  expect(remedy).toContain("WITHOUT the");
+  expect(remedy).toContain("list_schedules");
+  expect(remedy).toContain("max_body_bytes");
+  expect(remedy).toContain("max_calls");
+  // And what it cannot do, so the author does not try.
+  expect(remedy).toContain("Not coverable yet");
+});
+
+test("a refused request boundary gets its own reason, not 'add a boundary' again", () => {
+  const guidance = (reason: RequestBoundaryRefusal) =>
+    repairGuidanceForIssues(
+      [{ step_id: "retire", code: "dynamic_request" }],
+      [{ step_id: "retire", driver: "http", target: null }],
+      [],
+      [{ step_id: "retire", reason }],
+    )[0]?.instruction ?? "";
+  expect(guidance("variables_mismatch")).toContain("already has `boundary`");
+  expect(guidance("variables_mismatch")).not.toContain("Patch ONLY this step");
+  // Some steps cannot be covered at all yet — the honest answer is "do not try".
+  expect(guidance("query_placeholder_unsupported")).toContain("Do not add `boundary`");
+  expect(guidance("stricter_profile_applies")).toContain("Do not add `boundary`");
+  // The generic case keeps the generic remedy.
+  expect(guidance("no_boundary")).toContain("Patch ONLY this step");
 });

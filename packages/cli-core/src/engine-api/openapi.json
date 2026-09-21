@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "8.0.56",
+    "version": "8.0.57",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -4767,6 +4767,130 @@
                   ],
                   "additionalProperties": false
                 },
+                "boundary": {
+                  "type": "object",
+                  "properties": {
+                    "base_url": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uri"
+                    },
+                    "method": {
+                      "type": "string",
+                      "enum": [
+                        "GET",
+                        "HEAD",
+                        "POST",
+                        "PUT",
+                        "PATCH",
+                        "DELETE",
+                        "OPTIONS"
+                      ]
+                    },
+                    "origin": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "segments": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "var": {
+                                "type": "string",
+                                "pattern": "^(?:item|input|scope)(?:\\.[A-Za-z_][A-Za-z0-9_]*)+$"
+                              }
+                            },
+                            "required": [
+                              "var"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "minItems": 2,
+                      "maxItems": 50
+                    },
+                    "variables": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "enum": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z0-9._~-]{1,200}$"
+                            },
+                            "minItems": 1,
+                            "maxItems": 50
+                          }
+                        },
+                        "required": [
+                          "enum"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "query": {
+                      "type": "object",
+                      "properties": {
+                        "fixed": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "variable": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "maxItems": 0
+                        }
+                      },
+                      "required": [
+                        "fixed",
+                        "variable"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "max_body_bytes": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 10000000
+                    },
+                    "max_calls": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10000
+                    },
+                    "destructive": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "base_url",
+                    "method",
+                    "origin",
+                    "segments",
+                    "variables",
+                    "query",
+                    "max_body_bytes",
+                    "max_calls"
+                  ],
+                  "additionalProperties": false
+                },
                 "read_query": {
                   "type": "object",
                   "properties": {
@@ -5313,6 +5437,54 @@
           "connector_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "boundary": {
+            "type": "object",
+            "properties": {
+              "variables": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "enum": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9._~-]{1,200}$"
+                      },
+                      "minItems": 1,
+                      "maxItems": 50
+                    }
+                  },
+                  "required": [
+                    "enum"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "max_body_bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000000
+              },
+              "max_calls": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+              },
+              "destructive": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              }
+            },
+            "required": [
+              "variables",
+              "max_body_bytes",
+              "max_calls"
+            ],
+            "additionalProperties": false
           },
           "headers": {
             "anyOf": [
