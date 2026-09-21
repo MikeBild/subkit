@@ -296,7 +296,10 @@ describe("run_workflow tool", () => {
         error_code: "workflow_activation_required",
         draft_version_id: saved.draft.version_id,
         current_version_id: currentVersionId,
+        // A request to preview the saved change must not dead-end here.
+        next_best_actions: ["dry_run_workflow"],
       });
+      expect((result.data as { message: string }).message).toContain("dry_run_workflow");
       expect(draftWrites).toBe(0);
       const runs = await ctx.testDb.db
         .select({ id: executions.id })
