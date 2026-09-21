@@ -232,18 +232,56 @@ export function assertStorageRequest(
   } catch {
     deny();
   }
+  if (storageKeyViolation(boundary, key, request.body) !== null) deny();
+}
+
+/** Why an object key or its content is outside a folder boundary. Sizes, never content. */
+export type StorageKeyViolation =
+  | { kind: "outside_folder"; key_prefix: string }
+  | { kind: "key_invalid" }
+  | { kind: "body_size"; bytes: number; max_bytes: number }
+  | { kind: "body_not_text" | "body_forbidden" };
+
+/**
+ * The part of the judgement that needs no URL: the key (or, for a LIST, the
+ * listed prefix) and the written size. The approval's own check ends in it, and
+ * a run of a step that merely DECLARES `s3.scope` uses it directly, so a green
+ * preview means the step stays inside the folder a human is asked to approve.
+ */
+export function storageKeyViolation(
+  boundary: StorageBoundary,
+  key: string,
+  body: unknown,
+): StorageKeyViolation | null {
+  if (!key.startsWith(boundary.key_prefix))
+    return { kind: "outside_folder", key_prefix: boundary.key_prefix };
+  if (boundary.operation === "LIST") return body == null ? null : { kind: "body_forbidden" };
   if (
-    !key.startsWith(boundary.key_prefix) ||
     key.split("/").some((part) => !part || part === "." || part === "..") ||
     // biome-ignore lint/suspicious/noControlCharactersInRegex: reject control characters in object keys
     /[\\\u0000-\u001f]/.test(key)
   )
-    deny();
-  if (boundary.operation === "PUT") {
-    if (
-      typeof request.body !== "string" ||
-      new TextEncoder().encode(request.body).byteLength > boundary.max_bytes
-    )
-      deny();
-  } else if (request.body != null) deny();
+    return { kind: "key_invalid" };
+  if (boundary.operation !== "PUT") return body == null ? null : { kind: "body_forbidden" };
+  if (typeof body !== "string") return { kind: "body_not_text" };
+  const bytes = new TextEncoder().encode(body).byteLength;
+  return bytes > boundary.max_bytes
+    ? { kind: "body_size", bytes, max_bytes: boundary.max_bytes }
+    : null;
+}
+
+/** One sentence an author can act on. */
+export function describeStorageKeyViolation(violation: StorageKeyViolation): string {
+  switch (violation.kind) {
+    case "outside_folder":
+      return `the key is not under \`s3.scope.key_prefix\` "${violation.key_prefix}"`;
+    case "body_size":
+      return `the content is ${violation.bytes} bytes but \`s3.scope.max_bytes\` is ${violation.max_bytes}`;
+    case "key_invalid":
+      return "the key has an empty, `.` or `..` segment or a control character";
+    case "body_not_text":
+      return "the content is not text, so its size cannot be held to `s3.scope.max_bytes`";
+    default:
+      return "this operation may not carry content";
+  }
 }

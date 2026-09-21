@@ -8,7 +8,7 @@ side_effects: write
 idempotency: naturally
 maturity: stable
 tags: [driver, s3, object-store]
-version: 8
+version: 9
 ---
 
 # S3 And MinIO Connectors
@@ -250,3 +250,5 @@ Three advanced PUT/GET affordances:
 - `http-connectors.md` — if your object store exposes presigned URLs, you can
   use the `http` driver for cross-cutting reads.
 - `error-recovery.md` — `s3_error` and `step_timeout` handling.
+
+A step is held to the `s3.scope` it declares on every run, preview included. A key that is not under `key_prefix`, or content larger than `max_bytes`, fails the step with `request_outside_declared_boundary` and names the folder or both sizes; nothing is sent. Choose `key_prefix` from the keys the workflow actually builds (read the transform that produces them) and `max_bytes` from the largest content it can produce, not from one preview. When a preview reports this error, correct that one number or folder; never remove the scope and never widen it to the whole bucket.

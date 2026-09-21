@@ -58,7 +58,8 @@ segment, a value containing `/` or needing percent-encoding, a placeholder in
 the part of the path that overlaps the connector's base path, `pagination`, a
 connector that adds its own query parameters, and any step a stricter profile
 already describes (report e-mail, [content publication](bounded-content-publication.md)).
-Storage steps use the storage boundary `s3.scope` instead.
+Storage steps use the storage boundary `s3.scope` instead; it is held to on every
+run in the same way, by folder and by written size.
 
 Regression coverage lives in `request-boundary.test.ts` (compile, refusals,
 denial table including encoded traversal), `effect-manifest.test.ts`
