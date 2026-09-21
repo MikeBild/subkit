@@ -95,20 +95,55 @@ export function storageBaseUrl(config: unknown): string | null {
   }
 }
 
-export function storageBoundary(step: RequestStep, base: string | null): StorageBoundary | null {
-  if (!base || !step.s3?.scope || !["GET", "HEAD", "LIST", "PUT", "DELETE"].includes(step.method))
-    return null;
+/**
+ * Why a step compiled no storage boundary. A bare `null` told the reviewer's
+ * tooling only THAT a step is unbounded, never why — so a model repairing a
+ * workflow was told to "add s3.scope" on steps that already had one, while the
+ * actual cause (a body on a DELETE, an empty `query: {}` left by generation)
+ * went unnamed and the repair looped. The reason travels with the refusal.
+ */
+export type StorageBoundaryRefusal =
+  | "base_unresolved"
+  | "no_scope"
+  | "unsupported_method"
+  | "delete_with_body"
+  | "runtime_value_outside_key"
+  | "query_or_headers_present"
+  | "unsupported_option"
+  | "content_type_invalid"
+  | "scope_invalid";
+
+function hasEntries(value: unknown): boolean {
+  // An empty object is not a query and not a header set. Generated steps carry
+  // `query: {}` / `headers: {}` routinely; treating those as "present" refused
+  // a boundary for a request that sends neither.
+  if (value === undefined || value === null) return false;
+  if (typeof value !== "object") return true;
+  return Object.keys(value as Record<string, unknown>).length > 0;
+}
+
+export function compileStorageBoundary(
+  step: RequestStep,
+  base: string | null,
+):
+  | { boundary: StorageBoundary; refusal?: never }
+  | { boundary?: never; refusal: StorageBoundaryRefusal } {
+  if (!base) return { refusal: "base_unresolved" };
+  if (!step.s3?.scope) return { refusal: "no_scope" };
+  if (!["GET", "HEAD", "LIST", "PUT", "DELETE"].includes(step.method))
+    return { refusal: "unsupported_method" };
   // A DELETE carrying a body is refused here rather than at dispatch: the
   // reviewer would otherwise be shown a boundary for a request the runtime is
-  // going to reject anyway.
-  if (step.method === "DELETE" && step.body !== undefined) return null;
+  // going to reject anyway. `null` is "no body" — generation writes it out.
+  if (step.method === "DELETE" && step.body !== undefined && step.body !== null)
+    return { refusal: "delete_with_body" };
   const { body: _body, path: _path, url: _url, s3, ...fixed } = step;
   const { key: _key, prefix: _prefix, ...fixedStorage } = s3;
+  if (hasRuntimeValue(fixed) || hasRuntimeValue(fixedStorage))
+    return { refusal: "runtime_value_outside_key" };
+  if (hasEntries(step.query) || hasEntries(step.headers))
+    return { refusal: "query_or_headers_present" };
   if (
-    hasRuntimeValue(fixed) ||
-    hasRuntimeValue(fixedStorage) ||
-    step.query ||
-    step.headers ||
     step.pagination ||
     step.multipart ||
     step.xml ||
@@ -118,8 +153,9 @@ export function storageBoundary(step: RequestStep, base: string | null): Storage
     s3.multipart ||
     s3.multipart_threshold_mb
   )
-    return null;
-  if (s3.content_type && (step.method !== "PUT" || /[\r\n]/.test(s3.content_type))) return null;
+    return { refusal: "unsupported_option" };
+  if (s3.content_type && (step.method !== "PUT" || /[\r\n]/.test(s3.content_type)))
+    return { refusal: "content_type_invalid" };
   const candidate = StorageBoundarySchema.safeParse({
     base_url: base,
     ...s3.scope,
@@ -128,7 +164,11 @@ export function storageBoundary(step: RequestStep, base: string | null): Storage
     paginate: s3.paginate === true,
     content_type: s3.content_type ?? null,
   });
-  return candidate.success ? candidate.data : null;
+  return candidate.success ? { boundary: candidate.data } : { refusal: "scope_invalid" };
+}
+
+export function storageBoundary(step: RequestStep, base: string | null): StorageBoundary | null {
+  return compileStorageBoundary(step, base).boundary ?? null;
 }
 export function storageTarget(boundary: StorageBoundary): string {
   return `${boundary.base_url}${boundary.key_prefix}*`;

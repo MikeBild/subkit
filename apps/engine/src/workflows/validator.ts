@@ -223,6 +223,31 @@ export function validateWorkflowDef(
       // authoring may reference steps not written yet — the strict gate at
       // preview/commit still catches them).
       errors.push(...collectAddressingPlaceholderErrors(step, ids, allowForwardRefs));
+      // Storage writes and removals address ONE object. The parse schema lets
+      // `step.path` stand in for `s3.key`, which is a reasonable fallback for a
+      // read — but a generated workflow used it to aim a DELETE at a folder
+      // prefix and put the listed keys in a `body`. The driver ignores a
+      // DELETE body and removes the literal path, so that run would have
+      // deleted nothing, answered 204, and reported a plausible count. These
+      // rules live here rather than in the parse schema on purpose: a stored
+      // version must keep parsing at run time, while a NEW draft of this shape
+      // is refused where the author can still fix it.
+      if (step.s3 !== undefined) {
+        const verb = (step.method ?? "GET").toUpperCase();
+        if ((verb === "DELETE" || verb === "PUT") && !step.s3.key) {
+          errors.push({
+            path: `steps.${step.id}.s3.key`,
+            message: `s3 ${verb} requires s3.key — step.path is not an object key. To act on many objects, use for_each over the keys with s3.key set per item.`,
+          });
+        }
+        if (verb === "DELETE" && step.body !== undefined && step.body !== null) {
+          errors.push({
+            path: `steps.${step.id}.body`,
+            message:
+              "an s3 DELETE must not carry a body — there is no bulk-delete shape. Remove one object per request: for_each over the keys with s3.key set per item.",
+          });
+        }
+      }
     }
     if (
       step.kind === "transform" &&

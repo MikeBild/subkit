@@ -75,3 +75,25 @@ test("a step with no effect entry yields no guidance rather than a wrong one", (
     repairGuidanceForIssues([{ step_id: "orphan", code: "missing_binding" }], []),
   ).toHaveLength(0);
 });
+
+test("a step that already has a scope gets the reason it was refused, not 'add a scope'", () => {
+  const [entry] = repairGuidanceForIssues(
+    [{ step_id: "delete_sources", code: "destructive_effect" }],
+    [{ step_id: "delete_sources", driver: "s3", target: null }],
+    [{ step_id: "delete_sources", reason: "delete_with_body" }],
+  );
+  expect(entry?.instruction).toContain("already has `s3.scope`");
+  expect(entry?.instruction).toContain("for_each");
+  expect(entry?.instruction).toContain("s3.key");
+  // The generic remedy would send the author in a circle.
+  expect(entry?.instruction).not.toContain("Author a fixed folder boundary");
+});
+
+test("a step with no scope still gets the generic storage remedy", () => {
+  const [entry] = repairGuidanceForIssues(
+    [{ step_id: "list_expired", code: "dynamic_request" }],
+    [{ step_id: "list_expired", driver: "s3", target: null }],
+    [{ step_id: "list_expired", reason: "no_scope" }],
+  );
+  expect(entry?.instruction).toContain("Author a fixed folder boundary");
+});
