@@ -18,6 +18,7 @@
 // own the conversation.
 
 import type { ManifestIssueCode } from "./effect-manifest.ts";
+import type { StorageBoundaryRefusal } from "./storage-boundary.ts";
 
 type Driver = "http" | "graphql" | "postgres" | "s3" | "mcp";
 
@@ -32,6 +33,40 @@ const STORAGE_SCOPE_REMEDY =
   "`s3.max_keys` or `s3.paginate`: both are derived by the engine from the step and are not " +
   "author-set per-prefix limits. If one prefix cannot cover every key the step touches, split " +
   "the step into narrower per-folder steps rather than widening the prefix.";
+
+/**
+ * A storage step that ALREADY declares `s3.scope` and still compiled no
+ * boundary. Telling its author to "add s3.scope" again is worse than saying
+ * nothing: it is confidently wrong, and a repair loop forms around it. Each
+ * refusal names the one thing to change.
+ */
+const STORAGE_REFUSAL_REMEDY: Partial<Record<StorageBoundaryRefusal, string>> = {
+  delete_with_body:
+    "This step already has `s3.scope`; the folder boundary is refused because the DELETE carries a " +
+    "`body`. There is no bulk-delete shape: the driver ignores a DELETE body and removes the single " +
+    "object named by `s3.key`. Remove `body`, set `s3.key` to the object key (for example " +
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
+    "`${item.key}`), and iterate with `for_each` over the keys to remove, one request per object.",
+  query_or_headers_present:
+    "This step already has `s3.scope`; the folder boundary is refused because the step sets " +
+    "`query` or `headers`. A bounded storage request sends neither — remove both fields.",
+  runtime_value_outside_key:
+    "This step already has `s3.scope`; the folder boundary is refused because a runtime " +
+    "placeholder appears outside `s3.key` / `s3.prefix` (and `body` for a PUT). Only the object " +
+    "key, the list prefix and the written content may vary; every other field must be a literal.",
+  unsupported_option:
+    "This step already has `s3.scope`; the folder boundary is refused because it uses an option " +
+    "the recurring profile does not support (pagination block, multipart, xml, metadata, range, " +
+    "presign). Remove that option.",
+  content_type_invalid:
+    "This step already has `s3.scope`; the folder boundary is refused because `s3.content_type` is " +
+    "only allowed on PUT (and must not contain line breaks). Remove it from this step.",
+  scope_invalid:
+    "This step's `s3.scope` does not parse: `key_prefix` must be a literal folder of at least three " +
+    "characters ending in `/` with no `.`/`..` segments and no placeholder, `max_bytes` a positive " +
+    "integer up to 10000000, and a DELETE additionally needs `max_deletes` (1 to 10000).",
+  unsupported_method: "Only GET, HEAD, LIST, PUT and DELETE can be bounded by a storage folder.",
+};
 
 const GMAIL_REPORT_REMEDY =
   "A reviewed report boundary is not available yet; this alone does NOT establish malformed MIME. " +
@@ -91,13 +126,20 @@ export function remedyFor(
 export function repairGuidanceForIssues(
   issues: ReadonlyArray<{ step_id: string; code: ManifestIssueCode }>,
   effects: ReadonlyArray<{ step_id: string; driver: Driver; target: string | null }>,
+  storageRefusals: ReadonlyArray<{ step_id: string; reason: StorageBoundaryRefusal }> = [],
 ): Array<{ step_id: string; code: ManifestIssueCode; instruction: string }> {
   const byStep = new Map(effects.map((effect) => [effect.step_id, effect]));
+  const refusalByStep = new Map(storageRefusals.map((entry) => [entry.step_id, entry.reason]));
   const seen = new Set<string>();
   const guidance: Array<{ step_id: string; code: ManifestIssueCode; instruction: string }> = [];
   for (const issue of issues) {
     const effect = byStep.get(issue.step_id);
-    const instruction = remedyFor(issue.code, effect?.driver, effect?.target);
+    // The specific refusal wins over the generic storage remedy. `no_scope`
+    // has no entry on purpose: that IS the generic case.
+    const refusal = refusalByStep.get(issue.step_id);
+    const instruction =
+      (effect?.driver === "s3" && refusal ? STORAGE_REFUSAL_REMEDY[refusal] : undefined) ??
+      remedyFor(issue.code, effect?.driver, effect?.target);
     if (!instruction) continue;
     // The compiler can report the same code twice for one step (two failing
     // predicates); the reader needs the remedy once.

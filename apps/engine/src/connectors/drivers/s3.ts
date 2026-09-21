@@ -205,6 +205,23 @@ export function buildS3Client(p: {
   return new S3Client(opts as ConstructorParameters<typeof S3Client>[0]);
 }
 
+/**
+ * A removal that cannot do what it was written to do must fail, not succeed
+ * quietly. S3 answers 204 whether or not the key existed, so a DELETE aimed at
+ * a folder prefix — or one carrying the keys it meant to remove in a body this
+ * driver never reads — reports success while deleting nothing. New drafts of
+ * that shape are refused by the workflow validator; this guards stored
+ * versions that predate that rule.
+ */
+export function assertRemovableObject(key: string, body: unknown): void {
+  if (body !== undefined && body !== null)
+    throw new Error(
+      "s3 DELETE does not accept a body — remove one object per request (for_each with s3.key)",
+    );
+  if (key === "" || key.endsWith("/"))
+    throw new Error(`s3 DELETE key "${key}" is a folder prefix, not an object key`);
+}
+
 function trimKey(path: string): string {
   let k = path;
   if (k.startsWith("/")) k = k.slice(1);
@@ -557,6 +574,7 @@ async function executeS3Operation(ctx: {
       };
     }
     case "DELETE": {
+      assertRemovableObject(key, p.body);
       await client.deleteObject(key);
       return { status: 204, headers: {}, body: null, credential_id };
     }

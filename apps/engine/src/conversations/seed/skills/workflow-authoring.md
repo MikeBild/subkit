@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 28
+version: 29
 ---
 
 # Authoring Workflows In A Conversation
@@ -416,7 +416,7 @@ chat; the same tools repair in place:
    `error.message`, failing `step_id`, captured response shape. Do not
    paraphrase the error away.
 2. **`diagnose_latest_execution`** — pulls causal trace; do not guess from the bare error.
-3. **Edit the offending step** — `edit_workflow_patch` covers every targeted change: set a single field or header (`replace /steps/N/...`), replace a step body, add or retarget an edge (`add /edges/-`). For schema drift on a request step, `probe_connector` first; if the connector's response shape changed over time, call `propose_schema_migration` (returns a structured rename/add/remove/widen plan against the recorded shape ledger) before deciding how to patch the transform. For a wholesale redesign, re-author via `author_workflow` with the original goal.
+3. **Edit the offending step** — `edit_workflow_patch` covers every targeted change: set a single field or header (`replace /steps/N/...`), replace a step body, add or retarget an edge (`add /edges/-`). For schema drift on a request step, `probe_connector` first; if the connector's response shape changed over time, call `propose_schema_migration` (returns a structured rename/add/remove/widen plan against the recorded shape ledger) before deciding how to patch the transform. A saved workflow is changed with `edit_workflow_patch`, however many operations that takes: `author_workflow` regenerates the whole definition and keeps only what the goal restates, so guards and safety checks in the saved version disappear silently. It refuses a workflow this conversation is bound to unless you pass `replace_bound_workflow: true` — do that only for a deliberate redesign the user has agreed to, after telling them what is being replaced.
 4. **`validate_draft`** — re-runs structural checks (rarely needed; see below).
 5. **`dry_run_workflow`** — preview the patch. In `auto`, a green judged run may commit inline. In `ask`/`plan`, call `save_workflow_draft` after `save_required: true`; the structured human gate decides. Any structural change must run dry-run first.
 
@@ -478,12 +478,13 @@ the draft + `save_workflow_draft`, never `update_workflow`.
 
 | Situation | Tool |
 |---|---|
-| New workflow, or replace one wholesale from a goal | `author_workflow` (one call, engine generates + evaluates) |
+| New workflow, not yet saved in this conversation | `author_workflow` (one call, engine generates + evaluates) |
+| A workflow this conversation is already bound to (it has a saved or active version) | `edit_workflow_patch` — always, however many operations it takes |
 | Apply one specific finding (path fix, repaired expression, limit change) | `edit_workflow_patch` (`replace /steps/N/...`) |
 | Append or replace one step during repair | `edit_workflow_patch` (`add /steps/-`, `replace /steps/N`) |
 | Retarget or add an edge between steps | `edit_workflow_patch` (`add /edges/-`, `move`) |
 
-Rule of thumb: **default to `author_workflow`** for the build. The
+Rule of thumb: **default to `author_workflow`** for the FIRST build, and never for a workflow that is already saved — twenty patches are cheaper than one dropped guard. The
 engine's grounding (recorded endpoint samples, docs, the JS contract) is
 strictly better than hand-assembling steps, and the result arrives already
 evaluated. Then use `edit_workflow_patch` for every targeted edit — it is

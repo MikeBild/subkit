@@ -26,7 +26,12 @@ import {
   proposeReportDeliveryBoundaries,
   type ReportDeliveryBoundaries,
 } from "./report-delivery-proposal.ts";
-import { storageBaseUrl, storageBoundary, storageTarget } from "./storage-boundary.ts";
+import {
+  compileStorageBoundary,
+  type StorageBoundaryRefusal,
+  storageBaseUrl,
+  storageTarget,
+} from "./storage-boundary.ts";
 import { WorkflowDefSchema } from "./types.ts";
 
 const inputSchema = z
@@ -99,6 +104,9 @@ export async function resolveWorkflowEffectManifest(
   let reportBoundaries = options.report_boundaries;
   const bindings: ResolvedEffectBinding[] = [];
   const unavailable_steps: string[] = [];
+  // Why an s3 step compiled no boundary. Reported beside the manifest, never
+  // inside it: this is repair evidence, and the digest must not depend on it.
+  const storage_refusals: Array<{ step_id: string; reason: StorageBoundaryRefusal }> = [];
   for (const step of definition.steps) {
     if (step.kind !== "request") continue;
     const system = step.connector_id
@@ -135,8 +143,11 @@ export async function resolveWorkflowEffectManifest(
     } catch {
       // A malformed or unresolved URL is an unbound target, never a probe.
     }
-    const storage =
-      driver === "s3" ? storageBoundary(step, storageBaseUrl(connector?.config)) : null;
+    const compiledStorage =
+      driver === "s3" ? compileStorageBoundary(step, storageBaseUrl(connector?.config)) : null;
+    const storage = compiledStorage?.boundary ?? null;
+    if (compiledStorage?.refusal)
+      storage_refusals.push({ step_id: step.id, reason: compiledStorage.refusal });
     if (storage) target = storageTarget(storage);
     const readPath = driver === "http" ? readPathBoundary(step, connector?.base_url) : null;
     if (readPath) target = readPathTarget(readPath);
@@ -232,6 +243,7 @@ export async function resolveWorkflowEffectManifest(
       ? { execution_shape: authorityExecutionShape(definition, bindings) }
       : {}),
     unavailable_steps,
+    storage_refusals,
     eligible_for_repeated_runs:
       compiled.eligible_for_repeated_runs && unavailable_steps.length === 0,
   };

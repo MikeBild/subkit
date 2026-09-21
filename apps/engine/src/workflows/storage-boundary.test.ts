@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import {
   assertStorageRequest,
+  compileStorageBoundary,
   StorageBoundarySchema,
   StorageScopeSchema,
   storageBaseUrl,
@@ -189,4 +190,30 @@ test("LIST cannot change bucket, prefix, page size or operation", () => {
       { ...listRequest, url: `${listRequest.url}&continuation-token=next` },
     ),
   ).toThrow();
+});
+
+// A bare null told a repairing author THAT a step was unbounded, never why. In
+// production that produced 33 hints saying "add s3.scope" on steps that already
+// had one, and the repair looped. The refusal now names its cause.
+test("a refused boundary names the one thing to change", () => {
+  const reasonFor = (change: Record<string, unknown>) =>
+    compileStorageBoundary(RequestStepSchema.parse({ ...deleteStep, ...change }), base).refusal;
+  expect(reasonFor({ body: { items: ["a"] } })).toBe("delete_with_body");
+  expect(reasonFor({ query: { acl: "1" } })).toBe("query_or_headers_present");
+  expect(reasonFor({ headers: { "x-test": "1" } })).toBe("query_or_headers_present");
+  expect(reasonFor({ s3: { ...deleteStep.s3, scope: undefined } })).toBe("no_scope");
+  expect(reasonFor({ s3: { ...deleteStep.s3, range: "bytes=0-1" } })).toBe("unsupported_option");
+  expect(compileStorageBoundary(deleteStep, null).refusal).toBe("base_unresolved");
+  expect(compileStorageBoundary(deleteStep, base).refusal).toBeUndefined();
+});
+test("empty query/headers objects and a null body are absent, not present", () => {
+  // Generated definitions write these out. Treating `{}` as "has a query"
+  // refused a boundary for a request that sends none.
+  const generated = RequestStepSchema.parse({
+    ...deleteStep,
+    body: null,
+    query: {},
+    headers: {},
+  });
+  expect(compileStorageBoundary(generated, base).boundary?.operation).toBe("DELETE");
 });
