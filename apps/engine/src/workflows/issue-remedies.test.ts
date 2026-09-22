@@ -135,6 +135,11 @@ test("a refused request boundary gets its own reason, not 'add a boundary' again
   expect(guidance("query_placeholder_unsupported")).toContain("one whole placeholder");
   expect(guidance("query_placeholder_unsupported")).not.toContain("Patch ONLY this step");
   expect(guidance("delete_requires_enum")).toContain("may only vary over listed values");
+  // A placeholder standing for the whole path needs one value per segment,
+  // not just "put it after the literals".
+  const wholePath = guidance("variable_in_base_prefix");
+  expect(wholePath).toContain("one value per segment");
+  expect(wholePath).toContain("may NOT contain `/`");
   // Some steps cannot be covered at all yet — the honest answer is "do not try".
   expect(guidance("stricter_profile_applies")).toContain("Do not add `boundary`");
   // The generic case keeps the generic remedy.
