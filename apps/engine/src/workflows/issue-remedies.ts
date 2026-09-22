@@ -151,8 +151,12 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "`boundary` cannot cover this step: a header value is a runtime placeholder. Make the header " +
     "a literal, or leave this step to concrete-run review.",
   runtime_value_outside_path_and_body:
-    "This step has a runtime placeholder outside `path` and `body`. Only the path (whole segments) " +
-    "and the body may vary under a boundary; make every other field a literal.",
+    "This step has a runtime placeholder in a field the engine substitutes and that a boundary " +
+    "cannot hold: only the path (whole segments), whole query values and the body may vary. Make " +
+    "that field a literal. This does NOT mean `for_each` or `data_selector`: those carry " +
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
+    "JavaScript the sandbox evaluates, a `${…}` in them is a template literal, and they are not " +
+    "checked — never rewrite a selector to satisfy this.",
   path_unsupported:
     "`boundary` needs exactly one of `path` or `url`, without `?`, `#`, `%` or `\\`. Move query " +
     "parameters into the step's `query` object.",
