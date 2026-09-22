@@ -630,7 +630,8 @@ export function validateUnsupportedPlaceholders(def: WorkflowDef): UnsupportedPl
     if (step.kind === "loop") {
       const loop = step as { over?: string; data_selector?: string };
       if (loop.over) visit(step.id, "over", loop.over);
-      if (loop.data_selector) visit(step.id, "data_selector", loop.data_selector);
+      // `loop.data_selector` is run through runJs (see LoopStep in types.ts),
+      // so it carries the same template literals as a transform body.
       continue;
     }
     if (step.kind === "branch") {
@@ -660,8 +661,13 @@ export function validateUnsupportedPlaceholders(def: WorkflowDef): UnsupportedPl
       }
       continue;
     }
-    // Generic walk — `path`, `url`, `headers`, `query`, `body`, etc.
-    visit(step.id, "*", step);
+    // Generic walk — `path`, `url`, `headers`, `query`, `body`, etc. The
+    // JavaScript-bearing fields are held out for the same reason
+    // `transform.expression` is: in JS a `${…}` is a template literal, and
+    // scanning it reported a selector that runs in production as a bad
+    // placeholder — with a suggestion that would have broken it.
+    const { for_each: _forEach, data_selector: _dataSelector, ...scannable } = step;
+    visit(step.id, "*", scannable);
   }
 
   // `output_transform` is JSONata/interpolation — scan it. The separate
