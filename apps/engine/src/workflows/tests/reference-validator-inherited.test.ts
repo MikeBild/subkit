@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` tokens are part of the tested grammar.
 // An authoring step answers only for the step references it introduces.
 //
 // The expressions are the production ones that triggered this: shared transform
@@ -5,7 +6,11 @@
 // no guard-syntax heuristic could ever clear them.
 
 import { expect, test } from "bun:test";
-import { partitionStepReferences, validateStepReferences } from "../reference-validator.ts";
+import {
+  partitionStepReferences,
+  validateStepReferences,
+  validateUnsupportedPlaceholders,
+} from "../reference-validator.ts";
 import type { WorkflowDef } from "../types.ts";
 
 const PLAN =
@@ -59,4 +64,34 @@ test("with nothing to inherit from, every dangling reference is introduced", () 
   const split = partitionStepReferences(dangling(base()), []);
   expect(split.inherited).toEqual([]);
   expect(split.introduced.map((e) => e.bad_reference)).toEqual(["window"]);
+});
+
+// A JavaScript selector is not a placeholder site. The linter already holds out
+// `transform.expression` for this reason; the generic per-step walk put the bug
+// back for `for_each`, and its suggestion (`${scope.sourceData…}`) would have
+// broken a selector that runs in production.
+test("a template literal in a for_each or data_selector is not an unsupported placeholder", () => {
+  const withSelectors = def([
+    {
+      id: "ingest",
+      kind: "request",
+      method: "POST",
+      url: "https://api.example.test/ingest",
+      for_each:
+        "(sourceData) => sourceData.build.data.publish ? [{title:`state ${sourceData.window.data.start}`}] : []",
+      data_selector: "(out) => ({ id: `${out.id}` })",
+    },
+  ]);
+  expect(validateUnsupportedPlaceholders(withSelectors)).toEqual([]);
+  // A placeholder in a field the runtime DOES substitute is still reported.
+  const withBadBody = def([
+    {
+      id: "ingest",
+      kind: "request",
+      method: "POST",
+      url: "https://api.example.test/ingest",
+      body: { title: "${sourceData.window.data.start}" },
+    },
+  ]);
+  expect(validateUnsupportedPlaceholders(withBadBody).map((e) => e.code)).toEqual(["bad_kind"]);
 });
