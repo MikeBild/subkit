@@ -244,7 +244,22 @@ export function compileRequestBoundary(
   }
   variableQuery.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   if (hasRuntimeValue(step.headers)) return refuse("runtime_header");
-  const { body: _body, path: _path, url: _url, query: _query, headers: _headers, ...fixed } = step;
+  const {
+    body: _body,
+    path: _path,
+    url: _url,
+    query: _query,
+    headers: _headers,
+    // `for_each` and `data_selector` carry JavaScript the sandbox evaluates;
+    // the engine never substitutes placeholders into them. A `${…}` inside one
+    // is a JS template literal, and scanning them for it refused a correct step
+    // with "make every other field a literal" — impossible for a selector.
+    // Neither can move the target: `for_each` decides how many requests and
+    // what `item.*` holds (both bounded here), `data_selector` shapes output.
+    for_each: _forEach,
+    data_selector: _dataSelector,
+    ...fixed
+  } = step;
   if (hasRuntimeValue(fixed)) return refuse("runtime_value_outside_path_and_body");
   const authored = step.path ?? step.url;
   if (!authored || (step.path !== undefined && step.url !== undefined))

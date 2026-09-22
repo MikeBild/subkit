@@ -502,3 +502,27 @@ test("a rule keyed by a parameter name is refused with what a key is", () => {
   expect(message).toContain("placeholder expression without its");
   expect(message).toContain("scope.window.data.start");
 });
+
+test("a JS selector may hold a template literal; a real runtime value elsewhere still refuses", () => {
+  // `for_each` and `data_selector` are evaluated in the sandbox, never
+  // placeholder-substituted. Scanning them for `${` refused a correct step and
+  // told its author to make a selector "a literal".
+  const iterated = step({
+    ...release,
+    for_each:
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: a JS template literal, not a placeholder
+      "(scope) => scope.plan.data.items.map((i) => ({ title: `Report ${scope.window.data.start}` }))",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a JS template literal, not a placeholder
+    data_selector: "(out) => ({ id: `${out.id}` })",
+    boundary: { ...release.boundary, max_calls: 20 },
+  });
+  expect(compileRequestBoundary(iterated, BASE).refusal).toBeUndefined();
+  // A runtime value in a field the engine DOES substitute is still refused.
+  expect(
+    compileRequestBoundary(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+      step({ ...release, idempotency_key: "${input.site}" }),
+      BASE,
+    ).refusal,
+  ).toBe("runtime_value_outside_path_and_body");
+});
