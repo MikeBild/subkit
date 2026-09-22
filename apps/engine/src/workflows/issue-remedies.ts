@@ -165,7 +165,15 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "request. Do not add `boundary`.",
   variable_in_base_prefix:
     "This step already has `boundary`, but a path placeholder sits where the connector's base path " +
-    "is matched. Start the path with the literal segments and put the placeholder after them.",
+    "is matched, so a runtime value would decide how the URL is assembled. The path has to START " +
+    "with literal segments. If the placeholder stands for the WHOLE path or for several segments " +
+    "at once, one value per segment is needed: have the transform that builds it return each " +
+    "segment separately (for `/billing/do:team:<uuid>/insights/<from>/<to>` that is an account " +
+    "value, a from and a to), write the path with the literals in place and one placeholder per " +
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
+    "segment (`/billing/${item.account}/insights/${item.from}/${item.to}`), and give each one its " +
+    "own rule. A value may contain `:`, so `do:team:<uuid>` is one legal enum value; a value may " +
+    "NOT contain `/`.",
   enum_value_unroutable:
     "This step already has `boundary`, but one of its `enum` values does not route to the " +
     "reviewed target. Use the exact identifier the API expects, with no `/` or encoding.",
