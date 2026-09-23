@@ -33,6 +33,9 @@ const CK_CONNECTOR = "00000000-0000-4000-8000-000000000006";
 const ITEM_A = "00000000-0000-4000-8000-00000000000a";
 const ITEM_B = "00000000-0000-4000-8000-00000000000b";
 const SITE = "00000000-0000-4000-8000-00000000000c";
+const CHILD_WORKFLOW = "00000000-0000-4000-8000-00000000000d";
+const CHILD_VERSION = "00000000-0000-4000-8000-00000000000e";
+const CHILD_OPTIONS_DIGEST = "b".repeat(64);
 
 const RUNTIME_OPTIONS_DIGEST = "a".repeat(64);
 const CONFIG_DIGEST = "d".repeat(64);
@@ -58,7 +61,7 @@ function binding(step_id: string, request_digest: string, extra: Record<string, 
  * The shapes live production authorities take, plus the author-declared boundary. Each is the
  * whole compile input, written out rather than built.
  */
-const SHAPES: Record<string, { definition: unknown; bindings: unknown[] }> = {
+const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?: unknown[] }> = {
   // (a) a GET whose path carries one whole dynamic segment.
   read_path: {
     definition: {
@@ -326,6 +329,106 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[] }> = {
       }),
     ],
   },
+  // (f) a workflow that starts another one. The child's effect is folded in
+  // under the call step, and the approval pins which child version runs.
+  bound_call: {
+    definition: {
+      name: "bound call",
+      steps: [
+        {
+          id: "collect",
+          kind: "request",
+          connector_id: CONNECTOR,
+          method: "GET",
+          path: "/items",
+        },
+        { id: "run_child", kind: "call", workflow_id: CHILD_WORKFLOW },
+      ],
+    },
+    bindings: [
+      binding("collect", "6645cca45ef845fb842dc818388e962fdb999b57cd92b00abf4143879c6a9ad2", {
+        target: "https://example.test/items",
+      }),
+    ],
+    calls: [
+      {
+        step_id: "run_child",
+        workflow_id: CHILD_WORKFLOW,
+        workflow_slug: "publish-essay",
+        workflow_version_id: CHILD_VERSION,
+        execution_options_digest: CHILD_OPTIONS_DIGEST,
+        definition: {
+          name: "child",
+          steps: [
+            {
+              id: "publish",
+              kind: "request",
+              connector_id: CONNECTOR,
+              method: "POST",
+              path: "/publish",
+              body: { text: "Hello" },
+            },
+          ],
+        },
+        bindings: [
+          binding("publish", "caedf38665e518b8104081bc75bcc513234e340e4a30c94c95c229f8953f0c35", {
+            target: "https://example.test/publish",
+          }),
+        ],
+      },
+    ],
+  },
+  // (g) parent and child use the SAME step id. If a call path were ever dropped
+  // or flattened into the step id, these two effects would collapse into one
+  // and this digest would move.
+  bound_call_shared_step_id: {
+    definition: {
+      name: "bound call shared step id",
+      steps: [
+        {
+          id: "publish",
+          kind: "request",
+          connector_id: CONNECTOR,
+          method: "POST",
+          path: "/publish",
+          body: { text: "Parent" },
+        },
+        { id: "run_child", kind: "call", workflow_id: CHILD_WORKFLOW },
+      ],
+    },
+    bindings: [
+      binding("publish", "89da25ecee202d1b8a623b3c0bd94b4b573d998bcabe658806c934b14fb5a7b8", {
+        target: "https://parent.test/publish",
+      }),
+    ],
+    calls: [
+      {
+        step_id: "run_child",
+        workflow_id: CHILD_WORKFLOW,
+        workflow_slug: "publish-essay",
+        workflow_version_id: CHILD_VERSION,
+        execution_options_digest: CHILD_OPTIONS_DIGEST,
+        definition: {
+          name: "child",
+          steps: [
+            {
+              id: "publish",
+              kind: "request",
+              connector_id: CONNECTOR,
+              method: "POST",
+              path: "/publish",
+              body: { text: "Child" },
+            },
+          ],
+        },
+        bindings: [
+          binding("publish", "fc6fd295d4cb0a2a0d383dba0225578a7f3fb65d8b4ffd189ced736022d7559d", {
+            target: "https://child.test/publish",
+          }),
+        ],
+      },
+    ],
+  },
 };
 
 /**
@@ -361,6 +464,14 @@ const PINNED: Record<string, { options_digest: string; digest: string }> = {
   static_post: {
     options_digest: "8f5489e4afd09de4b17a8ae56cbbbe548e12f5fc16bc20295a3207a8ea31e854",
     digest: "55d4ff9a6cc3e64f551bdca9c7deede7fb4fb7acf5432f65914ba34463b3390c",
+  },
+  bound_call: {
+    options_digest: "b8cfe3c76c5c4f32112d5c1e829f341ccb0f900136e1547fb3dc8a657c5deaaa",
+    digest: "06c9dff262f435c18afacc1a1167045016a61aa73e6530e4a95e27749f4883a0",
+  },
+  bound_call_shared_step_id: {
+    options_digest: "3120643a6ba4dfc48fc80a6be2defd91cd5b12e21e802b916f87799ed51b791c",
+    digest: "9945d0dbd1691fb96f768b7d657743b722ac45efd4e740c79716695fc0cc61ed",
   },
 };
 
@@ -419,6 +530,7 @@ for (const [name, shape] of Object.entries(SHAPES)) {
       execution_options_digest: PINNED[name]!.options_digest,
       definition: shape.definition,
       bindings: shape.bindings,
+      ...(shape.calls ? { calls: shape.calls } : {}),
     });
     if (result.digest !== PINNED[name]!.digest || !result.eligible_for_repeated_runs)
       console.error(explain(name, result.digest, PINNED[name]!.digest, result.manifest));
