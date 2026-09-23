@@ -5447,6 +5447,176 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workflows/{id}/boundary-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the boundaries SubKit derives from what each step has really done */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Derived from execution history; nothing is changed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowBoundaryProposals"];
+                    };
+                };
+                /** @description Invalid draft */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Permission denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Draft not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Draft or slug changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/{id}/boundary-proposals/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Write the derived boundaries into a new draft, activating nothing */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ApplyBoundaryProposalsBody"];
+                };
+            };
+            responses: {
+                /** @description A new inert draft carrying the derived boundaries */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApplyBoundaryProposalsResponse"];
+                    };
+                };
+                /** @description Invalid draft */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Permission denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Draft not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Draft or slug changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows": {
         parameters: {
             query?: never;
@@ -17509,6 +17679,10 @@ export interface components {
                     };
                     max_body_bytes: number;
                     max_calls: number;
+                    pagination?: {
+                        params: string[];
+                        max_requests: number;
+                    };
                     /** @enum {boolean} */
                     destructive?: true;
                 };
@@ -18068,6 +18242,40 @@ export interface components {
         UpdateWorkflowDraft: components["schemas"]["CreateWorkflowDraft"] & {
             /** Format: uuid */
             expected_draft_version_id: string | null;
+        };
+        WorkflowBoundaryProposals: {
+            proposals: {
+                step_id: string;
+                boundary?: {
+                    variables: {
+                        [key: string]: unknown;
+                    };
+                    max_body_bytes: number;
+                    max_calls: number;
+                };
+                s3_scope?: {
+                    key_prefix: string;
+                    max_bytes: number;
+                };
+                evidence: {
+                    observations: number;
+                    sample: string;
+                    newest_at: string;
+                };
+            }[];
+            unproposable: {
+                step_id: string;
+                reason: string;
+            }[];
+        };
+        ApplyBoundaryProposalsResponse: {
+            draft: components["schemas"]["WorkflowDraft"];
+            applied_step_ids: string[];
+        };
+        ApplyBoundaryProposalsBody: {
+            /** Format: uuid */
+            expected_draft_version_id: string | null;
+            step_ids?: string[];
         };
         WorkflowListResponse: {
             items: components["schemas"]["WorkflowListItem"][];

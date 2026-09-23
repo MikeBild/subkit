@@ -1,8 +1,11 @@
-import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import {
+  applyBoundaryProposals,
   CreateWorkflowDraftSchema,
+  currentOrDraftDefinition,
   getWorkflowDraft,
+  proposeBoundaries,
   type SaveWorkflowDraftResult,
   saveWorkflowDraft,
   UpdateWorkflowDraftSchema,
@@ -64,6 +67,92 @@ const get = createRoute({
   responses: { 200: draftResponse, ...failures },
 });
 
+// What SubKit can say for itself about steps that declare no boundary, and the
+// one action that turns that into a draft. Both live on the HTTP surface rather
+// than inside one screen: the cockpit, the chat, an MCP client and `sk` are all
+// callers of the same thing, and a repair that exists in only one of them is
+// not a capability of the product.
+const ProposalSchema = z
+  .object({
+    proposals: z.array(
+      z.object({
+        step_id: z.string(),
+        boundary: z
+          .object({
+            variables: z.record(z.string(), z.unknown()),
+            max_body_bytes: z.number().int(),
+            max_calls: z.number().int(),
+          })
+          .optional(),
+        s3_scope: z.object({ key_prefix: z.string(), max_bytes: z.number().int() }).optional(),
+        evidence: z.object({
+          observations: z.number().int(),
+          sample: z.string(),
+          newest_at: z.string(),
+        }),
+      }),
+    ),
+    unproposable: z.array(z.object({ step_id: z.string(), reason: z.string() })),
+  })
+  .openapi("WorkflowBoundaryProposals");
+
+const proposals = createRoute({
+  method: "get",
+  path: "/v1/workflows/{id}/boundary-proposals",
+  tags: ["workflows"],
+  summary: "Read the boundaries SubKit derives from what each step has really done",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: "Derived from execution history; nothing is changed",
+      content: { "application/json": { schema: ProposalSchema } },
+    },
+    ...failures,
+  },
+});
+
+const applyProposals = createRoute({
+  method: "post",
+  path: "/v1/workflows/{id}/boundary-proposals/apply",
+  tags: ["workflows"],
+  summary: "Write the derived boundaries into a new draft, activating nothing",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: IdParam,
+    body: {
+      content: {
+        "application/json": {
+          schema: z
+            .object({
+              /** The draft this is built on, so a concurrent edit is not overwritten. */
+              expected_draft_version_id: z.string().uuid().nullable(),
+              /** Only these steps, when the caller reviewed a subset. */
+              step_ids: z.array(z.string().min(1)).max(200).optional(),
+            })
+            .openapi("ApplyBoundaryProposalsBody"),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "A new inert draft carrying the derived boundaries",
+      content: {
+        "application/json": {
+          schema: z
+            .object({
+              draft: WorkflowDraftSchema,
+              applied_step_ids: z.array(z.string()),
+            })
+            .openapi("ApplyBoundaryProposalsResponse"),
+        },
+      },
+    },
+    ...failures,
+  },
+});
+
 function unwrap(result: SaveWorkflowDraftResult) {
   if (result.draft) return result.draft;
   if (result.code === "not_found") throw new NotFoundError("workflow");
@@ -109,6 +198,52 @@ export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
       c.get("db"),
     );
     return c.json(unwrap(result), 200);
+  });
+  app.use("/v1/workflows/:id/boundary-proposals", async (c, next) => {
+    const resource = () => ({ type: "workflow", id: c.req.param("id") });
+    return requirePermission("workflow:read", resource)(c, next);
+  });
+  app.use("/v1/workflows/:id/boundary-proposals/apply", async (c, next) => {
+    const resource = () => ({ type: "workflow", id: c.req.param("id") });
+    return requirePermission("workflow:write", resource)(c, next);
+  });
+  app.openapi(proposals, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const id = c.req.valid("param").id;
+    const definition = await currentOrDraftDefinition(principal.tenant_id, id, db);
+    if (!definition) throw new NotFoundError("workflow");
+    const derived = await proposeBoundaries(db, {
+      tenant_id: principal.tenant_id,
+      workflow_id: id,
+      definition,
+    });
+    return c.json(derived, 200);
+  });
+  app.openapi(applyProposals, async (c) => {
+    const principal = requireAuth(c);
+    const body = c.req.valid("json");
+    const result = await applyBoundaryProposals(
+      {
+        tenant_id: principal.tenant_id,
+        workflow_id: c.req.valid("param").id,
+        expected_draft_version_id: body.expected_draft_version_id,
+        ...(body.step_ids ? { step_ids: body.step_ids } : {}),
+        actor_id: principal.id,
+        actor_type: principal.kind,
+        request_source: c.get("request_source") ?? "api",
+      },
+      c.get("db"),
+    );
+    if (!("applied_step_ids" in result)) {
+      if ("code" in result && result.code === "nothing_to_apply")
+        throw new BadRequestError(
+          "nothing could be derived for this workflow: its steps have no recorded history to read",
+        );
+      unwrap(result as SaveWorkflowDraftResult);
+      throw new BadRequestError("boundary proposals could not be applied");
+    }
+    return c.json({ draft: result.draft, applied_step_ids: result.applied_step_ids }, 200);
   });
   app.openapi(get, async (c) => {
     const principal = requireAuth(c);

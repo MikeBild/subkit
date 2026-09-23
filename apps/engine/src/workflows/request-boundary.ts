@@ -164,6 +164,21 @@ export const RequestBoundarySchema = z
       .strict(),
     max_body_bytes: z.number().int().min(0).max(10_000_000),
     max_calls: z.number().int().min(1).max(10_000),
+    // A read the provider hands out one page at a time. `params` are the query
+    // keys the ENGINE fills — a cursor from the provider's own previous answer,
+    // or the page counter — so they are exempt from the exact key set and their
+    // values are not held to a rule. Everything else still is: same origin,
+    // same path, same other keys. `max_requests` is the step's own page cap,
+    // which is what makes the number of requests finite and reviewed. Derived
+    // from the step, never authored, so an author cannot widen it by writing it
+    // down; absent when the step does not paginate, so no existing digest moves.
+    pagination: z
+      .object({
+        params: z.array(z.string().min(1)).min(1).max(4),
+        max_requests: z.number().int().min(1).max(1000),
+      })
+      .strict()
+      .optional(),
     destructive: z.literal(true).optional(),
   })
   .strict()
@@ -186,6 +201,8 @@ export type RequestBoundary = z.infer<typeof RequestBoundarySchema>;
 export type RequestBoundaryRefusal =
   | "not_http_step"
   | "pagination_unsupported"
+  | "pagination_unbounded"
+  | "pagination_param_conflict"
   | "query_placeholder_unsupported"
   | "runtime_header"
   | "runtime_value_outside_path_and_body"
@@ -229,6 +246,39 @@ function authoredSegments(
   return { segments };
 }
 
+/**
+ * The query keys the engine itself fills while following a provider's paging,
+ * and the cap on how many requests that can be.
+ *
+ * A paginating read used to be refused outright, so a step that reads a page's
+ * blocks — bounded target, bounded value, no body — could carry no boundary at
+ * all and its workflow could never be approved. No amount of authoring fixes
+ * that: the extra requests come from the engine, not from the definition. What
+ * an approver needs to know is which keys the engine moves and how many
+ * requests there can be, and both are readable from the step.
+ *
+ * `null` means a shape this cannot describe (paging driven through the body).
+ * `"unbounded"` means the step set no page cap, so the number of requests is
+ * not a reviewable number.
+ */
+function paginationShape(
+  pagination: NonNullable<RequestStep["pagination"]>,
+): { params: string[]; max_requests: number } | null | "unbounded" {
+  if (pagination.parameter_location === "body") return null;
+  const params =
+    pagination.strategy === "cursor"
+      ? [
+          pagination.cursor_request_param,
+          ...(pagination.limit_param ? [pagination.limit_param] : []),
+        ]
+      : pagination.strategy === "offset"
+        ? [pagination.offset_param, pagination.limit_param]
+        : [pagination.page_param, pagination.limit_param];
+  if (params.some((name) => typeof name !== "string" || name.length === 0)) return null;
+  if (pagination.max_pages === undefined) return "unbounded";
+  return { params: [...new Set(params)].sort(), max_requests: pagination.max_pages };
+}
+
 export function compileRequestBoundary(
   step: RequestStep,
   base_url: string | null,
@@ -237,7 +287,9 @@ export function compileRequestBoundary(
   | { boundary?: never; refusal: RequestBoundaryRefusal } {
   if (step.s3 || step.sql || step.mcp || step.graphql || step.xml || step.multipart)
     return refuse("not_http_step");
-  if (step.pagination) return refuse("pagination_unsupported");
+  const paging = step.pagination ? paginationShape(step.pagination) : null;
+  if (step.pagination && !paging) return refuse("pagination_unsupported");
+  if (step.pagination && paging === "unbounded") return refuse("pagination_unbounded");
   // A query value may vary only as a WHOLE placeholder; text around one, or a
   // non-scalar value, cannot be held to a rule.
   const fixedQuery: Record<string, string> = {};
@@ -348,6 +400,15 @@ export function compileRequestBoundary(
   if (segments.some((part) => typeof part === "string" && part.includes(MASK)))
     return refuse("target_unresolved");
 
+  // A paging key that is also a reviewed key would be two rules for one value.
+  if (
+    paging &&
+    paging !== "unbounded" &&
+    paging.params.some(
+      (name) => name in fixedQuery || variableQuery.some((entry) => entry.key === name),
+    )
+  )
+    return refuse("pagination_param_conflict");
   const candidate = RequestBoundarySchema.safeParse({
     base_url,
     method,
@@ -357,6 +418,7 @@ export function compileRequestBoundary(
     query: { fixed: fixedQuery, variable: variableQuery },
     max_body_bytes: scope.data.max_body_bytes,
     max_calls: scope.data.max_calls,
+    ...(paging && paging !== "unbounded" ? { pagination: paging } : {}),
     ...(scope.data.destructive ? { destructive: true as const } : {}),
   });
   if (!candidate.success) return refuse("boundary_invalid");
@@ -447,7 +509,12 @@ function queryViolation(boundary: RequestBoundary, url: URL): RequestQueryViolat
   if (duplicate !== undefined) return { reason: "duplicate_key", key: duplicate };
   const fixedKeys = Object.keys(boundary.query.fixed);
   const reviewed = new Set([...fixedKeys, ...boundary.query.variable.map((entry) => entry.key)]);
-  const unexpected = keys.find((key) => !reviewed.has(key));
+  // The engine's own paging keys may appear or not, with whatever value the
+  // provider's previous answer or the page counter produced. They were reviewed
+  // as a named exemption, not as values — everything else stays exact, so a
+  // second request that adds any OTHER key is still outside the boundary.
+  const paging = new Set(boundary.pagination?.params ?? []);
+  const unexpected = keys.find((key) => !reviewed.has(key) && !paging.has(key));
   if (unexpected !== undefined) return { reason: "unexpected_key", key: unexpected };
   const missing = [...reviewed].find((key) => !url.searchParams.has(key));
   if (missing !== undefined) return { reason: "missing_key", key: missing };

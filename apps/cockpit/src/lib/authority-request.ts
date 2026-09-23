@@ -26,6 +26,8 @@ export interface RequestBoundaryView {
   query: { fixed: Record<string, string>; variable: Array<{ key: string; var: string }> };
   max_body_bytes: number;
   max_calls: number;
+  /** Query keys the ENGINE fills while following the provider's paging. */
+  pagination?: { params: string[]; max_requests: number };
   destructive?: true;
 }
 
@@ -40,6 +42,8 @@ export interface RequestBoundaryPresentation {
   classNotice: boolean;
   body: { key: TranslationKey; values: Record<string, string | number> };
   calls: number;
+  /** Present when the engine itself sends follow-up requests to read the rest. */
+  paging: { key: TranslationKey; values: Record<string, string | number> } | null;
   /** The author marked a request that is not a DELETE as removing or irreversible. */
   declaredDestructive: boolean;
 }
@@ -110,9 +114,22 @@ export function presentRequestBoundary(
           key: "authority.boundary.bodyLimit",
           values: { bytes: formatNumber(boundary.max_body_bytes) },
         };
+  // A paginated read makes more than one request, and which keys move is the
+  // difference between "the same request again" and "something else". Saying
+  // the number here is what makes the count reviewable at all.
+  const paging = boundary.pagination
+    ? {
+        key: "authority.boundary.paging" as const,
+        values: {
+          params: boundary.pagination.params.join(", "),
+          count: boundary.pagination.max_requests,
+        },
+      }
+    : null;
   const shared = {
     target,
     variables,
+    paging,
     classNotice: Object.values(boundary.variables).some((entry) => !("enum" in entry)),
     body,
     calls: boundary.max_calls,
