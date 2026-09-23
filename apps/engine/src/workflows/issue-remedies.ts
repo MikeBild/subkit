@@ -228,6 +228,15 @@ const REMEDIES: Partial<Record<ManifestIssueCode, Partial<Record<Driver, string>
  * arrived bare, which is how a reader ends up proposing a one-off run instead.
  */
 const DRIVERLESS_REMEDIES: Partial<Record<ManifestIssueCode, string>> = {
+  boundary_contradicted_by_history:
+    "The folder this step declares does not contain a key the step itself has already written. " +
+    "This is not a guess and not a preview artefact: the key comes from a successful run of this " +
+    "very step, and the review names it. Set `s3.scope.key_prefix` to the folder that key is " +
+    "actually in — usually the step was given the folder of a neighbouring step that writes " +
+    "something else. Do NOT widen the folder to cover both, do not remove the boundary, and do " +
+    "not change what the step writes to match the wrong folder: the key is correct and the " +
+    "declaration is not. A write is held in every preview, so this is the only point before a " +
+    "scheduled run where the mismatch can be seen at all.",
   unbound_workflow_call:
     "This step starts another workflow, and the approval could not be extended to cover it. " +
     "Which is why decides what to do, and `review_workflow_automation` names the reason for " +

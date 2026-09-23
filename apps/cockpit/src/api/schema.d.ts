@@ -17526,7 +17526,7 @@ export interface components {
             issues: {
                 step_id: string;
                 /** @enum {string} */
-                code: "missing_binding" | "binding_mismatch" | "environment_mismatch" | "dynamic_request" | "unknown_effect" | "destructive_effect" | "unbound_workflow_call";
+                code: "missing_binding" | "binding_mismatch" | "environment_mismatch" | "dynamic_request" | "unknown_effect" | "destructive_effect" | "unbound_workflow_call" | "boundary_contradicted_by_history";
                 call_path?: string[];
             }[];
             calls?: {
