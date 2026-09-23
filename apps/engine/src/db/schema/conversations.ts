@@ -37,6 +37,20 @@ export const conversations = pgTable(
     target_connector_id: uuid("target_connector_id"),
     draft: jsonb("draft"),
     status: conversationStatusEnum("status").notNull(),
+    // Why the last turn stopped, when it stopped because something broke
+    // rather than because it finished. Without it a turn killed by a provider
+    // error is indistinguishable from one still thinking: the status stays
+    // `active`, no message is written, and the transcript reads "in progress"
+    // for as long as anyone cares to look. Cleared when the next turn starts.
+    //
+    // Deliberately NOT a message: a synthetic assistant turn would be replayed
+    // to the model next time as something the assistant said. This is a notice
+    // for the person, and nothing else.
+    last_turn_error: jsonb("last_turn_error").$type<{
+      code: string;
+      message: string;
+      at: string;
+    } | null>(),
     // sk-cli rollout (migration 0018): owner_id identifies the user
     // that created the conversation (used by `/resume` + `sk -c`);
     // model/title are patchable via PATCH /v1/conversations/:id; memory

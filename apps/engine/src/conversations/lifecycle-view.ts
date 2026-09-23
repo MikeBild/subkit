@@ -10,8 +10,10 @@
 export type ConversationOutcome =
   /** The last thing that happened is an assistant answer; nothing is pending. */
   | "answered"
-  /** A person's message or a tool result is the last row — a turn is under way or died mid-way. */
+  /** A person's message or a tool result is the last row and the turn is still running. */
   | "in_progress"
+  /** The last turn stopped because something broke, and said why. */
+  | "failed"
   /** A pending elicitation waits for the reader (status `awaiting_input`). */
   | "awaiting_you"
   | "committed"
@@ -26,6 +28,8 @@ export interface OutcomeInput {
   last_message_role: string | null;
   /** ISO time of the newest message, or null for an empty conversation. */
   last_activity_at: string | null;
+  /** Why the last turn stopped, when it stopped because something broke. */
+  last_turn_error?: { code: string; message: string; at: string } | null | undefined;
   now: number;
 }
 
@@ -33,6 +37,10 @@ export function deriveConversationOutcome(input: OutcomeInput): ConversationOutc
   if (input.status === "committed") return "committed";
   if (input.status === "abandoned") return "abandoned";
   if (input.status === "awaiting_input") return "awaiting_you";
+  // A turn that died wrote no message, so without this it reads "in progress"
+  // for as long as anyone looks — the shape a provider quota takes, and
+  // indistinguishable from a turn still thinking.
+  if (input.last_turn_error) return "failed";
   if (input.last_message_role !== "assistant") return "in_progress";
   if (input.last_activity_at) {
     const age = input.now - Date.parse(input.last_activity_at);

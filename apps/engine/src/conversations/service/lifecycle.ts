@@ -1,6 +1,6 @@
 // Conversation lifecycle endpoints — cancel, list, patch metadata.
 
-import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -292,6 +292,7 @@ export async function listConversations(
         status: row.status,
         last_message_role: act?.last_role ?? null,
         last_activity_at: lastActivityAt,
+        last_turn_error: row.last_turn_error ?? null,
         now: nowMs,
       }),
       owner: (row.owner_id && owners.get(row.owner_id)) || null,
@@ -453,4 +454,48 @@ export async function patchConversation(
     exec,
   );
   return rowToRecord(row);
+}
+
+/**
+ * Remember why the last turn stopped, when it stopped because something broke.
+ *
+ * A turn killed by a provider error wrote nothing at all: the status stayed
+ * `active`, no message was appended, and the transcript read "in progress" for
+ * as long as anyone cared to look — indistinguishable from a turn still
+ * thinking. The provider's own sentence ("you have reached your specified API
+ * usage limits") is usually the whole diagnosis, and it was discarded twice
+ * over: once by not being stored, once by the browser replacing it with a
+ * constant.
+ *
+ * Stored on the conversation, never as a message. A synthetic assistant turn
+ * would be replayed to the model as something the assistant said.
+ */
+export async function recordConversationTurnFailure(
+  exec: Db,
+  tenant_id: string,
+  conversation_id: string,
+  failure: { code: string; message: string; at: string },
+): Promise<void> {
+  await exec
+    .update(conversations)
+    .set({ last_turn_error: failure })
+    .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)));
+}
+
+/** Forget it: the next turn has started, so the old failure is history. */
+export async function clearConversationTurnFailure(
+  exec: Db,
+  tenant_id: string,
+  conversation_id: string,
+): Promise<void> {
+  await exec
+    .update(conversations)
+    .set({ last_turn_error: null })
+    .where(
+      and(
+        eq(conversations.tenant_id, tenant_id),
+        eq(conversations.id, conversation_id),
+        isNotNull(conversations.last_turn_error),
+      ),
+    );
 }

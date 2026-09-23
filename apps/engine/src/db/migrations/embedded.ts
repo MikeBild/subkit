@@ -80,6 +80,7 @@ import sql0059DecisionEvidenceCleanup from "./0059_decision_evidence_cleanup.sql
 import sql0060DecisionEvidenceIdentity from "./0060_decision_evidence_identity.sql" with { type: "text" };
 import sql0061CalmTheExecutioner from "./0061_calm_the_executioner.sql" with { type: "text" };
 import sql0062DustyYoungAvengers from "./0062_dusty_young_avengers.sql" with { type: "text" };
+import sql0063NaivePreak from "./0063_naive_preak.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -167,6 +168,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0060_decision_evidence_identity": sql0060DecisionEvidenceIdentity,
   "0061_calm_the_executioner": sql0061CalmTheExecutioner,
   "0062_dusty_young_avengers": sql0062DustyYoungAvengers,
+  "0063_naive_preak": sql0063NaivePreak,
 };
 
 const journal = journalMeta as unknown as Journal;
