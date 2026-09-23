@@ -19988,7 +19988,7 @@ export interface components {
             created_at: string;
             updated_at: string;
             /** @enum {string} */
-            outcome?: "answered" | "in_progress" | "awaiting_you" | "committed" | "abandoned" | "stale";
+            outcome?: "answered" | "in_progress" | "failed" | "awaiting_you" | "committed" | "abandoned" | "stale";
             last_activity_at?: string | null;
             message_count?: number;
             owner?: components["schemas"]["ConversationOwner"];

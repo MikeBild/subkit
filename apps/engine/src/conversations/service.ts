@@ -54,11 +54,13 @@ export { getConversation } from "./service/get.ts";
 export {
   type ConversationListItem,
   cancelConversation,
+  clearConversationTurnFailure,
   countConversations,
   type ListConversationsParams,
   listConversations,
   type PatchConversationParams,
   patchConversation,
+  recordConversationTurnFailure,
   setConversationHidden,
 } from "./service/lifecycle.ts";
 export {
