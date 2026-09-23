@@ -174,6 +174,54 @@ export function GrantWorkflowAuthority({
       onSingleRun?.();
     },
   });
+  // What SubKit can work out for itself about the steps that block this
+  // approval. Asked only when the review actually refused: otherwise this is a
+  // question about a problem nobody has.
+  const repairable = useQuery({
+    queryKey: ["boundary-proposals", workflowId],
+    enabled: open && Boolean(review) && !review?.eligible_for_repeated_runs,
+    queryFn: async () => {
+      const body = await apiRequest<{
+        proposals?: Array<{ step_id: string }>;
+        unproposable?: Array<{ step_id: string; reason: string }>;
+      }>(`/v1/workflows/${encodeURIComponent(workflowId)}/boundary-proposals`);
+      // Shaped here, once. A dialog that reads fields straight off a response
+      // renders whatever the other side happened to send — a body without
+      // `proposals` took the whole page down in the sweep.
+      return {
+        proposals: Array.isArray(body?.proposals) ? body.proposals : [],
+        unproposable: Array.isArray(body?.unproposable) ? body.unproposable : [],
+      };
+    },
+  });
+  const repair = useMutation({
+    mutationFn: async () => {
+      const current = await apiRequest<{ draft_version_id: string | null }>(
+        `/v1/workflows/${encodeURIComponent(workflowId)}`,
+      );
+      return apiRequest<{ draft: { version_id: string }; applied_step_ids: string[] }>(
+        `/v1/workflows/${encodeURIComponent(workflowId)}/boundary-proposals/apply`,
+        {
+          method: "POST",
+          // Explicitly null when there is no draft yet: an omitted key is not
+          // "no draft", it is a body the engine refuses — and the caller would
+          // read that as the repair being impossible.
+          body: JSON.stringify({ expected_draft_version_id: current.draft_version_id ?? null }),
+        },
+      );
+    },
+    onSuccess: async (result) => {
+      // The prepared version IS the thing to review now, so the dialog reloads
+      // onto it rather than leaving the reader looking at the old refusal.
+      await client.invalidateQueries({ queryKey: ["catalog-detail", "workflows", workflowId] });
+      await client.invalidateQueries({ queryKey: ["workflow-draft-version", workflowId] });
+      await client.invalidateQueries({ queryKey: ["boundary-proposals", workflowId] });
+      setReviewVersionId(result.draft.version_id);
+      setReview(null);
+      prepare.reset();
+      prepare.mutate(environment);
+    },
+  });
   const actionError = grant.error ?? activateOnly.error;
   const sessionExpired =
     actionError instanceof ApiError &&
@@ -406,6 +454,49 @@ export function GrantWorkflowAuthority({
                 {t("authority.unsupportedSteps", {
                   steps: review?.unavailable_steps.join(", ") || t("authority.effects"),
                 })}
+              </AlertDescription>
+            </Alert>
+          )}
+          {/* The refusal used to end at "investigate the cause in the chat" — a
+              technical question handed to the one person who cannot answer it.
+              SubKit has read what these steps really did; this is it saying so
+              and offering to write it down. Approving stays a human act. */}
+          {unsupported && (repairable.data?.proposals?.length ?? 0) > 0 && (
+            <Alert data-testid="authority-repair" className="bg-accent/10">
+              <AlertTitle>{t("authority.repairTitle")}</AlertTitle>
+              <AlertDescription className="flex flex-col items-start gap-3">
+                <p>
+                  {t("authority.repairDescription", {
+                    count: String(repairable.data?.proposals?.length ?? 0),
+                  })}
+                </p>
+                {(repairable.data?.unproposable?.length ?? 0) > 0 && (
+                  <p data-testid="authority-repair-remaining">
+                    {t("authority.repairNone", {
+                      steps: (repairable.data?.unproposable ?? [])
+                        .map((entry) => entry.step_id)
+                        .join(", "),
+                    })}
+                  </p>
+                )}
+                {repair.error && (
+                  <p data-testid="authority-repair-failed">{t("authority.repairFailed")}</p>
+                )}
+                {repair.isSuccess && (
+                  <p data-testid="authority-repair-done">
+                    {t("authority.repairDone", {
+                      count: String(repair.data?.applied_step_ids?.length ?? 0),
+                    })}
+                  </p>
+                )}
+                <Button
+                  size="sm"
+                  disabled={busy || repair.isPending}
+                  onClick={() => repair.mutate()}
+                  data-testid="authority-repair-apply"
+                >
+                  {t(repair.isPending ? "authority.repairWorking" : "authority.repairAction")}
+                </Button>
               </AlertDescription>
             </Alert>
           )}
@@ -784,6 +875,7 @@ function BoundaryPanels({ effects }: { effects: WorkflowAuthorityPreview["manife
                 {shown.declaredDestructive && <p>{t("authority.boundary.declaredDestructive")}</p>}
                 <p>{t(shown.body.key, shown.body.values)}</p>
                 <p>{t("authority.boundary.calls", { count: shown.calls })}</p>
+                {shown.paging && <p>{t(shown.paging.key, shown.paging.values)}</p>}
                 <p>{t("authority.boundary.contentNotice")}</p>
               </AlertDescription>
             </Alert>

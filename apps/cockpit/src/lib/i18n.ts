@@ -139,6 +139,17 @@ const EN = {
   "authority.adjustDescription":
     "SubKit cannot yet verify the allowed actions of this workflow. Investigate the cause here in chat. A single test run does not resolve this open decision.",
   "authority.adjust": "Investigate in this chat",
+  "authority.repairTitle": "SubKit can work this out itself",
+  "authority.repairDescription":
+    "{count} step(s) do not say where they may go, and SubKit has read what each of them really did. It can write those limits into a prepared version for you to review — nothing is activated and nothing is authorized by this.",
+  "authority.repairAction": "Let SubKit set the limits",
+  "authority.repairWorking": "Reading what these steps did\u2026",
+  "authority.repairDone":
+    "Limits written into a prepared version for {count} step(s). Review it below and put it into service when it is right.",
+  "authority.repairFailed":
+    "Writing the limits did not go through, so nothing was changed. Try again; if it keeps failing, the workflow was edited elsewhere in the meantime.",
+  "authority.repairNone":
+    "SubKit cannot work these out: {steps}. These steps have no recorded history to read, or what they did cannot be stated as a limit.",
   "authority.adjustPrompt":
     "Prepare this workflow for automatic operation. Check the existing schedule and destinations; keep them unless I request a change. Perform the permitted checks yourself and save the prepared changes when allowed. Do not activate, authorize live effects, or run live. If a business decision is missing, ask one short question with clear options and a recommendation. Explain the result and next action briefly, without code or tool names.",
   "authority.incompleteTitle": "Request details are incomplete",
@@ -231,6 +242,8 @@ const EN = {
     "{name} may be any UTC time written like 2026-01-31T23:59:59Z.",
   "authority.boundary.class.file_name":
     "{name} may be any single file name — letters, digits, \u201c_\u201d and \u201c-\u201d, then one dot and a short extension. It cannot contain \u201c/\u201d, so it stays in this one folder.",
+  "authority.boundary.paging":
+    "This read is handed out one page at a time: SubKit sends up to {count} requests to the same address, moving only {params}. Nothing else about the request changes.",
   "authority.boundary.classNotice":
     "A value limited only by its form is chosen at run time. This approval does not limit which records are addressed, only what the value looks like.",
   "authority.boundary.unknownRule":
@@ -1838,6 +1851,17 @@ const DE: Record<TranslationKey, string> = {
   "authority.adjustDescription":
     "SubKit kann die erlaubten Aktionen dieses Ablaufs noch nicht eindeutig prüfen. Lass die Ursache hier im Chat untersuchen. Ein einzelner Testlauf erledigt diese offene Entscheidung nicht.",
   "authority.adjust": "Ursache im Chat prüfen",
+  "authority.repairTitle": "Das kann SubKit selbst herausfinden",
+  "authority.repairDescription":
+    "{count} Schritt(e) sagen nicht, wohin sie gehen d\u00fcrfen. SubKit hat gelesen, was jeder von ihnen tats\u00e4chlich getan hat, und kann diese Grenzen in eine vorbereitete Fassung schreiben, die du pr\u00fcfst \u2014 nichts wird dadurch aktiviert oder freigegeben.",
+  "authority.repairAction": "SubKit die Grenzen setzen lassen",
+  "authority.repairWorking": "Liest, was diese Schritte getan haben\u2026",
+  "authority.repairDone":
+    "Grenzen f\u00fcr {count} Schritt(e) in eine vorbereitete Fassung geschrieben. Unten pr\u00fcfen und in Betrieb nehmen, wenn es stimmt.",
+  "authority.repairFailed":
+    "Das Schreiben der Grenzen ist nicht durchgegangen, ge\u00e4ndert wurde nichts. Noch einmal versuchen; bleibt es dabei, wurde der Ablauf zwischenzeitlich an anderer Stelle bearbeitet.",
+  "authority.repairNone":
+    "Das kann SubKit nicht herleiten: {steps}. Zu diesen Schritten gibt es keine aufgezeichnete Historie, oder was sie taten, l\u00e4sst sich nicht als Grenze aussprechen.",
   "authority.adjustPrompt":
     "Bereite diesen Ablauf für den automatischen Betrieb vor. Prüfe den bestehenden Zeitplan und die Ziele; ändere sie nur auf meinen Wunsch. Übernimm die erlaubten Prüfungen selbst und speichere die vorbereiteten Änderungen, soweit erlaubt. Nicht aktivieren, keine Live-Wirkungen freigeben oder ausführen. Fehlt eine fachliche Entscheidung, stelle eine kurze Frage mit klaren Auswahlmöglichkeiten und einer Empfehlung. Erkläre Ergebnis und nächsten Schritt kurz, ohne Code oder Tool-Namen.",
   "authority.incompleteTitle": "Anfragedetails fehlen",
@@ -1932,6 +1956,8 @@ const DE: Record<TranslationKey, string> = {
     "{name} darf jeder UTC-Zeitpunkt in der Form 2026-01-31T23:59:59Z sein.",
   "authority.boundary.class.file_name":
     "{name} darf jeder einzelne Dateiname sein \u2014 Buchstaben, Ziffern, \u201e_\u201c und \u201e-\u201c, dann ein Punkt und eine kurze Endung. Ein \u201e/\u201c ist nicht m\u00f6glich, der Wert bleibt also in diesem einen Ordner.",
+  "authority.boundary.paging":
+    "Dieser Lesezugriff kommt seitenweise: SubKit sendet bis zu {count} Anfragen an dieselbe Adresse und bewegt dabei nur {params}. Sonst \u00e4ndert sich an der Anfrage nichts.",
   "authority.boundary.classNotice":
     "Ein nur der Form nach begrenzter Wert entsteht erst zur Laufzeit. Diese Freigabe begrenzt nicht, welche Einträge angesprochen werden, sondern nur, wie der Wert aussieht.",
   "authority.boundary.unknownRule":

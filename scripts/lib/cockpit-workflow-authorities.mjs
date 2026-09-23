@@ -293,7 +293,19 @@ async function verifyPreparedVersion(page, stand, workflowId, locale, capture) {
 
     await page.getByTestId("authority-grant-open").click();
     await page.getByTestId("authority-grant-review").waitFor();
-    await page.getByTestId("authority-grant-confirm").click();
+    const confirm = page.getByTestId("authority-grant-confirm");
+    for (let attempt = 0; (await confirm.isDisabled()) && attempt < 100; attempt += 1) {
+      await page.waitForTimeout(100);
+    }
+    if (await confirm.isDisabled()) {
+      // Which of the two reasons: still working, or a review the dialog will
+      // not grant from. The re-check button appears only for the second.
+      const recheck = (await page.getByTestId("authority-prepare").count()) > 0;
+      throw new Error(
+        `Approval stayed unavailable after putting the version into service. Re-check offered: ${recheck}. Dialog: ${(await page.getByRole("dialog").innerText()).slice(0, 600)}`,
+      );
+    }
+    await confirm.click();
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     // The larger decision stays one step: the reader is putting this version
     // into service AND permitting runs, and the request has to say both.
@@ -499,6 +511,108 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
     await capture("adjustment");
     await page.getByTestId("authority-grant-cancel").click();
     if (posts !== 2) throw new Error("Unsupported review caused an execution grant");
+    // What SubKit worked out for itself. Without this fixture the repair panel
+    // renders in no screenshot at all, and a refusal that offers nothing looks
+    // exactly like one that offers a repair.
+    const proposalPattern = `**/v1/workflows/${workflowId}/boundary-proposals`;
+    let applied = null;
+    const proposalRoute = async (route) => {
+      if (route.request().method() === "POST") {
+        applied = route.request().postDataJSON();
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            draft: { version_id: "00000000-0000-4000-8000-000000000401", version: 9 },
+            applied_step_ids: ["publish-report"],
+          }),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          proposals: [
+            {
+              step_id: "publish-report",
+              boundary: {
+                variables: { "input.site": { class: "identifier" } },
+                max_body_bytes: 0,
+                max_calls: 1,
+              },
+              evidence: {
+                observations: 12,
+                sample: "https://reports.example.test/monthly",
+                newest_at: new Date().toISOString(),
+              },
+            },
+          ],
+          unproposable: [{ step_id: "send-mail", reason: "body_size_unknown" }],
+        }),
+      });
+    };
+    // The repair reads the workflow to learn which draft it builds on, so the
+    // scenario has to serve one. Without it this tested the stand's coverage,
+    // not the repair.
+    const recordPattern = `**/v1/workflows/${workflowId}`;
+    const recordRoute = async (route) =>
+      route.request().method() === "GET"
+        ? route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              id: workflowId,
+              name: "Monatsreport",
+              slug: "monatsreport",
+              lifecycle: "active",
+              current_version: 8,
+              current_version_id: "00000000-0000-4000-8000-000000000301",
+              draft_version_id: "00000000-0000-4000-8000-000000000302",
+              steps: [],
+              updated_at: "2026-08-10T09:00:00.000Z",
+            }),
+          })
+        : route.fallback();
+    await page.route(recordPattern, recordRoute);
+    await page.route(proposalPattern, proposalRoute);
+    await page.route(`${proposalPattern}/apply`, proposalRoute);
+    // A fresh page, because the dialog asked for proposals earlier in this
+    // scenario — before these routes existed — and that answer is cached.
+    await stand.visit(page, `workflows/${workflowId}`);
+    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("authority-needs-adjustment").waitFor();
+    const repair = page.getByTestId("authority-repair");
+    await repair.waitFor();
+    const repairText = await repair.innerText();
+    // The count and what it cannot do, both — an offer that hides its gaps is
+    // how a reviewer ends up believing a workflow is fully bounded.
+    if (!repairText.includes("1") || !repairText.includes("send-mail"))
+      throw new Error(`Repair offer hides its scope: ${repairText}`);
+    await capture("repair");
+    await page.getByTestId("authority-repair-apply").click();
+    // Wait for the request itself, not for a panel that was already on screen:
+    // the review block renders throughout the refusal, so waiting on it
+    // asserted before anything had left the page.
+    for (let attempt = 0; applied === null && attempt < 100; attempt += 1) {
+      await page.waitForTimeout(100);
+    }
+    if (applied === null) {
+      const panel = (await page.getByTestId("authority-repair").count())
+        ? await page.getByTestId("authority-repair").innerText()
+        : "(the repair panel is gone)";
+      throw new Error(`Applying the derived limits sent no request. Panel: ${panel}`);
+    }
+    if (applied?.expected_draft_version_id !== "00000000-0000-4000-8000-000000000302")
+      throw new Error("The repair did not build on the draft the workflow actually has");
+    await page.unroute(`${proposalPattern}/apply`, proposalRoute);
+    await page.unroute(proposalPattern, proposalRoute);
+    await page.unroute(recordPattern, recordRoute);
+    // Escape, not the cancel button: after a repair the dialog is reloading
+    // onto the prepared version, and every footer button is disabled while it
+    // does. This scenario is about the repair, not about that button.
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog").waitFor({ state: "hidden" });
+    if (posts !== 2) throw new Error("The repair caused an execution grant");
   } finally {
     await page.unroute(previewPattern, preview);
     await page.unroute(grantPattern, grant);

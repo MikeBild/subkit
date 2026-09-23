@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "8.0.83",
+    "version": "8.0.84",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -4911,6 +4911,30 @@
                       "minimum": 1,
                       "maximum": 10000
                     },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "params": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
+                        },
+                        "max_requests": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000
+                        }
+                      },
+                      "required": [
+                        "params",
+                        "max_requests"
+                      ],
+                      "additionalProperties": false
+                    },
                     "destructive": {
                       "type": "boolean",
                       "enum": [
@@ -6975,6 +6999,143 @@
             ],
             "additionalProperties": false
           }
+        ]
+      },
+      "WorkflowBoundaryProposals": {
+        "type": "object",
+        "properties": {
+          "proposals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step_id": {
+                  "type": "string"
+                },
+                "boundary": {
+                  "type": "object",
+                  "properties": {
+                    "variables": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "max_body_bytes": {
+                      "type": "integer"
+                    },
+                    "max_calls": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "variables",
+                    "max_body_bytes",
+                    "max_calls"
+                  ]
+                },
+                "s3_scope": {
+                  "type": "object",
+                  "properties": {
+                    "key_prefix": {
+                      "type": "string"
+                    },
+                    "max_bytes": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "key_prefix",
+                    "max_bytes"
+                  ]
+                },
+                "evidence": {
+                  "type": "object",
+                  "properties": {
+                    "observations": {
+                      "type": "integer"
+                    },
+                    "sample": {
+                      "type": "string"
+                    },
+                    "newest_at": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "observations",
+                    "sample",
+                    "newest_at"
+                  ]
+                }
+              },
+              "required": [
+                "step_id",
+                "evidence"
+              ]
+            }
+          },
+          "unproposable": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step_id": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "step_id",
+                "reason"
+              ]
+            }
+          }
+        },
+        "required": [
+          "proposals",
+          "unproposable"
+        ]
+      },
+      "ApplyBoundaryProposalsResponse": {
+        "type": "object",
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/WorkflowDraft"
+          },
+          "applied_step_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "draft",
+          "applied_step_ids"
+        ]
+      },
+      "ApplyBoundaryProposalsBody": {
+        "type": "object",
+        "properties": {
+          "expected_draft_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "step_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 200
+          }
+        },
+        "required": [
+          "expected_draft_version_id"
         ]
       },
       "WorkflowListResponse": {
@@ -28567,6 +28728,187 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorkflowDraft"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Draft not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Draft or slug changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/{id}/boundary-proposals": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Read the boundaries SubKit derives from what each step has really done",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Derived from execution history; nothing is changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowBoundaryProposals"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Draft not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Draft or slug changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/{id}/boundary-proposals/apply": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Write the derived boundaries into a new draft, activating nothing",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyBoundaryProposalsBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A new inert draft carrying the derived boundaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyBoundaryProposalsResponse"
                 }
               }
             }

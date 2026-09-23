@@ -164,8 +164,15 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "`boundary` needs exactly one of `path` or `url`, without `?`, `#`, `%` or `\\`. Move query " +
     "parameters into the step's `query` object.",
   pagination_unsupported:
-    "`boundary` cannot cover a paginated step: a cursor can carry response data into the next " +
-    "request. Do not add `boundary`.",
+    "`boundary` covers a paginated step only when the paging runs through the query. This step " +
+    'sets `parameter_location: "body"`, so the follow-up requests are not describable as a ' +
+    "target and a key set. Move the paging to the query, or split the read into its own step.",
+  pagination_unbounded:
+    "This step paginates without `max_pages`, so the number of requests it makes is not a number " +
+    "anyone can review. Set `pagination.max_pages` to the most pages one run may read.",
+  pagination_param_conflict:
+    "A paging parameter is also one of this step's own query keys, which would give one value two " +
+    "rules. Rename the paging parameter, or drop that key from `query`.",
   variable_in_base_prefix:
     "This step already has `boundary`, but a path placeholder sits where the connector's base path " +
     "is matched, so a runtime value would decide how the URL is assembled. The path has to START " +

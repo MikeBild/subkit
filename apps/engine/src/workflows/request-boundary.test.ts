@@ -84,12 +84,25 @@ test("every refusal names its cause", () => {
       BASE,
     ).refusal,
   ).toBe("not_http_step");
+  // A paginating step without a page cap makes an unreviewable number of
+  // requests; one that pages through the body is not a key set at all.
   expect(
     reason({
       pagination: {
         strategy: "cursor",
         cursor_request_param: "cursor",
         cursor_response_path: "$.next",
+      },
+    }),
+  ).toBe("pagination_unbounded");
+  expect(
+    reason({
+      pagination: {
+        strategy: "cursor",
+        cursor_request_param: "cursor",
+        cursor_response_path: "$.next",
+        max_pages: 5,
+        parameter_location: "body",
       },
     }),
   ).toBe("pagination_unsupported");
@@ -549,4 +562,94 @@ test("a JS selector may hold a template literal; a real runtime value elsewhere 
       BASE,
     ).refusal,
   ).toBe("runtime_value_outside_path_and_body");
+});
+
+// A read the provider hands out one page at a time.
+//
+// Refusing these outright meant a step that reads one page's blocks — fixed
+// target, one uuid, no body — could carry no boundary at all, and its workflow
+// could never be approved. No authoring fixes that: the follow-up requests come
+// from the engine, not from the definition. What is reviewable is which keys the
+// engine moves and how many requests there can be, and the step says both.
+const paged = step({
+  method: "GET",
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+  path: "/blocks/${input.page_id}/children",
+  query: { page_size: 100 },
+  pagination: {
+    strategy: "cursor",
+    cursor_request_param: "start_cursor",
+    cursor_response_path: "$.next_cursor",
+    max_pages: 12,
+  },
+  boundary: {
+    variables: { "input.page_id": { class: "uuid" } },
+    max_body_bytes: 0,
+    max_calls: 1,
+  },
+});
+const PAGE = "00000000-0000-4000-8000-0000000000aa";
+
+test("a paginating read carries a boundary, and says how many requests that is", () => {
+  const { boundary, refusal } = compileRequestBoundary(paged, BASE);
+  expect(refusal).toBeUndefined();
+  expect(boundary?.pagination).toEqual({ params: ["start_cursor"], max_requests: 12 });
+  expect(requestBoundaryTarget(boundary!)).toBe(
+    "https://api.example.test/v2/blocks/{input.page_id}/children",
+  );
+});
+
+test("the follow-up request is admitted, and only because of its paging key", () => {
+  const { boundary } = compileRequestBoundary(paged, BASE);
+  const url = (extra: string) =>
+    resolveUrl(BASE, `/blocks/${PAGE}/children?page_size=100${extra}`).toString();
+  const request = (extra: string) => ({
+    method: "GET",
+    url: url(extra),
+    headers: {},
+    body: null,
+  });
+  // First page, then the one the provider's own answer asked for.
+  expect(requestBoundaryViolation(boundary!, request(""))).toBeNull();
+  expect(requestBoundaryViolation(boundary!, request("&start_cursor=eyJib"))).toBeNull();
+  // Any other key is still outside the boundary — the exemption is by name.
+  const other = requestBoundaryViolation(boundary!, request("&filter=all"));
+  expect(other).toEqual({ kind: "query", detail: { reason: "unexpected_key", key: "filter" } });
+  expect(describeRequestBoundaryViolation(other!)).toContain("filter");
+  // And the exemption does not loosen the path.
+  expect(
+    requestBoundaryViolation(boundary!, {
+      method: "GET",
+      url: resolveUrl(BASE, "/blocks/not-a-uuid/children?page_size=100").toString(),
+      headers: {},
+      body: null,
+    }),
+  ).not.toBeNull();
+});
+
+test("a step that does not paginate carries no pagination field at all", () => {
+  // Present-but-undefined and absent are different bytes to the digest, and a
+  // moved digest revokes every live approval of that workflow.
+  const { boundary } = compileRequestBoundary(release, BASE);
+  expect("pagination" in (boundary as object)).toBe(false);
+});
+
+test("a paging key that is also the step's own query key is refused", () => {
+  expect(
+    compileRequestBoundary(
+      step({
+        method: "GET",
+        path: "/items",
+        query: { cursor: "start" },
+        pagination: {
+          strategy: "cursor",
+          cursor_request_param: "cursor",
+          cursor_response_path: "$.next",
+          max_pages: 3,
+        },
+        boundary: { variables: {}, max_body_bytes: 0, max_calls: 1 },
+      }),
+      BASE,
+    ).refusal,
+  ).toBe("pagination_param_conflict");
 });
