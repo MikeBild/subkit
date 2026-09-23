@@ -137,6 +137,12 @@ test("a refused request boundary gets its own reason, not 'add a boundary' again
   expect(guidance("delete_requires_enum")).toContain("may only vary over listed values");
   // A placeholder standing for the whole path needs one value per segment,
   // not just "put it after the literals".
+  // Encoding a slash is not a way around the one-segment rule: it addresses
+  // something else. The capability to hold `%XX` values invited exactly that.
+  const unroutable = guidance("enum_value_unroutable");
+  expect(unroutable).toContain("%2F");
+  expect(unroutable).toContain("not as a separator");
+  expect(remedyFor("dynamic_request", "http")).toContain("Percent-encoding is NOT a way around");
   const wholePath = guidance("variable_in_base_prefix");
   expect(wholePath).toContain("one value per segment");
   expect(wholePath).toContain("may NOT contain `/`");
