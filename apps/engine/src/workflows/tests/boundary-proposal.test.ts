@@ -405,3 +405,43 @@ test("the preparation run the dialog itself asks for counts as evidence", async 
   expect(proposals[0]?.boundary?.variables).toEqual({ "input.page_id": { class: "uuid" } });
   expect(proposals[0]?.boundary?.max_body_bytes).toBeGreaterThan(0);
 });
+
+test("a step inside a loop is the same step, iteration suffix and all", async () => {
+  // Loop iterations record `read_page[0]`, `read_page[1]`, … Matching the bare
+  // id found nothing for exactly the steps that run most often: on production a
+  // workflow had twelve such rows and the derivation reported "never ran".
+  await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
+  const [execution] = await ctx.db
+    .insert(executions)
+    .values({
+      tenant_id,
+      workflow_id,
+      status: "succeeded",
+      request_source: "api",
+      execution_mode: "prod",
+    })
+    .returning();
+  await ctx.db.insert(executionSteps).values(
+    [0, 1, 2].map((index) => ({
+      tenant_id,
+      execution_id: execution?.id as string,
+      step_key: `read_page[${index}]`,
+      step_index: index,
+      kind: "request" as const,
+      status: "succeeded" as const,
+      request_meta: {
+        driver: "http",
+        url: `https://api.example.test/v1/pages/8f14e45f-ceea-467a-87f3-b3b6e4d0f8a${index}`,
+      },
+    })),
+  );
+  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    definition: definition([read]),
+  });
+  expect(unproposable).toEqual([]);
+  expect(proposals[0]?.step_id).toBe("read_page");
+  expect(proposals[0]?.boundary?.variables).toEqual({ "input.page_id": { class: "uuid" } });
+  expect(proposals[0]?.evidence.observations).toBe(3);
+});

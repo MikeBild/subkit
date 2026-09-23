@@ -110,7 +110,11 @@ async function observations(
   if (step_ids.length === 0) return byStep;
   const rows = await db
     .select({
-      step_key: executionSteps.step_key,
+      // A step inside a loop records `read_page[6]`, one per iteration. Matching
+      // the bare id found nothing for exactly the steps that run most often —
+      // `list_raw` and twelve `read_page[…]` rows sat in the history while the
+      // derivation reported "never ran".
+      step_key: sql<string>`regexp_replace(${executionSteps.step_key}, '\\[[0-9]+\\]$', '')`,
       url: sql<string | null>`${executionSteps.request_meta} ->> 'url'`,
       key: sql<string | null>`${executionSteps.request_meta} ->> 'key'`,
       pages: sql<
@@ -142,7 +146,7 @@ async function observations(
         eq(executions.workflow_id, workflow_id),
         eq(executionSteps.status, "succeeded"),
         isNotNull(executionSteps.request_meta),
-        sql`${executionSteps.step_key} = ANY(${sql.param(step_ids as string[])}::text[])`,
+        sql`regexp_replace(${executionSteps.step_key}, '\\[[0-9]+\\]$', '') = ANY(${sql.param(step_ids as string[])}::text[])`,
       ),
     )
     .orderBy(desc(executions.created_at))
