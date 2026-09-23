@@ -7,7 +7,7 @@ import { loadConnectorSystem } from "../connectors/system.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { authorityConnectorConfiguration } from "./authority-configuration.ts";
-import { authorityExecutionShape } from "./authority-execution-shape.ts";
+import { authorityExecutionShape, type ResolvedCallShape } from "./authority-execution-shape.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import {
   ContentReleaseBoundarySchema,
@@ -18,7 +18,11 @@ import {
   type ContentPublicationBoundaries,
   proposeContentPublicationBoundaries,
 } from "./content-publication-proposal.ts";
-import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "./effect-manifest.ts";
+import {
+  compileWorkflowEffectManifest,
+  type ResolvedCall,
+  type ResolvedEffectBinding,
+} from "./effect-manifest.ts";
 import { readPathBoundary, readPathTarget } from "./read-path-boundary.ts";
 import { hasRuntimeValue, supportsReportDelivery } from "./report-delivery-boundary.ts";
 import {
@@ -37,7 +41,7 @@ import {
   storageBaseUrl,
   storageTarget,
 } from "./storage-boundary.ts";
-import { WorkflowDefSchema } from "./types.ts";
+import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 
 const inputSchema = z
   .object({
@@ -96,6 +100,78 @@ export async function resolveWorkflowEffectManifest(
       code: "workflow_version_unavailable",
     });
   const definition = WorkflowDefSchema.parse(version.dag);
+  const own = await resolveBindings(input, definition, db, options);
+  const bindings = own.bindings;
+  const unavailable_steps = own.unavailable_steps;
+  const storage_refusals = own.storage_refusals;
+  const request_refusals = own.request_refusals;
+  const contentShapes = own.contentShapes;
+  // Each workflow this one starts is resolved by the same code, one level
+  // deep. A child never receives the proposal-derived profiles: those were
+  // reviewed for THIS workflow's context, and handing them down would grant a
+  // permission in a place nobody looked at. Passing EMPTY maps rather than
+  // omitting them also stops the child from proposing its own.
+  const calls: ResolvedCall[] = [];
+  const callShapes: ResolvedCallShape[] = [];
+  for (const step of definition.steps) {
+    if (step.kind !== "call") continue;
+    const resolved = await resolveCall(step, input, db);
+    if (!resolved) continue;
+    calls.push(resolved.call);
+    callShapes.push(resolved.shape);
+    // A child step whose connector is unavailable makes the CALLING step
+    // unavailable: that is the step this workflow's reader can act on.
+    if (resolved.unavailable_steps.length > 0) unavailable_steps.push(step.id);
+    for (const refusal of resolved.storage_refusals)
+      storage_refusals.push({ ...refusal, call_path: [step.id] });
+    for (const refusal of resolved.request_refusals)
+      request_refusals.push({ ...refusal, call_path: [step.id] });
+  }
+  const compiled = compileWorkflowEffectManifest({
+    ...input,
+    execution_options_digest: workflowJsonDigest({
+      runtime_options_digest: input.execution_options_digest,
+      normalized_definition: definition,
+    }),
+    definition: version.dag,
+    bindings,
+    ...(calls.length > 0 ? { calls } : {}),
+  });
+  unavailable_steps.sort();
+  return {
+    ...compiled,
+    preparation_required: bindings.some(
+      (binding) =>
+        (contentShapes.get(binding.step_id)?.kind === "content_revision" &&
+          !binding.content_publication) ||
+        (binding.target === "https://gmail.googleapis.com/gmail/v1/users/me/messages/send" &&
+          !binding.report_delivery),
+    ),
+    ...(options.include_review
+      ? { execution_shape: authorityExecutionShape(definition, bindings, callShapes) }
+      : {}),
+    unavailable_steps,
+    storage_refusals,
+    request_refusals,
+    eligible_for_repeated_runs:
+      compiled.eligible_for_repeated_runs && unavailable_steps.length === 0,
+  };
+}
+
+/** Everything a workflow's own steps resolve to: which connector and
+ *  credential each request binds, which boundary profile it earned, and why a
+ *  step earned none. Called once for this workflow and once per workflow it
+ *  starts, so a child is resolved by exactly the code that resolves a parent.
+ */
+async function resolveBindings(
+  input: z.infer<typeof inputSchema>,
+  definition: WorkflowDef,
+  db: Executor,
+  options: {
+    report_boundaries?: ReportDeliveryBoundaries;
+    content_boundaries?: ContentPublicationBoundaries;
+  },
+) {
   const contentBoundaries =
     options.content_boundaries ??
     (await proposeContentPublicationBoundaries(
@@ -111,10 +187,18 @@ export async function resolveWorkflowEffectManifest(
   const unavailable_steps: string[] = [];
   // Why an s3 step compiled no boundary. Reported beside the manifest, never
   // inside it: this is repair evidence, and the digest must not depend on it.
-  const storage_refusals: Array<{ step_id: string; reason: StorageBoundaryRefusal }> = [];
+  const storage_refusals: Array<{
+    step_id: string;
+    reason: StorageBoundaryRefusal;
+    call_path?: string[];
+  }> = [];
   // The same for an HTTP request boundary: why it was refused, beside the
   // manifest and never inside it.
-  const request_refusals: Array<{ step_id: string; reason: RequestBoundaryRefusal }> = [];
+  const request_refusals: Array<{
+    step_id: string;
+    reason: RequestBoundaryRefusal;
+    call_path?: string[];
+  }> = [];
   for (const step of definition.steps) {
     if (step.kind !== "request") continue;
     const system = step.connector_id
@@ -256,32 +340,110 @@ export async function resolveWorkflowEffectManifest(
       binding.target = shape.target;
     }
   }
-  const compiled = compileWorkflowEffectManifest({
+  return { bindings, unavailable_steps, storage_refusals, request_refusals, contentShapes };
+}
+
+/** One `call` step's target, resolved one level deep.
+ *
+ * Returns nothing when the step does not name exactly one workflow or the
+ * target cannot be loaded — the compiler turns that into the refusal the
+ * author reads, so the reason is decided in one place rather than two. A child
+ * that itself calls a workflow IS returned, with no bindings: the compiler
+ * refuses it as `child_calls_workflow`, and resolving its grandchildren here
+ * would be work whose result is thrown away.
+ */
+async function resolveCall(
+  step: { id: string; workflow_id?: string | undefined; workflow_slug?: string | undefined },
+  input: z.infer<typeof inputSchema>,
+  db: Executor,
+): Promise<{
+  call: ResolvedCall;
+  shape: ResolvedCallShape;
+  unavailable_steps: string[];
+  storage_refusals: Array<{ step_id: string; reason: StorageBoundaryRefusal }>;
+  request_refusals: Array<{ step_id: string; reason: RequestBoundaryRefusal }>;
+} | null> {
+  const byId = typeof step.workflow_id === "string" && step.workflow_id.length > 0;
+  const bySlug = typeof step.workflow_slug === "string" && step.workflow_slug.length > 0;
+  if (byId === bySlug) return null;
+  const [row] = await db
+    .select({
+      id: workflows.id,
+      slug: workflows.slug,
+      name: workflows.name,
+      version_id: workflows.current_version_id,
+    })
+    .from(workflows)
+    .where(
+      and(
+        eq(workflows.tenant_id, input.tenant_id),
+        byId
+          ? eq(workflows.id, step.workflow_id as string)
+          : eq(workflows.slug, step.workflow_slug as string),
+        eq(workflows.lifecycle, "active"),
+        isNull(workflows.deleted_at),
+      ),
+    )
+    .limit(1);
+  if (!row?.version_id) return null;
+  const [version] = await db
+    .select({ dag: workflowVersions.dag, version: workflowVersions.version })
+    .from(workflowVersions)
+    .where(
+      and(
+        eq(workflowVersions.tenant_id, input.tenant_id),
+        eq(workflowVersions.workflow_id, row.id),
+        eq(workflowVersions.id, row.version_id),
+      ),
+    )
+    .limit(1);
+  const parsed = WorkflowDefSchema.safeParse(version?.dag);
+  if (!version || !parsed.success) return null;
+  const childInput = {
     ...input,
-    execution_options_digest: workflowJsonDigest({
-      runtime_options_digest: input.execution_options_digest,
-      normalized_definition: definition,
-    }),
-    definition: version.dag,
-    bindings,
+    workflow_id: row.id,
+    workflow_version_id: row.version_id,
+  };
+  // The options digest uses the ROOT's formula over the CHILD's normalized
+  // definition, so a child whose step schema normalizes differently moves the
+  // parent's digest and the approval is re-asked for.
+  const execution_options_digest = workflowJsonDigest({
+    runtime_options_digest: input.execution_options_digest,
+    normalized_definition: parsed.data,
   });
-  unavailable_steps.sort();
+  const callsItself = parsed.data.steps.some((childStep) => childStep.kind === "call");
+  const resolved = callsItself
+    ? {
+        bindings: [],
+        unavailable_steps: [] as string[],
+        storage_refusals: [] as Array<{ step_id: string; reason: StorageBoundaryRefusal }>,
+        request_refusals: [] as Array<{ step_id: string; reason: RequestBoundaryRefusal }>,
+      }
+    : await resolveBindings(childInput, parsed.data, db, {
+        report_boundaries: {},
+        content_boundaries: {},
+      });
   return {
-    ...compiled,
-    preparation_required: bindings.some(
-      (binding) =>
-        (contentShapes.get(binding.step_id)?.kind === "content_revision" &&
-          !binding.content_publication) ||
-        (binding.target === "https://gmail.googleapis.com/gmail/v1/users/me/messages/send" &&
-          !binding.report_delivery),
-    ),
-    ...(options.include_review
-      ? { execution_shape: authorityExecutionShape(definition, bindings) }
-      : {}),
-    unavailable_steps,
-    storage_refusals,
-    request_refusals,
-    eligible_for_repeated_runs:
-      compiled.eligible_for_repeated_runs && unavailable_steps.length === 0,
+    call: {
+      step_id: step.id,
+      workflow_id: row.id,
+      workflow_slug: row.slug,
+      workflow_version_id: row.version_id,
+      execution_options_digest,
+      definition: version.dag as never,
+      bindings: resolved.bindings,
+    },
+    shape: {
+      step_id: step.id,
+      workflow_id: row.id,
+      workflow_slug: row.slug,
+      workflow_name: row.name,
+      version: version.version,
+      definition: parsed.data,
+      bindings: resolved.bindings,
+    },
+    unavailable_steps: resolved.unavailable_steps,
+    storage_refusals: resolved.storage_refusals,
+    request_refusals: resolved.request_refusals,
   };
 }
