@@ -154,14 +154,27 @@ test("a reference the patch introduces still blocks, and only it is listed", asy
   expect(draft.workflow?.steps?.[0]).toMatchObject({ expression: "return { a: 1 };" });
 });
 
-test("removing a step others still name blocks", async () => {
-  const bound = await seed({ active: PLAN });
-  const { data } = await patch(bound.conversation_id, draftOf(bound.slug, PLAN), [
+test("removing a step an UNGUARDED reader still names blocks", async () => {
+  const bound = await seed({ active: CLEAN });
+  const { data } = await patch(bound.conversation_id, draftOf(bound.slug, CLEAN), [
     { op: "remove", path: "/steps/0" },
   ]);
   expect(data.error_code).toBe("workflow_unresolved_step_reference");
   const listed = data.unresolved_references as Array<{ bad_reference: string }>;
   expect(listed.map((e) => e.bad_reference)).toContain("rollup_window");
+});
+
+test("removing a step only a GUARDED reader names does not block on that read", async () => {
+  // `PLAN` tests for `rollup_window` before using it, so its absence is a case
+  // the author already wrote code for — see reference-validator-guarded.test.ts.
+  // `window`, read unguarded in the else-branch, is inherited from the active
+  // version and stays a notice.
+  const bound = await seed({ active: PLAN });
+  const { data } = await patch(bound.conversation_id, draftOf(bound.slug, PLAN), [
+    { op: "remove", path: "/steps/0" },
+  ]);
+  expect(data.error_code).toBeUndefined();
+  expect(data.inherited_step_references).toBeDefined();
 });
 
 test("a target owned by another tenant vouches for nothing", async () => {
