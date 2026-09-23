@@ -19,6 +19,7 @@ import {
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { reviewEnvironment } from "@/lib/review-environment";
+import { reviewTarget } from "@/lib/review-target";
 import {
   AUTHORITY_EFFECT_KEYS,
   AUTHORITY_STATE_KEYS,
@@ -173,14 +174,17 @@ function RevokeAuthority({ authority }: { authority: WorkflowAuthority }) {
 /** An observed history, not a run reservation or a grant of caller permissions. */
 export function WorkflowAuthorities({
   workflowId,
-  versionId,
+  workflow,
   canWrite,
-  versionLabel,
 }: {
   workflowId: string;
-  versionId: string | null;
+  /** Version identity of the record this page already loaded. */
+  workflow: {
+    current_version_id?: string | null;
+    draft_version_id?: string | null;
+    current_version?: number | null;
+  };
   canWrite: boolean;
-  versionLabel?: string;
 }) {
   const { t } = useI18n();
   const [now, setNow] = useState(() => Date.now());
@@ -205,6 +209,25 @@ export function WorkflowAuthorities({
     refetchInterval: 30_000,
   });
   const hold = holds.data?.find((schedule) => schedule.workflow_id === workflowId);
+  // Only for the number on the badge and in the sentence — which version the
+  // approval judges is already decided by the record, so this never gates it.
+  const prepared =
+    typeof workflow.draft_version_id === "string" &&
+    workflow.draft_version_id !== workflow.current_version_id;
+  const draft = useQuery({
+    queryKey: ["workflow-draft-version", workflowId, workflow.draft_version_id],
+    enabled: prepared,
+    queryFn: () =>
+      apiRequest<{ version_id: string; version: number }>(
+        `/v1/workflows/${encodeURIComponent(workflowId)}/draft`,
+      ),
+  });
+  const target = reviewTarget(workflow, draft.data);
+  const versionLabel = target
+    ? t(target.kind === "prepared" ? "authority.versionPrepared" : "authority.versionRunning", {
+        version: target.version == null ? "—" : `v${target.version}`,
+      })
+    : undefined;
   return (
     <section
       id="workflow-authorities"
@@ -218,18 +241,35 @@ export function WorkflowAuthorities({
           <p className="max-w-3xl text-sm text-muted-foreground">{t("authority.description")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {canWrite && versionId && (
+          {canWrite && target && (
             <GrantWorkflowAuthority
-              key={`${workflowId}:${versionId}`}
+              key={`${workflowId}:${target.version_id}`}
               workflowId={workflowId}
-              versionId={versionId}
+              versionId={target.version_id}
+              {...(target.activation ? { activation: target.activation } : {})}
               versionLabel={versionLabel}
-              disabled={holds.isPending}
+              disabled={holds.isPending || (prepared && draft.isPending)}
               initialEnvironment={reviewEnvironment(items, hold)}
+              {...(target.kind === "prepared"
+                ? { triggerLabel: t("authority.reviewPrepared") }
+                : {})}
             />
           )}
         </div>
       </div>
+      {/* The reason the held schedule could not be approved was usually sitting
+          right here, unsaid: a repaired version waiting to be activated. */}
+      {target?.kind === "prepared" && (
+        <p className="text-sm" data-testid="authority-prepared-version">
+          {t("authority.preparedWaiting", {
+            prepared: target.version == null ? "—" : `v${target.version}`,
+            active:
+              target.active_version == null
+                ? t("authority.noneActive")
+                : `v${target.active_version}`,
+          })}
+        </p>
+      )}
       {hold && (
         <div className="flex flex-wrap items-center gap-2" data-testid="authority-schedule-held">
           <Badge variant="secondary">{t("schedules.held.status")}</Badge>

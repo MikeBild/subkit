@@ -18128,6 +18128,7 @@ export interface components {
             } | null;
             workflow_slug: string | null;
             workflow_name: string | null;
+            prepared_version_id: string | null;
             cron: string;
             timezone: string;
             /** @enum {string} */

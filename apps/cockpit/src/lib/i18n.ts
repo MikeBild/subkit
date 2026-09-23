@@ -147,6 +147,13 @@ const EN = {
   "authority.runsError": "Enter a whole number from 1 to 10,000.",
   "authority.hoursError": "Enter a whole number from 1 to 744.",
   "authority.reviewedVersion": "Reviewed workflow version",
+  "authority.versionPrepared": "{version} · prepared, not yet running",
+  "authority.versionRunning": "{version} · currently running",
+  "authority.preparedWaiting":
+    "A prepared version {prepared} is waiting. The schedule still runs {active}, so the review below judges {prepared} and approving it puts that version into service.",
+  "authority.noneActive": "no version yet",
+  "authority.reviewPrepared": "Review prepared version",
+  "authority.activateOnly": "Put into service only",
   "authority.configuredConnector": "Configured connector",
   "authority.reviewExpired": "Review is no longer current",
   "authority.reviewExpiredHint": "Check again before granting permission.",
@@ -239,6 +246,7 @@ const EN = {
     "Everything below is what that workflow does on every start. This approval covers exactly this version; a new version needs a new approval.",
   "schedules.held.since": "Held since {when}",
   "schedules.held.reviewRepair": "Repair workflow",
+  "schedules.held.reviewPrepared": "Review prepared version",
   "schedules.held.reviewGrant": "Review approval",
   "authority.issuesTitle": "Why this cannot be approved yet",
   "authority.issueStep": "Step {step}",
@@ -1109,6 +1117,8 @@ const EN = {
   "schedules.held.concreteShort":
     "The actions and targets need review before scheduled runs can resume.",
   "schedules.held.authorityShort": "No valid execution approval is available for the next run.",
+  "schedules.held.preparedShort":
+    "A repaired version is prepared and waiting. Review it — approving puts it into service and the schedule resumes.",
   "schedules.held.details": "Reason and schedule",
   "schedules.held.schedule": "Schedule",
 
@@ -1116,6 +1126,8 @@ const EN = {
     "The last start was held: dynamic effects cannot currently receive repeated-run authority. Open the workflow to review a preview or restrict effects to supported, fixed targets.",
   "schedules.held.authority":
     "The last start was held: execution authority is missing, expired, revoked or exhausted. Review the exact version, targets and finite limits in the workflow.",
+  "schedules.held.prepared":
+    "A saved version that is not the one running is waiting for this workflow. The review judges the prepared version, not the one that was held.",
   "schedules.held.review": "Review workflow",
   "operational.value.unknown": "Unknown",
   "operational.value.forbidden": "Restricted",
@@ -1832,6 +1844,13 @@ const DE: Record<TranslationKey, string> = {
   "authority.runsError": "Eine ganze Zahl von 1 bis 10.000 eingeben.",
   "authority.hoursError": "Eine ganze Zahl von 1 bis 744 eingeben.",
   "authority.reviewedVersion": "Geprüfte Workflow-Version",
+  "authority.versionPrepared": "{version} · vorbereitet, läuft noch nicht",
+  "authority.versionRunning": "{version} · läuft derzeit",
+  "authority.preparedWaiting":
+    "Eine vorbereitete Fassung {prepared} wartet. Der Zeitplan führt weiterhin {active} aus; die Prüfung unten beurteilt {prepared}, und die Freigabe nimmt diese Fassung in Betrieb.",
+  "authority.noneActive": "noch keine Fassung",
+  "authority.reviewPrepared": "Vorbereitete Fassung prüfen",
+  "authority.activateOnly": "Nur in Betrieb nehmen",
   "authority.configuredConnector": "Konfigurierter Konnektor",
   "authority.reviewExpired": "Prüfung nicht mehr aktuell",
   "authority.reviewExpiredHint": "Vor der Freigabe erneut prüfen.",
@@ -1927,6 +1946,7 @@ const DE: Record<TranslationKey, string> = {
     "Alles Folgende führt dieser Workflow bei jedem Start aus. Die Freigabe gilt genau für diese Version; eine neue Version braucht eine neue Freigabe.",
   "schedules.held.since": "Steht seit {when}",
   "schedules.held.reviewRepair": "Workflow reparieren",
+  "schedules.held.reviewPrepared": "Vorbereitete Fassung prüfen",
   "schedules.held.reviewGrant": "Freigabe prüfen",
   "authority.issuesTitle": "Warum das noch nicht freigegeben werden kann",
   "authority.issueStep": "Schritt {step}",
@@ -2817,6 +2837,8 @@ const DE: Record<TranslationKey, string> = {
     "Aktionen und Ziele müssen vor weiteren automatischen Läufen geprüft werden.",
   "schedules.held.authorityShort":
     "Für den nächsten Lauf liegt keine gültige Ausführungsfreigabe vor.",
+  "schedules.held.preparedShort":
+    "Eine reparierte Fassung ist vorbereitet und wartet. Prüfen — die Freigabe nimmt sie in Betrieb und der Zeitplan läuft weiter.",
   "schedules.held.details": "Grund und Zeitplan",
   "schedules.held.schedule": "Zeitplan",
 
@@ -2824,6 +2846,8 @@ const DE: Record<TranslationKey, string> = {
     "Der letzte Start wurde zurückgehalten: Die dynamischen Effekte lassen sich derzeit nicht für wiederholte Läufe freigeben. Workflow öffnen, eine Vorschau prüfen oder die Effekte auf unterstützte, feste Ziele begrenzen.",
   "schedules.held.authority":
     "Der letzte Start wurde zurückgehalten: Eine gültige Ausführungsfreigabe fehlt, ist abgelaufen, widerrufen oder ausgeschöpft. Im Workflow die genaue Version, Ziele und endlichen Grenzen prüfen und freigeben.",
+  "schedules.held.prepared":
+    "Für diesen Workflow wartet eine gespeicherte Fassung, die nicht die laufende ist. Die Prüfung beurteilt die vorbereitete Fassung, nicht die zurückgehaltene.",
   "schedules.held.review": "Workflow prüfen",
   "operational.value.unknown": "Unbekannt",
   "operational.value.forbidden": "Eingeschränkt",

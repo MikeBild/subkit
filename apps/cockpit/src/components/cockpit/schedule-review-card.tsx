@@ -9,6 +9,10 @@ import { useI18n } from "@/lib/i18n-context";
 export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
   const { t, dateTime } = useI18n();
   const concrete = schedule.admission_hold?.reason_code === "execution_authority_required";
+  // A repaired version already waiting changes what the reader has to do:
+  // approving the running version is what kept failing, because the running
+  // version is the one with the problem.
+  const prepared = Boolean(schedule.prepared_version_id);
   return (
     <Card size="sm" data-testid="schedule-admission-held">
       <CardHeader>
@@ -27,7 +31,13 @@ export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
               </h3>
             </CardTitle>
             <CardDescription>
-              {t(concrete ? "schedules.held.concreteShort" : "schedules.held.authorityShort")}
+              {t(
+                prepared
+                  ? "schedules.held.preparedShort"
+                  : concrete
+                    ? "schedules.held.concreteShort"
+                    : "schedules.held.authorityShort",
+              )}
             </CardDescription>
             {/* Since when. It was fetched and never shown, and "held" reads
                 very differently at ten minutes than at eight days. */}
@@ -52,8 +62,16 @@ export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
             >
               {/* Two reason codes, opposite outcomes: one needs the workflow
                   repaired, the other only needs approving. The same label sent
-                  both to the same page, and only one of them could act there. */}
-              {t(concrete ? "schedules.held.reviewRepair" : "schedules.held.reviewGrant")}
+                  both to the same page, and only one of them could act there.
+                  A prepared version overrides both: the repair already exists
+                  and the next step is putting it into service. */}
+              {t(
+                prepared
+                  ? "schedules.held.reviewPrepared"
+                  : concrete
+                    ? "schedules.held.reviewRepair"
+                    : "schedules.held.reviewGrant",
+              )}
               <ArrowRight data-icon="inline-end" />
             </Link>
           </Button>
@@ -66,6 +84,7 @@ export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
           </summary>
           <div className="mt-2 flex flex-col gap-2 text-sm text-muted-foreground">
             <p>{t(concrete ? "schedules.held.concrete" : "schedules.held.authority")}</p>
+            {prepared && <p>{t("schedules.held.prepared")}</p>}
             <p className="break-words">
               {t("schedules.held.schedule")}: <code>{schedule.cron}</code> · {schedule.timezone}
             </p>

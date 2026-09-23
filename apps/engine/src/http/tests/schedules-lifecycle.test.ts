@@ -297,3 +297,42 @@ test("persisted admission holds are readable and suppressed for paused schedules
   expect(paused.status).toBe(200);
   expect((await read()).schedules[0]?.admission_hold).toBeNull();
 });
+
+test("a held schedule reports the prepared version waiting beside the running one", async () => {
+  // Three production workflows were blocked at once with the repair already
+  // saved as a draft. The decision surface could not see it, so the only offer
+  // it could make was to approve the running version — the very version that
+  // could not be bound. This is the field that lets the reader be told the
+  // truth: something is prepared, and putting it into service is the next step.
+  const wf = await createWorkflow("prepared-http");
+  const created = await fetch(`${ctx.baseUrl}/v1/schedules`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ workflow_id: wf.id, cron: "* * * * *" }),
+  });
+  expect(created.status).toBe(201);
+  expect(
+    ((await created.json()) as { prepared_version_id: unknown }).prepared_version_id,
+  ).toBeNull();
+  const read = async () =>
+    (await (
+      await fetch(`${ctx.baseUrl}/v1/schedules?workflow_id=${wf.id}`, { headers: headers() })
+    ).json()) as { schedules: Array<{ prepared_version_id: string | null }> };
+  // Activation clears the draft pointer, so a workflow with nothing waiting
+  // must not claim one — otherwise every row would carry the notice.
+  expect((await read()).schedules[0]?.prepared_version_id).toBeNull();
+  const draft = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}/draft`, {
+    method: "PUT",
+    headers: headers(),
+    body: JSON.stringify({
+      expected_draft_version_id: null,
+      definition: {
+        name: "prepared-http",
+        steps: [{ kind: "transform", id: "out", expression: "return { ok: 2 };" }],
+      },
+    }),
+  });
+  expect(draft.status).toBe(200);
+  const saved = (await draft.json()) as { version_id: string };
+  expect((await read()).schedules[0]?.prepared_version_id).toBe(saved.version_id);
+});

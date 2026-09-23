@@ -341,6 +341,18 @@ const ScheduleInputSchema = z.union([
   z.array(z.unknown()),
   z.record(z.string(), z.unknown()),
 ]);
+/**
+ * A saved draft that is not the version a schedule runs. The reader of a held
+ * schedule needs it: the running version is exactly the one that could not be
+ * approved, and without this the repair waiting next to it stays invisible.
+ */
+const preparedVersionId = (
+  wf: { draft_version_id?: string | null; current_version_id: string | null } | null | undefined,
+) =>
+  wf?.draft_version_id && wf.draft_version_id !== wf.current_version_id
+    ? wf.draft_version_id
+    : null;
+
 const ScheduleListResponse = z
   .object({
     schedules: z.array(ScheduleEntry),
@@ -644,9 +656,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const named = ids.length
       ? await Promise.all(ids.map((id) => svc.getWorkflow(principal.tenant_id, id, db)))
       : [];
-    const nameById = new Map(
-      named.filter((w) => w !== null).map((w) => [w.id, { slug: w.slug, name: w.name }]),
-    );
+    const nameById = new Map(named.filter((w) => w !== null).map((w) => [w.id, w]));
     return c.json(
       {
         schedules: rows.map((r) => ({
@@ -654,6 +664,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
           workflow_id: r.workflow_id,
           workflow_slug: nameById.get(r.workflow_id)?.slug ?? null,
           workflow_name: nameById.get(r.workflow_id)?.name ?? null,
+          prepared_version_id: preparedVersionId(nameById.get(r.workflow_id)),
           admission_hold:
             r.paused || !named.find((w) => w?.id === r.workflow_id && w.lifecycle !== "archived")
               ? null
@@ -685,6 +696,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       workflow_id: row.workflow_id,
       workflow_slug: wf?.slug ?? null,
       workflow_name: wf?.name ?? null,
+      prepared_version_id: preparedVersionId(wf),
       admission_hold: row.paused || !wf || wf.lifecycle === "archived" ? null : row.admission_hold,
       cron: row.cron,
       timezone: row.timezone,

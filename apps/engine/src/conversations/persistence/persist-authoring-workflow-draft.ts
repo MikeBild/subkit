@@ -198,6 +198,17 @@ export async function persistAuthoringWorkflowDraft(input: {
       next_best_actions: ["inspect_workflow_draft", "dry_run_workflow"],
       next_prompt: [
         scheduleWarning,
+        // Saying "saved" for a version that already existed reads as a fresh
+        // write, and a reader who has just corrected something concludes the
+        // correction was dropped. It was not: the stored definition carries
+        // values the schema fills in (a request step without `error_policy` is
+        // stored with `"none"`), so an unchanged definition and its saved
+        // version differ textually while being the same thing. An hour went
+        // into re-saving and then digging through the database over exactly
+        // this sentence being absent.
+        changed
+          ? null
+          : `No new version was written: this definition already IS version ${saved.version}, once the values the schema fills in are applied. The edits are in that version — saving again cannot produce a different result.`,
         "The exact draft version is saved but is not activated. Review its version and effects before human activation; no schedule, webhook or live execution was enabled by this save.",
         candidateNotice,
       ]
