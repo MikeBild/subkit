@@ -55,9 +55,21 @@ test("renaming the step, or editing its expression while keeping the read, stays
 
 test("removing a step others still name is introduced by the removal", () => {
   const baseline = dangling(base());
-  const removed = base().filter((s) => s.id !== "rollup_window");
-  const split = partitionStepReferences(dangling(removed), baseline);
+  // An UNGUARDED reader is what makes a removal an error. The reader that
+  // tests for the step first has already said the step may be absent, so its
+  // removal takes the branch that reader wrote for exactly this case — see
+  // reference-validator-guarded.test.ts.
+  const withReader = [
+    ...base(),
+    { id: "reader", kind: "transform", expression: "return input.scope.rollup_window.data;" },
+  ];
+  const removed = withReader.filter((s) => s.id !== "rollup_window");
+  const split = partitionStepReferences(dangling(removed), dangling(withReader));
   expect(split.introduced.map((e) => e.bad_reference)).toContain("rollup_window");
+  expect(split.introduced.map((e) => e.step_id)).toEqual(["reader"]);
+  // With only the guarded reader left, the removal blocks nothing new.
+  const guardedOnly = base().filter((s) => s.id !== "rollup_window");
+  expect(partitionStepReferences(dangling(guardedOnly), baseline).introduced).toEqual([]);
 });
 
 test("with nothing to inherit from, every dangling reference is introduced", () => {

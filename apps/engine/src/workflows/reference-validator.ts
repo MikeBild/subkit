@@ -217,6 +217,49 @@ function suggest(target: string, candidates: ReadonlyArray<string>): string[] {
 }
 
 /**
+ * Does this JavaScript expression test the reference's presence before it
+ * uses it?
+ *
+ * A transform that reads `input.scope.X.data` where no step `X` exists is the
+ * typo this gate is for. A transform that writes
+ * `input.scope.X ? input.scope.X.data : input.scope.Y.data` is the opposite:
+ * the author already handled X's absence, and in a workflow where X is absent
+ * the code takes the other branch and works. Such transforms are written to
+ * run in more than one workflow, so the ids they probe for are missing BY
+ * DESIGN in each of them.
+ *
+ * Reporting those sent a real repair the wrong way: asked to bound a daily
+ * rollup's requests, the authoring model was handed four "dangling read"
+ * errors for a shared transform and deleted its fallbacks to silence them —
+ * an edit nothing about the boundaries required, which quietly removed the
+ * workflow's portability.
+ *
+ * A guarded typo (`input.scope.windwo ? … : …`) still slips through. That is
+ * the honest trade: it degrades to the fallback branch instead of crashing,
+ * whereas an unguarded typo — the case worth refusing a draft over — is still
+ * reported, because nobody writes a guard around a name they meant to type
+ * correctly.
+ *
+ * JSONata/placeholder sites (`$scope.X`, `${scope.X}`) are substitution
+ * points where no guard can be expressed, so they are never suppressed.
+ */
+function referenceIsGuarded(text: string, ref: string): boolean {
+  if (!/^[a-zA-Z_]\w*$/.test(ref)) return false;
+  const access = String.raw`\binput\??\.scope(?:\??\.${ref}\b|\[\s*["']${ref}["']\s*\])`;
+  const nullish = String.raw`[!=]==?\s*(?:null|undefined)`;
+  return [
+    // `input.scope.X ? …`, `… && …`, `… || …`, `… === null`, `… !== undefined`
+    new RegExp(String.raw`${access}\s*(?:\?|&&|\|\||${nullish})`),
+    // `!input.scope.X`, `typeof input.scope.X`
+    new RegExp(String.raw`(?:!\s*|typeof\s+)${access}`),
+    // Optional chaining anywhere along the path to X.
+    new RegExp(String.raw`\binput\?\.scope\??\.${ref}\b|\binput\.scope\?\.${ref}\b`),
+    // `"X" in input.scope`
+    new RegExp(String.raw`["']${ref}["']\s+in\s+input\??\.scope\b`),
+  ].some((re) => re.test(text));
+}
+
+/**
  * Run the explicit `$scope.X` / `$steps.X` / `${scope.X}` checks.
  * Used by every site (per-step typed fields + generic string walk).
  */
@@ -232,10 +275,13 @@ function collectReferences(
     JS_INPUT_SCOPE_RE,
     JS_INPUT_SCOPE_BRACKET_RE,
   ]) {
+    const isJsAccess = re === JS_INPUT_SCOPE_RE || re === JS_INPUT_SCOPE_BRACKET_RE;
     re.lastIndex = 0;
     for (let m = re.exec(text); m !== null; m = re.exec(text)) {
       const ref = m[1] ?? "";
-      if (ref && !knownIds.has(ref)) emitOffender(ref);
+      if (!ref || knownIds.has(ref)) continue;
+      if (isJsAccess && referenceIsGuarded(text, ref)) continue;
+      emitOffender(ref);
     }
   }
 }
