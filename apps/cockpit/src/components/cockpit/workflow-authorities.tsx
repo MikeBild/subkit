@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { reviewEnvironment } from "@/lib/review-environment";
 import {
   AUTHORITY_EFFECT_KEYS,
   AUTHORITY_STATE_KEYS,
@@ -224,7 +225,7 @@ export function WorkflowAuthorities({
               versionId={versionId}
               versionLabel={versionLabel}
               disabled={holds.isPending}
-              initialEnvironment={hold?.execution_mode === "prod" ? "prod" : "dev"}
+              initialEnvironment={reviewEnvironment(items, hold)}
             />
           )}
         </div>
