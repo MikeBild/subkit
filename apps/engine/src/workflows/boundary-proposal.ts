@@ -95,6 +95,8 @@ interface Observation {
    * resolver, and for a write it is the only place its size is written down.
    */
   held: { url?: string; key?: string; body?: unknown } | null;
+  /** The same evidence from a preparation run, which records it differently. */
+  prepared: { url?: string; redacted_request_json?: string } | null;
   at: Date;
 }
 
@@ -114,6 +116,15 @@ async function observations(
       pages: sql<
         number | null
       >`nullif(${executionSteps.request_meta} ->> 'pages_fetched', '')::int`,
+      // The SAME fact in two places, because two paths write it: a dry-run
+      // preview leaves `held_request` in the result envelope, and the
+      // preparation run the approval dialog triggers leaves
+      // `prepared_request_review` in the request metadata. Reading only one of
+      // them meant the run a reviewer had just been asked to perform produced
+      // evidence this derivation could not see.
+      prepared: sql<{ url?: string; redacted_request_json?: string } | null>`
+        ${executionSteps.request_meta} -> 'extras' -> 'prepared_request_review'
+      `,
       held: sql<{ url?: string; key?: string; body?: unknown } | null>`(
         select el -> ${executionSteps.step_key} -> 'held_request'
         from jsonb_array_elements(${executionSteps.output_preview}) el
@@ -137,7 +148,7 @@ async function observations(
     .orderBy(desc(executions.created_at))
     .limit(EVIDENCE_ROWS);
   for (const row of rows) {
-    if (!row.url && !row.key && !row.held?.url && !row.held?.key) continue;
+    if (!row.url && !row.key && !row.held?.url && !row.held?.key && !row.prepared?.url) continue;
     const list = byStep.get(row.step_key);
     if (list) list.push(row);
     else byStep.set(row.step_key, [row]);
@@ -271,9 +282,10 @@ function proposeRequestStep(
   if (!authored || (step.path !== undefined && step.url !== undefined)) return "not_supported";
   const parts = template(authored);
   if (!parts) return "path_not_comparable";
-  const urls = seen.flatMap((entry) =>
-    entry.url ? [entry] : entry.held?.url ? [{ ...entry, url: entry.held.url }] : [],
-  );
+  const urls = seen.flatMap((entry) => {
+    const url = entry.url ?? entry.held?.url ?? entry.prepared?.url;
+    return url ? [{ ...entry, url }] : [];
+  });
   if (urls.length === 0) return "no_history";
   const collected = new Map<string, string[]>();
   for (const part of parts) if (typeof part !== "string") collected.set(part.var, []);
@@ -301,9 +313,18 @@ function proposeRequestStep(
   // body was; a HELD one records the body itself, which is what a preview
   // leaves behind. Without either, no ceiling — an invented number refuses a
   // real run later, and that refusal looks like the workflow's fault.
-  const sent = seen.flatMap((entry) =>
-    entry.held?.body === undefined ? [] : [JSON.stringify(entry.held.body)?.length ?? 0],
-  );
+  const sent = seen.flatMap((entry) => {
+    if (entry.held?.body !== undefined) return [JSON.stringify(entry.held.body)?.length ?? 0];
+    if (entry.prepared?.redacted_request_json === undefined) return [];
+    try {
+      const review = JSON.parse(entry.prepared.redacted_request_json) as { body?: unknown };
+      return review.body === undefined || review.body === null
+        ? []
+        : [JSON.stringify(review.body)?.length ?? 0];
+    } catch {
+      return [];
+    }
+  });
   const body =
     step.body === undefined || method === "GET" || method === "HEAD"
       ? 0
