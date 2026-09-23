@@ -251,7 +251,7 @@ test("revoking the root's approval stops its child", async () => {
   const child = await linkedChild(f.root.id, f.child.workflow_id, f.child.version_id);
   await ctx.testDb.db
     .update(workflowExecutionAuthorities)
-    .set({ revoked_at: new Date(), revoked_by: actor })
+    .set({ revoked_at: await databaseNow(ctx.testDb.db), revoked_by: actor })
     .where(eq(workflowExecutionAuthorities.id, f.authority.id));
   const effect = f.manifest.effects.find((e) => e.call_path?.[0] === "run_child");
   await expect(
@@ -271,7 +271,7 @@ test("cancelling the root stops its child", async () => {
   const child = await linkedChild(f.root.id, f.child.workflow_id, f.child.version_id);
   await ctx.testDb.db
     .update(executions)
-    .set({ abort_requested_at: new Date() })
+    .set({ abort_requested_at: await databaseNow(ctx.testDb.db) })
     .where(eq(executions.id, f.root.id));
   await expect(
     assertExecutionAuthorityCurrent(ctx.testDb.db, ctx.tenantId, child.id),
