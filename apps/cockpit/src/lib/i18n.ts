@@ -150,7 +150,7 @@ const EN = {
   "authority.versionPrepared": "{version} · prepared, not yet running",
   "authority.versionRunning": "{version} · currently running",
   "authority.preparedWaiting":
-    "A prepared version {prepared} is waiting. The schedule still runs {active}, so the review below judges {prepared} and approving it puts that version into service.",
+    "A prepared version {prepared} is waiting. The schedule still runs {active}, so the review below judges {prepared} — and only putting it into service changes what runs.",
   "authority.noneActive": "no version yet",
   "authority.reviewPrepared": "Review prepared version",
   "authority.activateOnly": "Put into service only",
@@ -229,6 +229,8 @@ const EN = {
   "authority.boundary.class.date": "{name} may be any date written YYYY-MM-DD.",
   "authority.boundary.class.timestamp":
     "{name} may be any UTC time written like 2026-01-31T23:59:59Z.",
+  "authority.boundary.class.file_name":
+    "{name} may be any single file name — letters, digits, \u201c_\u201d and \u201c-\u201d, then one dot and a short extension. It cannot contain \u201c/\u201d, so it stays in this one folder.",
   "authority.boundary.classNotice":
     "A value limited only by its form is chosen at run time. This approval does not limit which records are addressed, only what the value looks like.",
   "authority.boundary.unknownRule":
@@ -1118,7 +1120,7 @@ const EN = {
     "The actions and targets need review before scheduled runs can resume.",
   "schedules.held.authorityShort": "No valid execution approval is available for the next run.",
   "schedules.held.preparedShort":
-    "A repaired version is prepared and waiting. Review it — approving puts it into service and the schedule resumes.",
+    "A version that is not the one running is prepared and waiting. The review judges that version; putting it into service is what resumes the schedule.",
   "schedules.held.details": "Reason and schedule",
   "schedules.held.schedule": "Schedule",
 
@@ -1847,7 +1849,7 @@ const DE: Record<TranslationKey, string> = {
   "authority.versionPrepared": "{version} · vorbereitet, läuft noch nicht",
   "authority.versionRunning": "{version} · läuft derzeit",
   "authority.preparedWaiting":
-    "Eine vorbereitete Fassung {prepared} wartet. Der Zeitplan führt weiterhin {active} aus; die Prüfung unten beurteilt {prepared}, und die Freigabe nimmt diese Fassung in Betrieb.",
+    "Eine vorbereitete Fassung {prepared} wartet. Der Zeitplan führt weiterhin {active} aus; die Prüfung unten beurteilt {prepared} — was läuft, ändert sich erst, wenn sie in Betrieb genommen wird.",
   "authority.noneActive": "noch keine Fassung",
   "authority.reviewPrepared": "Vorbereitete Fassung prüfen",
   "authority.activateOnly": "Nur in Betrieb nehmen",
@@ -1928,6 +1930,8 @@ const DE: Record<TranslationKey, string> = {
   "authority.boundary.class.date": "{name} darf jedes Datum in der Form JJJJ-MM-TT sein.",
   "authority.boundary.class.timestamp":
     "{name} darf jeder UTC-Zeitpunkt in der Form 2026-01-31T23:59:59Z sein.",
+  "authority.boundary.class.file_name":
+    "{name} darf jeder einzelne Dateiname sein \u2014 Buchstaben, Ziffern, \u201e_\u201c und \u201e-\u201c, dann ein Punkt und eine kurze Endung. Ein \u201e/\u201c ist nicht m\u00f6glich, der Wert bleibt also in diesem einen Ordner.",
   "authority.boundary.classNotice":
     "Ein nur der Form nach begrenzter Wert entsteht erst zur Laufzeit. Diese Freigabe begrenzt nicht, welche Einträge angesprochen werden, sondern nur, wie der Wert aussieht.",
   "authority.boundary.unknownRule":
@@ -2838,7 +2842,7 @@ const DE: Record<TranslationKey, string> = {
   "schedules.held.authorityShort":
     "Für den nächsten Lauf liegt keine gültige Ausführungsfreigabe vor.",
   "schedules.held.preparedShort":
-    "Eine reparierte Fassung ist vorbereitet und wartet. Prüfen — die Freigabe nimmt sie in Betrieb und der Zeitplan läuft weiter.",
+    "Eine Fassung, die nicht die laufende ist, ist vorbereitet und wartet. Die Prüfung beurteilt diese Fassung; in Betrieb genommen läuft der Zeitplan weiter.",
   "schedules.held.details": "Grund und Zeitplan",
   "schedules.held.schedule": "Zeitplan",
 
