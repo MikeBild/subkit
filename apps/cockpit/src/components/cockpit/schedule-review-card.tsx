@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useI18n } from "@/lib/i18n-context";
 
 export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
-  const { t } = useI18n();
+  const { t, dateTime } = useI18n();
   const concrete = schedule.admission_hold?.reason_code === "execution_authority_required";
   return (
     <Card size="sm" data-testid="schedule-admission-held">
@@ -29,6 +29,15 @@ export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
             <CardDescription>
               {t(concrete ? "schedules.held.concreteShort" : "schedules.held.authorityShort")}
             </CardDescription>
+            {/* Since when. It was fetched and never shown, and "held" reads
+                very differently at ten minutes than at eight days. */}
+            {schedule.admission_hold?.observed_at && (
+              <p className="text-muted-foreground text-xs" data-testid="schedule-admission-since">
+                {t("schedules.held.since", {
+                  when: dateTime(schedule.admission_hold.observed_at),
+                })}
+              </p>
+            )}
           </div>
           <Button
             asChild
@@ -41,7 +50,10 @@ export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
               params={{ resourceId: schedule.workflow_id }}
               data-testid="schedule-admission-review"
             >
-              {t("schedules.held.review")}
+              {/* Two reason codes, opposite outcomes: one needs the workflow
+                  repaired, the other only needs approving. The same label sent
+                  both to the same page, and only one of them could act there. */}
+              {t(concrete ? "schedules.held.reviewRepair" : "schedules.held.reviewGrant")}
               <ArrowRight data-icon="inline-end" />
             </Link>
           </Button>
