@@ -882,6 +882,15 @@ export function ChatPage() {
       ]);
     },
   });
+  // What killed the last turn, as the engine recorded it. `ApiError.message`
+  // already carries the engine's own sentence, and the stored one survives a
+  // reload — a dead turn that still looks like a thinking one costs the reader
+  // the diagnosis, which is the whole content of a provider quota message.
+  const turnFailure =
+    (detail.data as { last_turn_error?: { code: string; message: string } | null } | undefined)
+      ?.last_turn_error ?? null;
+  const turnFailureMessage =
+    (send.error instanceof ApiError ? send.error.message : null) ?? turnFailure?.message ?? null;
   const cancel = useMutation({
     mutationFn: () => cancelConversation(activeId ?? ""),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversation", activeId] }),
@@ -1197,14 +1206,24 @@ export function ChatPage() {
           </div>
         </header>
 
-        {send.error && (
+        {/* The turn that just died, and the one that died before a reload. The
+            engine's own sentence is shown verbatim: "you have reached your
+            specified API usage limits" tells the reader what to do, and a
+            constant string does not. */}
+        {(send.error || turnFailure) && (
           <Alert variant="destructive" className="m-4 mb-0" data-testid="chat-error">
             <AlertTitle>{t("chat.failed")}</AlertTitle>
             <AlertDescription>
-              {t(
-                send.error instanceof ApiError && send.error.code === "pending_elicitation_blocked"
-                  ? "chat.pendingQuestionRequired"
-                  : "chat.failedDescription",
+              {send.error instanceof ApiError &&
+              send.error.code === "pending_elicitation_blocked" ? (
+                t("chat.pendingQuestionRequired")
+              ) : (
+                <>
+                  <p>{t("chat.failedDescription")}</p>
+                  {turnFailureMessage && (
+                    <p className="mt-1 break-words font-mono text-xs">{turnFailureMessage}</p>
+                  )}
+                </>
               )}
             </AlertDescription>
           </Alert>

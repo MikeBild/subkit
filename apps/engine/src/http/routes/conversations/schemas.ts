@@ -88,7 +88,15 @@ export const ConversationSchema = z
     updated_at: z.string(),
     /** List path only — what the conversation has come to, as a reader would say it. */
     outcome: z
-      .enum(["answered", "in_progress", "awaiting_you", "committed", "abandoned", "stale"])
+      .enum([
+        "answered",
+        "in_progress",
+        "failed",
+        "awaiting_you",
+        "committed",
+        "abandoned",
+        "stale",
+      ])
       .optional(),
     /** Newest message time; the activity clock (updated_at also moves on bookkeeping). */
     last_activity_at: z.string().nullable().optional(),

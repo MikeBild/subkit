@@ -191,6 +191,8 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
       if (wantsSSE(c.req.header("accept"))) {
         const response = streamSSE(c, async (stream) => {
           try {
+            // A new turn starts: whatever killed the previous one is history.
+            await svc.clearConversationTurnFailure(db, principal.tenant_id, id).catch(() => {});
             const appended = await svc.appendUserMessage(appendParams, db);
             const outcome = await driveTurn(appended, (ev: TurnEvent) => {
               void stream.writeSSE(serializeEvent(ev));
@@ -211,12 +213,19 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
               return;
             }
             const err = error as Error;
-            await stream.writeSSE(
-              errorFrame({
-                code: "internal",
-                message: err?.message ?? "internal_error",
-              }),
-            );
+            const failure = {
+              code: "internal",
+              message: err?.message ?? "internal_error",
+              at: new Date().toISOString(),
+            };
+            // Durable, so a reload does not turn a dead turn back into a
+            // thinking one. A provider that answers "you have reached your
+            // usage limits" is telling the person exactly what to do; losing
+            // that sentence costs them the diagnosis, not just the message.
+            await svc
+              .recordConversationTurnFailure(c.get("db"), principal.tenant_id, id, failure)
+              .catch(() => {});
+            await stream.writeSSE(errorFrame({ code: failure.code, message: failure.message }));
           } finally {
             unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
