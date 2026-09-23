@@ -322,11 +322,15 @@ async function resolveBindings(
       credential_binding_digest: credentials ? workflowJsonDigest(credentials.binding) : null,
       // Template documentation examples are digest-bound but never substituted
       // into a request; only runtime connector fields can rewrite its target.
-      // A cursor can inject response data into an arbitrary body recipient or
-      // query parameter. Pagination therefore needs concrete-run review until
-      // target-safe parameter constraints are implemented.
+      //
+      // A cursor injects response data into the next request, which is why
+      // pagination counted as rewriting the target. A boundary that NAMES the
+      // paging keys is exactly the constraint that was missing: origin and path
+      // stay fixed, every other key stays exact, and the step's page cap bounds
+      // how many requests there can be. Without such a boundary a paginating
+      // step still rewrites its target and still needs concrete-run review.
       rewrites_target:
-        Boolean(step.pagination) ||
+        (Boolean(step.pagination) && !boundary?.pagination) ||
         JSON.stringify({
           base_url: connector?.base_url,
           dsn: connector?.dsn,

@@ -225,6 +225,52 @@ test("response-driven pagination cannot authorize a changing body recipient", as
   expect(result.manifest.issues).toContainEqual({ step_id: "send", code: "dynamic_request" });
 });
 
+test("a paginating read whose boundary names its paging keys is not a rewritten target", async () => {
+  // The other half of the pagination gate. The compiler accepts the boundary,
+  // but the effect still carried `rewrites_target: true` for anything that
+  // paginates — so the workflow stayed unapprovable with a perfectly bound
+  // step, and no authoring could ever clear it: the extra requests come from
+  // the engine. What was missing is exactly what the boundary now states —
+  // which keys move, and how many requests there may be.
+  const paged = await fixture({
+    method: "GET",
+    body: undefined,
+    path: "/api/v1/messages",
+    pagination: {
+      strategy: "cursor",
+      cursor_request_param: "start_cursor",
+      cursor_response_path: "$.next",
+      max_pages: 6,
+    },
+    boundary: { variables: {}, max_body_bytes: 0, max_calls: 1 },
+  });
+  const bound = await resolveWorkflowEffectManifest(paged.input, ctx.db);
+  expect(bound.manifest.issues).toEqual([]);
+  expect(bound.eligible_for_repeated_runs).toBe(true);
+  expect(bound.manifest.effects[0]?.rewrites_target).toBe(false);
+  expect(bound.manifest.effects[0]?.boundary?.pagination).toEqual({
+    params: ["start_cursor"],
+    max_requests: 6,
+  });
+
+  // And without that boundary it is still a rewritten target — the exemption is
+  // the statement, not the pagination.
+  const open = await fixture({
+    method: "GET",
+    body: undefined,
+    path: "/api/v1/messages",
+    pagination: {
+      strategy: "cursor",
+      cursor_request_param: "start_cursor",
+      cursor_response_path: "$.next",
+      max_pages: 6,
+    },
+  });
+  const unbound = await resolveWorkflowEffectManifest(open.input, ctx.db);
+  expect(unbound.eligible_for_repeated_runs).toBe(false);
+  expect(unbound.manifest.effects[0]?.rewrites_target).toBe(true);
+});
+
 test("connectorless credential-bearing URLs never become reusable display targets", async () => {
   const f = await fixture({
     connector_id: undefined,
