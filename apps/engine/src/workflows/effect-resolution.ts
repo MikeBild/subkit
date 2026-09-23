@@ -8,6 +8,7 @@ import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { authorityConnectorConfiguration } from "./authority-configuration.ts";
 import { authorityExecutionShape, type ResolvedCallShape } from "./authority-execution-shape.ts";
+import { contradictedStorageBoundaries } from "./boundary-evidence.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import {
   ContentReleaseBoundarySchema,
@@ -127,8 +128,27 @@ export async function resolveWorkflowEffectManifest(
     for (const refusal of resolved.request_refusals)
       request_refusals.push({ ...refusal, call_path: [step.id] });
   }
+  // What this workflow's own steps have really written. Looked up once, for
+  // the storage steps that declare a folder, and passed as evidence — the
+  // compiler decides, this only supplies the facts.
+  const declaredFolders = bindings.flatMap((binding) =>
+    binding.storage ? [{ step_id: binding.step_id, key_prefix: binding.storage.key_prefix }] : [],
+  );
+  const contradictions = await contradictedStorageBoundaries(db, {
+    tenant_id: input.tenant_id,
+    workflow_id: input.workflow_id,
+    declared: declaredFolders,
+  });
   const compiled = compileWorkflowEffectManifest({
     ...input,
+    ...(contradictions.length > 0
+      ? {
+          observed_keys: contradictions.map((entry) => ({
+            step_id: entry.step_id,
+            key: entry.observed_key,
+          })),
+        }
+      : {}),
     execution_options_digest: workflowJsonDigest({
       runtime_options_digest: input.execution_options_digest,
       normalized_definition: definition,
@@ -153,6 +173,7 @@ export async function resolveWorkflowEffectManifest(
     unavailable_steps,
     storage_refusals,
     request_refusals,
+    ...(contradictions.length > 0 ? { boundary_contradictions: contradictions } : {}),
     eligible_for_repeated_runs:
       compiled.eligible_for_repeated_runs && unavailable_steps.length === 0,
   };
