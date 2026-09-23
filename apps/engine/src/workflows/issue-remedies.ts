@@ -101,7 +101,10 @@ const REQUEST_BOUNDARY_REMEDY =
   "`destructive: true`. An enum value is written exactly as it is sent and may contain `:` and " +
   "`%XX` escapes (for example `123:runReport` or `https%3A%2F%2Fexample.com%2F`). Not coverable " +
   "as written: a placeholder that is only PART of a path segment or of a query value — build the " +
-  "whole value in a transform and reference that instead. Not coverable at all yet: a placeholder " +
+  "whole value in a transform and reference that instead. Percent-encoding is NOT a way around " +
+  "the one-segment rule: `%2F` is not a `/` to the server, so a value like `a%2Fb` addresses " +
+  "something else and the request goes nowhere. One placeholder per segment, always. Not " +
+  "coverable at all yet: a placeholder " +
   "in `headers`, a query KEY that varies, and `pagination`.";
 
 /**
@@ -175,8 +178,12 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "own rule. A value may contain `:`, so `do:team:<uuid>` is one legal enum value; a value may " +
     "NOT contain `/`.",
   enum_value_unroutable:
-    "This step already has `boundary`, but one of its `enum` values does not route to the " +
-    "reviewed target. Use the exact identifier the API expects, with no `/` or encoding.",
+    "This step already has `boundary`, but one of its `enum` values does not reach the reviewed " +
+    "target. The usual cause is a value that stands for more than one segment: a `/` cannot be " +
+    "smuggled in as `%2F`, because the server reads `%2F` as a literal character and not as a " +
+    "separator — such a request addresses something that does not exist. Split the path so that " +
+    "each segment has its own placeholder and its own rule, and use the exact identifier the API " +
+    "expects. A `:` inside one segment is fine (`123:runReport`).",
   target_unresolved:
     "The request target cannot be resolved: the connector has no base URL and the path is not an " +
     "absolute http(s) URL, or the target carries credentials or a fragment.",
