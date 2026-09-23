@@ -91,8 +91,12 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
     if (await page.getByTestId("decisions-empty").count())
       throw new Error("Held schedules presented as an empty queue");
     const count = await page.locator('[data-testid="decisions-page"]').innerText();
-    if (!count.includes(locale === "de" ? "15 offene Entscheidung" : "15 open decision"))
-      throw new Error("Decision total excludes the held schedule");
+    // Sixteen, not fifteen: the workflow that is approved and failing counts as
+    // an open decision too. It was invisible before — the page listed only what
+    // could not start — and a badge that leaves it out is the reason nobody
+    // looked.
+    if (!count.includes(locale === "de" ? "16 offene Entscheidung" : "16 open decision"))
+      throw new Error("Decision total excludes the held schedule or the failing workflow");
     if ((await cards.count()) !== 13) throw new Error("Held schedule queue lost entries");
     const toolbar = await page.getByTestId("decisions-toolbar").boundingBox();
     const firstCard = await card.boundingBox();

@@ -14,6 +14,7 @@ import {
 import { useSession } from "@/app/session";
 import { useDecisionQueue } from "@/app/use-decisions";
 import { DecisionCard } from "@/components/cockpit/decision-card";
+import { FailingWorkflowCard } from "@/components/cockpit/failing-workflow-card";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
 import { ScheduleReviewCard } from "@/components/cockpit/schedule-review-card";
@@ -140,6 +141,12 @@ export function DecisionsPage() {
   const held =
     preferences.kinds.length === 0 || preferences.kinds.includes("schedule")
       ? queue.heldSchedules
+      : [];
+  // The opposite of a held schedule, and it belongs to the same filter: both
+  // are "a scheduled workflow needs you".
+  const failing =
+    preferences.kinds.length === 0 || preferences.kinds.includes("schedule")
+      ? queue.failingWorkflows
       : [];
   const initial = filtered.slice(0, visibleCount);
   const urgency = partitionByUrgency(initial, Date.now());
@@ -297,6 +304,19 @@ export function DecisionsPage() {
             </p>
 
             <div className="grid gap-5" data-family-slot="queue">
+              {!queue.isPending && !queue.failed && failing.length > 0 && (
+                <DecisionSection
+                  testId="decisions-failing"
+                  title={t("decisions.failing.group")}
+                  hint={t("decisions.failing.groupHint")}
+                  count={failing.length}
+                  bucket="blocked"
+                >
+                  {failing.slice(0, visibleCount).map((item) => (
+                    <FailingWorkflowCard key={item.key} failing={item} />
+                  ))}
+                </DecisionSection>
+              )}
               {!queue.isPending && !queue.failed && held.length > 0 && (
                 <DecisionSection
                   testId="decisions-blocked"

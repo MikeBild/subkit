@@ -155,6 +155,27 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
     await page.getByTestId("decisions-history").waitFor();
     if ((await card.count()) !== 0 || attempts !== 2)
       throw new Error("Settled decision returned after reload");
+    // A workflow that was approved and keeps failing is a decision too, and it
+    // used to appear nowhere: the page listed only what could not START. The
+    // fixture's digest carries one scheduled group and one authoring group, and
+    // exactly one of them belongs here — mixing them buries a real incident
+    // among experiments.
+    const failing = page.getByTestId("decision-failing-workflow");
+    await failing.first().waitFor();
+    if ((await failing.count()) !== 1)
+      throw new Error("Failing-workflow section does not separate scheduled runs from trials");
+    const failingText = await failing.first().innerText();
+    for (const expected of ["Monatsreport", "14", "fetch"])
+      if (!failingText.includes(expected))
+        throw new Error(`Failing card omits ${expected}: ${failingText}`);
+    if (failingText.includes("Umsatzrollup"))
+      throw new Error("An authoring trial is presented as a production incident");
+    // The link leads to THESE runs. "Production incidents: 1" used to land on
+    // eleven thousand rows, which is the same as landing nowhere.
+    const href = await page.getByTestId("decision-failing-runs").getAttribute("href");
+    if (!href?.includes("status=failed") || !href.includes("Monatsreport"))
+      throw new Error(`Failing card links to an unfiltered run list: ${href}`);
+    await capture("failing-workflow");
     await capture("settled-reload");
     applied = false;
     await page.reload();
