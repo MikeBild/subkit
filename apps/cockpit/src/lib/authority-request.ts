@@ -52,12 +52,19 @@ function readable(value: string): string {
   }
 }
 
-const CLASS_KEYS: Record<string, TranslationKey> = {
+// Every class the engine accepts needs a sentence here, or the panel calls it a
+// rule it cannot describe and refuses the whole approval — correctly, but the
+// author is then stuck with a boundary the engine took and the dialog will not
+// explain. That happened in production: `file_name` shipped in the engine, this
+// table did not learn it, and a repaired workflow could not be approved at all.
+// `authority-request.classes.test.ts` holds this table against the engine's.
+export const CLASS_KEYS: Record<string, TranslationKey> = {
   identifier: "authority.boundary.class.identifier",
   uuid: "authority.boundary.class.uuid",
   integer: "authority.boundary.class.integer",
   date: "authority.boundary.class.date",
   timestamp: "authority.boundary.class.timestamp",
+  file_name: "authority.boundary.class.file_name",
 };
 
 export function presentRequestBoundary(
