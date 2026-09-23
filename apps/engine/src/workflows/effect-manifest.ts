@@ -28,6 +28,13 @@ import { JsonValueSchema, type RequestStep, WorkflowDefSchema } from "./types.ts
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const environment = z.enum(["dev", "prod"]);
 
+/** Which call step an effect or issue came through. Exactly one element: a
+ *  called workflow that itself calls one is refused, so nothing nests deeper.
+ *  An array, not a joined string — step ids have no grammar, so any separator
+ *  would be ambiguous in a workflow whose step id contains it. */
+export const CallPathSchema = z.array(z.string().min(1)).length(1);
+export type CallPath = z.infer<typeof CallPathSchema>;
+
 export const ResolvedEffectBindingSchema = z
   .object({
     tenant_id: z.string().uuid(),
@@ -52,6 +59,36 @@ export const ResolvedEffectBindingSchema = z
   .strict();
 export type ResolvedEffectBinding = z.infer<typeof ResolvedEffectBindingSchema>;
 
+/** One `call` step's target, resolved by the caller: which workflow version it
+ *  starts and how that version's own requests are bound. The compiler compiles
+ *  it here rather than trusting a summary, so a child's effects are reviewed on
+ *  the same terms as the parent's. */
+export const ResolvedCallSchema = z
+  .object({
+    step_id: z.string().min(1),
+    workflow_id: z.string().uuid(),
+    workflow_slug: z.string().min(1),
+    workflow_version_id: z.string().uuid(),
+    execution_options_digest: digest,
+    definition: JsonValueSchema,
+    bindings: z.array(ResolvedEffectBindingSchema).max(200),
+  })
+  .strict();
+export type ResolvedCall = z.infer<typeof ResolvedCallSchema>;
+
+/** What the approval pins about a called workflow. Slug and name are display
+ *  only and stay out: renaming a workflow must not invalidate a grant, while
+ *  changing what it DOES must. */
+const CallPinSchema = z
+  .object({
+    step_id: z.string().min(1),
+    workflow_id: z.string().uuid(),
+    workflow_version_id: z.string().uuid(),
+    workflow_digest: digest,
+    execution_options_digest: digest,
+  })
+  .strict();
+
 const inputSchema = z
   .object({
     tenant_id: z.string().uuid(),
@@ -63,8 +100,25 @@ const inputSchema = z
     execution_options_digest: digest,
     definition: JsonValueSchema,
     bindings: z.array(ResolvedEffectBindingSchema).max(200),
+    calls: z.array(ResolvedCallSchema).max(50).optional(),
   })
   .strict();
+
+/** Why a `call` step was left unbound. Travels beside the manifest, never in
+ *  it: a refusal is a reason for the author, not part of what was approved. */
+export type CallRefusalReason =
+  /** No resolvable target: archived, deleted, or another tenant's. */
+  | "child_unavailable"
+  /** The step does not name exactly one fixed workflow, so which workflow runs
+   *  could change between the approval and the run. */
+  | "target_not_static"
+  /** The called workflow calls one itself. Approving it would mean approving a
+   *  chain whose far end nobody reviewed. */
+  | "child_calls_workflow";
+export interface CallRefusal {
+  step_id: string;
+  reason: CallRefusalReason;
+}
 
 const ManifestIssueCodeSchema = z.enum([
   "missing_binding",
@@ -91,9 +145,19 @@ export const WorkflowEffectManifestSchema = z
         read_query: ReadQueryBoundarySchema.optional(),
         operation: z.string(),
         effect: z.enum(["read", "write", "unknown", "destructive"]),
+        call_path: CallPathSchema.optional(),
       }),
     ),
-    issues: z.array(z.object({ step_id: z.string(), code: ManifestIssueCodeSchema })),
+    issues: z.array(
+      z.object({
+        step_id: z.string(),
+        code: ManifestIssueCodeSchema,
+        call_path: CallPathSchema.optional(),
+      }),
+    ),
+    // Absent when this workflow calls none. Present-but-empty would be a second
+    // way to say the same thing, and the digest would tell the two apart.
+    calls: z.array(CallPinSchema).min(1).optional(),
   })
   .strict()
   .openapi("WorkflowEffectManifest");
@@ -145,6 +209,7 @@ export function compileWorkflowEffectManifest(raw: unknown): {
   manifest: WorkflowEffectManifest;
   digest: string;
   eligible_for_repeated_runs: boolean;
+  call_refusals: CallRefusal[];
 } {
   const input = inputSchema.parse(raw);
   const definition = WorkflowDefSchema.parse(input.definition);
@@ -160,6 +225,18 @@ export function compileWorkflowEffectManifest(raw: unknown): {
     }
     bindings.set(binding.step_id, binding);
   }
+  const callIds = new Set(
+    definition.steps.filter((step) => step.kind === "call").map((step) => step.id),
+  );
+  const calls = new Map<string, ResolvedCall>();
+  for (const call of input.calls ?? []) {
+    if (calls.has(call.step_id) || !callIds.has(call.step_id)) {
+      throw new Error("resolved calls must identify each call step at most once");
+    }
+    calls.set(call.step_id, call);
+  }
+  const call_refusals: CallRefusal[] = [];
+  const pins: z.infer<typeof CallPinSchema>[] = [];
   const manifest: WorkflowEffectManifest = {
     schema_version: 1,
     tenant_id: input.tenant_id,
@@ -172,8 +249,51 @@ export function compileWorkflowEffectManifest(raw: unknown): {
     issues: [],
   };
   for (const step of definition.steps) {
-    if (step.kind === "call")
-      manifest.issues.push({ step_id: step.id, code: "unbound_workflow_call" });
+    if (step.kind === "call") {
+      const call = calls.get(step.id);
+      const refusal = callRefusalFor(step, call);
+      if (refusal) {
+        call_refusals.push({ step_id: step.id, reason: refusal });
+        manifest.issues.push({ step_id: step.id, code: "unbound_workflow_call" });
+        continue;
+      }
+      if (!call) continue;
+      // The child is compiled here, by the same code that compiles this
+      // workflow — never summarised by its resolver. It is compiled WITHOUT
+      // `calls`, so a child that calls a workflow fails closed a second time:
+      // it would raise `unbound_workflow_call` even if the refusal above were
+      // ever weakened.
+      const child = compileWorkflowEffectManifest({
+        tenant_id: input.tenant_id,
+        workflow_id: call.workflow_id,
+        workflow_version_id: call.workflow_version_id,
+        execution_environment: input.execution_environment,
+        execution_options_digest: call.execution_options_digest,
+        definition: call.definition,
+        bindings: call.bindings,
+      });
+      const call_path: CallPath = [step.id];
+      for (const effect of child.manifest.effects) {
+        // A child never receives the proposal-derived profiles, so carrying one
+        // means the resolver handed it something it was not offered. Report it
+        // rather than fold a permission nobody reviewed for this context.
+        if (effect.report_delivery || effect.content_publication) {
+          manifest.issues.push({ step_id: effect.step_id, code: "binding_mismatch", call_path });
+        }
+        manifest.effects.push({ ...effect, call_path });
+      }
+      for (const issue of child.manifest.issues) {
+        manifest.issues.push({ ...issue, call_path });
+      }
+      pins.push({
+        step_id: step.id,
+        workflow_id: call.workflow_id,
+        workflow_version_id: call.workflow_version_id,
+        workflow_digest: child.manifest.workflow_digest,
+        execution_options_digest: call.execution_options_digest,
+      });
+      continue;
+    }
     if (step.kind !== "request") continue;
     const issue = (code: ManifestIssueCode) => manifest.issues.push({ step_id: step.id, code });
     const binding = bindings.get(step.id);
@@ -302,17 +422,74 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       effect,
     });
   }
-  manifest.effects.sort((a, b) => (a.step_id < b.step_id ? -1 : a.step_id > b.step_id ? 1 : 0));
-  manifest.issues.sort((a, b) =>
-    `${a.step_id}:${a.code}` < `${b.step_id}:${b.code}`
-      ? -1
-      : `${a.step_id}:${a.code}` > `${b.step_id}:${b.code}`
-        ? 1
-        : 0,
+  if (pins.length > 0) {
+    manifest.calls = pins.sort((a, b) =>
+      a.step_id < b.step_id ? -1 : a.step_id > b.step_id ? 1 : 0,
+    );
+  }
+  manifest.effects.sort(
+    (a, b) =>
+      comparePath(a.call_path, b.call_path) ||
+      (a.step_id < b.step_id ? -1 : a.step_id > b.step_id ? 1 : 0),
+  );
+  manifest.issues.sort(
+    (a, b) =>
+      comparePath(a.call_path, b.call_path) ||
+      // The step/code key stays a concatenation for byte-identical ordering
+      // with every manifest compiled before call paths existed. A step id may
+      // contain `:`, so this is not a safe key in general — only an unchanged
+      // one.
+      (`${a.step_id}:${a.code}` < `${b.step_id}:${b.code}`
+        ? -1
+        : `${a.step_id}:${a.code}` > `${b.step_id}:${b.code}`
+          ? 1
+          : 0),
   );
   return {
     manifest,
     digest: workflowJsonDigest(manifest),
     eligible_for_repeated_runs: manifest.issues.length === 0,
+    call_refusals: call_refusals.sort((a, b) =>
+      a.step_id < b.step_id ? -1 : a.step_id > b.step_id ? 1 : 0,
+    ),
   };
+}
+
+/** Own effects before called ones, and within a call, by its step id. Element
+ *  by element with the shorter path first, so the order never depends on how a
+ *  path might have been flattened into a string. */
+function comparePath(a: CallPath | undefined, b: CallPath | undefined): number {
+  const left = a ?? [];
+  const right = b ?? [];
+  for (let i = 0; i < Math.min(left.length, right.length); i += 1) {
+    const x = left[i] ?? "";
+    const y = right[i] ?? "";
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return left.length - right.length;
+}
+
+/** Why this call step cannot be folded into the approval, or null when it can.
+ *  The static-target rule lives here rather than in `CallStepSchema`: adding a
+ *  refinement or a default there would change every workflow's normalized
+ *  definition, and with it every execution-options digest — invalidating live
+ *  approvals that have nothing to do with calls. */
+function callRefusalFor(
+  step: { workflow_id?: string | undefined; workflow_slug?: string | undefined },
+  call: ResolvedCall | undefined,
+): CallRefusalReason | null {
+  const byId = typeof step.workflow_id === "string" && step.workflow_id.length > 0;
+  const bySlug = typeof step.workflow_slug === "string" && step.workflow_slug.length > 0;
+  if (byId === bySlug) return "target_not_static";
+  if (hasRuntimeValue(step.workflow_id ?? step.workflow_slug ?? "")) return "target_not_static";
+  if (!call) return "child_unavailable";
+  // The resolver looked the target up; this re-checks that what it returned is
+  // what the step names, so a resolver bug cannot substitute another workflow.
+  if (byId && call.workflow_id !== step.workflow_id) return "target_not_static";
+  if (bySlug && call.workflow_slug !== step.workflow_slug) return "target_not_static";
+  const childDefinition = WorkflowDefSchema.safeParse(call.definition);
+  if (!childDefinition.success) return "child_unavailable";
+  if (childDefinition.data.steps.some((childStep) => childStep.kind === "call"))
+    return "child_calls_workflow";
+  return null;
 }
