@@ -347,3 +347,61 @@ test("a held request is evidence too — target and size both", async () => {
   // Read from the content it would have sent, with headroom — never invented.
   expect(proposals[0]?.boundary?.max_body_bytes).toBeGreaterThan(0);
 });
+
+test("the preparation run the dialog itself asks for counts as evidence", async () => {
+  // Two paths record the same fact differently: a dry-run preview leaves
+  // `held_request` in the result envelope, the preparation run leaves
+  // `prepared_request_review` in the request metadata. Reading only the first
+  // meant the run a reviewer had just been told to perform produced nothing
+  // this derivation could use — the dead end looked like the workflow's fault.
+  await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
+  const [execution] = await ctx.db
+    .insert(executions)
+    .values({
+      tenant_id,
+      workflow_id,
+      status: "succeeded",
+      request_source: "api",
+      execution_mode: "prod",
+    })
+    .returning();
+  await ctx.db.insert(executionSteps).values({
+    tenant_id,
+    execution_id: execution?.id as string,
+    step_key: "send",
+    step_index: 0,
+    kind: "request" as const,
+    status: "succeeded" as const,
+    request_meta: {
+      driver: "http",
+      method: "PATCH",
+      url: null,
+      extras: {
+        held: true,
+        prepared_request_review: {
+          url: "https://api.example.test/v1/pages/2c1a3b44-5d6e-4f70-8192-a3b4c5d6e7f8",
+          method: "PATCH",
+          redacted_request_json: JSON.stringify({ body: { archived: true }, url_query: {} }),
+        },
+      },
+    },
+  });
+  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    definition: definition([
+      {
+        id: "send",
+        kind: "request",
+        connector_id: CONNECTOR,
+        method: "PATCH",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+        path: "/v1/pages/${input.page_id}",
+        body: { archived: true },
+      },
+    ]),
+  });
+  expect(unproposable).toEqual([]);
+  expect(proposals[0]?.boundary?.variables).toEqual({ "input.page_id": { class: "uuid" } });
+  expect(proposals[0]?.boundary?.max_body_bytes).toBeGreaterThan(0);
+});
