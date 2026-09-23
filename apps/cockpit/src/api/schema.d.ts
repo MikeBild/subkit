@@ -17495,7 +17495,7 @@ export interface components {
                             enum: string[];
                         } | {
                             /** @enum {string} */
-                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp";
+                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "file_name";
                         };
                     };
                     query: {
@@ -17669,7 +17669,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp";
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "file_name";
                     };
                 };
                 max_body_bytes: number;
