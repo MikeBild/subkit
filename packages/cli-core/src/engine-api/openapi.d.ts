@@ -17521,11 +17521,22 @@ export interface components {
                 operation: string;
                 /** @enum {string} */
                 effect: "read" | "write" | "unknown" | "destructive";
+                call_path?: string[];
             }[];
             issues: {
                 step_id: string;
                 /** @enum {string} */
                 code: "missing_binding" | "binding_mismatch" | "environment_mismatch" | "dynamic_request" | "unknown_effect" | "destructive_effect" | "unbound_workflow_call";
+                call_path?: string[];
+            }[];
+            calls?: {
+                step_id: string;
+                /** Format: uuid */
+                workflow_id: string;
+                /** Format: uuid */
+                workflow_version_id: string;
+                workflow_digest: string;
+                execution_options_digest: string;
             }[];
         };
         WorkflowAuthorityPreview: {
