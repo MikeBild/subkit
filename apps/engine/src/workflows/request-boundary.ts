@@ -84,6 +84,13 @@ export const VALUE_CLASSES = {
   integer: /^(0|[1-9][0-9]{0,18})$/,
   date: /^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/,
   timestamp: /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$/,
+  // One file name, and only ever one path segment of it. A content repository
+  // addresses a file by name, so without this the only bounded shape was an
+  // enum of every file that would ever exist. Exactly one dot, a non-empty
+  // name before it and a short extension after: no `/`, so it cannot reach a
+  // sibling directory; no leading dot and no second dot, so `..` and
+  // `a/../../b` cannot be spelled.
+  file_name: /^[A-Za-z0-9_-]{1,200}\.[A-Za-z0-9]{1,16}$/,
 } as const;
 type ValueClass = keyof typeof VALUE_CLASSES;
 const VALUE_CLASS_NAMES = Object.keys(VALUE_CLASSES) as [ValueClass, ...ValueClass[]];
@@ -94,6 +101,7 @@ const CLASS_SAMPLE: Record<ValueClass, string> = {
   integer: "0",
   date: "2000-01-01",
   timestamp: "2000-01-01T00:00:00Z",
+  file_name: "a.a",
 };
 
 // The `enum` branch stays FIRST: a boundary written before classes existed
