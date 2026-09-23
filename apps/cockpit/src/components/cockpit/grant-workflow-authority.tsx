@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { effectKey, groupByCall } from "@/lib/authority-calls";
 import { presentRequestBoundary } from "@/lib/authority-request";
 import { presentStorageScope } from "@/lib/authority-storage";
 import { useI18n } from "@/lib/i18n-context";
@@ -185,10 +186,10 @@ export function GrantWorkflowAuthority({
       effect.content_publication?.kind === "content_release" ? [effect.content_publication] : [],
     ) ?? [];
   const recurringContent = publications.length > 0 && !unsupported;
-  const storageScopes =
-    review?.manifest.effects.flatMap((effect) => (effect.storage ? [effect.storage] : [])) ?? [];
-  const requestBoundaries =
-    review?.manifest.effects.flatMap((effect) => (effect.boundary ? [effect.boundary] : [])) ?? [];
+  // One approval can cover more than one workflow. Own permissions first, then
+  // a section per called workflow — grouped by call path, because a parent and
+  // a child may use the same step id and must not be merged into one row.
+  const callGroups = groupByCall(review?.manifest, review?.execution_shape);
   const incomplete = review?.execution_shape.requests.some(
     (request) => request.request_review_truncated || request.opaque_payload_omitted,
   );
@@ -303,67 +304,27 @@ export function GrantWorkflowAuthority({
                 </AlertDescription>
               </Alert>
             ))}
-          {storageScopes.map((scope, index) => {
-            const shown = presentStorageScope(scope, (value) =>
-              new Intl.NumberFormat(locale).format(value),
-            );
-            return (
-              <Alert
-                key={index}
-                data-testid={
-                  shown.destructive
-                    ? "authority-storage-boundary-destructive"
-                    : "authority-storage-boundary"
-                }
-                variant={shown.destructive ? "destructive" : "default"}
-                className={shown.destructive ? undefined : "bg-accent/10"}
+          {callGroups.map((group) =>
+            group.step_id === null ? (
+              <BoundaryPanels key="own" effects={group.effects} />
+            ) : (
+              <section
+                key={effectKey([group.step_id], "$call")}
+                className="flex flex-col gap-4 rounded-md border border-border/60 p-3"
+                data-testid="authority-call-section"
               >
-                <AlertTitle>{t(shown.title)}</AlertTitle>
-                <AlertDescription>
-                  <p>{t("authority.storage.folder", { folder: scope.key_prefix })}</p>
-                  <p className="break-all">{scope.base_url}</p>
-                  <p>{t(shown.detail, shown.values)}</p>
-                </AlertDescription>
-              </Alert>
-            );
-          })}
-          {requestBoundaries.map((boundary, index) => {
-            const shown = presentRequestBoundary(boundary, (value) =>
-              new Intl.NumberFormat(locale).format(value),
-            );
-            return (
-              <Alert
-                key={index}
-                data-testid={
-                  shown.destructive
-                    ? "authority-request-boundary-destructive"
-                    : "authority-request-boundary"
-                }
-                variant={shown.destructive ? "destructive" : "default"}
-                className={shown.destructive ? undefined : "bg-accent/10"}
-              >
-                <AlertTitle>{t(shown.title)}</AlertTitle>
-                <AlertDescription>
-                  <p className="break-all">
-                    {t("authority.boundary.target", {
-                      method: boundary.method,
-                      target: shown.target,
-                    })}
-                  </p>
-                  {shown.variables.map((variable) => (
-                    <p key={variable.values.name}>{t(variable.key, variable.values)}</p>
-                  ))}
-                  {shown.classNotice && <p>{t("authority.boundary.classNotice")}</p>}
-                  {shown.declaredDestructive && (
-                    <p>{t("authority.boundary.declaredDestructive")}</p>
-                  )}
-                  <p>{t(shown.body.key, shown.body.values)}</p>
-                  <p>{t("authority.boundary.calls", { count: shown.calls })}</p>
-                  <p>{t("authority.boundary.contentNotice")}</p>
-                </AlertDescription>
-              </Alert>
-            );
-          })}
+                <p className="font-medium">
+                  {t("authority.call.title", {
+                    step: group.step_id,
+                    name: group.workflow_name ?? t("common.unknown"),
+                    version: group.version ?? t("common.unknown"),
+                  })}
+                </p>
+                <p className="text-muted-foreground text-sm">{t("authority.call.scope")}</p>
+                <BoundaryPanels effects={group.effects} />
+              </section>
+            ),
+          )}
           {recurringReport && (
             <Alert data-testid="authority-report-boundary" className="bg-accent/10">
               <AlertTitle>{t("authority.report.recipients")}</AlertTitle>
@@ -688,5 +649,79 @@ export function GrantWorkflowAuthority({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** The permission panels for one workflow's effects — this one's own, or one
+ *  it starts. Keys are (call path, step id): a parent and a child may share a
+ *  step id, and a shared key would drop one of the two from the list. */
+function BoundaryPanels({ effects }: { effects: WorkflowAuthorityPreview["manifest"]["effects"] }) {
+  const { t, locale } = useI18n();
+  return (
+    <>
+      {effects
+        .flatMap((effect) => (effect.storage ? [[effect, effect.storage] as const] : []))
+        .map(([effect, scope]) => {
+          const shown = presentStorageScope(scope, (value) =>
+            new Intl.NumberFormat(locale).format(value),
+          );
+          return (
+            <Alert
+              key={effectKey(effect.call_path, effect.step_id)}
+              data-testid={
+                shown.destructive
+                  ? "authority-storage-boundary-destructive"
+                  : "authority-storage-boundary"
+              }
+              variant={shown.destructive ? "destructive" : "default"}
+              className={shown.destructive ? undefined : "bg-accent/10"}
+            >
+              <AlertTitle>{t(shown.title)}</AlertTitle>
+              <AlertDescription>
+                <p>{t("authority.storage.folder", { folder: scope.key_prefix })}</p>
+                <p className="break-all">{scope.base_url}</p>
+                <p>{t(shown.detail, shown.values)}</p>
+              </AlertDescription>
+            </Alert>
+          );
+        })}
+      {effects
+        .flatMap((effect) => (effect.boundary ? [[effect, effect.boundary] as const] : []))
+        .map(([effect, boundary]) => {
+          const shown = presentRequestBoundary(boundary, (value) =>
+            new Intl.NumberFormat(locale).format(value),
+          );
+          return (
+            <Alert
+              key={effectKey(effect.call_path, effect.step_id)}
+              data-testid={
+                shown.destructive
+                  ? "authority-request-boundary-destructive"
+                  : "authority-request-boundary"
+              }
+              variant={shown.destructive ? "destructive" : "default"}
+              className={shown.destructive ? undefined : "bg-accent/10"}
+            >
+              <AlertTitle>{t(shown.title)}</AlertTitle>
+              <AlertDescription>
+                <p className="break-all">
+                  {t("authority.boundary.target", {
+                    method: boundary.method,
+                    target: shown.target,
+                  })}
+                </p>
+                {shown.variables.map((variable) => (
+                  <p key={variable.values.name}>{t(variable.key, variable.values)}</p>
+                ))}
+                {shown.classNotice && <p>{t("authority.boundary.classNotice")}</p>}
+                {shown.declaredDestructive && <p>{t("authority.boundary.declaredDestructive")}</p>}
+                <p>{t(shown.body.key, shown.body.values)}</p>
+                <p>{t("authority.boundary.calls", { count: shown.calls })}</p>
+                <p>{t("authority.boundary.contentNotice")}</p>
+              </AlertDescription>
+            </Alert>
+          );
+        })}
+    </>
   );
 }

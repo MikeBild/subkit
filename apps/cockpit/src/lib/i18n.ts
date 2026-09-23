@@ -234,6 +234,9 @@ const EN = {
     "Reviewed ceiling: {count} requests per run. This number is reviewed, but not yet counted by the system.",
   "authority.boundary.contentNotice":
     "The content is decided at run time. This approval limits where the request goes and how large it is — not what it contains, for example which records it changes or removes.",
+  "authority.call.title": "Step {step} starts the workflow \u201e{name}\u201c (version {version})",
+  "authority.call.scope":
+    "Everything below is what that workflow does on every start. This approval covers exactly this version; a new version needs a new approval.",
   "authority.readPath":
     "Read records in this collection. Record IDs may change; the server and collection stay fixed.",
   "authority.digest": "Effect manifest digest",
@@ -1895,6 +1898,10 @@ const DE: Record<TranslationKey, string> = {
     "Geprüfte Obergrenze: {count} Anfragen pro Lauf. Diese Zahl ist geprüft, wird vom System aber noch nicht mitgezählt.",
   "authority.boundary.contentNotice":
     "Der Inhalt entsteht erst zur Laufzeit. Diese Freigabe begrenzt, wohin die Anfrage geht und wie groß sie ist — nicht, was sie enthält, zum Beispiel welche Einträge sie ändert oder entfernt.",
+  "authority.call.title":
+    "Schritt {step} startet den Workflow \u201e{name}\u201c (Version {version})",
+  "authority.call.scope":
+    "Alles Folgende führt dieser Workflow bei jedem Start aus. Die Freigabe gilt genau für diese Version; eine neue Version braucht eine neue Freigabe.",
   "authority.readPath":
     "Einträge dieser Sammlung lesen. Ihre IDs dürfen wechseln; Server und Sammlung bleiben fest.",
   "authority.digest": "Prüfsumme des Wirkungsmanifests",
