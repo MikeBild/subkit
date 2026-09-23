@@ -17571,12 +17571,21 @@ export interface components {
                 redacted_request_json: string;
                 request_review_truncated: boolean;
                 opaque_payload_omitted: boolean;
+                call_path?: string[];
             }[];
             iterations: {
                 step_id: string;
                 /** @enum {string} */
                 kind: "loop" | "for_each";
                 body_step_ids: string[];
+                call_path?: string[];
+            }[];
+            calls?: {
+                step_id: string;
+                workflow_id: string;
+                workflow_slug: string;
+                workflow_name: string;
+                version: number | null;
             }[];
             /** @enum {boolean} */
             run_limit_is_request_limit: false;
