@@ -280,7 +280,31 @@ test("the class patterns are pinned: a live approval must never change meaning",
     integer: "^(0|[1-9][0-9]{0,18})$",
     date: "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$",
     timestamp: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+    file_name: "^[A-Za-z0-9_-]{1,200}\\.[A-Za-z0-9]{1,16}$",
   });
+});
+
+test("a file name stays one segment and cannot walk out of its folder", () => {
+  // The class exists because a content repository addresses a file by name;
+  // without it the only bounded shape was an enum of every file that would
+  // ever exist. It must not become a way to reach a sibling directory.
+  const ok = VALUE_CLASSES.file_name;
+  expect(ok.test("my-essay.md")).toBe(true);
+  expect(ok.test("post_2026.mdx")).toBe(true);
+  for (const bad of [
+    "..",
+    "../secret.md",
+    "a/b.md",
+    ".env",
+    "essay..md",
+    "essay.md.bak",
+    "essay.",
+    ".md",
+    "essay%2Fother.md",
+    "essay .md",
+  ]) {
+    expect(ok.test(bad)).toBe(false);
+  }
 });
 
 test("review and dispatch agree on a class segment and varying query values", () => {
