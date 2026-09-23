@@ -69,6 +69,20 @@ const previewSchema = z
     preparation_required: z.boolean().optional(),
     content_items: z.array(z.object({ id: z.string().uuid(), label: z.string() })).optional(),
     unavailable_steps: z.array(z.string()),
+    // Why a declared folder was refused, in the terms a human can act on: the
+    // key the step really wrote and the folder that does not contain it. The
+    // manifest carries only the issue code; without this the reviewer is told
+    // that something changed and not what.
+    boundary_contradictions: z
+      .array(
+        z.object({
+          step_id: z.string(),
+          declared_prefix: z.string(),
+          observed_key: z.string(),
+          observed_at: z.string(),
+        }),
+      )
+      .optional(),
     execution_shape: AuthorityExecutionShapeSchema,
     schedules: z.array(
       z.object({ cron: z.string(), timezone: z.string(), next_run_at: z.string().nullable() }),
