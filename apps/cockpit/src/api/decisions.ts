@@ -1,3 +1,4 @@
+import type { DigestFailureGroup } from "@/lib/failing-workflows";
 import { ApiError, apiRequest } from "./client";
 import type { components } from "./schema";
 
@@ -113,6 +114,18 @@ export function listSkillCandidateEvidence(
   id: string,
 ): Promise<{ items: SkillCandidateEvidence[] }> {
   return apiRequest(`/v1/skill-candidates/${encodeURIComponent(id)}/evidence`);
+}
+
+/**
+ * The workflows that run on an approval and keep failing. The engine already
+ * groups these for the operator health digest; the decisions page is where a
+ * person can act on them.
+ */
+export async function listFailingWorkflows(): Promise<DigestFailureGroup[]> {
+  const digest = await apiRequest<{ failure_groups?: DigestFailureGroup[] }>(
+    "/v1/operator/health-digest?window_hours=168",
+  );
+  return Array.isArray(digest?.failure_groups) ? digest.failure_groups : [];
 }
 
 export type HeldSchedule = components["schemas"]["ScheduleEntry"];

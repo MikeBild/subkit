@@ -431,7 +431,10 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
           value: numberOf(row.production_failures_24h),
           unit: "count",
           severity: numberOf(row.production_failures_24h) > 0 ? "critical" : "healthy",
-          path: "/cockpit/runs",
+          // A count that names failed runs has to lead to the failed runs. It
+          // pointed at the unfiltered list, where eleven thousand rows hid the
+          // one the number was about.
+          path: "/cockpit/runs?status=failed",
           labelId: "operational.open_runs",
           prometheus: "subkit_operational_production_incidents_24h",
         }),
@@ -444,7 +447,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
           value: numberOf(row.trial_failures_24h),
           unit: "count",
           severity: "information",
-          path: "/cockpit/runs",
+          path: "/cockpit/runs?status=failed",
           labelId: "operational.open_runs",
           prometheus: "subkit_operational_trial_failures_24h",
         }),

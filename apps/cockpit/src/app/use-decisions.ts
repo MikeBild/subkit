@@ -3,10 +3,12 @@ import { apiRequest } from "@/api/client";
 import {
   type HeldSchedule,
   listAwaitingConversations,
+  listFailingWorkflows,
   listHeldSchedules,
   listProposedPatchCandidates,
   listProposedSkillCandidates,
 } from "@/api/decisions";
+import { type FailingWorkflow, failingWorkflows } from "@/lib/failing-workflows";
 import { useI18n } from "@/lib/i18n-context";
 import type { NameIndex } from "@/lib/name-index";
 import {
@@ -35,10 +37,14 @@ export interface DecisionSources {
   patches: boolean;
   skills: boolean;
   conversations: boolean;
+  /** Reading the operator digest, which is where failing runs are grouped. */
+  failing: boolean;
 }
 
 export interface DecisionQueue {
   heldSchedules: HeldSchedule[];
+  /** Approved, scheduled, and failing — the opposite of a held schedule. */
+  failingWorkflows: FailingWorkflow[];
   items: DecisionItem[];
   /** Resolves the ids a decision carries to names, so the context columns can
    *  say which workflow rather than "Workflow". */
@@ -63,6 +69,7 @@ export function decisionSources(permissions: readonly string[]): DecisionSources
     patches: allowed.has("workflow:read"),
     skills: allowed.has("skill:read"),
     conversations: allowed.has("conversation:list") || allowed.has("conversation:read"),
+    failing: allowed.has("stats:read"),
   };
 }
 
@@ -112,11 +119,14 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
     refetchInterval: 60_000,
     staleTime: 30_000,
     queryFn: async () => {
-      const [patches, skills, conversations, heldSchedules] = await Promise.all([
+      const [patches, skills, conversations, heldSchedules, failureGroups] = await Promise.all([
         sources.patches ? listProposedPatchCandidates() : null,
         sources.skills ? listProposedSkillCandidates() : null,
         sources.conversations ? listAwaitingConversations() : null,
         sources.patches ? listHeldSchedules() : [],
+        // A digest that cannot be read is not a reason to lose the rest of the
+        // queue: this section simply stays empty.
+        sources.failing ? listFailingWorkflows().catch(() => []) : [],
       ]);
       const items: DecisionItem[] = [
         ...(patches?.items ?? []).map((candidate) => {
@@ -148,6 +158,7 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
       ];
       return {
         heldSchedules,
+        failingWorkflows: failingWorkflows(failureGroups),
         // Deduplicated here, not at the card: two sources may hand out the same
         // row, and one position is one decision on every surface that shows it.
         items: [...new Map(items.map((item) => [decisionKey(item), item])).values()],
@@ -163,15 +174,20 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
   const items = query.data?.items ?? [];
   const now = Date.now();
   const heldSchedules = query.data?.heldSchedules ?? [];
+  const failing = query.data?.failingWorkflows ?? [];
   const open = query.data
     ? countOpenDecisions({ items, totals: query.data.totals, nowMs: now })
     : null;
   if (open) {
-    open.total += heldSchedules.length;
-    open.subsets.blocking += heldSchedules.length;
+    // Counted with the rest: a workflow that runs and fails is as open a
+    // decision as one that cannot start, and a badge that leaves it out was
+    // the reason nobody looked.
+    open.total += heldSchedules.length + failing.length;
+    open.subsets.blocking += heldSchedules.length + failing.length;
   }
   return {
     heldSchedules,
+    failingWorkflows: failing,
     items,
     names: nameIndex,
     canReadRuns: permissions.includes("execution:read"),

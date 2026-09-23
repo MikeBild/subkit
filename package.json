@@ -1,6 +1,6 @@
 {
   "name": "subkit",
-  "version": "8.0.87",
+  "version": "8.0.88",
   "private": true,
   "workspaces": [
     "apps/cockpit"

@@ -391,6 +391,21 @@ export async function insertStepRow(
   });
 }
 
+/**
+ * The codes the runtime uses when it refuses a dispatch that a human's approval
+ * does not cover. Closed on purpose: a refusal that is not listed here writes no
+ * audit row, which is wrong, but a catch-all that logged every failure as a
+ * governance event would be worse — it would bury the refusals among timeouts
+ * and 404s, and the trail exists to answer one question precisely: did the limit
+ * hold, and where.
+ */
+const BOUNDARY_REFUSALS = new Set([
+  "request_outside_declared_boundary",
+  "execution_authority_changed",
+  "execution_boundary_exhausted",
+  "execution_boundary_mismatch",
+]);
+
 export async function finalizeStepRow(
   db: Db,
   step_row_id: string,
@@ -432,6 +447,31 @@ export async function finalizeStepRow(
       });
     const row = updated[0];
     if (!row) return;
+    // Written inside the same transaction as the step row: a refusal that is
+    // visible in the run but missing from the trail is exactly the gap this
+    // closes, and two writes that can disagree would reopen it.
+    if (result.error?.code && BOUNDARY_REFUSALS.has(result.error.code))
+      await auditAwait(
+        {
+          tenant_id: row.tenant_id,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.EXECUTION_BOUNDARY_REFUSED,
+          resource_type: "execution",
+          resource_id: row.execution_id,
+          result: "denied",
+          reason: result.error.code,
+          metadata: {
+            step_key: row.step_key,
+            step_index: row.step_index,
+            kind: row.kind,
+            // The message names the two values a reader needs (what was asked
+            // for, what was approved). It is engine-authored prose, not payload.
+            detail: String(result.error.message ?? "").slice(0, 500),
+          },
+        },
+        tx,
+      );
     await writeEvent(tx, {
       tenant_id: row.tenant_id,
       channel: "execution.status",
