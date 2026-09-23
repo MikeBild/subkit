@@ -658,14 +658,16 @@ export function CatalogDetailPage({
         {resource === "workflows" ? (
           <WorkflowAuthorities
             workflowId={id}
-            versionLabel={
-              typeof (record.version ?? record.current_version) === "number"
-                ? `v${record.version ?? record.current_version}`
-                : undefined
-            }
-            versionId={
-              typeof record.current_version_id === "string" ? record.current_version_id : null
-            }
+            workflow={{
+              current_version_id:
+                typeof record.current_version_id === "string" ? record.current_version_id : null,
+              draft_version_id:
+                typeof record.draft_version_id === "string" ? record.draft_version_id : null,
+              current_version:
+                typeof (record.version ?? record.current_version) === "number"
+                  ? ((record.version as number) ?? (record.current_version as number))
+                  : null,
+            }}
             canWrite={canWrite}
           />
         ) : null}

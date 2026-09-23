@@ -144,8 +144,169 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
       .evaluate((node) => node.scrollWidth > node.clientWidth + 1);
     if (overflow) throw new Error("Authority history overflows the viewport");
     await verifyGrant(page, stand, workflowId, locale, authority, capture);
+    await verifyPreparedVersion(page, stand, workflowId, locale, capture);
   } finally {
     await page.unroute(pattern, handler);
+  }
+}
+
+/**
+ * A repaired version waiting next to the running one must be what the approval
+ * judges.
+ *
+ * Three production workflows sat blocked at once with exactly this shape: the
+ * running version could not be bound — which is why the schedule was held — and
+ * the version that fixed it was saved one number higher. The page compiled the
+ * approval from `current_version_id`, so the reader was shown the problems of
+ * the version they were not supposed to approve, with no way to reach the one
+ * that worked. The fixture therefore serves a workflow WITH a prepared draft;
+ * without that this whole panel renders in no screenshot at all.
+ */
+async function verifyPreparedVersion(page, stand, workflowId, locale, capture) {
+  const activeVersionId = "00000000-0000-4000-8000-000000000201";
+  const draftVersionId = "00000000-0000-4000-8000-000000000202";
+  const workflowPattern = `**/v1/workflows/${workflowId}`;
+  const draftPattern = `**/v1/workflows/${workflowId}/draft`;
+  const previewPattern = `**/v1/workflows/${workflowId}/versions/*/authority-preview?*`;
+  const grantPattern = `**/v1/workflows/${workflowId}/execution-authorities`;
+  const activatePattern = `**/v1/workflows/${workflowId}/activate-draft`;
+  let reviewedVersion = null;
+  let granted = null;
+  let activated = null;
+  const record = async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: workflowId,
+        name: "Monatsreport",
+        slug: "monatsreport",
+        lifecycle: "active",
+        current_version: 8,
+        current_version_id: activeVersionId,
+        draft_version_id: draftVersionId,
+        steps: [{ id: "publish-report", name: "Report senden", kind: "request" }],
+        updated_at: "2026-08-10T09:00:00.000Z",
+      }),
+    });
+  };
+  const draft = async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        workflow_id: workflowId,
+        version_id: draftVersionId,
+        version: 9,
+        current_version_id: activeVersionId,
+        digest: "9".repeat(64),
+        definition: { name: "Monatsreport", steps: [] },
+      }),
+    });
+  const preview = async (route) => {
+    const url = new URL(route.request().url());
+    reviewedVersion = url.pathname.split("/").at(-2);
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        digest: "d".repeat(64),
+        manifest: {
+          schema_version: 1,
+          workflow_id: workflowId,
+          workflow_version_id: reviewedVersion,
+          // Echoed, not asserted: a review that answers for a different
+          // environment than the one asked for is refused by the dialog, and
+          // this scenario is about which VERSION is judged.
+          execution_environment: url.searchParams.get("environment"),
+          effects: [],
+          issues: [],
+        },
+        eligible_for_repeated_runs: true,
+        unavailable_steps: [],
+        suggested_bounds: {
+          valid_from: new Date().toISOString(),
+          valid_until: new Date(Date.now() + 86_400_000).toISOString(),
+          max_runs: 1,
+        },
+        execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
+      }),
+    });
+  };
+  const grant = async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    granted = route.request().postDataJSON();
+    return route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ id: draftVersionId, ...granted }),
+    });
+  };
+  const activate = async (route) => {
+    activated = route.request().postDataJSON();
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        workflow_version_id: draftVersionId,
+        activated: true,
+        execution_authorized: false,
+      }),
+    });
+  };
+  await page.route(workflowPattern, record);
+  await page.route(draftPattern, draft);
+  await page.route(previewPattern, preview);
+  await page.route(grantPattern, grant);
+  await page.route(activatePattern, activate);
+  try {
+    await stand.visit(page, `workflows/${workflowId}`);
+    const waiting = page.getByTestId("authority-prepared-version");
+    await waiting.waitFor();
+    const text = await waiting.innerText();
+    // Both numbers, because either one alone leaves the reader guessing which
+    // version they are about to put into service.
+    for (const expected of ["v9", "v8"])
+      if (!text.includes(expected))
+        throw new Error(`Prepared-version notice omits ${expected}: ${text}`);
+    await capture("prepared");
+    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("authority-grant-review").waitFor();
+    if (reviewedVersion !== draftVersionId)
+      throw new Error(
+        `Approval judged ${reviewedVersion} while a prepared version was waiting — the running version is the one that could not be approved`,
+      );
+    const badge = await page.getByTestId("authority-grant-review").innerText();
+    if (!badge.includes(locale === "de" ? "vorbereitet" : "prepared"))
+      throw new Error("Review does not say which version it is judging");
+    // The smaller decision has to be available on its own: a called child
+    // needs its repaired version in service and no permission to run by
+    // itself. Taking it must not grant anything.
+    await page.getByTestId("authority-activate-only").click();
+    await page.getByRole("dialog").waitFor({ state: "hidden" });
+    if (activated?.workflow_version_id !== draftVersionId)
+      throw new Error("Putting a version into service used a version nobody reviewed");
+    if (activated?.expected_current_version_id !== activeVersionId)
+      throw new Error("Activation did not state which version it replaces");
+    if (granted) throw new Error("Putting a version into service also granted permission to run");
+
+    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("authority-grant-review").waitFor();
+    await page.getByTestId("authority-grant-confirm").click();
+    await page.getByRole("dialog").waitFor({ state: "hidden" });
+    // The larger decision stays one step: the reader is putting this version
+    // into service AND permitting runs, and the request has to say both.
+    if (granted?.activation?.expected_current_version_id !== activeVersionId)
+      throw new Error("Approving a prepared version did not carry its activation");
+    if (granted?.workflow_version_id !== draftVersionId)
+      throw new Error("Approval was issued against a version nobody reviewed");
+  } finally {
+    await page.unroute(activatePattern, activate);
+    await page.unroute(grantPattern, grant);
+    await page.unroute(previewPattern, preview);
+    await page.unroute(draftPattern, draft);
+    await page.unroute(workflowPattern, record);
   }
 }
 
@@ -247,16 +408,25 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
     )
       throw new Error("Run validation incorrectly marks the duration invalid");
     await page.getByTestId("authority-runs").fill("1");
+    // This workflow has a LIVE approval for production (see the fixture at the
+    // top of this file), so production is what it demonstrably runs in and
+    // what the review must judge. Deriving this from whether a schedule
+    // happened to be held instead sent a production workflow to development,
+    // where none of its connectors exist — the dialog then filled with
+    // "resolves to a connector of another environment" on nearly every step
+    // and buried the one real problem. This assertion used to demand that
+    // wrong answer. The counter-case — nothing saying production, so the
+    // review stays in development, where a wrong guess cannot approve a
+    // production effect — is pinned in apps/cockpit/src/lib/review-environment.test.ts.
     if (
       !(await page.getByTestId("authority-environment").innerText()).includes(
-        locale === "de" ? "Entwicklung" : "Development",
+        locale === "de" ? "Produktion" : "Production",
       )
     )
-      throw new Error("Grant defaults to production");
-    await page.getByTestId("authority-environment").click();
-    await page
-      .getByRole("option", { name: locale === "de" ? "Produktion" : "Production", exact: true })
-      .click();
+      throw new Error("Grant ignores the environment the workflow runs in");
+    // The switch to production that used to stand here is gone with the wrong
+    // default: the dialog already opens in the environment this workflow runs
+    // in, so selecting it again would change nothing.
     await page.getByTestId("authority-grant-review").waitFor();
     await page.getByTestId("authority-grant-review").locator("summary").last().click();
     await capture("grant");
@@ -284,7 +454,13 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
     await page.getByTestId("authority-runs").fill("2");
     await page.getByTestId("authority-grant-confirm").click();
     await page.getByRole("dialog").waitFor({ state: "hidden" });
-    if (posts !== 2 || previews !== 3)
+    // Two previews, not three: one when the dialog opens and one after the
+    // explicit refresh. The third was a preview of DEVELOPMENT that nobody
+    // asked for — fetched because the dialog opened in the wrong environment
+    // and thrown away the moment the reviewer corrected it. A count that
+    // silently grows again means the dialog is reviewing something the
+    // reviewer did not choose.
+    if (posts !== 2 || previews !== 2)
       throw new Error("Grant request counts do not match explicit review decisions");
     incomplete = true;
     await page.getByTestId("authority-grant-open").click();
