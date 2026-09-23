@@ -13,6 +13,9 @@ export const AuthorityExecutionShapeSchema = z
         redacted_request_json: z.string(),
         request_review_truncated: z.boolean(),
         opaque_payload_omitted: z.boolean(),
+        /** Which `call` step this request belongs to; absent for this
+         *  workflow's own requests. */
+        call_path: z.array(z.string()).optional(),
       }),
     ),
     iterations: z.array(
@@ -20,11 +23,40 @@ export const AuthorityExecutionShapeSchema = z
         step_id: z.string(),
         kind: z.enum(["loop", "for_each"]),
         body_step_ids: z.array(z.string()),
+        call_path: z.array(z.string()).optional(),
       }),
     ),
+    /** The workflows this one starts, for naming them in the review. Display
+     *  only and deliberately NOT part of the manifest: the approval pins the
+     *  version, not the name, so renaming a called workflow must not
+     *  invalidate a grant. */
+    calls: z
+      .array(
+        z.object({
+          step_id: z.string(),
+          workflow_id: z.string(),
+          workflow_slug: z.string(),
+          workflow_name: z.string(),
+          version: z.number().int().positive().nullable(),
+        }),
+      )
+      .optional(),
     run_limit_is_request_limit: z.literal(false),
   })
   .openapi("AuthorityExecutionShape");
+
+export type AuthorityExecutionShape = z.infer<typeof AuthorityExecutionShapeSchema>;
+
+/** One called workflow, as the resolver found it. */
+export interface ResolvedCallShape {
+  step_id: string;
+  workflow_id: string;
+  workflow_slug: string;
+  workflow_name: string;
+  version: number | null;
+  definition: WorkflowDef;
+  bindings: readonly Pick<ResolvedEffectBinding, "step_id" | "driver" | "storage">[];
+}
 
 /** Structural review only: never evaluate selectors or infer a total wire-call bound.
  * A loop can repeat a static target; retries count per invocation, not per run.
@@ -33,13 +65,45 @@ export const AuthorityExecutionShapeSchema = z
 export function authorityExecutionShape(
   definition: WorkflowDef,
   bindings: readonly Pick<ResolvedEffectBinding, "step_id" | "driver" | "storage">[],
-): z.infer<typeof AuthorityExecutionShapeSchema> {
+  calls: readonly ResolvedCallShape[] = [],
+): AuthorityExecutionShape {
+  const own = shapeOf(definition, bindings);
+  const called = calls.map((call) => ({
+    call,
+    shape: shapeOf(call.definition, call.bindings, [call.step_id]),
+  }));
+  return {
+    requests: [...own.requests, ...called.flatMap((entry) => entry.shape.requests)],
+    iterations: [...own.iterations, ...called.flatMap((entry) => entry.shape.iterations)],
+    ...(calls.length > 0
+      ? {
+          calls: calls.map((call) => ({
+            step_id: call.step_id,
+            workflow_id: call.workflow_id,
+            workflow_slug: call.workflow_slug,
+            workflow_name: call.workflow_name,
+            version: call.version,
+          })),
+        }
+      : {}),
+    run_limit_is_request_limit: false,
+  };
+}
+
+function shapeOf(
+  definition: WorkflowDef,
+  bindings: readonly Pick<ResolvedEffectBinding, "step_id" | "driver" | "storage">[],
+  call_path?: string[],
+): Pick<AuthorityExecutionShape, "requests" | "iterations"> {
   const storage = new Map(
     bindings
       .filter((binding) => binding.storage)
       .map((binding) => [binding.step_id, binding.storage]),
   );
   const drivers = new Map(bindings.map((binding) => [binding.step_id, binding.driver]));
+  // Conditional spread, as everywhere a key reaches a reviewed surface: an
+  // always-present `call_path: undefined` would differ from an absent one.
+  const path = call_path ? { call_path } : {};
   return {
     requests: definition.steps.flatMap((step) =>
       step.kind === "request"
@@ -59,18 +123,18 @@ export function authorityExecutionShape(
               )
                 ? requestMaxAttempts(step)
                 : null,
+              ...path,
             },
           ]
         : [],
     ),
     iterations: definition.steps.flatMap((step) => [
       ...(step.kind === "loop"
-        ? [{ step_id: step.id, kind: "loop" as const, body_step_ids: step.body }]
+        ? [{ step_id: step.id, kind: "loop" as const, body_step_ids: step.body, ...path }]
         : []),
       ...(step.for_each
-        ? [{ step_id: step.id, kind: "for_each" as const, body_step_ids: [step.id] }]
+        ? [{ step_id: step.id, kind: "for_each" as const, body_step_ids: [step.id], ...path }]
         : []),
     ]),
-    run_limit_is_request_limit: false,
   };
 }

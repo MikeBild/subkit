@@ -5200,6 +5200,12 @@
                 },
                 "opaque_payload_omitted": {
                   "type": "boolean"
+                },
+                "call_path": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               },
               "required": [
@@ -5231,12 +5237,52 @@
                   "items": {
                     "type": "string"
                   }
+                },
+                "call_path": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               },
               "required": [
                 "step_id",
                 "kind",
                 "body_step_ids"
+              ]
+            }
+          },
+          "calls": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step_id": {
+                  "type": "string"
+                },
+                "workflow_id": {
+                  "type": "string"
+                },
+                "workflow_slug": {
+                  "type": "string"
+                },
+                "workflow_name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "exclusiveMinimum": 0
+                }
+              },
+              "required": [
+                "step_id",
+                "workflow_id",
+                "workflow_slug",
+                "workflow_name",
+                "version"
               ]
             }
           },
