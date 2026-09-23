@@ -165,6 +165,11 @@ export function GrantWorkflowAuthority({
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["chat-automation-workflow", workflowId] });
       await client.invalidateQueries({ queryKey: ["conversation"] });
+      // The catalog page shows the same workflow, and a version that is now
+      // running must stop being announced as one that is waiting.
+      await client.invalidateQueries({ queryKey: ["catalog-detail", "workflows", workflowId] });
+      await client.invalidateQueries({ queryKey: ["workflows"] });
+      await client.invalidateQueries({ queryKey: ["workflow-schedule-holds"] });
       setOpen(false);
       onSingleRun?.();
     },
@@ -665,28 +670,48 @@ export function GrantWorkflowAuthority({
               )}
             </>
           ) : (
-            <Button
-              disabled={busy || !input || Boolean(grant.error)}
-              onClick={() => grant.mutate()}
-              data-testid="authority-grant-confirm"
-            >
-              {t(
-                grant.isPending
-                  ? "authority.granting"
-                  : recurringContent
-                    ? "authority.content.confirm"
-                    : recurringReport
-                      ? "authority.report.confirm"
-                      : activation
-                        ? "chat.activation.confirm"
-                        : onGrant
-                          ? "decisions.applyAndAuthorize"
-                          : Number(runs) === 1
-                            ? "authority.grantConfirmOne"
-                            : "authority.grantConfirm",
-                { count: runs },
+            <>
+              {/* Two different decisions, and a reader must be able to make the
+                  smaller one. Putting a repaired version into service is not the
+                  same as permitting repeated unattended runs — a called child
+                  needs only the first, and forcing them together would make
+                  every activation buy a permission nobody asked for. */}
+              {/* Not while the review is stale or the session is gone: the
+                  smaller decision is still a decision, and offering it when it
+                  cannot be carried out is offering a dead button. */}
+              {activation && review && !incomplete && !sessionExpired && !actionError && (
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => activateOnly.mutate()}
+                  data-testid="authority-activate-only"
+                >
+                  {t("authority.activateOnly")}
+                </Button>
               )}
-            </Button>
+              <Button
+                disabled={busy || !input || Boolean(grant.error)}
+                onClick={() => grant.mutate()}
+                data-testid="authority-grant-confirm"
+              >
+                {t(
+                  grant.isPending
+                    ? "authority.granting"
+                    : recurringContent
+                      ? "authority.content.confirm"
+                      : recurringReport
+                        ? "authority.report.confirm"
+                        : activation
+                          ? "chat.activation.confirm"
+                          : onGrant
+                            ? "decisions.applyAndAuthorize"
+                            : Number(runs) === 1
+                              ? "authority.grantConfirmOne"
+                              : "authority.grantConfirm",
+                  { count: runs },
+                )}
+              </Button>
+            </>
           )}
         </DialogFooter>
       </DialogContent>

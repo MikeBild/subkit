@@ -340,3 +340,64 @@ test("draft access stays tenant scoped and updates require an observed base", as
   ).toBe("draft_conflict");
   expect((await save(definition("draft-isolation"))).code).toBe("slug_conflict");
 });
+
+test("a field the schema fills in is not a change the author made", async () => {
+  // An hour went into chasing a write that was never lost. A request step
+  // saved WITHOUT `error_policy` is stored WITH `error_policy: "none"` —
+  // `errorPolicy` carries that default (workflows/types.ts) — so the saved
+  // version and the author's draft differ textually while being the same
+  // definition. Read as a diff, that looks exactly like a save that silently
+  // dropped the correction, and the honest answer the save already gave
+  // (`version_changed: false`) was read as the symptom rather than the fact.
+  const authored = {
+    name: "default-materialised",
+    slug: "default-materialised",
+    steps: [
+      {
+        id: "call",
+        kind: "request",
+        url: "https://example.test/resource",
+        method: "GET",
+        on_error: "continue",
+      },
+    ],
+  };
+  const first = unwrap(await save(authored));
+  const [stored] = await ctx.db
+    .select({ dag: workflowVersions.dag })
+    .from(workflowVersions)
+    .where(
+      and(eq(workflowVersions.tenant_id, tenant_id), eq(workflowVersions.id, first.version_id)),
+    );
+  const step = (stored?.dag as { steps: Array<Record<string, unknown>> } | undefined)?.steps[0];
+  expect(step?.error_policy).toBe("none");
+  expect(step?.on_error).toBe("continue");
+
+  // Saving the author's shape again is therefore a no-op, and the result says
+  // so by returning the same version rather than stacking another one.
+  const again = unwrap(
+    await saveWorkflowDraft(
+      {
+        tenant_id,
+        workflow_id: first.workflow_id,
+        expected_draft_version_id: first.version_id,
+        def: authored,
+        actor_id: null,
+        request_source: "api",
+      },
+      ctx.db,
+    ),
+  );
+  expect(again.version_id).toBe(first.version_id);
+  expect(again.version).toBe(first.version);
+  const versions = await ctx.db
+    .select({ id: workflowVersions.id })
+    .from(workflowVersions)
+    .where(
+      and(
+        eq(workflowVersions.tenant_id, tenant_id),
+        eq(workflowVersions.workflow_id, first.workflow_id),
+      ),
+    );
+  expect(versions).toHaveLength(1);
+});

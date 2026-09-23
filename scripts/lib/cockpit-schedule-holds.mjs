@@ -24,6 +24,11 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
     workflow_id:
       index === 0 ? workflowId : `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
     workflow_name: index === 0 ? "Held publishing workflow" : `Scheduled workflow ${index + 1}`,
+    // One of them has its repair already saved and waiting. That is the
+    // ordinary shape of a hold that has been worked on, and it needs a
+    // different next step: not "approve what is running" — that version is
+    // exactly why it is held — but "put the prepared one into service".
+    prepared_version_id: index === 1 ? "00000000-0000-4000-8000-000000000301" : null,
     admission_hold: {
       ...schedule.admission_hold,
       reason_code:
@@ -93,6 +98,12 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
     const firstCard = await card.boundingBox();
     if (!toolbar || !firstCard || toolbar.y >= firstCard.y)
       throw new Error("Controls buried below schedule holds");
+    const preparedCard = cards.nth(1);
+    const preparedText = await preparedCard.innerText();
+    if (!preparedText.includes(locale === "de" ? "vorbereitet" : "prepared"))
+      throw new Error("A waiting prepared version is not mentioned where the decision is made");
+    if ((await card.innerText()).includes(locale === "de" ? "vorbereitet" : "prepared"))
+      throw new Error("A hold with nothing prepared claims a prepared version");
     const details = card.getByTestId("schedule-admission-details");
     if ((await details.getAttribute("open")) !== null)
       throw new Error("Technical schedule details should start collapsed");
