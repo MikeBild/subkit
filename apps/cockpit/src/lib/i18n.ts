@@ -237,6 +237,26 @@ const EN = {
   "authority.call.title": "Step {step} starts the workflow \u201e{name}\u201c (version {version})",
   "authority.call.scope":
     "Everything below is what that workflow does on every start. This approval covers exactly this version; a new version needs a new approval.",
+  "authority.issuesTitle": "Why this cannot be approved yet",
+  "authority.issueStep": "Step {step}",
+  "authority.issueInCall": "Step {step}, inside the workflow started by {call}",
+  "authority.issue.missing_binding":
+    "This step could not be tied to a connector, so there is no target to approve.",
+  "authority.issue.binding_mismatch":
+    "What this step declares and what it resolves to no longer agree.",
+  "authority.issue.environment_mismatch":
+    "This step resolves to a connector from another environment.",
+  "authority.issue.dynamic_request":
+    "Where this request goes is decided at run time and is not limited to anything reviewable.",
+  "authority.issue.unknown_effect":
+    "What this step does to the other system cannot be determined in advance.",
+  "authority.issue.destructive_effect": "This step removes data, and nothing limits how much.",
+  "authority.issue.unbound_workflow_call":
+    "This step starts another workflow that this approval could not be extended to cover.",
+  "authority.issue.boundary_contradicted_by_history":
+    "The folder this step declares does not contain what the step actually writes.",
+  "authority.issueEvidence": "Declared: {declared} · last written: {observed}",
+  "authority.issueUnavailable": "Step {step} could not be prepared at all.",
   "authority.readPath":
     "Read records in this collection. Record IDs may change; the server and collection stay fixed.",
   "authority.digest": "Effect manifest digest",
@@ -1902,6 +1922,27 @@ const DE: Record<TranslationKey, string> = {
     "Schritt {step} startet den Workflow \u201e{name}\u201c (Version {version})",
   "authority.call.scope":
     "Alles Folgende führt dieser Workflow bei jedem Start aus. Die Freigabe gilt genau für diese Version; eine neue Version braucht eine neue Freigabe.",
+  "authority.issuesTitle": "Warum das noch nicht freigegeben werden kann",
+  "authority.issueStep": "Schritt {step}",
+  "authority.issueInCall": "Schritt {step}, im Workflow, den {call} startet",
+  "authority.issue.missing_binding":
+    "Dieser Schritt ließ sich keinem Konnektor zuordnen, es gibt also kein Ziel zum Freigeben.",
+  "authority.issue.binding_mismatch":
+    "Was dieser Schritt deklariert und wozu er sich auflöst, stimmt nicht mehr überein.",
+  "authority.issue.environment_mismatch":
+    "Dieser Schritt löst sich auf einen Konnektor einer anderen Umgebung auf.",
+  "authority.issue.dynamic_request":
+    "Wohin diese Anfrage geht, entscheidet sich zur Laufzeit und ist durch nichts Prüfbares begrenzt.",
+  "authority.issue.unknown_effect":
+    "Was dieser Schritt im anderen System bewirkt, lässt sich vorab nicht bestimmen.",
+  "authority.issue.destructive_effect":
+    "Dieser Schritt entfernt Daten, und nichts begrenzt wie viele.",
+  "authority.issue.unbound_workflow_call":
+    "Dieser Schritt startet einen weiteren Workflow, auf den sich die Freigabe nicht ausdehnen ließ.",
+  "authority.issue.boundary_contradicted_by_history":
+    "Der Ordner, den dieser Schritt deklariert, enthält nicht, was der Schritt tatsächlich schreibt.",
+  "authority.issueEvidence": "Deklariert: {declared} · zuletzt geschrieben: {observed}",
+  "authority.issueUnavailable": "Schritt {step} ließ sich gar nicht vorbereiten.",
   "authority.readPath":
     "Einträge dieser Sammlung lesen. Ihre IDs dürfen wechseln; Server und Sammlung bleiben fest.",
   "authority.digest": "Prüfsumme des Wirkungsmanifests",

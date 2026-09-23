@@ -17550,6 +17550,12 @@ export interface components {
                 label: string;
             }[];
             unavailable_steps: string[];
+            boundary_contradictions?: {
+                step_id: string;
+                declared_prefix: string;
+                observed_key: string;
+                observed_at: string;
+            }[];
             execution_shape: components["schemas"]["AuthorityExecutionShape"];
             schedules: {
                 cron: string;
