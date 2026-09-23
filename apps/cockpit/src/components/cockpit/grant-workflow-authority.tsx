@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { effectKey, groupByCall } from "@/lib/authority-calls";
+import { authorityIssues } from "@/lib/authority-issues";
 import { presentRequestBoundary } from "@/lib/authority-request";
 import { presentStorageScope } from "@/lib/authority-storage";
 import { useI18n } from "@/lib/i18n-context";
@@ -190,6 +191,7 @@ export function GrantWorkflowAuthority({
   // a section per called workflow — grouped by call path, because a parent and
   // a child may use the same step id and must not be merged into one row.
   const callGroups = groupByCall(review?.manifest, review?.execution_shape);
+  const issues = authorityIssues(review);
   const incomplete = review?.execution_shape.requests.some(
     (request) => request.request_review_truncated || request.opaque_payload_omitted,
   );
@@ -352,11 +354,51 @@ export function GrantWorkflowAuthority({
               </AlertDescription>
             </Alert>
           )}
-          {unsupported && !onSingleRun && (
+          {/* The reasons, wherever the version cannot be approved — not only on
+              the surface that has no approve button. A reviewer who cannot see
+              why is being asked to judge something they cannot see. */}
+          {unsupported && issues.length > 0 && (
+            <Alert data-testid="authority-issues">
+              <AlertTitle>{t("authority.issuesTitle")}</AlertTitle>
+              <AlertDescription>
+                <ul className="flex flex-col gap-2">
+                  {issues.map((issue) => (
+                    <li key={issue.key}>
+                      <span className="font-medium">
+                        {issue.call_step_id
+                          ? t("authority.issueInCall", {
+                              step: issue.step_id,
+                              call: issue.call_step_id,
+                            })
+                          : t("authority.issueStep", { step: issue.step_id })}
+                      </span>
+                      <br />
+                      {t(issue.messageKey)}
+                      {issue.evidence && (
+                        <>
+                          <br />
+                          <span className="break-all font-mono text-xs">
+                            {t("authority.issueEvidence", {
+                              declared: issue.evidence.declared_prefix,
+                              observed: issue.evidence.observed_key,
+                            })}
+                          </span>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                  {(review?.unavailable_steps ?? []).map((step) => (
+                    <li key={`unavailable:${step}`}>{t("authority.issueUnavailable", { step })}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+          {unsupported && issues.length === 0 && !onSingleRun && (
             <Alert data-testid="authority-needs-adjustment">
               <AlertTitle>{t("schedules.held.status")}</AlertTitle>
               <AlertDescription>
-                {t(onSingleRun ? "chat.activation.singleHelp" : "authority.unsupportedSteps", {
+                {t("authority.unsupportedSteps", {
                   steps: review?.unavailable_steps.join(", ") || t("authority.effects"),
                 })}
               </AlertDescription>
