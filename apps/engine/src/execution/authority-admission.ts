@@ -233,12 +233,45 @@ export async function assertExecutionAuthorityCurrent(
   if (!execution) fail("execution_boundary_mismatch", "execution unavailable");
   if (execution.tool_approval_id)
     return assertToolApprovalDispatch(db, tenant_id, execution_id, snapshot);
-  if (!execution.execution_authority_id) return;
-  if (execution.abort_requested_at || !["queued", "running"].includes(execution.status))
-    fail(
-      "execution_boundary_mismatch",
-      "the authorized execution is cancelled or already terminal",
-    );
+  // A run started by a `call` step of an approved run holds no approval of its
+  // own. Its permission is the ROOT's, and each dispatch here is measured
+  // against the effect that root's manifest carries at this call path. Falling
+  // through the early return below — the answer for an ordinary unapproved run
+  // — would let such a child dispatch anything at all under the root's grant.
+  let authorityId = execution.execution_authority_id;
+  let path: string[] = [];
+  const governing = [execution];
+  if (execution.authority_root_execution_id) {
+    const [root] = await db
+      .select()
+      .from(executions)
+      .where(
+        and(
+          eq(executions.tenant_id, tenant_id),
+          eq(executions.id, execution.authority_root_execution_id),
+        ),
+      )
+      .limit(1);
+    if (!root)
+      fail("execution_boundary_mismatch", "the approved run this one belongs to is unavailable");
+    if (!root.execution_authority_id)
+      fail(
+        "execution_authority_unavailable",
+        "the run this one belongs to holds no execution authority",
+      );
+    authorityId = root.execution_authority_id;
+    path = execution.authority_call_path ?? [];
+    // Cancelling the root must stop its children too, so both rows are tested.
+    governing.push(root);
+  }
+  if (!authorityId) return;
+  for (const row of governing) {
+    if (row.abort_requested_at || !["queued", "running"].includes(row.status))
+      fail(
+        "execution_boundary_mismatch",
+        "the authorized execution is cancelled or already terminal",
+      );
+  }
   const [authority] = await db
     .select()
     .from(workflowExecutionAuthorities)
@@ -252,7 +285,7 @@ export async function assertExecutionAuthorityCurrent(
     .where(
       and(
         eq(workflowExecutionAuthorities.tenant_id, tenant_id),
-        eq(workflowExecutionAuthorities.id, execution.execution_authority_id),
+        eq(workflowExecutionAuthorities.id, authorityId),
         eq(workflows.lifecycle, "active"),
         isNull(workflows.deleted_at),
         eq(workflows.current_version_id, workflowExecutionAuthorities.workflow_version_id),
@@ -283,7 +316,11 @@ export async function assertExecutionAuthorityCurrent(
         ? manifest.data.effects.find(
             (candidate) =>
               candidate.step_id === parsed.data.step_id &&
-              candidate.configuration_digest === parsed.data.configuration_digest,
+              candidate.configuration_digest === parsed.data.configuration_digest &&
+              // The call path is part of the identity. A parent and a child may
+              // use the same step id against different targets; without this,
+              // one would be admitted against the other's approved effect.
+              isDeepStrictEqual(candidate.call_path ?? [], path),
           )
         : undefined;
     if (!parsed.success || !effect)

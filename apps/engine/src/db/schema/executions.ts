@@ -76,6 +76,16 @@ export const executions = pgTable(
     request_source: text("request_source").notNull(),
     execution_mode: executionModeEnum("execution_mode").notNull(),
     parent_execution_id: uuid("parent_execution_id"),
+    // This run was started BY a `call` step of an approved run, and carries no
+    // approval of its own: the root's does the deciding, and every dispatch
+    // here is measured against the effect the root's manifest holds at this
+    // path. Both columns are set together or not at all, and neither can be
+    // changed after the insert — a trigger enforces both, because a run that
+    // could acquire or move its link afterwards would be borrowing someone
+    // else's permission. No foreign key, mirroring `parent_execution_id`, so
+    // run-history retention on the root cannot fail on a child row.
+    authority_root_execution_id: uuid("authority_root_execution_id"),
+    authority_call_path: jsonb("authority_call_path").$type<string[] | null>(),
     result_storage_uri: text("result_storage_uri"),
     result_sha256: text("result_sha256"),
     // Durable control-plane intent. The HTTP cancel request may land on a
@@ -123,6 +133,22 @@ export const executions = pgTable(
       "executions_authority_saved_check",
       sql`${t.execution_authority_id} IS NULL OR
       (${t.source_kind} = 'saved' AND ${t.workflow_id} IS NOT NULL AND ${t.workflow_version_id} IS NOT NULL)`,
+    ),
+    index("executions_authority_link_idx").on(t.tenant_id, t.authority_root_execution_id),
+    // A linked child names the run whose approval covers it, runs a pinned
+    // saved version, holds NO approval of its own, and is never a preview. Its
+    // parent IS that root: the link and the ordinary run tree must agree, or
+    // "who started this" and "whose permission is this" could differ.
+    check(
+      "executions_authority_link_shape_check",
+      sql`(${t.authority_root_execution_id} IS NULL) = (${t.authority_call_path} IS NULL) AND
+      (${t.authority_root_execution_id} IS NULL OR (
+        ${t.execution_authority_id} IS NULL AND ${t.tool_approval_id} IS NULL AND
+        NOT ${t.hold_writes} AND ${t.source_kind} = 'saved' AND
+        ${t.workflow_id} IS NOT NULL AND ${t.workflow_version_id} IS NOT NULL AND
+        ${t.parent_execution_id} IS NOT DISTINCT FROM ${t.authority_root_execution_id} AND
+        jsonb_typeof(${t.authority_call_path}) = 'array' AND
+        jsonb_array_length(${t.authority_call_path}) >= 1))`,
     ),
     index("executions_tenant_workflow_started_idx").on(t.tenant_id, t.workflow_id, t.started_at),
     index("executions_tenant_status_idx").on(t.tenant_id, t.status),

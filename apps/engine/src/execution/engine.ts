@@ -19,7 +19,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../connectors/service.ts";
 import type { Db } from "../db/client.ts";
-import { executions, workflows } from "../db/schema/index.ts";
+import { executions, workflowExecutionAuthorities, workflows } from "../db/schema/index.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { parsePlaceholders } from "../llm/substitution/parser.ts";
 import { resolvePlaceholdersTypePreserving } from "../llm/substitution/resolver.ts";
@@ -33,6 +33,7 @@ import { instrument } from "../observability/runtime-telemetry.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
 import { buildStepDag, type StepDag, topoSort } from "../workflows/dag.ts";
+import { WorkflowEffectManifestSchema } from "../workflows/effect-manifest.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import {
   type BranchStep,
@@ -250,6 +251,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         tool_approval_id: opts.tool_approval_id ?? null,
         request_source,
         parent_execution_id,
+        ...(opts.authority_link ? { authority_link: opts.authority_link } : {}),
         execution_mode,
         input: normalizedInput ?? null,
         idempotency_key: opts.idempotency_key ?? null,
@@ -2074,7 +2076,11 @@ async function runCallStep(
 ): Promise<StepResult> {
   const start = Date.now();
   const [parent] = await db
-    .select({ approval: executions.tool_approval_id })
+    .select({
+      approval: executions.tool_approval_id,
+      authority_id: executions.execution_authority_id,
+      linked_root: executions.authority_root_execution_id,
+    })
     .from(executions)
     .where(and(eq(executions.tenant_id, ctx.tenant_id), eq(executions.id, ctx.execution_id)))
     .limit(1);
@@ -2145,6 +2151,78 @@ async function runCallStep(
       error: { code: "call_target_missing", message: "workflow not found" },
     };
   }
+  // Which child version an approved run may start is decided by the approval,
+  // not by the workflow catalog at run time.
+  let authorityLink: { root_execution_id: string; call_path: string[] } | null = null;
+  let pinnedChildVersion: string | null = null;
+  if (parent?.linked_root) {
+    // Depth one at run time as well as at review time: a called workflow that
+    // calls one was refused when the approval was compiled, so reaching this
+    // point means the running definition is not the approved one.
+    return {
+      status: "failed",
+      retry_count: 0,
+      duration_ms: Date.now() - start,
+      error: {
+        code: "call_outside_approved_boundary",
+        message:
+          "A workflow started by an approved run may not start another one. Nothing was started.",
+      },
+    };
+  }
+  if (parent?.authority_id) {
+    const [authority] = await db
+      .select({ manifest: workflowExecutionAuthorities.effect_manifest })
+      .from(workflowExecutionAuthorities)
+      .where(
+        and(
+          eq(workflowExecutionAuthorities.tenant_id, ctx.tenant_id),
+          eq(workflowExecutionAuthorities.id, parent.authority_id),
+        ),
+      )
+      .limit(1);
+    const manifest = WorkflowEffectManifestSchema.safeParse(authority?.manifest);
+    const pin = manifest.success
+      ? manifest.data.calls?.find((candidate) => candidate.step_id === step.id)
+      : undefined;
+    if (!pin || pin.workflow_id !== targetId) {
+      return {
+        status: "failed",
+        retry_count: 0,
+        duration_ms: Date.now() - start,
+        error: {
+          code: "call_outside_approved_boundary",
+          message:
+            "This run is approved for repeated runs, and the approval does not cover starting this workflow here. Nothing was started. Review and approve this workflow again.",
+        },
+      };
+    }
+    const [child] = await db
+      .select({ lifecycle: workflows.lifecycle, current: workflows.current_version_id })
+      .from(workflows)
+      .where(
+        and(
+          eq(workflows.tenant_id, ctx.tenant_id),
+          eq(workflows.id, targetId),
+          isNull(workflows.deleted_at),
+        ),
+      )
+      .limit(1);
+    if (child?.lifecycle !== "active" || child.current !== pin.workflow_version_id) {
+      return {
+        status: "failed",
+        retry_count: 0,
+        duration_ms: Date.now() - start,
+        error: {
+          code: "call_child_version_changed",
+          message:
+            "The workflow this step starts now has a different active version than the one approved. Nothing was started. Review and approve this workflow again.",
+        },
+      };
+    }
+    pinnedChildVersion = pin.workflow_version_id;
+    authorityLink = { root_execution_id: ctx.execution_id, call_path: [step.id] };
+  }
   // Interpolate the call input against the caller's scope. Type-preserving
   // because a resolved `${scope.x.data.ids}` must reach the child as an array,
   // not as its JSON text — the same reason the request body uses this walker.
@@ -2205,11 +2283,19 @@ async function runCallStep(
     const child = await runExecution({
       db,
       tenant_id: ctx.tenant_id,
-      source: { kind: "saved", workflow_id: targetId },
+      source: {
+        kind: "saved",
+        workflow_id: targetId,
+        // Run the version the approval pins, not whatever is active now. The
+        // check above already refused a drift, so this only makes the intent
+        // explicit at the place the run is started.
+        ...(pinnedChildVersion ? { version_id: pinnedChildVersion } : {}),
+      },
       input: resolvedInput,
       options: {
         request_source: "tool-chain",
         parent_execution_id: ctx.execution_id,
+        ...(authorityLink ? { authority_link: authorityLink } : {}),
         depth: ctx.depth + 1,
         signal: ctx.signal,
         trace_id: ctx.trace_id ?? null,

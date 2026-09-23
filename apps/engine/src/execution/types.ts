@@ -462,6 +462,10 @@ export interface StepResult {
 export interface RunOptions {
   request_source?: RequestSource;
   parent_execution_id?: string | null;
+  /** Server-owned. Set only by `runCallStep` when an APPROVED run reaches a
+   *  `call` step whose target its approval pins. The started run holds no
+   *  approval of its own and is measured against the root's at this path. */
+  authority_link?: { root_execution_id: string; call_path: string[] } | null;
   depth?: number;
   signal?: AbortSignal;
   trace_id?: string | null;
