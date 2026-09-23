@@ -50,14 +50,14 @@ import { bindExistingRun } from "./bound-run.ts";
 import { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
 import {
   bodyEnvelopeForLoopAccumulator,
+  classifyBodyIteration,
   envelopeFor,
-  type ScopeEnvelope,
   validateAgainstJsonSchema,
   wrapEnvelope,
 } from "./engine/envelope.ts";
 import { evaluate as evaluateJsonata } from "./jsonata-engine.ts";
 import { buildLoopChildScope, resolveForEachCollection } from "./loop-scope.ts";
-import { isOffloadRef, maybeOffload, previewOf } from "./offload.ts";
+import { maybeOffload, previewOf } from "./offload.ts";
 import { deepResolveOffloadRefs, previewOffloadRefs } from "./offload-rehydrate.ts";
 import { checkOutputContract, summarizeViolations } from "./output-contract.ts";
 import { capturePreparedWorkflowReferences } from "./prepared-workflow-references.ts";
@@ -883,33 +883,9 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       if (iterationResults.length > 0) {
         let offloadedIterations = 0;
         const productiveIterations = iterationResults.filter((iter) => {
-          if (!iter || typeof iter !== "object") return false;
-          let iterProductive = false;
-          let iterOffloaded = false;
-          for (const value of Object.values(iter as Record<string, unknown>)) {
-            const env = value as ScopeEnvelope | null | undefined;
-            if (!env || typeof env !== "object") continue;
-            if (env.held) {
-              iterProductive = true;
-              continue;
-            }
-            if (env.error) {
-              if (env.error.code === "skipped_dependency_held") iterProductive = true;
-              continue;
-            }
-            const data = env.data;
-            if (data == null) continue;
-            if (isOffloadRef(data)) {
-              iterOffloaded = true;
-              iterProductive = true;
-              continue;
-            }
-            if (Array.isArray(data) && data.length === 0) continue;
-            if (typeof data === "object" && Object.keys(data as object).length === 0) continue;
-            iterProductive = true;
-          }
-          if (iterOffloaded) offloadedIterations += 1;
-          return iterProductive;
+          const { productive, offloaded } = classifyBodyIteration(iter);
+          if (offloaded) offloadedIterations += 1;
+          return productive;
         }).length;
         if (offloadedIterations > 0) {
           recordLoopIterationsOffloaded({
@@ -1292,41 +1268,9 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           // observable to operators.
           let offloadedIterations = 0;
           const productiveIterations = iterationResults.filter((iter) => {
-            if (!iter || typeof iter !== "object") return false;
-            let iterProductive = false;
-            let iterOffloaded = false;
-            for (const value of Object.values(iter as Record<string, unknown>)) {
-              const env = value as ScopeEnvelope | null | undefined;
-              if (!env || typeof env !== "object") continue;
-              // Hold-writes preview: a held body step carries no data BY
-              // DESIGN (the artifact rides held_request), and a sibling
-              // skipped for depending on it is equally intentional —
-              // neither must trip the empty-loop heuristic during a
-              // hold preview of an all-writes loop body.
-              if (env.held) {
-                iterProductive = true;
-                continue;
-              }
-              if (env.error) {
-                if (env.error.code === "skipped_dependency_held") iterProductive = true;
-                continue;
-              }
-              const data = env.data;
-              if (data == null) continue;
-              // An offloaded body payload appears as an `OffloadRef`.
-              // It is productive by definition (only oversize payloads
-              // offload) — count it without re-hydrating.
-              if (isOffloadRef(data)) {
-                iterOffloaded = true;
-                iterProductive = true;
-                continue;
-              }
-              if (Array.isArray(data) && data.length === 0) continue;
-              if (typeof data === "object" && Object.keys(data as object).length === 0) continue;
-              iterProductive = true;
-            }
-            if (iterOffloaded) offloadedIterations += 1;
-            return iterProductive;
+            const { productive, offloaded } = classifyBodyIteration(iter);
+            if (offloaded) offloadedIterations += 1;
+            return productive;
           }).length;
           if (offloadedIterations > 0) {
             recordLoopIterationsOffloaded({
