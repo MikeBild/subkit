@@ -96,6 +96,10 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "workflow.updated": "audit.action.workflowUpdated",
   "execution.started": "audit.action.executionStarted",
   "execution.completed": "audit.action.executionCompleted",
+  // A dispatch the runtime stopped because it was outside what a person
+  // approved. It reads as its own line, not as "other": a trail that lists its
+  // permissions and not its refusals cannot answer whether the limit held.
+  "execution.boundary_refused": "audit.action.boundaryRefused",
   "connector.invoked": "audit.action.connectorInvoked",
   "credential.accessed": "audit.action.credentialAccessed",
   "api_key.used": "audit.action.apiKeyUsed",

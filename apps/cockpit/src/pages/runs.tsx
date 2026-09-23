@@ -213,11 +213,29 @@ function RunDetail({ run }: { run: Execution }) {
   );
 }
 
+/**
+ * The filter a link asked for. "Production incidents: 1" pointed here with no
+ * filter at all, so the reader landed on eleven thousand runs and had to find
+ * the one themselves — a number that names something specific must lead to that
+ * something. Unknown values are ignored rather than trusted.
+ */
+function filterFromUrl(): { status: string; q: string } {
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get("status") ?? "";
+  return {
+    status: ["failed", "succeeded", "running", "queued", "aborted", "timed_out"].includes(status)
+      ? status
+      : "all",
+    q: (params.get("q") ?? "").slice(0, 200),
+  };
+}
+
 export function RunsPage() {
   const { t, dateTime, locale } = useI18n();
   const session = useSession();
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [search, setSearch] = useState("");
+  const [initial] = useState(filterFromUrl);
+  const [statusFilter, setStatusFilter] = useState<string>(initial.status);
+  const [search, setSearch] = useState(initial.q);
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Execution | null>(null);
   const debouncedSearch = useDebouncedValue(search);

@@ -144,6 +144,14 @@ export const AuditAction = {
   // cadence) or a regression.
   WORKFLOW_SCHEDULE_NOT_BOUND: "workflow.schedule_not_bound",
 
+  // A dispatch the runtime refused because it fell outside the boundary a human
+  // approved: a request to another address, a key outside the declared folder,
+  // an exhausted call ceiling. Ninety-eight of these had happened on one
+  // installation and the audit trail held not one row about them — the log said
+  // what ran, never what was stopped. A governance system that records only its
+  // permissions and not its refusals cannot answer "did the limit hold?".
+  EXECUTION_BOUNDARY_REFUSED: "execution.boundary_refused",
+
   EXECUTION_STARTED: "execution.started",
   APPROVAL_DISPATCH_RESERVED: "approval.dispatch_reserved",
   APPROVAL_EXECUTION_BOUND: "approval.execution_bound",

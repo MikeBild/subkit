@@ -100,6 +100,60 @@ describe("finalizeStepRow — compare-and-set", () => {
   });
 });
 
+describe("a refused dispatch reaches the audit trail", () => {
+  // Ninety-eight dispatches had been refused on one installation — requests to
+  // an address the approval did not cover — and `audit_log` held not one row
+  // about any of them. The trail recorded what ran and never what was stopped,
+  // so the one question governance exists to answer, "did the limit hold?",
+  // could only be answered by reading execution rows by hand.
+  async function refuse(code: string | null, message = "outside the boundary") {
+    const executionId = await newQueued();
+    await markExecutionRunning(db, tenantId, executionId, new Date(FROZEN_NOW));
+    const stepId = await insertStepRow(db, {
+      tenant_id: tenantId,
+      execution_id: executionId,
+      step_key: "send",
+      step_index: 2,
+      kind: "request",
+    });
+    await finalizeStepRow(
+      db,
+      stepId,
+      "failed",
+      {
+        status: "failed",
+        retry_count: 0,
+        duration_ms: 3,
+        ...(code ? { error: { code, message } } : {}),
+      },
+      { output_preview: null, result_preview: null, result_storage_uri: null },
+    );
+    return db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, tenantId), eq(auditLog.resource_id, executionId)));
+  }
+
+  test("the refusal is recorded with the step and the reason", async () => {
+    const rows = await refuse("request_outside_declared_boundary");
+    const entry = rows.find((row) => row.action === "execution.boundary_refused");
+    expect(entry).toBeDefined();
+    expect(entry?.result).toBe("denied");
+    expect(entry?.reason).toBe("request_outside_declared_boundary");
+    expect((entry?.metadata as { step_key?: string })?.step_key).toBe("send");
+    expect((entry?.metadata as { detail?: string })?.detail).toContain("outside the boundary");
+  });
+
+  test("an ordinary failure is not a governance event", async () => {
+    // A catch-all would bury the refusals among timeouts and 404s, and the
+    // trail exists to separate exactly those two things.
+    for (const code of ["http_4xx", null]) {
+      const rows = await refuse(code);
+      expect(rows.some((row) => row.action === "execution.boundary_refused")).toBe(false);
+    }
+  });
+});
+
 describe("finalizeExecution — queued-only guard (#13)", () => {
   test("queued → aborted succeeds", async () => {
     const id = await newQueued();
