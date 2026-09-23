@@ -33,6 +33,12 @@ export interface CreateExecutionParams {
   source_ref: Record<string, unknown> | null;
   request_source: RequestSource;
   parent_execution_id?: string | null;
+  /** Set only by `runCallStep`, for a run a `call` step of an APPROVED run
+   *  started. It carries no approval of its own; the root's covers it, and
+   *  every dispatch is measured against the effect at this call path. Never
+   *  caller-supplied: a request that could name its own root would be picking
+   *  which approval to borrow. */
+  authority_link?: { root_execution_id: string; call_path: string[] } | null;
   execution_mode?: ExecutionMode;
   /** The caller-supplied run input — persisted so a rerun can default
    *  to the original instead of silently running with nothing. */
@@ -107,6 +113,8 @@ export async function createExecution(
         request_source: params.request_source,
         execution_mode: params.execution_mode ?? "dev",
         parent_execution_id: params.parent_execution_id ?? null,
+        authority_root_execution_id: params.authority_link?.root_execution_id ?? null,
+        authority_call_path: params.authority_link?.call_path ?? null,
         input: params.input ?? null,
         idempotency_key: params.idempotency_key ?? null,
       })
