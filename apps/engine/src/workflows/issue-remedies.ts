@@ -229,15 +229,29 @@ const REMEDIES: Partial<Record<ManifestIssueCode, Partial<Record<Driver, string>
  */
 const DRIVERLESS_REMEDIES: Partial<Record<ManifestIssueCode, string>> = {
   unbound_workflow_call:
-    "A step that calls another workflow cannot be bound for repeated runs yet: the child's " +
-    "effects are not part of this workflow's reviewed boundary, so there is nothing for a human " +
-    "to approve. If the call passes no `input` and no later step reads its result, remove the " +
-    "call and give the child workflow its own schedule and its own approval. Otherwise the " +
-    "requests the child makes have to be authored in this workflow so they can be reviewed " +
-    "here. `boundary` and `s3.scope` do nothing on a call step. Say this plainly to the user; do " +
-    "not offer a one-off run as a substitute for recurring approval.",
+    "This step starts another workflow, and the approval could not be extended to cover it. " +
+    "Which is why decides what to do, and `review_workflow_automation` names the reason for " +
+    "this step. `child_unavailable`: the workflow it names is archived, deleted, or not in " +
+    "this workspace — point the step at a live one. `target_not_static`: the step must name " +
+    "exactly ONE fixed workflow, by `workflow_id` or by `workflow_slug` and not both, with no " +
+    "placeholder in it, because which workflow runs may not change between the approval and " +
+    "the run. `child_calls_workflow`: the workflow it starts itself starts another — approving " +
+    "that would approve a chain whose far end nobody reviewed; flatten the middle workflow or " +
+    "give the innermost one its own schedule and its own approval. `boundary` and `s3.scope` " +
+    "do nothing on a call step. Do not offer a one-off run as a substitute for recurring " +
+    "approval, and if the call passes no `input` and no later step reads its result, removing " +
+    "the call and scheduling the child on its own is the simpler answer.",
 };
 
+/** How a child's own issue is introduced, so the reader does not try to repair
+ *  it in the wrong workflow. */
+export function calledWorkflowPrefix(call_step_id: string, workflow_slug: string | null): string {
+  return (
+    `This step is inside the called workflow \`${workflow_slug ?? "it starts"}\` (started by ` +
+    `step \`${call_step_id}\`). Repair it THERE, in that workflow's own chat; nothing in this ` +
+    "workflow can change it. After the child is saved and activated, review this workflow again. "
+  );
+}
 /**
  * The concrete remedy for one issue, or null when none is known.
  *
