@@ -8,7 +8,7 @@
 // by name.
 
 import { expect, test } from "bun:test";
-import { remedyFor, repairGuidanceForIssues } from "./issue-remedies.ts";
+import { calledWorkflowPrefix, remedyFor, repairGuidanceForIssues } from "./issue-remedies.ts";
 import type { RequestBoundaryRefusal } from "./request-boundary.ts";
 
 const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
@@ -165,4 +165,33 @@ test("a step that calls another workflow carries its remedy although it has no d
   // The discriminator, so the reader can tell which of the two ways applies.
   expect(entry?.instruction).toContain("passes no `input`");
   expect(entry?.instruction).toContain("one-off run");
+});
+
+test("an unbound call names each reason and what to do about it", () => {
+  // One code, three very different situations. A remedy that named only the
+  // generic case sent the author looking for a fix that did not apply.
+  const remedy = remedyFor("unbound_workflow_call", null) ?? "";
+  expect(remedy).toContain("child_unavailable");
+  expect(remedy).toContain("target_not_static");
+  expect(remedy).toContain("child_calls_workflow");
+  // The three traps: guessing, widening, and substituting a single run.
+  expect(remedy).toContain("exactly ONE fixed workflow");
+  expect(remedy).toContain("`boundary` and `s3.scope` do nothing on a call step");
+  expect(remedy).toContain("one-off run");
+  // A driver-keyed registration would make this unreachable: a call step
+  // never becomes an effect, so it has no driver.
+  expect(remedyFor("unbound_workflow_call", "http")).toBe(remedy);
+});
+
+test("a child's issue says which workflow to repair it in", () => {
+  const prefix = calledWorkflowPrefix("run_child", "publish-essay-to-github");
+  expect(prefix).toContain("publish-essay-to-github");
+  expect(prefix).toContain("run_child");
+  expect(prefix).toContain("Repair it THERE");
+  // Nothing in the parent can change it, and the parent needs re-approving
+  // once it has been changed — both have to be said, or the author edits the
+  // wrong workflow and then wonders why the approval still refuses.
+  expect(prefix).toContain("nothing in this workflow can change it");
+  expect(prefix).toContain("review this workflow again");
+  expect(calledWorkflowPrefix("run_child", null)).toContain("it starts");
 });
