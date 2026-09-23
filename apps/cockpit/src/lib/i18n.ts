@@ -237,6 +237,9 @@ const EN = {
   "authority.call.title": "Step {step} starts the workflow \u201e{name}\u201c (version {version})",
   "authority.call.scope":
     "Everything below is what that workflow does on every start. This approval covers exactly this version; a new version needs a new approval.",
+  "schedules.held.since": "Held since {when}",
+  "schedules.held.reviewRepair": "Repair workflow",
+  "schedules.held.reviewGrant": "Review approval",
   "authority.issuesTitle": "Why this cannot be approved yet",
   "authority.issueStep": "Step {step}",
   "authority.issueInCall": "Step {step}, inside the workflow started by {call}",
@@ -1922,6 +1925,9 @@ const DE: Record<TranslationKey, string> = {
     "Schritt {step} startet den Workflow \u201e{name}\u201c (Version {version})",
   "authority.call.scope":
     "Alles Folgende führt dieser Workflow bei jedem Start aus. Die Freigabe gilt genau für diese Version; eine neue Version braucht eine neue Freigabe.",
+  "schedules.held.since": "Steht seit {when}",
+  "schedules.held.reviewRepair": "Workflow reparieren",
+  "schedules.held.reviewGrant": "Freigabe prüfen",
   "authority.issuesTitle": "Warum das noch nicht freigegeben werden kann",
   "authority.issueStep": "Schritt {step}",
   "authority.issueInCall": "Schritt {step}, im Workflow, den {call} startet",
