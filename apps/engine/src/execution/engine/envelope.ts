@@ -2,7 +2,7 @@
 // validator used at the input/output boundaries of the execution
 // pipeline. Pure functions only; no DB, no async.
 
-import { type OffloadRef, OffloadResolutionError, previewOf } from "../offload.ts";
+import { isOffloadRef, type OffloadRef, OffloadResolutionError, previewOf } from "../offload.ts";
 import type { RunStepOutcome } from "../step-runner.ts";
 import type { HeldRequest, StepResult } from "../types.ts";
 
@@ -125,6 +125,64 @@ export function wrapEnvelope(params: {
     }
   }
   return env;
+}
+
+/** What one loop-body envelope contributes to the empty-loop heuristic.
+ *  `offloaded` is productive too; it is reported separately only because
+ *  the caller counts offloaded iterations for telemetry. */
+export type BodyEnvelopeVerdict = "productive" | "offloaded" | "empty";
+
+/**
+ * An empty payload means two different things depending on where it came from.
+ *
+ * A transform that computes `[]` on every iteration is the defect the
+ * empty-loop warning exists to catch: the body read the wrong scope and the
+ * run "succeeds" with no rows. A request that returns `[]` under a successful
+ * status code is a remote system answering the question — "this repository had
+ * no referrers in the last 14 days" is a complete answer, and no edit to the
+ * step can make it non-empty. Telling an author to repair that step asks for
+ * the impossible, and an authoring model asked for the impossible rewrites
+ * something that worked.
+ *
+ * Only the second kind carries a `status_code`: `wrapEnvelope` sets it from
+ * the dispatch's `request_meta`, so it is present exactly when the step
+ * reached a system outside the engine and that system replied.
+ */
+export function classifyBodyEnvelope(value: unknown): BodyEnvelopeVerdict {
+  const env = value as ScopeEnvelope | null | undefined;
+  if (!env || typeof env !== "object") return "empty";
+  // Hold-writes preview: a held body step carries no data BY DESIGN (the
+  // artifact rides `held_request`), and a sibling skipped for depending on it
+  // is equally intentional — neither must trip the heuristic during a hold
+  // preview of an all-writes loop body.
+  if (env.held) return "productive";
+  if (env.error) return env.error.code === "skipped_dependency_held" ? "productive" : "empty";
+  // An offloaded payload appears as an `OffloadRef`. It is productive by
+  // definition (only oversize payloads offload) — count it without rehydrating.
+  if (isOffloadRef(env.data)) return "offloaded";
+  if (typeof env.status_code === "number" && env.status_code < 400) return "productive";
+  const data = env.data;
+  if (data == null) return "empty";
+  if (Array.isArray(data) && data.length === 0) return "empty";
+  if (typeof data === "object" && Object.keys(data as object).length === 0) return "empty";
+  return "productive";
+}
+
+/** Did any envelope in this iteration produce something? Mirrors the
+ *  per-iteration accumulation both loop drivers need. */
+export function classifyBodyIteration(iteration: unknown): {
+  productive: boolean;
+  offloaded: boolean;
+} {
+  if (!iteration || typeof iteration !== "object") return { productive: false, offloaded: false };
+  let productive = false;
+  let offloaded = false;
+  for (const value of Object.values(iteration as Record<string, unknown>)) {
+    const verdict = classifyBodyEnvelope(value);
+    if (verdict === "offloaded") offloaded = true;
+    if (verdict !== "empty") productive = true;
+  }
+  return { productive, offloaded };
 }
 
 export function envelopeFor(outcome: { result: StepResult; scope_value: unknown }): ScopeEnvelope {
