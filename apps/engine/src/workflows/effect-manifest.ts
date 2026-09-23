@@ -101,6 +101,14 @@ const inputSchema = z
     definition: JsonValueSchema,
     bindings: z.array(ResolvedEffectBindingSchema).max(200),
     calls: z.array(ResolvedCallSchema).max(50).optional(),
+    // What steps of this workflow have really written, newest per step. Never
+    // part of the manifest — evidence for a check, not a permission — and
+    // absent unless the resolver found any, so a workflow with no history
+    // compiles to the byte-identical manifest it always did.
+    observed_keys: z
+      .array(z.object({ step_id: z.string().min(1), key: z.string().min(1) }).strict())
+      .max(200)
+      .optional(),
   })
   .strict();
 
@@ -128,6 +136,9 @@ const ManifestIssueCodeSchema = z.enum([
   "unknown_effect",
   "destructive_effect",
   "unbound_workflow_call",
+  // A folder this workflow's own history contradicts. Not a guess: a key this
+  // very step wrote, which the declared folder does not contain.
+  "boundary_contradicted_by_history",
 ]);
 export type ManifestIssueCode = z.infer<typeof ManifestIssueCodeSchema>;
 
@@ -237,6 +248,7 @@ export function compileWorkflowEffectManifest(raw: unknown): {
   }
   const call_refusals: CallRefusal[] = [];
   const pins: z.infer<typeof CallPinSchema>[] = [];
+  const observed = new Map((input.observed_keys ?? []).map((seen) => [seen.step_id, seen.key]));
   const manifest: WorkflowEffectManifest = {
     schema_version: 1,
     tenant_id: input.tenant_id,
@@ -327,6 +339,14 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       workflowJsonDigest(storage) === workflowJsonDigest(binding.storage) &&
       binding.target === storageTarget(storage);
     if (binding.storage && !supportedStorage) issue("binding_mismatch");
+    // A folder this step's own history contradicts. Only a key it really
+    // wrote counts; a step that never ran, or ran without recording one, says
+    // nothing and is left alone. The declared folder is otherwise unmeasurable
+    // at review: a write is held in every preview, so the first proof it is
+    // wrong would be the first scheduled run after a human approved it.
+    const seenKey = binding.storage ? observed.get(step.id) : undefined;
+    if (seenKey !== undefined && !seenKey.startsWith(binding.storage?.key_prefix ?? ""))
+      issue("boundary_contradicted_by_history");
     // An authored boundary takes precedence over the derived read profiles. The
     // same `!step.boundary` guard sits at every place a read profile is
     // consulted, so a step's target and its dispatch assert come from exactly
