@@ -670,3 +670,48 @@ test("what a request sent is measured, and that is the ceiling", async () => {
   // someone liked the look of.
   expect(proposals[0]?.boundary?.max_body_bytes).toBeGreaterThan(40_000);
 });
+
+test("an omitted body still reports its size", async () => {
+  // A raw body is left out of the review on purpose — it can carry credentials
+  // that shape-only scrubbing cannot recognise. Its LENGTH discloses nothing,
+  // and it is the only number a ceiling can honestly come from. Without it a
+  // step that posts a markdown document could never be bounded at all, which
+  // is what kept one production workflow unapprovable.
+  await record([{ step: "send", url: "https://api.example.test/v1/content" }]);
+  await ctx.db
+    .update(executionSteps)
+    .set({
+      request_meta: {
+        driver: "http",
+        method: "POST",
+        extras: {
+          held: true,
+          prepared_request_review: {
+            url: "https://api.example.test/v1/content",
+            method: "POST",
+            redacted_request_json: JSON.stringify({ body: null }),
+            opaque_payload_omitted: true,
+            body_bytes: 51_200,
+          },
+        },
+      },
+    })
+    .where(eq(executionSteps.step_key, "send"));
+  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    definition: definition([
+      {
+        id: "send",
+        kind: "request",
+        connector_id: CONNECTOR,
+        method: "POST",
+        path: "/v1/content",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+        body: "${item.markdown}",
+      },
+    ]),
+  });
+  expect(unproposable).toEqual([]);
+  expect(proposals[0]?.boundary?.max_body_bytes).toBeGreaterThan(51_200);
+});
