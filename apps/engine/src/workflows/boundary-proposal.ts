@@ -365,6 +365,13 @@ function proposeStorageStep(
   if (keys.length === 0) return "no_history";
   const key_prefix = commonPrefix(keys);
   if (!key_prefix) return "values_not_describable";
+  // A declared folder that every observed key sits inside is the author's, and
+  // stays theirs. Only a folder the step's own writes CONTRADICT is corrected —
+  // one production workflow declared its sibling's folder and was refused
+  // nightly, with the real key on every refusing row.
+  const declared = step.s3?.scope?.key_prefix;
+  if (declared !== undefined && keys.every((key) => key.startsWith(declared)))
+    return "not_supported";
   const newest = seen.find((entry) => entry.key || entry.held?.key) as Observation;
   return {
     step_id: step.id,
@@ -389,12 +396,17 @@ export async function proposeBoundaries(
   db: Executor,
   params: { tenant_id: string; workflow_id: string; definition: WorkflowDef },
 ): Promise<BoundaryProposals> {
-  // Two ways a step can be missing what it needs: it declares no limit at all,
-  // or it paginates without a page cap — which refuses the step even when its
-  // boundary is perfect, because the extra requests come from the engine.
+  // Three ways a step can be missing what it needs: it declares no limit at
+  // all; it paginates without a page cap — which refuses the step even when its
+  // boundary is perfect, because the extra requests come from the engine; or it
+  // declares a folder its own writes contradict. The third is not a reviewed
+  // choice being protected, it is a demonstrably wrong statement: the step is
+  // refused on every run, and the key it really wrote is on the row that
+  // refused it.
   const open = params.definition.steps.flatMap((step) =>
     step.kind === "request" &&
     ((step.boundary === undefined && step.s3?.scope === undefined) ||
+      step.s3?.scope !== undefined ||
       (step.pagination !== undefined && step.pagination.max_pages === undefined))
       ? [step]
       : [],

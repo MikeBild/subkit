@@ -445,3 +445,38 @@ test("a step inside a loop is the same step, iteration suffix and all", async ()
   expect(proposals[0]?.boundary?.variables).toEqual({ "input.page_id": { class: "uuid" } });
   expect(proposals[0]?.evidence.observations).toBe(3);
 });
+
+test("a folder the step's own writes contradict is corrected, one it fits is not", async () => {
+  // Two production workflows were approved with their sibling's folder. Every
+  // scheduled run was then refused, nightly, with the real key printed on the
+  // row that refused it — the evidence to fix it was in the same table as the
+  // failure the whole time. The author's folder still wins whenever the writes
+  // actually sit inside it; only a contradiction is overwritten.
+  await record([
+    { step: "store", key: "v1/infrastructure/manifests/year=2026/a.json" },
+    { step: "store", key: "v1/infrastructure/manifests/year=2026/b.json" },
+  ]);
+  const storage = (key_prefix: string) => [
+    {
+      id: "store",
+      kind: "request",
+      connector_id: CONNECTOR,
+      method: "PUT",
+      s3: { key: "x", scope: { key_prefix, max_bytes: 4096 } },
+    },
+  ];
+  const wrong = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    definition: definition(storage("v1/latest/")),
+  });
+  expect(wrong.proposals[0]?.s3_scope?.key_prefix).toBe("v1/infrastructure/manifests/year=2026/");
+
+  const right = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    definition: definition(storage("v1/infrastructure/")),
+  });
+  expect(right.proposals).toEqual([]);
+  expect(right.unproposable).toEqual([{ step_id: "store", reason: "not_supported" }]);
+});
