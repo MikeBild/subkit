@@ -845,6 +845,13 @@ test("held report preparation works for a saved draft and cannot grant, activate
     body: JSON.stringify({ environment: "dev" }),
   });
   expect(prepared.status).toBe(200);
+  // The answer says which of the two happened. It used to be a flat
+  // `prepared: true` either way: five production workflows were "prepared",
+  // not one of them produced a run, and the derivation that depends on those
+  // runs then reported their steps as never executed.
+  const preparedBody = (await prepared.json()) as { prepared: boolean; reason?: string };
+  expect(typeof preparedBody.prepared).toBe("boolean");
+  if (!preparedBody.prepared) expect(typeof preparedBody.reason).toBe("string");
   const preview = await app.request(f.previewPath, { headers: browserHeaders });
   expect(await preview.json()).toMatchObject({ eligible_for_repeated_runs: false });
   const [workflow] = await ctx.db.select().from(workflows).where(eq(workflows.id, f.workflow.id));
