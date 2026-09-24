@@ -1572,6 +1572,21 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
                     "largest content the workflow can produce; do not remove the scope and do not " +
                     "widen it to the whole bucket.",
                 },
+                // The refusal is exactly where the two facts matter most, and
+                // they existed only inside that sentence: the step is refused
+                // BECAUSE the ceiling is too small, so nothing was recorded, so
+                // nothing could be derived, so the ceiling stayed too small.
+                // Measured here, the next review can read it.
+                request_meta: {
+                  driver: "s3",
+                  method,
+                  refused: true,
+                  key: reqPath.replace(/^\//, ""),
+                  ...(typeof params.body === "string"
+                    ? { bytes_out: new TextEncoder().encode(params.body).byteLength }
+                    : {}),
+                  connector: connectorMeta,
+                },
               };
           }
           // Hold-writes: a PUT/DELETE is materialized (resolved key /
