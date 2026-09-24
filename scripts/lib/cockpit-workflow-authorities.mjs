@@ -294,9 +294,20 @@ async function verifyPreparedVersion(page, stand, workflowId, locale, capture) {
     await page.getByTestId("authority-grant-open").click();
     await page.getByTestId("authority-grant-review").waitFor();
     const confirm = page.getByTestId("authority-grant-confirm");
-    for (let attempt = 0; (await confirm.isDisabled()) && attempt < 100; attempt += 1) {
-      await page.waitForTimeout(100);
-    }
+    // Wait for the dialog to STOP working, not for a stopwatch. Ten seconds was
+    // enough on a laptop and not on a CI runner, and a fixture that fails by
+    // being slower than its own guess measures the machine, not the product.
+    // The two states are distinguished below: still preparing, or a review this
+    // dialog will not grant from.
+    await page
+      .waitForFunction(
+        () => {
+          const node = document.querySelector('[data-testid="authority-grant-confirm"]');
+          return Boolean(node) && !node.disabled;
+        },
+        { timeout: 60_000 },
+      )
+      .catch(() => {});
     if (await confirm.isDisabled()) {
       // Which of the two reasons: still working, or a review the dialog will
       // not grant from. The re-check button appears only for the second.
