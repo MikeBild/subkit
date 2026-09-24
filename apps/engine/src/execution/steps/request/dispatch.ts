@@ -2626,6 +2626,18 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               },
             }
           : {};
+      // How much this request SENT. `bytes_in` is the answer's size and says
+      // nothing about the content that left — so a step that posts a document
+      // had no measured size anywhere, and the only ceiling anyone could put on
+      // it was invented. Same fact, same reason, as the storage write.
+      const sentBytes =
+        heldRequestBody === undefined || heldRequestBody === null
+          ? undefined
+          : new TextEncoder().encode(
+              typeof heldRequestBody === "string"
+                ? heldRequestBody
+                : JSON.stringify(heldRequestBody),
+            ).byteLength;
       last_meta = connectorResolution
         ? {
             driver: "http",
@@ -2633,6 +2645,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             method: p.step.method ?? "GET",
             status: res.status,
             bytes_in: res.bytes_in,
+            ...(sentBytes === undefined ? {} : { bytes_out: sentBytes }),
             ...(lastIdempotencyKey.value ? { idempotency_key: lastIdempotencyKey.value } : {}),
             connector: connectorResolution,
             digest,
@@ -2644,6 +2657,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             method: p.step.method ?? "GET",
             status: res.status,
             bytes_in: res.bytes_in,
+            ...(sentBytes === undefined ? {} : { bytes_out: sentBytes }),
             ...(lastIdempotencyKey.value ? { idempotency_key: lastIdempotencyKey.value } : {}),
             digest,
             ...producedExtras,

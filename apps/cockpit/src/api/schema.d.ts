@@ -18479,6 +18479,7 @@ export interface components {
             url: string | null;
             status?: number;
             bytes_in?: number;
+            bytes_out?: number;
             idempotency_key?: string;
             connector: components["schemas"]["ConnectorResolutionSummary"];
             digest?: components["schemas"]["RequestDigest"];
@@ -18571,6 +18572,7 @@ export interface components {
             url: string | null;
             status?: number;
             bytes_in?: number;
+            bytes_out?: number;
             idempotency_key?: string;
             unresolved_placeholders?: string[];
             digest?: components["schemas"]["RequestDigest"];
