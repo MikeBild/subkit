@@ -476,28 +476,39 @@ function proposeStorageStep(
   if (keys.length === 0) return "no_history";
   const key_prefix = commonPrefix(keys);
   if (!key_prefix) return "values_not_describable";
-  // A declared folder that every observed key sits inside is the author's, and
-  // stays theirs. Only a folder the step's own writes CONTRADICT is corrected —
-  // one production workflow declared its sibling's folder and was refused
-  // nightly, with the real key on every refusing row.
-  const declared = step.s3?.scope?.key_prefix;
-  if (declared !== undefined && keys.every((key) => key.startsWith(declared)))
-    return "not_supported";
+  // A declared scope the step's own history fits is the author's and stays
+  // theirs. Only one its writes CONTRADICT is corrected — and a scope has two
+  // halves that can be contradicted. One production workflow declared its
+  // sibling's FOLDER and was refused nightly with the real key on every
+  // refusing row; another declared a CEILING below what it really writes and
+  // was refused for the same reason, in the same place, with the real size in
+  // the same message.
+  const declared = step.s3?.scope;
+  const written = seen.flatMap((entry) => (entry.bytes && entry.bytes > 0 ? [entry.bytes] : []));
+  const folderFits =
+    declared === undefined || keys.every((key) => key.startsWith(declared.key_prefix));
+  const ceilingFits =
+    declared === undefined || written.length === 0 || Math.max(...written) <= declared.max_bytes;
+  if (declared !== undefined && folderFits && ceilingFits) return "not_supported";
   const newest = seen.find((entry) => entry.key || entry.held?.key) as Observation;
   // Measured, never assumed. This was a constant — 64 KiB, chosen by nobody
   // and verified against nothing — and it refused a step that really writes
   // 337 KB on the first scheduled run after the approval. A ceiling below what
   // the step demonstrably produces is not a limit, it is a defect with a
   // number in it. Without a measurement there is no ceiling to propose.
-  const written = seen.flatMap((entry) => (entry.bytes && entry.bytes > 0 ? [entry.bytes] : []));
   const isWrite = (step.method ?? "GET").toUpperCase() === "PUT";
   if (isWrite && written.length === 0) return "body_size_unknown";
   return {
     step_id: step.id,
-    // Bounds size, not content — the dialog says that in its own words.
+    // Bounds size, not content — the dialog says that in its own words. The
+    // folder the author declared is kept whenever it fits; only the half the
+    // history contradicts is replaced.
     s3_scope: {
-      key_prefix,
-      max_bytes: written.length > 0 ? bodyCeiling(Math.max(...written)) : bodyCeiling(1024),
+      key_prefix: folderFits && declared ? declared.key_prefix : key_prefix,
+      max_bytes:
+        written.length > 0
+          ? bodyCeiling(Math.max(...written))
+          : (declared?.max_bytes ?? bodyCeiling(1024)),
     },
     evidence: {
       observations: keys.length,
