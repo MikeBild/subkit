@@ -83,8 +83,14 @@ export async function applyBoundaryProposals(
       proposal.max_pages !== undefined && step.pagination
         ? { pagination: { ...step.pagination, max_pages: proposal.max_pages } }
         : {};
-    if (proposal.boundary) return { ...step, ...paged, boundary: proposal.boundary };
-    return { ...step, ...paged };
+    // The same request, written so it can be reviewed. Offered only where an
+    // URL this step really sent proves the two forms agree, so applying it
+    // changes how the request is spelled and not where it goes.
+    const rewritten = proposal.path_rewrite
+      ? { path: proposal.path_rewrite.path, query: proposal.path_rewrite.query }
+      : {};
+    if (proposal.boundary) return { ...step, ...paged, ...rewritten, boundary: proposal.boundary };
+    return { ...step, ...paged, ...rewritten };
   });
   const result = await saveWorkflowDraft(
     {
