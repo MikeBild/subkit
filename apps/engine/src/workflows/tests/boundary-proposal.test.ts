@@ -480,3 +480,45 @@ test("a folder the step's own writes contradict is corrected, one it fits is not
   expect(right.proposals).toEqual([]);
   expect(right.unproposable).toEqual([{ step_id: "store", reason: "not_supported" }]);
 });
+
+test("a query inside the path is rewritten, but only when a real request proves it", async () => {
+  // `/startups?page=${item.n}&limit=10` is the same request as a path plus a
+  // query object — and only the second form can be reviewed, because a boundary
+  // states a target and an exact key set and a `?` in the path is neither. The
+  // compiler has always refused it and the remedy has always said what to do;
+  // a person had to do it by hand. Rewriting a DEFINITION is a harder thing to
+  // offer than declaring a limit, so it is held to proof: an URL this step
+  // really sent has to come back out of the rewritten form.
+  await record([
+    { step: "list", url: "https://api.example.test/startups?page=1&limit=10" },
+    { step: "list", url: "https://api.example.test/startups?page=2&limit=10" },
+  ]);
+  const listing = (path: string) => [
+    { id: "list", kind: "request", connector_id: CONNECTOR, method: "GET", path },
+  ];
+  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+    definition: definition(listing("/startups?page=${item.n}&limit=10")),
+  });
+  expect(unproposable).toEqual([]);
+  expect(proposals[0]?.path_rewrite).toEqual({
+    path: "/startups",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+    query: { page: "${item.n}", limit: "10" },
+  });
+  // The moving value is bounded from the same evidence, not guessed.
+  expect(proposals[0]?.boundary?.variables).toEqual({ "item.n": { class: "integer" } });
+
+  // A rewrite the history does not reproduce is not offered: this one claims a
+  // key the real requests never carried.
+  const unproven = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+    definition: definition(listing("/startups?page=${item.n}&limit=10&sort=revenue")),
+  });
+  expect(unproven.proposals).toEqual([]);
+  expect(unproven.unproposable).toEqual([{ step_id: "list", reason: "path_not_comparable" }]);
+});
