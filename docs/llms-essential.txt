@@ -265,8 +265,8 @@ Full glossary: [`docs/concepts/glossary.md`](../concepts/glossary.md).
 The application-complete image bundles the engine, Cockpit, migrations,
 Chromium, **and** the `sk` CLI plus every supported client-platform artifact.
 PostgreSQL and S3-compatible object storage remain separate, mandatory services.
-The Compose file starts the pinned application, PostgreSQL, MinIO, and a one-shot
-private-bucket initializer together.
+The Compose file starts the pinned application, PostgreSQL, the object store, and
+a one-shot private-bucket initializer together.
 
 You do not need a checkout to get that file. Every running engine serves it, and
 what it serves starts that engine's own release:
@@ -298,8 +298,8 @@ curl -s http://localhost:3000/ready
 ```
 
 The engine container has no application-state volume. PostgreSQL stores runtime
-configuration, encrypted secret versions, metadata, and object pointers; MinIO
-stores file bodies and oversized results. The only engine filesystem writes are
+configuration, encrypted secret versions, metadata, and object pointers; the
+object store holds file bodies and oversized results. The only engine filesystem writes are
 disposable scratch files under `/tmp`.
 
 ---

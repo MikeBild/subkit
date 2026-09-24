@@ -21,97 +21,14 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import {
+  dockerAvailable,
+  type ObjectStoreFixture,
+  startObjectStore,
+} from "../../tests/object-store-fixture.ts";
 import { createConnector, getConnector } from "../service.ts";
 import { executeS3Request } from "./s3.ts";
 
-interface MinioHandle {
-  endpoint: string;
-  accessKey: string;
-  secretKey: string;
-  stop: () => Promise<void>;
-}
-
-async function dockerAvailable(): Promise<boolean> {
-  if (process.env.SKIP_DOCKER === "1") return false;
-  const { spawnSync } = await import("node:child_process");
-  try {
-    const probe = spawnSync("docker", ["info"], { stdio: "ignore" });
-    if (probe.status !== 0) return false;
-  } catch {
-    return false;
-  }
-  return true;
-}
-
-async function startMinio(): Promise<MinioHandle> {
-  const accessKey = "minioadmin";
-  const secretKey = "minioadmin";
-  const name = `sk-s3-async-${Math.random().toString(36).slice(2, 8)}`; // allow-random: legacy; review before changing
-
-  const proc = Bun.spawn(
-    [
-      "docker",
-      "run",
-      "--rm",
-      "-d",
-      "--name",
-      name,
-      "-p",
-      "0:9000",
-      "-e",
-      `MINIO_ROOT_USER=${accessKey}`,
-      "-e",
-      `MINIO_ROOT_PASSWORD=${secretKey}`,
-      "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
-      "server",
-      "/data",
-    ],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-  const containerId = (await new Response(proc.stdout).text()).trim();
-  if (!containerId) {
-    const errText = await new Response(proc.stderr).text();
-    throw new Error(`Failed to start MinIO: ${errText}`);
-  }
-
-  const inspect = Bun.spawnSync([
-    "docker",
-    "inspect",
-    "--format",
-    '{{(index (index .NetworkSettings.Ports "9000/tcp") 0).HostPort}}',
-    containerId,
-  ]);
-  const port = Number(new TextDecoder().decode(inspect.stdout).trim());
-  if (!port) throw new Error("Failed to determine MinIO mapped port");
-
-  // allow-wall-clock: this test exercises real-time polling or freshness windows.
-  const deadline = Date.now() + 30_000;
-  let ready = false;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/minio/health/ready`);
-      if (res.ok) {
-        ready = true;
-        break;
-      }
-    } catch {
-      /* not ready yet */
-    }
-    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: MinIO warm-up
-  }
-  if (!ready) throw new Error("MinIO did not become ready within 30 seconds");
-
-  return {
-    endpoint: `http://127.0.0.1:${port}`,
-    accessKey,
-    secretKey,
-    stop: async () => {
-      Bun.spawnSync(["docker", "rm", "-f", containerId]);
-    },
-  };
-}
-
-/** Produce an AsyncIterable that yields `totalBytes` of data in `chunkSize` chunks. */
 async function* buildStream(
   totalBytes: number,
   chunkSize: number,
@@ -126,14 +43,13 @@ async function* buildStream(
   }
 }
 
-const BUCKET = `sk-s3-async-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: legacy; review before changing
-
 // Module scope, so the result is known before bun builds the test list.
 const DOCKER = await dockerAvailable();
 let testDb: TestDb;
 let tenantId: string;
-let minio: MinioHandle | null = null;
+let objectStore: ObjectStoreFixture | null = null;
 let connectorId: string | null = null;
+const BUCKET = `sk-s3-async-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: legacy; review before changing
 
 beforeAll(async () => {
   if (!DOCKER) return;
@@ -143,14 +59,14 @@ beforeAll(async () => {
     .values({ slug: "s3-async-t", display_name: "s3 async tenant" })
     .returning();
   tenantId = t!.id;
-  minio = await startMinio();
+  objectStore = await startObjectStore("subkit-s3-async-test");
 
   const bootstrap = new S3Client({
     region: "us-east-1",
-    endPoint: minio.endpoint,
+    endPoint: objectStore.endpoint,
     bucket: BUCKET,
-    accessKey: minio.accessKey,
-    secretKey: minio.secretKey,
+    accessKey: objectStore.accessKey,
+    secretKey: objectStore.secretKey,
     pathStyle: true,
   });
   try {
@@ -169,11 +85,11 @@ beforeAll(async () => {
         auth_type: "none",
         config: {
           region: "us-east-1",
-          endpoint: minio.endpoint,
+          endpoint: objectStore.endpoint,
           bucket: BUCKET,
           force_path_style: true,
-          access_key_id: minio.accessKey,
-          secret_access_key: minio.secretKey,
+          access_key_id: objectStore.accessKey,
+          secret_access_key: objectStore.secretKey,
         },
       },
       actor_id: null,
@@ -181,16 +97,16 @@ beforeAll(async () => {
     testDb.db,
   );
   connectorId = conn.id;
-}, 60_000);
+}, 120_000);
 
 afterAll(async () => {
-  if (minio) await minio.stop();
+  if (objectStore) await objectStore.stop();
   if (testDb) await testDb.cleanup();
-}, 60_000);
+}, 120_000);
 
 describe.skipIf(!DOCKER)("s3 driver — AsyncIterable<Uint8Array> body", () => {
   test("1 MB AsyncIterable stream: downloaded bytes equal source", async () => {
-    if (!minio || !connectorId) throw new Error("MinIO bootstrap did not complete");
+    if (!objectStore || !connectorId) throw new Error("object store fixture did not complete");
     const SIZE = 1 * 1024 * 1024;
     const FILL = 0xab;
     const CHUNK = 64 * 1024;
@@ -235,7 +151,7 @@ describe.skipIf(!DOCKER)("s3 driver — AsyncIterable<Uint8Array> body", () => {
   }, 120_000);
 
   test("10 MB AsyncIterable stream: downloaded bytes equal source", async () => {
-    if (!minio || !connectorId) throw new Error("MinIO bootstrap did not complete");
+    if (!objectStore || !connectorId) throw new Error("object store fixture did not complete");
     const SIZE = 10 * 1024 * 1024;
     const FILL = 0xcd;
     const CHUNK = 256 * 1024;
