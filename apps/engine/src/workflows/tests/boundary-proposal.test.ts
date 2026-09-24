@@ -38,7 +38,7 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function record(rows: Array<{ step: string; url?: string; key?: string }>) {
+async function record(rows: Array<{ step: string; url?: string; key?: string; bytes?: number }>) {
   await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
   const [execution] = await ctx.db
     .insert(executions)
@@ -62,6 +62,7 @@ async function record(rows: Array<{ step: string; url?: string; key?: string }>)
         driver: row.key ? "s3" : "http",
         ...(row.url ? { url: row.url } : {}),
         ...(row.key ? { key: row.key } : {}),
+        ...(row.bytes ? { bytes_out: row.bytes } : {}),
       },
     })),
   );
@@ -171,8 +172,8 @@ test("a step that sends content gets no invented size ceiling", async () => {
 
 test("a storage step is given the deepest folder that holds everything it touched", async () => {
   await record([
-    { step: "store", key: "v1/facts/year=2026/month=09/a.json" },
-    { step: "store", key: "v1/facts/year=2026/month=08/b.json" },
+    { step: "store", key: "v1/facts/year=2026/month=09/a.json", bytes: 4096 },
+    { step: "store", key: "v1/facts/year=2026/month=08/b.json", bytes: 337_858 },
   ]);
   const { proposals } = await proposeBoundaries(ctx.db, {
     tenant_id,
@@ -184,7 +185,10 @@ test("a storage step is given the deepest folder that holds everything it touche
   // Cut back to a folder: `v1/facts/year=2026/month=0` would admit every
   // sibling sharing those letters, which is not a folder anyone declared.
   expect(proposals[0]?.s3_scope?.key_prefix).toBe("v1/facts/year=2026/");
-  expect(proposals[0]?.s3_scope?.max_bytes).toBeGreaterThan(0);
+  // The ceiling covers the LARGEST write this step really made, with headroom.
+  // It used to be a constant 64 KiB that nobody measured, and it refused a
+  // 337 KB write on the first scheduled run after the approval.
+  expect(proposals[0]?.s3_scope?.max_bytes).toBeGreaterThan(337_858);
 });
 
 test("a step that already declares a boundary is left alone", async () => {
@@ -453,8 +457,8 @@ test("a folder the step's own writes contradict is corrected, one it fits is not
   // failure the whole time. The author's folder still wins whenever the writes
   // actually sit inside it; only a contradiction is overwritten.
   await record([
-    { step: "store", key: "v1/infrastructure/manifests/year=2026/a.json" },
-    { step: "store", key: "v1/infrastructure/manifests/year=2026/b.json" },
+    { step: "store", key: "v1/infrastructure/manifests/year=2026/a.json", bytes: 900 },
+    { step: "store", key: "v1/infrastructure/manifests/year=2026/b.json", bytes: 1200 },
   ]);
   const storage = (key_prefix: string) => [
     {
@@ -521,4 +525,21 @@ test("a query inside the path is rewritten, but only when a real request proves 
   });
   expect(unproven.proposals).toEqual([]);
   expect(unproven.unproposable).toEqual([{ step_id: "list", reason: "path_not_comparable" }]);
+});
+
+test("a write whose size was never measured gets no ceiling at all", async () => {
+  // The rule this module exists for, applied to itself: the ceiling used to be
+  // a constant nobody had measured, so the derived boundary refused a step that
+  // really writes 337 KB — a limit that is a defect with a number in it. A
+  // measurement or nothing.
+  await record([{ step: "store", key: "v1/facts/year=2026/a.json" }]);
+  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    definition: definition([
+      { id: "store", kind: "request", connector_id: CONNECTOR, method: "PUT", s3: { key: "x" } },
+    ]),
+  });
+  expect(proposals).toEqual([]);
+  expect(unproposable).toEqual([{ step_id: "store", reason: "body_size_unknown" }]);
 });
