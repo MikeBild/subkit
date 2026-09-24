@@ -543,3 +543,39 @@ test("a write whose size was never measured gets no ceiling at all", async () =>
   expect(proposals).toEqual([]);
   expect(unproposable).toEqual([{ step_id: "store", reason: "body_size_unknown" }]);
 });
+
+test("a ceiling the step's own writes exceed is the same contradiction as a wrong folder", async () => {
+  // Seen on production: the folder was right, the ceiling was below what the
+  // step really writes, and every scheduled run was refused in the same place
+  // with the real size printed in the same message. A scope has two halves and
+  // either of them can be refuted by the step's own history; the half that
+  // fits stays the author's.
+  await record([
+    { step: "store", key: "v1/radar/products/a.json", bytes: 337_858 },
+    { step: "store", key: "v1/radar/products/b.json", bytes: 12_000 },
+  ]);
+  const scoped = (max_bytes: number) => [
+    {
+      id: "store",
+      kind: "request",
+      connector_id: CONNECTOR,
+      method: "PUT",
+      s3: { key: "x", scope: { key_prefix: "v1/radar/", max_bytes } },
+    },
+  ];
+  const tooSmall = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    definition: definition(scoped(65_536)),
+  });
+  expect(tooSmall.proposals[0]?.s3_scope?.max_bytes).toBeGreaterThan(337_858);
+  // The folder was never in question, so it is not touched.
+  expect(tooSmall.proposals[0]?.s3_scope?.key_prefix).toBe("v1/radar/");
+
+  const roomy = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    definition: definition(scoped(1_000_000)),
+  });
+  expect(roomy.proposals).toEqual([]);
+});
