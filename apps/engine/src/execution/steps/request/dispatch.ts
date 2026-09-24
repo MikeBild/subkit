@@ -1700,6 +1700,15 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               status: res.status,
               ...(resolvedKey ? { key: resolvedKey } : {}),
               ...(resolvedPrefix ? { prefix: resolvedPrefix } : {}),
+              // How much this write really was. The size is measured on every
+              // storage write already — the boundary check computes it to
+              // compare against its ceiling — and then thrown away, so the
+              // only number anyone could put in that ceiling was invented. A
+              // derived `max_bytes` was a constant for exactly this reason,
+              // and it refused a 337 KB write on the first scheduled run.
+              ...(typeof params.body === "string"
+                ? { bytes_out: new TextEncoder().encode(params.body).byteLength }
+                : {}),
               connector: connectorMeta,
             },
           };
