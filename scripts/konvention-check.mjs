@@ -286,9 +286,6 @@ const RESUME_SUMMARY = {
 // count, which is precisely the confusion §8.1 is about.
 const CONVERSATION_TOTAL = AWAITING_CONVERSATIONS.length + 2;
 
-/** The number every surface must show: the engine's own counts, summed. */
-const QUEUE_TOTAL = PATCH_CANDIDATES.length - 1 + SKILL_CANDIDATES.length;
-
 /**
  * The positions the QUEUE holds — the ones this page can decide.
  *
@@ -303,10 +300,10 @@ const QUEUE_TOTAL = PATCH_CANDIDATES.length - 1 + SKILL_CANDIDATES.length;
  * answers total=1. What the fixture is for is the rule, which holds at any
  * size: a position with no consequence here is not a decision here.
  */
-const DECIDABLE_TOTAL = QUEUE_TOTAL;
+const DECIDABLE_TOTAL = PATCH_CANDIDATES.length - 1 + SKILL_CANDIDATES.length;
 
 /** The number of distinct decidable positions the queue can actually render. */
-const QUEUE_SHOWN = QUEUE_TOTAL;
+const QUEUE_SHOWN = DECIDABLE_TOTAL;
 
 /**
  * What the patch endpoint hands over: the three candidates, one of them twice.
@@ -369,6 +366,17 @@ const FAILURE_GROUPS = [
     guidance: "Zugangsdaten prüfen und den Lauf erneut anstoßen.",
   },
 ];
+
+/**
+ * The number every surface must show: the engine's own counts, summed.
+ *
+ * A workflow that is approved and keeps failing waits on them too — the page
+ * lists it in its own section and the badge counts it. It is NOT part of
+ * `DECIDABLE_TOTAL`: the queue has no approve or reject for it, it links to the
+ * runs that failed. That is the same split this check already draws for waiting
+ * conversations, and drawing it is the whole of §8.1.
+ */
+const QUEUE_TOTAL = DECIDABLE_TOTAL + FAILURE_GROUPS.length;
 
 function healthDigest(gateOpen) {
   return {
