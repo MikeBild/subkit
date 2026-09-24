@@ -8,12 +8,12 @@
 // the real cause from the operator).
 //
 // The typed-error cases never open a connection, so they run without
-// Docker. The two signing round-trips reuse the MinIO gating pattern
+// Docker. The two signing round-trips reuse the object-store gating pattern
 // from s3-driver.test.ts.
 
 // A case that could not run must report SKIP, never PASS.
 //
-// LOCAL-SK-DOCKERFALL-ZAEHLT-ALS-BESTANDEN — the two MinIO round-trips used a
+// LOCAL-SK-DOCKERFALL-ZAEHLT-ALS-BESTANDEN — the two signing round-trips used a
 // bare `return` as their docker gate, so under `SKIP_DOCKER=1` they reported
 // "pass" while asserting nothing. The typed-error cases below need no docker
 // and are not gated; only the signing round-trips are, with
@@ -23,98 +23,21 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { upsertCredential } from "../../credentials/service.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import {
+  dockerAvailable,
+  type ObjectStoreFixture,
+  startObjectStore,
+} from "../../tests/object-store-fixture.ts";
 import { classifyS3ProbeError } from "../drivers/probe-classify.ts";
 import { executeS3Request, probeS3Connector, S3CredentialError } from "../drivers/s3.ts";
 import { createConnector, getConnector } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
 
-async function dockerAvailable(): Promise<boolean> {
-  if (process.env.SKIP_DOCKER === "1") return false;
-  const { spawnSync } = await import("node:child_process");
-  try {
-    return spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
-  } catch {
-    return false;
-  }
-}
-
-interface MinioHandle {
-  endpoint: string;
-  accessKey: string;
-  secretKey: string;
-  stop: () => Promise<void>;
-}
-
-async function startMinio(): Promise<MinioHandle> {
-  const accessKey = "minioadmin";
-  const secretKey = "minioadmin";
-  const name = `subkit-minio-cred-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: unique container name per run
-  const proc = Bun.spawn(
-    [
-      "docker",
-      "run",
-      "--rm",
-      "-d",
-      "--name",
-      name,
-      "-p",
-      "0:9000",
-      "-e",
-      `MINIO_ROOT_USER=${accessKey}`,
-      "-e",
-      `MINIO_ROOT_PASSWORD=${secretKey}`,
-      "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
-      "server",
-      "/data",
-    ],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-  const containerId = (await new Response(proc.stdout).text()).trim();
-  if (!containerId) {
-    const errText = await new Response(proc.stderr).text();
-    throw new Error(`Failed to start MinIO: ${errText}`);
-  }
-  const inspect = Bun.spawnSync([
-    "docker",
-    "inspect",
-    "--format",
-    '{{(index (index .NetworkSettings.Ports "9000/tcp") 0).HostPort}}',
-    containerId,
-  ]);
-  const port = Number(new TextDecoder().decode(inspect.stdout).trim());
-  if (!port) throw new Error("Failed to determine MinIO mapped port");
-  // allow-wall-clock: container warm-up poll before first request.
-  const deadline = Date.now() + 30_000;
-  // allow-wall-clock: container warm-up poll before first request.
-  let ready = false;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/minio/health/ready`);
-      if (res.ok) {
-        ready = true;
-        break;
-      }
-    } catch {
-      /* not ready yet */
-    }
-    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: MinIO warm-up
-  }
-  if (!ready) throw new Error("MinIO did not become ready within 30 seconds");
-  return {
-    endpoint: `http://127.0.0.1:${port}`,
-    accessKey,
-    secretKey,
-    stop: async () => {
-      Bun.spawnSync(["docker", "rm", "-f", containerId]);
-    },
-  };
-}
-
-let testDb: TestDb;
-let tenantId: string;
 // Module scope, so the result is known before bun builds the test list.
 const DOCKER = await dockerAvailable();
-let minio: MinioHandle | null = null;
+let testDb: TestDb;
+let tenantId: string;
+let objectStore: ObjectStoreFixture | null = null;
 const BUCKET = `subkit-cred-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: unique bucket per run
 
 async function makeS3Connector(p: {
@@ -154,27 +77,27 @@ beforeAll(async () => {
     .returning();
   tenantId = t!.id;
   if (DOCKER) {
-    minio = await startMinio();
+    objectStore = await startObjectStore("subkit-s3-cred-test");
     const { S3Client } = await import("@bradenmacdonald/s3-lite-client");
     const bootstrap = new S3Client({
       region: "us-east-1",
-      endPoint: minio.endpoint,
+      endPoint: objectStore.endpoint,
       bucket: BUCKET,
-      accessKey: minio.accessKey,
-      secretKey: minio.secretKey,
+      accessKey: objectStore.accessKey,
+      secretKey: objectStore.secretKey,
       pathStyle: true,
     });
     // The bucket name is unique for this run, so creation must succeed. Hiding
-    // an arbitrary MinIO error here only moves the failure into the signing
+    // an arbitrary store error here only moves the failure into the signing
     // assertions as a misleading `NoSuchBucket` response.
     await bootstrap.makeBucket(BUCKET);
   }
-}, 60_000);
+}, 120_000);
 
 afterAll(async () => {
-  if (minio) await minio.stop();
+  if (objectStore) await objectStore.stop();
   if (testDb) await testDb.cleanup();
-}, 60_000);
+}, 120_000);
 
 describe("s3 credential resolution — typed errors (no network)", () => {
   test("auth-required connector with no stored credential throws credential_missing", async () => {
@@ -281,13 +204,13 @@ describe("s3 credential resolution — typed errors (no network)", () => {
   });
 });
 
-describe.skipIf(!DOCKER)("s3 credential resolution — signing round-trips (MinIO)", () => {
+describe.skipIf(!DOCKER)("s3 credential resolution — signing round-trips (real S3 server)", () => {
   test("header-mode pseudo-header credential signs requests", async () => {
-    if (!minio) throw new Error("MinIO bootstrap did not complete");
+    if (!objectStore) throw new Error("object store fixture did not complete");
     const conn = await makeS3Connector({
       name: "s3-header-signed",
       auth_type: "header",
-      endpoint: minio.endpoint,
+      endpoint: objectStore.endpoint,
     });
     await upsertCredential(
       {
@@ -298,8 +221,8 @@ describe.skipIf(!DOCKER)("s3 credential resolution — signing round-trips (MinI
         value: {
           mode: "header",
           headers: {
-            "x-access-key-id": minio.accessKey,
-            "x-secret-access-key": minio.secretKey,
+            "x-access-key-id": objectStore.accessKey,
+            "x-secret-access-key": objectStore.secretKey,
           },
         },
         actor_id: null,
@@ -318,11 +241,11 @@ describe.skipIf(!DOCKER)("s3 credential resolution — signing round-trips (MinI
   }, 120_000);
 
   test("aws_sigv4 credential signs requests", async () => {
-    if (!minio) throw new Error("MinIO bootstrap did not complete");
+    if (!objectStore) throw new Error("object store fixture did not complete");
     const conn = await makeS3Connector({
       name: "s3-sigv4-signed",
       auth_type: "aws_sigv4",
-      endpoint: minio.endpoint,
+      endpoint: objectStore.endpoint,
     });
     await upsertCredential(
       {
@@ -332,8 +255,8 @@ describe.skipIf(!DOCKER)("s3 credential resolution — signing round-trips (MinI
         mode: "aws_sigv4",
         value: {
           mode: "aws_sigv4",
-          access_key_id: minio.accessKey,
-          secret_access_key: minio.secretKey,
+          access_key_id: objectStore.accessKey,
+          secret_access_key: objectStore.secretKey,
         },
         actor_id: null,
       },
