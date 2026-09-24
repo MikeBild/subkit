@@ -641,3 +641,32 @@ test("a listing records the folder it read, and that is evidence", async () => {
   expect(proposals[0]?.s3_scope?.key_prefix).toBe("opportunity-radar/raw/trustmrr/");
   expect(proposals[0]?.evidence.observations).toBe(2);
 });
+
+test("what a request sent is measured, and that is the ceiling", async () => {
+  // `bytes_in` is the answer's size and says nothing about the content that
+  // left, so a step that posts a document had no measured size anywhere — the
+  // same gap as the storage write, in the other driver. Without it the only
+  // ceiling anyone could put on it was invented.
+  await record([
+    { step: "send", url: "https://api.example.test/v1/content", bytes: 40_000 },
+    { step: "send", url: "https://api.example.test/v1/content", bytes: 9_000 },
+  ]);
+  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    definition: definition([
+      {
+        id: "send",
+        kind: "request",
+        connector_id: CONNECTOR,
+        method: "POST",
+        path: "/v1/content",
+        body: { title: "x" },
+      },
+    ]),
+  });
+  expect(unproposable).toEqual([]);
+  // The largest the step really sent, with headroom — never a round number
+  // someone liked the look of.
+  expect(proposals[0]?.boundary?.max_body_bytes).toBeGreaterThan(40_000);
+});

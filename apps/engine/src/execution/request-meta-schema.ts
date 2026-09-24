@@ -57,6 +57,8 @@ const HttpRequestMetaSchema = z
     url: z.string().nullable(),
     status: z.number().int().optional(),
     bytes_in: z.number().int().optional(),
+    /** How much this request SENT, measured at dispatch. */
+    bytes_out: z.number().int().nonnegative().optional(),
     idempotency_key: z.string().optional(),
     connector: ConnectorResolutionSummarySchema,
     digest: RequestDigestSchema.optional(),
@@ -135,6 +137,8 @@ const ConnectorlessRequestMetaSchema = z
     url: z.string().nullable(),
     status: z.number().int().optional(),
     bytes_in: z.number().int().optional(),
+    /** How much this request SENT, measured at dispatch. */
+    bytes_out: z.number().int().nonnegative().optional(),
     idempotency_key: z.string().optional(),
     unresolved_placeholders: z.array(z.string()).optional(),
     digest: RequestDigestSchema.optional(),

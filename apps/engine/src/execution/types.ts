@@ -267,6 +267,8 @@ export type RequestMeta =
       url: string | null;
       status?: number;
       bytes_in?: number;
+      /** How much this request SENT, measured at dispatch. */
+      bytes_out?: number;
       idempotency_key?: string;
       connector: ConnectorResolutionSummary;
       unresolved_placeholders?: string[];
@@ -342,6 +344,8 @@ export type RequestMeta =
       url: string | null;
       status?: number;
       bytes_in?: number;
+      /** How much this request SENT, measured at dispatch. */
+      bytes_out?: number;
       idempotency_key?: string;
       unresolved_placeholders?: string[];
       digest?: RequestDigest;
