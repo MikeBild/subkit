@@ -95,6 +95,8 @@ interface Observation {
   pages: number | null;
   /** How large this write really was, measured by the runtime. */
   bytes: number | null;
+  /** The folder a listing really read. A LIST records this instead of a key. */
+  prefix: string | null;
   /**
    * The request a HELD step would have sent. A preview holds every write, so a
    * step that has only ever been previewed records no dispatch — but it does
@@ -129,6 +131,7 @@ async function observations(
         number | null
       >`nullif(${executionSteps.request_meta} ->> 'pages_fetched', '')::int`,
       bytes: sql<number | null>`nullif(${executionSteps.request_meta} ->> 'bytes_out', '')::int`,
+      prefix: sql<string | null>`${executionSteps.request_meta} ->> 'prefix'`,
       // The SAME fact in two places, because two paths write it: a dry-run
       // preview leaves `held_request` in the result envelope, and the
       // preparation run the approval dialog triggers leaves
@@ -166,7 +169,15 @@ async function observations(
     .orderBy(desc(executions.created_at))
     .limit(EVIDENCE_ROWS);
   for (const row of rows) {
-    if (!row.url && !row.key && !row.held?.url && !row.held?.key && !row.prepared?.url) continue;
+    if (
+      !row.url &&
+      !row.key &&
+      !row.prefix &&
+      !row.held?.url &&
+      !row.held?.key &&
+      !row.prepared?.url
+    )
+      continue;
     const list = byStep.get(row.step_key);
     if (list) list.push(row);
     else byStep.set(row.step_key, [row]);
@@ -478,11 +489,18 @@ function proposeStorageStep(
   const keys = seen.flatMap((entry) =>
     entry.key ? [entry.key] : entry.held?.key ? [entry.held.key] : [],
   );
-  if (keys.length === 0) return "no_history";
+  // A listing records the folder it read, under `prefix`, because it addresses
+  // no single object. Reading only `key` meant every LIST and HEAD step looked
+  // as if it had never run — and those are exactly the steps whose folder is
+  // written down most plainly.
+  const prefixes = seen.flatMap((entry) => (entry.prefix ? [entry.prefix] : []));
+  if (keys.length === 0 && prefixes.length === 0) return "no_history";
   // A refused write is evidence too — the strongest kind. The step is refused
   // BECAUSE its declared scope is too small, so a rule that only reads
   // successful writes can never see the contradiction that causes the refusal.
-  const key_prefix = commonPrefix(keys);
+  // A prefix IS a folder already; a key has to be cut back to one.
+  const key_prefix =
+    keys.length > 0 ? commonPrefix(keys) : commonPrefix(prefixes.map((p) => `${p}x`));
   if (!key_prefix) return "values_not_describable";
   // A declared scope the step's own history fits is the author's and stays
   // theirs. Only one its writes CONTRADICT is corrected — and a scope has two
@@ -494,11 +512,12 @@ function proposeStorageStep(
   const declared = step.s3?.scope;
   const written = seen.flatMap((entry) => (entry.bytes && entry.bytes > 0 ? [entry.bytes] : []));
   const folderFits =
-    declared === undefined || keys.every((key) => key.startsWith(declared.key_prefix));
+    declared === undefined ||
+    [...keys, ...prefixes].every((value) => value.startsWith(declared.key_prefix));
   const ceilingFits =
     declared === undefined || written.length === 0 || Math.max(...written) <= declared.max_bytes;
   if (declared !== undefined && folderFits && ceilingFits) return "not_supported";
-  const newest = seen.find((entry) => entry.key || entry.held?.key) as Observation;
+  const newest = seen.find((entry) => entry.key || entry.prefix || entry.held?.key) as Observation;
   // Measured, never assumed. This was a constant — 64 KiB, chosen by nobody
   // and verified against nothing — and it refused a step that really writes
   // 337 KB on the first scheduled run after the approval. A ceiling below what
@@ -519,8 +538,8 @@ function proposeStorageStep(
           : (declared?.max_bytes ?? bodyCeiling(1024)),
     },
     evidence: {
-      observations: keys.length,
-      sample: (newest.key ?? "").slice(0, 300),
+      observations: keys.length + prefixes.length,
+      sample: (newest.key ?? newest.prefix ?? "").slice(0, 300),
       newest_at: newest.at.toISOString(),
     },
   };
