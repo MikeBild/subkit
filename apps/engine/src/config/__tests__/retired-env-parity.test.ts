@@ -62,14 +62,26 @@ const ALLOWED_FILES = new Set<string>([
   "db/client.ts", // env-fallback when getConfig() throws (test-helper bootstraps)
 ]);
 
+/**
+ * A path segment, wherever it sits — including first.
+ *
+ * The exclusions used to be substring matches on `/tests/`, which is a segment
+ * only when something precedes it. `src/tests/` is scanned relative to `src`,
+ * so it arrives as `tests/…` and was read as production code: a test-only
+ * fixture was reported as an operator-visible env read.
+ */
+function inDirectory(file: string, directory: string): boolean {
+  return file === directory || file.startsWith(`${directory}/`) || file.includes(`/${directory}/`);
+}
+
 async function scanProductionFiles(): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
   const glob = new Glob("**/*.ts");
   for await (const file of glob.scan(SRC_ROOT)) {
-    if (file.includes("__tests__/") || file.includes("/tests/")) continue;
+    if (inDirectory(file, "__tests__") || inDirectory(file, "tests")) continue;
     if (file.endsWith(".test.ts")) continue;
     if (file.endsWith(".d.ts")) continue;
-    if (file.includes("/test-helpers/")) continue;
+    if (inDirectory(file, "test-helpers")) continue;
     if (ALLOWED_FILES.has(file)) continue;
     out.set(file, readFileSync(join(SRC_ROOT, file), "utf8").split("\n"));
   }
