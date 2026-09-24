@@ -68,6 +68,8 @@ export async function applyBoundaryProposals(
   const steps = definition.steps.map((step) => {
     const proposal = byStep.get(step.id);
     if (!proposal || step.kind !== "request") return step;
+    // A correction replaces the contradicted folder; it never merges with it,
+    // because half of a wrong statement is still wrong.
     applied.push(step.id);
     // Conditional spread throughout: a present-but-undefined key is a different
     // definition to the digest than an absent one, and the digest is what every
