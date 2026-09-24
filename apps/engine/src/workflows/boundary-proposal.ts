@@ -106,7 +106,7 @@ interface Observation {
    */
   held: { url?: string; key?: string; body?: unknown } | null;
   /** The same evidence from a preparation run, which records it differently. */
-  prepared: { url?: string; redacted_request_json?: string } | null;
+  prepared: { url?: string; redacted_request_json?: string; body_bytes?: number } | null;
   at: Date;
 }
 
@@ -138,7 +138,7 @@ async function observations(
       // `prepared_request_review` in the request metadata. Reading only one of
       // them meant the run a reviewer had just been asked to perform produced
       // evidence this derivation could not see.
-      prepared: sql<{ url?: string; redacted_request_json?: string } | null>`
+      prepared: sql<{ url?: string; redacted_request_json?: string; body_bytes?: number } | null>`
         ${executionSteps.request_meta} -> 'extras' -> 'prepared_request_review'
       `,
       held: sql<{ url?: string; key?: string; body?: unknown } | null>`(
@@ -448,6 +448,9 @@ function proposeRequestStep(
     // request when a preview resolved it but sent nothing.
     if (entry.bytes && entry.bytes > 0) return [entry.bytes];
     if (entry.held?.body !== undefined) return [JSON.stringify(entry.held.body)?.length ?? 0];
+    // The size is recorded even when the content is deliberately not: an
+    // opaque body may carry credentials, its length may not.
+    if (entry.prepared?.body_bytes !== undefined) return [entry.prepared.body_bytes];
     if (entry.prepared?.redacted_request_json === undefined) return [];
     try {
       const review = JSON.parse(entry.prepared.redacted_request_json) as { body?: unknown };
