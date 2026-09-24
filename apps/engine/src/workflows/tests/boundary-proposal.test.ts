@@ -39,7 +39,14 @@ afterAll(async () => {
 });
 
 async function record(
-  rows: Array<{ step: string; url?: string; key?: string; bytes?: number; refused?: true }>,
+  rows: Array<{
+    step: string;
+    url?: string;
+    key?: string;
+    prefix?: string;
+    bytes?: number;
+    refused?: true;
+  }>,
 ) {
   await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
   const [execution] = await ctx.db
@@ -61,9 +68,10 @@ async function record(
       kind: "request" as const,
       status: row.refused ? ("failed" as const) : ("succeeded" as const),
       request_meta: {
-        driver: row.key ? "s3" : "http",
+        driver: row.key || row.prefix ? "s3" : "http",
         ...(row.url ? { url: row.url } : {}),
         ...(row.key ? { key: row.key } : {}),
+        ...(row.prefix ? { prefix: row.prefix } : {}),
         ...(row.bytes ? { bytes_out: row.bytes } : {}),
         ...(row.refused ? { refused: true } : {}),
       },
@@ -605,4 +613,31 @@ test("the row that proves the contradiction is the refused one", async () => {
   });
   expect(proposals[0]?.s3_scope?.max_bytes).toBeGreaterThan(337_858);
   expect(proposals[0]?.s3_scope?.key_prefix).toBe("v1/radar/");
+});
+
+test("a listing records the folder it read, and that is evidence", async () => {
+  // A LIST or HEAD addresses no single object, so the runtime records `prefix`
+  // instead of `key`. Reading only `key` made every such step look as if it had
+  // never run — and those are exactly the steps whose folder is written down
+  // most plainly. Two of them blocked a production workflow for weeks.
+  await record([
+    { step: "list_raw", prefix: "opportunity-radar/raw/trustmrr/" },
+    { step: "list_raw", prefix: "opportunity-radar/raw/trustmrr/" },
+  ]);
+  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    definition: definition([
+      {
+        id: "list_raw",
+        kind: "request",
+        connector_id: CONNECTOR,
+        method: "LIST",
+        s3: { key: "x" },
+      },
+    ]),
+  });
+  expect(unproposable).toEqual([]);
+  expect(proposals[0]?.s3_scope?.key_prefix).toBe("opportunity-radar/raw/trustmrr/");
+  expect(proposals[0]?.evidence.observations).toBe(2);
 });
