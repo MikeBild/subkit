@@ -16,7 +16,7 @@
         "@ai-sdk/provider": "^4",
         "@ai-sdk/react": "^4.0.61",
         "@anthropic-ai/tokenizer": "^0.0.4",
-        "@bradenmacdonald/s3-lite-client": "^0.9.6",
+        "@bradenmacdonald/s3-lite-client": "^1.0.0",
         "@clack/prompts": "^1.7.0",
         "@hono/node-server": "1.19.17",
         "@hono/otel": "^1.1.2",
@@ -339,7 +339,7 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.5.6", "", { "os": "win32", "cpu": "x64" }, "sha512-WN05KwXnTO/2J45RQPvzZMXf7tZUIofHoR35xIPfCo7pQ2RFidxI8sfb5mGsaTxdMmEOzHzOPRCdA5/fCpc7xQ=="],
 
-    "@bradenmacdonald/s3-lite-client": ["@bradenmacdonald/s3-lite-client@0.9.6", "", {}, "sha512-Ec7u0jGd8BoaBdK847JFaWja6xeRtVPPe0faMuPaIVeE9Szecu16vNyUJNRrIMwLwsEM3ghLSgnkHySh399pUg=="],
+    "@bradenmacdonald/s3-lite-client": ["@bradenmacdonald/s3-lite-client@1.0.0", "", {}, "sha512-j83jujGwsJDfXPybSF+wA3orT9hO9xIM1HseCk9IDCmdn3zU2WdCK3vk6DSuys7VilB/cVNXcmb7zOpUgor/jQ=="],
 
     "@braintree/sanitize-url": ["@braintree/sanitize-url@7.1.2", "", {}, "sha512-jigsZK+sMF/cuiB7sERuo9V7N9jx+dhmHHnQyDSVdpZwVutaBu7WvNYqMDLSgFgfB30n452TP3vjDAvFC973mA=="],
 

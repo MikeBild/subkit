@@ -102,7 +102,7 @@
     "@ai-sdk/provider": "^4",
     "@ai-sdk/react": "^4.0.61",
     "@anthropic-ai/tokenizer": "^0.0.4",
-    "@bradenmacdonald/s3-lite-client": "^0.9.6",
+    "@bradenmacdonald/s3-lite-client": "^1.0.0",
     "@clack/prompts": "^1.7.0",
     "@hono/node-server": "1.19.17",
     "@hono/otel": "^1.1.2",
