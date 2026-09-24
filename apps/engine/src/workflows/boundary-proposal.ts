@@ -93,6 +93,8 @@ interface Observation {
   key: string | null;
   /** How many pages this dispatch actually read, when it paginated. */
   pages: number | null;
+  /** How large this write really was, measured by the runtime. */
+  bytes: number | null;
   /**
    * The request a HELD step would have sent. A preview holds every write, so a
    * step that has only ever been previewed records no dispatch — but it does
@@ -126,6 +128,7 @@ async function observations(
       pages: sql<
         number | null
       >`nullif(${executionSteps.request_meta} ->> 'pages_fetched', '')::int`,
+      bytes: sql<number | null>`nullif(${executionSteps.request_meta} ->> 'bytes_out', '')::int`,
       // The SAME fact in two places, because two paths write it: a dry-run
       // preview leaves `held_request` in the result envelope, and the
       // preparation run the approval dialog triggers leaves
@@ -481,11 +484,21 @@ function proposeStorageStep(
   if (declared !== undefined && keys.every((key) => key.startsWith(declared)))
     return "not_supported";
   const newest = seen.find((entry) => entry.key || entry.held?.key) as Observation;
+  // Measured, never assumed. This was a constant — 64 KiB, chosen by nobody
+  // and verified against nothing — and it refused a step that really writes
+  // 337 KB on the first scheduled run after the approval. A ceiling below what
+  // the step demonstrably produces is not a limit, it is a defect with a
+  // number in it. Without a measurement there is no ceiling to propose.
+  const written = seen.flatMap((entry) => (entry.bytes && entry.bytes > 0 ? [entry.bytes] : []));
+  const isWrite = (step.method ?? "GET").toUpperCase() === "PUT";
+  if (isWrite && written.length === 0) return "body_size_unknown";
   return {
     step_id: step.id,
-    // The ceiling is the same shape the storage boundary already demands. It
-    // bounds size, not content — the dialog says that in its own words.
-    s3_scope: { key_prefix, max_bytes: bodyCeiling(64 * 1024) },
+    // Bounds size, not content — the dialog says that in its own words.
+    s3_scope: {
+      key_prefix,
+      max_bytes: written.length > 0 ? bodyCeiling(Math.max(...written)) : bodyCeiling(1024),
+    },
     evidence: {
       observations: keys.length,
       sample: (newest.key ?? "").slice(0, 300),
