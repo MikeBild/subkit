@@ -25,6 +25,25 @@ volumes:
   subkit_pgdata:
   subkit_object_data:
 
+# Inline so this file keeps standing on its own after `curl -O`: the object
+# store needs its credentials as a file, and a second file to download would
+# break the one-command start above. The password is the same local-only
+# default as the database's, and the store is never published to the host.
+configs:
+  object_store_identities:
+    content: |
+      {
+        "identities": [
+          {
+            "name": "subkit",
+            "credentials": [
+              { "accessKey": "subkit", "secretKey": "subkit-object-local-only" }
+            ],
+            "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+          }
+        ]
+      }
+
 services:
   postgres:
     image: postgres:18.6-trixie@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
@@ -45,16 +64,24 @@ services:
     logging: *default-logging
 
   object-store:
-    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    image: chrislusf/seaweedfs@sha256:bb05d66d2963b1cc48073190781c3dd29e2c4c88a2ae2986bf58e38c86d89c6e
     restart: unless-stopped
-    command: server /data
-    environment:
-      MINIO_ROOT_USER: subkit
-      MINIO_ROOT_PASSWORD: subkit-object-local-only
+    # One process serves master, volume, filer and the S3 gateway. The gateway
+    # listens on 9000 so the engine's endpoint below reads the same as any other
+    # S3 address.
+    command: server -dir=/data -s3 -s3.port=9000 -s3.config=/etc/seaweedfs/s3.json
+    configs:
+      - source: object_store_identities
+        target: /etc/seaweedfs/s3.json
     volumes:
       - subkit_object_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null"]
+      # The file layer, not the cluster master and not the S3 port. The master
+      # answers before the file layer exists, which let the bucket step run
+      # against a service that could not yet serve it; and the S3 port answers
+      # an unauthenticated probe with 403, which is a working service reported
+      # as a broken one.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8888/"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -62,19 +89,28 @@ services:
     logging: *default-logging
 
   object-store-init:
-    image: quay.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    image: chrislusf/seaweedfs@sha256:bb05d66d2963b1cc48073190781c3dd29e2c4c88a2ae2986bf58e38c86d89c6e
     depends_on:
       object-store:
         condition: service_healthy
+    # The engine's preflight does HEAD on this bucket and refuses to start
+    # without it, so it is created before the engine is allowed to come up.
+    # Creating one that exists is not an error, which is what makes a restart
+    # of the whole stack behave like the first start.
+    #
+    # The creating command reports success even when it failed, and waits
+    # forever when the store cannot be reached. So it runs under a time limit,
+    # and what decides the exit code is the bucket being there afterwards,
+    # asked of the store itself. Everything else is a claim.
     entrypoint:
       [
         "/bin/sh",
         "-c",
-        "mc alias set local http://object-store:9000 subkit subkit-object-local-only && mc mb --ignore-existing local/subkit",
+        "for attempt in 1 2 3 4 5 6 7 8 9 10; do echo 's3.bucket.create -name subkit' | timeout 20 weed shell -master object-store:9333 -filer object-store:8888 >/dev/null 2>&1; if wget -q -O /dev/null http://object-store:8888/buckets/subkit/; then exit 0; fi; sleep 2; done; echo 'object store did not accept the bucket subkit' >&2; exit 1",
       ]
 
   engine:
-    image: ${SUBKIT_IMAGE:-mikebild/subkit:${SUBKIT_IMAGE_TAG:-8.0.100}}
+    image: ${SUBKIT_IMAGE:-mikebild/subkit:${SUBKIT_IMAGE_TAG:-8.0.101}}
     restart: unless-stopped
     depends_on:
       postgres:
