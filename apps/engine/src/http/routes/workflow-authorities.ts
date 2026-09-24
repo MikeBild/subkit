@@ -183,7 +183,17 @@ const prepareReport = createRoute({
   responses: {
     200: {
       description: "Preparation completed; review the current boundary next",
-      content: { "application/json": { schema: z.object({ prepared: z.literal(true) }) } },
+      content: {
+        "application/json": {
+          // `false` with a reason, not a blanket `true`: the caller was told a
+          // preparation had run when nothing had, and the derivation that
+          // depended on it then reported the steps as never executed.
+          schema: z.object({
+            prepared: z.boolean(),
+            reason: z.string().optional(),
+          }),
+        },
+      },
     },
     ...failures,
   },
@@ -434,7 +444,7 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
     const principal = requireAuth(c);
     const { id, version_id } = c.req.valid("param");
     try {
-      await prepareReportAuthority(
+      const outcome = await prepareReportAuthority(
         {
           tenant_id: principal.tenant_id,
           workflow_id: id,
@@ -444,7 +454,7 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
         c.get("db"),
         principal,
       );
-      return c.json({ prepared: true as const }, 200);
+      return c.json(outcome ?? { prepared: false, reason: "nothing_to_prepare" }, 200);
     } catch (error) {
       return translate(error);
     }

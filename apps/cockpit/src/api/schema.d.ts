@@ -4621,8 +4621,8 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            /** @enum {boolean} */
-                            prepared: true;
+                            prepared: boolean;
+                            reason?: string;
                         };
                     };
                 };
