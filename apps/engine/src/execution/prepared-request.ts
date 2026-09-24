@@ -93,6 +93,14 @@ export const PreparedRequestReviewSchema = z
     redacted_request_json: z.string().max(16_000),
     request_review_truncated: z.boolean(),
     opaque_payload_omitted: z.boolean(),
+    /**
+     * How large the content was, whether or not it is shown. A raw body is
+     * omitted on purpose — it can carry credentials that shape-only scrubbing
+     * cannot recognise — but its SIZE discloses nothing and is the only number
+     * a size ceiling can honestly be derived from. Without it, a step that
+     * posts a document could never be bounded at all.
+     */
+    body_bytes: z.number().int().nonnegative().optional(),
   })
   .strict();
 
@@ -123,11 +131,18 @@ export function preparedRequestReview(request: MaterializedRequest) {
   });
   if (!step.success || request.unsupported_body) return null;
   const url = new URL(request.url);
+  const measured =
+    request.body === null || request.body === undefined
+      ? undefined
+      : new TextEncoder().encode(
+          typeof request.body === "string" ? request.body : JSON.stringify(request.body),
+        ).byteLength;
   return PreparedRequestReviewSchema.parse({
     method: request.method,
     url: scrubString(`${url.origin}${url.pathname}`),
     ...authorityRequestReview(step.data),
     opaque_payload_omitted: opaqueBody,
+    ...(measured === undefined ? {} : { body_bytes: measured }),
   });
 }
 
