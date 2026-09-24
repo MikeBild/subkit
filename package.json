@@ -137,7 +137,7 @@
     "conf": "^15.1.0",
     "cron-parser": "^5.6.2",
     "dayjs": "^1.11.21",
-    "deepmerge-ts": "^7.1.5",
+    "deepmerge-ts": "^8.0.2",
     "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.3",
     "env-paths": "^4.0.0",
