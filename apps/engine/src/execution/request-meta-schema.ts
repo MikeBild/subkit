@@ -101,9 +101,15 @@ const S3RequestMetaSchema = z
   .object({
     driver: z.literal("s3"),
     method: z.string(),
-    status: z.number().int(),
+    // Absent when a boundary refused the request: nothing reached the store,
+    // so there is no status, and a placeholder number would make the trail
+    // claim a call that never happened.
+    status: z.number().int().optional(),
+    refused: z.literal(true).optional(),
     key: z.string().optional(),
     prefix: z.string().optional(),
+    /** How large the content really was, measured at the write. */
+    bytes_out: z.number().int().nonnegative().optional(),
     connector: ConnectorResolutionSummarySchema,
     extras: z.record(z.string(), z.unknown()).optional(),
   })

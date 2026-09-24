@@ -18542,9 +18542,12 @@ export interface components {
             /** @enum {string} */
             driver: "s3";
             method: string;
-            status: number;
+            status?: number;
+            /** @enum {boolean} */
+            refused?: true;
             key?: string;
             prefix?: string;
+            bytes_out?: number;
             connector: components["schemas"]["ConnectorResolutionSummary"];
             extras?: {
                 [key: string]: unknown;
