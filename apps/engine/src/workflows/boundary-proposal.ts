@@ -153,7 +153,12 @@ async function observations(
       and(
         eq(executionSteps.tenant_id, tenant_id),
         eq(executions.workflow_id, workflow_id),
-        eq(executionSteps.status, "succeeded"),
+        // A refused write is the strongest evidence there is: the runtime
+        // measured the content and refused it BECAUSE the declared scope does
+        // not cover it. Reading only successful rows meant the one row that
+        // proves the contradiction was the one row excluded — and the step
+        // that can never succeed until it is fixed could never be fixed.
+        sql`(${executionSteps.status} = 'succeeded' OR ${executionSteps.request_meta} ->> 'refused' = 'true')`,
         isNotNull(executionSteps.request_meta),
         sql`regexp_replace(${executionSteps.step_key}, '\\[[0-9]+\\]$', '') = ANY(${sql.param(step_ids as string[])}::text[])`,
       ),

@@ -38,7 +38,9 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function record(rows: Array<{ step: string; url?: string; key?: string; bytes?: number }>) {
+async function record(
+  rows: Array<{ step: string; url?: string; key?: string; bytes?: number; refused?: true }>,
+) {
   await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
   const [execution] = await ctx.db
     .insert(executions)
@@ -57,12 +59,13 @@ async function record(rows: Array<{ step: string; url?: string; key?: string; by
       step_key: row.step,
       step_index: index,
       kind: "request" as const,
-      status: "succeeded" as const,
+      status: row.refused ? ("failed" as const) : ("succeeded" as const),
       request_meta: {
         driver: row.key ? "s3" : "http",
         ...(row.url ? { url: row.url } : {}),
         ...(row.key ? { key: row.key } : {}),
         ...(row.bytes ? { bytes_out: row.bytes } : {}),
+        ...(row.refused ? { refused: true } : {}),
       },
     })),
   );
@@ -578,4 +581,28 @@ test("a ceiling the step's own writes exceed is the same contradiction as a wron
     definition: definition(scoped(1_000_000)),
   });
   expect(roomy.proposals).toEqual([]);
+});
+
+test("the row that proves the contradiction is the refused one", async () => {
+  // The catch-22 this closes: the step is refused BECAUSE its ceiling is below
+  // what it writes, so the write never succeeds, so a rule that reads only
+  // successful rows never sees the size — and the step that cannot succeed
+  // until it is fixed can never be fixed. On production that repeated nightly
+  // with the real number printed in the refusal and stored nowhere.
+  await record([{ step: "store", key: "v1/radar/products/a.json", bytes: 337_858, refused: true }]);
+  const { proposals } = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    definition: definition([
+      {
+        id: "store",
+        kind: "request",
+        connector_id: CONNECTOR,
+        method: "PUT",
+        s3: { key: "x", scope: { key_prefix: "v1/radar/", max_bytes: 65_536 } },
+      },
+    ]),
+  });
+  expect(proposals[0]?.s3_scope?.max_bytes).toBeGreaterThan(337_858);
+  expect(proposals[0]?.s3_scope?.key_prefix).toBe("v1/radar/");
 });
