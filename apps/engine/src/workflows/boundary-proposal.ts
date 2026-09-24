@@ -444,6 +444,9 @@ function proposeRequestStep(
   // leaves behind. Without either, no ceiling — an invented number refuses a
   // real run later, and that refusal looks like the workflow's fault.
   const sent = seen.flatMap((entry) => {
+    // Measured at dispatch when the request really went out; from the held
+    // request when a preview resolved it but sent nothing.
+    if (entry.bytes && entry.bytes > 0) return [entry.bytes];
     if (entry.held?.body !== undefined) return [JSON.stringify(entry.held.body)?.length ?? 0];
     if (entry.prepared?.redacted_request_json === undefined) return [];
     try {
