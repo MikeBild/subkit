@@ -60,6 +60,12 @@ export interface ProposedStepBoundary {
   };
   /** For a storage step: what to write into `s3.scope`. */
   s3_scope?: { key_prefix: string; max_bytes: number };
+  /**
+   * The same request, written so it can be reviewed: the query moved out of the
+   * path. Offered only when an URL this step really sent proves the two forms
+   * agree.
+   */
+  path_rewrite?: { path: string; query: Record<string, string> };
   /** What the proposal was read from, so a reviewer can weigh it. */
   evidence: { observations: number; sample: string; newest_at: string };
 }
@@ -166,6 +172,78 @@ async function observations(
  * A placeholder that is not a whole segment cannot be proposed for — the
  * compiler would refuse it too, and saying so is better than half a rule.
  */
+/**
+ * A step whose query sits INSIDE its path, split into the two fields the
+ * dispatcher and the boundary compiler both expect.
+ *
+ * `/startups?page=${item.n}&limit=10` is the same request as
+ * `path: "/startups"` with `query: {page: "${item.n}", limit: "10"}` — but only
+ * the second form can be reviewed, because a boundary states a target and an
+ * exact key set, and a `?` inside the path is neither. The compiler refuses the
+ * first form outright, and the remedy has always said what to do; a person had
+ * to do it by hand, in a chat, through a model that paraphrases.
+ *
+ * This is a rewrite of the definition, not of what it may do, so it is held to
+ * a harder rule than a boundary: `verifiedAgainst` must find an URL this step
+ * really sent that the rewritten form reproduces exactly. Same path, same keys,
+ * same values. Anything less and no rewrite is offered.
+ */
+function splitQueryFromPath(
+  authored: string,
+): { path: string; query: Record<string, string> } | null {
+  const cut = authored.indexOf("?");
+  if (cut < 0) return null;
+  const path = authored.slice(0, cut);
+  if (/[?#%\\]/.test(path)) return null;
+  const query: Record<string, string> = {};
+  for (const pair of authored.slice(cut + 1).split("&")) {
+    if (pair === "") continue;
+    const eq = pair.indexOf("=");
+    if (eq <= 0) return null;
+    const key = pair.slice(0, eq);
+    const value = pair.slice(eq + 1);
+    // A key that varies, or text around a placeholder, cannot be held to a
+    // rule — the compiler refuses both, so proposing them would be theatre.
+    if (key.includes("${") || (value.includes("${") && !/^\$\{[^}]+\}$/.test(value))) return null;
+    if (key in query) return null;
+    query[key] = value;
+  }
+  return Object.keys(query).length > 0 ? { path, query } : null;
+}
+
+/**
+ * True when the rewritten form reproduces a request this step really sent.
+ * The one guard that makes a definition rewrite safe to offer.
+ */
+function verifiedAgainst(
+  rewrite: { path: string; query: Record<string, string> },
+  parts: Array<string | { var: string }>,
+  seen: readonly Observation[],
+): boolean {
+  const literal = Object.entries(rewrite.query).filter(([, value]) => !value.includes("${"));
+  const varKeys = Object.entries(rewrite.query).filter(([, value]) => value.includes("${"));
+  for (const entry of seen) {
+    const raw = entry.url ?? entry.held?.url ?? entry.prepared?.url;
+    if (!raw) continue;
+    let url: URL;
+    try {
+      url = new URL(raw);
+    } catch {
+      continue;
+    }
+    if (!alignFromEnd(parts, raw)) continue;
+    const keys = [...url.searchParams.keys()].sort();
+    const expected = Object.keys(rewrite.query).sort();
+    if (keys.length !== expected.length || keys.some((key, i) => key !== expected[i])) continue;
+    if (literal.some(([key, value]) => url.searchParams.get(key) !== value)) continue;
+    // A placeholder key only has to be PRESENT: its value is what the rule
+    // bounds, and that rule is derived from these same observations.
+    if (varKeys.some(([key]) => !url.searchParams.has(key))) continue;
+    return true;
+  }
+  return false;
+}
+
 function template(path: string): Array<string | { var: string }> | null {
   if (/[?#%\\]/.test(path)) return null;
   const parts: Array<string | { var: string }> = [];
@@ -284,8 +362,13 @@ function proposeRequestStep(
   }
   const authored = step.path ?? step.url;
   if (!authored || (step.path !== undefined && step.url !== undefined)) return "not_supported";
-  const parts = template(authored);
+  // A query inside the path is the same request written in a form no boundary
+  // can describe. Rewriting it is offered only when an URL this step really
+  // sent proves the two forms agree.
+  const rewrite = template(authored) ? null : splitQueryFromPath(authored);
+  const parts = template(rewrite?.path ?? authored);
   if (!parts) return "path_not_comparable";
+  if (rewrite && !verifiedAgainst(rewrite, parts, seen)) return "path_not_comparable";
   const urls = seen.flatMap((entry) => {
     const url = entry.url ?? entry.held?.url ?? entry.prepared?.url;
     return url ? [{ ...entry, url }] : [];
@@ -295,14 +378,38 @@ function proposeRequestStep(
   for (const part of parts) if (typeof part !== "string") collected.set(part.var, []);
   // A query placeholder is a second position for the same value; proposing for
   // it needs the recorded query, which the runtime stores only as key names.
+  // A rewrite brings its own, and those ARE derivable from the same URLs.
   for (const value of Object.values(step.query ?? {}))
     if (typeof value === "string" && value.includes("${")) return "not_supported";
+  for (const [key, value] of Object.entries(rewrite?.query ?? {})) {
+    const whole = /^\$\{([^}]+)\}$/.exec(value);
+    if (whole?.[1]) collected.set(whole[1], []);
+    void key;
+  }
+  // A rewritten query's placeholders are bounded by the same evidence: the
+  // value that key really carried, read off the same URLs.
+  const queryVars = new Map(
+    Object.entries(rewrite?.query ?? {}).flatMap(([key, value]) => {
+      const whole = /^\$\{([^}]+)\}$/.exec(value);
+      return whole?.[1] ? [[key, whole[1]] as const] : [];
+    }),
+  );
   let comparable = 0;
   for (const entry of urls) {
     const values = alignFromEnd(parts, entry.url as string);
     if (!values) continue;
     comparable += 1;
     for (const [name, value] of values) collected.get(name)?.push(value);
+    if (queryVars.size === 0) continue;
+    try {
+      const search = new URL(entry.url as string).searchParams;
+      for (const [key, name] of queryVars) {
+        const seenValue = search.get(key);
+        if (seenValue !== null) collected.get(name)?.push(seenValue);
+      }
+    } catch {
+      // An URL that will not parse contributed nothing above either.
+    }
   }
   if (comparable === 0) return "path_not_comparable";
   const variables: Record<string, { enum: string[] } | { class: string }> = {};
@@ -346,6 +453,7 @@ function proposeRequestStep(
   return {
     step_id: step.id,
     ...(cap === undefined ? {} : { max_pages: cap }),
+    ...(rewrite ? { path_rewrite: rewrite } : {}),
     boundary: { variables, max_body_bytes: body, max_calls: 1 },
     evidence: {
       observations: comparable,
