@@ -474,6 +474,9 @@ function proposeStorageStep(
     entry.key ? [entry.key] : entry.held?.key ? [entry.held.key] : [],
   );
   if (keys.length === 0) return "no_history";
+  // A refused write is evidence too — the strongest kind. The step is refused
+  // BECAUSE its declared scope is too small, so a rule that only reads
+  // successful writes can never see the contradiction that causes the refusal.
   const key_prefix = commonPrefix(keys);
   if (!key_prefix) return "values_not_describable";
   // A declared scope the step's own history fits is the author's and stays

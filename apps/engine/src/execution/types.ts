@@ -307,9 +307,17 @@ export type RequestMeta =
   | {
       driver: "s3";
       method: string;
-      status: number;
+      /** Absent when the request never reached the store because a boundary
+       *  refused it — there is no status to report, and inventing one would
+       *  make the trail claim a call that did not happen. */
+      status?: number;
+      /** True exactly for that refusal, so a reader can tell "did not run"
+       *  from "ran and failed". */
+      refused?: true;
       key?: string;
       prefix?: string;
+      /** How large the content really was, measured at the write. */
+      bytes_out?: number;
       connector: ConnectorResolutionSummary;
       extras?: Record<string, unknown>;
     }
