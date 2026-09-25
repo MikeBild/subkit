@@ -238,6 +238,48 @@ describe("NeedsAttentionPanel — failure groups", () => {
   });
 });
 
+describe("NeedsAttentionPanel — recovered causes", () => {
+  test("a cause the schedule has recovered from says so, and a live one does not", () => {
+    // The panel keeps both rows — what broke is worth reading — but only one of
+    // them is still an incident. The frame carries no color, so the sentence is
+    // what a reader actually gets; asserting it both ways also pins that an
+    // engine which omits the field leaves the cause standing.
+    const ui = render(
+      <NeedsAttentionPanel
+        digest={makeDigest({
+          failure_groups: [
+            mkGroup({
+              signature: "healed",
+              workflow_name: "Monthly report",
+              origin: "scheduled",
+              scheduled_count: 4,
+              count: 4,
+              cause: "The store refused the write.",
+              resolved_at: "2026-06-23T04:12:00Z",
+            }),
+            mkGroup({
+              signature: "live",
+              workflow_name: "Hourly sync",
+              origin: "scheduled",
+              scheduled_count: 9,
+              count: 9,
+              cause: "The address answered 404.",
+            }),
+          ],
+        })}
+      />,
+    );
+    const frame = snapshot(ui);
+    expect(frame).toContain("Monthly report");
+    expect(frame).toContain("last ran clean on its schedule");
+    // Exactly one of the two rows carries it — a line on both would say the
+    // live failure had recovered too.
+    expect(frame.split("last ran clean on its schedule")).toHaveLength(2);
+    expect(frame).toContain("The address answered 404.");
+    ui.unmount();
+  });
+});
+
 describe("NeedsAttentionPanel — prose hygiene", () => {
   test("does NOT contain 'Reply yes'", () => {
     const ui = render(

@@ -20914,6 +20914,7 @@ export interface components {
             count: number;
             scheduled_count: number;
             last_seen: string;
+            resolved_at: string | null;
             cause: string;
             guidance: string | null;
         };

@@ -25,6 +25,14 @@ export interface DigestFailureGroup {
   /** How many of these runs the scheduler started. */
   scheduled_count: number;
   last_seen: string;
+  /**
+   * When the workflow next ran clean on its schedule; null while it is live.
+   *
+   * Optional, and read as falsy rather than compared to `null`. An engine that
+   * does not report it must leave the cause on screen — `undefined === null`
+   * is false, which would have filtered out every live failure instead.
+   */
+  resolved_at?: string | null;
   cause: string;
   guidance: string | null;
 }
@@ -54,12 +62,16 @@ export interface FailingWorkflow {
  * Not `origin`, which collapses to "mixed" as soon as a group holds more than
  * one kind of run — so one manual retry of a failing schedule used to delete
  * the decision from this list while the schedule went on failing.
+ *
+ * A group whose workflow has since run clean on its schedule is out too: there
+ * is nothing left to decide, and leaving it in kept a healed installation
+ * showing an open decision with no action that could close it.
  */
 export function failingWorkflows(
   groups: readonly DigestFailureGroup[] | null | undefined,
 ): FailingWorkflow[] {
   return (groups ?? [])
-    .filter((group) => group.scheduled_count > 0)
+    .filter((group) => group.scheduled_count > 0 && !group.resolved_at)
     .map((group) => ({
       key: group.signature,
       workflow_id: group.workflow_id,

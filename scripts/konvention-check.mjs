@@ -365,8 +365,31 @@ const FAILURE_GROUPS = [
     last_seen: days(0),
     cause: "Das angebundene System antwortet seit gestern mit einem Fehler.",
     guidance: "Zugangsdaten prüfen und den Lauf erneut anstoßen.",
+    resolved_at: null,
+  },
+  // A cause that has ended: same shape, same origin, but the workflow has run
+  // clean on its schedule since. It is served precisely so the counts below do
+  // NOT move — a surface that counted it would show one decision more than the
+  // other, which is the breach §8.1 names. A fixture without it asserts
+  // nothing about the case at all.
+  {
+    signature: "monthly:store:storage_refused",
+    workflow_id: ID,
+    workflow_name: "Monatsreport",
+    step_key: "store",
+    error_code: "storage_refused",
+    origin: "scheduled",
+    count: 3,
+    scheduled_count: 3,
+    last_seen: days(2),
+    cause: "Die Ablage hat den Schreibzugriff abgelehnt.",
+    guidance: null,
+    resolved_at: days(1),
   },
 ];
+
+/** The groups that are still a decision — the recovered one is history. */
+const LIVE_FAILURE_GROUPS = FAILURE_GROUPS.filter((group) => !group.resolved_at);
 
 /**
  * The number every surface must show: the engine's own counts, summed.
@@ -377,7 +400,7 @@ const FAILURE_GROUPS = [
  * runs that failed. That is the same split this check already draws for waiting
  * conversations, and drawing it is the whole of §8.1.
  */
-const QUEUE_TOTAL = DECIDABLE_TOTAL + FAILURE_GROUPS.length;
+const QUEUE_TOTAL = DECIDABLE_TOTAL + LIVE_FAILURE_GROUPS.length;
 
 function healthDigest(gateOpen) {
   return {
@@ -659,7 +682,9 @@ function operationalOverview(gateOpen) {
   // The failure groups have a tile of their own now. They used to be swept into
   // "other decisions" by this arithmetic, which is how the overview came to
   // disagree with the queue it links to while both looked self-consistent.
-  const failing = gateOpen ? FAILURE_GROUPS.length : 0;
+  // The engine counts only the live ones (`failingScheduledGroups`); a cause
+  // the workflow has recovered from is history, not a decision.
+  const failing = gateOpen ? LIVE_FAILURE_GROUPS.length : 0;
   const other = gateOpen ? Math.max(DECIDABLE_TOTAL - overdue, 0) : 0;
   return {
     schema_version: "operational-overview.v1",
