@@ -117,13 +117,22 @@ export function listSkillCandidateEvidence(
 }
 
 /**
+ * How far back this queue asks. It has to be the engine's
+ * `DECISION_FAILURE_WINDOW_HOURS`, because the overview counts the same thing
+ * over that span — when the two drifted apart, the overview said "production
+ * incidents: 0" beside a badge counting two of them, and nothing on either
+ * screen explained the difference. `decision-window.test.ts` holds them equal.
+ */
+export const FAILURE_WINDOW_HOURS = 168;
+
+/**
  * The workflows that run on an approval and keep failing. The engine already
  * groups these for the operator health digest; the decisions page is where a
  * person can act on them.
  */
 export async function listFailingWorkflows(): Promise<DigestFailureGroup[]> {
   const digest = await apiRequest<{ failure_groups?: DigestFailureGroup[] }>(
-    "/v1/operator/health-digest?window_hours=168",
+    `/v1/operator/health-digest?window_hours=${FAILURE_WINDOW_HOURS}`,
   );
   return Array.isArray(digest?.failure_groups) ? digest.failure_groups : [];
 }

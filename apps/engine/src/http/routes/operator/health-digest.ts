@@ -22,6 +22,7 @@ const FailureGroupSchema = z
     error_code: z.string().nullable(),
     origin: z.enum(["authoring", "manual", "scheduled", "mixed"]),
     count: z.number().int(),
+    scheduled_count: z.number().int(),
     last_seen: z.string(),
     cause: z.string(),
     guidance: z.string().nullable(),

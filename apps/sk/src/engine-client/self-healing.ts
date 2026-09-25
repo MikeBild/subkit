@@ -15,6 +15,9 @@ export interface DigestFailureGroup {
   error_code: string | null;
   origin: FailureOrigin;
   count: number;
+  /** How many of these runs the scheduler started. `origin` collapses to
+   *  "mixed" once a group holds more than one kind, so it cannot answer this. */
+  scheduled_count: number;
   last_seen: string;
   cause: string;
   guidance: string | null;

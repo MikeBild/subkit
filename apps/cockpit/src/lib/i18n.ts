@@ -1172,6 +1172,10 @@ const EN = {
   "operational.core.blocked.tooltip":
     "Scheduled workflows whose last start was held for execution review. Open the workflow to inspect effects and finite authority.",
   "operational.core.blocked.open": "Open blocked decisions",
+  "operational.core.failing": "Failing",
+  "operational.core.failing.tooltip":
+    "Approved scheduled workflows that ran and failed in the last 7 days, counted once per cause. Nobody has to approve these — they are already permitted and going wrong.",
+  "operational.core.failing.open": "Open failing workflows",
   "operational.core.overdue": "Overdue",
   "operational.core.overdue.tooltip":
     "Non-blocking repair or skill proposals waiting longer than 72 hours.",
@@ -2918,6 +2922,10 @@ const DE: Record<TranslationKey, string> = {
   "operational.core.blocked.tooltip":
     "Zeitpläne, deren letzter Start eine Ausführungsprüfung erfordert. Im Workflow Effekte und zeitlich begrenzte Freigabe prüfen.",
   "operational.core.blocked.open": "Blockierte Entscheidungen öffnen",
+  "operational.core.failing": "Scheitert",
+  "operational.core.failing.tooltip":
+    "Freigegebene Zeitpläne, die in den letzten 7 Tagen gelaufen und gescheitert sind, je Ursache einmal gezählt. Diese braucht niemand freizugeben — sie dürfen bereits und gehen schief.",
+  "operational.core.failing.open": "Scheiternde Workflows öffnen",
   "operational.core.overdue": "Überfällig",
   "operational.core.overdue.tooltip":
     "Nicht blockierende Reparatur- oder Skill-Vorschläge, die länger als 72 Stunden warten.",

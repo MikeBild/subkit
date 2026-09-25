@@ -11,6 +11,7 @@ const group = (over: Partial<DigestFailureGroup>): DigestFailureGroup => ({
   error_code: "http_4xx",
   origin: "scheduled",
   count: 76,
+  scheduled_count: 76,
   last_seen: "2026-09-23T10:00:00.000Z",
   cause: "The address answered 404.",
   guidance: null,
@@ -39,15 +40,26 @@ test("the link leads to those runs, not to every run", () => {
 
 test("an authoring trial that failed is feedback, not an incident", () => {
   // Mixing the two is how a real incident ends up buried among experiments.
-  expect(failingWorkflows([group({ origin: "authoring" })])).toEqual([]);
-  expect(failingWorkflows([group({ origin: "manual" })])).toEqual([]);
+  expect(failingWorkflows([group({ origin: "authoring", scheduled_count: 0 })])).toEqual([]);
+  expect(failingWorkflows([group({ origin: "manual", scheduled_count: 0 })])).toEqual([]);
+});
+
+test("retrying it by hand does not delete the record that it broke", () => {
+  // The production shape: an hourly workflow fails, an operator retries it once
+  // from the CLI, the group turns "mixed" — and the decision used to vanish
+  // from the queue while the schedule kept failing every hour.
+  const [failing] = failingWorkflows([group({ origin: "mixed", count: 77, scheduled_count: 76 })]);
+  expect(failing?.count).toBe(77);
+  // A group that is mixed because someone tried it manually AND in the editor
+  // never ran unattended, so it is still not an operational decision.
+  expect(failingWorkflows([group({ origin: "mixed", scheduled_count: 0 })])).toEqual([]);
 });
 
 test("the worst comes first, and ties keep a stable order", () => {
   const rows = failingWorkflows([
-    group({ signature: "b", count: 3 }),
-    group({ signature: "a", count: 76 }),
-    group({ signature: "c", count: 3 }),
+    group({ signature: "b", count: 3, scheduled_count: 3 }),
+    group({ signature: "a", count: 76, scheduled_count: 76 }),
+    group({ signature: "c", count: 3, scheduled_count: 3 }),
   ]);
   expect(rows.map((row) => row.key)).toEqual(["a", "b", "c"]);
 });
@@ -57,5 +69,5 @@ test("nothing to report is an empty list", () => {
   expect(failingWorkflows(null)).toEqual([]);
   expect(failingWorkflows(undefined)).toEqual([]);
   // A group the engine counted at zero is not a failure anyone can act on.
-  expect(failingWorkflows([group({ count: 0 })])).toEqual([]);
+  expect(failingWorkflows([group({ count: 0, scheduled_count: 0 })])).toEqual([]);
 });

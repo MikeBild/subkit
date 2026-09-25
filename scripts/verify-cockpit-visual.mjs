@@ -468,6 +468,15 @@ function operationalOverview() {
         "/cockpit/decisions?bucket=blocked",
         "critical",
       ),
+      // Non-zero on purpose: a tile that only ever renders its empty state is
+      // photographed 700 times without anyone seeing what it looks like when it
+      // has something to say.
+      failing: overviewMetric(
+        "decisions.failing",
+        2,
+        "/cockpit/decisions?bucket=failing",
+        "urgent",
+      ),
       overdue: overviewMetric(
         "decisions.overdue",
         3,
@@ -1135,6 +1144,7 @@ async function mockApi(route) {
           error_code: "http_502",
           origin: "scheduled",
           count: 14,
+          scheduled_count: 14,
           last_seen: "2026-08-10T08:40:00.000Z",
           cause: "Das angebundene System antwortet seit gestern mit einem Fehler.",
           guidance: "Zugangsdaten prüfen und den Lauf erneut anstoßen.",
@@ -1147,6 +1157,7 @@ async function mockApi(route) {
           error_code: "type_error",
           origin: "authoring",
           count: 23,
+          scheduled_count: 0,
           last_seen: "2026-08-10T08:10:00.000Z",
           cause: "Ein Testlauf beim Bauen ist an der Umwandlung gescheitert.",
           guidance: "",
