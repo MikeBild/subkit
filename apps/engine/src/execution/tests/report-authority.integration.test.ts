@@ -536,3 +536,81 @@ test("a report step the profile has already bounded reports no refusal at all", 
   ).toBe("recipient@example.test");
   expect(preview.request_refusals.find((entry) => entry.step_id === "send")).toBeUndefined();
 });
+
+test("a preparation that is already running is refused with a reason, not started twice", async () => {
+  // The dialog showed a bare "loading" for as long as a held run takes, so
+  // people opened a second tab — and three held runs started against the same
+  // workflow, each reading the same remote systems and each overwriting the
+  // evidence the others left. A flag inside the component cannot see a second
+  // tab. This can, and it sees a second engine process too.
+  //
+  // Seeded rather than raced: two concurrent calls only reach the lock when
+  // they interleave a particular way, and a test that asserts on an
+  // interleaving asserts on the machine it runs on. The state under test is
+  // "a held run for this version is already going", so that is what is set up.
+  const f = await fixture();
+  const db = ctx.testDb.db;
+  await db.insert(executions).values({
+    tenant_id: ctx.tenantId,
+    workflow_id: f.wf.workflow_id,
+    workflow_version_id: f.wf.version_id,
+    source_kind: "saved",
+    status: "running",
+    request_source: "ui",
+    execution_mode: "dev",
+    hold_writes: true,
+  });
+  const outcome = await prepareReportAuthority(
+    {
+      tenant_id: ctx.tenantId,
+      workflow_id: f.wf.workflow_id,
+      workflow_version_id: f.wf.version_id,
+      execution_environment: "dev",
+    },
+    db,
+    f.principal,
+  );
+  // A reason, not an error: two tabs on one dialog is ordinary, and a repair
+  // reload takes this path routinely.
+  expect(outcome).toEqual({ prepared: false, reason: "preparation_in_flight" });
+  const runs = await db
+    .select({ id: executions.id })
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, ctx.tenantId),
+        eq(executions.workflow_id, f.wf.workflow_id),
+        eq(executions.hold_writes, true),
+      ),
+    );
+  expect(runs).toHaveLength(1);
+});
+
+test("two preparations at once still produce one held run", async () => {
+  // The concurrent case, asserting only what does not depend on interleaving:
+  // however the two calls arrive, the workflow ends up with one held run and
+  // not two. Which of them is refused, and on which of the two checks, is the
+  // machine's business.
+  const f = await fixture();
+  const input = {
+    tenant_id: ctx.tenantId,
+    workflow_id: f.wf.workflow_id,
+    workflow_version_id: f.wf.version_id,
+    execution_environment: "dev" as const,
+  };
+  await Promise.all([
+    prepareReportAuthority(input, ctx.testDb.db, f.principal),
+    prepareReportAuthority(input, ctx.testDb.db, f.principal),
+  ]);
+  const runs = await ctx.testDb.db
+    .select({ id: executions.id })
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, ctx.tenantId),
+        eq(executions.workflow_id, f.wf.workflow_id),
+        eq(executions.hold_writes, true),
+      ),
+    );
+  expect(runs).toHaveLength(1);
+});
