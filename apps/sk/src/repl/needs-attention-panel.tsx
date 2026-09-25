@@ -16,7 +16,7 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
-import type { OperatorHealthDigest } from "../engine-client.ts";
+import { type OperatorHealthDigest, scheduledRunsOf } from "../engine-client.ts";
 import { FAILURE_ORIGIN_LABEL, totalFailureCount } from "../lib/operator-digest.ts";
 
 interface NeedsAttentionPanelProps {
@@ -40,8 +40,9 @@ const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest })
       {digest.failure_groups.map((g) => {
         // Whether the scheduler ever started one of these runs, not whether it
         // started all of them: one manual retry used to turn this group yellow
-        // while the schedule kept failing every hour.
-        const isScheduled = g.scheduled_count > 0;
+        // while the schedule kept failing every hour. Through the helper, since
+        // this CLI also runs against engines that do not report the number.
+        const isScheduled = scheduledRunsOf(g) > 0;
         const sev = isScheduled ? "red" : "yellow";
         const label = g.workflow_name ?? g.workflow_id ?? "(draft)";
         const times = g.count === 1 ? "failed once" : `failed ${g.count}×`;
