@@ -16,41 +16,96 @@
     "audit"
   ],
   "properties": {
-    "schema_version": { "const": "operational-overview.v1" },
-    "contract_version": { "const": "2.1" },
-    "product": {
-      "enum": ["workkit", "subkit", "wikikit", "contentkit", "codekit", "watchkit"]
+    "schema_version": {
+      "const": "operational-overview.v1"
     },
-    "generated_at": { "type": "string", "format": "date-time" },
+    "contract_version": {
+      "const": "2.1"
+    },
+    "product": {
+      "enum": [
+        "workkit",
+        "subkit",
+        "wikikit",
+        "contentkit",
+        "codekit",
+        "watchkit"
+      ]
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
     "recommended_refresh_seconds": {
       "type": "integer",
       "minimum": 10,
       "maximum": 300
     },
     "snapshot_state": {
-      "enum": ["ready", "partial", "forbidden", "contract-mismatch"]
+      "enum": [
+        "ready",
+        "partial",
+        "forbidden",
+        "contract-mismatch"
+      ]
     },
     "core": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["blocked", "overdue", "other_decisions", "health", "data_freshness"],
+      "required": [
+        "blocked",
+        "failing",
+        "overdue",
+        "other_decisions",
+        "health",
+        "data_freshness"
+      ],
       "properties": {
-        "blocked": { "$ref": "#/$defs/metric" },
-        "overdue": { "$ref": "#/$defs/metric" },
-        "other_decisions": { "$ref": "#/$defs/metric" },
-        "health": { "$ref": "#/$defs/healthMetric" },
-        "data_freshness": { "$ref": "#/$defs/freshnessMetric" }
+        "blocked": {
+          "$ref": "#/$defs/metric"
+        },
+        "failing": {
+          "$ref": "#/$defs/metric"
+        },
+        "overdue": {
+          "$ref": "#/$defs/metric"
+        },
+        "other_decisions": {
+          "$ref": "#/$defs/metric"
+        },
+        "health": {
+          "$ref": "#/$defs/healthMetric"
+        },
+        "data_freshness": {
+          "$ref": "#/$defs/freshnessMetric"
+        }
       }
     },
-    "sections": { "type": "array", "items": { "$ref": "#/$defs/section" } },
+    "sections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/section"
+      }
+    },
     "audit": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "contract_version", "snapshot_generated_at"],
+      "required": [
+        "path",
+        "contract_version",
+        "snapshot_generated_at"
+      ],
       "properties": {
-        "path": { "const": "/cockpit/audit" },
-        "contract_version": { "const": "2.1" },
-        "snapshot_generated_at": { "type": "string", "format": "date-time" }
+        "path": {
+          "const": "/cockpit/audit"
+        },
+        "contract_version": {
+          "const": "2.1"
+        },
+        "snapshot_generated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
       }
     }
   },
@@ -58,32 +113,67 @@
     "drilldown": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "label_id"],
+      "required": [
+        "path",
+        "label_id"
+      ],
       "properties": {
-        "path": { "type": "string", "pattern": "^/cockpit(?:/|$|\\?)" },
-        "label_id": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]+$" }
+        "path": {
+          "type": "string",
+          "pattern": "^/cockpit(?:/|$|\\?)"
+        },
+        "label_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]+$"
+        }
       }
     },
     "trend": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["window", "delta", "direction"],
+      "required": [
+        "window",
+        "delta",
+        "direction"
+      ],
       "properties": {
-        "window": { "enum": ["24h", "7d", "30d"] },
-        "delta": { "type": "number" },
-        "direction": { "enum": ["up", "down", "flat"] }
+        "window": {
+          "enum": [
+            "24h",
+            "7d",
+            "30d"
+          ]
+        },
+        "delta": {
+          "type": "number"
+        },
+        "direction": {
+          "enum": [
+            "up",
+            "down",
+            "flat"
+          ]
+        }
       }
     },
     "prometheus": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "type"],
+      "required": [
+        "name",
+        "type"
+      ],
       "properties": {
         "name": {
           "type": "string",
           "pattern": "^(workkit|subkit|wikikit|contentkit|codekit|watchkit)_operational_[a-z0-9_]+$"
         },
-        "type": { "enum": ["gauge", "counter"] }
+        "type": {
+          "enum": [
+            "gauge",
+            "counter"
+          ]
+        }
       }
     },
     "baseMetric": {
@@ -106,72 +196,196 @@
         "prometheus"
       ],
       "properties": {
-        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]+$" },
-        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
-        "definition": { "type": "string", "minLength": 1, "maxLength": 160 },
-        "relevance": { "type": "string", "minLength": 1, "maxLength": 160 },
-        "kind": {
-          "enum": ["count", "ratio", "duration", "score", "currency", "state"]
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]+$"
         },
-        "value": { "type": ["number", "null"] },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "definition": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "relevance": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "kind": {
+          "enum": [
+            "count",
+            "ratio",
+            "duration",
+            "score",
+            "currency",
+            "state"
+          ]
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "value_state": {
-          "enum": ["observed", "zero", "missing", "stale", "forbidden"]
+          "enum": [
+            "observed",
+            "zero",
+            "missing",
+            "stale",
+            "forbidden"
+          ]
         },
         "unit": {
-          "enum": ["count", "ratio", "seconds", "bytes", "eur", "state"]
+          "enum": [
+            "count",
+            "ratio",
+            "seconds",
+            "bytes",
+            "eur",
+            "state"
+          ]
         },
         "severity": {
-          "enum": ["critical", "urgent", "healthy", "information", "unknown"]
+          "enum": [
+            "critical",
+            "urgent",
+            "healthy",
+            "information",
+            "unknown"
+          ]
         },
-        "required": { "type": "boolean" },
+        "required": {
+          "type": "boolean"
+        },
         "source_updated_at": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "format": "date-time"
         },
         "expected_interval_seconds": {
-          "type": ["integer", "null"],
+          "type": [
+            "integer",
+            "null"
+          ],
           "minimum": 1
         },
-        "stale_after_seconds": { "type": ["integer", "null"], "minimum": 1 },
-        "drilldown": { "$ref": "#/$defs/drilldown" },
-        "prometheus": { "$ref": "#/$defs/prometheus" },
-        "trend": { "$ref": "#/$defs/trend" }
+        "stale_after_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "drilldown": {
+          "$ref": "#/$defs/drilldown"
+        },
+        "prometheus": {
+          "$ref": "#/$defs/prometheus"
+        },
+        "trend": {
+          "$ref": "#/$defs/trend"
+        }
       }
     },
     "metric": {
-      "allOf": [{ "$ref": "#/$defs/baseMetric" }],
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseMetric"
+        }
+      ],
       "unevaluatedProperties": false
     },
     "healthComponent": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "raw_value", "unit", "normalized_score", "weight", "contribution", "freshness", "required"],
+      "required": [
+        "id",
+        "raw_value",
+        "unit",
+        "normalized_score",
+        "weight",
+        "contribution",
+        "freshness",
+        "required"
+      ],
       "properties": {
-        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]+$" },
-        "raw_value": { "type": ["number", "null"] },
-        "unit": { "type": "string" },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]+$"
+        },
+        "raw_value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": "string"
+        },
         "normalized_score": {
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "minimum": 0,
           "maximum": 100
         },
-        "weight": { "type": "number", "minimum": 0, "maximum": 1 },
-        "contribution": { "type": ["number", "null"] },
-        "freshness": { "enum": ["fresh", "stale", "missing", "forbidden"] },
-        "required": { "type": "boolean" }
+        "weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "contribution": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "missing",
+            "forbidden"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        }
       }
     },
     "healthMetric": {
       "allOf": [
-        { "$ref": "#/$defs/baseMetric" },
+        {
+          "$ref": "#/$defs/baseMetric"
+        },
         {
           "type": "object",
-          "required": ["state", "components"],
+          "required": [
+            "state",
+            "components"
+          ],
           "properties": {
-            "state": { "enum": ["healthy", "limited", "critical", "unknown"] },
+            "state": {
+              "enum": [
+                "healthy",
+                "limited",
+                "critical",
+                "unknown"
+              ]
+            },
             "components": {
               "type": "array",
-              "items": { "$ref": "#/$defs/healthComponent" }
+              "items": {
+                "$ref": "#/$defs/healthComponent"
+              }
             }
           }
         }
@@ -181,26 +395,68 @@
     "freshnessSource": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "updated_at", "expected_interval_seconds", "stale_after_seconds", "state"],
+      "required": [
+        "id",
+        "updated_at",
+        "expected_interval_seconds",
+        "stale_after_seconds",
+        "state"
+      ],
       "properties": {
-        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]+$" },
-        "updated_at": { "type": ["string", "null"], "format": "date-time" },
-        "expected_interval_seconds": { "type": "integer", "minimum": 1 },
-        "stale_after_seconds": { "type": "integer", "minimum": 1 },
-        "state": { "enum": ["fresh", "stale", "missing", "forbidden"] }
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]+$"
+        },
+        "updated_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "expected_interval_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "stale_after_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "state": {
+          "enum": [
+            "fresh",
+            "stale",
+            "missing",
+            "forbidden"
+          ]
+        }
       }
     },
     "freshnessMetric": {
       "allOf": [
-        { "$ref": "#/$defs/baseMetric" },
+        {
+          "$ref": "#/$defs/baseMetric"
+        },
         {
           "type": "object",
-          "required": ["state", "sources"],
+          "required": [
+            "state",
+            "sources"
+          ],
           "properties": {
-            "state": { "enum": ["fresh", "stale", "missing", "forbidden"] },
+            "state": {
+              "enum": [
+                "fresh",
+                "stale",
+                "missing",
+                "forbidden"
+              ]
+            },
             "sources": {
               "type": "array",
-              "items": { "$ref": "#/$defs/freshnessSource" }
+              "items": {
+                "$ref": "#/$defs/freshnessSource"
+              }
             }
           }
         }
@@ -210,15 +466,41 @@
     "section": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "visualization", "metrics", "drilldown"],
+      "required": [
+        "id",
+        "title",
+        "visualization",
+        "metrics",
+        "drilldown"
+      ],
       "properties": {
-        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]+$" },
-        "title": { "type": "string", "minLength": 1, "maxLength": 80 },
-        "visualization": {
-          "enum": ["kpi", "sparkline", "time-series", "progress", "segmented-distribution"]
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]+$"
         },
-        "metrics": { "type": "array", "items": { "$ref": "#/$defs/metric" } },
-        "drilldown": { "$ref": "#/$defs/drilldown" }
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "visualization": {
+          "enum": [
+            "kpi",
+            "sparkline",
+            "time-series",
+            "progress",
+            "segmented-distribution"
+          ]
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metric"
+          }
+        },
+        "drilldown": {
+          "$ref": "#/$defs/drilldown"
+        }
       }
     }
   }

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "8.0.102",
+    "version": "8.0.103",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -17677,6 +17677,9 @@
           "count": {
             "type": "integer"
           },
+          "scheduled_count": {
+            "type": "integer"
+          },
           "last_seen": {
             "type": "string"
           },
@@ -17698,6 +17701,7 @@
           "error_code",
           "origin",
           "count",
+          "scheduled_count",
           "last_seen",
           "cause",
           "guidance"

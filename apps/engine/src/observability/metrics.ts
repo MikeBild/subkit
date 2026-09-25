@@ -33,6 +33,7 @@ const LOOP_LAG_BUCKETS_SECONDS = [60, 300, 1800, 3600, 21600, 86400, 604800] as 
 
 export const METRIC_NAMES = {
   OPERATIONAL_BLOCKED: "subkit_operational_blocked",
+  OPERATIONAL_FAILING: "subkit_operational_failing",
   OPERATIONAL_OVERDUE: "subkit_operational_overdue",
   OPERATIONAL_OTHER_DECISIONS: "subkit_operational_other_decisions",
   OPERATIONAL_HEALTH_SCORE: "subkit_operational_health_score",
@@ -359,6 +360,7 @@ function buildRegistry(): MetricsRegistry {
   const reg = new MetricsRegistry();
   for (const name of [
     METRIC_NAMES.OPERATIONAL_BLOCKED,
+    METRIC_NAMES.OPERATIONAL_FAILING,
     METRIC_NAMES.OPERATIONAL_OVERDUE,
     METRIC_NAMES.OPERATIONAL_OTHER_DECISIONS,
     METRIC_NAMES.OPERATIONAL_HEALTH_SCORE,

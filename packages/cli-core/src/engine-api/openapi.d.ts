@@ -20902,6 +20902,7 @@ export interface components {
             /** @enum {string} */
             origin: "authoring" | "manual" | "scheduled" | "mixed";
             count: number;
+            scheduled_count: number;
             last_seen: string;
             cause: string;
             guidance: string | null;

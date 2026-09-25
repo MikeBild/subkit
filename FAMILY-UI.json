@@ -120,16 +120,18 @@
     "titleId": "overview",
     "coreOrder": [
       "decisions.blocked",
+      "decisions.failing",
       "decisions.overdue",
       "decisions.other",
       "operations.health",
       "data.freshness"
     ],
     "decisionBuckets": {
-      "exclusiveOrder": ["blocked", "overdue", "other"],
+      "exclusiveOrder": ["blocked", "failing", "overdue", "other"],
       "fallbackDeadlineHours": 72,
       "drilldowns": {
         "blocked": "/cockpit/decisions?bucket=blocked",
+        "failing": "/cockpit/decisions?bucket=failing",
         "overdue": "/cockpit/decisions?bucket=overdue",
         "other": "/cockpit/decisions?bucket=other"
       }
@@ -246,10 +248,11 @@
   "decisions": {
     "layout": "operational-workbench",
     "pageMeasure": "workbench",
-    "order": ["blocked", "overdue", "other"],
+    "order": ["blocked", "failing", "overdue", "other"],
     "filters": "kind-chips",
     "grouping": {
       "blocked": "Blockiert Arbeit",
+      "failing": "Freigegeben, aber scheiternd",
       "overdue": "Liegt schon länger",
       "other": "Weitere Entscheidungen"
     },
@@ -267,7 +270,7 @@
     "technicalDetailsCollapsed": true,
     "rawIdentifiersOnPrimarySurface": false,
     "rawErrorsOnPrimarySurface": false,
-    "bucketQuery": ["blocked", "overdue", "other"],
+    "bucketQuery": ["blocked", "failing", "overdue", "other"],
     "details": "collapsed-by-default-expandable",
     "history": "audit-link-only"
   },

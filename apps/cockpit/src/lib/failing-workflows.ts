@@ -22,6 +22,8 @@ export interface DigestFailureGroup {
   error_code: string | null;
   origin: string;
   count: number;
+  /** How many of these runs the scheduler started. */
+  scheduled_count: number;
   last_seen: string;
   cause: string;
   guidance: string | null;
@@ -44,15 +46,20 @@ export interface FailingWorkflow {
 /**
  * The scheduled failure groups, worst first.
  *
- * `origin` is the whole filter: a scheduled run happens because a human
- * approved it and the clock came round, so its failure is an operational fact.
- * A failed authoring trial is someone trying something out.
+ * The filter is whether the scheduler ever started one of these runs: that
+ * happens because a human approved it and the clock came round, so its failure
+ * is an operational fact. A failed authoring trial is someone trying something
+ * out, and it stays out.
+ *
+ * Not `origin`, which collapses to "mixed" as soon as a group holds more than
+ * one kind of run — so one manual retry of a failing schedule used to delete
+ * the decision from this list while the schedule went on failing.
  */
 export function failingWorkflows(
   groups: readonly DigestFailureGroup[] | null | undefined,
 ): FailingWorkflow[] {
   return (groups ?? [])
-    .filter((group) => group.origin === "scheduled" && group.count > 0)
+    .filter((group) => group.scheduled_count > 0)
     .map((group) => ({
       key: group.signature,
       workflow_id: group.workflow_id,

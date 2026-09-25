@@ -40,8 +40,12 @@ export interface PartitionedFailures {
 export function partitionFailures(groups: readonly FailureGroup[]): PartitionedFailures {
   const sorted = [...groups].sort((a, b) => b.count - a.count);
   return {
-    incidents: sorted.filter((group) => group.origin === "scheduled" || group.origin === "mixed"),
-    trials: sorted.filter((group) => group.origin === "authoring" || group.origin === "manual"),
+    // One rule, the same one the decisions queue and the overview tile use:
+    // did the scheduler start any of these runs. Reading `origin` here counted
+    // a group that was tried by hand AND in the editor as an incident, because
+    // two kinds of trial run also merge to "mixed".
+    incidents: sorted.filter((group) => group.scheduled_count > 0),
+    trials: sorted.filter((group) => group.scheduled_count === 0),
   };
 }
 

@@ -3,6 +3,11 @@ import type { Db } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/index.ts";
 import { getMetrics } from "../observability/index.ts";
 import { readPatchReadinessBatch } from "../self-healing/index.ts";
+import {
+  collectFailureGroups,
+  DECISION_FAILURE_WINDOW_HOURS,
+  failingScheduledGroups,
+} from "./health-digest.ts";
 
 export const OPERATIONAL_SCHEMA_VERSION = "operational-overview.v1" as const;
 export const FAMILY_CONTRACT_VERSION = "2.1" as const;
@@ -38,6 +43,8 @@ export interface OperationalOverview {
   snapshot_state: "ready" | "partial" | "forbidden" | "contract-mismatch";
   core: {
     blocked: OperationalMetric;
+    /** Approved, scheduled, and failing — the opposite of a held schedule. */
+    failing: OperationalMetric;
     overdue: OperationalMetric;
     other_decisions: OperationalMetric;
     health: OperationalMetric & {
@@ -161,6 +168,14 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       )})`
     : sql`FALSE`;
 
+  // Asked of the same code the decisions queue asks, not re-derived here. The
+  // grouping rule is more than a WHERE clause — first failed step per run,
+  // origin merged across the group, a scan cap — and a second copy of it in SQL
+  // is how the overview came to disagree with the page it links to.
+  const failing = failingScheduledGroups(
+    await collectFailureGroups(db, tenantId, DECISION_FAILURE_WINDOW_HOURS),
+  ).length;
+
   const result = await db.execute<SnapshotRow>(sql`
     WITH decisions AS (
       SELECT created_at, FALSE AS blocking FROM patch_candidates
@@ -238,6 +253,22 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
     path: "/cockpit/decisions?bucket=blocked",
     labelId: "operational.open_blocked",
     prometheus: "subkit_operational_blocked",
+  });
+  const failingMetric = core({
+    id: "decisions.failing",
+    label: "Failing",
+    definition:
+      "Approved scheduled workflows that ran and failed in the last 7 days, grouped by cause.",
+    relevance:
+      "A workflow nobody has to approve can still be broken; this is the decision that has no held schedule behind it.",
+    kind: "count",
+    value: failing,
+    unit: "count",
+    severity: failing > 0 ? "urgent" : "healthy",
+    generatedAt,
+    path: "/cockpit/decisions?bucket=failing",
+    labelId: "operational.open_failing",
+    prometheus: "subkit_operational_failing",
   });
   const overdueMetric = core({
     id: "decisions.overdue",
@@ -537,6 +568,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
     snapshot_state: completeHealth ? "ready" : "partial",
     core: {
       blocked: blockedMetric,
+      failing: failingMetric,
       overdue: overdueMetric,
       other_decisions: otherMetric,
       health: healthMetric,
@@ -567,6 +599,7 @@ export function projectOperationalOverviewMetrics(snapshot: OperationalOverview)
   const registry = getMetrics();
   const all = [
     snapshot.core.blocked,
+    snapshot.core.failing,
     snapshot.core.overdue,
     snapshot.core.other_decisions,
     snapshot.core.health,
