@@ -20,7 +20,7 @@
       "const": "operational-overview.v1"
     },
     "contract_version": {
-      "const": "2.1"
+      "const": "2.2"
     },
     "product": {
       "enum": [
@@ -100,7 +100,7 @@
           "const": "/cockpit/audit"
         },
         "contract_version": {
-          "const": "2.1"
+          "const": "2.2"
         },
         "snapshot_generated_at": {
           "type": "string",

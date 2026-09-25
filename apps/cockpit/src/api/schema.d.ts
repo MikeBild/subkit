@@ -20931,7 +20931,7 @@ export interface components {
             /** @enum {string} */
             schema_version: "operational-overview.v1";
             /** @enum {string} */
-            contract_version: "2.1";
+            contract_version: "2.2";
             /** @enum {string} */
             product: "subkit";
             generated_at: string;
@@ -21145,7 +21145,7 @@ export interface components {
                 /** @enum {string} */
                 path: "/cockpit/audit";
                 /** @enum {string} */
-                contract_version: "2.1";
+                contract_version: "2.2";
                 snapshot_generated_at: string;
             };
         };

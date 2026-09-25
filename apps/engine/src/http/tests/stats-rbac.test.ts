@@ -208,7 +208,7 @@ describe("stats:read gate — admin key → 200", () => {
       const body = (await res.json()) as Record<string, unknown>;
       if (path === "/v1/operational-overview") {
         expect(body.schema_version).toBe("operational-overview.v1");
-        expect(body.contract_version).toBe("2.1");
+        expect(body.contract_version).toBe("2.2");
         expect(body.product).toBe("subkit");
         // The exact keys, in order: this is the contract the cockpit, the MCP
         // tool and the Prometheus projection all read. `failing` sits beside
