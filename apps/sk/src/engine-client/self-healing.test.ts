@@ -9,7 +9,7 @@
 // panel exists to give.
 
 import { expect, test } from "bun:test";
-import { type DigestFailureGroup, scheduledRunsOf } from "./self-healing.ts";
+import { type DigestFailureGroup, resolvedAtOf, scheduledRunsOf } from "./self-healing.ts";
 
 const group = (over: Partial<DigestFailureGroup>): DigestFailureGroup => ({
   signature: "sig",
@@ -21,6 +21,7 @@ const group = (over: Partial<DigestFailureGroup>): DigestFailureGroup => ({
   count: 9,
   scheduled_count: 9,
   last_seen: "2026-09-25T06:00:00.000Z",
+  resolved_at: null,
   cause: "The address answered 404.",
   guidance: null,
   ...over,
@@ -52,4 +53,17 @@ test("zero runs is not the same as an absent field", () => {
   // through to the origin guess — that is how a fallback quietly becomes the
   // rule again.
   expect(scheduledRunsOf(group({ origin: "scheduled", count: 4, scheduled_count: 0 }))).toBe(0);
+});
+
+test("an engine that cannot tell whether it recovered is not taken as an all-clear", () => {
+  // The same mixed-version problem, and the opposite safe direction from
+  // `scheduled_count`: there, a missing field must not hide a live failure by
+  // reading as zero; here, a missing field must not CLOSE one by reading as
+  // recovered. Both defaults keep the failure on screen, where a human decides.
+  const { resolved_at: _omitted, ...withoutField } = group({});
+  expect(resolvedAtOf(withoutField as DigestFailureGroup)).toBeNull();
+  expect(resolvedAtOf(group({ resolved_at: null }))).toBeNull();
+  expect(resolvedAtOf(group({ resolved_at: "2026-09-25T08:00:00.000Z" }))).toBe(
+    "2026-09-25T08:00:00.000Z",
+  );
 });

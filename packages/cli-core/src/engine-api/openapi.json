@@ -17731,6 +17731,12 @@
           "last_seen": {
             "type": "string"
           },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "cause": {
             "type": "string"
           },
@@ -17751,6 +17757,7 @@
           "count",
           "scheduled_count",
           "last_seen",
+          "resolved_at",
           "cause",
           "guidance"
         ]

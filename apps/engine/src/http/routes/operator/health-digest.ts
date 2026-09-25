@@ -24,6 +24,7 @@ const FailureGroupSchema = z
     count: z.number().int(),
     scheduled_count: z.number().int(),
     last_seen: z.string(),
+    resolved_at: z.string().nullable(),
     cause: z.string(),
     guidance: z.string().nullable(),
   })

@@ -13,6 +13,7 @@ const group = (over: Partial<DigestFailureGroup>): DigestFailureGroup => ({
   count: 76,
   scheduled_count: 76,
   last_seen: "2026-09-23T10:00:00.000Z",
+  resolved_at: null,
   cause: "The address answered 404.",
   guidance: null,
   ...over,
@@ -26,6 +27,22 @@ test("a scheduled workflow that keeps failing is a decision", () => {
   expect(failing?.step_key).toBe("subkit_health");
   expect(failing?.count).toBe(76);
   expect(failing?.cause).toBe("The address answered 404.");
+});
+
+test("a cause the workflow has already recovered from is not a decision", () => {
+  // The production case in the other direction: the grant was re-issued, the
+  // schedule has run clean twice since, and the tile went on counting it — an
+  // open decision with no action left that could close it.
+  expect(failingWorkflows([group({ resolved_at: "2026-09-24T04:12:00.000Z" })])).toHaveLength(0);
+  // And the guard against over-correcting: only a scheduled success resolves
+  // it, so a group still carrying a live cause stays.
+  expect(failingWorkflows([group({ resolved_at: null })])).toHaveLength(1);
+  // An engine that does not report the field at all also keeps it. This is not
+  // hypothetical pedantry: comparing `=== null` here read `undefined` as
+  // resolved and silently emptied the list, and the convention check found it
+  // as the nav badge and the page disagreeing by one.
+  const { resolved_at: _absent, ...older } = group({});
+  expect(failingWorkflows([older as DigestFailureGroup])).toHaveLength(1);
 });
 
 test("the link leads to those runs, not to every run", () => {
