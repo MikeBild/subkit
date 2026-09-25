@@ -242,6 +242,8 @@ const EN = {
     "{name} may be any UTC time written like 2026-01-31T23:59:59Z.",
   "authority.boundary.class.file_name":
     "{name} may be any single file name — letters, digits, \u201c_\u201d and \u201c-\u201d, then one dot and a short extension. It cannot contain \u201c/\u201d, so it stays in this one folder.",
+  "authority.boundary.class.path":
+    "{name} may be any page on this one address \u2014 this approval does not limit which page. It cannot reach another address, and it cannot leave this address by any spelling.",
   "authority.boundary.paging":
     "This read is handed out one page at a time: SubKit sends up to {count} requests to the same address, moving only {params}. Nothing else about the request changes.",
   "authority.boundary.classNotice":
@@ -2022,6 +2024,8 @@ const DE: Record<TranslationKey, string> = {
     "{name} darf jeder UTC-Zeitpunkt in der Form 2026-01-31T23:59:59Z sein.",
   "authority.boundary.class.file_name":
     "{name} darf jeder einzelne Dateiname sein \u2014 Buchstaben, Ziffern, \u201e_\u201c und \u201e-\u201c, dann ein Punkt und eine kurze Endung. Ein \u201e/\u201c ist nicht m\u00f6glich, der Wert bleibt also in diesem einen Ordner.",
+  "authority.boundary.class.path":
+    "{name} darf jede Seite unter dieser einen Adresse sein \u2014 welche Seite, begrenzt diese Freigabe nicht. Eine andere Adresse ist nicht erreichbar, und diese Adresse l\u00e4sst sich auf keine Schreibweise verlassen.",
   "authority.boundary.paging":
     "Dieser Lesezugriff kommt seitenweise: SubKit sendet bis zu {count} Anfragen an dieselbe Adresse und bewegt dabei nur {params}. Sonst \u00e4ndert sich an der Anfrage nichts.",
   "authority.boundary.classNotice":
