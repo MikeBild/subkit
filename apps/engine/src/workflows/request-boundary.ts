@@ -241,6 +241,13 @@ export type RequestBoundaryRefusal =
   | "path_class_misplaced"
   // Raised by effect resolution, which has the connector in hand:
   | "connector_adds_query"
+  // A report e-mail has its own stricter review, and the three ways it can fail
+  // to produce one are three different things to do about it. One code answered
+  // all three, and its advice — "let a preparation run" — is precisely the one
+  // that cannot work for the third.
+  | "report_delivery_unprepared"
+  | "report_delivery_unobserved"
+  | "report_delivery_unreachable"
   | "stricter_profile_applies";
 
 const MASK = "__subkit_var_";

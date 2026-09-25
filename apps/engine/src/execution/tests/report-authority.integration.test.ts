@@ -8,6 +8,7 @@ import {
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
   executionSteps,
+  executions,
   sessions,
   users,
   workflowExecutionAuthorities,
@@ -462,4 +463,76 @@ test("documented report reads cannot delegate preview permission through a redir
     expect(requests).toBe(1);
     expect((await f.inspect()).eligible_for_repeated_runs).toBe(false);
   });
+});
+
+test("the report refusal says which of three situations this is", async () => {
+  // One code answered all three, and its remedy — "let a preparation run" — is
+  // the right advice for two of them and a circle for the third. On production
+  // `radar-collect-weekly` sat in that third state: a preparation run existed,
+  // its email step sits behind a branch whose condition depends on a write the
+  // preparation holds back, so no preparation can ever observe it. The dialog
+  // kept telling a person to do the one thing that cannot work.
+  const f = await fixture();
+  const reasonFor = async () =>
+    (await f.inspect()).request_refusals.find((entry) => entry.step_id === "send")?.reason;
+
+  // Nothing has watched this step yet.
+  expect(await reasonFor()).toBe("report_delivery_unprepared");
+
+  // A preparation run that never reaches the step: the run exists, the step
+  // does not appear in it. Seeded directly, because producing the real
+  // unreachable shape needs a branch on a held write — which is exactly the
+  // situation that cannot be produced by running one.
+  const db = ctx.testDb.db;
+  const [stranded] = await db
+    .insert(executions)
+    .values({
+      tenant_id: ctx.tenantId,
+      workflow_id: f.wf.workflow_id,
+      workflow_version_id: f.wf.version_id,
+      source_kind: "saved",
+      status: "failed",
+      request_source: "api",
+      execution_mode: "dev",
+      hold_writes: true,
+    })
+    .returning();
+  await db.insert(executionSteps).values({
+    tenant_id: ctx.tenantId,
+    execution_id: stranded?.id as string,
+    step_key: "some_earlier_step",
+    step_index: 0,
+    kind: "request",
+    status: "succeeded",
+    request_meta: { driver: "http", url: "https://metrics.example.test/history" },
+  });
+  expect(await reasonFor()).toBe("report_delivery_unreachable");
+  // And the run is read at all despite having failed — the evidence is per
+  // step, so requiring the whole run to succeed threw away the only evidence a
+  // partially-reaching run ever leaves.
+
+  // The step ran and was held, but recorded nothing the profile can read.
+  await db.insert(executionSteps).values({
+    tenant_id: ctx.tenantId,
+    execution_id: stranded?.id as string,
+    step_key: "send",
+    step_index: 1,
+    kind: "request",
+    status: "succeeded",
+    request_meta: { driver: "http", url: GMAIL_SEND_TARGET, extras: { held: true } },
+  });
+  expect(await reasonFor()).toBe("report_delivery_unobserved");
+});
+
+test("a report step the profile has already bounded reports no refusal at all", async () => {
+  // Every healthy Gmail report step carried `stricter_profile_applies` on every
+  // preview — a refusal beside a boundary that exists, on a step with nothing
+  // wrong with it. Noise that buries the steps a person has to act on.
+  const f = await fixture();
+  await f.prepare();
+  const preview = await f.inspect();
+  expect(
+    preview.manifest.effects.find((effect) => effect.step_id === "send")?.report_delivery?.to,
+  ).toBe("recipient@example.test");
+  expect(preview.request_refusals.find((entry) => entry.step_id === "send")).toBeUndefined();
 });
