@@ -69,6 +69,12 @@ export const CLASS_KEYS: Record<string, TranslationKey> = {
   date: "authority.boundary.class.date",
   timestamp: "authority.boundary.class.timestamp",
   file_name: "authority.boundary.class.file_name",
+  // The whole path, not one segment of it. It gets its own sentence rather than
+  // the `unknownRule` fallback for the reason that fallback exists: a class the
+  // engine accepts and this dialog cannot describe makes the workflow
+  // unapprovable — which is exactly how `file_name` stranded a repaired
+  // production workflow.
+  path: "authority.boundary.class.path",
 };
 
 export function presentRequestBoundary(

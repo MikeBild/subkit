@@ -91,7 +91,25 @@ export const VALUE_CLASSES = {
   // sibling directory; no leading dot and no second dot, so `..` and
   // `a/../../b` cannot be spelled.
   file_name: /^[A-Za-z0-9_-]{1,200}\.[A-Za-z0-9]{1,16}$/,
+  // A whole path, not a segment of one — the LAST position only, covering
+  // everything after it. A step that fetches whatever route a previous step
+  // listed varies the entire path, and every other class here describes one
+  // segment, so such a step could carry no boundary at all and its workflow
+  // could never be approved.
+  //
+  // What it admits: unreserved characters and percent-escapes, in one or more
+  // segments, optionally ending in `/`, and the empty string — `/` is a route.
+  // What it refuses is what would make the path mean something else:
+  // `:` (so no `scheme:`), backslash, control characters, and `.`/`..`
+  // segments. Two things a pattern cannot judge are checked in
+  // `pathValueAllowed` instead: a leading `//`, which names another host by
+  // position rather than by any character, and a percent-escape that DECODES to
+  // `/`, which is a hidden separator and never what the author wrote.
+  path: /^(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})*(?:\/(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})*)*$/,
 } as const;
+/** The longest path this will admit. Bounded so a boundary cannot be widened
+ *  into an unreadable one by length alone. */
+const MAX_PATH_VALUE = 1024;
 type ValueClass = keyof typeof VALUE_CLASSES;
 const VALUE_CLASS_NAMES = Object.keys(VALUE_CLASSES) as [ValueClass, ...ValueClass[]];
 /** A worst-case member of each class, for the review-time routing self-check. */
@@ -102,6 +120,7 @@ const CLASS_SAMPLE: Record<ValueClass, string> = {
   date: "2000-01-01",
   timestamp: "2000-01-01T00:00:00Z",
   file_name: "a.a",
+  path: "a",
 };
 
 // The `enum` branch stays FIRST: a boundary written before classes existed
@@ -216,6 +235,10 @@ export type RequestBoundaryRefusal =
   | "target_unresolved"
   | "variable_in_base_prefix"
   | "enum_value_unroutable"
+  // A whole-path rule anywhere but the final path position. It covers
+  // everything after it, so in any other place it would silently swallow the
+  // literals the reviewer approved.
+  | "path_class_misplaced"
   // Raised by effect resolution, which has the connector in hand:
   | "connector_adds_query"
   | "stricter_profile_applies";
@@ -354,6 +377,21 @@ export function compileRequestBoundary(
   )
     return refuse("delete_requires_enum");
 
+  // A whole-path rule covers everything after its position, so it belongs at
+  // the end of the path and nowhere else. In the middle it would swallow the
+  // literals the reviewer approved after it; in the query it would describe a
+  // value that is not a path at all. Refused rather than narrowed: a boundary
+  // that quietly means something other than what was written is the failure
+  // this whole file exists to prevent.
+  {
+    const lastSegment = split.segments[split.segments.length - 1];
+    const tailVar = typeof lastSegment === "string" ? null : (lastSegment?.var ?? null);
+    const misplaced = Object.entries(scope.data.variables).some(
+      ([name, entry]) => "class" in entry && entry.class === "path" && name !== tailVar,
+    );
+    if (misplaced) return refuse("path_class_misplaced");
+  }
+
   // Resolve through the dispatcher's own resolver, with each variable segment
   // replaced by a token made of unreserved characters so it survives `new URL`.
   const masked = split.segments
@@ -475,7 +513,49 @@ export function requestBoundaryTarget(boundary: RequestBoundary): string {
 function valueAllowed(variableRule: RequestVariableRule | undefined, value: string): boolean {
   if (!variableRule) return false;
   if ("enum" in variableRule) return variableRule.enum.includes(value);
+  // `path` describes the whole tail, never one segment. Judged here it would
+  // accept a value containing `/` in a position the reviewer approved as a
+  // single segment — the one way this class could widen a boundary. Stated
+  // rather than left to fall through: it is in the table now, so it would
+  // otherwise match.
+  if (variableRule.class === "path") return false;
   return VALUE_CLASSES[variableRule.class]?.test(value) === true;
+}
+
+/** Whether a rule describes the whole remaining path rather than one segment. */
+function isPathRule(variableRule: RequestVariableRule | undefined): boolean {
+  return variableRule !== undefined && "class" in variableRule && variableRule.class === "path";
+}
+
+/**
+ * The tail of a path, judged as one value.
+ *
+ * Separate from `valueAllowed` because the two judge different things and must
+ * not be confused: that one sees a raw segment, this one sees everything after
+ * the approved literals. The decode check is here because a regex cannot see
+ * it — `%2F` passes the pattern and is a separator once the server reads it,
+ * which inside a path value is never what the author wrote down.
+ */
+export function pathValueAllowed(value: string): boolean {
+  if (value.length > MAX_PATH_VALUE) return false;
+  // A leading `//` is a protocol-relative URL: resolved against the connector's
+  // base it names a different host entirely. The pattern cannot say this —
+  // every character in it is legal, and only the POSITION makes it an authority
+  // — so it is stated here. `matchTarget` would refuse the result anyway on the
+  // origin check, but a rule that admits a value only for another rule to catch
+  // it is a rule that does not mean what it says.
+  if (value.startsWith("//")) return false;
+  if (!VALUE_CLASSES.path.test(value)) return false;
+  return value.split("/").every((segment) => {
+    if (segment === "." || segment === "..") return false;
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(segment);
+    } catch {
+      return false;
+    }
+    return !decoded.includes("/") && decoded !== "." && decoded !== "..";
+  });
 }
 
 /** Origin and path only. Shared by the review-time self-check and dispatch. */
@@ -484,6 +564,26 @@ function matchTarget(boundary: RequestBoundary, url: URL): boolean {
   // RAW pathname segments: never decoded, so an encoded traversal is simply not
   // equal to an approved literal.
   const actual = url.pathname.split("/");
+  const last = boundary.segments[boundary.segments.length - 1];
+  const tailRule =
+    last !== undefined && typeof last !== "string" ? boundary.variables[last.var] : undefined;
+  if (isPathRule(tailRule)) {
+    // Every literal before the tail still matches exactly, one for one. Only
+    // the final position absorbs a variable number of segments, and it must
+    // absorb at least the one it stands in.
+    const fixed = boundary.segments.length - 1;
+    if (actual.length < fixed + 1) return false;
+    for (let index = 0; index < fixed; index += 1) {
+      const expected = boundary.segments[index];
+      const raw = actual[index] ?? "";
+      const ok =
+        typeof expected === "string"
+          ? raw === expected
+          : valueAllowed(boundary.variables[(expected as { var: string }).var], raw);
+      if (!ok) return false;
+    }
+    return pathValueAllowed(actual.slice(fixed).join("/"));
+  }
   if (actual.length !== boundary.segments.length) return false;
   return boundary.segments.every((expected, index) => {
     const raw = actual[index] ?? "";

@@ -7695,9 +7695,19 @@ not let a value span segments: `%2F` is a literal character to the server, so
 such a value addresses something else. A path with several varying parts needs
 one placeholder per segment. Where the values cannot be listed — an id produced
 by an earlier step, a time window — an entry names a value class instead:
-`{ "class": "uuid" }`, `integer`, `identifier`, `date` or `timestamp`. A class
-approves every value of that form, the review dialog says so, and a `DELETE` may
-not use one. Placeholders in the body need no entry; the body is limited by
+`{ "class": "uuid" }`, `integer`, `identifier`, `date`, `timestamp`, `file_name`
+(one file name, exactly one dot, never a folder) or `path`. A class approves
+every value of that form, the review dialog says so, and a `DELETE` may not use
+one.
+
+`path` is the one class that is not a single segment: it stands for the whole
+rest of the address, for a step that fetches whichever route an earlier step
+listed. It may appear only as the last placeholder in the path — anywhere else
+it would swallow the literal segments after it, and the review refuses it with
+`path_class_misplaced`. It approves every page on that one address, so prefer
+any narrower rule that fits. It cannot reach another address: a value spelling a
+scheme or starting `//` is refused, as is one whose escape decodes to a
+separator. Placeholders in the body need no entry; the body is limited by
 `max_body_bytes` (0 for a request without a body).
 `max_calls` is the reviewed number of requests per run. A `DELETE` additionally
 needs `destructive: true`, so a removal is never approved by omission.
