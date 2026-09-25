@@ -144,6 +144,38 @@ describe("a refused dispatch reaches the audit trail", () => {
     expect((entry?.metadata as { detail?: string })?.detail).toContain("outside the boundary");
   });
 
+  test("the real refusal code is what the runtime reports, not a blanket one", async () => {
+    // This file can only assert the SINK. It hands `finalizeStepRow` a code by
+    // hand, so it is structurally blind to the hop that broke this: the request
+    // dispatcher rewrote every governance refusal to `authority_invalid` before
+    // the step row existed, and that code is not in the set, so nothing was
+    // written. Three of the four codes this suite "covered" could never arrive.
+    //
+    // The end-to-end proof lives in
+    // `execution/tests/authority-admission.integration.test.ts` and
+    // `authority-runtime.integration.test.ts`, which drive the real dispatcher.
+    // What belongs HERE is the other half: every code the runtime can now
+    // report does reach the trail.
+    for (const code of [
+      "execution_authority_changed",
+      "execution_authority_unavailable",
+      "execution_authority_required",
+      "authority_redirect_denied",
+    ]) {
+      const rows = await refuse(code);
+      const entry = rows.find((row) => row.action === "execution.boundary_refused");
+      expect(entry, `no governance row for ${code}`).toBeDefined();
+      expect(entry?.reason).toBe(code);
+    }
+  });
+
+  test("a code nothing produces is not kept as a promise", async () => {
+    // `execution_boundary_exhausted` sat in the set with no producer anywhere —
+    // a guard over a case that could not happen, which reads like coverage.
+    const rows = await refuse("execution_boundary_exhausted");
+    expect(rows.some((row) => row.action === "execution.boundary_refused")).toBe(false);
+  });
+
   test("an ordinary failure is not a governance event", async () => {
     // A catch-all would bury the refusals among timeouts and 404s, and the
     // trail exists to separate exactly those two things.

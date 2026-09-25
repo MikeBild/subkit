@@ -398,12 +398,23 @@ export async function insertStepRow(
  * governance event would be worse — it would bury the refusals among timeouts
  * and 404s, and the trail exists to answer one question precisely: did the limit
  * hold, and where.
+ *
+ * Exported because the request dispatcher needs the same list: it rewrites every
+ * governance refusal to `authority_invalid` for the retry ladder, and has to
+ * know which original codes are worth carrying through to the row. Two copies of
+ * this set would mean a code that audits on one path and vanishes on the other.
+ *
+ * `execution_boundary_exhausted` was in this set and had no producer anywhere —
+ * a code that could never arrive, guarding nothing. Removed rather than left as
+ * a promise the runtime does not keep.
  */
-const BOUNDARY_REFUSALS = new Set([
+export const GOVERNANCE_REFUSALS: ReadonlySet<string> = new Set([
   "request_outside_declared_boundary",
   "execution_authority_changed",
-  "execution_boundary_exhausted",
   "execution_boundary_mismatch",
+  "execution_authority_required",
+  "execution_authority_unavailable",
+  "authority_redirect_denied",
 ]);
 
 export async function finalizeStepRow(
@@ -450,7 +461,7 @@ export async function finalizeStepRow(
     // Written inside the same transaction as the step row: a refusal that is
     // visible in the run but missing from the trail is exactly the gap this
     // closes, and two writes that can disagree would reopen it.
-    if (result.error?.code && BOUNDARY_REFUSALS.has(result.error.code))
+    if (result.error?.code && GOVERNANCE_REFUSALS.has(result.error.code))
       await auditAwait(
         {
           tenant_id: row.tenant_id,

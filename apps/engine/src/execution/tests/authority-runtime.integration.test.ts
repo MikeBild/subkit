@@ -249,7 +249,10 @@ test("revocation after the first write prevents the next step from reaching the 
   const result = await f.run();
   expect(result.status).toBe("failed");
   expect(result.steps[0]?.status).toBe("succeeded");
-  expect(result.steps[1]?.error).toMatchObject({ code: "authority_invalid" });
+  // The code the runtime actually used, not the blanket one it used to be
+  // rewritten to. A step row that says `authority_invalid` writes no governance
+  // audit row, because that code is not one the refusal set knows.
+  expect(result.steps[1]?.error).toMatchObject({ code: "execution_authority_unavailable" });
   expect(requests).toBe(1);
 });
 
@@ -264,7 +267,7 @@ test("a GraphQL retry rechecks authority and does not send after revocation", as
   });
   const result = await f.run();
   expect(result.status).toBe("failed");
-  expect(result.steps[0]?.error).toMatchObject({ code: "authority_invalid" });
+  expect(result.steps[0]?.error).toMatchObject({ code: "execution_authority_unavailable" });
   expect(requests).toBe(1);
 });
 
@@ -281,7 +284,7 @@ for (const driver of ["http", "graphql"] as const) {
     const result = await f.run();
     expect(refreshes).toBe(before + 1);
     expect(result.status).toBe("failed");
-    expect(result.steps[0]?.error).toMatchObject({ code: "authority_invalid" });
+    expect(result.steps[0]?.error).toMatchObject({ code: "execution_authority_changed" });
     expect(writes).toBe(0);
   });
 
