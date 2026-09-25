@@ -27,6 +27,12 @@ type IssueCode = Manifest["issues"][number]["code"];
 const REFUSAL_KEYS = [
   "no_boundary",
   "stricter_profile_applies",
+  // Three situations the code above used to answer with one sentence. The
+  // third is the one that matters: "let a preparation run" is the advice for
+  // the first two and a circle for the third.
+  "report_delivery_unprepared",
+  "report_delivery_unobserved",
+  "report_delivery_unreachable",
   "connector_adds_query",
   "target_unresolved",
   "path_unsupported",

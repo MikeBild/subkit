@@ -8,6 +8,28 @@ import {
 
 export type ReportDeliveryBoundaries = Record<string, ReportDeliveryBoundary>;
 
+/**
+ * What the profile found, and — when it found nothing for a step — enough to
+ * say WHY.
+ *
+ * One refusal code used to answer three different situations: no preparation
+ * run exists, one exists and reached the step without a usable observation, and
+ * one exists that never reached the step at all. The third is the case a person
+ * cannot act on without being told, because the advice for it ("run a
+ * preparation") is the one thing that cannot work: the step sits behind a
+ * branch whose condition depends on the writes a preparation holds back.
+ *
+ * Absent when the boundaries came from a granted authority — there is no gap to
+ * explain, and inventing one would report a refusal on a healthy step.
+ */
+export interface ReportDeliveryEvidence {
+  boundaries: ReportDeliveryBoundaries;
+  /** False when no preparation run exists for this version and environment. */
+  prepared?: boolean;
+  /** Step ids the preparation run actually ran, iteration suffix stripped. */
+  reached?: ReadonlySet<string>;
+}
+
 /** Evidence for repair diagnosis, without credentials or message contents.
  * A succeeded held run can still contain unexecuted dependent steps. */
 export async function inspectHeldPreviewEvidence(
@@ -74,7 +96,7 @@ export async function proposeReportDeliveryBoundaries(
     execution_environment: "dev" | "prod";
   },
   db: Executor,
-): Promise<ReportDeliveryBoundaries> {
+): Promise<ReportDeliveryEvidence> {
   const [authority] = await db
     .select({ manifest: workflowExecutionAuthorities.effect_manifest })
     .from(workflowExecutionAuthorities)
@@ -88,7 +110,7 @@ export async function proposeReportDeliveryBoundaries(
     )
     .orderBy(desc(workflowExecutionAuthorities.created_at), desc(workflowExecutionAuthorities.id))
     .limit(1);
-  if (authority) return reportBoundariesFromManifest(authority.manifest);
+  if (authority) return { boundaries: reportBoundariesFromManifest(authority.manifest) };
   const [run] = await db
     .select({ id: executions.id })
     .from(executions)
@@ -98,30 +120,42 @@ export async function proposeReportDeliveryBoundaries(
         eq(executions.workflow_id, input.workflow_id),
         eq(executions.workflow_version_id, input.workflow_version_id),
         eq(executions.execution_mode, input.execution_environment),
-        eq(executions.status, "succeeded"),
+        // Deliberately NOT `status = 'succeeded'`. A preparation run whose
+        // LATER step failed still observed the steps it reached, and those
+        // observations are exactly as good — the evidence is per step, so the
+        // filter belongs per step. Requiring the whole run to succeed threw
+        // away the only evidence a partially-reaching run ever produces.
         eq(executions.hold_writes, true),
       ),
     )
     .orderBy(desc(executions.created_at), desc(executions.id))
     .limit(1);
-  if (!run) return {};
+  if (!run) return { boundaries: {}, prepared: false, reached: new Set<string>() };
   const steps = await db
-    .select({ key: executionSteps.step_key, meta: executionSteps.request_meta })
+    .select({
+      key: executionSteps.step_key,
+      status: executionSteps.status,
+      meta: executionSteps.request_meta,
+    })
     .from(executionSteps)
     .where(
       and(eq(executionSteps.tenant_id, input.tenant_id), eq(executionSteps.execution_id, run.id)),
     );
   const boundaries: ReportDeliveryBoundaries = {};
+  const reached = new Set<string>();
   for (const step of steps) {
+    // A loop body records `send[0]`, `send[1]`, … — the same step.
+    const key = step.key.replace(/\[[0-9]+\]$/, "");
+    if (step.status === "succeeded") reached.add(key);
     const metadata = step.meta as {
       extras?: { held?: boolean; report_delivery_proposal?: unknown };
     } | null;
     const proposal = ReportDeliveryBoundarySchema.safeParse(
       metadata?.extras?.report_delivery_proposal,
     );
-    if (metadata?.extras?.held === true && proposal.success) boundaries[step.key] = proposal.data;
+    if (metadata?.extras?.held === true && proposal.success) boundaries[key] = proposal.data;
   }
-  return boundaries;
+  return { boundaries, prepared: true, reached };
 }
 
 export function reportBoundariesFromManifest(manifest: unknown): ReportDeliveryBoundaries {
