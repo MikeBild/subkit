@@ -17730,6 +17730,16 @@ export interface components {
                 observed_key: string;
                 observed_at: string;
             }[];
+            request_refusals?: {
+                step_id: string;
+                reason: string;
+                call_path?: string[];
+            }[];
+            storage_refusals?: {
+                step_id: string;
+                reason: string;
+                call_path?: string[];
+            }[];
             execution_shape: components["schemas"]["AuthorityExecutionShape"];
             schedules: {
                 cron: string;

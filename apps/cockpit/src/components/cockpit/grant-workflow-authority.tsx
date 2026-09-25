@@ -449,7 +449,12 @@ export function GrantWorkflowAuthority({
                           : t("authority.issueStep", { step: issue.step_id })}
                       </span>
                       <br />
-                      {t(issue.messageKey)}
+                      {/* The engine's own reason when it gave one, and the
+                          blanket code only when it did not. Showing both would
+                          print two different statements about the same step —
+                          one of which says the target is unbounded for a step
+                          whose address is a constant. */}
+                      {t(issue.reasonKey ?? issue.messageKey)}
                       {issue.evidence && (
                         <>
                           <br />
@@ -811,30 +816,28 @@ export function GrantWorkflowAuthority({
               )}
             </>
           ) : (
-            <>
-              <Button
-                disabled={busy || !input || Boolean(grant.error)}
-                onClick={() => grant.mutate()}
-                data-testid="authority-grant-confirm"
-              >
-                {t(
-                  grant.isPending
-                    ? "authority.granting"
-                    : recurringContent
-                      ? "authority.content.confirm"
-                      : recurringReport
-                        ? "authority.report.confirm"
-                        : activation
-                          ? "chat.activation.confirm"
-                          : onGrant
-                            ? "decisions.applyAndAuthorize"
-                            : Number(runs) === 1
-                              ? "authority.grantConfirmOne"
-                              : "authority.grantConfirm",
-                  { count: runs },
-                )}
-              </Button>
-            </>
+            <Button
+              disabled={busy || !input || Boolean(grant.error)}
+              onClick={() => grant.mutate()}
+              data-testid="authority-grant-confirm"
+            >
+              {t(
+                grant.isPending
+                  ? "authority.granting"
+                  : recurringContent
+                    ? "authority.content.confirm"
+                    : recurringReport
+                      ? "authority.report.confirm"
+                      : activation
+                        ? "chat.activation.confirm"
+                        : onGrant
+                          ? "decisions.applyAndAuthorize"
+                          : Number(runs) === 1
+                            ? "authority.grantConfirmOne"
+                            : "authority.grantConfirm",
+                { count: runs },
+              )}
+            </Button>
           )}
         </DialogFooter>
       </DialogContent>

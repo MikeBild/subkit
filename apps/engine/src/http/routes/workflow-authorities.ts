@@ -83,6 +83,32 @@ const previewSchema = z
         }),
       )
       .optional(),
+    // Why a boundary was refused, in the engine's own words. The manifest
+    // carries one blanket code per step — `dynamic_request` for every http
+    // refusal — and the reader was shown that instead: "where this request goes
+    // is decided at runtime" for a step whose path is a constant, whose real
+    // refusal was that a stricter profile already reviews it. Reported here
+    // rather than inside the manifest on purpose: this is repair evidence and
+    // the digest must not depend on it, which is also why surfacing it cannot
+    // invalidate a live approval.
+    request_refusals: z
+      .array(
+        z.object({
+          step_id: z.string(),
+          reason: z.string(),
+          call_path: z.array(z.string()).optional(),
+        }),
+      )
+      .optional(),
+    storage_refusals: z
+      .array(
+        z.object({
+          step_id: z.string(),
+          reason: z.string(),
+          call_path: z.array(z.string()).optional(),
+        }),
+      )
+      .optional(),
     execution_shape: AuthorityExecutionShapeSchema,
     schedules: z.array(
       z.object({ cron: z.string(), timezone: z.string(), next_run_at: z.string().nullable() }),
