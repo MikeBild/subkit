@@ -210,8 +210,13 @@ describe("stats:read gate — admin key → 200", () => {
         expect(body.schema_version).toBe("operational-overview.v1");
         expect(body.contract_version).toBe("2.1");
         expect(body.product).toBe("subkit");
+        // The exact keys, in order: this is the contract the cockpit, the MCP
+        // tool and the Prometheus projection all read. `failing` sits beside
+        // `blocked` because it is the other half of the same question — a
+        // workflow that cannot start, and one that starts and goes wrong.
         expect(Object.keys(body.core as Record<string, unknown>)).toEqual([
           "blocked",
+          "failing",
           "overdue",
           "other_decisions",
           "health",
