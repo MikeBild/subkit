@@ -10,6 +10,7 @@
 // adding a new entry here.
 
 export * from "./abort.ts";
+export * from "./admission-audit.ts";
 export {
   admitAuthorizedWorkflowExecution,
   assertExecutionAuthorityCurrent,

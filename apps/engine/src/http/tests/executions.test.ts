@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { executions, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { auditLog, executions, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -157,6 +157,51 @@ describe("idempotency key on the saved-workflow trigger", () => {
       .from(executions)
       .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.idempotency_key, key)));
     expect(rows).toHaveLength(1);
+  });
+
+  test("a refused start is written down, not only answered", async () => {
+    // Drives the route, not the admission helper: the audit row is written by
+    // the caller that knows who asked and through which surface, so a test that
+    // called `admitWorkflowRun` directly would pass with the row still missing.
+    const key = "audited:2026-09-25T09";
+    const first = await post({
+      source: "saved",
+      workflow_id: workflowId,
+      input: { date: "first" },
+      idempotency_key: key,
+    });
+    expect(first.status).toBe(200);
+    const refused = await post({
+      source: "saved",
+      workflow_id: workflowId,
+      input: { date: "second" },
+      idempotency_key: key,
+    });
+    expect(refused.status).toBe(409);
+
+    const rows = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "execution.boundary_refused"),
+          eq(auditLog.resource_id, workflowId),
+        ),
+      );
+    const row = rows.find(
+      (candidate) => (candidate.metadata as Record<string, unknown>)?.stage === "admission",
+    );
+    expect(row).toBeDefined();
+    expect(row?.result).toBe("denied");
+    expect(row?.reason).toBe("execution_boundary_mismatch");
+    // Which layer refused is the whole point of one action for both: a reader
+    // filtering this action must be able to tell "never started" from
+    // "stopped mid-flight" without knowing two action names.
+    expect((row?.metadata as Record<string, unknown> | undefined)?.request_source).toBe("api");
+    // The caller is named — a refusal nobody can attribute is a refusal nobody
+    // can act on.
+    expect(row?.actor_id).toBeTruthy();
   });
 
   test("the Idempotency-Key header works like the body field", async () => {

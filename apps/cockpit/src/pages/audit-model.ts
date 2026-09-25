@@ -100,6 +100,10 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   // approved. It reads as its own line, not as "other": a trail that lists its
   // permissions and not its refusals cannot answer whether the limit held.
   "execution.boundary_refused": "audit.action.boundaryRefused",
+  // Written on the edge only — a schedule that starts being held, or one whose
+  // hold clears. Which of the two it is, is the row's own denied/allowed, so
+  // one line covers both directions without the list growing a second entry.
+  "schedule.admission.changed": "audit.action.scheduleAdmissionChanged",
   "connector.invoked": "audit.action.connectorInvoked",
   "credential.accessed": "audit.action.credentialAccessed",
   "api_key.used": "audit.action.apiKeyUsed",

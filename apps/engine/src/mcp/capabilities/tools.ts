@@ -29,6 +29,7 @@ import {
   type ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import { and, eq } from "drizzle-orm";
+import { actorType } from "../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { registerNativeUrlElicitationCompletion } from "../../conversations/native-url-elicitation.ts";
@@ -37,6 +38,7 @@ import { executions, workflows, workflowVersions } from "../../db/schema/index.t
 import { cancel } from "../../execution/abort.ts";
 import {
   admitAuthorizedWorkflowExecution,
+  auditAdmissionRefusal,
   createExecution,
   runExecution,
 } from "../../execution/index.ts";
@@ -713,6 +715,24 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       input: args,
       request_source: "mcp",
     });
+    // The refusal and the run that replaced it are one event, so they are one
+    // row. Filed against the preparation's id with `downgraded_to_preparation`:
+    // pointing at nothing would read as "the call was refused and stopped",
+    // while an unrelated held run then succeeded under a different id.
+    await auditAdmissionRefusal(
+      {
+        tenant_id: principal.tenant_id,
+        reason: code,
+        message: (error as Error).message,
+        workflow_id: wf.id,
+        execution_id: executionId,
+        request_source: "mcp",
+        actor_id: principal.id,
+        actor_type: actorType(principal),
+        extra: { downgraded_to_preparation: true, tool: name },
+      },
+      db,
+    );
   }
 
   // Wire up MCP's cancellation signal into the execution abort.

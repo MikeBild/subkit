@@ -51,5 +51,11 @@ describe("audit vocabulary", () => {
     expect(auditActionKey("settings.changed")).toBe("audit.action.settingsChanged");
     expect(auditActionKey("mcp_oauth.token_used")).toBe("audit.action.oauthTokenUsed");
     expect(auditActionKey("credential.oauth2_refreshed")).toBe("audit.action.credentialRefreshed");
+    // A held schedule and a released one are one action; which of the two it
+    // is, is the row's own denied/allowed. So one word covers both — and it
+    // has to be a word, not the engine's string.
+    expect(auditActionKey("schedule.admission.changed")).toBe(
+      "audit.action.scheduleAdmissionChanged",
+    );
   });
 });
