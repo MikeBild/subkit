@@ -2,7 +2,15 @@ import { describe, expect, test } from "bun:test";
 import type { FailureGroup } from "./overview-model";
 import { partitionFailures, recentRuns } from "./overview-model";
 
-const group = (origin: FailureGroup["origin"], count: number, signature: string): FailureGroup =>
+const group = (
+  origin: FailureGroup["origin"],
+  count: number,
+  signature: string,
+  // How many of the runs the scheduler started. `origin` cannot say: it
+  // collapses to "mixed" whether the other runs were manual retries of a
+  // failing schedule or a second kind of trial that never ran unattended.
+  scheduled_count = origin === "scheduled" ? count : 0,
+): FailureGroup =>
   ({
     signature,
     workflow_id: "w",
@@ -11,6 +19,7 @@ const group = (origin: FailureGroup["origin"], count: number, signature: string)
     error_code: "boom",
     origin,
     count,
+    scheduled_count,
     last_seen: "2026-08-18T10:00:00.000Z",
     cause: "it broke",
     guidance: "",
@@ -25,16 +34,28 @@ describe("partitionFailures", () => {
       group("authoring", 30, "a"),
       group("scheduled", 4, "b"),
       group("manual", 7, "c"),
-      group("mixed", 2, "d"),
+      // Mixed because a scheduled run was retried by hand: still an incident.
+      group("mixed", 2, "d", 1),
     ]);
     expect(incidents.map((entry) => entry.signature)).toEqual(["b", "d"]);
     expect(trials.map((entry) => entry.signature)).toEqual(["a", "c"]);
   });
 
+  test("mixed is not a verdict — what counts is whether the clock started it", () => {
+    // The same word for two different situations. Tried by hand and tried in
+    // the editor is still nobody's incident; a schedule someone retried is.
+    const { incidents, trials } = partitionFailures([
+      group("mixed", 5, "hand-and-editor", 0),
+      group("mixed", 5, "schedule-then-retry", 4),
+    ]);
+    expect(incidents.map((entry) => entry.signature)).toEqual(["schedule-then-retry"]);
+    expect(trials.map((entry) => entry.signature)).toEqual(["hand-and-editor"]);
+  });
+
   test("sorts the loudest failure first within each pile", () => {
     const { incidents } = partitionFailures([
       group("scheduled", 2, "small"),
-      group("mixed", 9, "big"),
+      group("mixed", 9, "big", 9),
     ]);
     expect(incidents.map((entry) => entry.signature)).toEqual(["big", "small"]);
   });

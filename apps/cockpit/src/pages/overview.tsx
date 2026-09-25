@@ -42,6 +42,7 @@ interface Snapshot {
   snapshot_state: string;
   core: {
     blocked: Metric;
+    failing: Metric;
     overdue: Metric;
     other_decisions: Metric;
     health: Metric & { state: "healthy" | "limited" | "critical" | "unknown" };
@@ -64,6 +65,11 @@ const CORE_COPY: Record<
     label: "operational.core.blocked",
     tooltip: "operational.core.blocked.tooltip",
     link: "operational.core.blocked.open",
+  },
+  "decisions.failing": {
+    label: "operational.core.failing",
+    tooltip: "operational.core.failing.tooltip",
+    link: "operational.core.failing.open",
   },
   "decisions.overdue": {
     label: "operational.core.overdue",
@@ -128,6 +134,7 @@ const SECTION_COPY: Record<string, TranslationKey> = {
 };
 const ICONS: Record<string, LucideIcon> = {
   "decisions.blocked": ShieldAlert,
+  "decisions.failing": XCircle,
   "decisions.overdue": Clock3,
   "decisions.other": CircleDot,
   "operations.health": Activity,
@@ -143,6 +150,7 @@ const ICONS: Record<string, LucideIcon> = {
 };
 const CORE_ORDER = [
   "decisions.blocked",
+  "decisions.failing",
   "decisions.overdue",
   "decisions.other",
   "operations.health",
@@ -152,6 +160,9 @@ const CORE_ORDER = [
 function primary(snapshot: Snapshot): string {
   if (snapshot.core.health.state === "critical") return "operations.health";
   if ((snapshot.core.blocked.value ?? 0) > 0) return "decisions.blocked";
+  // A workflow that runs and fails outranks one waiting to be looked at: it is
+  // doing something wrong right now, not waiting for someone.
+  if ((snapshot.core.failing.value ?? 0) > 0) return "decisions.failing";
   if ((snapshot.core.overdue.value ?? 0) > 0) return "decisions.overdue";
   if (snapshot.core.data_freshness.state !== "fresh") return "data.freshness";
   if ((snapshot.core.other_decisions.value ?? 0) > 0) return "decisions.other";
@@ -171,6 +182,7 @@ export function OverviewPage() {
   const core = snapshot
     ? [
         snapshot.core.blocked,
+        snapshot.core.failing,
         snapshot.core.overdue,
         snapshot.core.other_decisions,
         snapshot.core.health,

@@ -38,7 +38,10 @@ const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest })
       </Box>
 
       {digest.failure_groups.map((g) => {
-        const isScheduled = g.origin === "scheduled";
+        // Whether the scheduler ever started one of these runs, not whether it
+        // started all of them: one manual retry used to turn this group yellow
+        // while the schedule kept failing every hour.
+        const isScheduled = g.scheduled_count > 0;
         const sev = isScheduled ? "red" : "yellow";
         const label = g.workflow_name ?? g.workflow_id ?? "(draft)";
         const times = g.count === 1 ? "failed once" : `failed ${g.count}×`;

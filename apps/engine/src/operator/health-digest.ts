@@ -30,6 +30,15 @@ import { computeRiskSignals, type RiskSignal, takeRiskEdges, topRisk } from "./r
 
 const DEFAULT_WINDOW_HOURS = 24;
 const MAX_SCANNED_EXECUTIONS = 500;
+/**
+ * How far back the decision queue asks "which approved workflows are failing".
+ *
+ * One constant, because two surfaces answer that question and they used to ask
+ * it over different spans: the overview over 24 hours, the queue over seven
+ * days. The result was "production incidents: 0" next to a badge counting two
+ * of them, with nothing on screen to explain the difference.
+ */
+export const DECISION_FAILURE_WINDOW_HOURS = 168;
 export const MAX_PENDING_PATCHES = 50;
 // A proposed patch older than this has sat unreviewed long enough to be an
 // operational problem in its own right — a self-healing fix was found but
@@ -52,6 +61,17 @@ export interface DigestFailureGroup {
   error_code: string | null;
   origin: FailureOrigin;
   count: number;
+  /**
+   * How many of these runs the scheduler started.
+   *
+   * `origin` cannot answer that once a group holds more than one kind of run:
+   * it collapses to `mixed`, which reads the same whether the other runs were
+   * manual retries of a failing schedule or an authoring trial that never ran
+   * unattended. Filtering on `origin === "scheduled"` therefore dropped a
+   * workflow from the decision queue the moment somebody retried it by hand —
+   * the schedule kept failing, and the decision left both surfaces at once.
+   */
+  scheduled_count: number;
   last_seen: string;
   /** One-sentence human cause, classifier-derived. */
   cause: string;
@@ -106,18 +126,25 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 }
 
-export async function buildOperatorHealthDigest(
+/**
+ * The failures of one window, grouped by root cause.
+ *
+ * Extracted so there is exactly one answer to "which workflows are failing".
+ * The overview used to ask it in its own SQL and got a different number than
+ * the queue it linked to: a different timestamp column (`finished_at` against
+ * `created_at`), a different status set (`timed_out` counted or not) and a
+ * different window. Nobody could reconcile them, because reconciling them
+ * meant reading two files and noticing three silent differences.
+ *
+ * Re-deriving this in SQL would mean porting the first-failed-step rule, the
+ * origin merge and the scan cap as well — three more places for the same bug.
+ */
+export async function collectFailureGroups(
   db: Db,
   tenant_id: string,
-  // `audit` (default true): emit the RISK_SIGNAL_* edge audits + advance the
-  // process-scoped edge tracker. The canonical operator reads (the HTTP route,
-  // the MCP resource) leave it on; the incidental read-only summaries (MCP
-  // `initialize` instructions, `sk login`) pass `audit: false` so a connect or
-  // a login is a pure read with no audit side-effect.
-  opts?: { window_hours?: number; audit?: boolean },
-): Promise<OperatorHealthDigest> {
-  const windowHours = opts?.window_hours ?? DEFAULT_WINDOW_HOURS;
-  const generatedAt = new Date();
+  windowHours: number,
+  generatedAt: Date = new Date(),
+): Promise<DigestFailureGroup[]> {
   const cutoff = new Date(generatedAt.getTime() - windowHours * 60 * 60 * 1000);
 
   const failedExecs = await db
@@ -182,6 +209,7 @@ export async function buildOperatorHealthDigest(
     const existing = groups.get(signature);
     if (existing) {
       existing.count += 1;
+      if (origin === "scheduled") existing.scheduled_count += 1;
       existing.origin = mergeOrigin(existing.origin, origin);
       if (lastSeen > existing.last_seen) existing.last_seen = lastSeen;
       continue;
@@ -205,6 +233,7 @@ export async function buildOperatorHealthDigest(
       error_code: errorCode,
       origin,
       count: 1,
+      scheduled_count: origin === "scheduled" ? 1 : 0,
       last_seen: lastSeen,
       cause,
       guidance,
@@ -226,9 +255,43 @@ export async function buildOperatorHealthDigest(
     }
   }
 
-  const failureGroups = [...groups.values()].sort(
+  return [...groups.values()].sort(
     (a, b) => b.count - a.count || b.last_seen.localeCompare(a.last_seen),
   );
+}
+
+/**
+ * The failure groups a human still has to decide about: a workflow that was
+ * approved, runs on its schedule, and fails every time. An authoring trial that
+ * failed is feedback, not an incident — mixing the two is how a real one ends
+ * up buried among experiments.
+ *
+ * The question is whether the SCHEDULER ever started one of these runs, not
+ * whether it started all of them. Asking `origin === "scheduled"` answered the
+ * second: one manual retry of a failing scheduled step turned the group
+ * `mixed` and the decision disappeared, while the schedule went on failing
+ * every hour. Retrying something by hand is what an operator does when it
+ * breaks; it must not delete the record that it broke.
+ */
+export function failingScheduledGroups(
+  groups: readonly DigestFailureGroup[],
+): DigestFailureGroup[] {
+  return groups.filter((group) => group.scheduled_count > 0);
+}
+
+export async function buildOperatorHealthDigest(
+  db: Db,
+  tenant_id: string,
+  // `audit` (default true): emit the RISK_SIGNAL_* edge audits + advance the
+  // process-scoped edge tracker. The canonical operator reads (the HTTP route,
+  // the MCP resource) leave it on; the incidental read-only summaries (MCP
+  // `initialize` instructions, `sk login`) pass `audit: false` so a connect or
+  // a login is a pure read with no audit side-effect.
+  opts?: { window_hours?: number; audit?: boolean },
+): Promise<OperatorHealthDigest> {
+  const windowHours = opts?.window_hours ?? DEFAULT_WINDOW_HOURS;
+  const generatedAt = new Date();
+  const failureGroups = await collectFailureGroups(db, tenant_id, windowHours, generatedAt);
 
   // Pending patch candidates (post-flood-fix: ~1 per endpoint). Order OLDEST
   // first: a candidate's urgency grows with how long it has sat unreviewed, so
@@ -387,7 +450,7 @@ function buildHeadline(
   if (top?.severity === "critical") {
     parts.push(top.headline);
   }
-  const operational = groups.filter((g) => g.origin === "scheduled").length;
+  const operational = failingScheduledGroups(groups).length;
   if (operational > 0) {
     parts.push(`${operational} scheduled workflow${operational === 1 ? "" : "s"} failing`);
   }

@@ -361,6 +361,7 @@ const FAILURE_GROUPS = [
     error_code: "http_502",
     origin: "scheduled",
     count: 14,
+    scheduled_count: 14,
     last_seen: days(0),
     cause: "Das angebundene System antwortet seit gestern mit einem Fehler.",
     guidance: "Zugangsdaten prüfen und den Lauf erneut anstoßen.",
@@ -655,7 +656,11 @@ function operationalOverview(gateOpen) {
   const generatedAt = new Date(NOW).toISOString();
   const blocked = 0;
   const overdue = gateOpen ? 2 : 0;
-  const other = gateOpen ? Math.max(QUEUE_TOTAL - blocked - overdue, 0) : 0;
+  // The failure groups have a tile of their own now. They used to be swept into
+  // "other decisions" by this arithmetic, which is how the overview came to
+  // disagree with the queue it links to while both looked self-consistent.
+  const failing = gateOpen ? FAILURE_GROUPS.length : 0;
+  const other = gateOpen ? Math.max(DECIDABLE_TOTAL - overdue, 0) : 0;
   return {
     schema_version: "operational-overview.v1",
     contract_version: "2.1",
@@ -669,6 +674,12 @@ function operationalOverview(gateOpen) {
         blocked,
         "/cockpit/decisions?bucket=blocked",
         blocked > 0 ? "critical" : "healthy",
+      ),
+      failing: overviewMetric(
+        "decisions.failing",
+        failing,
+        "/cockpit/decisions?bucket=failing",
+        failing > 0 ? "urgent" : "healthy",
       ),
       overdue: overviewMetric(
         "decisions.overdue",
@@ -1683,6 +1694,7 @@ async function checkOperationalDashboard(page, expectedDecisionTotal) {
   });
   const expectedOrder = [
     "decisions.blocked",
+    "decisions.failing",
     "decisions.overdue",
     "decisions.other",
     "operations.health",
@@ -1709,7 +1721,10 @@ async function checkOperationalDashboard(page, expectedDecisionTotal) {
     breach("§8.7", "/cockpit", "legacy incident banner duplicates the KPI summary");
   if (result.tables > 0)
     breach("§1", "/cockpit", "overview contains a table instead of aggregate KPI cards");
-  const decisionTotal = result.cards.slice(0, 3).reduce((sum, card) => sum + card.value, 0);
+  // Four decision tiles now, not three. The fourth is not a new number: it is
+  // the one the third used to absorb — failure groups were counted as "other
+  // decisions", so the sum came out right while every part of it was wrong.
+  const decisionTotal = result.cards.slice(0, 4).reduce((sum, card) => sum + card.value, 0);
   if (decisionTotal !== expectedDecisionTotal)
     breach(
       "§8.1",

@@ -45,6 +45,7 @@ function makeDigest(counts: number[] = [3]): OperatorHealthDigest {
       error_code: "ERR",
       origin: "manual" as const,
       count,
+      scheduled_count: 0,
       last_seen: "2026-06-22T07:30:00Z",
       cause: "Something failed",
       guidance: null,
