@@ -13,6 +13,49 @@ type Manifest = components["schemas"]["WorkflowEffectManifest"];
 type Preview = components["schemas"]["WorkflowAuthorityPreview"];
 type IssueCode = Manifest["issues"][number]["code"];
 
+/**
+ * The refusal codes a reader is given a sentence for.
+ *
+ * The manifest's own code is a blanket: every refused http boundary arrives as
+ * `dynamic_request`, "where this request goes is decided at runtime". For a
+ * step whose path is a constant that is simply untrue — and the engine knew
+ * the real reason all along, it just reported it beside the manifest instead
+ * of inside it. Listed explicitly rather than rendered from the raw code,
+ * because a code with no sentence must fall back to the general one rather
+ * than print an identifier at somebody.
+ */
+const REFUSAL_KEYS = [
+  "no_boundary",
+  "stricter_profile_applies",
+  "connector_adds_query",
+  "target_unresolved",
+  "path_unsupported",
+  "partial_segment_placeholder",
+  "runtime_header",
+  "runtime_value_outside_path_and_body",
+  "query_placeholder_unsupported",
+  "pagination_unbounded",
+  "pagination_param_conflict",
+  "delete_requires_destructive",
+  "delete_requires_enum",
+  "variable_in_base_prefix",
+  "enum_value_unroutable",
+  "boundary_invalid",
+  "variables_mismatch",
+  "not_http_step",
+  "no_scope",
+  "scope_invalid",
+  "unsupported_method",
+  "delete_with_body",
+  "runtime_value_outside_key",
+  "query_or_headers_present",
+  "unsupported_option",
+  "content_type_invalid",
+  "base_unresolved",
+] as const;
+export type RefusalKey = (typeof REFUSAL_KEYS)[number];
+const KNOWN_REFUSALS = new Set<string>(REFUSAL_KEYS);
+
 /** One reason, ready to render: a heading, the step it belongs to, and the
  *  concrete values when the engine supplied them. */
 export interface AuthorityIssue {
@@ -26,6 +69,13 @@ export interface AuthorityIssue {
   call_step_id: string | null;
   /** Filled only for a contradicted folder. */
   evidence?: { declared_prefix: string; observed_key: string };
+  /**
+   * The engine's own reason for this step, when it reported one and we have a
+   * sentence for it. Shown INSTEAD of `messageKey`: the blanket code and the
+   * precise reason are not two halves of one explanation, they are two
+   * different statements, and one of them is wrong.
+   */
+  reasonKey?: `authority.refusal.${RefusalKey}`;
 }
 
 /**
@@ -37,17 +87,28 @@ export interface AuthorityIssue {
  */
 export function authorityIssues(preview: Preview | null | undefined): AuthorityIssue[] {
   const issues = preview?.manifest?.issues ?? [];
+  // Keyed by call path and step, because a parent and a called child may use
+  // the same step id and their refusals are different facts.
+  const refusalKey = (entry: { step_id: string; call_path?: string[] }) =>
+    `${(entry.call_path ?? []).join(">")}|${entry.step_id}`;
+  const refusals = new Map<string, string>();
+  for (const entry of [...(preview?.request_refusals ?? []), ...(preview?.storage_refusals ?? [])])
+    refusals.set(refusalKey(entry), entry.reason);
   const evidence = new Map(
     (preview?.boundary_contradictions ?? []).map((entry) => [entry.step_id, entry]),
   );
   return issues.map((issue) => {
     const call_step_id = issue.call_path?.[0] ?? null;
     const seen = evidence.get(issue.step_id);
+    const reason = refusals.get(refusalKey(issue));
     return {
       key: JSON.stringify([issue.call_path ?? [], issue.step_id, issue.code]),
       step_id: issue.step_id,
       code: issue.code,
       messageKey: `authority.issue.${issue.code}` as const,
+      ...(reason && KNOWN_REFUSALS.has(reason)
+        ? { reasonKey: `authority.refusal.${reason as RefusalKey}` as const }
+        : {}),
       call_step_id,
       ...(issue.code === "boundary_contradicted_by_history" && seen
         ? {

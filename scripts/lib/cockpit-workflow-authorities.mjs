@@ -407,6 +407,12 @@ async function verifyActivationWhenNotApprovable(page, stand, workflowId, captur
         },
         eligible_for_repeated_runs: false,
         unavailable_steps: [],
+        // The engine's own reason, which contradicts the blanket code above:
+        // `dynamic_request` renders as "where this request goes is decided at
+        // runtime", and this step's refusal is that a stricter profile already
+        // reviews it. Without this the new sentence would ship in no
+        // screenshot at all.
+        request_refusals: [{ step_id: "fetch-route", reason: "stricter_profile_applies" }],
         suggested_bounds: {
           valid_from: new Date().toISOString(),
           valid_until: new Date(Date.now() + 86_400_000).toISOString(),
@@ -453,6 +459,16 @@ async function verifyActivationWhenNotApprovable(page, stand, workflowId, captur
     // The named reason, not the generic notice: this review carries an issue,
     // so the dialog lists it rather than saying "adjust the workflow".
     await page.getByTestId("authority-issues").waitFor();
+    // The precise reason, not the blanket one. Both sentences describe the same
+    // step and they are not two halves of one explanation — one of them says
+    // the target is unbounded for a step whose address is a constant.
+    const issues = await page.getByTestId("authority-issues").innerText();
+    if (!/strengere|stricter/.test(issues))
+      throw new Error(
+        `The refusal shows the blanket code instead of the engine's reason: ${issues}`,
+      );
+    if (/Laufzeit entscheidet|decided at runtime|zur Laufzeit und ist durch nichts/.test(issues))
+      throw new Error(`The refusal still claims the target is unbounded: ${issues}`);
     const activateOnly = page.getByTestId("authority-activate-only");
     if ((await activateOnly.count()) === 0)
       throw new Error(

@@ -120,3 +120,71 @@ test("nothing to report is an empty list, never a placeholder", () => {
   expect(authorityIssues(preview({}))).toEqual([]);
   expect(authorityIssues(null)).toEqual([]);
 });
+
+test("the engine's own reason replaces the blanket code", () => {
+  // The production case. `send_reminder` posts to a CONSTANT address, and the
+  // dialog told the reader "where this request goes is decided at runtime and
+  // is bounded by nothing checkable". The engine's refusal for that same step
+  // was `stricter_profile_applies` — a different statement about a different
+  // kind of problem, reported beside the manifest and never shown.
+  const [issue] = authorityIssues(
+    preview({
+      manifest: {
+        effects: [],
+        issues: [{ step_id: "send_reminder", code: "dynamic_request" }],
+      },
+      request_refusals: [{ step_id: "send_reminder", reason: "stricter_profile_applies" }],
+    }),
+  );
+  expect(issue?.reasonKey).toBe("authority.refusal.stricter_profile_applies");
+  // The blanket code stays available for grouping and for the fallback, but it
+  // is not what the reader is shown.
+  expect(issue?.code).toBe("dynamic_request");
+});
+
+test("a storage refusal is read from its own list", () => {
+  const [issue] = authorityIssues(
+    preview({
+      manifest: { effects: [], issues: [{ step_id: "store_report", code: "dynamic_request" }] },
+      storage_refusals: [{ step_id: "store_report", reason: "no_scope" }],
+    }),
+  );
+  expect(issue?.reasonKey).toBe("authority.refusal.no_scope");
+});
+
+test("a refusal for a different step is not borrowed", () => {
+  // A parent and a called child may use the same step id, and a refusal that
+  // belongs to one is not evidence about the other.
+  const issues = authorityIssues(
+    preview({
+      manifest: {
+        effects: [],
+        issues: [
+          { step_id: "fetch", code: "dynamic_request" },
+          { step_id: "fetch", code: "dynamic_request", call_path: ["call_child"] },
+        ],
+      },
+      request_refusals: [
+        { step_id: "fetch", reason: "no_boundary" },
+        { step_id: "fetch", reason: "connector_adds_query", call_path: ["call_child"] },
+      ],
+    }),
+  );
+  expect(issues.map((i) => i.reasonKey)).toEqual([
+    "authority.refusal.no_boundary",
+    "authority.refusal.connector_adds_query",
+  ]);
+});
+
+test("a reason we have no sentence for falls back rather than printing an identifier", () => {
+  // The engine's vocabulary can grow without this surface. Showing the raw
+  // code at somebody is worse than the general sentence.
+  const [issue] = authorityIssues(
+    preview({
+      manifest: { effects: [], issues: [{ step_id: "a", code: "dynamic_request" }] },
+      request_refusals: [{ step_id: "a", reason: "some_future_code" }],
+    }),
+  );
+  expect(issue?.reasonKey).toBeUndefined();
+  expect(issue?.messageKey).toBe("authority.issue.dynamic_request");
+});

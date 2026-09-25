@@ -1168,6 +1168,56 @@ const EN = {
   "operational.freshness.stale": "Stale",
   "operational.freshness.missing": "Missing",
   "operational.freshness.forbidden": "Restricted",
+  "authority.refusal.no_boundary":
+    "This step has no reviewed limit yet, so nothing says where it may go or how large it may be.",
+  "authority.refusal.stricter_profile_applies":
+    "This step is a report e-mail or a content publication. Those have their own, stricter review of the recipient or the published items — a general limit does not belong here.",
+  "authority.refusal.connector_adds_query":
+    "The connector appends query parameters of its own, so no reviewed query could ever match what is actually sent.",
+  "authority.refusal.target_unresolved":
+    "The target cannot be worked out: the connector has no base address and the path is not an absolute one.",
+  "authority.refusal.path_unsupported":
+    "The address is put together in a way a limit cannot describe segment by segment.",
+  "authority.refusal.partial_segment_placeholder":
+    "A placeholder covers only part of an address segment. A limit can name a whole segment, not a piece of one.",
+  "authority.refusal.runtime_header":
+    "A header is filled at runtime, so what this request carries cannot be reviewed in advance.",
+  "authority.refusal.runtime_value_outside_path_and_body":
+    "A runtime value appears somewhere other than the address or the body — there is nothing to bound it with.",
+  "authority.refusal.query_placeholder_unsupported":
+    "A query parameter is filled at runtime in a form a limit cannot describe.",
+  "authority.refusal.pagination_unbounded":
+    "This step pages through results without a cap, so the number of requests is open.",
+  "authority.refusal.pagination_param_conflict":
+    "The paging parameters contradict the limit that is meant to cover them.",
+  "authority.refusal.delete_requires_destructive":
+    "This step removes data. A limit only covers that if it says so explicitly.",
+  "authority.refusal.delete_requires_enum":
+    "A removal must name exactly what it may remove, not a pattern.",
+  "authority.refusal.variable_in_base_prefix":
+    "A placeholder sits in the fixed part of the address, so the target itself could move.",
+  "authority.refusal.enum_value_unroutable":
+    "One of the permitted values does not lead anywhere this connector can reach.",
+  "authority.refusal.boundary_invalid": "The limit on this step cannot be read as written.",
+  "authority.refusal.variables_mismatch":
+    "The limit names different placeholders than the step actually uses.",
+  "authority.refusal.not_http_step": "This kind of step cannot carry a limit yet.",
+  "authority.refusal.no_scope":
+    "This storage step has no reviewed folder, so nothing says which files it may touch.",
+  "authority.refusal.scope_invalid": "The folder on this step cannot be read as written.",
+  "authority.refusal.unsupported_method":
+    "This storage operation cannot be reviewed for repeated runs yet.",
+  "authority.refusal.delete_with_body":
+    "A removal that also sends content cannot be reviewed as a removal.",
+  "authority.refusal.runtime_value_outside_key":
+    "A runtime value appears somewhere other than the file name, so the folder cannot cover it.",
+  "authority.refusal.query_or_headers_present":
+    "This storage step sends query parameters or headers, which a folder does not describe.",
+  "authority.refusal.unsupported_option":
+    "This step uses a storage option the reviewed form does not cover.",
+  "authority.refusal.content_type_invalid": "The declared content type cannot be read as written.",
+  "authority.refusal.base_unresolved":
+    "The storage address cannot be worked out from this connector.",
   "operational.core.blocked": "Blocked",
   "operational.core.blocked.tooltip":
     "Scheduled workflows whose last start was held for execution review. Open the workflow to inspect effects and finite authority.",
@@ -2918,6 +2968,59 @@ const DE: Record<TranslationKey, string> = {
   "operational.freshness.stale": "Veraltet",
   "operational.freshness.missing": "Fehlt",
   "operational.freshness.forbidden": "Eingeschränkt",
+  "authority.refusal.no_boundary":
+    "Für diesen Schritt ist noch keine Grenze geprüft — nichts sagt, wohin er darf und wie groß er werden darf.",
+  "authority.refusal.stricter_profile_applies":
+    "Dieser Schritt ist eine Bericht-E-Mail oder eine Veröffentlichung. Dafür gibt es eine eigene, strengere Prüfung des Empfängers bzw. der veröffentlichten Einträge; eine allgemeine Grenze gehört hier nicht hin.",
+  "authority.refusal.connector_adds_query":
+    "Der Konnektor hängt eigene Abfrageparameter an. Keine geprüfte Abfrage könnte je zu dem passen, was tatsächlich gesendet wird.",
+  "authority.refusal.target_unresolved":
+    "Das Ziel lässt sich nicht ermitteln: Der Konnektor hat keine Basisadresse und der Pfad ist keine vollständige Adresse.",
+  "authority.refusal.path_unsupported":
+    "Die Adresse ist so zusammengesetzt, dass eine Grenze sie nicht Abschnitt für Abschnitt beschreiben kann.",
+  "authority.refusal.partial_segment_placeholder":
+    "Ein Platzhalter deckt nur einen Teil eines Adressabschnitts ab. Eine Grenze kann einen ganzen Abschnitt benennen, kein Stück davon.",
+  "authority.refusal.runtime_header":
+    "Ein Kopffeld wird erst zur Laufzeit gefüllt — was diese Anfrage mitführt, ist vorab nicht prüfbar.",
+  "authority.refusal.runtime_value_outside_path_and_body":
+    "Ein Laufzeitwert steht an anderer Stelle als in Adresse oder Inhalt. Dort gibt es nichts, womit man ihn begrenzen könnte.",
+  "authority.refusal.query_placeholder_unsupported":
+    "Ein Abfrageparameter wird zur Laufzeit in einer Form gefüllt, die eine Grenze nicht beschreiben kann.",
+  "authority.refusal.pagination_unbounded":
+    "Dieser Schritt blättert ohne Obergrenze durch Ergebnisse — die Zahl der Anfragen ist offen.",
+  "authority.refusal.pagination_param_conflict":
+    "Die Blätter-Parameter widersprechen der Grenze, die sie abdecken soll.",
+  "authority.refusal.delete_requires_destructive":
+    "Dieser Schritt entfernt Daten. Eine Grenze deckt das nur ab, wenn sie es ausdrücklich sagt.",
+  "authority.refusal.delete_requires_enum":
+    "Eine Entfernung muss genau benennen, was sie entfernen darf — kein Muster.",
+  "authority.refusal.variable_in_base_prefix":
+    "Ein Platzhalter steht im festen Teil der Adresse. Damit könnte sich das Ziel selbst verschieben.",
+  "authority.refusal.enum_value_unroutable":
+    "Einer der erlaubten Werte führt nirgendwohin, das dieser Konnektor erreichen kann.",
+  "authority.refusal.boundary_invalid":
+    "Die Grenze an diesem Schritt ist so, wie sie dasteht, nicht lesbar.",
+  "authority.refusal.variables_mismatch":
+    "Die Grenze benennt andere Platzhalter als der Schritt tatsächlich verwendet.",
+  "authority.refusal.not_http_step": "Diese Art von Schritt kann noch keine Grenze tragen.",
+  "authority.refusal.no_scope":
+    "Für diesen Speicher-Schritt ist kein Ordner geprüft — nichts sagt, welche Dateien er anfassen darf.",
+  "authority.refusal.scope_invalid":
+    "Der Ordner an diesem Schritt ist so, wie er dasteht, nicht lesbar.",
+  "authority.refusal.unsupported_method":
+    "Dieser Speichervorgang lässt sich für wiederkehrende Läufe noch nicht prüfen.",
+  "authority.refusal.delete_with_body":
+    "Eine Entfernung, die zugleich Inhalt sendet, lässt sich nicht als Entfernung prüfen.",
+  "authority.refusal.runtime_value_outside_key":
+    "Ein Laufzeitwert steht an anderer Stelle als im Dateinamen — der Ordner kann ihn nicht abdecken.",
+  "authority.refusal.query_or_headers_present":
+    "Dieser Speicher-Schritt sendet Abfrageparameter oder Kopffelder. Ein Ordner beschreibt so etwas nicht.",
+  "authority.refusal.unsupported_option":
+    "Dieser Schritt nutzt eine Speicher-Option, die die geprüfte Form nicht abdeckt.",
+  "authority.refusal.content_type_invalid":
+    "Der angegebene Inhaltstyp ist so, wie er dasteht, nicht lesbar.",
+  "authority.refusal.base_unresolved":
+    "Die Speicheradresse lässt sich aus diesem Konnektor nicht ermitteln.",
   "operational.core.blocked": "Blockiert",
   "operational.core.blocked.tooltip":
     "Zeitpläne, deren letzter Start eine Ausführungsprüfung erfordert. Im Workflow Effekte und zeitlich begrenzte Freigabe prüfen.",
