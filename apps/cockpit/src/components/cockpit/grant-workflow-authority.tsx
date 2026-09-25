@@ -722,6 +722,33 @@ export function GrantWorkflowAuthority({
                 {t("authority.prepare")}
               </Button>
             )}
+          {/* Two different decisions, and a reader must be able to make the
+              smaller one. Putting a repaired version into service is not the
+              same as permitting repeated unattended runs — a called child
+              needs only the first, and forcing them together would make
+              every activation buy a permission nobody asked for.
+
+              Which is why it sits OUTSIDE the branch below. It used to live in
+              the approvable half only, so a version with one step still
+              unbound could not be put into service at all — and a child whose
+              other steps the repair had just bound stayed on its old version
+              because of the one step nobody could bind. The engine never asked
+              for that: `activate-draft` checks that the reviewed digest still
+              matches and nothing else, and authorizes no run.
+
+              Not while the review is stale or the session is gone: the smaller
+              decision is still a decision, and offering it when it cannot be
+              carried out is offering a dead button. */}
+          {activation && review && !incomplete && !sessionExpired && !actionError && (
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => activateOnly.mutate()}
+              data-testid="authority-activate-only"
+            >
+              {t("authority.activateOnly")}
+            </Button>
+          )}
           {unsupported ? (
             <>
               {onAdjust ? (
@@ -762,24 +789,6 @@ export function GrantWorkflowAuthority({
             </>
           ) : (
             <>
-              {/* Two different decisions, and a reader must be able to make the
-                  smaller one. Putting a repaired version into service is not the
-                  same as permitting repeated unattended runs — a called child
-                  needs only the first, and forcing them together would make
-                  every activation buy a permission nobody asked for. */}
-              {/* Not while the review is stale or the session is gone: the
-                  smaller decision is still a decision, and offering it when it
-                  cannot be carried out is offering a dead button. */}
-              {activation && review && !incomplete && !sessionExpired && !actionError && (
-                <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => activateOnly.mutate()}
-                  data-testid="authority-activate-only"
-                >
-                  {t("authority.activateOnly")}
-                </Button>
-              )}
               <Button
                 disabled={busy || !input || Boolean(grant.error)}
                 onClick={() => grant.mutate()}
