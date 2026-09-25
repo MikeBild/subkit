@@ -10,7 +10,15 @@ import {
 } from "./health-digest.ts";
 
 export const OPERATIONAL_SCHEMA_VERSION = "operational-overview.v1" as const;
-export const FAMILY_CONTRACT_VERSION = "2.1" as const;
+// 2.2, because `core` gained a required member. Both the published schema and
+// the OpenAPI response declare `additionalProperties: false`, so a consumer
+// validating a new snapshot against the 2.1 document REJECTS it — an added
+// field is a break in a closed object, however additive it looks from inside.
+//
+// Not to be confused with `FAMILY-UI.json`'s `familyVersion`, which reads 2.3:
+// the two numbers are named for the same contract and have been out of step
+// since before this change. Left alone here rather than quietly reconciled.
+export const FAMILY_CONTRACT_VERSION = "2.2" as const;
 
 export type ValueState = "observed" | "zero" | "missing" | "stale" | "forbidden";
 export type Severity = "critical" | "urgent" | "healthy" | "information" | "unknown";

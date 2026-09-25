@@ -55,7 +55,7 @@ const Freshness = Metric.extend({
 const Response = z
   .object({
     schema_version: z.literal("operational-overview.v1"),
-    contract_version: z.literal("2.1"),
+    contract_version: z.literal("2.2"),
     product: z.literal("subkit"),
     generated_at: z.string(),
     recommended_refresh_seconds: z.number().int().min(10).max(300),
@@ -84,7 +84,7 @@ const Response = z
     ),
     audit: z.object({
       path: z.literal("/cockpit/audit"),
-      contract_version: z.literal("2.1"),
+      contract_version: z.literal("2.2"),
       snapshot_generated_at: z.string(),
     }),
   })
