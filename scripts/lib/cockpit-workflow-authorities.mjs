@@ -146,6 +146,7 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
     await verifyGrant(page, stand, workflowId, locale, authority, capture);
     await verifyPreparedVersion(page, stand, workflowId, locale, capture);
     await verifyActivationWhenNotApprovable(page, stand, workflowId, capture);
+    await verifyEnvironmentCorrection(page, stand, workflowId, capture);
   } finally {
     await page.unroute(pattern, handler);
   }
@@ -472,6 +473,160 @@ async function verifyActivationWhenNotApprovable(page, stand, workflowId, captur
     await page.unroute(previewPattern, preview);
     await page.unroute(draftPattern, draft);
     await page.unroute(workflowPattern, record);
+  }
+}
+
+/**
+ * A review asked about the wrong half of the installation corrects itself once.
+ *
+ * The dialog picks an environment before it can see anything: a live approval's,
+ * a held schedule's, else development. A called child has neither, so it fell
+ * to development, every connector-bound step answered `environment_mismatch`,
+ * and the reader was told to investigate the cause in the chat. The answer was
+ * in that same response — each effect names the environment its connector
+ * really belongs to — and moving the dropdown made the version fully bindable.
+ *
+ * The fixture answers `dev` with three mismatches and `prod` with none, and
+ * fails if the dialog settles on the wrong one, asks more than twice, or ends
+ * up somewhere the reader cannot approve from.
+ */
+async function verifyEnvironmentCorrection(page, stand, workflowId, capture) {
+  const versionId = "00000000-0000-4000-8000-000000000501";
+  const workflowPattern = `**/v1/workflows/${workflowId}`;
+  const previewPattern = `**/v1/workflows/${workflowId}/versions/*/authority-preview?*`;
+  const grantPattern = `**/v1/workflows/${workflowId}/execution-authorities`;
+  const historyPattern = `**/v1/workflows/${workflowId}/execution-authorities**`;
+  const asked = [];
+  let granted = null;
+  // No approval and no held schedule — the shape of a called child, and the
+  // only shape in which the dialog has to fall back. The enclosing scenario
+  // serves a live production approval on this same endpoint, which answers the
+  // environment question outright: without this the fixture would measure the
+  // stand's own fixture instead of the correction. The first version of this
+  // scenario did exactly that and passed while asking `prod` once.
+  const noHistory = async (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ items: [], next_cursor: null }),
+        })
+      : route.fallback();
+  const record = async (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            id: workflowId,
+            name: "Monatsreport",
+            slug: "monatsreport",
+            lifecycle: "active",
+            current_version: 8,
+            current_version_id: versionId,
+            draft_version_id: null,
+            steps: [{ id: "archive_raw", name: "Ablegen", kind: "request" }],
+            updated_at: "2026-08-10T09:00:00.000Z",
+          }),
+        })
+      : route.fallback();
+  const preview = async (route) => {
+    const url = new URL(route.request().url());
+    const environment = url.searchParams.get("environment");
+    asked.push(environment);
+    // The steps live in production, whichever half was asked about.
+    const effects = ["archive_raw", "fetch_page", "write_collection_manifest"].map((step_id) => ({
+      step_id,
+      environment: "prod",
+      driver: "http",
+      operation: "POST",
+      effect: "write",
+      target: "https://reports.example.test/monthly",
+      rewrites_target: false,
+    }));
+    const mismatched = environment !== "prod";
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        digest: (mismatched ? "a" : "b").repeat(64),
+        manifest: {
+          schema_version: 1,
+          workflow_id: workflowId,
+          workflow_version_id: versionId,
+          execution_environment: environment,
+          effects,
+          issues: mismatched
+            ? effects.map((effect) => ({
+                step_id: effect.step_id,
+                code: "environment_mismatch",
+              }))
+            : [],
+        },
+        eligible_for_repeated_runs: !mismatched,
+        unavailable_steps: [],
+        suggested_bounds: {
+          valid_from: new Date().toISOString(),
+          valid_until: new Date(Date.now() + 86_400_000).toISOString(),
+          max_runs: 1,
+        },
+        execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
+      }),
+    });
+  };
+  const grant = async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    granted = route.request().postDataJSON();
+    return route.fulfill({ status: 201, contentType: "application/json", body: "{}" });
+  };
+  await page.route(historyPattern, noHistory);
+  await page.route(workflowPattern, record);
+  await page.route(previewPattern, preview);
+  await page.route(grantPattern, grant);
+  try {
+    await stand.visit(page, `workflows/${workflowId}`);
+    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("authority-grant-review").waitFor();
+    const chosen = (await page.getByTestId("authority-environment").innerText()).trim();
+    if (!/Produktion|Production/.test(chosen))
+      throw new Error(
+        `The review stayed on ${chosen} while every step named production — the reader is being asked to judge the wrong half`,
+      );
+    // Asked twice: once as it was told to, once as the answer said. A third
+    // ask would mean it is chasing its own correction.
+    if (asked.length !== 2 || asked[0] !== "dev" || asked[1] !== "prod")
+      throw new Error(`Environments asked about: ${asked.join(", ") || "(none)"}`);
+    if ((await page.getByTestId("authority-issues").count()) > 0)
+      throw new Error("The corrected review still shows the mismatch it just corrected");
+    await capture("environment-corrected");
+    const confirm = page.getByTestId("authority-grant-confirm");
+    // Wait for the dialog to stop working, and say WHY if it does not: a
+    // timeout alone cannot tell a slow runner from a review this dialog will
+    // not grant from, and that difference is the whole finding.
+    await page
+      .waitForFunction(
+        () => {
+          const node = document.querySelector('[data-testid="authority-grant-confirm"]');
+          return Boolean(node) && !node.disabled;
+        },
+        { timeout: 60_000 },
+      )
+      .catch(() => {});
+    if (await confirm.isDisabled())
+      throw new Error(
+        `Approval stayed unavailable after the correction. Asked: ${asked.join(", ")}. Environment shown: ${(await page.getByTestId("authority-environment").innerText()).trim()}. Dialog: ${(await page.getByRole("dialog").innerText()).slice(0, 500)}`,
+      );
+    await confirm.click();
+    await page.getByRole("dialog").waitFor({ state: "hidden" });
+    if (granted?.execution_environment !== "prod")
+      throw new Error(
+        `Approved for ${granted?.execution_environment} after correcting to production`,
+      );
+  } finally {
+    await page.unroute(grantPattern, grant);
+    await page.unroute(previewPattern, preview);
+    await page.unroute(workflowPattern, record);
+    await page.unroute(historyPattern, noHistory);
   }
 }
 

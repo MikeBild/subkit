@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import { useSession } from "@/app/session";
@@ -30,6 +30,7 @@ import { authorityIssues } from "@/lib/authority-issues";
 import { presentRequestBoundary } from "@/lib/authority-request";
 import { presentStorageScope } from "@/lib/authority-storage";
 import { useI18n } from "@/lib/i18n-context";
+import { environmentToCorrectTo } from "@/lib/resolved-environment";
 import {
   AUTHORITY_EFFECT_KEYS,
   authorityGrantInput,
@@ -86,12 +87,33 @@ export function GrantWorkflowAuthority({
   const [hours, setHours] = useState("");
   const [reviewVersionId, setReviewVersionId] = useState(versionId);
   const [review, setReview] = useState<WorkflowAuthorityPreview | null>(null);
+  // At most one environment correction per opening. The review names the half
+  // its steps really live in, so a second pass can never learn more than the
+  // first — and a flag that resets only on open is what keeps a disagreement
+  // between the two halves from becoming a loop.
+  const corrected = useRef(false);
   const prepare = useMutation({
     mutationFn: async (env: "dev" | "prod") => {
       const targetVersion = prepareVersion ? await prepareVersion() : versionId;
       setReviewVersionId(targetVersion);
-      const url = `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(targetVersion)}/authority-preview?environment=${env}`;
-      let result = await apiRequest<WorkflowAuthorityPreview>(url);
+      const preview = (forEnvironment: "dev" | "prod") =>
+        apiRequest<WorkflowAuthorityPreview>(
+          `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(targetVersion)}/authority-preview?environment=${forEnvironment}`,
+        );
+      let asked = env;
+      let result = await preview(asked);
+      // The answer to "which environment should this have been" arrives with
+      // the complaint: every effect names the environment its connector really
+      // belongs to, whichever one was asked about. Asked once, acted on once.
+      if (!corrected.current) {
+        const belongs = environmentToCorrectTo(result, asked);
+        if (belongs) {
+          corrected.current = true;
+          asked = belongs;
+          setEnvironment(belongs);
+          result = await preview(asked);
+        }
+      }
       if (
         !result.eligible_for_repeated_runs &&
         result.preparation_required &&
@@ -99,9 +121,9 @@ export function GrantWorkflowAuthority({
       ) {
         await apiRequest(
           `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(targetVersion)}/prepare-authority`,
-          { method: "POST", body: JSON.stringify({ environment: env }) },
+          { method: "POST", body: JSON.stringify({ environment: asked }) },
         );
-        result = await apiRequest<WorkflowAuthorityPreview>(url);
+        result = await preview(asked);
       }
       return result;
     },
@@ -260,6 +282,7 @@ export function GrantWorkflowAuthority({
     grant.reset();
     activateOnly.reset();
     if (value) {
+      corrected.current = false;
       setEnvironment(initialEnvironment);
       prepare.mutate(initialEnvironment);
     }
