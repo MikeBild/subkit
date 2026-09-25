@@ -29,6 +29,7 @@ import { hasRuntimeValue, supportsReportDelivery } from "./report-delivery-bound
 import {
   proposeReportDeliveryBoundaries,
   type ReportDeliveryBoundaries,
+  type ReportDeliveryEvidence,
 } from "./report-delivery-proposal.ts";
 import {
   compileRequestBoundary,
@@ -67,6 +68,34 @@ function displayTarget(url: URL): string | null {
 /** Use the caller's transaction when issuing an authority. The admitting
  * service must lock the exact version and recheck this result before effects;
  * a read-only review result is not a durable authorization. */
+/**
+ * Which refusal a step under a stricter profile actually earned.
+ *
+ * A content publication has its own review and is unchanged. For a report
+ * e-mail the honest answer depends on what the evidence shows, and saying so is
+ * the whole point: "no preparation run exists" is fixed by letting one run,
+ * "the run reached the step and observed nothing usable" is fixed by looking at
+ * that step, and "the run never reached the step" cannot be fixed by running
+ * another one — the step sits behind a branch whose condition depends on the
+ * writes a preparation holds back. A person told to run a preparation for that
+ * third case is being sent in a circle.
+ *
+ * `null` when the profile already produced a boundary: there is nothing
+ * refused, and reporting one made every healthy report step carry a refusal on
+ * every single preview.
+ */
+function profileRefusal(
+  step_id: string,
+  isContent: boolean,
+  evidence: ReportDeliveryEvidence | undefined,
+): RequestBoundaryRefusal | null {
+  if (isContent) return "stricter_profile_applies";
+  if (evidence?.boundaries[step_id]) return null;
+  if (evidence?.prepared === false) return "report_delivery_unprepared";
+  if (evidence?.reached && !evidence.reached.has(step_id)) return "report_delivery_unreachable";
+  return "report_delivery_unobserved";
+}
+
 export async function resolveWorkflowEffectManifest(
   raw: unknown,
   db: Executor,
@@ -203,7 +232,8 @@ async function resolveBindings(
       db,
     ));
   const contentShapes = new Map<string, ReturnType<typeof contentPublicationShape>>();
-  let reportBoundaries = options.report_boundaries;
+  let reportEvidence: ReportDeliveryEvidence | undefined =
+    options.report_boundaries === undefined ? undefined : { boundaries: options.report_boundaries };
   const bindings: ResolvedEffectBinding[] = [];
   const unavailable_steps: string[] = [];
   // Why an s3 step compiled no boundary. Reported beside the manifest, never
@@ -278,15 +308,22 @@ async function resolveBindings(
       contentBoundary &&
       supportsContentPublication(step, contentBoundary, contentShape.target);
     if (supportedContent) target = contentShape.target;
-    if (reportBoundaries === undefined && supportsReportDelivery(step, target))
-      reportBoundaries = await proposeReportDeliveryBoundaries(input, db);
+    if (reportEvidence === undefined && supportsReportDelivery(step, target))
+      reportEvidence = await proposeReportDeliveryBoundaries(input, db);
     let boundary: RequestBoundary | null = null;
     if (driver === "http" && (authoredBoundary || hasRuntimeValue(step))) {
-      const compiled =
-        // A report e-mail or a content publication has its own stricter review
-        // (the recipient, the receipts). `boundary` must not be a way around it.
-        supportsReportDelivery(step, target) || contentShape !== null
-          ? ({ refusal: "stricter_profile_applies" } as const)
+      // A report e-mail or a content publication has its own stricter review
+      // (the recipient, the receipts). `boundary` must not be a way around it.
+      const stricter = supportsReportDelivery(step, target) || contentShape !== null;
+      const profile = stricter
+        ? profileRefusal(step.id, contentShape !== null, reportEvidence)
+        : undefined;
+      // The profile produced a boundary, so nothing is refused. Reporting one
+      // anyway made every healthy report step carry a refusal on every preview
+      // — noise that buries the steps a person actually has to act on.
+      if (!stricter || profile !== null) {
+        const compiled = stricter
+          ? ({ refusal: profile as RequestBoundaryRefusal } as const)
           : // The connector itself appends query parameters (query-mode auth or
             // `static_query`), so dispatch would never match a reviewed query.
             connector?.auth_type === "query" ||
@@ -296,10 +333,11 @@ async function resolveBindings(
               ).length > 0
             ? ({ refusal: "connector_adds_query" } as const)
             : compileRequestBoundary(step, connector?.base_url ?? null);
-      if (compiled.refusal) request_refusals.push({ step_id: step.id, reason: compiled.refusal });
-      else {
-        boundary = compiled.boundary;
-        target = requestBoundaryTarget(compiled.boundary);
+        if (compiled.refusal) request_refusals.push({ step_id: step.id, reason: compiled.refusal });
+        else {
+          boundary = compiled.boundary;
+          target = requestBoundaryTarget(compiled.boundary);
+        }
       }
     }
     const configuration = authorityConnectorConfiguration(connector);
@@ -310,8 +348,8 @@ async function resolveBindings(
       ...(readPath ? { read_path: readPath } : {}),
       ...(storage ? { storage } : {}),
       ...(boundary ? { boundary } : {}),
-      ...(reportBoundaries?.[step.id] && supportsReportDelivery(step, target)
-        ? { report_delivery: reportBoundaries?.[step.id] }
+      ...(reportEvidence?.boundaries[step.id] && supportsReportDelivery(step, target)
+        ? { report_delivery: reportEvidence.boundaries[step.id] }
         : {}),
       connector_id: step.connector_id ?? null,
       driver,

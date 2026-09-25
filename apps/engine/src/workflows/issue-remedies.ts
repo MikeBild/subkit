@@ -200,6 +200,19 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
   stricter_profile_applies:
     "Do not add `boundary` here: this step is a report e-mail or a content publication, which has " +
     "its own stricter review of the recipient or the published items.",
+  report_delivery_unprepared:
+    "This report e-mail has its own stricter review, and nothing has observed it yet: no " +
+    "preparation run exists for this version in this environment. Let one run — it holds every " +
+    "write, so nothing is sent — and the recipient it resolves to becomes the reviewed boundary.",
+  report_delivery_unobserved:
+    "A preparation run reached this step but recorded no usable recipient, so there is nothing to " +
+    "review. Inspect that run's step: an unresolved placeholder or a body the profile cannot read " +
+    "leaves no observation behind. Do not add `boundary` — it is not a way around this review.",
+  report_delivery_unreachable:
+    "A preparation run exists but never reached this step, so no recipient was observed. Another " +
+    "preparation will not help if the step sits behind a condition that depends on a write a " +
+    "preparation holds back — a held run can never observe a step whose reachability it suppresses. " +
+    "Either declare the recipient on the step itself, or make the branch reachable without that write.",
   not_http_step:
     "`boundary` applies to plain HTTP request steps only. A storage step is bounded with " +
     "`s3.scope`; SQL, MCP, GraphQL, XML and multipart steps cannot be bounded yet.",
