@@ -281,7 +281,7 @@ test("a changed recipient is rejected before egress even with a live recurring a
     ).toString("base64url");
     const result = await f.run(changed);
     expect(result.status).toBe("failed");
-    expect(result.steps[0]?.error).toMatchObject({ code: "authority_invalid" });
+    expect(result.steps[0]?.error).toMatchObject({ code: "execution_authority_changed" });
     expect(sends).toBe(0);
   });
 });

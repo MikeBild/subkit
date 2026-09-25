@@ -10,15 +10,25 @@ import {
 } from "./health-digest.ts";
 
 export const OPERATIONAL_SCHEMA_VERSION = "operational-overview.v1" as const;
-// 2.2, because `core` gained a required member. Both the published schema and
-// the OpenAPI response declare `additionalProperties: false`, so a consumer
-// validating a new snapshot against the 2.1 document REJECTS it — an added
-// field is a break in a closed object, however additive it looks from inside.
-//
-// Not to be confused with `FAMILY-UI.json`'s `familyVersion`, which reads 2.3:
-// the two numbers are named for the same contract and have been out of step
-// since before this change. Left alone here rather than quietly reconciled.
-export const FAMILY_CONTRACT_VERSION = "2.2" as const;
+/**
+ * The version of THIS payload — the operational overview and nothing else.
+ *
+ * It was called FAMILY_CONTRACT_VERSION, which sent every reader to
+ * `FAMILY-UI.json` to find out why that file says 2.3. The two numbers were
+ * never the same contract: `familyVersion` versions the cross-product cockpit
+ * UI — geometry, DOM attributes, states — and that file already carries
+ * `apiSchemaVersion` as its pointer at this payload. They are independent and
+ * are meant to move independently.
+ *
+ * 2.2 because `core` gained a required member. The published schema
+ * (`OPERATIONAL-OVERVIEW.schema.json`) declares `additionalProperties: false`
+ * at both levels, so a consumer validating a new snapshot against the 2.1
+ * document rejects it outright; and a consumer destructuring `core` against the
+ * 2.1 shape reads `undefined`. Additive from the inside is still a break from
+ * the outside. The OpenAPI response is NOT closed — no `.strict()` anywhere in
+ * the route — so it is the published schema that makes this a version.
+ */
+export const OPERATIONAL_OVERVIEW_CONTRACT_VERSION = "2.2" as const;
 
 export type ValueState = "observed" | "zero" | "missing" | "stale" | "forbidden";
 export type Severity = "critical" | "urgent" | "healthy" | "information" | "unknown";
@@ -44,10 +54,18 @@ export interface OperationalMetric {
 
 export interface OperationalOverview {
   schema_version: typeof OPERATIONAL_SCHEMA_VERSION;
-  contract_version: typeof FAMILY_CONTRACT_VERSION;
+  contract_version: typeof OPERATIONAL_OVERVIEW_CONTRACT_VERSION;
   product: "subkit";
   generated_at: string;
   recommended_refresh_seconds: number;
+  /**
+   * `buildSnapshot` only ever produces `ready` or `partial`: it runs behind the
+   * permission middleware and inside the version that defines this shape, so it
+   * can observe neither of the other two. They stay in the union because they
+   * are the reader's vocabulary, not the writer's — a client reading this
+   * payload across a version boundary, or through a gateway that stripped its
+   * permission, has a name for what it is looking at instead of a parse error.
+   */
   snapshot_state: "ready" | "partial" | "forbidden" | "contract-mismatch";
   core: {
     blocked: OperationalMetric;
@@ -88,7 +106,7 @@ export interface OperationalOverview {
   }>;
   audit: {
     path: "/cockpit/audit";
-    contract_version: typeof FAMILY_CONTRACT_VERSION;
+    contract_version: typeof OPERATIONAL_OVERVIEW_CONTRACT_VERSION;
     snapshot_generated_at: string;
   };
 }
@@ -569,7 +587,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
 
   return {
     schema_version: OPERATIONAL_SCHEMA_VERSION,
-    contract_version: FAMILY_CONTRACT_VERSION,
+    contract_version: OPERATIONAL_OVERVIEW_CONTRACT_VERSION,
     product: "subkit",
     generated_at: generatedAt,
     recommended_refresh_seconds: 30,
@@ -585,7 +603,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
     sections,
     audit: {
       path: "/cockpit/audit",
-      contract_version: FAMILY_CONTRACT_VERSION,
+      contract_version: OPERATIONAL_OVERVIEW_CONTRACT_VERSION,
       snapshot_generated_at: generatedAt,
     },
   };

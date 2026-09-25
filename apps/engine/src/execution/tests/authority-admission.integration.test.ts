@@ -537,7 +537,16 @@ for (const driver of ["http", "graphql"] as const) {
         expect(checked).toBe(1);
         expect(result.status).toBe(changed ? "failed" : "succeeded");
         expect(sent - before).toBe(changed && !redirect ? 0 : 1);
-        if (changed) expect(result.error?.code).toBe("authority_invalid");
+        // The governance code, not the blanket one: a step row saying
+        // `authority_invalid` is invisible to the audit trail, and what
+        // changed here is the manifest.
+        // Two different refusals, and the trail must be able to tell them
+        // apart: a manifest that moved, and a redirect to somewhere nobody
+        // approved. Both used to arrive as the same blanket `authority_invalid`.
+        if (changed)
+          expect(result.error?.code).toBe(
+            redirect ? "authority_redirect_denied" : "execution_authority_changed",
+          );
       }
     } finally {
       await remote.close();
