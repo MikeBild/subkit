@@ -113,7 +113,7 @@ export type {
   RiskSeverity,
   RiskSignal,
 } from "./engine-client/self-healing.ts";
-export { scheduledRunsOf } from "./engine-client/self-healing.ts";
+export { resolvedAtOf, scheduledRunsOf } from "./engine-client/self-healing.ts";
 export type {
   SettingLeafEntry,
   SettingLeafMeta,

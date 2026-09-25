@@ -10,6 +10,7 @@ const group = (
   // collapses to "mixed" whether the other runs were manual retries of a
   // failing schedule or a second kind of trial that never ran unattended.
   scheduled_count = origin === "scheduled" ? count : 0,
+  resolved_at: string | null = null,
 ): FailureGroup =>
   ({
     signature,
@@ -21,6 +22,7 @@ const group = (
     count,
     scheduled_count,
     last_seen: "2026-08-18T10:00:00.000Z",
+    resolved_at,
     cause: "it broke",
     guidance: "",
   }) as FailureGroup;
@@ -50,6 +52,20 @@ describe("partitionFailures", () => {
     ]);
     expect(incidents.map((entry) => entry.signature)).toEqual(["schedule-then-retry"]);
     expect(trials.map((entry) => entry.signature)).toEqual(["hand-and-editor"]);
+  });
+
+  test("a recovered incident is history, and is filed as neither of the other two", () => {
+    // Not `trials`: a production outage that ended is not something somebody
+    // was trying out, and putting it there would label it as one. Not
+    // `incidents` either — there is nothing left to decide.
+    const { incidents, trials, recovered } = partitionFailures([
+      group("scheduled", 4, "healed", 4, "2026-08-19T04:12:00.000Z"),
+      group("scheduled", 4, "still-broken", 4),
+      group("authoring", 3, "trial"),
+    ]);
+    expect(incidents.map((entry) => entry.signature)).toEqual(["still-broken"]);
+    expect(trials.map((entry) => entry.signature)).toEqual(["trial"]);
+    expect(recovered.map((entry) => entry.signature)).toEqual(["healed"]);
   });
 
   test("sorts the loudest failure first within each pile", () => {

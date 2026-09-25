@@ -26,6 +26,13 @@ export interface DigestFailureGroup {
    */
   scheduled_count?: number;
   last_seen: string;
+  /**
+   * The workflow's most recent clean run on its own schedule, when that run is
+   * newer than the group's last failure; null while the cause is live. Optional for the same reason as `scheduled_count` — an
+   * older engine omits it. Read it through `resolvedAtOf`: `undefined` must
+   * mean "this engine cannot tell", not "still broken".
+   */
+  resolved_at?: string | null;
   cause: string;
   guidance: string | null;
 }
@@ -148,4 +155,15 @@ export const selfHealingMethods = {
 export function scheduledRunsOf(group: DigestFailureGroup): number {
   if (typeof group.scheduled_count === "number") return group.scheduled_count;
   return group.origin === "scheduled" ? group.count : 0;
+}
+
+/**
+ * When a group's workflow last ran clean on its schedule, or null.
+ *
+ * An engine that does not report the field answers null — the safe direction:
+ * an unresolved cause stays on screen, where a human decides it is over. The
+ * opposite default would hide a live incident because the engine was old.
+ */
+export function resolvedAtOf(group: DigestFailureGroup): string | null {
+  return group.resolved_at ?? null;
 }

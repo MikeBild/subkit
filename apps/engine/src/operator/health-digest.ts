@@ -15,7 +15,7 @@
 // the cause reads like a sentence, not a stack trace. Pending patch
 // candidates ride along as the "fixes awaiting review" bucket.
 
-import { and, count, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, max } from "drizzle-orm";
 import { AuditAction, audit } from "../audit/index.ts";
 import {
   RiskSignalClearedMetadataSchema,
@@ -73,6 +73,17 @@ export interface DigestFailureGroup {
    */
   scheduled_count: number;
   last_seen: string;
+  /**
+   * The workflow's most recent clean run on its own schedule, when that run is
+   * newer than this group's last failure. Null while the cause is still live.
+   *
+   * A timestamp rather than a flag, so the arithmetic lives in one place and
+   * the row can say WHEN it last ran clean instead of only that it did. Without
+   * it a group is counted forever: it knows `last_seen` and nothing about what
+   * happened afterwards, so a workflow whose grant was re-issued and which has
+   * run clean since kept a decision open with nothing left to decide.
+   */
+  resolved_at: string | null;
   /** One-sentence human cause, classifier-derived. */
   cause: string;
   /** The connector-authored remediation hint, when the step carried one. */
@@ -124,6 +135,66 @@ function mergeOrigin(a: FailureOrigin, b: FailureOrigin): FailureOrigin {
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+}
+
+/**
+ * Stamp `resolved_at` on every group whose workflow has since run clean on its
+ * own schedule.
+ *
+ * Only a SCHEDULED success counts. A manual re-run is what an operator does to
+ * check whether the fix took, and it proves the workflow can work when driven
+ * by hand — not that the thing which fires it unattended has recovered. An
+ * authoring trial proves even less.
+ *
+ * The comparison is `created_at` against `last_seen`, the same column the
+ * group's own timestamp comes from: mixing in `finished_at` here is precisely
+ * the silent difference that made two surfaces disagree before.
+ *
+ * One aggregated row per workflow, not a capped list of runs. A capped list
+ * ordered by time fills from the global floor forward, so on a busy tenant 500
+ * older successes belonging to OTHER workflows evict the one row that proves
+ * this workflow recovered — and the query quietly stops resolving anything.
+ * `max()` per workflow cannot be crowded out, and the row count is bounded by
+ * the number of failing workflows rather than by their traffic.
+ */
+async function markRecoveredGroups(
+  db: Db,
+  tenant_id: string,
+  groups: DigestFailureGroup[],
+): Promise<void> {
+  const candidates = groups.filter((group) => group.workflow_id && group.scheduled_count > 0);
+  if (!candidates.length) return;
+  const workflowIds = [...new Set(candidates.map((group) => group.workflow_id as string))];
+  // The earliest failure among them — no success before that can resolve
+  // anything, so there is no reason to read one.
+  const earliest = candidates.reduce(
+    (min, group) => (group.last_seen < min ? group.last_seen : min),
+    candidates[0]?.last_seen ?? "",
+  );
+
+  const latest = await db
+    .select({ workflow_id: executions.workflow_id, at: max(executions.created_at) })
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, tenant_id),
+        eq(executions.status, "succeeded"),
+        eq(executions.request_source, "scheduler"),
+        inArray(executions.workflow_id, workflowIds),
+        gte(executions.created_at, new Date(earliest)),
+      ),
+    )
+    .groupBy(executions.workflow_id);
+
+  const latestByWorkflow = new Map(
+    latest.flatMap((row) =>
+      row.workflow_id && row.at ? [[row.workflow_id, row.at.toISOString()] as const] : [],
+    ),
+  );
+  for (const group of candidates) {
+    const at = latestByWorkflow.get(group.workflow_id as string);
+    group.resolved_at = at && at > group.last_seen ? at : null;
+  }
 }
 
 /**
@@ -235,10 +306,13 @@ export async function collectFailureGroups(
       count: 1,
       scheduled_count: origin === "scheduled" ? 1 : 0,
       last_seen: lastSeen,
+      resolved_at: null,
       cause,
       guidance,
     });
   }
+
+  await markRecoveredGroups(db, tenant_id, [...groups.values()]);
 
   // Resolve workflow names for saved-workflow groups.
   const wfIds = [
@@ -276,7 +350,11 @@ export async function collectFailureGroups(
 export function failingScheduledGroups(
   groups: readonly DigestFailureGroup[],
 ): DigestFailureGroup[] {
-  return groups.filter((group) => group.scheduled_count > 0);
+  // `resolved_at` is the second half of the same question. A cause whose
+  // workflow has run clean on its schedule since is history, not a decision —
+  // counting it left the tile, the badge and the headline all reporting an
+  // incident that had already ended, with no way on screen to tell that it had.
+  return groups.filter((group) => group.scheduled_count > 0 && group.resolved_at === null);
 }
 
 export async function buildOperatorHealthDigest(
@@ -510,6 +588,10 @@ function renderDigest(
     const times = g.count === 1 ? "once" : `${g.count}×`;
     lines.push(`${ORIGIN_TAG[g.origin]} ${label} — failed ${times} (last ${g.last_seen})`);
     lines.push(`   ${g.cause}`);
+    // The group stays in the list — what broke is worth reading — but it must
+    // not read as a running incident. The line says when it recovered, so the
+    // operator does not go looking for a fault that is already fixed.
+    if (g.resolved_at) lines.push(`   last ran clean on its schedule ${g.resolved_at}`);
   }
   if (patches.length > 0) {
     lines.push("");

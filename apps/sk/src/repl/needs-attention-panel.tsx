@@ -16,7 +16,7 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
-import { type OperatorHealthDigest, scheduledRunsOf } from "../engine-client.ts";
+import { type OperatorHealthDigest, resolvedAtOf, scheduledRunsOf } from "../engine-client.ts";
 import { FAILURE_ORIGIN_LABEL, totalFailureCount } from "../lib/operator-digest.ts";
 
 interface NeedsAttentionPanelProps {
@@ -42,7 +42,11 @@ const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest })
         // started all of them: one manual retry used to turn this group yellow
         // while the schedule kept failing every hour. Through the helper, since
         // this CLI also runs against engines that do not report the number.
-        const isScheduled = scheduledRunsOf(g) > 0;
+        const resolvedAt = resolvedAtOf(g);
+        const isScheduled = scheduledRunsOf(g) > 0 && resolvedAt === null;
+        // A cause whose workflow has run clean on its schedule since is not a
+        // live incident; it stays listed, because what broke is worth reading,
+        // but it stops being red.
         const sev = isScheduled ? "red" : "yellow";
         const label = g.workflow_name ?? g.workflow_id ?? "(draft)";
         const times = g.count === 1 ? "failed once" : `failed ${g.count}×`;
@@ -57,6 +61,11 @@ const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest })
             <Box paddingLeft={4}>
               <Text dimColor>{g.cause}</Text>
             </Box>
+            {resolvedAt ? (
+              <Box paddingLeft={4}>
+                <Text color="green">last ran clean on its schedule {resolvedAt}</Text>
+              </Box>
+            ) : null}
           </Box>
         );
       })}

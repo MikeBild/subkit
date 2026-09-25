@@ -1158,6 +1158,26 @@ async function mockApi(route) {
           last_seen: "2026-08-10T08:40:00.000Z",
           cause: "Das angebundene System antwortet seit gestern mit einem Fehler.",
           guidance: "Zugangsdaten prüfen und den Lauf erneut anstoßen.",
+          resolved_at: null,
+        },
+        {
+          // A scheduled cause that has ENDED — the workflow has run clean on
+          // its schedule since. Served so a frame exists in which a recovered
+          // failure is visibly not an open decision. Without it, the surface
+          // that stops counting it is never photographed, and the split
+          // between "still failing" and "fixed" ships unseen.
+          signature: "monthly:store:storage_refused",
+          workflow_id: uuid,
+          workflow_name: "Monatsreport",
+          step_key: "store",
+          error_code: "storage_refused",
+          origin: "scheduled",
+          count: 3,
+          scheduled_count: 3,
+          last_seen: "2026-08-09T22:00:00.000Z",
+          cause: "Die Ablage hat den Schreibzugriff abgelehnt.",
+          guidance: "",
+          resolved_at: "2026-08-10T06:00:00.000Z",
         },
         {
           signature: "draft:transform:type_error",
@@ -1171,6 +1191,7 @@ async function mockApi(route) {
           last_seen: "2026-08-10T08:10:00.000Z",
           cause: "Ein Testlauf beim Bauen ist an der Umwandlung gescheitert.",
           guidance: "",
+          resolved_at: null,
         },
       ],
       patch_candidates: {

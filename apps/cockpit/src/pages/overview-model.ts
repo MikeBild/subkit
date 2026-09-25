@@ -27,6 +27,15 @@ export interface PartitionedFailures {
   incidents: FailureGroup[];
   /** Failures from authoring and manual trial runs. */
   trials: FailureGroup[];
+  /**
+   * Scheduled failures whose workflow has run clean on its schedule since.
+   *
+   * Its own bucket, not folded into `trials`: a production incident that ended
+   * is not an experiment, and filing it as one would label a real outage as
+   * something somebody was trying out. It is history — shown as such, counted
+   * as neither.
+   */
+  recovered: FailureGroup[];
 }
 
 /**
@@ -44,8 +53,9 @@ export function partitionFailures(groups: readonly FailureGroup[]): PartitionedF
     // did the scheduler start any of these runs. Reading `origin` here counted
     // a group that was tried by hand AND in the editor as an incident, because
     // two kinds of trial run also merge to "mixed".
-    incidents: sorted.filter((group) => group.scheduled_count > 0),
+    incidents: sorted.filter((group) => group.scheduled_count > 0 && !group.resolved_at),
     trials: sorted.filter((group) => group.scheduled_count === 0),
+    recovered: sorted.filter((group) => group.scheduled_count > 0 && Boolean(group.resolved_at)),
   };
 }
 
