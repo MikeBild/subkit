@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { getConfig, setConfigKey } from "../../config/loader.ts";
-import { executions } from "../../db/schema/index.ts";
+import { auditLog, executions } from "../../db/schema/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../execution/tests/setup.ts";
 import { MemoryObjectStore, setObjectStoreForTesting } from "../../storage/object-store.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
@@ -209,6 +209,28 @@ describe("mcp tools/call", () => {
         .from(executions)
         .where(eq(executions.workflow_id, wf.id));
       expect(rows[0]?.c).toBeGreaterThanOrEqual(1);
+
+      // The refusal and the held run that replaced it are one event. A row
+      // that named only the refusal would read as "the call was stopped",
+      // while a preparation under an id nobody could join then succeeded.
+      const refusals = await suite.http.db
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.action, "execution.boundary_refused"),
+            eq(auditLog.resource_id, body.execution_id),
+          ),
+        );
+      expect(refusals).toHaveLength(1);
+      expect(refusals[0]?.result).toBe("denied");
+      // The fixture has no grant at all, which is "unavailable" — pinned
+      // exactly, so a change in which code that case reports is visible here.
+      expect(refusals[0]?.reason).toBe("execution_authority_unavailable");
+      const metadata = refusals[0]?.metadata as Record<string, unknown>;
+      expect(metadata.stage).toBe("admission");
+      expect(metadata.downgraded_to_preparation).toBe(true);
+      expect(metadata.request_source).toBe("mcp");
     } finally {
       await writeMock.close();
     }

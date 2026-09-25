@@ -5,6 +5,7 @@ import { getConnectorForEnvironment } from "../../connectors/service.ts";
 import { secretNames } from "../../credentials/connections/service.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import {
+  auditLog,
   connectors,
   credentials,
   executionSteps,
@@ -254,6 +255,95 @@ test("cron queue retries reuse one authorized reservation and stop at its run li
   await scheduler.reconcileWorkflowSchedules(new Date(now.getTime() + 70_000));
   expect(sends).toHaveLength(2);
   expect(await reservations(f.authority.id)).toBe(1);
+});
+
+test("a held schedule is filed as a refusal, and its release as an admission", async () => {
+  // Drives the reconciler, not `recordScheduleAdmission` — the hold is only
+  // real if the scheduler's own refusal path produces it.
+  const f = await fixture(1);
+  const now = await databaseNow(ctx.db);
+  const [schedule] = await ctx.db
+    .insert(workflowsSchedules)
+    .values({
+      tenant_id: f.params.tenant_id,
+      workflow_id: f.workflow.id,
+      cron: "* * * * *",
+      timezone: "UTC",
+      execution_mode: "dev",
+      paused: false,
+      created_at: new Date(now.getTime() - 120_000),
+      input: f.params.input,
+    })
+    .returning();
+  if (!schedule) throw new Error("missing schedule fixture");
+  const boss = {
+    async send(_q: string, _j: unknown, o: { id: string }) {
+      return o.id;
+    },
+  } as unknown as PgBoss;
+  const scheduler = new SchedulerReconciler({ boss, db: ctx.db, intervalMs: 60_000 });
+  const rows = async () =>
+    ctx.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, f.params.tenant_id),
+          eq(auditLog.action, "schedule.admission.changed"),
+          eq(auditLog.resource_id, schedule.id),
+        ),
+      )
+      .orderBy(auditLog.ts);
+
+  // The single approved run is spent here, so the next firing has nothing left.
+  await scheduler.reconcileWorkflowSchedules(now);
+  expect(await rows()).toHaveLength(0); // an admitted firing that changed nothing writes nothing
+  await scheduler.reconcileWorkflowSchedules(new Date(now.getTime() + 70_000));
+
+  const held = await rows();
+  expect(held).toHaveLength(1);
+  // `result` is what the audit list, the filters and every SIEM read. A hold
+  // that files itself as a success is a refusal nobody can find.
+  expect(held[0]?.result).toBe("denied");
+  expect(held[0]?.reason).toBe("execution_authority_unavailable");
+  // The older reader is not broken by the move.
+  expect((held[0]?.metadata as Record<string, unknown> | undefined)?.reason_code).toBe(
+    "execution_authority_unavailable",
+  );
+  expect((held[0]?.metadata as Record<string, unknown> | undefined)?.state).toBe("held");
+
+  // A fresh grant releases it — and the release is NOT a refusal.
+  const preview = await previewWorkflowAuthority(
+    {
+      tenant_id: f.params.tenant_id,
+      workflow_id: f.workflow.id,
+      workflow_version_id: f.version.id,
+      execution_environment: "dev",
+    },
+    ctx.db,
+  );
+  await ctx.db.insert(workflowExecutionAuthorities).values({
+    tenant_id: f.params.tenant_id,
+    workflow_id: f.workflow.id,
+    workflow_version_id: f.version.id,
+    effect_manifest_digest: preview.digest,
+    effect_manifest: { ...preview.manifest },
+    target_constraints: {
+      targets: preview.manifest.effects.flatMap((effect) => (effect.target ? [effect.target] : [])),
+    },
+    execution_environment: "dev",
+    valid_from: new Date(now.getTime() - 60_000),
+    valid_until: new Date(now.getTime() + 60 * 60_000),
+    max_runs: 5,
+    created_by: actor,
+  });
+  await scheduler.reconcileWorkflowSchedules(new Date(now.getTime() + 140_000));
+
+  const released = await rows();
+  expect(released).toHaveLength(2);
+  expect(released[1]?.result).toBe("success");
+  expect(released[1]?.reason).toBeNull();
+  expect((released[1]?.metadata as Record<string, unknown> | undefined)?.state).toBe("admitted");
 });
 
 test("concurrent retries preserve one execution and one reservation", async () => {

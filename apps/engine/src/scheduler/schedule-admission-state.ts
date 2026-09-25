@@ -57,9 +57,15 @@ export async function recordScheduleAdmission(
         action: AuditAction.SCHEDULE_ADMISSION_CHANGED,
         resource_type: "workflow_schedule",
         resource_id: context.schedule_id,
-        result: "success",
+        // The edge, not the tick: one row per state change. A hold IS a
+        // refusal and says so in the column every other refusal uses, so
+        // "show me what was refused" finds it without knowing this action
+        // exists. Clearing the hold is the admission going through.
+        result: reason ? "denied" : "success",
+        reason: reason ?? null,
         metadata: {
           request_source: "scheduler",
+          // Kept alongside `reason` for readers that already parse it.
           reason_code: reason,
           state: reason ? "held" : "admitted",
         },

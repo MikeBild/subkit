@@ -473,6 +473,9 @@ export async function finalizeStepRow(
           result: "denied",
           reason: result.error.code,
           metadata: {
+            // Paired with `stage: "admission"` on the refusals that happen
+            // before anything runs, so one filter covers both layers.
+            stage: "dispatch",
             step_key: row.step_key,
             step_index: row.step_index,
             kind: row.kind,

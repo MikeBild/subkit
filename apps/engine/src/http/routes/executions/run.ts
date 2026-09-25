@@ -7,12 +7,13 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { AuditAction, auditAwait } from "../../../audit/index.ts";
+import { AuditAction, actorType, auditAwait } from "../../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/index.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
 import {
   admitWorkflowRun,
   assertExecutionAuthorityCurrent,
+  auditAdmissionRefusal,
   finalizeExecution,
   type RunExecutionSource,
   runExecution,
@@ -208,8 +209,21 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           code === "workflow_version_unavailable" ||
           code === "workflow_version_not_active" ||
           code === "workflow_archived"
-        )
+        ) {
+          await auditAdmissionRefusal(
+            {
+              tenant_id: principal.tenant_id,
+              reason: code,
+              message: (error as Error).message,
+              workflow_id: body.workflow_id,
+              request_source: body.request_source ?? "api",
+              actor_id: principal.id ?? null,
+              actor_type: actorType(principal),
+            },
+            db,
+          );
           throw new HttpError(409, code, (error as Error).message);
+        }
         throw error;
       }
       if (admitted.replayed && admitted.status !== "queued") {
