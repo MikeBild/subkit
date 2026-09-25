@@ -29,10 +29,10 @@
 // of a boundary. A proposal nobody can justify is the defect this product keeps
 // paying for.
 
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
-import { executionSteps, executions } from "../db/schema/index.ts";
-import { VALUE_CLASSES } from "./request-boundary.ts";
+import { connectors, executionSteps, executions } from "../db/schema/index.ts";
+import { pathValueAllowed, VALUE_CLASSES } from "./request-boundary.ts";
 import type { RequestStep, WorkflowDef } from "./types.ts";
 
 /** Widest last: the first class that covers every observed value wins. */
@@ -107,6 +107,9 @@ interface Observation {
   held: { url?: string; key?: string; body?: unknown } | null;
   /** The same evidence from a preparation run, which records it differently. */
   prepared: { url?: string; redacted_request_json?: string; body_bytes?: number } | null;
+  /** Which run this dispatch belonged to. Several rows of one run are what
+   *  makes a per-run request count derivable at all. */
+  execution_id: string;
   at: Date;
 }
 
@@ -148,6 +151,7 @@ async function observations(
           and jsonb_exists(el, ${executionSteps.step_key})
         limit 1
       )`,
+      execution_id: executionSteps.execution_id,
       at: executions.created_at,
     })
     .from(executionSteps)
@@ -297,6 +301,15 @@ function alignFromEnd(
   const tail = parts.filter((part, index) => index > 0 || part !== "");
   if (tail.length === 0 || tail.length > actual.length) return null;
   const offset = actual.length - tail.length;
+  // The URL is deeper than the template, and the template opens with a
+  // variable. That variable did not take the one segment sitting at this
+  // offset — it took all of them, and reading only the last is how a step whose
+  // real value was `/blog/a` gets proposed a rule fitting `a`. The boundary
+  // would pass review and the step would be refused at dispatch, with the
+  // refusal reading as the workflow's fault. A whole-path template is handled
+  // by `wholePathValues`; anything else is not comparable, which is the honest
+  // answer rather than a narrower one.
+  if (offset > 0 && typeof tail[0] !== "string") return null;
   const values = new Map<string, string>();
   for (const [index, part] of tail.entries()) {
     const seen = actual[offset + index] ?? "";
@@ -305,6 +318,25 @@ function alignFromEnd(
     } else values.set(part.var, seen);
   }
   return values;
+}
+
+/**
+ * The whole path a single-placeholder template really took.
+ *
+ * `path: "${item.path}"` is one variable standing for the entire address, so
+ * there is nothing to align: the value IS the pathname. Kept apart from
+ * `alignFromEnd` because the two answer different questions, and letting one
+ * fall into the other is precisely the narrowing above.
+ */
+function wholePathValue(parts: Array<string | { var: string }>, url: string): string | null {
+  const tail = parts.filter((part, index) => index > 0 || part !== "");
+  const only = tail.length === 1 ? tail[0] : undefined;
+  if (only === undefined || typeof only === "string") return null;
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return null;
+  }
 }
 
 /** The narrowest rule that covers every value this step really sent. */
@@ -358,9 +390,32 @@ function derivedPageCap(
   return Math.min(1000, Math.max(5, Math.max(...pages) * 2));
 }
 
+/**
+ * How many requests one run may make, from how many it really made.
+ *
+ * `1` was hardcoded. For a step inside a `for_each` over thirty targets that is
+ * a boundary the step breaks on its first real run — and it was presented as
+ * derived from evidence, which is the part that matters: a number nobody
+ * measured, wearing the clothes of one that was.
+ *
+ * Counted per run, because that is what `max_calls` bounds. Doubled, so a
+ * slightly larger week is not a refusal, and floored at 1 for a step that
+ * genuinely dispatches once. A step with no history keeps 1: there is nothing
+ * to derive, and 1 is the narrowest honest answer rather than a guess upward.
+ */
+function derivedCallCap(seen: readonly Observation[]): number {
+  const perRun = new Map<string, number>();
+  for (const entry of seen) {
+    perRun.set(entry.execution_id, (perRun.get(entry.execution_id) ?? 0) + 1);
+  }
+  const busiest = Math.max(0, ...perRun.values());
+  return Math.min(10_000, Math.max(1, busiest * 2));
+}
+
 function proposeRequestStep(
   step: RequestStep,
   seen: readonly Observation[],
+  base_url: string | null,
 ): ProposedStepBoundary | UnproposableStep["reason"] {
   // A boundary a person already reviewed is theirs. When such a step is here it
   // is here for its page cap alone, and nothing else about it is touched.
@@ -413,6 +468,52 @@ function proposeRequestStep(
       return whole?.[1] ? [[key, whole[1]] as const] : [];
     }),
   );
+  // A template that is one placeholder and nothing else varies the WHOLE path.
+  // Derived here rather than through `ruleFor`, which only knows segments:
+  // falling through to it produced `values_not_describable` on a step that is
+  // perfectly describable, and before that a rule fitting one segment of a
+  // value that was never one segment.
+  const wholePathVar = (() => {
+    const tail = parts.filter((part, index) => index > 0 || part !== "");
+    const only = tail.length === 1 ? tail[0] : undefined;
+    return only !== undefined && typeof only !== "string" ? only.var : null;
+  })();
+  if (wholePathVar) {
+    // `resolveUrl` strips a base path the author repeated, and that decision
+    // must rest on literals only — so a whole-path placeholder cannot sit
+    // under a connector whose base carries a path. The compiler refuses such a
+    // boundary with `variable_in_base_prefix`; proposing one anyway would hand
+    // a reviewer a statement the engine will not accept.
+    const baseDepth = (() => {
+      try {
+        return base_url ? new URL(base_url).pathname.split("/").filter(Boolean).length : 0;
+      } catch {
+        return null;
+      }
+    })();
+    if (baseDepth === null || baseDepth > 0) return "not_supported";
+    const observed = urls.flatMap((entry) => {
+      const value = wholePathValue(parts, entry.url as string);
+      return value === null ? [] : [value];
+    });
+    if (observed.length === 0) return "path_not_comparable";
+    if (!observed.every((value) => pathValueAllowed(value))) return "values_not_describable";
+    const newestWhole = urls[0] as Observation;
+    return {
+      step_id: step.id,
+      ...(rewrite ? { path_rewrite: rewrite } : {}),
+      boundary: {
+        variables: { [wholePathVar]: { class: "path" } },
+        max_body_bytes: 0,
+        max_calls: derivedCallCap(seen),
+      },
+      evidence: {
+        observations: observed.length,
+        sample: (newestWhole.url ?? "").slice(0, 300),
+        newest_at: newestWhole.at.toISOString(),
+      },
+    };
+  }
   let comparable = 0;
   for (const entry of urls) {
     const values = alignFromEnd(parts, entry.url as string);
@@ -479,7 +580,7 @@ function proposeRequestStep(
     step_id: step.id,
     ...(cap === undefined ? {} : { max_pages: cap }),
     ...(rewrite ? { path_rewrite: rewrite } : {}),
-    boundary: { variables, max_body_bytes: body, max_calls: 1 },
+    boundary: { variables, max_body_bytes: body, max_calls: derivedCallCap(seen) },
     evidence: {
       observations: comparable,
       sample: (newest.url ?? "").slice(0, 300),
@@ -582,6 +683,26 @@ export async function proposeBoundaries(
     params.workflow_id,
     open.map((step) => step.id),
   );
+  // A whole-path rule cannot sit under a connector whose base carries a path —
+  // the compiler refuses that boundary outright — so the derivation has to know
+  // the base before it proposes one. Read once for the steps in hand.
+  const connectorIds = [
+    ...new Set(open.flatMap((step) => (step.connector_id ? [step.connector_id] : []))),
+  ];
+  const baseUrls = new Map<string, string | null>(
+    connectorIds.length
+      ? (
+          await db
+            .select({ id: connectors.id, base_url: connectors.base_url })
+            .from(connectors)
+            .where(
+              and(eq(connectors.tenant_id, params.tenant_id), inArray(connectors.id, connectorIds)),
+            )
+        ).map((row) => [row.id, row.base_url])
+      : [],
+  );
+  const connectorBase = (step: RequestStep, table: Map<string, string | null>) =>
+    step.connector_id ? (table.get(step.connector_id) ?? null) : null;
   const proposals: ProposedStepBoundary[] = [];
   const unproposable: UnproposableStep[] = [];
   for (const step of open) {
@@ -590,7 +711,7 @@ export async function proposeBoundaries(
       ? proposeStorageStep(step, history)
       : step.sql || step.mcp || step.graphql || step.xml || step.multipart
         ? "not_supported"
-        : proposeRequestStep(step, history);
+        : proposeRequestStep(step, history, connectorBase(step, baseUrls));
     if (typeof result === "string") unproposable.push({ step_id: step.id, reason: result });
     else proposals.push(result);
   }

@@ -10,7 +10,13 @@
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { executionSteps, executions, tenants, workflows } from "../../db/schema/index.ts";
+import {
+  connectors,
+  executionSteps,
+  executions,
+  tenants,
+  workflows,
+} from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { proposeBoundaries } from "../boundary-proposal.ts";
 import type { WorkflowDef } from "../types.ts";
@@ -459,6 +465,11 @@ test("a step inside a loop is the same step, iteration suffix and all", async ()
   expect(proposals[0]?.step_id).toBe("read_page");
   expect(proposals[0]?.boundary?.variables).toEqual({ "input.page_id": { class: "uuid" } });
   expect(proposals[0]?.evidence.observations).toBe(3);
+  // Three dispatches in one run, so "at most one request" is a boundary this
+  // step breaks on its next real run. `max_calls` was hardcoded to 1 and
+  // presented as derived from evidence; it now comes from the busiest run, with
+  // headroom so a slightly larger week is not a refusal.
+  expect(proposals[0]?.boundary?.max_calls).toBe(6);
 });
 
 test("a folder the step's own writes contradict is corrected, one it fits is not", async () => {
@@ -714,4 +725,135 @@ test("an omitted body still reports its size", async () => {
   });
   expect(unproposable).toEqual([]);
   expect(proposals[0]?.boundary?.max_body_bytes).toBeGreaterThan(51_200);
+});
+
+// biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+const ROUTE_TEMPLATE = "${item.path}";
+const fetchRoute = {
+  id: "fetch_route",
+  kind: "request",
+  connector_id: CONNECTOR,
+  method: "GET",
+  path: ROUTE_TEMPLATE,
+};
+
+test("a step that varies its whole address is described, not reported as indescribable", async () => {
+  // The production shape: a step fetches whichever route an earlier step
+  // listed. Aligned from the right against a one-placeholder template, the
+  // derivation read only the LAST segment — so `/de/datenstand/` contributed an
+  // empty string and the step came back "values not describable", while a
+  // shallower run would have contributed `robots.txt` and proposed a rule
+  // fitting one file name. Neither is what the step sends.
+  await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
+  const [execution] = await ctx.db
+    .insert(executions)
+    .values({
+      tenant_id,
+      workflow_id,
+      status: "succeeded",
+      request_source: "api",
+      execution_mode: "prod",
+    })
+    .returning();
+  const routes = ["/de/", "/de/datenstand/", "/robots.txt", "/"];
+  await ctx.db.insert(executionSteps).values(
+    routes.map((route, index) => ({
+      tenant_id,
+      execution_id: execution?.id as string,
+      step_key: `fetch_route[${index}]`,
+      step_index: index,
+      kind: "request" as const,
+      status: "succeeded" as const,
+      request_meta: { driver: "http", url: `https://www.example.test${route}` },
+    })),
+  );
+  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    definition: definition([fetchRoute]),
+  });
+  expect(unproposable).toEqual([]);
+  expect(proposals[0]?.boundary?.variables).toEqual({ "item.path": { class: "path" } });
+  expect(proposals[0]?.evidence.observations).toBe(4);
+  // Four dispatches in that run; "at most one" would refuse the step it was
+  // derived from.
+  expect(proposals[0]?.boundary?.max_calls).toBe(8);
+});
+
+test("a deeper address than the template does not get a rule fitted to its last segment", async () => {
+  // Aligning from the right is correct while the template's head is literal:
+  // the recorded URL and the template share their tail, never reliably their
+  // head. But when the FIRST thing in that tail is a variable and the URL is
+  // deeper, the variable did not take the one segment at that offset — it took
+  // all of them. Here the real value is `blog/a`, and reading `a` proposes an
+  // identifier rule the step breaks on its next run, with the refusal reading
+  // as the workflow's fault. The trailing literal still matches, so nothing
+  // else in this function catches it.
+  await record([
+    { step: "edit_page", url: "https://api.example.test/blog/a/edit" },
+    { step: "edit_page", url: "https://api.example.test/blog/b/edit" },
+  ]);
+  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    definition: definition([
+      {
+        id: "edit_page",
+        kind: "request",
+        connector_id: CONNECTOR,
+        method: "GET",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
+        path: "/${input.slug}/edit",
+      },
+    ]),
+  });
+  expect(proposals).toEqual([]);
+  expect(unproposable).toEqual([{ step_id: "edit_page", reason: "path_not_comparable" }]);
+});
+
+test("a whole-path rule is not proposed under a connector whose base carries a path", async () => {
+  // The compiler refuses such a boundary outright (`variable_in_base_prefix`):
+  // the base-prefix dedupe must rest on literals only, and a whole-path
+  // placeholder IS that first part. Proposing one anyway hands the reviewer a
+  // statement the engine will not accept — the failure the derivation exists
+  // to stop making, in its own house.
+  const [deep] = await ctx.db
+    .insert(connectors)
+    .values({
+      tenant_id,
+      slug: "deep-base",
+      display_name: "Deep base",
+      driver: "http",
+      auth_type: "none",
+      environment: "prod",
+      base_url: "https://api.example.test/v2",
+    })
+    .returning();
+  await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
+  const [execution] = await ctx.db
+    .insert(executions)
+    .values({
+      tenant_id,
+      workflow_id,
+      status: "succeeded",
+      request_source: "api",
+      execution_mode: "prod",
+    })
+    .returning();
+  await ctx.db.insert(executionSteps).values({
+    tenant_id,
+    execution_id: execution?.id as string,
+    step_key: "fetch_route",
+    step_index: 0,
+    kind: "request" as const,
+    status: "succeeded" as const,
+    request_meta: { driver: "http", url: "https://api.example.test/v2/de/" },
+  });
+  const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
+    tenant_id,
+    workflow_id,
+    definition: definition([{ ...fetchRoute, connector_id: deep?.id }]),
+  });
+  expect(proposals).toEqual([]);
+  expect(unproposable).toEqual([{ step_id: "fetch_route", reason: "not_supported" }]);
 });
