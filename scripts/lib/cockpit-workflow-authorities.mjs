@@ -145,6 +145,7 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
     if (overflow) throw new Error("Authority history overflows the viewport");
     await verifyGrant(page, stand, workflowId, locale, authority, capture);
     await verifyPreparedVersion(page, stand, workflowId, locale, capture);
+    await verifyActivationWhenNotApprovable(page, stand, workflowId, capture);
   } finally {
     await page.unroute(pattern, handler);
   }
@@ -325,6 +326,147 @@ async function verifyPreparedVersion(page, stand, workflowId, locale, capture) {
     if (granted?.workflow_version_id !== draftVersionId)
       throw new Error("Approval was issued against a version nobody reviewed");
   } finally {
+    await page.unroute(activatePattern, activate);
+    await page.unroute(grantPattern, grant);
+    await page.unroute(previewPattern, preview);
+    await page.unroute(draftPattern, draft);
+    await page.unroute(workflowPattern, record);
+  }
+}
+
+/**
+ * A prepared version that cannot be approved can still be put into service.
+ *
+ * The two decisions are separate, and this is the case that proves it: one step
+ * refuses, so the review is not approvable, and the reader must still be able
+ * to take the smaller decision. It used to be offered only on the approvable
+ * side, so a child whose other steps had just been bound stayed on its old
+ * version because of the one step nobody could bind — and the button that would
+ * have moved it was not rendered at all. The engine never asked for that:
+ * `activate-draft` checks the reviewed digest and authorizes no run.
+ */
+async function verifyActivationWhenNotApprovable(page, stand, workflowId, capture) {
+  const activeVersionId = "00000000-0000-4000-8000-000000000401";
+  const draftVersionId = "00000000-0000-4000-8000-000000000402";
+  const workflowPattern = `**/v1/workflows/${workflowId}`;
+  const draftPattern = `**/v1/workflows/${workflowId}/draft`;
+  const previewPattern = `**/v1/workflows/${workflowId}/versions/*/authority-preview?*`;
+  const grantPattern = `**/v1/workflows/${workflowId}/execution-authorities`;
+  const activatePattern = `**/v1/workflows/${workflowId}/activate-draft`;
+  const proposalPattern = `**/v1/workflows/${workflowId}/boundary-proposals`;
+  let granted = null;
+  let activated = null;
+  const record = async (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            id: workflowId,
+            name: "Monatsreport",
+            slug: "monatsreport",
+            lifecycle: "active",
+            current_version: 8,
+            current_version_id: activeVersionId,
+            draft_version_id: draftVersionId,
+            steps: [{ id: "fetch-route", name: "Seite lesen", kind: "request" }],
+            updated_at: "2026-08-10T09:00:00.000Z",
+          }),
+        })
+      : route.fallback();
+  const draft = async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        workflow_id: workflowId,
+        version_id: draftVersionId,
+        version: 9,
+        current_version_id: activeVersionId,
+        digest: "4".repeat(64),
+        definition: { name: "Monatsreport", steps: [] },
+      }),
+    });
+  const preview = async (route) => {
+    const url = new URL(route.request().url());
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        digest: "e".repeat(64),
+        manifest: {
+          schema_version: 1,
+          workflow_id: workflowId,
+          workflow_version_id: url.pathname.split("/").at(-2),
+          execution_environment: url.searchParams.get("environment"),
+          effects: [],
+          // The one step nobody can bind. This is what makes the review
+          // unapprovable, and what used to take the activation with it.
+          issues: [{ step_id: "fetch-route", code: "dynamic_request" }],
+        },
+        eligible_for_repeated_runs: false,
+        unavailable_steps: [],
+        suggested_bounds: {
+          valid_from: new Date().toISOString(),
+          valid_until: new Date(Date.now() + 86_400_000).toISOString(),
+          max_runs: 1,
+        },
+        execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
+      }),
+    });
+  };
+  const grant = async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    granted = route.request().postDataJSON();
+    return route.fulfill({ status: 201, contentType: "application/json", body: "{}" });
+  };
+  const activate = async (route) => {
+    activated = route.request().postDataJSON();
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        workflow_version_id: draftVersionId,
+        activated: true,
+        execution_authorized: false,
+      }),
+    });
+  };
+  // The refusal makes the dialog ask what it can work out by itself. Answering
+  // "nothing" keeps this scenario about the activation.
+  const proposals = async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ proposals: [], unproposable: [] }),
+    });
+  await page.route(workflowPattern, record);
+  await page.route(draftPattern, draft);
+  await page.route(previewPattern, preview);
+  await page.route(grantPattern, grant);
+  await page.route(activatePattern, activate);
+  await page.route(proposalPattern, proposals);
+  try {
+    await stand.visit(page, `workflows/${workflowId}`);
+    await page.getByTestId("authority-grant-open").click();
+    // The named reason, not the generic notice: this review carries an issue,
+    // so the dialog lists it rather than saying "adjust the workflow".
+    await page.getByTestId("authority-issues").waitFor();
+    const activateOnly = page.getByTestId("authority-activate-only");
+    if ((await activateOnly.count()) === 0)
+      throw new Error(
+        "A prepared version that cannot be approved offers no way to put it into service, so the smaller decision cannot be taken at all",
+      );
+    await capture("activate-only-unapprovable");
+    await activateOnly.click();
+    await page.getByRole("dialog").waitFor({ state: "hidden" });
+    if (activated?.workflow_version_id !== draftVersionId)
+      throw new Error("Putting a version into service used a version nobody reviewed");
+    if (activated?.expected_current_version_id !== activeVersionId)
+      throw new Error("Activation did not state which version it replaces");
+    if (granted) throw new Error("Putting an unapprovable version into service granted a run");
+  } finally {
+    await page.unroute(proposalPattern, proposals);
     await page.unroute(activatePattern, activate);
     await page.unroute(grantPattern, grant);
     await page.unroute(previewPattern, preview);
