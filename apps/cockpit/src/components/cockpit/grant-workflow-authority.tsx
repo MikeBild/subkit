@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import { useSession } from "@/app/session";
@@ -86,6 +86,25 @@ export function GrantWorkflowAuthority({
   const [runs, setRuns] = useState("");
   const [hours, setHours] = useState("");
   const [reviewVersionId, setReviewVersionId] = useState(versionId);
+  // When the trial run started, or null while nothing is running. A timestamp
+  // rather than a boolean, so the counter below survives a re-render without
+  // restarting — a number that jumps back to zero reads as a stall.
+  const [trialStartedAt, setTrialStartedAt] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  /** A trial run was already going when this dialog asked for one. */
+  const [trialElsewhere, setTrialElsewhere] = useState(false);
+  useEffect(() => {
+    if (trialStartedAt === null) {
+      setElapsed(0);
+      return;
+    }
+    setElapsed(0);
+    const tick = setInterval(
+      () => setElapsed(Math.floor((Date.now() - trialStartedAt) / 1000)),
+      1000,
+    );
+    return () => clearInterval(tick);
+  }, [trialStartedAt]);
   const [review, setReview] = useState<WorkflowAuthorityPreview | null>(null);
   // At most one environment correction per opening. The review names the half
   // its steps really live in, so a second pass can never learn more than the
@@ -119,10 +138,24 @@ export function GrantWorkflowAuthority({
         result.preparation_required &&
         session.permissions.includes("workflow:run")
       ) {
-        await apiRequest(
-          `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(targetVersion)}/prepare-authority`,
-          { method: "POST", body: JSON.stringify({ environment: asked }) },
-        );
+        // Opening this dialog STARTS a trial run. Nothing said so, and the wait
+        // showed a bare "loading" for minutes — which is why people opened a
+        // second tab and three runs started at once. The flag below is what the
+        // wait text reads to say what is actually happening.
+        setTrialStartedAt(Date.now());
+        try {
+          const outcome = await apiRequest<{ prepared: boolean; reason?: string }>(
+            `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(targetVersion)}/prepare-authority`,
+            { method: "POST", body: JSON.stringify({ environment: asked }) },
+          );
+          // A second tab, or a repair reload, meets a run that is already
+          // going. That is the engine doing the right thing — one run instead
+          // of three — and it must not arrive as a red failure. The review is
+          // simply not ready yet, and the line below says why.
+          setTrialElsewhere(outcome.reason === "preparation_in_flight");
+        } finally {
+          setTrialStartedAt(null);
+        }
         result = await preview(asked);
       }
       return result;
@@ -241,6 +274,7 @@ export function GrantWorkflowAuthority({
       setReviewVersionId(result.draft.version_id);
       setReview(null);
       prepare.reset();
+      setTrialElsewhere(false);
       prepare.mutate(environment);
     },
   });
@@ -601,7 +635,28 @@ export function GrantWorkflowAuthority({
               </>
             )}
           </FieldGroup>
-          {prepare.isPending && <p role="status">{t("common.loading")}</p>}
+          {prepare.isPending &&
+            (trialStartedAt === null ? (
+              <p role="status">{t("common.loading")}</p>
+            ) : (
+              // Six minutes of "loading" is what sent people to a second tab.
+              // The counter is the part that makes waiting bearable: it says
+              // this is still moving, without claiming to know how long it
+              // takes — nothing here can know that.
+              <Alert data-testid="authority-trial-running" className="bg-accent/10">
+                <AlertTitle>{t("authority.trial.title")}</AlertTitle>
+                <AlertDescription>
+                  <p>{t("authority.trial.what")}</p>
+                  <p role="status">{t("authority.trial.elapsed", { seconds: elapsed })}</p>
+                </AlertDescription>
+              </Alert>
+            ))}
+          {trialElsewhere && !prepare.isPending && (
+            <Alert data-testid="authority-trial-elsewhere" className="bg-accent/10">
+              <AlertTitle>{t("authority.trial.title")}</AlertTitle>
+              <AlertDescription>{t("authority.trial.alreadyRunning")}</AlertDescription>
+            </Alert>
+          )}
           {prepare.error && (
             <Alert variant="destructive">
               <AlertTitle>{t("authority.loadFailed")}</AlertTitle>

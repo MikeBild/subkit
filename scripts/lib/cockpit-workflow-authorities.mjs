@@ -166,6 +166,7 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
     await verifyPreparedVersion(page, stand, workflowId, locale, capture);
     await verifyActivationWhenNotApprovable(page, stand, workflowId, capture);
     await verifyEnvironmentCorrection(page, stand, workflowId, capture);
+    await verifyTrialAlreadyRunning(page, stand, workflowId, locale, capture);
   } finally {
     await page.unroute(pattern, handler);
   }
@@ -661,6 +662,98 @@ async function verifyEnvironmentCorrection(page, stand, workflowId, capture) {
     await page.unroute(grantPattern, grant);
     await page.unroute(previewPattern, preview);
     await page.unroute(workflowPattern, record);
+    await page.unroute(historyPattern, noHistory);
+  }
+}
+
+/**
+ * A trial run that was already going when this dialog asked for one.
+ *
+ * Opening this approval STARTS a held run. Nothing said so, and the wait showed
+ * a bare "loading" for minutes — which is why three runs once started at once
+ * against one workflow. The engine now refuses the second with a reason, and
+ * the reason must arrive as information: a second tab and a repair reload both
+ * take this path routinely, so rendering it red turns correct behaviour into an
+ * alarm. No frame carried this state before, because the stand never served the
+ * preparation route at all.
+ */
+async function verifyTrialAlreadyRunning(page, stand, workflowId, locale, capture) {
+  const versionId = "00000000-0000-4000-8000-000000000601";
+  const previewPattern = `**/v1/workflows/${workflowId}/versions/*/authority-preview?*`;
+  const preparePattern = `**/v1/workflows/${workflowId}/versions/*/prepare-authority`;
+  const historyPattern = `**/v1/workflows/${workflowId}/execution-authorities**`;
+  let prepareCalls = 0;
+  const noHistory = async (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ items: [], next_cursor: null }),
+        })
+      : route.fallback();
+  const preview = async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        digest: "c".repeat(64),
+        manifest: {
+          schema_version: 1,
+          workflow_id: workflowId,
+          workflow_version_id: versionId,
+          execution_environment: "prod",
+          effects: [],
+          issues: [],
+        },
+        // Unapprovable and asking for a trial run — the only shape in which
+        // this dialog reaches the preparation route at all.
+        eligible_for_repeated_runs: false,
+        preparation_required: true,
+        unavailable_steps: [],
+        suggested_bounds: {
+          valid_from: new Date().toISOString(),
+          valid_until: new Date(Date.now() + 86_400_000).toISOString(),
+          max_runs: 1,
+        },
+        execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
+      }),
+    });
+  const prepare = async (route) => {
+    prepareCalls += 1;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ prepared: false, reason: "preparation_in_flight" }),
+    });
+  };
+  await page.route(historyPattern, noHistory);
+  await page.route(previewPattern, preview);
+  await page.route(preparePattern, prepare);
+  try {
+    await stand.visit(page, `workflows/${workflowId}`);
+    await page.getByTestId("authority-grant-open").click();
+    const notice = page.getByTestId("authority-trial-elsewhere");
+    await notice.waitFor({ timeout: 30_000 });
+    await capture("trial-already-running");
+    if (prepareCalls !== 1)
+      throw new Error(`The dialog asked for ${prepareCalls} trial runs, not one`);
+    // The words, not just the box: the failure this guards against is the
+    // engine's correct "one run, not three" arriving as a failure notice.
+    const text = await notice.innerText();
+    const expected = locale === "de" ? "läuft bereits ein Probelauf" : "already in progress";
+    if (!text.includes(expected))
+      throw new Error(`The running trial is not named: ${text.slice(0, 200)}`);
+    if ((await page.locator('[data-testid="authority-trial-elsewhere"].destructive').count()) > 0)
+      throw new Error("Correct behaviour is rendered as a failure");
+    const failure = page.getByText(
+      locale === "de" ? "konnte nicht geladen werden" : "could not be loaded",
+      { exact: false },
+    );
+    if ((await failure.count()) > 0)
+      throw new Error("A trial run already in progress is reported as a load failure");
+  } finally {
+    await page.unroute(preparePattern, prepare);
+    await page.unroute(previewPattern, preview);
     await page.unroute(historyPattern, noHistory);
   }
 }

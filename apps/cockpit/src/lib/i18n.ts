@@ -1175,6 +1175,12 @@ const EN = {
     "This step has no reviewed limit yet, so nothing says where it may go or how large it may be.",
   "authority.refusal.stricter_profile_applies":
     "This step is a report e-mail or a content publication. Those have their own, stricter review of the recipient or the published items — a general limit does not belong here.",
+  "authority.trial.title": "Trial run in progress",
+  "authority.trial.what":
+    "Opening this approval started a trial run. It reads from the connected systems for real, and holds back everything it would send — nothing leaves your systems. That is how the addresses below are worked out.",
+  "authority.trial.elapsed": "Running for {seconds} seconds.",
+  "authority.trial.alreadyRunning":
+    "A trial run for this workflow is already in progress — most likely in another tab. This one is waiting for it rather than starting a second.",
   "authority.refusal.report_delivery_unprepared":
     "This step sends a report by e-mail, and nothing has watched it do so yet. A trial run — which holds back everything it would send — shows who would receive it, and that is what gets approved.",
   "authority.refusal.report_delivery_unobserved":
@@ -2984,6 +2990,12 @@ const DE: Record<TranslationKey, string> = {
     "Für diesen Schritt ist noch keine Grenze geprüft — nichts sagt, wohin er darf und wie groß er werden darf.",
   "authority.refusal.stricter_profile_applies":
     "Dieser Schritt ist eine Bericht-E-Mail oder eine Veröffentlichung. Dafür gibt es eine eigene, strengere Prüfung des Empfängers bzw. der veröffentlichten Einträge; eine allgemeine Grenze gehört hier nicht hin.",
+  "authority.trial.title": "Probelauf läuft",
+  "authority.trial.what":
+    "Mit dem Öffnen dieser Freigabe hat ein Probelauf begonnen. Er liest echt aus den angebundenen Systemen und hält alles zurück, was er senden würde — es verlässt nichts Ihre Systeme. So werden die Adressen unten ermittelt.",
+  "authority.trial.elapsed": "Läuft seit {seconds} Sekunden.",
+  "authority.trial.alreadyRunning":
+    "Für diesen Workflow läuft bereits ein Probelauf — vermutlich in einem anderen Tab. Dieser wartet darauf, statt einen zweiten zu starten.",
   "authority.refusal.report_delivery_unprepared":
     "Dieser Schritt verschickt einen Bericht per E-Mail, und noch niemand hat ihm dabei zugesehen. Ein Probelauf — der alles zurückhält, was er senden würde — zeigt, wer ihn bekäme, und genau das wird freigegeben.",
   "authority.refusal.report_delivery_unobserved":
