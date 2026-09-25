@@ -112,6 +112,7 @@ import {
   preparedRequestReview,
 } from "../../prepared-request.ts";
 import { applyResponseFilters, ResponseFilterFailError } from "../../response-filter.ts";
+import { GOVERNANCE_REFUSALS } from "../../state.ts";
 import type {
   ConnectorResolutionSummary,
   RequestMeta,
@@ -648,7 +649,13 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
     } catch (err) {
       lastErr = err;
       if (err instanceof AuthorityDispatchError)
-        throw new RequestError(err.message, "authority_invalid");
+        // A refusal in its own right: the runtime would not follow a redirect
+        // to somewhere nobody approved. It carries its reason like every other
+        // governance refusal, so it reaches the trail instead of arriving there
+        // as a generic invalid authority.
+        throw new RequestError(err.message, "authority_invalid", undefined, {
+          reason: "authority_redirect_denied",
+        });
       if (err instanceof HttpRequestInvalidError) {
         throw new RequestError(err.message, "request_invalid", undefined, {
           path: err.path,
@@ -766,6 +773,21 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     credential_revision: credential.credential_revision,
     connection_authority: credential.connection_authority ?? null,
   });
+  /**
+   * The code the governance layer actually used, when it used one.
+   *
+   * Every `before_external_request` refusal is rewritten to `authority_invalid`
+   * below so the retry ladder keeps treating it as non-retryable. The real code
+   * survived only in `meta.reason` and was dropped at the last hop, which is why
+   * the audit trail held nothing about a refused dispatch: `finalizeStepRow`
+   * writes a governance row for a closed set of codes, and the code it saw was
+   * never in it. Ninety-eight refusals on one installation, not one row.
+   */
+  const governanceCode = (error: unknown): string | undefined => {
+    if (!(error instanceof RequestError)) return undefined;
+    const reason = error.meta?.reason;
+    return typeof reason === "string" && GOVERNANCE_REFUSALS.has(reason) ? reason : undefined;
+  };
   const beforeDispatch = async (credential = credentialSnapshot, request?: MaterializedRequest) => {
     try {
       const documentedRead = p.step.side_effects !== "write" && isDocumentedReadOperation(request);
@@ -3075,7 +3097,11 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       retry_count: retryCounter.value,
       duration_ms,
       error: buildStepErrorDetail({
-        code: err instanceof RequestError ? err.cause_kind : "request_error",
+        // The governance code when there was one, so the refusal is filed as
+        // what it was. `cause_kind` stays `authority_invalid`, so the retry
+        // ladder above is untouched — only what gets reported changes.
+        code:
+          governanceCode(err) ?? (err instanceof RequestError ? err.cause_kind : "request_error"),
         err,
         request_meta: last_meta,
       }),

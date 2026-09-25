@@ -27,6 +27,7 @@ import { logger } from "../../../logging/logger.ts";
 import { recordRequestRetry } from "../../../observability/instrumentation.ts";
 import { graphqlEndpointKey, recordSuccessShape } from "../../../schema-versions/service.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
+import { GOVERNANCE_REFUSALS } from "../../state.ts";
 import type { ConnectorResolutionSummary, StepResult, StepWarning } from "../../types.ts";
 import { buildStepErrorDetail } from "../error-detail.ts";
 import { RequestError } from "./errors.ts";
@@ -130,11 +131,26 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
         err instanceof AuthorityDispatchError ||
         (err instanceof RequestError && err.cause_kind === "authority_invalid")
       ) {
+        // The governance code when the refusal carried one — the same rule the
+        // request dispatcher follows. Without it the GraphQL driver keeps the
+        // hole the HTTP one just lost: a refused dispatch filed as a generic
+        // `authority_invalid`, which `finalizeStepRow` does not audit.
+        // A redirect denial arrives as its own error class here rather than as
+        // a RequestError carrying a reason — same refusal, different wrapper.
+        const reason =
+          err instanceof AuthorityDispatchError
+            ? "authority_redirect_denied"
+            : err instanceof RequestError && typeof err.meta?.reason === "string"
+              ? err.meta.reason
+              : undefined;
         return {
           status: "failed",
           retry_count: attempt,
           duration_ms: Date.now() - start,
-          error: buildStepErrorDetail({ code: "authority_invalid", err }),
+          error: buildStepErrorDetail({
+            code: reason && GOVERNANCE_REFUSALS.has(reason) ? reason : "authority_invalid",
+            err,
+          }),
         };
       }
       // Header-contract violations: non-retryable, surface as request_invalid.
