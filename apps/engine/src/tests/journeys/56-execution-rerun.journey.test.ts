@@ -13,9 +13,13 @@
 //   - AC4: body.input overrides the original input.
 //   - AC5: a draft-source execution yields 409 with a remediation hint.
 //   - AC6: unknown id yields 404.
+//   - AC7: a rerun the engine refuses at admission leaves an audit row
+//          naming the reason and the run it was repeating.
 // Spec refs: docs/concepts/workflows.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
+import { auditLog } from "../../db/schema/index.ts";
 import {
   createJourneyCtx,
   JOURNEY_HOOK_TIMEOUT,
@@ -189,6 +193,43 @@ describe("journey 56: execution rerun with lineage", () => {
       const err = (await res.json()) as { code: string; hint?: string };
       expect(err.code).toBe("conflict");
       expect(err.hint ?? "").toContain("re-POST");
+    },
+    JOURNEY_HOOK_TIMEOUT,
+  );
+
+  test(
+    "AC7: a rerun refused at admission is written down with its lineage",
+    async () => {
+      const key = "rerun-audited:2026-09-25";
+      const first = await journeyFetch(ctx, `/v1/executions/${originalId}/rerun`, {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key: key, input: { greeting: "keyed" } }),
+      });
+      expect(first.status).toBe(200);
+      // Same key, different input — the boundary the engine refuses to move.
+      const res = await journeyFetch(ctx, `/v1/executions/${originalId}/rerun`, {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key: key, input: { greeting: "changed" } }),
+      });
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as { code: string }).code).toBe("execution_boundary_mismatch");
+
+      const rows = await ctx.db
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, ctx.tenantId),
+            eq(auditLog.action, "execution.boundary_refused"),
+            eq(auditLog.resource_id, workflowId),
+          ),
+        );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.result).toBe("denied");
+      expect(rows[0]?.reason).toBe("execution_boundary_mismatch");
+      // Which run was being repeated — without it the row names a workflow and
+      // leaves the operator to guess which attempt it belongs to.
+      expect((rows[0]?.metadata as Record<string, unknown> | undefined)?.rerun_of).toBe(originalId);
     },
     JOURNEY_HOOK_TIMEOUT,
   );

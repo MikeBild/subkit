@@ -140,6 +140,16 @@ const AUDIT_FIXTURE_ROWS = [
   { action: "workflow.updated", resource_type: "workflow", result: "success" },
   { action: "connector.invoked", resource_type: "connector", result: "denied" },
   { action: "settings.changed", resource_type: "settings", result: "error" },
+  // A schedule the engine put on hold. It belongs in a frame for two reasons:
+  // it is the newest word the log has, and it is the only row whose `denied`
+  // comes from a state change rather than a rejected call — a label that
+  // quietly regressed to the raw `schedule.admission.changed` would otherwise
+  // ship unphotographed.
+  {
+    action: "schedule.admission.changed",
+    resource_type: "workflow_schedule",
+    result: "denied",
+  },
 ];
 
 function assertAuditFixtureActionsAreReal() {

@@ -4,7 +4,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
-import { executionSteps, executions } from "../../db/schema/index.ts";
+import { auditLog, executionSteps, executions } from "../../db/schema/index.ts";
 import { createExecution } from "../../execution/state.ts";
 import {
   createEngineCtx,
@@ -93,6 +93,23 @@ describe("queue: execution.run worker", () => {
         .from(executionSteps)
         .where(eq(executionSteps.execution_id, execution_id)),
     ).toHaveLength(0);
+
+    // No step ran, so the step-level trail has nothing to say. Without the
+    // admission row this refusal would exist only as a failed execution with
+    // no stated reason — the exact case "did the limit hold?" cannot answer.
+    const refusals = await engineCtx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, "execution.boundary_refused"),
+          eq(auditLog.resource_id, execution_id),
+        ),
+      );
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]?.result).toBe("denied");
+    expect(refusals[0]?.reason).toBe("execution_authority_required");
+    expect((refusals[0]?.metadata as Record<string, unknown> | undefined)?.stage).toBe("admission");
   });
 
   test("a persisted preparation stays held when the real queue envelope omits hold options", async () => {

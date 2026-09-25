@@ -10,6 +10,7 @@ import type { Job, PgBoss } from "pg-boss";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
+import { auditAdmissionRefusal } from "../../execution/admission-audit.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { finalizeExecution } from "../../execution/state.ts";
 import type { RequestSource, RunOptions } from "../../execution/types.ts";
@@ -139,12 +140,24 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
           .limit(1)
       : [];
     if (!boundary || (!boundary.held && !boundary.authority)) {
-      throw Object.assign(
-        new Error(
-          "queued execution has no admitted boundary; request a new preparation or an authorized run",
-        ),
-        { code: "execution_authority_required" },
+      const message =
+        "queued execution has no admitted boundary; request a new preparation or an authorized run";
+      // Actor-less on purpose: whoever enqueued the job is one hop away and
+      // the job payload does not carry them. The execution id does, and it
+      // leads back to the row that names the requester.
+      await auditAdmissionRefusal(
+        {
+          tenant_id: data.tenant_id,
+          reason: "execution_authority_required",
+          message,
+          workflow_id: data.workflow_id,
+          execution_id: data.execution_id ?? null,
+          request_source: (data.request_source as string) ?? "api",
+          extra: { queue: EXECUTION_RUN_QUEUE },
+        },
+        db,
       );
+      throw Object.assign(new Error(message), { code: "execution_authority_required" });
     }
     const result = await runExecution({
       db,

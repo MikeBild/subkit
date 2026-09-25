@@ -11,11 +11,13 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { actorType } from "../../../audit/index.ts";
 import { executions } from "../../../db/schema/index.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
 import {
   admitWorkflowRun,
   assertExecutionAuthorityCurrent,
+  auditAdmissionRefusal,
   finalizeExecution,
   runExecution,
 } from "../../../execution/index.ts";
@@ -123,12 +125,27 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
     const input = body.input !== undefined ? body.input : (original.input ?? null);
     const execution_mode: ExecutionMode = original.execution_mode ?? "dev";
 
-    if (!original.workflow_version_id)
-      throw new HttpError(
-        409,
-        "workflow_version_unavailable",
-        "the original version is unavailable",
+    if (!original.workflow_version_id) {
+      // Refused for the same class of reason as the codes caught below, and so
+      // written down the same way. Leaving it out would reinstate the very
+      // asymmetry this trail exists to remove: one refusal audited, its
+      // neighbour silent.
+      const message = "the original version is unavailable";
+      await auditAdmissionRefusal(
+        {
+          tenant_id: principal.tenant_id,
+          reason: "workflow_version_unavailable",
+          message,
+          workflow_id: original.workflow_id,
+          request_source: "api",
+          actor_id: principal.id ?? null,
+          actor_type: actorType(principal),
+          extra: { rerun_of: original.id },
+        },
+        db,
       );
+      throw new HttpError(409, "workflow_version_unavailable", message);
+    }
     let admitted: Awaited<ReturnType<typeof admitWorkflowRun>>;
     try {
       admitted = await admitWorkflowRun(
@@ -158,6 +175,19 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
         code?.startsWith("workflow_version_") ||
         code === "workflow_archived"
       ) {
+        await auditAdmissionRefusal(
+          {
+            tenant_id: principal.tenant_id,
+            reason: code,
+            message: (error as Error).message,
+            workflow_id: original.workflow_id,
+            request_source: "api",
+            actor_id: principal.id ?? null,
+            actor_type: actorType(principal),
+            extra: { rerun_of: original.id },
+          },
+          db,
+        );
         throw new HttpError(409, code, (error as Error).message);
       }
       throw error;
