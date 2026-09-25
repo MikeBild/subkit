@@ -456,7 +456,7 @@ function operationalOverview() {
   const generatedAt = "2026-08-26T10:00:00.000Z";
   return {
     schema_version: "operational-overview.v1",
-    contract_version: "2.1",
+    contract_version: "2.2",
     product: "subkit",
     generated_at: generatedAt,
     recommended_refresh_seconds: 60,

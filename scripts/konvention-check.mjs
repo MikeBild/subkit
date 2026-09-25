@@ -663,7 +663,7 @@ function operationalOverview(gateOpen) {
   const other = gateOpen ? Math.max(DECIDABLE_TOTAL - overdue, 0) : 0;
   return {
     schema_version: "operational-overview.v1",
-    contract_version: "2.1",
+    contract_version: "2.2",
     product: "subkit",
     generated_at: generatedAt,
     recommended_refresh_seconds: 60,
