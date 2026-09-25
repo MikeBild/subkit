@@ -15,9 +15,16 @@ export interface DigestFailureGroup {
   error_code: string | null;
   origin: FailureOrigin;
   count: number;
-  /** How many of these runs the scheduler started. `origin` collapses to
-   *  "mixed" once a group holds more than one kind, so it cannot answer this. */
-  scheduled_count: number;
+  /**
+   * How many of these runs the scheduler started. `origin` collapses to
+   * "mixed" once a group holds more than one kind, so it cannot answer this.
+   *
+   * Optional because this CLI talks to engines it did not ship with: an engine
+   * older than the field simply omits it. Read it through `scheduledRunsOf`,
+   * never directly — `undefined > 0` is false, which would render every
+   * failing production schedule as a harmless trial run.
+   */
+  scheduled_count?: number;
   last_seen: string;
   cause: string;
   guidance: string | null;
@@ -128,3 +135,17 @@ export const selfHealingMethods = {
     return this.request("GET", `/v1/self-healing/scans/${encodeURIComponent(id)}`);
   },
 };
+
+/**
+ * How many of a group's runs the scheduler started, also from an engine that
+ * does not report it yet.
+ *
+ * The fallback is the best the old shape allows: `scheduled` meant every run,
+ * anything else meant none. It gets "mixed" wrong in the old direction, which
+ * is what the field exists to fix — but it keeps a mixed-version pair honest
+ * about the ordinary cases instead of silently downgrading all of them.
+ */
+export function scheduledRunsOf(group: DigestFailureGroup): number {
+  if (typeof group.scheduled_count === "number") return group.scheduled_count;
+  return group.origin === "scheduled" ? group.count : 0;
+}
