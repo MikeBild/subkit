@@ -45,6 +45,25 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
           rewrites_target: false,
           operation: "POST",
           effect: "write",
+          // Until now no effect in this stand carried a boundary, so the panel
+          // that turns rules into sentences was never in a frame — not for one
+          // class. The two here are the two that matter: a value bound to a
+          // form, and one bound to the whole remaining address. A class the
+          // engine accepts and this dialog cannot name renders as "do not
+          // approve", which is how a repaired production workflow once became
+          // unapprovable with nothing wrong with it.
+          boundary: {
+            method: "POST",
+            origin: "https://reports.example.test",
+            segments: ["", "sites", { var: "input.site" }, { var: "item.path" }],
+            variables: {
+              "input.site": { class: "identifier" },
+              "item.path": { class: "path" },
+            },
+            query: { fixed: {}, variable: [] },
+            max_body_bytes: 0,
+            max_calls: 40,
+          },
         },
       ],
       issues: [],
@@ -772,6 +791,21 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
       )
     )
       throw new Error("Grant hides the reviewed recipient");
+    // Until the fixture carried a boundary, the panel that turns rules into
+    // sentences was in no frame at all — not for one class. Both are asserted
+    // as prose, because the failure mode is not a missing panel: it is the
+    // dialog falling back to "limited by a rule this dialog cannot describe",
+    // which passes a screenshot count and blocks the approval. That is exactly
+    // how a repaired production workflow once became unapprovable with nothing
+    // wrong with it.
+    const boundaryPanel = await page.getByTestId("authority-request-boundary").innerText();
+    for (const sentence of [
+      locale === "de" ? "jede Seite unter dieser einen Adresse" : "any page on this one address",
+      locale === "de" ? "jede Kennung aus Buchstaben" : "any identifier made of letters",
+    ]) {
+      if (!boundaryPanel.includes(sentence))
+        throw new Error(`Grant cannot describe a rule it was given: ${sentence}`);
+    }
     await page.getByTestId("authority-runs").fill("2");
     await page.getByTestId("authority-grant-confirm").click();
     await page

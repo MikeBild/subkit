@@ -17665,7 +17665,7 @@ export interface components {
                             enum: string[];
                         } | {
                             /** @enum {string} */
-                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "file_name";
+                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "file_name" | "path";
                         };
                     };
                     query: {
@@ -17859,7 +17859,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "file_name";
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "file_name" | "path";
                     };
                 };
                 max_body_bytes: number;
