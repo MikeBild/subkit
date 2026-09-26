@@ -1876,14 +1876,19 @@ async function checkOperationsIsToolsOnly(page) {
       cause: document.body.innerText.includes(cause),
       groups: document.querySelectorAll('[data-testid^="operations-failure-"]').length,
       risks: document.querySelectorAll('[data-testid^="operations-risk-"]').length,
-      link: Boolean(document.querySelector('[data-testid="operations-open-overview"]')),
     };
   }, FAILURE_GROUPS[0].cause);
   if (echo.cause) breach("§12", "/operations", "repeats the overview's error-group cause");
   if (echo.groups > 0)
     breach("§12", "/operations", `${echo.groups} error-group rows beside the overview`);
   if (echo.risks > 0) breach("§12", "/operations", `${echo.risks} risk rows beside the overview`);
-  if (!echo.link) breach("§12", "/operations", "no way to the findings on the overview");
+  // The clause that used to stand here demanded a link to "the findings on the
+  // overview". It was the reason a card of signposts existed on this page at
+  // all — the gate required it. Removed, because the sentence it enforced was
+  // not true: nothing in the cockpit renders failure groups or risks, so the
+  // page sent readers to a destination that does not exist. The three clauses
+  // above still do the real work — this page must not become a second copy of
+  // the overview — and they never needed a signpost to prove it.
 }
 
 /**

@@ -279,8 +279,10 @@ type FamilyKpiCardProps = Omit<HTMLAttributes<HTMLElement>, "title"> & {
   valueState: FamilyKpiValueState;
   severity: FamilyKpiSeverity;
   tooltip: ReactNode;
-  href: string;
-  linkLabel: ReactNode;
+  /** Optional on purpose: a card whose number has nowhere useful to lead shows
+   *  the number and no link, rather than a link that answers nothing. */
+  href?: string;
+  linkLabel?: ReactNode;
   icon: ReactNode;
   status?: ReactNode;
   primary?: boolean;
@@ -325,15 +327,17 @@ export function FamilyKpiCard({
       )}
       {...props}
     >
-      <a
-        href={href}
-        data-family-kpi-link="true"
-        data-testid={`family-kpi-${id.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-open`}
-        className="absolute inset-0 z-10 rounded-2xl outline-none"
-        aria-label={typeof linkLabel === "string" ? linkLabel : undefined}
-      >
-        <span className="sr-only">{linkLabel}</span>
-      </a>
+      {href && (
+        <a
+          href={href}
+          data-family-kpi-link="true"
+          data-testid={`family-kpi-${id.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-open`}
+          className="absolute inset-0 z-10 rounded-2xl outline-none"
+          aria-label={typeof linkLabel === "string" ? linkLabel : undefined}
+        >
+          <span className="sr-only">{linkLabel}</span>
+        </a>
+      )}
       <div className="relative z-20 flex items-start justify-between gap-2 pointer-events-none">
         <div className="flex min-w-0 items-center gap-2 text-sm font-medium leading-5">
           <span aria-hidden="true" data-family-kpi-icon="true">
@@ -365,18 +369,20 @@ export function FamilyKpiCard({
       </div>
       <div className="mt-5 text-3xl font-semibold leading-9 tracking-[-0.03em]">{value}</div>
       {status ? <div className="mt-1 text-xs leading-4 text-muted-foreground">{status}</div> : null}
-      <span
-        aria-hidden="true"
-        data-family-kpi-link-label="true"
-        className={classes(
-          "mt-4 inline-flex text-sm font-medium",
-          primary
-            ? "rounded-lg bg-primary px-3 py-1.5 text-primary-foreground"
-            : "underline decoration-border underline-offset-4",
-        )}
-      >
-        {linkLabel}
-      </span>
+      {href && (
+        <span
+          aria-hidden="true"
+          data-family-kpi-link-label="true"
+          className={classes(
+            "mt-4 inline-flex text-sm font-medium",
+            primary
+              ? "rounded-lg bg-primary px-3 py-1.5 text-primary-foreground"
+              : "underline decoration-border underline-offset-4",
+          )}
+        >
+          {linkLabel}
+        </span>
+      )}
     </article>
   );
 }

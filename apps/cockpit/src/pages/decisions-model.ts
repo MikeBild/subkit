@@ -659,3 +659,39 @@ export function filterByKinds(
   if (kinds.length === 0) return [...items];
   return items.filter((item) => kinds.includes(item.kind));
 }
+
+/**
+ * Which of the three things the queue should show: its rows, "nothing matches
+ * your filter", or "nothing is waiting".
+ *
+ * A predicate rather than a nested ternary in the page, because the page got it
+ * wrong in a way nobody could see in the markup: the guard was written when the
+ * queue had held schedules and decidable items, and the failing-workflows
+ * section was added beside it without being counted. So on
+ * `/cockpit/decisions?bucket=failing` the page rendered a failing card, a count
+ * of 1, AND "all done — nothing is waiting for you", all at once. Three
+ * statements, two of them contradicting the third.
+ *
+ * The rule, once: the queue is empty only when it is showing nothing at all.
+ */
+export type QueueDisplayState = "rows" | "filtered-empty" | "empty";
+
+export function queueDisplayState(input: {
+  /** Decidable rows after the reader's own chips. */
+  shown: number;
+  /** Held schedules currently rendered. */
+  held: number;
+  /** Failing workflows currently rendered. */
+  failing: number;
+  /** Everything the queue holds, before the chips. */
+  total: number;
+  /** The reader narrowed it themselves. */
+  narrowed: boolean;
+}): QueueDisplayState {
+  if (input.shown > 0 || input.held > 0 || input.failing > 0) return "rows";
+  // Nothing on screen. Whether that is "your filter matches nothing" or
+  // "nothing is waiting" depends on whether anything exists to be narrowed
+  // away — and `total` must include every section, or a narrowed-away failing
+  // workflow reads as an empty queue.
+  return input.narrowed && input.total > 0 ? "filtered-empty" : "empty";
+}
