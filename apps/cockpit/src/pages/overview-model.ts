@@ -96,3 +96,31 @@ function runDurationMs(execution: Execution): number | null {
   if (Number.isNaN(started) || Number.isNaN(finished)) return null;
   return Math.max(0, finished - started);
 }
+
+/**
+ * The metrics whose drilldown narrows to what the number actually counted.
+ *
+ * `executions.incidents_24h` is the only one. Its link carries
+ * `?status=failed&source=scheduler`, which together are the metric's own
+ * definition: failed runs the scheduler started, as distinct from authoring
+ * trials. Every other product metric pointed at a list that cannot tell its
+ * number apart from any other, so those numbers kept their value and lost
+ * their link.
+ */
+export const ACTIONABLE_DRILLDOWNS: ReadonlySet<string> = new Set(["executions.incidents_24h"]);
+
+/**
+ * Whether this metric offers a way in.
+ *
+ * Being aimed correctly is necessary and not sufficient. On a live
+ * installation the one surviving link sat under "production incidents: 0" and
+ * opened nine hundred rows — the worst form of the defect it had survived,
+ * because a reader clicks a zero expecting to be told there is nothing and is
+ * handed a wall instead. A count of nothing has nothing to open.
+ *
+ * `null` is not zero: a metric whose value could not be read is unknown, not
+ * empty, and an unknown offers no way in either.
+ */
+export function metricOffersDrilldown(id: string, value: number | null | undefined): boolean {
+  return ACTIONABLE_DRILLDOWNS.has(id) && (value ?? 0) > 0;
+}

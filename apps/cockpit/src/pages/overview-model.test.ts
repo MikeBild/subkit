@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { FailureGroup } from "./overview-model";
-import { partitionFailures, recentRuns } from "./overview-model";
+import { metricOffersDrilldown, partitionFailures, recentRuns } from "./overview-model";
 
 const group = (
   origin: FailureGroup["origin"],
@@ -111,5 +111,44 @@ describe("recentRuns", () => {
       run("a", "2026-08-18T09:00:00.000Z", "2026-08-18T09:00:00.000Z", "2026-08-18T09:00:12.000Z"),
     ]);
     expect(only?.durationMs).toBe(12_000);
+  });
+});
+
+describe("the way in from a number", () => {
+  test("a metric that counted something offers the way in", () => {
+    expect(metricOffersDrilldown("executions.incidents_24h", 3)).toBe(true);
+  });
+
+  test("a metric standing at zero offers none", () => {
+    // The live defect: "production incidents: 0" with a link to 977 rows.
+    expect(metricOffersDrilldown("executions.incidents_24h", 0)).toBe(false);
+  });
+
+  test("an unreadable value is unknown, not empty, and still offers none", () => {
+    expect(metricOffersDrilldown("executions.incidents_24h", null)).toBe(false);
+    expect(metricOffersDrilldown("executions.incidents_24h", undefined)).toBe(false);
+  });
+
+  test("the metrics whose link led nowhere useful stay linkless at any value", () => {
+    // Each of these once carried a link to a list that could not tell its own
+    // number apart. A non-zero value must not bring the link back.
+    for (const id of [
+      "automation.active_workflows",
+      "executions.total_24h",
+      "executions.success_ratio",
+      "executions.trial_failures_24h",
+      "connectors.healthy_ratio",
+      "repairs.applied_ratio",
+      "skills.reusable",
+    ]) {
+      expect(metricOffersDrilldown(id, 42)).toBe(false);
+    }
+  });
+
+  test("trial failures and production incidents are not the same decision", () => {
+    // They opened the identical URL. Whatever else changes, these two must not
+    // collapse back into one another.
+    expect(metricOffersDrilldown("executions.incidents_24h", 1)).toBe(true);
+    expect(metricOffersDrilldown("executions.trial_failures_24h", 1)).toBe(false);
   });
 });

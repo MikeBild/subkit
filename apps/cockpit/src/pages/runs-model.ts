@@ -26,7 +26,57 @@ const REQUEST_SOURCE_KEYS: Partial<Record<string, TranslationKey>> = {
   "tool-chain": "runs.source.toolChain",
   scheduler: "runs.source.scheduler",
   chat: "runs.source.chat",
+  // A run started from this cockpit. It was missing, so thirty-three runs of a
+  // production installation were labelled "unknown" by the very surface that
+  // had started them — the page claiming not to recognise its own handwriting.
+  ui: "runs.source.ui",
 };
+
+/**
+ * The sources a reader can filter by, in the order they are offered.
+ *
+ * Derived from the label map, so a source added there is offered here and one
+ * removed stops being offered — the drift that let `ui` reach the table as
+ * "unknown" cannot repeat in the filter.
+ */
+export const REQUEST_SOURCES: readonly string[] = Object.keys(REQUEST_SOURCE_KEYS);
+
+/**
+ * Whether a value names a request source this build can describe.
+ *
+ * The filter a link asks for is checked against this, so an unrecognised value
+ * narrows nothing instead of producing an empty list nobody can explain.
+ * Derived from the label map rather than written out again: a source the page
+ * cannot name is one it has no business filtering by.
+ */
+export function isKnownRequestSource(source: string): boolean {
+  return source in REQUEST_SOURCE_KEYS;
+}
+
+/**
+ * The filter a link asked for. "Production incidents: 1" pointed at the runs
+ * page with no filter at all, so the reader landed on eleven thousand runs and
+ * had to find the one themselves — a number that names something specific must
+ * lead to that something. Unknown values are ignored rather than trusted.
+ *
+ * `source` was the second half of that. The status filter alone still handed
+ * the reader nine hundred rows that were mostly authoring trials, for a number
+ * whose definition says it excludes them. A parameter the link sends and the
+ * page drops is indistinguishable from no filter at all.
+ *
+ * It lives here, beside the map it validates against, so it can be tested
+ * without standing up the page.
+ */
+export function filterFromUrl(search: string): { status: string; q: string; source: string } {
+  const params = new URLSearchParams(search);
+  const status = params.get("status") ?? "";
+  const source = params.get("source") ?? "";
+  return {
+    status: RUN_STATUSES.includes(status as (typeof RUN_STATUSES)[number]) ? status : "all",
+    q: (params.get("q") ?? "").slice(0, 200),
+    source: isKnownRequestSource(source) ? source : "all",
+  };
+}
 
 export type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 

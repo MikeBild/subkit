@@ -491,7 +491,20 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
           // A count that names failed runs has to lead to the failed runs. It
           // pointed at the unfiltered list, where eleven thousand rows hid the
           // one the number was about.
-          path: "/cockpit/runs?status=failed",
+          //
+          // `status=failed` alone was still the wrong list. This metric counts
+          // failed runs THE SCHEDULER STARTED — its own definition says it
+          // separates those from authoring trials — and the link landed on
+          // nine hundred rows that were overwhelmingly trials. The number
+          // excluded exactly what the reader was then shown.
+          //
+          // The 24-hour window is deliberately not in the link. A cutoff
+          // written into a path is a timestamp that keeps being served after
+          // the snapshot behind it was recomputed, so the link would name a
+          // window the number no longer used. Newest-first over the right KIND
+          // of run opens on the runs this counted; it is wider in time, and
+          // being wider is visible, where being wrong was not.
+          path: "/cockpit/runs?status=failed&source=scheduler",
           labelId: "operational.open_runs",
           prometheus: "subkit_operational_production_incidents_24h",
         }),
