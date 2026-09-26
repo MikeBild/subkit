@@ -33,7 +33,9 @@ import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
+  filterFromUrl,
   formatRunDuration,
+  REQUEST_SOURCES,
   RUN_STATUSES,
   requestSourceLabel,
   runAuthorityFacts,
@@ -213,28 +215,16 @@ function RunDetail({ run }: { run: Execution }) {
   );
 }
 
-/**
- * The filter a link asked for. "Production incidents: 1" pointed here with no
- * filter at all, so the reader landed on eleven thousand runs and had to find
- * the one themselves — a number that names something specific must lead to that
- * something. Unknown values are ignored rather than trusted.
- */
-function filterFromUrl(): { status: string; q: string } {
-  const params = new URLSearchParams(window.location.search);
-  const status = params.get("status") ?? "";
-  return {
-    status: ["failed", "succeeded", "running", "queued", "aborted", "timed_out"].includes(status)
-      ? status
-      : "all",
-    q: (params.get("q") ?? "").slice(0, 200),
-  };
-}
-
 export function RunsPage() {
   const { t, dateTime, locale } = useI18n();
   const session = useSession();
-  const [initial] = useState(filterFromUrl);
+  // Called with the search string explicitly. Handing the function itself to
+  // `useState` would invoke it with no argument, and a filter read from
+  // nothing is an empty filter — the link would arrive and change nothing,
+  // which is the exact failure this parameter exists to prevent.
+  const [initial] = useState(() => filterFromUrl(window.location.search));
   const [statusFilter, setStatusFilter] = useState<string>(initial.status);
+  const [sourceFilter, setSourceFilter] = useState<string>(initial.source);
   const [search, setSearch] = useState(initial.q);
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Execution | null>(null);
@@ -245,7 +235,7 @@ export function RunsPage() {
   const query = useQuery({
     // The needle is part of the key: it is a filter the engine applies, so a
     // changed needle is a different question and gets its own answer.
-    queryKey: ["runs", statusFilter, needle, page],
+    queryKey: ["runs", statusFilter, sourceFilter, needle, page],
     enabled: allowed,
     queryFn: () => {
       const params = new URLSearchParams({
@@ -253,6 +243,7 @@ export function RunsPage() {
         offset: String(page * PAGE_SIZE),
       });
       if (statusFilter !== "all") params.set("status", statusFilter);
+      if (sourceFilter !== "all") params.set("request_source", sourceFilter);
       // The engine searches the whole log by the workflow's name. The list used
       // to narrow the page it had already fetched, which reads as search and is
       // not: a run outside the newest fifty could not be found by name at all.
@@ -324,10 +315,12 @@ export function RunsPage() {
     ];
   }, [t, dateTime, locale]);
 
-  const hasActiveFilters = Boolean(debouncedSearch.trim()) || statusFilter !== "all";
+  const hasActiveFilters =
+    Boolean(debouncedSearch.trim()) || statusFilter !== "all" || sourceFilter !== "all";
   const resetFilters = useCallback(() => {
     setSearch("");
     setStatusFilter("all");
+    setSourceFilter("all");
     setPage(0);
   }, []);
 
@@ -394,6 +387,37 @@ export function RunsPage() {
                   {RUN_STATUSES.map((status) => (
                     <SelectItem key={status} value={status} data-testid={`runs-status-${status}`}>
                       {statusLabel(t, status)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            {/* A link may arrive here already narrowed to one source. Without
+                a control saying so, the reader sees a short list and no reason
+                for it — the filter would be invisible state, which is the
+                defect this page keeps being fixed for. */}
+            <Select
+              value={sourceFilter}
+              onValueChange={(source) => {
+                setSourceFilter(source);
+                setPage(0);
+              }}
+            >
+              <SelectTrigger
+                className="w-44"
+                aria-label={t("runs.filterSource")}
+                data-testid="runs-source-filter"
+              >
+                <SelectValue placeholder={t("runs.allSources")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="all" data-testid="runs-source-all">
+                    {t("runs.allSources")}
+                  </SelectItem>
+                  {REQUEST_SOURCES.map((source) => (
+                    <SelectItem key={source} value={source} data-testid={`runs-source-${source}`}>
+                      {requestSourceLabel(source, t)}
                     </SelectItem>
                   ))}
                 </SelectGroup>

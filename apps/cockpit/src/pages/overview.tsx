@@ -25,6 +25,7 @@ import {
 } from "@/components/family-ui";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { metricOffersDrilldown } from "@/pages/overview-model";
 
 type ValueState = "observed" | "zero" | "missing" | "stale" | "forbidden";
 type Severity = "critical" | "urgent" | "healthy" | "information" | "unknown";
@@ -92,16 +93,6 @@ const CORE_COPY: Record<
     link: "operational.core.freshness.open",
   },
 };
-/**
- * The product metrics whose drilldown actually narrows to what the number
- * counted. Everything else keeps its number and loses its link.
- *
- * `executions.incidents_24h` is the only one: it carries `?status=failed`. The
- * comment in the engine records that this narrowing was the fix for "1
- * incident" pointing at eleven thousand rows — the same reasoning applies to
- * every link that never got one.
- */
-const ACTIONABLE_DRILLDOWNS = new Set<string>(["executions.incidents_24h"]);
 
 const METRIC_COPY: Record<string, { label: TranslationKey; tooltip: TranslationKey }> = {
   "automation.active_workflows": {
@@ -298,7 +289,9 @@ export function OverviewPage() {
                           //
                           // The numbers all stay. Only links that answer
                           // nothing go, and none is invented to replace them.
-                          {...(ACTIONABLE_DRILLDOWNS.has(metric.id)
+                          // The rule itself lives in the model, where it can
+                          // be held to a test.
+                          {...(metricOffersDrilldown(metric.id, metric.value)
                             ? { href: metric.drilldown.path, linkLabel: t("operational.details") }
                             : {})}
                           icon={<Icon className="size-4" />}
