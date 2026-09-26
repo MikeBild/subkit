@@ -15,7 +15,7 @@
 // the cause reads like a sentence, not a stack trace. Pending patch
 // candidates ride along as the "fixes awaiting review" bucket.
 
-import { and, count, desc, eq, gte, inArray, max } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, max } from "drizzle-orm";
 import { AuditAction, audit } from "../audit/index.ts";
 import {
   RiskSignalClearedMetadataSchema,
@@ -314,7 +314,18 @@ export async function collectFailureGroups(
 
   await markRecoveredGroups(db, tenant_id, [...groups.values()]);
 
-  // Resolve workflow names for saved-workflow groups.
+  // Resolve workflow names for saved-workflow groups — and drop the groups
+  // whose workflow is gone.
+  //
+  // A deleted workflow kept producing a decision nobody could close: the runs
+  // that failed are still in the history, so the group survived its own
+  // subject. Deleting the thing is the one remedy always available for "this
+  // keeps failing and cannot be fixed here", and it did not work. The same
+  // shape as a cause that healed, from the other side: the group knew what
+  // failed and nothing about whether the workflow still exists.
+  //
+  // Soft-deleted, so the history stays readable; it is only the open decision
+  // that goes.
   const wfIds = [
     ...new Set([...groups.values()].map((g) => g.workflow_id).filter(Boolean)),
   ] as string[];
@@ -322,10 +333,19 @@ export async function collectFailureGroups(
     const wfRows = await db
       .select({ id: workflows.id, name: workflows.name })
       .from(workflows)
-      .where(and(eq(workflows.tenant_id, tenant_id), inArray(workflows.id, wfIds)));
+      .where(
+        and(
+          eq(workflows.tenant_id, tenant_id),
+          inArray(workflows.id, wfIds),
+          isNull(workflows.deleted_at),
+        ),
+      );
     const nameById = new Map(wfRows.map((r) => [r.id, r.name]));
-    for (const g of groups.values()) {
-      if (g.workflow_id) g.workflow_name = nameById.get(g.workflow_id) ?? null;
+    for (const [signature, g] of groups) {
+      if (!g.workflow_id) continue;
+      const name = nameById.get(g.workflow_id);
+      if (name === undefined) groups.delete(signature);
+      else g.workflow_name = name;
     }
   }
 

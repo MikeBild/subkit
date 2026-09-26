@@ -12,6 +12,7 @@
 // tile, and the numbers came from two different queries.
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import {
   executionSteps,
   executions,
@@ -377,4 +378,77 @@ test("a busy neighbour cannot bury another workflow's recovery", async () => {
   const quiet = digest.failure_groups.find((group) => group.step_key === "ping");
   expect(quiet).toBeDefined();
   expect(quiet?.resolved_at).not.toBeNull();
+});
+
+test("a workflow that was deleted stops asking to be decided about", async () => {
+  // "It keeps failing and cannot be fixed here" has exactly one remedy that is
+  // always available: remove the thing. On production that did not work — the
+  // runs that failed are still in the history, so the group outlived its own
+  // subject and sat in the queue with no action left that could close it.
+  //
+  // The mirror image of a cause that healed: the group knew what failed and
+  // nothing about whether the workflow still exists.
+  const [gone] = await testDb.db
+    .insert(workflows)
+    .values({ tenant_id, slug: "retired", name: "Retired", lifecycle: "active" })
+    .returning();
+  const [version] = await testDb.db
+    .insert(workflowVersions)
+    .values({ tenant_id, workflow_id: gone!.id, version: 1, dag: { name: "Retired", steps: [] } })
+    .returning();
+  const at = new Date(getTestNow() - 3 * 60 * 60 * 1000);
+  const [run] = await testDb.db
+    .insert(executions)
+    .values({
+      tenant_id,
+      workflow_id: gone!.id,
+      workflow_version_id: version!.id,
+      source_kind: "saved",
+      status: "failed",
+      request_source: "scheduler",
+      execution_mode: "dev",
+      created_at: at,
+      finished_at: at,
+    })
+    .returning();
+  await testDb.db.insert(executionSteps).values({
+    tenant_id,
+    execution_id: run!.id,
+    step_key: "release",
+    step_index: 0,
+    kind: "request",
+    status: "failed",
+    error: { code: "http_4xx", message: "http 422" },
+  });
+
+  const before = await buildOperatorHealthDigest(testDb.db, tenant_id, {
+    window_hours: DECISION_FAILURE_WINDOW_HOURS,
+    audit: false,
+  });
+  expect(
+    failingScheduledGroups(before.failure_groups).some((g) => g.workflow_id === gone!.id),
+  ).toBe(true);
+
+  // Soft-deleted, the way the product deletes: the history stays readable, and
+  // only the open decision goes.
+  await testDb.db
+    .update(workflows)
+    .set({ deleted_at: new Date(getTestNow()) })
+    .where(eq(workflows.id, gone!.id));
+
+  const after = await buildOperatorHealthDigest(testDb.db, tenant_id, {
+    window_hours: DECISION_FAILURE_WINDOW_HOURS,
+    audit: false,
+  });
+  expect(after.failure_groups.some((g) => g.workflow_id === gone!.id)).toBe(false);
+  // And ONLY that one went. Guarding against over-correction by counting the
+  // queue would be wrong here: earlier tests in this file legitimately empty
+  // it, so the check is that every other group survived, not that some
+  // remain.
+  const survivors = (list: typeof after.failure_groups) =>
+    list
+      .filter((g) => g.workflow_id !== gone!.id)
+      .map((g) => g.signature)
+      .sort();
+  expect(survivors(after.failure_groups)).toEqual(survivors(before.failure_groups));
 });
