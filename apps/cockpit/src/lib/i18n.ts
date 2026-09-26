@@ -1186,7 +1186,7 @@ const EN = {
   "authority.refusal.report_delivery_unobserved":
     "A trial run reached this step but did not record a recipient, so there is nothing to approve yet. Open that run and look at this step: the address was probably never worked out.",
   "authority.refusal.report_delivery_unreachable":
-    "A trial run never got as far as this step, so nobody has seen who would receive the e-mail. Another trial run will not help if the step is only reached once something has been sent — a trial run holds all of that back. Name the recipient on the step itself instead.",
+    "A trial run never got as far as this step, so nobody has seen who would receive the e-mail. Another trial run will not help if the step is only reached once something has been sent — a trial run holds all of that back. Name the recipient on the step itself instead; what is actually sent is still checked against that name, every time.",
   "authority.refusal.connector_adds_query":
     "The connector appends query parameters of its own, so no reviewed query could ever match what is actually sent.",
   "authority.refusal.target_unresolved":
@@ -1404,6 +1404,10 @@ const EN = {
   "decisions.decisionFailed": "The decision could not be recorded.",
   "decisions.diffLoading": "Loading the proposed change…",
   "decisions.diffFailed": "The proposed change could not be loaded.",
+  "decisions.focus.blocked": "Only blocked",
+  "decisions.focus.failing": "Only failing",
+  "decisions.focus.overdue": "Only waiting longest",
+  "decisions.focus.other": "Only recent",
   "decisions.chip.all": "All",
   "decisions.group.label": "Group",
   "decisions.group.none": "None",
@@ -3001,7 +3005,7 @@ const DE: Record<TranslationKey, string> = {
   "authority.refusal.report_delivery_unobserved":
     "Ein Probelauf hat diesen Schritt erreicht, aber keinen Empfänger festgehalten — es gibt also noch nichts freizugeben. Öffnen Sie diesen Lauf und sehen Sie sich den Schritt an: die Adresse wurde vermutlich nie ermittelt.",
   "authority.refusal.report_delivery_unreachable":
-    "Ein Probelauf ist nie bis zu diesem Schritt gekommen, also hat niemand gesehen, wer die E-Mail bekäme. Ein weiterer Probelauf hilft nicht, wenn der Schritt erst erreicht wird, nachdem etwas gesendet wurde — genau das hält ein Probelauf zurück. Nennen Sie den Empfänger stattdessen am Schritt selbst.",
+    "Ein Probelauf ist nie bis zu diesem Schritt gekommen, also hat niemand gesehen, wer die E-Mail bekäme. Ein weiterer Probelauf hilft nicht, wenn der Schritt erst erreicht wird, nachdem etwas gesendet wurde — genau das hält ein Probelauf zurück. Nennen Sie den Empfänger stattdessen am Schritt selbst; was tatsächlich gesendet wird, wird weiterhin jedes Mal dagegen geprüft.",
   "authority.refusal.connector_adds_query":
     "Der Konnektor hängt eigene Abfrageparameter an. Keine geprüfte Abfrage könnte je zu dem passen, was tatsächlich gesendet wird.",
   "authority.refusal.target_unresolved":
@@ -3230,6 +3234,10 @@ const DE: Record<TranslationKey, string> = {
   "decisions.decisionFailed": "Die Entscheidung konnte nicht festgehalten werden.",
   "decisions.diffLoading": "Vorgeschlagene Änderung wird geladen …",
   "decisions.diffFailed": "Die vorgeschlagene Änderung konnte nicht geladen werden.",
+  "decisions.focus.blocked": "Nur blockierte",
+  "decisions.focus.failing": "Nur scheiternde",
+  "decisions.focus.overdue": "Nur am längsten wartende",
+  "decisions.focus.other": "Nur neue",
   "decisions.chip.all": "Alle",
   "decisions.group.label": "Gruppieren",
   "decisions.group.none": "Keine",

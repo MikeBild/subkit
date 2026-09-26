@@ -310,13 +310,23 @@ async function resolveBindings(
     if (supportedContent) target = contentShape.target;
     if (reportEvidence === undefined && supportsReportDelivery(step, target))
       reportEvidence = await proposeReportDeliveryBoundaries(input, db);
+    // An author who states the recipient is believed here and held to it at
+    // dispatch, where the real message is decoded and compared byte for byte.
+    // It takes precedence over an observation because it is the more specific
+    // statement: an observation says what one run happened to do, this says
+    // what every run may do. Only for a step the profile actually covers —
+    // elsewhere it would be a field with no meaning that a reviewer still reads.
+    const declaredDelivery =
+      step.report_delivery && supportsReportDelivery(step, target) ? step.report_delivery : null;
     let boundary: RequestBoundary | null = null;
     if (driver === "http" && (authoredBoundary || hasRuntimeValue(step))) {
       // A report e-mail or a content publication has its own stricter review
       // (the recipient, the receipts). `boundary` must not be a way around it.
       const stricter = supportsReportDelivery(step, target) || contentShape !== null;
       const profile = stricter
-        ? profileRefusal(step.id, contentShape !== null, reportEvidence)
+        ? declaredDelivery
+          ? null
+          : profileRefusal(step.id, contentShape !== null, reportEvidence)
         : undefined;
       // The profile produced a boundary, so nothing is refused. Reporting one
       // anyway made every healthy report step carry a refusal on every preview
@@ -348,9 +358,11 @@ async function resolveBindings(
       ...(readPath ? { read_path: readPath } : {}),
       ...(storage ? { storage } : {}),
       ...(boundary ? { boundary } : {}),
-      ...(reportEvidence?.boundaries[step.id] && supportsReportDelivery(step, target)
-        ? { report_delivery: reportEvidence.boundaries[step.id] }
-        : {}),
+      ...(declaredDelivery
+        ? { report_delivery: declaredDelivery }
+        : reportEvidence?.boundaries[step.id] && supportsReportDelivery(step, target)
+          ? { report_delivery: reportEvidence.boundaries[step.id] }
+          : {}),
       connector_id: step.connector_id ?? null,
       driver,
       environment: system?.environment ?? input.execution_environment,

@@ -212,7 +212,10 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "A preparation run exists but never reached this step, so no recipient was observed. Another " +
     "preparation will not help if the step sits behind a condition that depends on a write a " +
     "preparation holds back — a held run can never observe a step whose reachability it suppresses. " +
-    "Either declare the recipient on the step itself, or make the branch reachable without that write.",
+    'Declare the recipient on the step instead: `report_delivery: {kind: "gmail_report", to, from, ' +
+    "content_type}`. A human approves that statement and the runtime still decodes the real message " +
+    "and compares the recipient byte for byte, so a declaration that does not match is refused at " +
+    "the wire. The alternative is to make the branch reachable without the held write.",
   not_http_step:
     "`boundary` applies to plain HTTP request steps only. A storage step is bounded with " +
     "`s3.scope`; SQL, MCP, GraphQL, XML and multipart steps cannot be bounded yet.",
