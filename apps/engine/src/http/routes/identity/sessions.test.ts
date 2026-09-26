@@ -120,13 +120,24 @@ describe("POST /v1/identity/sessions — configured provider boundary", () => {
     expect(html).toContain('data-auth-contract="mcp-auth"');
   });
 
-  test("the browser login funnel start without a valid login_state renders the HTML error page", async () => {
+  test("a login start without a state is a fresh sign-in, not a dead end", async () => {
+    // This test used to pin the opposite, and the opposite was a closed loop.
+    // The error page's only way forward is "Sign in again" pointing at
+    // /v1/identity/login/start with no state — which arrived here, found no
+    // state, and rendered the same page again. Reported from production: the
+    // one button whose job is to lead out of the dead end led back into it.
+    //
+    // A login state carries ONE thing, where to return to afterwards. Missing
+    // means "no particular destination", not "malformed request".
     const res = await app.request("http://127.0.0.1/v1/identity/login/start");
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
-    expect(html).toContain("<h1>Sign-in failed</h1>");
-    expect(html).toContain('href="/v1/identity/login/start"');
+    // The sign-in screen, not the failure page.
+    expect(html).not.toContain("<h1>Sign-in failed</h1>");
+    // And it carries a state, so choosing a provider from here works rather
+    // than bouncing off the next check.
+    expect(html).toMatch(/login_state=[^"&]+/);
   });
 
   test("the generic browser callback rejects an unknown state provider prefix as 400 invalid state", async () => {
