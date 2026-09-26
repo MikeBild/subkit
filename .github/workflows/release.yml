@@ -25,6 +25,10 @@ on:
         description: "Tag to build+release against (leave blank to use github.ref)"
         required: false
         default: ""
+      sweep_versions:
+        description: "Older versions whose -amd64/-arm64 tags should also be removed (space separated)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -639,3 +643,53 @@ jobs:
             echo '::error::GHCR image must remain private'
             exit 1
           fi
+      # Every release leaves `:VERSION-amd64` and `:VERSION-arm64` behind. They
+      # exist only so the line above can join them into one multi-arch tag, and
+      # nobody should pull them: an arch tag pulled on the other architecture
+      # fails in a way that looks like a broken image.
+      #
+      # Best-effort ON PURPOSE, and only here: whether this token may delete
+      # tags is not knowable until it tries, and a release that shipped must not
+      # fail over tidying up afterwards.
+      - name: Remove the per-architecture tags
+        continue-on-error: true
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          SWEEP: ${{ inputs.sweep_versions }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -u
+          jwt="$(curl -s -H 'Content-Type: application/json' \
+            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+            https://hub.docker.com/v2/users/login/ | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))')"
+          if [ -z "$jwt" ]; then echo 'no Docker Hub session; leaving the arch tags in place'; exit 0; fi
+          for version in $VERSION $SWEEP; do
+            for arch in amd64 arm64; do
+              tag="${version}-${arch}"
+              code="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+                -H "Authorization: JWT ${jwt}" \
+                "https://hub.docker.com/v2/repositories/mikebild/subkit/tags/${tag}/")"
+              # 404 is the goal state reached by another route, not a failure.
+              case "$code" in
+                2*|404) echo "removed or already gone: ${tag} (${code})" ;;
+                *) echo "could not remove ${tag} (${code})" ;;
+              esac
+            done
+          done
+      # NOT best-effort. Deleting a tag can collect the manifest it pointed at,
+      # so the only thing that proves the release is still whole is asking for
+      # it again. Kept apart from the step above for exactly that reason: one
+      # step with `continue-on-error` would swallow the two failures that have
+      # to be told apart — "the token may not delete" and "the release is now
+      # broken".
+      - name: The multi-arch manifests still resolve
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          for tag in "$VERSION" latest; do
+            out="$(docker buildx imagetools inspect "docker.io/mikebild/subkit:$tag")"
+            grep -q 'linux/amd64' <<<"$out"
+            grep -q 'linux/arm64' <<<"$out"
+            echo "docker.io/mikebild/subkit:$tag still resolves on both platforms"
+          done
