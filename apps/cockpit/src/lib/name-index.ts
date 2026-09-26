@@ -44,6 +44,26 @@ function indexOf(entities: readonly NamedEntity[]): Map<string, string> {
   return index;
 }
 
+/**
+ * The workflow's own name for a slug, or null.
+ *
+ * The chat announces a run as `wf_<slug>`, and the slug is passed through
+ * unhumanised on purpose — turning `ga4-daily-report` into "Ga4 Daily Report"
+ * reads like a mangling of a name rather than the name itself. But the workflow
+ * HAS a name, and the cockpit already holds it. So the slug is resolved rather
+ * than dressed up, and when it resolves to nothing the slug stands as it is:
+ * an unrecognised slug is still the truest thing available, and inventing a
+ * prettier one would answer a question nobody asked.
+ */
+export function resolveWorkflowNameBySlug(
+  entities: readonly { slug?: string | null; name?: string | null }[],
+  slug: string,
+): string | null {
+  const match = entities.find((entity) => entity.slug?.trim() === slug);
+  const name = match?.name?.trim();
+  return name && name !== slug ? name : null;
+}
+
 /** The name, or null. Never the id — the caller renders an em dash instead. */
 export function resolveTargetName(
   index: NameIndex,

@@ -94,6 +94,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { nameIdentifiers, type ResolvedIdentifier } from "@/lib/identifiers";
 import type { DiffLine } from "@/lib/line-diff";
 import { reconcileReferences } from "@/lib/mentions";
+import { resolveWorkflowNameBySlug } from "@/lib/name-index";
 import { conversationExcerpt, hideTechnicalIdentifiers, humanFacingText } from "@/lib/presentation";
 import { patchCandidateId, toolPartVerdict } from "@/lib/tool-parts";
 import { isStaleCall, toolLabel, toolOutcomeKey } from "@/lib/tool-presentation";
@@ -336,11 +337,18 @@ function StarterCards({
 
 /** What to call an action that gets a card of its own. `notRun` swaps the
  *  past tense for the honest form when the verdict says nothing ran. */
-function actionLabel(t: Translate, toolName: string, notRun = false): string {
+function actionLabel(
+  t: Translate,
+  toolName: string,
+  notRun = false,
+  workflowNameFor: (slug: string) => string | null = () => null,
+): string {
   const label = toolLabel(toolName);
   if (label.kind === "workflow")
     return t(notRun ? "tool.name.runNamedWorkflow.notRun" : "tool.name.runNamedWorkflow", {
-      name: label.slug,
+      // The name its author gave it when there is one; the slug otherwise. The
+      // slug is never dressed up — see `toolLabel`.
+      name: workflowNameFor(label.slug) ?? label.slug,
     });
   if (label.kind === "literal") return label.text;
   if (label.kind === "background") return t(label.words.past);
@@ -475,6 +483,7 @@ function ChatMessage({
   onReauth,
   onAutomationAdjust,
   nameFor,
+  workflowNameFor,
 }: {
   message: UiMessage;
   messageIndex: number;
@@ -492,6 +501,10 @@ function ChatMessage({
   onAutomationAdjust: (workflowId: string) => void;
   /** What this conversation knows about the identifiers it mentions. */
   nameFor: (id: string) => ResolvedIdentifier | null;
+  /** The workflow's own name for a `wf_<slug>` action, or null to keep the
+   *  slug. Resolving what this conversation actually ran is a lookup, not the
+   *  guessing the comment above rules out. */
+  workflowNameFor: (slug: string) => string | null;
 }) {
   const { t, locale } = useI18n();
   const from = message.role === "user" ? "user" : "assistant";
@@ -672,7 +685,7 @@ function ChatMessage({
                   type={tool.type}
                   state={tool.state}
                   toolName={tool.toolName}
-                  title={actionLabel(t, tool.toolName, notRun)}
+                  title={actionLabel(t, tool.toolName, notRun, workflowNameFor)}
                   outcomeKey={outcomeKey}
                   data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
                 />
@@ -680,7 +693,7 @@ function ChatMessage({
                 <ToolHeader
                   type={tool.type}
                   state={tool.state}
-                  title={actionLabel(t, tool.type.replace(/^tool-/, ""), notRun)}
+                  title={actionLabel(t, tool.type.replace(/^tool-/, ""), notRun, workflowNameFor)}
                   outcomeKey={outcomeKey}
                   data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
                 />
@@ -1006,6 +1019,18 @@ export function ChatPage() {
     return (id: string) => known.get(id) ?? null;
   }, [createdResources, referencedResources, resume?.active_target]);
   const session = useSession();
+  const workflowCatalogue = useQuery({
+    queryKey: ["chat", "workflow-names"],
+    enabled: session.permissions.includes("workflow:read"),
+    queryFn: () =>
+      apiRequest<{ items: { slug?: string | null; name?: string | null }[] }>(
+        "/v1/workflows?limit=200",
+      ),
+  });
+  const workflowNameFor = useMemo(() => {
+    const items = workflowCatalogue.data?.items ?? [];
+    return (slug: string) => resolveWorkflowNameBySlug(items, slug);
+  }, [workflowCatalogue.data]);
   const decisionQueue = useDecisionQueue(session.permissions);
   const targetWorkflowId =
     resume?.active_target.kind === "workflow" ? resume.active_target.id : null;
@@ -1291,6 +1316,7 @@ export function ChatPage() {
                         }
                         onApproval={submitApproval}
                         nameFor={nameFor}
+                        workflowNameFor={workflowNameFor}
                         onAutomationAdjust={(workflowId) =>
                           send.mutate({
                             message: t("authority.adjustPrompt"),

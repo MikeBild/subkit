@@ -1346,6 +1346,8 @@ const EN = {
   "decisions.target.allWorkflows": "Applies to every workflow",
   // The two things a position can be doing to you.
   "decisions.section.deferred": "Blocking nothing",
+  "decisions.section.recentHint":
+    "Blocking nothing — decide when you get to it. Nothing stops while these wait.",
   "decisions.section.deferredHint":
     "The workflow keeps running — and keeps failing — until this is decided.",
   "decisions.expiresIn": "Expires in {time}",
@@ -3176,6 +3178,8 @@ const DE: Record<TranslationKey, string> = {
   "decisions.target.allWorkflows": "Gilt für alle Workflows",
   // Die zwei Dinge, die eine Position mit dir machen kann.
   "decisions.section.deferred": "Blockiert nichts",
+  "decisions.section.recentHint":
+    "Blockiert nichts — entscheiden Sie, wenn Sie dazu kommen. Während sie warten, steht nichts still.",
   "decisions.section.deferredHint":
     "Der Workflow läuft weiter — und schlägt weiter fehl —, solange das nicht entschieden ist.",
   "decisions.expiresIn": "Läuft ab in {time}",
