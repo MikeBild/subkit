@@ -1,0 +1,144 @@
+name: sweep-arch-tags
+
+# Remove the per-architecture tags left behind by past releases.
+#
+# Every release before the cleanup landed published `X.Y.Z-amd64` and
+# `X.Y.Z-arm64` beside the multi-arch `X.Y.Z` and then left them there. They
+# are build intermediates: pulling one on the other architecture fails in a way
+# that looks like a broken image, so nobody should ever pull them. The release
+# workflow now clears its own; this clears the backlog.
+#
+# It is NOT part of any release path and nothing depends on it. Run it by hand.
+#
+# The one thing this must never do is make a version unpullable. Deleting a tag
+# can collect the manifest it pointed at, so each version is asked BEFORE the
+# delete whether its multi-arch tag resolves on both platforms, and asked again
+# AFTER. A version whose only remaining handle is its arch tags — a release
+# whose manifest never got published — is skipped and named, because deleting
+# there is not tidying up, it is removing the image.
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: "Versions whose -amd64/-arm64 tags to remove (space separated, no leading v)"
+        required: true
+      include_unpullable:
+        description: "Also sweep versions that have NO multi-arch tag — this makes them unpullable"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sweep-arch-tags
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Remove per-architecture tags
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Which versions may be swept, decided before anything is deleted.
+      #
+      # Separated from the deletion so the decision is visible in the log on its
+      # own: a version appears under "will sweep" or under "skipped", and the
+      # reason is the same question in both cases.
+      - name: Decide which versions are safe to sweep
+        id: plan
+        env:
+          VERSIONS: ${{ inputs.versions }}
+          INCLUDE_UNPULLABLE: ${{ inputs.include_unpullable }}
+        run: |
+          set -u
+          safe=""
+          for version in $VERSIONS; do
+            # BOTH platforms, the same question the verification asks after the
+            # delete. Asking a weaker one here would let an amd64-only manifest
+            # through the gate, take its arm64 tag — the last handle on that
+            # image — and then fail a check the deletion has already made
+            # unsatisfiable. The refusal has to come before the delete, or it
+            # is not a refusal, it is an alarm.
+            if out="$(docker buildx imagetools inspect "docker.io/mikebild/subkit:$version" 2>/dev/null)" \
+              && grep -q 'linux/amd64' <<<"$out" && grep -q 'linux/arm64' <<<"$out"; then
+              echo "will sweep $version (multi-arch tag resolves on both platforms)"
+              safe="$safe $version"
+            elif [ "$INCLUDE_UNPULLABLE" = "true" ]; then
+              echo "will sweep $version (its manifest does not resolve on both platforms — this version becomes unpullable)"
+              safe="$safe $version"
+            else
+              echo "skipped $version — no manifest resolving on both platforms, so its arch tags are its only handle"
+            fi
+          done
+          echo "safe=${safe# }" >> "$GITHUB_OUTPUT"
+
+      - name: Remove the per-architecture tags
+        env:
+          SAFE: ${{ steps.plan.outputs.safe }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -u
+          if [ -z "$SAFE" ]; then echo 'nothing to sweep'; exit 0; fi
+          jwt="$(curl -s -H 'Content-Type: application/json' \
+            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+            https://hub.docker.com/v2/users/login/ | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))')"
+          # Unlike the release path, this job exists ONLY to delete. A session it
+          # could not open is the whole job failing, not a tidy-up skipped.
+          if [ -z "$jwt" ]; then echo 'no Docker Hub session'; exit 1; fi
+          failed=0
+          for version in $SAFE; do
+            for arch in amd64 arm64; do
+              tag="${version}-${arch}"
+              code="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+                -H "Authorization: JWT ${jwt}" \
+                "https://hub.docker.com/v2/repositories/mikebild/subkit/tags/${tag}/")"
+              # 404 is the goal state reached by another route, not a failure.
+              case "$code" in
+                2*|404) echo "removed or already gone: ${tag} (${code})" ;;
+                *) echo "could not remove ${tag} (${code})"; failed=1 ;;
+              esac
+            done
+          done
+          exit "$failed"
+
+      # Asked again, because the answer can have changed. Deleting a tag can
+      # collect the manifest it pointed at, and the only thing that proves a
+      # version is still whole is pulling on its name once more.
+      - name: The multi-arch tags still resolve
+        env:
+          VERSIONS: ${{ inputs.versions }}
+          INCLUDE_UNPULLABLE: ${{ inputs.include_unpullable }}
+        run: |
+          set -u
+          resolves() {
+            out="$(docker buildx imagetools inspect "docker.io/mikebild/subkit:$1" 2>/dev/null)" \
+              && grep -q 'linux/amd64' <<<"$out" && grep -q 'linux/arm64' <<<"$out"
+          }
+          for version in $VERSIONS; do
+            if resolves "$version"; then
+              echo "docker.io/mikebild/subkit:$version still resolves on both platforms"
+            elif [ "$INCLUDE_UNPULLABLE" = "true" ]; then
+              echo "docker.io/mikebild/subkit:$version does not resolve — expected, it had no whole manifest"
+            else
+              echo "docker.io/mikebild/subkit:$version no longer resolves"
+              exit 1
+            fi
+          done
+          # `latest` is never in the swept list and never gets the allowance.
+          # It is the tag a first-time reader pulls, and letting it fall under
+          # "expected" would spend the one check that had to stay strict.
+          if resolves latest; then
+            echo "docker.io/mikebild/subkit:latest still resolves on both platforms"
+          else
+            echo "docker.io/mikebild/subkit:latest no longer resolves"
+            exit 1
+          fi
