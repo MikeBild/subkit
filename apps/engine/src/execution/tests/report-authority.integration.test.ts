@@ -614,3 +614,79 @@ test("two preparations at once still produce one held run", async () => {
     );
   expect(runs).toHaveLength(1);
 });
+
+test("a recipient the author declares is reviewed, and the runtime still holds it to the wire", async () => {
+  // The step this exists for cannot be observed at all: it sits behind a
+  // condition that depends on a write a preparation holds back, so a held run
+  // can never see past its own suppression. Without a way to state the
+  // recipient, such a step is refused for good — and the advice it carried
+  // ("let a preparation run") was a circle.
+  //
+  // This is not a way around the review. The author states who it goes to, a
+  // human approves that statement, and the dispatcher still decodes the real
+  // message and compares the recipient byte for byte. The last assertion is
+  // the one that matters: a declaration that does not match what is sent is
+  // refused at the wire, exactly as an observed one would be.
+  const f = await fixture();
+  const db = ctx.testDb.db;
+  const [version] = await db
+    .select()
+    .from(workflowVersions)
+    .where(eq(workflowVersions.id, f.wf.version_id));
+  const dag = version?.dag as { steps: Array<Record<string, unknown>> };
+  const declared = {
+    ...dag,
+    steps: dag.steps.map((step) =>
+      step.id === "send"
+        ? {
+            ...step,
+            report_delivery: {
+              kind: "gmail_report",
+              to: "recipient@example.test",
+              from: "sender@example.test",
+              content_type: "text/html",
+            },
+          }
+        : step,
+    ),
+  };
+  await db
+    .update(workflowVersions)
+    .set({ dag: declared })
+    .where(eq(workflowVersions.id, f.wf.version_id));
+
+  // No preparation run has ever happened for this version, and the review is
+  // nevertheless complete: the recipient is stated rather than observed.
+  const preview = await f.inspect();
+  expect(
+    preview.manifest.effects.find((effect) => effect.step_id === "send")?.report_delivery?.to,
+  ).toBe("recipient@example.test");
+  expect(preview.request_refusals.find((entry) => entry.step_id === "send")).toBeUndefined();
+  expect(preview.eligible_for_repeated_runs).toBe(true);
+
+  await f.grant();
+  let sent = 0;
+  const remote = Object.assign(
+    async () => {
+      sent += 1;
+      return Response.json({ id: "sent" });
+    },
+    { preconnect: () => {} },
+  ) as typeof fetch;
+  await withDriverFetchForTests(remote, async () => {
+    expect((await f.run()).status).toBe("succeeded");
+    expect(sent).toBe(1);
+    // The same approval, a message to somebody else: refused before egress.
+    // This is the assertion the whole field rests on — a declaration is a
+    // claim, and the wire is where it is checked.
+    const elsewhere = Buffer.from(
+      Buffer.from(f.raw, "base64url")
+        .toString()
+        .replace("recipient@example.test", "other@example.test"),
+    ).toString("base64url");
+    const refused = await f.run(elsewhere);
+    expect(refused.status).toBe("failed");
+    expect(refused.steps[0]?.error).toMatchObject({ code: "execution_authority_changed" });
+    expect(sent).toBe(1);
+  });
+});

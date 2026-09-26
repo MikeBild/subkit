@@ -5,6 +5,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { FileRefSchema } from "../api/files-schemas.ts";
+import { ReportDeliveryBoundarySchema } from "./report-delivery-boundary.ts";
 import { RequestBoundaryScopeSchema } from "./request-boundary.ts";
 import { StorageScopeSchema } from "./storage-boundary.ts";
 import { looksLikeJsonObjectOrArray, parseHeaderLines } from "./types-helpers.ts";
@@ -277,6 +278,24 @@ export const RequestStepSchema = z
     // definition of every stored workflow and with it the digest every live
     // grant is bound to.
     boundary: RequestBoundaryScopeSchema.optional(),
+    // Who a report e-mail goes to, stated by the author instead of observed.
+    //
+    // The profile normally learns the recipient from a preparation run. A step
+    // behind a condition that depends on a write such a run holds back can
+    // never be observed by one — a held run cannot see past the writes it
+    // suppresses — so without this the step is refused for good, and the advice
+    // it carried ("let a preparation run") was a circle.
+    //
+    // The dispatcher is unchanged: it still decodes the real message and
+    // compares the recipient byte for byte. So this is an author's claim that a
+    // human approves and the runtime holds to, exactly like `boundary` — not a
+    // way around the review. A declaration that does not match what is sent
+    // fails at dispatch.
+    //
+    // Optional with NO default, for the same reason as `boundary`: a default
+    // would change the parsed definition of every stored workflow and with it
+    // the digest every live grant is bound to.
+    report_delivery: ReportDeliveryBoundarySchema.optional(),
     // headers accepts either a record or a multi-line
     // "Name: Value" string (one per line). The string form is a
     // convenience for LLM-authored steps that often emit headers as a

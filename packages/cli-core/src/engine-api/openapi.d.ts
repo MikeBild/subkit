@@ -17867,6 +17867,14 @@ export interface components {
                 /** @enum {boolean} */
                 destructive?: true;
             };
+            report_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_report";
+                to: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain" | "text/html";
+            };
             headers?: {
                 [key: string]: string;
             } | string;
