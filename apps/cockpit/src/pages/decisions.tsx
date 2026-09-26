@@ -32,11 +32,19 @@ import {
   filterByKinds,
   isDecidable,
   partitionByUrgency,
+  splitByAge,
 } from "./decisions-model";
 
 // Reviewable scheduled workflows share the existing queue and kind filters.
 type QueueKind = DecidableKind | "schedule";
 const KINDS: QueueKind[] = ["patch", "skill", "schedule"];
+/** What the reader clicked to get here, named so a narrowed list says so. */
+const FOCUS_LABEL: Record<DecisionFocus, TranslationKey> = {
+  blocked: "decisions.focus.blocked",
+  failing: "decisions.focus.failing",
+  overdue: "decisions.focus.overdue",
+  other: "decisions.focus.other",
+};
 const KIND_LABEL: Record<QueueKind, TranslationKey> = {
   patch: "decisions.kind.patch",
   skill: "decisions.kind.skill",
@@ -49,11 +57,31 @@ interface Preferences {
   kinds: QueueKind[];
 }
 
+/**
+ * Which tile sent the reader here.
+ *
+ * The overview counts four separate things and links each number at this page.
+ * Only `blocked` was ever read, and it was read as "show the schedule KIND" —
+ * one kind that covers two sections. So clicking Blocked showed the failing
+ * workflows too, and clicking Failing narrowed nothing at all: the reader
+ * landed on the whole queue. A number that names something has to lead to that
+ * something; this is the same defect as "production incidents: 1" pointing at
+ * eleven thousand runs, one page further on.
+ *
+ * Kept apart from the chips on purpose. The chips are the reader's own filter
+ * and persist; this is where they arrived from, and it lasts exactly as long as
+ * the URL does.
+ */
+export type DecisionFocus = "blocked" | "failing" | "overdue" | "other";
+const FOCUSES: DecisionFocus[] = ["blocked", "failing", "overdue", "other"];
+
+export function readFocus(search: string): DecisionFocus | null {
+  const raw = new URLSearchParams(search).get("bucket");
+  return FOCUSES.find((focus) => focus === raw) ?? null;
+}
+
 function readPreferences(): Preferences {
   try {
-    if (new URLSearchParams(window.location.search).get("bucket") === "blocked") {
-      return { kinds: ["schedule"] };
-    }
     const raw = window.localStorage.getItem(PREFERENCE_KEY);
     if (!raw) return { kinds: [] };
     const parsed = JSON.parse(raw) as Partial<Preferences>;
@@ -81,6 +109,9 @@ export function DecisionsPage() {
   const queryClient = useQueryClient();
   const queue = useDecisionQueue(session.permissions);
   const [preferences, setPreferences] = useState<Preferences>(() => readPreferences());
+  const [focus, setFocus] = useState<DecisionFocus | null>(() =>
+    typeof window === "undefined" ? null : readFocus(window.location.search),
+  );
   const [section, setSection] = useState<"decisions" | "suggestions" | "questions">("decisions");
   const [visibleCount, setVisibleCount] = useState(25);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -133,21 +164,32 @@ export function DecisionsPage() {
   const selectedKinds = preferences.kinds.filter(
     (kind): kind is DecidableKind => kind !== "schedule",
   );
-  const filtered = (
+  const byChips = (
     preferences.kinds.length > 0 && selectedKinds.length === 0
       ? []
       : filterByKinds(open, selectedKinds)
   ) as DecidableItem[];
-  const held =
-    preferences.kinds.length === 0 || preferences.kinds.includes("schedule")
-      ? queue.heldSchedules
-      : [];
-  // The opposite of a held schedule, and it belongs to the same filter: both
-  // are "a scheduled workflow needs you".
-  const failing =
-    preferences.kinds.length === 0 || preferences.kinds.includes("schedule")
-      ? queue.failingWorkflows
-      : [];
+  // `overdue` and `other` split the SAME proposals by age, at the same 72 hours
+  // the tile counts with (AGED_AFTER_DAYS). Arriving from either tile and
+  // seeing both halves is how a number stops meaning anything.
+  const filtered =
+    focus === "blocked" || focus === "failing"
+      ? []
+      : focus === null
+        ? byChips
+        : // Same override: the age tiles count both kinds, so a saved kind chip
+          // must not hide half of what the number stood for.
+          splitByAge(open, Date.now())[focus === "overdue" ? "aged" : "current"];
+  const byKind = preferences.kinds.length === 0 || preferences.kinds.includes("schedule");
+  // Arriving from a tile decides what is shown, over any chip the reader saved
+  // earlier: they clicked a number, and the number has to lead to what it
+  // counted. Used to be done by SETTING the chip to "schedule" — one kind that
+  // covers two sections, so Blocked listed the failing workflows as well, and
+  // Failing was never read at all and narrowed nothing.
+  const held = focus === "blocked" || (focus === null && byKind) ? queue.heldSchedules : [];
+  // The opposite of a held schedule, and it shares the chip: both are "a
+  // scheduled workflow needs you". It is its own tile, though.
+  const failing = focus === "failing" || (focus === null && byKind) ? queue.failingWorkflows : [];
   const initial = filtered.slice(0, visibleCount);
   const urgency = partitionByUrgency(initial, Date.now());
   const { current, aged } = urgency.deferred;
@@ -264,14 +306,27 @@ export function DecisionsPage() {
                 data-family-slot="kind-filters"
               >
                 <Button
-                  variant={preferences.kinds.length === 0 ? "default" : "outline"}
+                  variant={preferences.kinds.length === 0 && focus === null ? "default" : "outline"}
                   size="sm"
                   data-testid="decisions-chip-all"
-                  aria-pressed={preferences.kinds.length === 0}
-                  onClick={() => persist({ ...preferences, kinds: [] })}
+                  aria-pressed={preferences.kinds.length === 0 && focus === null}
+                  onClick={() => {
+                    // Arriving from a tile narrows this list. Clearing has to
+                    // clear that too, or "All" shows one section and calls
+                    // itself everything.
+                    setFocus(null);
+                    if (typeof window !== "undefined")
+                      window.history.replaceState(null, "", window.location.pathname);
+                    persist({ ...preferences, kinds: [] });
+                  }}
                 >
                   {t("decisions.chip.all")}
                 </Button>
+                {focus !== null && (
+                  <Badge variant="secondary" data-testid="decisions-focus">
+                    {t(FOCUS_LABEL[focus])}
+                  </Badge>
+                )}
                 {/* Art-Chips only. §8.5 forbids a chip that puts the queue into a past
               STATE — decided, discarded, deferred — and there is none: this list
               is closed over the two kinds the page can act on. */}
@@ -310,7 +365,7 @@ export function DecisionsPage() {
                   title={t("decisions.failing.group")}
                   hint={t("decisions.failing.groupHint")}
                   count={failing.length}
-                  bucket="blocked"
+                  bucket="failing"
                 >
                   {failing.slice(0, visibleCount).map((item) => (
                     <FailingWorkflowCard key={item.key} failing={item} />
@@ -527,7 +582,7 @@ function DecisionSection({
   title: string;
   hint: string;
   count: number;
-  bucket: "blocked" | "overdue" | "other";
+  bucket: DecisionFocus;
   muted?: boolean;
   children: ReactNode;
 }) {

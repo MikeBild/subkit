@@ -755,6 +755,19 @@ async function verifyTrialAlreadyRunning(page, stand, workflowId, locale, captur
     await page.unroute(preparePattern, prepare);
     await page.unroute(previewPattern, preview);
     await page.unroute(historyPattern, noHistory);
+    // Leave the page as it was found. Unrouting alone is not enough: this
+    // scenario opened a dialog that filled the client's query cache for THIS
+    // workflow id with a review of its own, and every later scenario reads that
+    // same id. The first pass went green and the third came back with a review
+    // it never asked for — a stand that leaks into the next scenario measures
+    // the leak, not the product. Proven by running the sweep without this
+    // scenario: 788 frames, green.
+    await page.keyboard.press("Escape").catch(() => {});
+    // A real page of the product, not `about:blank`: that has no origin, so the
+    // app's own localStorage read throws there and the sweep collects the
+    // console error in every locale. A full navigation is what resets the
+    // client cache — a same-origin one.
+    await stand.visit(page, "workflows");
   }
 }
 
