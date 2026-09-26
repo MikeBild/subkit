@@ -904,6 +904,19 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
     // which passes a screenshot count and blocks the approval. That is exactly
     // how a repaired production workflow once became unapprovable with nothing
     // wrong with it.
+    // The operations list must lead with WHAT HAPPENS, not with the authored
+    // step id. A reader being asked to approve was met with `publish-report`,
+    // an identifier that answers a different question than the one they are
+    // being asked. Both parts are still on screen; the order is the point, so
+    // the order is what this asserts.
+    const operations = await page.getByTestId("authority-grant-review").innerText();
+    const effectWord = locale === "de" ? "Schreiben" : "Write";
+    const effectAt = operations.indexOf(effectWord);
+    const stepAt = operations.indexOf("publish-report");
+    if (effectAt < 0 || stepAt < 0)
+      throw new Error(`Operations list lost a part: effect=${effectAt} step=${stepAt}`);
+    if (stepAt < effectAt)
+      throw new Error("The step id leads the operations list again; the effect must");
     const boundaryPanel = await page.getByTestId("authority-request-boundary").innerText();
     for (const sentence of [
       locale === "de" ? "jede Seite unter dieser einen Adresse" : "any page on this one address",

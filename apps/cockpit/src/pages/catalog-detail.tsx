@@ -59,6 +59,14 @@ const PERMISSIONS: Record<DetailResource, { read: string; write: string }> = {
   files: { read: "file:read", write: "file:write" },
 };
 
+/** What this record is FOR, as its author wrote it. Never a slug and never an
+ *  id: a fallback that prints an identifier answers a different question than
+ *  the one the reader asked. */
+export function recordPurpose(record: RecordValue | undefined): string | null {
+  const value = record?.description;
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
 function recordTitle(record: RecordValue | undefined): string {
   for (const key of ["name", "display_name", "title", "filename", "slug"]) {
     const value = record?.[key];
@@ -585,7 +593,15 @@ export function CatalogDetailPage({
             </a>
           </Button>
           <h1 className="truncate text-2xl font-semibold tracking-tight">{recordTitle(record)}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t(DESCRIPTION_KEYS[resource])}</p>
+          {/* The record's OWN description when it has one — what this thing is
+              for, in the words of whoever built it. The generic line under it
+              describes the whole catalogue and is the same sentence on every
+              record, so a reader who opens one workflow to decide about it was
+              told nothing specific. The engine has published `description` all
+              along; only this line stood in its place. */}
+          <p className="mt-1 text-sm text-muted-foreground">
+            {recordPurpose(record) ?? t(DESCRIPTION_KEYS[resource])}
+          </p>
         </div>
         <div data-family-slot="detail-actions" className="flex flex-wrap gap-2">
           {resource === "workflows" && permissions.includes("workflow:run") && (
