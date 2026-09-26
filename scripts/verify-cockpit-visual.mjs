@@ -460,13 +460,14 @@ function json(route, body, status = 200) {
   });
 }
 
-function overviewMetric(id, value, path, severity = "information") {
+function overviewMetric(id, value, path, severity = "information", kind = "count") {
   return {
     id,
     value,
     value_state: value === 0 ? "zero" : "observed",
     severity,
-    kind: "count",
+    kind,
+    unit: kind === "ratio" ? "ratio" : "count",
     drilldown: { path },
   };
 }
@@ -516,13 +517,83 @@ function operationalOverview() {
         sources: [],
       },
     },
+    // The four sections and eight metrics a running installation serves.
+    //
+    // This used to be one section holding one tile. Seven of the eight metric
+    // ids the page knows how to label were therefore never photographed, in
+    // any language, at any width — and neither was the `progress`
+    // visualization, a whole rendering branch. Eight hundred green screenshots
+    // of a page showing a single tile say nothing about the page people open.
+    //
+    // It also swallowed a change made to this very file's subject: the only
+    // metric whose drilldown still renders a link is `executions.incidents_24h`
+    // (the rest lead to a list that cannot answer for the number). Absent from
+    // the fixture, that link was photographed zero times. A fixture that omits
+    // what the code singles out cannot see whether it works.
+    //
+    // Values are chosen to be awkward rather than tidy: a ratio that is not a
+    // round number, a long repeating decimal, a zero beside a non-zero in the
+    // same row, and an incident count high enough to render the link and its
+    // urgent state.
     sections: [
       {
         id: "workflows",
         title: "Workflows",
         visualization: "kpi",
-        metrics: [overviewMetric("automation.active_workflows", 14, "/cockpit/workflows")],
+        metrics: [
+          overviewMetric("automation.active_workflows", 91, "/cockpit/workflows"),
+          overviewMetric("executions.total_24h", 36, "/cockpit/runs"),
+        ],
         drilldown: { path: "/cockpit/workflows" },
+      },
+      {
+        id: "reliability",
+        title: "Reliability",
+        visualization: "kpi",
+        metrics: [
+          overviewMetric("executions.success_ratio", 0.9375, "/cockpit/runs", "healthy", "ratio"),
+          // Any production incident at all is `critical` to the engine, not a
+          // graded band — so a non-zero count here is the severity it ships.
+          // The path is the engine's own, both halves: this is the only metric
+          // that still renders a link, and a fixture carrying a different one
+          // photographs a link the product does not have.
+          overviewMetric(
+            "executions.incidents_24h",
+            3,
+            "/cockpit/runs?status=failed&source=scheduler",
+            "critical",
+          ),
+          overviewMetric("executions.trial_failures_24h", 0, "/cockpit/runs?status=failed"),
+        ],
+        drilldown: { path: "/cockpit/runs" },
+      },
+      {
+        id: "connections",
+        title: "Connections",
+        visualization: "progress",
+        metrics: [
+          // 0.8 is the engine's `urgent` band for this metric (>= 0.7, < 0.9).
+          // Taken from the rule rather than picked, so the fixture cannot
+          // photograph a severity the product never emits at this value.
+          overviewMetric("connectors.healthy_ratio", 0.8, "/cockpit/connectors", "urgent", "ratio"),
+        ],
+        drilldown: { path: "/cockpit/connectors" },
+      },
+      {
+        id: "learning",
+        title: "Learning",
+        visualization: "kpi",
+        metrics: [
+          overviewMetric(
+            "repairs.applied_ratio",
+            0.654320987654321,
+            "/cockpit/decisions",
+            "information",
+            "ratio",
+          ),
+          overviewMetric("skills.reusable", 49, "/cockpit/skills"),
+        ],
+        drilldown: { path: "/cockpit/skills" },
       },
     ],
     audit: { path: "/cockpit/audit", snapshot_generated_at: generatedAt },
