@@ -693,16 +693,16 @@ export function GrantWorkflowAuthority({
                   </p>
                   {review.manifest.effects.map((effect) => (
                     <div key={effect.step_id} className="min-w-0 text-sm">
+                      {/* What happens and where it happens lead; the authored
+                          step id follows as provenance. It used to lead, and a
+                          reader deciding whether to approve was met with
+                          `fetch_route` — an identifier that answers a different
+                          question than the one they are being asked. Nothing is
+                          hidden and nothing is invented: every part of this was
+                          already on screen, in the wrong order. */}
                       <p className="font-medium">
-                        {effect.step_id}
-                        {" · "}
                         {t(AUTHORITY_EFFECT_KEYS[effect.effect])}
                         {" · "}
-                        {effect.operation}
-                      </p>
-                      <p className="break-all">
-                        {t("authority.connector")}
-                        {": "}
                         {effect.connector_id
                           ? (connectors.data?.items.find(
                               (connector) => connector.id === effect.connector_id,
@@ -711,6 +711,11 @@ export function GrantWorkflowAuthority({
                       </p>
                       <p className="break-all">{effect.target ?? t("authority.unboundTarget")}</p>
                       {effect.read_path && <p>{t("authority.readPath")}</p>}
+                      <p className="text-muted-foreground text-xs">
+                        {t("authority.issueStep", { step: effect.step_id })}
+                        {" · "}
+                        {effect.operation}
+                      </p>
                     </div>
                   ))}
                   {review.execution_shape.requests.map((request) => (

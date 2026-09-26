@@ -210,8 +210,16 @@ function StepCard({
     <Card size="sm" data-testid={testId}>
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
-          <span className="min-w-0 truncate">{view.definition.id}</span>
-          {view.definition.kind && (
+          {/* What the step DOES leads — its kind, and the connector it works
+              through when it has one. The authored id moves under the title as
+              provenance. This card is what the page calls the workflow plan, and
+              a plan made of `fetch_route`, `store_manifest`, `mark_published`
+              is a list of machine names, not a plan anybody can read.
+              Nothing invented: both parts were already on this card, below. */}
+          <span className="min-w-0 truncate">
+            {connectorName ?? t(workflowStepKindKey(view.definition.kind))}
+          </span>
+          {view.definition.kind && connectorName && (
             <Badge variant="outline">{t(workflowStepKindKey(view.definition.kind))}</Badge>
           )}
           {view.lastRun && (
@@ -220,6 +228,9 @@ function StepCard({
             </Badge>
           )}
         </CardTitle>
+        <p className="text-muted-foreground text-xs">
+          {t("authority.issueStep", { step: view.definition.id })}
+        </p>
       </CardHeader>
       <CardContent className="grid gap-3 lg:grid-cols-2">
         <div className="min-w-0">

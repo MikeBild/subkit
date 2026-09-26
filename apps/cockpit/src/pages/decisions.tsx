@@ -480,7 +480,14 @@ export function DecisionsPage() {
                     <DecisionSection
                       testId="decisions-current"
                       title={t("operational.core.other")}
-                      hint={t("decisions.section.deferredHint")}
+                      // Both halves come from the SAME pile — `urgency.deferred`,
+                      // split only by age. So they cannot claim opposite
+                      // consequences: the older half said "blocking nothing" while
+                      // this one said "the workflow keeps failing until this is
+                      // decided". A reader cannot judge urgency when one pile
+                      // describes itself two ways. Deferred means deferred; the
+                      // only difference here is how long it has waited.
+                      hint={t("decisions.section.recentHint")}
                       count={current.length}
                       bucket="other"
                     >
