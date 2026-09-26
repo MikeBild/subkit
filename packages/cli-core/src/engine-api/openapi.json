@@ -5747,6 +5747,39 @@
             ],
             "additionalProperties": false
           },
+          "report_delivery": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "gmail_report"
+                ]
+              },
+              "to": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+              },
+              "from": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+              },
+              "content_type": {
+                "type": "string",
+                "enum": [
+                  "text/plain",
+                  "text/html"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "to",
+              "from",
+              "content_type"
+            ],
+            "additionalProperties": false
+          },
           "headers": {
             "anyOf": [
               {
