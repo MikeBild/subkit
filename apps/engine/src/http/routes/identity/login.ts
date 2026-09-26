@@ -11,6 +11,7 @@ import {
   isSafeBrowserRedirect,
   issueBrowserSession,
   revokeBrowserSession,
+  signLoginState,
   verifyLoginState,
 } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
@@ -48,6 +49,10 @@ function providers() {
     (left, right) => Number(left.protocol === "api_key") - Number(right.protocol === "api_key"),
   );
 }
+
+/** Where a sign-in with no destination of its own returns to. A constant, so no
+ *  caller can steer it. */
+const DEFAULT_LOGIN_REDIRECT = "/cockpit";
 
 function oidcProviders(): OidcConfig[] {
   return providers().filter((provider): provider is OidcConfig => provider.protocol === "oidc");
@@ -94,10 +99,23 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
     const existingState = c.req.query("login_state");
 
     if (!selectedId) {
-      const state = existingState ?? "";
-      const loginState = await verifyLoginState(state);
-      const redirectTo = safeRedirect(String(loginState?.redirect_to ?? ""));
-      if (!redirectTo) return browserStateError(c, 400, "invalid_state");
+      // A login state carries ONE thing: where to return to afterwards. When it
+      // is missing or has expired, that is not a broken request — it is
+      // somebody who wants to sign in and has nowhere in particular to go back
+      // to. Refusing here made the recovery link a closed loop: the error page
+      // it rendered offered "Sign in again", that link carries no state, and
+      // following it arrived in this same branch. The one button whose job is
+      // to lead out of the dead end led straight back into it.
+      //
+      // So a start without a usable state mints a fresh one for the cockpit
+      // root. The destination is a constant, never anything from the URL —
+      // `redirect_to` stays restricted to safe internal targets, and nothing a
+      // caller supplies is trusted here.
+      const verified = await verifyLoginState(existingState ?? "");
+      const carried = safeRedirect(String(verified?.redirect_to ?? ""));
+      const state = carried
+        ? (existingState ?? "")
+        : await signLoginState({ redirect_to: DEFAULT_LOGIN_REDIRECT });
       const base = getConfig().server.public_base_url;
       const choices = providers().map((provider) => ({
         id: provider.id,
@@ -116,7 +134,10 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const state = existingState ?? "";
     const loginState = await verifyLoginState(state);
-    if (!loginState) return browserStateError(c, 400, "invalid_state");
+    // Same dead end one step further in: the state expired between choosing a
+    // provider and arriving here. Send them back to the choice with a state
+    // that works, rather than to a page whose only link returns here.
+    if (!loginState) return c.redirect("/v1/identity/login/start", 302);
     const selected = providers().find((provider) => provider.id === selectedId);
     if (!selected) {
       return browserStateError(
