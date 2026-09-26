@@ -550,7 +550,6 @@ const EN = {
   "resource.operations.title": "System",
   "resource.operations.description":
     "The tools of this installation. What they find lives on the overview.",
-  "resource.operations.empty": "No operational data returned.",
   "resource.settings.title": "Settings",
   "resource.settings.description": "Resolved workspace configuration and its source layers.",
   "resource.settings.empty": "No settings available.",
@@ -689,13 +688,6 @@ const EN = {
   "operations.scanDescription":
     "The scan reads and changes nothing. Every repair it proposes becomes a decision, and nothing is applied until a person approves it.",
   "operations.generated": "Last evaluated {date}",
-  "operations.failures": "Failure groups",
-  "operations.risks": "Risks",
-  "operations.findingsTitle": "Where the findings are",
-  "operations.findingsDescription":
-    "Failure groups and risks belong to the overview, proposed repairs to the decision queue. This page holds the tools, not a second copy of their results.",
-  "operations.openOverview": "Open overview",
-  "operations.openDecisions": "Open decisions",
   "severity.critical": "Critical",
   "severity.warning": "Warning",
   "settings.search": "Search settings",
@@ -2362,7 +2354,6 @@ const DE: Record<TranslationKey, string> = {
   "resource.operations.title": "System",
   "resource.operations.description":
     "Die Werkzeuge dieser Installation. Was sie finden, steht auf der Übersicht.",
-  "resource.operations.empty": "Keine Betriebsdaten zurückgegeben.",
   "resource.settings.title": "Einstellungen",
   "resource.settings.description": "Aufgelöste Konfiguration des Arbeitsbereichs und ihre Quellen.",
   "resource.settings.empty": "Keine Einstellungen verfügbar.",
@@ -2506,13 +2497,6 @@ const DE: Record<TranslationKey, string> = {
   "operations.scanDescription":
     "Der Scan liest und ändert nichts. Jede Reparatur, die er vorschlägt, wird zu einer Entscheidung — eingespielt wird sie erst, wenn ein Mensch zustimmt.",
   "operations.generated": "Zuletzt ausgewertet {date}",
-  "operations.failures": "Fehlergruppen",
-  "operations.risks": "Risiken",
-  "operations.findingsTitle": "Wo die Befunde stehen",
-  "operations.findingsDescription":
-    "Fehlergruppen und Risiken gehören auf die Übersicht, vorgeschlagene Reparaturen in die Entscheidungs-Queue. Diese Seite hält die Werkzeuge, nicht eine zweite Abschrift ihrer Ergebnisse.",
-  "operations.openOverview": "Übersicht öffnen",
-  "operations.openDecisions": "Entscheidungen öffnen",
   "severity.critical": "Kritisch",
   "severity.warning": "Warnung",
   "settings.search": "Einstellungen durchsuchen",

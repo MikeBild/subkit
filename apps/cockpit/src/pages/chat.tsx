@@ -188,7 +188,18 @@ const COLUMN = "mx-auto w-full max-w-[1280px]";
 
 /** Where a catalogue object lives in the Cockpit. */
 function catalogHref(kind: string, id: string): string {
-  const section = kind === "execution" ? "runs" : kind === "workflow" ? "workflows" : "connectors";
+  // A run has no page of its own. `/runs` is a list, and its detail view opens
+  // from a row rather than from an address (app/route-table.ts), so a
+  // `/runs/<id>` link resolved to nothing: every run a conversation named —
+  // in the context list and inline in the transcript — landed on "page not
+  // found". The same defect as the doubled `/cockpit` prefix, one section
+  // over.
+  //
+  // The list is a worse answer than a run's own page would be, and it is the
+  // honest one: it exists. Narrowing it is not possible either — the search
+  // matches workflow names, not run ids — so nothing here pretends otherwise.
+  if (kind === "execution") return "/cockpit/runs";
+  const section = kind === "workflow" ? "workflows" : "connectors";
   return `/cockpit/${section}/${encodeURIComponent(id)}`;
 }
 

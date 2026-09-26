@@ -49,10 +49,15 @@ test("the link leads to those runs, not to every run", () => {
   // "Production incidents: 1" pointed at eleven thousand rows. A number that
   // names something has to lead to that something.
   const [failing] = failingWorkflows([group({})]);
-  expect(failing?.runs_href).toBe("/cockpit/runs?status=failed&q=Product%20analytics%20hourly");
+  // Router-relative, and this test used to pin the absolute form — which is how
+  // the broken link shipped. The router carries `/cockpit` as its base, so an
+  // absolute href became `/cockpit/cockpit/runs` and the one way out of a
+  // failing decision landed on "page not found". A test that agrees with the
+  // defect is worse than no test: it certifies it.
+  expect(failing?.runs_href).toBe("/runs?status=failed&q=Product%20analytics%20hourly");
   // Without a name there is nothing to search for, but the status still narrows.
   const [unnamed] = failingWorkflows([group({ workflow_name: null })]);
-  expect(unnamed?.runs_href).toBe("/cockpit/runs?status=failed");
+  expect(unnamed?.runs_href).toBe("/runs?status=failed");
 });
 
 test("an authoring trial that failed is feedback, not an incident", () => {

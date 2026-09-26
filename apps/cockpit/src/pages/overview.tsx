@@ -92,6 +92,17 @@ const CORE_COPY: Record<
     link: "operational.core.freshness.open",
   },
 };
+/**
+ * The product metrics whose drilldown actually narrows to what the number
+ * counted. Everything else keeps its number and loses its link.
+ *
+ * `executions.incidents_24h` is the only one: it carries `?status=failed`. The
+ * comment in the engine records that this narrowing was the fix for "1
+ * incident" pointing at eleven thousand rows — the same reasoning applies to
+ * every link that never got one.
+ */
+const ACTIONABLE_DRILLDOWNS = new Set<string>(["executions.incidents_24h"]);
+
 const METRIC_COPY: Record<string, { label: TranslationKey; tooltip: TranslationKey }> = {
   "automation.active_workflows": {
     label: "operational.metric.activeWorkflows",
@@ -260,13 +271,6 @@ export function OverviewPage() {
                     <h2 className="text-base font-semibold leading-6">
                       {t(SECTION_COPY[section.id] ?? "operational.product.title")}
                     </h2>
-                    <a
-                      className="text-sm font-medium underline underline-offset-4"
-                      href={section.drilldown.path}
-                      data-testid={`overview-${section.id.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-open`}
-                    >
-                      {t("operational.details")}
-                    </a>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {section.metrics.map((metric) => {
@@ -282,8 +286,21 @@ export function OverviewPage() {
                           valueState={metric.value_state}
                           severity={metric.severity}
                           tooltip={t(copy?.tooltip ?? "operational.metric.value.tooltip")}
-                          href={metric.drilldown.path}
-                          linkLabel={t("operational.details")}
+                          // A link only where it leads somewhere that can act
+                          // on THIS number. A section header's link was a
+                          // word-for-word copy of the sidebar entry beside it,
+                          // and most metric links landed on an unfiltered list
+                          // that cannot tell the number apart: "execution
+                          // success 100%" opened every run including the
+                          // successful ones, and production incidents and trial
+                          // failures — two numbers whose whole purpose is to be
+                          // distinguishable — opened the identical URL.
+                          //
+                          // The numbers all stay. Only links that answer
+                          // nothing go, and none is invented to replace them.
+                          {...(ACTIONABLE_DRILLDOWNS.has(metric.id)
+                            ? { href: metric.drilldown.path, linkLabel: t("operational.details") }
+                            : {})}
                           icon={<Icon className="size-4" />}
                           className="min-h-36"
                         />
