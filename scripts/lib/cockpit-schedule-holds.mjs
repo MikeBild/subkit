@@ -135,8 +135,15 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
     await page.getByTestId("decisions-chip-0").click();
     await stand.visit(page, "decisions?bucket=blocked");
     await card.waitFor();
-    if ((await page.getByTestId("decisions-chip-2").getAttribute("aria-pressed")) !== "true")
-      throw new Error("Overview blocked link must override a saved unrelated kind filter");
+    // Arriving from the tile still overrides a saved, unrelated kind filter —
+    // that requirement is unchanged. What changed is how: the tile no longer
+    // SETS the chip to "schedule", because that one kind covers two sections
+    // and so the Blocked number listed the failing workflows too. The arrival
+    // now scopes the page itself and says which number it came from.
+    if (!(await page.getByTestId("decisions-focus").count()))
+      throw new Error("A narrowed queue does not say it is narrowed");
+    if (await page.getByTestId("decisions-failing").count())
+      throw new Error("The blocked tile leads to the failing workflows as well");
     await page.getByTestId("decisions-chip-all").click();
     await card.getByRole("link").click();
     await page.getByTestId("detail-workflows").waitFor();

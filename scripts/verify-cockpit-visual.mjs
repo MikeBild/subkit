@@ -93,6 +93,15 @@ const routes = [
   // page-shell defect stayed invisible to this sweep.
   "",
   "decisions",
+  // Each overview tile links here with its own bucket, and until now the sweep
+  // only ever visited the bare page — so every narrowed view shipped
+  // unphotographed, and three of the four buckets turned out not to narrow
+  // anything at all. A tile that counts one thing and lands on another is the
+  // defect this catches; it cannot be caught from the unnarrowed page.
+  "decisions?bucket=blocked",
+  "decisions?bucket=failing",
+  "decisions?bucket=overdue",
+  "decisions?bucket=other",
   "chat",
   "workflows",
   "runs",
@@ -1587,20 +1596,33 @@ async function mockApi(route) {
   });
 }
 
+/**
+ * What a route's frame is called on disk. ONE place, because the file that
+ * writes a frame and the file that looks it up disagreeing is how a sheet ends
+ * up built from nothing — and the comment beside the second copy said exactly
+ * that before it happened.
+ */
+function artifactRouteName(route) {
+  return (route || "overview").replace("?bucket=", "-bucket-");
+}
+
 function markerFor(route) {
-  if (route === "chat") return '[data-testid="chat-workspace"]';
-  if (route === "") return '[data-testid="overview-page"]';
+  // A route may carry the bucket a tile linked with; the page it renders is the
+  // same page.
+  const path = route.split("?")[0];
+  if (path === "chat") return '[data-testid="chat-workspace"]';
+  if (path === "") return '[data-testid="overview-page"]';
   // Decisions owns its page rather than rendering a list of records.
-  if (route === "decisions") return '[data-testid="decisions-page"]';
+  if (path === "decisions") return '[data-testid="decisions-page"]';
   // Installation surfaces name their frame after the section, not the record
   // type. Connections joined them without joining this list, and the sweep has
   // been waiting for a marker that is not on the page since.
-  if (["people", "access", "api-access", "operations", "settings", "connections"].includes(route))
-    return `[data-testid="admin-${route}"]`;
+  if (["people", "access", "api-access", "operations", "settings", "connections"].includes(path))
+    return `[data-testid="admin-${path}"]`;
   // Connectors render through the shared catalog table like every other list.
-  if (["workflows", "connectors", "knowledge", "skills", "files"].includes(route))
-    return `[data-testid="catalog-${route}"]`;
-  return `[data-testid="resource-${route}"]`;
+  if (["workflows", "connectors", "knowledge", "skills", "files"].includes(path))
+    return `[data-testid="catalog-${path}"]`;
+  return `[data-testid="resource-${path}"]`;
 }
 
 function documentThemeMatches(classes, theme) {
@@ -2073,7 +2095,9 @@ for (const locale of variants) {
     });
     await page.route("**/v1/**", mockApi);
     for (const route of routes) {
-      const artifactRoute = route || "overview";
+      // A bucket route writes its own frame: `decisions-bucket-failing`, not a
+      // second file called `decisions` that silently overwrites the first.
+      const artifactRoute = artifactRouteName(route);
       // The door. Status and identity in one act, on the page that is about to
       // be photographed — not on a page of its own, and not once for the run.
       await stand.visit(page, route);
@@ -2396,7 +2420,7 @@ for (const locale of variants) {
         // Read back by the label the frame was WRITTEN under, not by a name
         // rebuilt here. A second place that knows how a frame is called is a
         // second place that can be wrong about it.
-        const artifactRoute = route || "overview";
+        const artifactRoute = artifactRouteName(route);
         const frame = written.get(`${locale.artifact}-${viewport}-${artifactRoute}`);
         if (frame === undefined)
           throw new Error(
