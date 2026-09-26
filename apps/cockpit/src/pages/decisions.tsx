@@ -32,6 +32,7 @@ import {
   filterByKinds,
   isDecidable,
   partitionByUrgency,
+  queueDisplayState,
   splitByAge,
 } from "./decisions-model";
 
@@ -193,9 +194,19 @@ export function DecisionsPage() {
   const initial = filtered.slice(0, visibleCount);
   const urgency = partitionByUrgency(initial, Date.now());
   const { current, aged } = urgency.deferred;
+  // Every section counts on both sides. Leaving `failing` out of the totals is
+  // how a narrowed-away failing workflow read as an empty queue.
   const isFiltered =
     preferences.kinds.length > 0 &&
-    open.length + queue.heldSchedules.length > filtered.length + held.length;
+    open.length + queue.heldSchedules.length + queue.failingWorkflows.length >
+      filtered.length + held.length + failing.length;
+  const display = queueDisplayState({
+    shown: filtered.length,
+    held: held.length,
+    failing: failing.length,
+    total: open.length + queue.heldSchedules.length + queue.failingWorkflows.length,
+    narrowed: isFiltered || focus !== null,
+  });
   // The breakdown comes from the same count as the badge, not from the rows the
   // page happens to hold: the two disagreed the moment a source hit its cap.
 
@@ -416,43 +427,40 @@ export function DecisionsPage() {
                     {t("session.retry")}
                   </Button>
                 </Alert>
-              ) : filtered.length === 0 ? (
-                held.length > 0 ? null : isFiltered ? (
-                  <div
-                    className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
-                    data-testid="decisions-empty-filtered"
-                    data-family-slot="data-state"
-                    data-family-state="filtered-empty"
+              ) : display === "rows" ? null : display === "filtered-empty" ? (
+                <div
+                  className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
+                  data-testid="decisions-empty-filtered"
+                  data-family-slot="data-state"
+                  data-family-state="filtered-empty"
+                >
+                  <p className="text-sm font-medium">{t("decisions.emptyFiltered")}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    data-testid="decisions-show-all"
+                    onClick={() => persist({ ...preferences, kinds: [] })}
                   >
-                    <p className="text-sm font-medium">{t("decisions.emptyFiltered")}</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-3"
-                      data-testid="decisions-show-all"
-                      onClick={() => persist({ ...preferences, kinds: [] })}
-                    >
-                      {t("decisions.showAll")}
-                    </Button>
-                  </div>
-                ) : (
-                  <div
-                    className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
-                    data-testid="decisions-empty"
-                    data-family-slot="data-state"
-                    data-family-state="empty"
-                  >
-                    <CircleCheck
-                      aria-hidden="true"
-                      className="mx-auto size-6 text-emerald-600 dark:text-emerald-400"
-                    />
-                    <p className="mt-2 text-sm font-medium">{t("decisions.emptyTitle")}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {t("decisions.emptyDescription")}
-                    </p>
-                  </div>
-                )
+                    {t("decisions.showAll")}
+                  </Button>
+                </div>
               ) : (
+                <div
+                  className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
+                  data-testid="decisions-empty"
+                  data-family-slot="data-state"
+                  data-family-state="empty"
+                >
+                  <CircleCheck
+                    aria-hidden="true"
+                    className="mx-auto size-6 text-emerald-600 dark:text-emerald-400"
+                  />
+                  <p className="mt-2 text-sm font-medium">{t("decisions.emptyTitle")}</p>
+                  <p className="text-sm text-muted-foreground">{t("decisions.emptyDescription")}</p>
+                </div>
+              )}
+              {display === "rows" && (
                 // Keep the queue count machine-readable so the shared parity check
                 // can compare the visible rows with the navigation badge.
                 <div

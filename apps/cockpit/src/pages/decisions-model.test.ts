@@ -12,6 +12,7 @@ import {
   patchDecision,
   patchTitle,
   QUESTION_LINE_MAX,
+  queueDisplayState,
   skillDecision,
   sortDecisions,
   splitByAge,
@@ -586,5 +587,29 @@ describe("bannerSubset", () => {
 
   test("an empty queue shows no banner", () => {
     expect(bannerSubset(open({ total: 0 })).shown).toBe(false);
+  });
+});
+
+describe("queueDisplayState", () => {
+  const base = { shown: 0, held: 0, failing: 0, total: 0, narrowed: false };
+
+  test("anything on screen means rows — whichever section it is in", () => {
+    // The bug the product owner saw: a failing workflow rendered beside "all
+    // done". Each section alone has to count as content.
+    expect(queueDisplayState({ ...base, failing: 1, total: 1 })).toBe("rows");
+    expect(queueDisplayState({ ...base, held: 1, total: 1 })).toBe("rows");
+    expect(queueDisplayState({ ...base, shown: 1, total: 1 })).toBe("rows");
+  });
+
+  test("nothing at all is the only empty queue", () => {
+    expect(queueDisplayState(base)).toBe("empty");
+  });
+
+  test("narrowed away is not the same as nothing waiting", () => {
+    // Telling somebody "nothing is waiting" when their own filter hid it is
+    // the same lie as the one above, from the other direction.
+    expect(queueDisplayState({ ...base, narrowed: true, total: 4 })).toBe("filtered-empty");
+    // Narrowed, but there was never anything: then it really is empty.
+    expect(queueDisplayState({ ...base, narrowed: true, total: 0 })).toBe("empty");
   });
 });

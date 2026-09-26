@@ -1533,25 +1533,6 @@ export function OperationsPage() {
               </CardContent>
             )}
           </Card>
-
-          <Card data-testid="operations-elsewhere">
-            <CardHeader>
-              <CardTitle>{t("operations.findingsTitle")}</CardTitle>
-              <CardDescription>{t("operations.findingsDescription")}</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              <Button asChild variant="outline">
-                <Link to="/" data-testid="operations-open-overview">
-                  {t("operations.openOverview")}
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link to="/decisions" data-testid="operations-open-decisions">
-                  {t("operations.openDecisions")}
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
         </div>
       )}
     </AdminFrame>

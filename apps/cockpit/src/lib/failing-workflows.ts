@@ -84,9 +84,16 @@ export function failingWorkflows(
       // The name, because the runs list searches by it — an id would match
       // nothing there, and a link that lands on everything is what this
       // replaces.
+      //
+      // Router-relative, WITHOUT the `/cockpit` prefix: this is handed to a
+      // router `Link`, and the router already carries `/cockpit` as its base
+      // (app/router.tsx). Written absolute it became `/cockpit/cockpit/runs`
+      // and the one link out of a failing decision led to "page not found" —
+      // the number named something and then went nowhere, which is the exact
+      // defect this href exists to fix.
       runs_href: group.workflow_name
-        ? `/cockpit/runs?status=failed&q=${encodeURIComponent(group.workflow_name)}`
-        : "/cockpit/runs?status=failed",
+        ? `/runs?status=failed&q=${encodeURIComponent(group.workflow_name)}`
+        : "/runs?status=failed",
     }))
     .sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : 1));
 }
