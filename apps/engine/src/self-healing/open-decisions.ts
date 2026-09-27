@@ -21,8 +21,9 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/index.ts";
-import { log } from "../logging/logger.ts";
+import { errorFields, log } from "../logging/logger.ts";
 import { recordPatchCandidate } from "../observability/instrumentation.ts";
+import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import {
   type PatchReadiness,
   readPatchReadiness,
@@ -175,19 +176,59 @@ export async function closeIfUndecidable(
  * rows whose endpoint no longer emits a signal (so the refresh path never
  * visits them) and replaces the old daily `updated_at` bump, which kept an
  * undecidable row looking freshly active forever.
+ *
+ * One transaction per workflow, holding the workflow's version-write lock
+ * BEFORE readiness is read — the same order (workflow, then candidate) as
+ * approve and processDriftSignal. Without it an operator could save a version
+ * the patch applies to between the read and the close, and the row would be
+ * closed against a version that is no longer current. Each close runs in its
+ * own savepoint and each workflow in its own transaction, so one bad row or
+ * workflow is logged and skipped instead of blocking the rest.
  */
 export async function sweepUndecidableCandidates(db: Db, tenant_id: string): Promise<number> {
-  return db.transaction(async (tx) => {
-    const rows = await tx
-      .select()
-      .from(patchCandidates)
-      .where(and(eq(patchCandidates.tenant_id, tenant_id), eq(patchCandidates.status, "proposed")));
-    const readiness = await readPatchReadinessBatch(tenant_id, rows, tx);
-    let closed = 0;
-    for (const [index, row] of rows.entries()) {
-      const r = readiness[index];
-      if (r && (await closeUndecidableCandidate(tx, row, r, "sweep"))) closed += 1;
+  const pending = await db
+    .select({ workflow_id: patchCandidates.workflow_id })
+    .from(patchCandidates)
+    .where(and(eq(patchCandidates.tenant_id, tenant_id), eq(patchCandidates.status, "proposed")));
+  const workflowIds = [...new Set(pending.map((row) => row.workflow_id))].sort();
+  let closed = 0;
+  for (const workflow_id of workflowIds) {
+    try {
+      closed += await db.transaction(async (tx) => {
+        await lockWorkflowForVersionWrite(tx, tenant_id, workflow_id);
+        const rows = await tx
+          .select()
+          .from(patchCandidates)
+          .where(
+            and(
+              eq(patchCandidates.tenant_id, tenant_id),
+              eq(patchCandidates.workflow_id, workflow_id),
+              eq(patchCandidates.status, "proposed"),
+            ),
+          )
+          .orderBy(asc(patchCandidates.id));
+        const readiness = await readPatchReadinessBatch(tenant_id, rows, tx);
+        let n = 0;
+        for (const [index, row] of rows.entries()) {
+          const r = readiness[index];
+          if (!r) continue;
+          try {
+            if (await tx.transaction((sp) => closeUndecidableCandidate(sp, row, r, "sweep")))
+              n += 1;
+          } catch (err) {
+            log.selfHealing.patch.sweepFailed({
+              tenant_id,
+              workflow_id,
+              candidate_id: row.id,
+              ...errorFields(err),
+            });
+          }
+        }
+        return n;
+      });
+    } catch (err) {
+      log.selfHealing.patch.sweepFailed({ tenant_id, workflow_id, ...errorFields(err) });
     }
-    return closed;
-  });
+  }
+  return closed;
 }

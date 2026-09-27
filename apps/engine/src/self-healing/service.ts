@@ -302,8 +302,7 @@ async function refreshOrSkipExistingCandidate(
   });
   const autoApply = options.allowAutoApply && wouldAutoApply;
 
-  // No `updated_at` bump: a refresh that only re-stamps the row kept an
-  // undecidable candidate looking freshly active forever. Readiness decides —
+  // No `updated_at` bump (it kept undecidable rows looking active forever):
   // a candidate the current version cannot take is closed, never parked.
   let closed = false;
   const appliedVersionId = await db.transaction(async (tx) => {
@@ -356,10 +355,11 @@ async function refreshOrSkipExistingCandidate(
   });
 
   const auto_applied = !!appliedVersionId;
-  recordPatchCandidate({
-    classification: existing.classification,
-    decision: auto_applied ? "auto_applied" : "parked",
-  });
+  if (!closed)
+    recordPatchCandidate({
+      classification: existing.classification,
+      decision: auto_applied ? "auto_applied" : "parked",
+    });
   logger.info({
     module: "self-healing",
     action: auto_applied ? "patch.auto_applied" : "patch.refreshed",
@@ -703,6 +703,10 @@ async function processDriftSignalLocked(
       })
       .returning();
     assertInsertRow(candidate, "patch_candidates");
+    // Readiness before any announcement: a provably undecidable candidate is
+    // closed at birth — closure audit only, no proposed audit/notification.
+    closed = await closeIfUndecidable(tx, candidate, "proposal");
+    if (closed) return { candidate, appliedVersionId: null };
 
     // Only stamp `fixture_id` on the audit metadata when the dry-run
     // gate actually ran against it. Mirrors the same predicate used
@@ -768,6 +772,7 @@ async function processDriftSignalLocked(
       });
       if (!outcome.applied) {
         logPatchNotApplied(ctx, candidate.id, outcome.reason, decision.classification);
+        closed = await closeIfUndecidable(tx, candidate, "auto_apply");
       } else {
         appliedVersionId = outcome.version_id;
         await auditAwait(
@@ -804,18 +809,15 @@ async function processDriftSignalLocked(
         });
       }
     }
-    // Not applied (auto-apply failed or was not allowed): a candidate the
-    // current version provably cannot take is closed at birth, not parked.
-    if (!appliedVersionId) closed = await closeIfUndecidable(tx, candidate, "proposal");
-
     return { candidate, appliedVersionId };
   });
 
   const auto_applied = !!txOut.appliedVersionId;
-  recordPatchCandidate({
-    classification: decision.classification,
-    decision: auto_applied ? "auto_applied" : "parked",
-  });
+  if (!closed)
+    recordPatchCandidate({
+      classification: decision.classification,
+      decision: auto_applied ? "auto_applied" : "parked",
+    });
   // Opening edge of the Run → Drift → Patch → Skill loop (docs/concepts/workflows.md):
   // a drift signal just became a Patch Candidate. Tenant-scoped sibling of the
   // tenant-less patch_candidates_total above.
@@ -823,18 +825,21 @@ async function processDriftSignalLocked(
     tenant_id: ctx.tenant_id,
     classifier: decision.classification,
   });
-  logger.info({
-    module: "self-healing",
-    action: auto_applied ? "patch.auto_applied" : "patch.parked",
-    msg: auto_applied ? "self-healing auto-applied patch" : "self-healing parked patch for review",
-    tenant_id: ctx.tenant_id,
-    workflow_id: ctx.workflow_id,
-    patch_candidate_id: txOut.candidate.id,
-    classification: decision.classification,
-    policy,
-    fixture_passed: dryRunOk,
-    source: ctx.source,
-  });
+  if (!closed)
+    logger.info({
+      module: "self-healing",
+      action: auto_applied ? "patch.auto_applied" : "patch.parked",
+      msg: auto_applied
+        ? "self-healing auto-applied patch"
+        : "self-healing parked patch for review",
+      tenant_id: ctx.tenant_id,
+      workflow_id: ctx.workflow_id,
+      patch_candidate_id: txOut.candidate.id,
+      classification: decision.classification,
+      policy,
+      fixture_passed: dryRunOk,
+      source: ctx.source,
+    });
 
   return {
     candidate_id: txOut.candidate.id,
