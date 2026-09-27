@@ -635,6 +635,13 @@ export function CatalogPage({
     Boolean(state.connector) ||
     Boolean(state.linkedTo);
 
+  const showsZeroStateAction =
+    rows.length === 0 &&
+    !hasActiveFilters &&
+    !query.isPending &&
+    !query.error &&
+    !query.failureReason;
+
   const resetFilters = useCallback(() => {
     setSearch("");
     setState({
@@ -677,7 +684,12 @@ export function CatalogPage({
       testId={`catalog-${resource}`}
       title={title}
       {...(config.descriptionKey ? { description: t(config.descriptionKey) } : {})}
-      action={rows.length > 0 ? primaryAction("catalog-primary-action") : undefined}
+      // The header yields its action only to the one state that shows the
+      // same action itself: a loaded, unfiltered, empty list. While loading,
+      // after a failed read, or when a search matches nothing, the empty
+      // state offers no "create" — hiding the header's there left no way to
+      // start one until the reader cleared the filters or the read came back.
+      action={showsZeroStateAction ? undefined : primaryAction("catalog-primary-action")}
       scroll="content"
     >
       <DataTable
