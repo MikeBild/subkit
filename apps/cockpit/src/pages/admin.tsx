@@ -84,6 +84,7 @@ import {
   drilldownHref,
   drilldownLabelKey,
   freshnessSourceLabelKey,
+  healthStateLine,
   type OperationalOverview,
   operationsAttention,
   scanOutcome,
@@ -1571,9 +1572,7 @@ function HealthBreakdown({
       <CardHeader>
         <CardTitle>{t("operations.health.title")}</CardTitle>
         <CardDescription data-testid="operations-health-state">
-          {t("operations.health.state", {
-            state: t(`operational.health.${health.state}` as TranslationKey),
-          })}
+          {healthStateLine(health.state, t)}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">

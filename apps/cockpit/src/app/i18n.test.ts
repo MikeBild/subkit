@@ -146,6 +146,15 @@ describe("cockpit i18n", () => {
     }
   });
 
+  test("an undetermined health state or value is not called Unbekannt (§2)", () => {
+    // The overview tile, the /operations state line and every unread KPI value
+    // printed the banned word as a state.
+    for (const key of ["operational.health.unknown", "operational.value.unknown"] as const) {
+      expect(translate("en", key)).not.toBe("Unknown");
+      expect(translate("de", key)).not.toBe("Unbekannt");
+    }
+  });
+
   test("supports automatic detection and persistent manual selection", () => {
     const fake = environment(null, ["de-DE"]);
     const store = createLocaleStore(fake.env);

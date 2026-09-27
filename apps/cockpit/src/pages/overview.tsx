@@ -248,7 +248,10 @@ export function OverviewPage() {
                   status={distinctStatus(
                     value,
                     metric.id === "operations.health"
-                      ? t(`operational.health.${snapshot.core.health.state}` as TranslationKey)
+                      ? // §2: an undetermined state says why, not just that.
+                        snapshot.core.health.state === "unknown"
+                        ? t("operational.health.unknownReason")
+                        : t(`operational.health.${snapshot.core.health.state}` as TranslationKey)
                       : metric.id === "data.freshness"
                         ? t(
                             `operational.freshness.${snapshot.core.data_freshness.state}` as TranslationKey,
