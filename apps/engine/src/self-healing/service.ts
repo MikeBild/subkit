@@ -66,6 +66,7 @@ import { autoApplyPatch, logPatchNotApplied } from "./auto-apply.ts";
 import { classifyPatch } from "./classifier.ts";
 import { analyzeStepFailure, type FailingStepSnapshot, renderDriftDiff } from "./drift-detector.ts";
 import { runFixtureDryRun } from "./fixture-runner.ts";
+import { closeIfUndecidable } from "./open-decisions.ts";
 import { resolvePathRewrite } from "./patch-apply.ts";
 import { resolvePolicy, shouldAutoApply } from "./policy.ts";
 import { buildDryRunStep, loadStepSnapshot } from "./step-snapshot.ts";
@@ -163,7 +164,7 @@ export interface ProcessSignalOptions {
 export interface ProcessSignalResult {
   candidate_id: string;
   classification: "safe" | "unsafe";
-  status: "proposed" | "applied" | "rejected" | "superseded";
+  status: "proposed" | "applied" | "rejected" | "superseded" | "inapplicable";
   auto_applied: boolean;
   dry_run_passed: boolean | null;
   proposal: PatchProposal;
@@ -301,21 +302,21 @@ async function refreshOrSkipExistingCandidate(
   });
   const autoApply = options.allowAutoApply && wouldAutoApply;
 
+  // No `updated_at` bump (it kept undecidable rows looking active forever):
+  // a candidate the current version cannot take is closed, never parked.
+  let closed = false;
   const appliedVersionId = await db.transaction(async (tx) => {
-    await tx
-      .update(patchCandidates)
-      .set({ updated_at: new Date() })
-      .where(eq(patchCandidates.id, existing.id));
-    if (!autoApply) return null;
-    const outcome = await autoApplyPatch(tx, {
-      tenant_id: ctx.tenant_id,
-      workflow_id: ctx.workflow_id,
-      candidate_id: existing.id,
-      proposal,
-    });
-    if (!outcome.applied) {
-      // Park for review rather than rotate an inert version.
-      logPatchNotApplied(ctx, existing.id, outcome.reason, "proactive_refresh");
+    const outcome = autoApply
+      ? await autoApplyPatch(tx, {
+          tenant_id: ctx.tenant_id,
+          workflow_id: ctx.workflow_id,
+          candidate_id: existing.id,
+          proposal,
+        })
+      : null;
+    if (!outcome?.applied) {
+      if (outcome) logPatchNotApplied(ctx, existing.id, outcome.reason, "proactive_refresh");
+      closed = await closeIfUndecidable(tx, existing, "proactive_refresh");
       return null;
     }
     await auditAwait(
@@ -354,10 +355,11 @@ async function refreshOrSkipExistingCandidate(
   });
 
   const auto_applied = !!appliedVersionId;
-  recordPatchCandidate({
-    classification: existing.classification,
-    decision: auto_applied ? "auto_applied" : "parked",
-  });
+  if (!closed)
+    recordPatchCandidate({
+      classification: existing.classification,
+      decision: auto_applied ? "auto_applied" : "parked",
+    });
   logger.info({
     module: "self-healing",
     action: auto_applied ? "patch.auto_applied" : "patch.refreshed",
@@ -375,7 +377,7 @@ async function refreshOrSkipExistingCandidate(
   return {
     candidate_id: existing.id,
     classification: existing.classification,
-    status: auto_applied ? "applied" : "proposed",
+    status: auto_applied ? "applied" : closed ? "inapplicable" : "proposed",
     auto_applied,
     dry_run_passed: null,
     proposal,
@@ -652,6 +654,7 @@ async function processDriftSignalLocked(
     source: ctx.source,
   });
 
+  let closed = false;
   const txOut = await db.transaction(async (tx) => {
     const [candidate] = await tx
       .insert(patchCandidates)
@@ -700,6 +703,10 @@ async function processDriftSignalLocked(
       })
       .returning();
     assertInsertRow(candidate, "patch_candidates");
+    // Readiness before any announcement: a provably undecidable candidate is
+    // closed at birth — closure audit only, no proposed audit/notification.
+    closed = await closeIfUndecidable(tx, candidate, "proposal");
+    if (closed) return { candidate, appliedVersionId: null };
 
     // Only stamp `fixture_id` on the audit metadata when the dry-run
     // gate actually ran against it. Mirrors the same predicate used
@@ -765,6 +772,7 @@ async function processDriftSignalLocked(
       });
       if (!outcome.applied) {
         logPatchNotApplied(ctx, candidate.id, outcome.reason, decision.classification);
+        closed = await closeIfUndecidable(tx, candidate, "auto_apply");
       } else {
         appliedVersionId = outcome.version_id;
         await auditAwait(
@@ -801,15 +809,15 @@ async function processDriftSignalLocked(
         });
       }
     }
-
     return { candidate, appliedVersionId };
   });
 
   const auto_applied = !!txOut.appliedVersionId;
-  recordPatchCandidate({
-    classification: decision.classification,
-    decision: auto_applied ? "auto_applied" : "parked",
-  });
+  if (!closed)
+    recordPatchCandidate({
+      classification: decision.classification,
+      decision: auto_applied ? "auto_applied" : "parked",
+    });
   // Opening edge of the Run → Drift → Patch → Skill loop (docs/concepts/workflows.md):
   // a drift signal just became a Patch Candidate. Tenant-scoped sibling of the
   // tenant-less patch_candidates_total above.
@@ -817,23 +825,26 @@ async function processDriftSignalLocked(
     tenant_id: ctx.tenant_id,
     classifier: decision.classification,
   });
-  logger.info({
-    module: "self-healing",
-    action: auto_applied ? "patch.auto_applied" : "patch.parked",
-    msg: auto_applied ? "self-healing auto-applied patch" : "self-healing parked patch for review",
-    tenant_id: ctx.tenant_id,
-    workflow_id: ctx.workflow_id,
-    patch_candidate_id: txOut.candidate.id,
-    classification: decision.classification,
-    policy,
-    fixture_passed: dryRunOk,
-    source: ctx.source,
-  });
+  if (!closed)
+    logger.info({
+      module: "self-healing",
+      action: auto_applied ? "patch.auto_applied" : "patch.parked",
+      msg: auto_applied
+        ? "self-healing auto-applied patch"
+        : "self-healing parked patch for review",
+      tenant_id: ctx.tenant_id,
+      workflow_id: ctx.workflow_id,
+      patch_candidate_id: txOut.candidate.id,
+      classification: decision.classification,
+      policy,
+      fixture_passed: dryRunOk,
+      source: ctx.source,
+    });
 
   return {
     candidate_id: txOut.candidate.id,
     classification: decision.classification,
-    status: auto_applied ? "applied" : "proposed",
+    status: auto_applied ? "applied" : closed ? "inapplicable" : "proposed",
     auto_applied,
     dry_run_passed: fixture && ctx.dry_run_step ? dryRunOk : null,
     proposal,

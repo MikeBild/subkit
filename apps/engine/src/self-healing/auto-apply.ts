@@ -23,9 +23,11 @@ export type AutoApplyResult =
 
 /**
  * Report a patch that was cleared for apply but could not be performed on the
- * definition. The candidate stays `proposed`: an unapplied patch must never be
- * recorded as a repair, or the next scan reads a healed endpoint that was
- * never healed.
+ * definition. It is never recorded as a repair, or the next scan reads a healed
+ * endpoint that was never healed. Callers follow with `closeIfUndecidable`
+ * (open-decisions.ts): when readiness proves the current version can never
+ * take the patch the candidate becomes `inapplicable`; otherwise it stays
+ * `proposed`.
  */
 export function logPatchNotApplied(
   ctx: { tenant_id: string; workflow_id: string; source: string },

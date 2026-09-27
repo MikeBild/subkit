@@ -14,6 +14,7 @@ import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
 // once is caught at the next document rather than never. The price is one
 // `page.evaluate` per navigation.
 import { IDENTITY_META, standAt } from "./lib/cockpit-identity.mjs";
+import { expectedKpiLinks } from "./lib/cockpit-kpi-links.mjs";
 
 // The family convention (COCKPIT-KONVENTION.md, the version named by
 // KONVENTION_VERSION below) is deliberately not enforced by shared code — six
@@ -682,6 +683,54 @@ function overviewMetric(id, value, path, severity = "information") {
   };
 }
 
+function overviewComponents(gateOpen) {
+  const success = gateOpen ? 0.6 : 1;
+  return [
+    {
+      id: "decisions.blocked",
+      raw_value: 0,
+      unit: "count",
+      normalized_score: 100,
+      weight: 0.5,
+      contribution: 50,
+      freshness: "fresh",
+      required: true,
+      drilldown: {
+        path: "/cockpit/decisions?bucket=blocked",
+        label_id: "operational.open_blocked",
+      },
+    },
+    {
+      id: "executions.success_ratio",
+      raw_value: success,
+      unit: "ratio",
+      normalized_score: success * 100,
+      weight: 0.3,
+      contribution: success * 30,
+      freshness: "fresh",
+      required: true,
+      drilldown: {
+        path: "/cockpit/runs?status=failed&source=scheduler",
+        label_id: "operational.open_runs",
+      },
+    },
+    {
+      id: "connectors.healthy_ratio",
+      raw_value: 1,
+      unit: "ratio",
+      normalized_score: 100,
+      weight: 0.2,
+      contribution: 20,
+      freshness: "fresh",
+      required: true,
+      drilldown: {
+        path: "/cockpit/connectors?health=not_ok",
+        label_id: "operational.open_connectors",
+      },
+    },
+  ];
+}
+
 function operationalOverview(gateOpen) {
   const generatedAt = new Date(NOW).toISOString();
   const blocked = 0;
@@ -695,7 +744,7 @@ function operationalOverview(gateOpen) {
   const other = gateOpen ? Math.max(DECIDABLE_TOTAL - overdue, 0) : 0;
   return {
     schema_version: "operational-overview.v1",
-    contract_version: "2.2",
+    contract_version: "2.3",
     product: "subkit",
     generated_at: generatedAt,
     recommended_refresh_seconds: 60,
@@ -720,17 +769,62 @@ function operationalOverview(gateOpen) {
         overdue > 0 ? "urgent" : "healthy",
       ),
       other_decisions: overviewMetric("decisions.other", other, "/cockpit/decisions?bucket=other"),
+      // Contract 2.3: the score links to its worst component, every component
+      // and freshness source carries its own way in, and an open gate comes
+      // with a named cause — which the system page (/operations) must show.
       health: {
-        ...overviewMetric("operations.health", 94, "/cockpit/operations", "healthy"),
+        ...overviewMetric(
+          "operations.health",
+          gateOpen ? 70 : 94,
+          gateOpen
+            ? "/cockpit/runs?status=failed&source=scheduler"
+            : "/cockpit/decisions?bucket=blocked",
+          gateOpen ? "urgent" : "healthy",
+        ),
         kind: "score",
-        state: "healthy",
-        components: [],
+        state: gateOpen ? "limited" : "healthy",
+        components: overviewComponents(gateOpen),
+        causes: gateOpen
+          ? LIVE_FAILURE_GROUPS.map((group) => ({
+              kind: "failing_group",
+              id: group.signature,
+              label: `${group.workflow_name}: ${group.cause}`,
+              subject: { kind: "workflow", id: group.workflow_id, name: group.workflow_name },
+              reason: "failing",
+              detail: group.cause,
+              cause_class: "driver_error",
+              drilldown: {
+                path: "/cockpit/decisions?bucket=failing",
+                label_id: "operational.open_failing",
+              },
+            }))
+          : [],
       },
       data_freshness: {
-        ...overviewMetric("data.freshness", 18, "/cockpit/operations?focus=data", "healthy"),
+        ...overviewMetric("data.freshness", 18, "/cockpit/audit?scope=operations", "healthy"),
         kind: "duration",
         state: "fresh",
-        sources: [],
+        sources: [
+          {
+            id: "self_healing.drift_scan",
+            updated_at: generatedAt,
+            expected_interval_seconds: 3600,
+            stale_after_seconds: 7200,
+            state: "fresh",
+            drilldown: {
+              path: "/cockpit/audit?scope=operations",
+              label_id: "operational.open_scans",
+            },
+          },
+          {
+            id: "connectors.reauth_scan",
+            updated_at: generatedAt,
+            expected_interval_seconds: 3600,
+            stale_after_seconds: 7200,
+            state: "fresh",
+            drilldown: { path: "/cockpit/connectors", label_id: "operational.open_connectors" },
+          },
+        ],
       },
     },
     sections: [
@@ -740,6 +834,26 @@ function operationalOverview(gateOpen) {
         visualization: "kpi",
         metrics: [overviewMetric("automation.active_workflows", 14, "/cockpit/workflows")],
         drilldown: { path: "/cockpit/workflows" },
+      },
+      {
+        // A ratio at zero while the gate is open: the worst state the tile can
+        // be in, and it has to lead to its cause (§1). Healthy otherwise, so the
+        // calm stand shows the same card with a value above zero.
+        id: "connections",
+        title: "Connections",
+        visualization: "progress",
+        metrics: [
+          {
+            ...overviewMetric(
+              "connectors.healthy_ratio",
+              gateOpen ? 0 : 1,
+              "/cockpit/connectors?health=not_ok",
+              gateOpen ? "critical" : "healthy",
+            ),
+            kind: "ratio",
+          },
+        ],
+        drilldown: { path: "/cockpit/connectors?health=not_ok" },
       },
     ],
     audit: { path: "/cockpit/audit", snapshot_generated_at: generatedAt },
@@ -864,7 +978,15 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
       });
 
     if (DETAIL_LISTS.includes(path)) {
-      const items = catalogRows(path);
+      // `health=not_ok` is the engine's narrowing now (enabled and not ok), so
+      // the mock answers it the way the engine does rather than handing the
+      // page every row to filter.
+      const items = catalogRows(path).filter(
+        (row) =>
+          path !== "/v1/connectors" ||
+          url.searchParams.get("health") !== "not_ok" ||
+          (row.enabled === true && row.health_state !== "ok"),
+      );
       const categories =
         path === "/v1/workflows" || path === "/v1/connectors"
           ? [
@@ -1708,18 +1830,27 @@ async function _checkIncidentBanner(page, gateOpen) {
 async function checkOperationalDashboard(page, expectedDecisionTotal) {
   const result = await page.evaluate(() => {
     const core = document.querySelector('[data-family-slot="operational-core"]');
-    const cards = core
-      ? [...core.querySelectorAll(":scope > [data-family-kpi-id]")].map((card) => ({
-          id: card.getAttribute("data-family-kpi-id"),
-          value: Number(card.getAttribute("data-family-kpi-value") ?? 0),
-          links: card.querySelectorAll('[data-family-kpi-link="true"]').length,
-          linkLabels: card.querySelectorAll('[data-family-kpi-link-label="true"]').length,
-          tooltips: card.querySelectorAll('[data-family-kpi-tooltip="true"]').length,
-          primary: card.getAttribute("data-family-primary") === "true",
-        }))
+    const read = (card) => ({
+      id: card.getAttribute("data-family-kpi-id"),
+      kind: card.getAttribute("data-family-kpi-kind"),
+      value: Number(card.getAttribute("data-family-kpi-value") ?? 0),
+      unread: !card.hasAttribute("data-family-kpi-value"),
+      severity: card.getAttribute("data-family-kpi-severity"),
+      links: card.querySelectorAll('[data-family-kpi-link="true"]').length,
+      linkLabels: card.querySelectorAll('[data-family-kpi-link-label="true"]').length,
+      tooltips: card.querySelectorAll('[data-family-kpi-tooltip="true"]').length,
+      primary: card.getAttribute("data-family-primary") === "true",
+    });
+    const cards = core ? [...core.querySelectorAll(":scope > [data-family-kpi-id]")].map(read) : [];
+    // The ratios live in the product sections, not in the core row — a rule
+    // about ratios measured on the core row alone would never meet one.
+    const sections = document.querySelector('[data-family-slot="product-metrics"]');
+    const sectionCards = sections
+      ? [...sections.querySelectorAll("[data-family-kpi-id]")].map(read)
       : [];
     return {
       cards,
+      sectionCards,
       incidentBanners: document.querySelectorAll('[data-testid="overview-incident"]').length,
       tables: document.querySelectorAll('[data-testid="overview-page"] table').length,
     };
@@ -1739,12 +1870,16 @@ async function checkOperationalDashboard(page, expectedDecisionTotal) {
       "/cockpit",
       `operational cards are ${actualOrder.join(", ")} instead of ${expectedOrder.join(", ")}`,
     );
-  for (const card of result.cards) {
-    if (card.links !== 1 || card.linkLabels !== 1 || card.tooltips !== 1)
+  // A number that counted something leads to it; a counted zero has nothing
+  // to open; a ratio, score or duration leads to its cause whatever its value
+  // — a red 0 % is the worst state, not an empty one (scripts/lib/cockpit-kpi-links.mjs).
+  for (const card of [...result.cards, ...result.sectionCards]) {
+    const expectedLinks = expectedKpiLinks(card);
+    if (card.links !== expectedLinks || card.linkLabels !== expectedLinks || card.tooltips !== 1)
       breach(
         "§1, §8.1",
         `/cockpit · ${card.id}`,
-        `${card.links} card links, ${card.linkLabels} visible link labels, ${card.tooltips} tooltips`,
+        `${card.kind ?? "count"} ${card.value}: ${card.links} card links, ${card.linkLabels} visible link labels (expected ${expectedLinks}), ${card.tooltips} tooltips`,
       );
   }
   const primary = result.cards.filter((card) => card.primary).length;
@@ -1869,33 +2004,69 @@ async function _readZoneACount(page) {
 }
 
 /**
- * §12 / §1 — one truth per fact.
+ * §1 — no red without a way to its cause, and the system page is that way.
  *
- * The tools page rendered the failure groups and the repair counter a second
- * time, from a second read of the same digest, and reported different numbers
- * than the overview did. A page that restates another page's findings will
- * eventually contradict it, so the restatement is what is asserted against —
- * not the numbers, which is a race nobody wins.
+ * The overview's red health tile used to link here, and this page said its
+ * findings were on the overview: a loop with a cause at neither end. The page
+ * now owns the answer from the engine's own snapshot (contract 2.3): with the
+ * gate open, every cause the engine names is a line with a link to it; with
+ * nothing wrong, the attention block is absent — not an "all good" card the
+ * reader learns to skip.
+ *
+ * What stays forbidden is the old defect: a second, digest-read copy of the
+ * failure groups or risks (`operations-failure-*`, `operations-risk-*`).
  */
-async function checkOperationsIsToolsOnly(page) {
-  const echo = await page.evaluate((cause) => {
+async function checkOperationsOwnsHealth(page, { gateOpen }) {
+  // The breakdown renders once the snapshot has arrived; before that an absent
+  // attention block would prove nothing either way.
+  try {
+    await page
+      .locator('[data-testid="operations-health"]')
+      .waitFor({ state: "visible", timeout: 15_000 });
+  } catch {
+    breach("§4", "/operations", "the health snapshot never rendered");
+    return;
+  }
+  const seen = await page.evaluate(() => {
+    const block = document.querySelector('[data-testid="operations-attention"]');
     return {
-      cause: document.body.innerText.includes(cause),
+      attention: Boolean(block),
+      links: block
+        ? [...block.querySelectorAll('a[data-testid^="operations-attention-link-"]')].map((a) =>
+            a.getAttribute("href"),
+          )
+        : [],
+      texts: block ? block.innerText : "",
+      components: document.querySelectorAll(
+        '[data-testid^="operations-component-"][data-testid$="-open"]',
+      ).length,
       groups: document.querySelectorAll('[data-testid^="operations-failure-"]').length,
       risks: document.querySelectorAll('[data-testid^="operations-risk-"]').length,
     };
-  }, FAILURE_GROUPS[0].cause);
-  if (echo.cause) breach("§12", "/operations", "repeats the overview's error-group cause");
-  if (echo.groups > 0)
-    breach("§12", "/operations", `${echo.groups} error-group rows beside the overview`);
-  if (echo.risks > 0) breach("§12", "/operations", `${echo.risks} risk rows beside the overview`);
-  // The clause that used to stand here demanded a link to "the findings on the
-  // overview". It was the reason a card of signposts existed on this page at
-  // all — the gate required it. Removed, because the sentence it enforced was
-  // not true: nothing in the cockpit renders failure groups or risks, so the
-  // page sent readers to a destination that does not exist. The three clauses
-  // above still do the real work — this page must not become a second copy of
-  // the overview — and they never needed a signpost to prove it.
+  });
+  if (seen.groups > 0)
+    breach("§12", "/operations", `${seen.groups} digest error-group rows beside the snapshot`);
+  if (seen.risks > 0)
+    breach("§12", "/operations", `${seen.risks} digest risk rows beside the snapshot`);
+  if (seen.components === 0)
+    breach("§1", "/operations", "no health component offers its way to what it counts");
+  if (!gateOpen) {
+    if (seen.attention)
+      breach("§1", "/operations", "attention block shown although the installation is healthy");
+    return;
+  }
+  if (!seen.attention) {
+    breach("§1", "/operations", "the engine names causes, the page shows no attention block");
+    return;
+  }
+  for (const group of LIVE_FAILURE_GROUPS) {
+    if (!seen.texts.includes(group.cause))
+      breach("§1", "/operations", `cause "${group.cause}" is not named`);
+  }
+  if (!seen.links.includes("/cockpit/decisions?bucket=failing"))
+    breach("§1", "/operations", "a cause is named without its way to the failing workflows");
+  if (seen.links.some((href) => href?.startsWith("/cockpit/cockpit")))
+    breach("§6", "/operations", "a cause link carries the base twice");
 }
 
 /**
@@ -3373,7 +3544,7 @@ try {
   await auditHistory.close();
 
   const operations = await openPage(context, "operations");
-  await checkOperationsIsToolsOnly(operations);
+  await checkOperationsOwnsHealth(operations, { gateOpen: true });
   await operations.close();
 
   const chat = await openPage(context, "chat");
@@ -3430,6 +3601,9 @@ try {
   await checkOperationalDashboard(calmOverview, 0);
   await checkSilentWhenEmpty(calmOverview);
   await calmOverview.close();
+  const calmOperations = await openPage(calm, "operations");
+  await checkOperationsOwnsHealth(calmOperations, { gateOpen: false });
+  await calmOperations.close();
   await calm.close();
 
   // Third fixture variant: one endpoint answers with a body the page cannot

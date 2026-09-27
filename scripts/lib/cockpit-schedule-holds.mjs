@@ -83,6 +83,10 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
       )
     )
       throw new Error("Known hold is hidden by missing success evidence");
+    // Critical with no score (nothing ran): the red tile still leads to its
+    // cause. A rule that linked only positive values dropped exactly this one.
+    if (!(await page.getByTestId("family-kpi-operations-health-open").count()))
+      throw new Error("The critical health tile has no way to its cause");
     await capture("overview");
     await stand.visit(page, "decisions");
     const cards = page.getByTestId("schedule-admission-held");
@@ -90,13 +94,29 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
     await card.waitFor();
     if (await page.getByTestId("decisions-empty").count())
       throw new Error("Held schedules presented as an empty queue");
-    const count = await page.locator('[data-testid="decisions-page"]').innerText();
     // Sixteen, not fifteen: the workflow that is approved and failing counts as
     // an open decision too. It was invisible before — the page listed only what
     // could not start — and a badge that leaves it out is the reason nobody
-    // looked.
-    if (!count.includes(locale === "de" ? "16 offene Entscheidung" : "16 open decision"))
-      throw new Error("Decision total excludes the held schedule or the failing workflow");
+    // looked. The count is said on the badge and on the chips, nowhere else,
+    // and the chips must sum to the badge.
+    // The badge sits in the sidebar, which narrow widths render off-canvas and
+    // so not at all until opened; there the chips carry the check alone.
+    const badgeLocator = page.getByTestId("nav-decisions-count");
+    if (await badgeLocator.count()) {
+      const badge = (await badgeLocator.first().innerText()).trim();
+      if (badge !== "16")
+        throw new Error(
+          `Decision badge reads ${badge}: it excludes the held schedule or the failing workflow`,
+        );
+    }
+    let chipSum = 0;
+    for (const index of [0, 1, 2]) {
+      const chip = (await page.getByTestId(`decisions-chip-${index}`).innerText()).trim();
+      const match = chip.match(/·\s*(\d+)$/);
+      if (!match) throw new Error(`Kind chip ${index} names no count: "${chip}"`);
+      chipSum += Number(match[1]);
+    }
+    if (chipSum !== 16) throw new Error(`Kind chips sum to ${chipSum}, the badge says 16`);
     if ((await cards.count()) !== 13) throw new Error("Held schedule queue lost entries");
     const toolbar = await page.getByTestId("decisions-toolbar").boundingBox();
     const firstCard = await card.boundingBox();

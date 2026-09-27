@@ -3,6 +3,7 @@ import { translate } from "@/lib/i18n";
 import {
   AUTHORITY_EFFECT_KEYS,
   AUTHORITY_STATE_KEYS,
+  acceptReview,
   authorityGrantInput,
   observedAuthorityState,
   type WorkflowAuthority,
@@ -60,6 +61,25 @@ const expected = {
   versionId: authority.workflow_version_id,
   environment: "dev" as const,
 };
+
+describe("which review answer the dialog shows", () => {
+  test("shows the latest answer to the question it asked", () => {
+    expect(acceptReview(3, 3, expected, preview)).toBe("accept");
+  });
+  test("drops an answer to an older request, even one that matches", () => {
+    // The request that finishes last is not the one asked last: a slow first
+    // review must not replace the one the reader is looking at.
+    expect(acceptReview(4, 3, expected, preview)).toBe("stale");
+  });
+  test("refuses an answer about another version or environment", () => {
+    expect(acceptReview(1, 1, { ...expected, versionId: "other" }, preview)).toBe("mismatch");
+    expect(acceptReview(1, 1, { ...expected, environment: "prod" }, preview)).toBe("mismatch");
+    expect(acceptReview(1, 1, { ...expected, workflowId: "other" }, preview)).toBe("mismatch");
+  });
+  test("a stale answer is stale before it is anything else", () => {
+    expect(acceptReview(2, 1, { ...expected, environment: "prod" }, preview)).toBe("stale");
+  });
+});
 
 describe("exact grant input", () => {
   test("binds the reviewed digest, version, environment and original start time", () => {
