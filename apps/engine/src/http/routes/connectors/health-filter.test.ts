@@ -12,6 +12,7 @@ import {
   getOperationalOverview,
   invalidateOperationalOverview,
 } from "../../../operator/operational-overview.ts";
+import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
 let ctx: HttpTestServer;
@@ -50,7 +51,7 @@ beforeAll(async () => {
       seed("outdated", "needs_update"),
       // Not in the ratio at all: switched off, or gone.
       seed("switched-off", "degraded", { enabled: false }),
-      seed("removed", "degraded", { deleted_at: new Date() }),
+      seed("removed", "degraded", { deleted_at: new Date(getTestNow()) }),
     ])
     .returning({ id: connectors.id, slug: connectors.slug });
   for (const row of rows)
