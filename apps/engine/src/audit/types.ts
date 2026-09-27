@@ -201,6 +201,10 @@ export const AuditAction = {
   PATCH_CANDIDATE_APPROVED: "patch_candidate.approved",
   PATCH_CANDIDATE_REJECTED: "patch_candidate.rejected",
   PATCH_CANDIDATE_DRY_RUN_REQUESTED: "patch_candidate.dry_run_requested",
+  // The engine closed a proposed candidate because the current workflow
+  // version proves it cannot be performed (readiness no_change,
+  // patch_not_applicable or workflow_missing). Actor is always system.
+  PATCH_CANDIDATE_CLOSED_INAPPLICABLE: "patch_candidate.closed_inapplicable",
 
   // Proactive self-healing drift scan lifecycle (admin HTTP, scheduler tick, MCP).
   //  - TRIGGERED is emitted before the scan runs, with metadata.source =

@@ -9,13 +9,14 @@ import { writeEvent } from "../db/events.ts";
 import { executionSteps, executions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { recordExecutionTerminal } from "../observability/instrumentation.ts";
-import type {
-  ExecutionMode,
-  ExecutionSourceKind,
-  ExecutionStatus,
-  RequestSource,
-  StepResult,
-  StepStatus,
+import {
+  type ExecutionMode,
+  type ExecutionSourceKind,
+  type ExecutionStatus,
+  hasHeldOutput,
+  type RequestSource,
+  type StepResult,
+  type StepStatus,
 } from "./types.ts";
 
 export interface CreateExecutionParams {
@@ -443,6 +444,7 @@ export async function finalizeStepRow(
         result_sha256: options.result_sha256 ?? null,
         request_meta: result.request_meta ?? null,
         error: result.error ?? null,
+        held: hasHeldOutput(result),
       })
       // A recovery sweep may have terminalized this row after its worker
       // disappeared. Keep step completion first-writer-wins just like the

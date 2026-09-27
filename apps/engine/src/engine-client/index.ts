@@ -219,18 +219,27 @@ export class EngineClient {
   patchCandidates = {
     list: async (opts?: {
       limit?: number;
-      status?: "proposed" | "applied" | "rejected" | "superseded";
+      status?: "proposed" | "applied" | "rejected" | "superseded" | "inapplicable";
     }) => {
       const limit = Math.min(opts?.limit ?? 50, 200);
       const tenantConds = [eq(patchCandidatesTable.tenant_id, this.tenant_id)];
       if (opts?.status) tenantConds.push(eq(patchCandidatesTable.status, opts.status));
-      return await this.db
+      const rows = await this.db
         .select()
         .from(patchCandidatesTable)
         .where(and(...tenantConds))
         .orderBy(desc(patchCandidatesTable.created_at))
         .limit(limit);
+      const readiness = await selfHealingSvc.readPatchReadinessBatch(this.tenant_id, rows, this.db);
+      return rows.map((row, index) => ({
+        ...row,
+        reviewable: readiness[index]?.reviewable ?? false,
+        review_reason: readiness[index]?.review_reason ?? null,
+      }));
     },
+    /** The tenant's open patch decisions — the one predicate every surface counts. */
+    openDecisions: () =>
+      selfHealingSvc.readOpenPatchDecisions(this.db, this.tenant_id, { limit: 0 }),
     get: async (id: string) => {
       const rows = await this.db
         .select()
@@ -449,7 +458,7 @@ export class EngineClient {
 
   status = {
     summary: async () => {
-      const [wfCount, connCount, execRows, auditRows] = await Promise.all([
+      const [wfCount, connCount, execRows, auditRows, openPatches] = await Promise.all([
         this.workflows.count(),
         this.connectors.count(),
         this.db
@@ -460,6 +469,7 @@ export class EngineClient {
           .select({ c: sql<number>`count(*)::int` })
           .from(auditLog)
           .where(eq(auditLog.tenant_id, this.tenant_id)),
+        this.patchCandidates.openDecisions(),
       ]);
       return {
         tenant_id: this.tenant_id,
@@ -467,6 +477,9 @@ export class EngineClient {
         connectors: connCount,
         executions: Number(execRows[0]?.c ?? 0),
         audit_entries: Number(auditRows[0]?.c ?? 0),
+        // Self-healing fixes a human can decide now — the same number the
+        // health digest and the patch-candidates list report.
+        patch_decisions_open: openPatches.open_total,
       };
     },
   };

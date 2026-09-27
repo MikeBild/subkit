@@ -12,8 +12,8 @@ import {
   executions,
   patchCandidates,
   users,
-  workflows,
 } from "../../db/schema/index.ts";
+import { reviewableDiff, seedPatchableWorkflow } from "../../test-helpers/patch-candidates.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 function sha256Hex(s: string): string {
@@ -52,17 +52,14 @@ beforeAll(async () => {
     status: "failed",
     error: { code: "http_4xx", message: "http 404", guidance: "The path is wrong." },
   });
-  // One pending patch candidate so the digest's patch bucket is non-empty.
-  const [wf] = await srv.db
-    .insert(workflows)
-    .values({ tenant_id: srv.tenantId, slug: "sync", name: "Sync", lifecycle: "active" })
-    .returning();
+  // One open patch decision so the digest's patch bucket is non-empty.
+  const wf = await seedPatchableWorkflow(srv.db, srv.tenantId, "sync", "Sync");
   await srv.db.insert(patchCandidates).values({
     tenant_id: srv.tenantId,
-    workflow_id: wf!.id,
+    workflow_id: wf.workflow_id,
     classification: "safe",
     status: "proposed",
-    diff: { proposal: { description: "Widen selector" } },
+    diff: reviewableDiff("Widen selector"),
   });
 });
 
@@ -100,11 +97,11 @@ describe("GET /v1/operator/health-digest", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       patch_candidates: {
-        pending: number;
+        open: number;
         items: Array<{ summary: string; age_days: number; stuck: boolean }>;
       };
     };
-    expect(body.patch_candidates.pending).toBe(1);
+    expect(body.patch_candidates.open).toBe(1);
     const item = body.patch_candidates.items[0];
     expect(item?.summary).toBe("Widen selector");
     expect(typeof item?.age_days).toBe("number");

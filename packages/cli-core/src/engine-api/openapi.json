@@ -17404,7 +17404,8 @@
               "proposed",
               "applied",
               "rejected",
-              "superseded"
+              "superseded",
+              "inapplicable"
             ]
           },
           "fixture_id": {
@@ -17414,6 +17415,24 @@
             ]
           },
           "diff": {},
+          "closed_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "closed_against_version_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "closed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
             "type": "string"
           },
@@ -17452,6 +17471,9 @@
           "classification",
           "status",
           "fixture_id",
+          "closed_reason",
+          "closed_against_version_id",
+          "closed_at",
           "created_at",
           "updated_at"
         ]
@@ -17478,7 +17500,8 @@
               "proposed",
               "applied",
               "rejected",
-              "superseded"
+              "superseded",
+              "inapplicable"
             ]
           },
           "drift_summary": {
@@ -17749,7 +17772,7 @@
           "patch_candidates": {
             "type": "object",
             "properties": {
-              "pending": {
+              "open": {
                 "type": "integer"
               },
               "items": {
@@ -17760,7 +17783,7 @@
               }
             },
             "required": [
-              "pending",
+              "open",
               "items"
             ]
           },
@@ -17964,7 +17987,7 @@
           "contract_version": {
             "type": "string",
             "enum": [
-              "2.2"
+              "2.3"
             ]
           },
           "product": {
@@ -17994,6 +18017,143 @@
             "type": "object",
             "properties": {
               "blocked": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "definition": {
+                    "type": "string"
+                  },
+                  "relevance": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "count",
+                      "ratio",
+                      "duration",
+                      "score",
+                      "currency",
+                      "state"
+                    ]
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "value_state": {
+                    "type": "string",
+                    "enum": [
+                      "observed",
+                      "zero",
+                      "missing",
+                      "stale",
+                      "forbidden"
+                    ]
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "count",
+                      "ratio",
+                      "seconds",
+                      "bytes",
+                      "eur",
+                      "state"
+                    ]
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "critical",
+                      "urgent",
+                      "healthy",
+                      "information",
+                      "unknown"
+                    ]
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "source_updated_at": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "expected_interval_seconds": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "stale_after_seconds": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "drilldown": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "label_id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "label_id"
+                    ]
+                  },
+                  "prometheus": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "gauge",
+                          "counter"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "type"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "definition",
+                  "relevance",
+                  "kind",
+                  "value",
+                  "value_state",
+                  "unit",
+                  "severity",
+                  "required",
+                  "source_updated_at",
+                  "expected_interval_seconds",
+                  "stale_after_seconds",
+                  "drilldown",
+                  "prometheus"
+                ]
+              },
+              "failing": {
                 "type": "object",
                 "properties": {
                   "id": {
@@ -18574,6 +18734,21 @@
                         },
                         "required": {
                           "type": "boolean"
+                        },
+                        "drilldown": {
+                          "type": "object",
+                          "properties": {
+                            "path": {
+                              "type": "string"
+                            },
+                            "label_id": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "label_id"
+                          ]
                         }
                       },
                       "required": [
@@ -18584,7 +18759,51 @@
                         "weight",
                         "contribution",
                         "freshness",
-                        "required"
+                        "required",
+                        "drilldown"
+                      ]
+                    }
+                  },
+                  "causes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "failing_group",
+                            "held_schedule",
+                            "connector"
+                          ]
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "drilldown": {
+                          "type": "object",
+                          "properties": {
+                            "path": {
+                              "type": "string"
+                            },
+                            "label_id": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "label_id"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id",
+                        "label",
+                        "drilldown"
                       ]
                     }
                   }
@@ -18606,7 +18825,8 @@
                   "drilldown",
                   "prometheus",
                   "state",
-                  "components"
+                  "components",
+                  "causes"
                 ]
               },
               "data_freshness": {
@@ -18764,6 +18984,21 @@
                             "missing",
                             "forbidden"
                           ]
+                        },
+                        "drilldown": {
+                          "type": "object",
+                          "properties": {
+                            "path": {
+                              "type": "string"
+                            },
+                            "label_id": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "label_id"
+                          ]
                         }
                       },
                       "required": [
@@ -18771,7 +19006,8 @@
                         "updated_at",
                         "expected_interval_seconds",
                         "stale_after_seconds",
-                        "state"
+                        "state",
+                        "drilldown"
                       ]
                     }
                   }
@@ -18799,6 +19035,7 @@
             },
             "required": [
               "blocked",
+              "failing",
               "overdue",
               "other_decisions",
               "health",
@@ -19003,7 +19240,7 @@
               "contract_version": {
                 "type": "string",
                 "enum": [
-                  "2.2"
+                  "2.3"
                 ]
               },
               "snapshot_generated_at": {
@@ -19105,7 +19342,8 @@
               "proposed",
               "applied",
               "rejected",
-              "superseded"
+              "superseded",
+              "inapplicable"
             ]
           }
         },
@@ -37831,7 +38069,8 @@
                 "proposed",
                 "applied",
                 "rejected",
-                "superseded"
+                "superseded",
+                "inapplicable"
               ]
             },
             "required": false,
