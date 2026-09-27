@@ -145,7 +145,7 @@ describe("effective trigger on the workflow representation", () => {
       .set({
         admission_hold: {
           reason_code: "execution_authority_required",
-          observed_at: new Date().toISOString(),
+          observed_at: "2026-01-01T00:00:00.000Z",
         },
       })
       .where(
