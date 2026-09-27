@@ -144,7 +144,7 @@ describe("what a run consumed", () => {
 
   test("names the tokens, the calls and the cache share", () => {
     const facts = runCostFacts(
-      { llm: { calls: 7, weighted_tokens: 58_472, cache_read_pct: 0.62 }, external: {} },
+      { llm: { calls: 7, weighted_tokens: 58_472, cache_read_pct: 62 }, external: {} },
       t,
       "en",
     );
@@ -157,10 +157,16 @@ describe("what a run consumed", () => {
     expect(facts[2]?.[1]).toBe("62%");
   });
 
-  test("reads a cache share given as a percentage the same as one given as a ratio", () => {
-    const asRatio = runCostFacts({ llm: { calls: 1, cache_read_pct: 0.62 } }, t, "en");
-    const asPercent = runCostFacts({ llm: { calls: 1, cache_read_pct: 62 } }, t, "en");
-    expect(asRatio[2]?.[1]).toBe(asPercent[2]?.[1]);
+  test("reads the cache share as the 0-100 the contract declares", () => {
+    // This used to guess the unit — "over one means percent, otherwise a
+    // ratio". The guess was right for every value above 1 and catastrophic
+    // below it. A run whose cache hit rate had collapsed to 1 % emits `1.0`;
+    // the guess left it alone and the page reported 100 %, claiming caching
+    // was perfect at exactly the moment it had stopped working.
+    expect(runCostFacts({ llm: { calls: 1, cache_read_pct: 1 } }, t, "en")[2]?.[1]).toBe("1%");
+    expect(runCostFacts({ llm: { calls: 1, cache_read_pct: 62 } }, t, "en")[2]?.[1]).toBe("62%");
+    expect(runCostFacts({ llm: { calls: 1, cache_read_pct: 100 } }, t, "en")[2]?.[1]).toBe("100%");
+    expect(runCostFacts({ llm: { calls: 1, cache_read_pct: 0 } }, t, "en")[2]?.[1]).toBe("0%");
   });
 
   test("money appears only when money was spent", () => {

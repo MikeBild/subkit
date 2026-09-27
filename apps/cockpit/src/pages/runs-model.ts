@@ -168,10 +168,17 @@ export function runCostFacts(cost: unknown, t: Translate, locale: Locale): Array
     if (cachePct !== null) {
       out.push([
         t("runs.cost.cacheRead"),
+        // The contract says 0–100 (`executions/cost.ts`, and the REPL footer
+        // documents the same field the same way), so divide unconditionally.
+        // Guessing the unit — "over one means percent" — was right for every
+        // value above 1 and catastrophic below it: a run whose cache hit rate
+        // had collapsed to 1 % emitted `1.0`, the guess left it alone, and the
+        // page reported 100 %. It claimed caching was perfect at exactly the
+        // moment it had stopped working.
         new Intl.NumberFormat(LOCALE_TAGS[locale], {
           style: "percent",
           maximumFractionDigits: 0,
-        }).format(cachePct > 1 ? cachePct / 100 : cachePct),
+        }).format(cachePct / 100),
       ]);
     }
   }

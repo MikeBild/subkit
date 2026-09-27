@@ -83,6 +83,27 @@ export function UsagePage() {
   const spend = useMemo(() => consumptionRows(consumption.data, axis), [consumption.data, axis]);
   const budget = useMemo(() => budgetSummary(status.data), [status.data]);
   const money = useMemo(() => windowCost(consumption.data), [consumption.data]);
+  // Names for the person axis. `llm_usage` stores a user id and nothing else,
+  // so without this the page prints raw UUIDs at a reader — which UI-UX.md
+  // forbids outright and which nobody can act on: an operator cannot tell
+  // whose spend they are looking at, which is the only reason to group by
+  // person at all. Fetched only when that axis is open.
+  const people = useQuery({
+    queryKey: ["usage-people"],
+    enabled: allowed && axis === "user",
+    queryFn: () =>
+      apiRequest<{ items?: Array<{ id: string; email?: string; name?: string }> }>(
+        "/v1/identity/users?limit=200",
+      ),
+  });
+  const personName = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const item of people.data?.items ?? []) {
+      const label = item.name?.trim() || item.email?.trim();
+      if (label) byId.set(item.id, label);
+    }
+    return byId;
+  }, [people.data]);
   const pressure = budgetPressure(budget);
 
   const number = useMemo(
@@ -107,11 +128,39 @@ export function UsagePage() {
         "key",
         (row) => row.key,
         t(AXIS_LABEL[axis]),
-        (row) => (
-          <span className={row.unattributed ? "truncate text-muted-foreground" : "truncate"}>
-            {row.unattributed ? t("resource.usage.unattributed") : row.key}
-          </span>
-        ),
+        (row) => {
+          if (row.unattributed)
+            return (
+              <span className="truncate text-muted-foreground">
+                {t("resource.usage.unattributed")}
+              </span>
+            );
+          // A purpose is a fixed vocabulary, so it gets a word. A person gets
+          // their name. An id that resolves to neither is shown as a person
+          // this build cannot name — never as a bare UUID, which says nothing
+          // a reader can act on.
+          if (axis === "flow") {
+            const key = `usage.flow.${row.key}` as TranslationKey;
+            const named = t(key);
+            return <span className="truncate">{named === key ? row.key : named}</span>;
+          }
+          if (axis === "user") {
+            const name = personName.get(row.key);
+            if (name) return <span className="truncate">{name}</span>;
+            // Two reasons a name is missing, and they are not the same claim.
+            // If the directory could not be read — no permission, a failed
+            // request, or a spender beyond the page limit — this build cannot
+            // name the person; it must not assert the workspace has dropped
+            // them. Either way no raw id reaches the screen.
+            const unreadable = Boolean(people.error) || personName.size === 0;
+            return (
+              <span className="truncate text-muted-foreground">
+                {t(unreadable ? "resource.usage.personUnreadable" : "resource.usage.unknownPerson")}
+              </span>
+            );
+          }
+          return <span className="truncate">{row.key}</span>;
+        },
         { width: "w-[46%]" },
       ),
       column.custom(
@@ -142,7 +191,7 @@ export function UsagePage() {
         { width: "w-[17%]" },
       ),
     ];
-  }, [t, dateTime, axis, number, percent]);
+  }, [t, dateTime, axis, number, percent, personName, people.error]);
 
   const columns = useMemo<CockpitColumn<UsageRow>[]>(() => {
     const column = tableColumns<UsageRow>({ t, dateTime });
@@ -230,9 +279,19 @@ export function UsagePage() {
                     : tokens(budget.usedTokens)}
                 </CardTitle>
                 {money ? (
+                  // The amount covers the last thirty days; `usedTokens` is
+                  // the CALENDAR month, from a different endpoint. Printing
+                  // them on one line joined by a dot stated two measurements
+                  // over two windows as one — on the first of a month it read
+                  // "€412.87 · 0 Tokens". The page's own comment above the
+                  // status query says these must not be silently merged, and
+                  // this line was the merge. The window is now named.
                   <p className="text-muted-foreground text-xs" data-testid="usage-spend-basis">
-                    {t("resource.usage.spendBasis")} · {tokens(budget.usedTokens)}{" "}
-                    {t("resource.field.tokens")}
+                    {t("resource.usage.window")} · {t("resource.usage.spendBasis")}
+                  </p>
+                ) : consumption.error ? (
+                  <p className="text-muted-foreground text-xs" data-testid="usage-spend-unreadable">
+                    {t("resource.usage.spendUnreadable")}
                   </p>
                 ) : (
                   <p className="text-muted-foreground text-xs" data-testid="usage-no-prices">
@@ -254,10 +313,22 @@ export function UsagePage() {
                 {/* No cap is stated as no cap. A dash here, or a zero, would
                     read as a measurement and tell an operator their workspace
                     is bounded when nothing bounds it. */}
-                {budget.budgetTokens === null ? (
+                {/* A failed request is not a configuration fact. React Query
+                    clears `isPending` once a query errors, so without this the
+                    page told an operator "nothing limits this workspace" —
+                    and to go and set a cap — when all that happened was a
+                    failed HTTP call. */}
+                {status.error ? (
+                  <span data-testid="usage-budget-unreadable">
+                    {t("resource.usage.budgetUnreadable")}
+                  </span>
+                ) : budget.budgetTokens === null ? (
                   <span data-testid="usage-budget-uncapped">{t("resource.usage.noCapHint")}</span>
                 ) : (
                   <>
+                    <span>
+                      {t("resource.usage.monthTokens")}: {tokens(budget.usedTokens)}
+                    </span>
                     <span>
                       {t("resource.usage.cap")}: {tokens(budget.budgetTokens)}
                     </span>
