@@ -14,7 +14,9 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { getConfig } from "../../../config/loader.ts";
 import { executions, externalCallMetering, llmUsage } from "../../../db/schema/index.ts";
+import { priceCalls } from "../../../llm/pricing.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -43,6 +45,15 @@ const ExecutionCost = z
       cache_read_pct: z.number(),
       latency_ms: z.number().int(),
       by_flow: z.array(ExecutionCostPerFlow),
+      cost: z
+        .object({
+          amount: z.number(),
+          currency: z.string(),
+          unpriced_models: z.array(z.string()),
+          unpriced_calls: z.number().int(),
+          rates_basis: z.literal("current"),
+        })
+        .openapi("ExecutionCostMoney"),
     }),
     external: z.object({
       calls: z.number().int(),
@@ -101,6 +112,37 @@ export function registerCostRoute(app: OpenAPIHono<AppEnv>): void {
       .from(llmUsage)
       .where(and(eq(llmUsage.tenant_id, principal.tenant_id), eq(llmUsage.execution_id, id)))
       .groupBy(llmUsage.flow);
+
+    // A second grouping, by model, because a price needs one and `flow` does
+    // not carry it: a single purpose can span several models at very different
+    // rates. Pricing the flow rollup would multiply tokens by whichever model
+    // happened to be named first.
+    const modelRows = await db
+      .select({
+        model: llmUsage.model,
+        calls: sql<number>`count(*)::int`,
+        prompt_tokens: sql<number>`coalesce(sum(${llmUsage.prompt_tokens}), 0)::int`,
+        completion_tokens: sql<number>`coalesce(sum(${llmUsage.completion_tokens}), 0)::int`,
+        cache_read_tokens: sql<number>`coalesce(sum(${llmUsage.cache_read_tokens}), 0)::int`,
+        cache_creation_tokens: sql<number>`coalesce(sum(${llmUsage.cache_creation_tokens}), 0)::int`,
+      })
+      .from(llmUsage)
+      .where(and(eq(llmUsage.tenant_id, principal.tenant_id), eq(llmUsage.execution_id, id)))
+      .groupBy(llmUsage.model);
+
+    const tokenPrices = getConfig(principal.tenant_id).tokens;
+    const cost = priceCalls(
+      modelRows.map((r) => ({
+        model: r.model ?? "",
+        calls: Number(r.calls),
+        prompt_tokens: Number(r.prompt_tokens),
+        completion_tokens: Number(r.completion_tokens),
+        cache_read_tokens: Number(r.cache_read_tokens),
+        cache_creation_tokens: Number(r.cache_creation_tokens),
+      })),
+      tokenPrices?.prices ?? [],
+      tokenPrices?.currency ?? "USD",
+    );
 
     const by_flow = llmRows.map((r) => ({
       flow: r.flow,
@@ -167,6 +209,10 @@ export function registerCostRoute(app: OpenAPIHono<AppEnv>): void {
           cache_read_pct,
           latency_ms: llm.latency_ms,
           by_flow,
+          // Money for the model calls, and a plain account of what could not
+          // be priced. `llm_usage` has no monetary column, so this is computed
+          // from the configured rates at read time and says so.
+          cost,
         },
         external: {
           calls: Number(ext?.calls ?? 0),
