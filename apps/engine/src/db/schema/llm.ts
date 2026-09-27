@@ -37,7 +37,12 @@ export const tenantLlmSettings = pgTable(
     llm_provider_credentials_ciphertext: bytea("llm_provider_credentials_ciphertext"),
     llm_provider_credentials_iv: bytea("llm_provider_credentials_iv"),
     llm_provider_credentials_auth_tag: bytea("llm_provider_credentials_auth_tag"),
-    llm_monthly_token_budget: integer("llm_monthly_token_budget"),
+    // `llm_monthly_token_budget` was here, and in `tenants`, and as the
+    // `tokens.monthly_budget` config leaf. Three homes for one cap, and the
+    // only one an operator could actually write to was the config leaf, which
+    // nothing read. The two columns had readers and no writer: setting the cap
+    // that returns 429 meant hand-editing an internal table. The config leaf
+    // now owns it alone — see `resolveMonthlyBudget`.
     enable_prompt_cache: boolean("enable_prompt_cache").notNull().default(true),
     // Conversation-quality extensions (migration 0028).
     //   system_prompt_additions — appended to the stable prompt block (cache-friendly).

@@ -39,6 +39,7 @@ import {
   currentMonthBucket,
   monthlyUsage,
   monthlyUsageForUser,
+  resolveMonthlyBudget,
   resolveUserMonthlyBudget,
 } from "../llm/accounting/index.ts";
 import { describeConnectorPlaceholders } from "../llm/substitution/resolver.ts";
@@ -341,6 +342,10 @@ export class EngineClient {
 
   metrics = {
     monthlyTokenUsage: () => monthlyUsage(this.tenant_id, this.db),
+    // The workspace's own cap. `/v1/status` has always resolved it; the tool
+    // named "get token budget" answered `null` for the tenant because nothing
+    // here offered it the value.
+    tenantTokenBudget: () => resolveMonthlyBudget(this.tenant_id),
     currentMonthBucket: () => currentMonthBucket(),
     llmUsageRecent: async (limit = 50) =>
       await this.db

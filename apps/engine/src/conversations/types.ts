@@ -73,8 +73,18 @@ export interface ConversationCreatedResource {
 }
 
 export interface TurnUsage {
-  /** Tokens consumed by this turn (delta on the llm_usage ledger). */
-  turn_tokens: number;
+  /**
+   * Tokens consumed by this turn (delta on the `llm_usage` ledger).
+   *
+   * Optional because only an emitter that ran the turn holds the before-value
+   * this delta needs. Required, it forced the replay route — which streams an
+   * existing conversation and runs nothing — to put *some* number here, and
+   * the nearest one to hand was the tenant's month-to-date total. `sk` renders
+   * this field as "{turn_tokens}t", so the same field reported a turn at sixty
+   * thousand tokens from one emitter and thirty-four million from the other.
+   * An emitter that cannot know this omits it.
+   */
+  turn_tokens?: number;
   /**
    * Prompt size of the FINAL LLM call of this turn (uncached input +
    * cache reads + cache writes) — the only per-turn figure that is

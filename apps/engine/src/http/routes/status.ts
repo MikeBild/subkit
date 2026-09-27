@@ -114,7 +114,9 @@ export function registerStatusRoute(app: OpenAPIHono<AppEnv>): void {
         .where(and(eq(llmUsage.tenant_id, tenantId), sql`${llmUsage.created_at} >= ${startOfDay}`)),
       db.select({ slug: tenants.slug }).from(tenants).where(eq(tenants.id, tenantId)).limit(1),
       monthlyUsage(tenantId, db),
-      resolveMonthlyBudget(tenantId, db),
+      // Reads the runtime config, not the database — kept inside the
+      // Promise.all so the destructuring below stays positional.
+      Promise.resolve(resolveMonthlyBudget(tenantId)),
     ]);
 
     const remaining = budget == null ? null : Math.max(budget - monthTokens, 0);
