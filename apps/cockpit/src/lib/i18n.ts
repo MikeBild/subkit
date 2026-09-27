@@ -1426,7 +1426,7 @@ const EN = {
     "Healthy enabled connectors divided by all enabled connectors.",
   "operational.metric.repairs": "Repairs applied",
   "operational.metric.repairs.tooltip":
-    "Of all decided self-healing repairs, the share that was applied — approved or applied automatically. Rejected ones count as decided but not applied. Open proposals are on the decisions page.",
+    "Of all decided self-healing repairs, the share that was applied — approved or applied automatically. Rejected and superseded ones count as decided but not applied. Open proposals are on the decisions page.",
   "operational.metric.skills": "Skills",
   "operational.metric.skills.tooltip": "Reusable skills available to authoring conversations.",
   "operational.metric.skillProposals": "Skill proposals",
@@ -3402,7 +3402,7 @@ const DE: Record<TranslationKey, string> = {
     "Gesunde aktive Connectoren geteilt durch alle aktiven Connectoren.",
   "operational.metric.repairs": "Angewandte Reparaturen",
   "operational.metric.repairs.tooltip":
-    "Von allen entschiedenen Self-Healing-Reparaturen der Anteil, der angewandt wurde — freigegeben oder automatisch angewandt. Abgelehnte zählen als entschieden, aber nicht angewandt. Offene Vorschläge stehen unter Entscheidungen.",
+    "Von allen entschiedenen Self-Healing-Reparaturen der Anteil, der angewandt wurde — freigegeben oder automatisch angewandt. Abgelehnte und überholte zählen als entschieden, aber nicht angewandt. Offene Vorschläge stehen unter Entscheidungen.",
   "operational.metric.skills": "Skills",
   "operational.metric.skills.tooltip": "Wiederverwendbare Skills für Erstellungs-Unterhaltungen.",
   "operational.metric.skillProposals": "Skill-Vorschläge",
