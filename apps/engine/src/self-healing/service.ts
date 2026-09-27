@@ -66,6 +66,7 @@ import { autoApplyPatch, logPatchNotApplied } from "./auto-apply.ts";
 import { classifyPatch } from "./classifier.ts";
 import { analyzeStepFailure, type FailingStepSnapshot, renderDriftDiff } from "./drift-detector.ts";
 import { runFixtureDryRun } from "./fixture-runner.ts";
+import { closeIfUndecidable } from "./open-decisions.ts";
 import { resolvePathRewrite } from "./patch-apply.ts";
 import { resolvePolicy, shouldAutoApply } from "./policy.ts";
 import { buildDryRunStep, loadStepSnapshot } from "./step-snapshot.ts";
@@ -163,7 +164,7 @@ export interface ProcessSignalOptions {
 export interface ProcessSignalResult {
   candidate_id: string;
   classification: "safe" | "unsafe";
-  status: "proposed" | "applied" | "rejected" | "superseded";
+  status: "proposed" | "applied" | "rejected" | "superseded" | "inapplicable";
   auto_applied: boolean;
   dry_run_passed: boolean | null;
   proposal: PatchProposal;
@@ -301,21 +302,22 @@ async function refreshOrSkipExistingCandidate(
   });
   const autoApply = options.allowAutoApply && wouldAutoApply;
 
+  // No `updated_at` bump: a refresh that only re-stamps the row kept an
+  // undecidable candidate looking freshly active forever. Readiness decides —
+  // a candidate the current version cannot take is closed, never parked.
+  let closed = false;
   const appliedVersionId = await db.transaction(async (tx) => {
-    await tx
-      .update(patchCandidates)
-      .set({ updated_at: new Date() })
-      .where(eq(patchCandidates.id, existing.id));
-    if (!autoApply) return null;
-    const outcome = await autoApplyPatch(tx, {
-      tenant_id: ctx.tenant_id,
-      workflow_id: ctx.workflow_id,
-      candidate_id: existing.id,
-      proposal,
-    });
-    if (!outcome.applied) {
-      // Park for review rather than rotate an inert version.
-      logPatchNotApplied(ctx, existing.id, outcome.reason, "proactive_refresh");
+    const outcome = autoApply
+      ? await autoApplyPatch(tx, {
+          tenant_id: ctx.tenant_id,
+          workflow_id: ctx.workflow_id,
+          candidate_id: existing.id,
+          proposal,
+        })
+      : null;
+    if (!outcome?.applied) {
+      if (outcome) logPatchNotApplied(ctx, existing.id, outcome.reason, "proactive_refresh");
+      closed = await closeIfUndecidable(tx, existing, "proactive_refresh");
       return null;
     }
     await auditAwait(
@@ -375,7 +377,7 @@ async function refreshOrSkipExistingCandidate(
   return {
     candidate_id: existing.id,
     classification: existing.classification,
-    status: auto_applied ? "applied" : "proposed",
+    status: auto_applied ? "applied" : closed ? "inapplicable" : "proposed",
     auto_applied,
     dry_run_passed: null,
     proposal,
@@ -652,6 +654,7 @@ async function processDriftSignalLocked(
     source: ctx.source,
   });
 
+  let closed = false;
   const txOut = await db.transaction(async (tx) => {
     const [candidate] = await tx
       .insert(patchCandidates)
@@ -801,6 +804,9 @@ async function processDriftSignalLocked(
         });
       }
     }
+    // Not applied (auto-apply failed or was not allowed): a candidate the
+    // current version provably cannot take is closed at birth, not parked.
+    if (!appliedVersionId) closed = await closeIfUndecidable(tx, candidate, "proposal");
 
     return { candidate, appliedVersionId };
   });
@@ -833,7 +839,7 @@ async function processDriftSignalLocked(
   return {
     candidate_id: txOut.candidate.id,
     classification: decision.classification,
-    status: auto_applied ? "applied" : "proposed",
+    status: auto_applied ? "applied" : closed ? "inapplicable" : "proposed",
     auto_applied,
     dry_run_passed: fixture && ctx.dry_run_step ? dryRunOk : null,
     proposal,

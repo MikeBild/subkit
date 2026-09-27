@@ -31,6 +31,7 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
+  AUDIT_LINK_KEYS,
   type AuditEvidenceKind,
   type AuditScope,
   actorTypeKey,
@@ -162,7 +163,9 @@ export function AuditPage() {
   // names a record or a request means everything that happened to it, so it
   // opens on every scope unless it says otherwise.
   const [scope, setScope] = useState<AuditScope>(
-    () => linked.scope ?? (linked.resourceType || linked.traceId ? "all" : "decisions"),
+    () =>
+      linked.scope ??
+      (linked.resourceType || linked.traceId || linked.actions.length > 0 ? "all" : "decisions"),
   );
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -212,6 +215,10 @@ export function AuditPage() {
       return label.kind === "named" && t(label.key).toLowerCase().includes(needle);
     });
   }, [items, debouncedSearch, t]);
+  const actionName = (action: string) => {
+    const label = auditActionLabel(action);
+    return label.kind === "named" ? t(label.key) : label.value;
+  };
 
   const columns = useMemo<CockpitColumn<AuditEntry>[]>(() => {
     const column = tableColumns<AuditEntry>({ t, dateTime });
@@ -291,12 +298,29 @@ export function AuditPage() {
     result !== "all" ||
     scope !== "decisions" ||
     linked.traceId !== null ||
-    linked.resourceType !== null;
-  const lift = useCallback((part: Partial<typeof linked>) => {
-    setLinked((current) => ({ ...current, ...part }));
-    setPage(0);
-    setCursors([undefined]);
+    linked.resourceType !== null ||
+    linked.actions.length > 0;
+  // A narrowing the reader lifted also leaves the address, or a reload brings
+  // back exactly what they had taken away.
+  const forgetInAddress = useCallback((keys: readonly string[]) => {
+    const params = new URLSearchParams(window.location.search);
+    for (const key of keys) params.delete(key);
+    const rest = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${rest ? `?${rest}` : ""}`,
+    );
   }, []);
+  const lift = useCallback(
+    (part: Partial<typeof linked>, keys: readonly string[]) => {
+      setLinked((current) => ({ ...current, ...part }));
+      forgetInAddress(keys);
+      setPage(0);
+      setCursors([undefined]);
+    },
+    [forgetInAddress],
+  );
   const resetFilters = useCallback(() => {
     setSearch("");
     setResult("all");
@@ -304,10 +328,16 @@ export function AuditPage() {
     // A narrowing that cannot be lifted is invisible state. This one arrives
     // from a link, so without a way out a reader would be stuck on one request
     // with no sign of why the log looks almost empty.
-    setLinked({ resourceType: null, resourceId: null, traceId: null, scope: null });
+    setLinked({ resourceType: null, resourceId: null, traceId: null, scope: null, actions: [] });
+    forgetInAddress([
+      ...AUDIT_LINK_KEYS.resource,
+      ...AUDIT_LINK_KEYS.trace,
+      ...AUDIT_LINK_KEYS.actions,
+      "scope",
+    ]);
     setPage(0);
     setCursors([undefined]);
-  }, []);
+  }, [forgetInAddress]);
 
   if (!allowed)
     return (
@@ -404,7 +434,9 @@ export function AuditPage() {
                 variant="secondary"
                 size="sm"
                 data-testid="audit-resource-filter"
-                onClick={() => lift({ resourceType: null, resourceId: null })}
+                onClick={() =>
+                  lift({ resourceType: null, resourceId: null }, AUDIT_LINK_KEYS.resource)
+                }
               >
                 {t(linked.resourceId ? "audit.recordFilter" : "audit.resourceFilter", {
                   resource: t(resourceTypeKey(linked.resourceType)),
@@ -416,10 +448,23 @@ export function AuditPage() {
                 variant="secondary"
                 size="sm"
                 data-testid="audit-trace-filter"
-                onClick={() => lift({ traceId: null })}
+                onClick={() => lift({ traceId: null }, AUDIT_LINK_KEYS.trace)}
                 title={linked.traceId}
               >
                 {t("audit.traceFilter")}
+              </Button>
+            ) : null}
+            {linked.actions.length > 0 ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="audit-action-filter"
+                onClick={() => lift({ actions: [] }, AUDIT_LINK_KEYS.actions)}
+                title={linked.actions.map((action) => actionName(action)).join(", ")}
+              >
+                {linked.actions.length === 1
+                  ? t("audit.actionFilterOne", { action: actionName(linked.actions[0] ?? "") })
+                  : t("audit.actionFilter", { count: String(linked.actions.length) })}
               </Button>
             ) : null}
             {hasActiveFilters && (

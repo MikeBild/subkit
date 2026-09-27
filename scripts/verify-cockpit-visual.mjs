@@ -112,10 +112,15 @@ const routes = [
   // shipped; nothing photographed it.
   `runs/${uuid}`,
   "connectors",
+  // The connector-health component's own drilldown. Photographed narrowed,
+  // because the fixture's healthy connectors are exactly what it must hide.
+  "connectors?health=not_ok",
   "knowledge",
   "skills",
   "files",
   "audit",
+  // The repair rate's drilldown: the decided repairs, by the engine's verbs.
+  "audit?scope=all&action=patch_candidate.approved,patch_candidate.auto_applied,patch_candidate.rejected",
   "usage",
   "people",
   "access",
@@ -202,6 +207,16 @@ const AUDIT_FIXTURE_ROWS = [
     result: "denied",
     before: { zulassung: "erlaubt" },
     after: { zulassung: "angehalten" },
+  },
+  // The engine closing a repair it proved it cannot make. Written by the
+  // system for every closure, so on a live tenant it is common — and a name
+  // that regressed to the raw token would otherwise ship unphotographed.
+  {
+    action: "patch_candidate.closed_inapplicable",
+    resource_type: "patch_candidate",
+    result: "success",
+    actor_type: "system",
+    metadata: { grund: "no_change" },
   },
 ];
 
@@ -576,7 +591,7 @@ function operationalOverview() {
   const generatedAt = "2026-08-26T10:00:00.000Z";
   return {
     schema_version: "operational-overview.v1",
-    contract_version: "2.2",
+    contract_version: "2.3",
     product: "subkit",
     generated_at: generatedAt,
     recommended_refresh_seconds: 60,
@@ -604,17 +619,117 @@ function operationalOverview() {
         "urgent",
       ),
       other_decisions: overviewMetric("decisions.other", 7, "/cockpit/decisions?bucket=other"),
+      // Hostile on purpose, and consistent with the tiles above: two blocked
+      // workflows make the engine's score critical and aim it at the blocked
+      // list; a connector needing re-auth sits among healthy ones; the drift
+      // scan has not run for a day, so the numbers behind the page are stale.
+      // A fixture that is healthy here photographs a system page with nothing
+      // on it, which is exactly the frame that cannot show a missing cause.
       health: {
-        ...overviewMetric("operations.health", 94, "/cockpit/operations", "healthy"),
-        kind: "score",
-        state: "healthy",
-        components: [],
+        ...overviewMetric(
+          "operations.health",
+          41,
+          "/cockpit/decisions?bucket=blocked",
+          "critical",
+          "score",
+        ),
+        state: "critical",
+        components: [
+          {
+            id: "decisions.blocked",
+            raw_value: 2,
+            unit: "count",
+            normalized_score: 0,
+            weight: 0.5,
+            contribution: 0,
+            freshness: "fresh",
+            required: true,
+            drilldown: {
+              path: "/cockpit/decisions?bucket=blocked",
+              label_id: "operational.open_blocked",
+            },
+          },
+          {
+            id: "executions.success_ratio",
+            raw_value: 0.9375,
+            unit: "ratio",
+            normalized_score: 93.75,
+            weight: 0.3,
+            contribution: 28.125,
+            freshness: "fresh",
+            required: true,
+            drilldown: {
+              path: "/cockpit/runs?status=failed&source=scheduler",
+              label_id: "operational.open_runs",
+            },
+          },
+          {
+            id: "connectors.healthy_ratio",
+            raw_value: 0.8,
+            unit: "ratio",
+            normalized_score: 80,
+            weight: 0.2,
+            contribution: 16,
+            freshness: "fresh",
+            required: true,
+            drilldown: {
+              path: "/cockpit/connectors?health=not_ok",
+              label_id: "operational.open_connectors",
+            },
+          },
+        ],
+        causes: [
+          {
+            kind: "held_schedule",
+            id: uuid,
+            label: "Monatsreport: automatic runs held for review",
+            drilldown: {
+              path: "/cockpit/decisions?bucket=blocked",
+              label_id: "operational.open_blocked",
+            },
+          },
+          {
+            kind: "connector",
+            id: uuid,
+            label: "Mailer: needs reauth",
+            drilldown: {
+              path: `/cockpit/connectors/${uuid}`,
+              label_id: "operational.open_connector",
+            },
+          },
+        ],
       },
       data_freshness: {
-        ...overviewMetric("data.freshness", 18, "/cockpit/operations?focus=data", "healthy"),
-        kind: "duration",
-        state: "fresh",
-        sources: [],
+        ...overviewMetric(
+          "data.freshness",
+          90_000,
+          "/cockpit/audit?scope=operations",
+          "critical",
+          "duration",
+        ),
+        value_state: "stale",
+        state: "stale",
+        sources: [
+          {
+            id: "self_healing.drift_scan",
+            updated_at: "2026-08-25T09:00:00.000Z",
+            expected_interval_seconds: 3600,
+            stale_after_seconds: 7200,
+            state: "stale",
+            drilldown: {
+              path: "/cockpit/audit?scope=operations",
+              label_id: "operational.open_scans",
+            },
+          },
+          {
+            id: "connectors.reauth_scan",
+            updated_at: generatedAt,
+            expected_interval_seconds: 3600,
+            stale_after_seconds: 7200,
+            state: "fresh",
+            drilldown: { path: "/cockpit/connectors", label_id: "operational.open_connectors" },
+          },
+        ],
       },
     },
     // The four sections and eight metrics a running installation serves.
@@ -687,7 +802,7 @@ function operationalOverview() {
           overviewMetric(
             "repairs.applied_ratio",
             0.654320987654321,
-            "/cockpit/decisions",
+            "/cockpit/audit?scope=all&action=patch_candidate.approved,patch_candidate.auto_applied,patch_candidate.rejected",
             "information",
             "ratio",
           ),
@@ -1979,7 +2094,11 @@ function artifactRouteName(route) {
   // a directory that does not exist. The record's id is not part of the name:
   // the frame is of the DETAIL surface, and a second id would make two names
   // for one photograph.
-  return (route || "overview").replace("?bucket=", "-bucket-").replace(/\/[^/]+$/, "-detail");
+  const [path, query] = (route || "overview").split("?");
+  const name = path.replace(/\/[^/]+$/, "-detail");
+  // A query becomes part of the name, so two narrowings of one page are two
+  // frames rather than one overwriting the other (`decisions-bucket-failing`).
+  return query ? `${name}-${query.replace(/[^a-z0-9]+/gi, "-").replace(/-+$/, "")}` : name;
 }
 
 function markerFor(route) {
@@ -2078,6 +2197,105 @@ async function assertOpenOnce(page, label) {
     );
   await page.goBack();
   await page.locator('[role="dialog"]').waitFor({ state: "hidden" });
+}
+
+/**
+ * The system page names what makes the installation red, each with its way in.
+ *
+ * It used to hold a scan button and a sentence saying its findings were on the
+ * overview — while the overview's red health tile linked here. The hostile
+ * snapshot carries a critical score, two causes and a stale source, so every
+ * one of them must be a line, and the causes must lead where they are fixed.
+ */
+async function assertOperationsNamesItsCauses(page, label) {
+  const block = page.locator('[data-testid="operations-attention"]');
+  try {
+    await block.waitFor({ state: "visible", timeout: 10_000 });
+  } catch (error) {
+    throw new Error(`${label}: a critical snapshot with causes shows no attention block`, {
+      cause: error,
+    });
+  }
+  const links = await block
+    .locator('a[data-testid^="operations-attention-link-"]')
+    .evaluateAll((anchors) => anchors.map((anchor) => anchor.getAttribute("href")));
+  for (const expected of ["/cockpit/decisions?bucket=blocked", "/cockpit/audit?scope=operations"]) {
+    if (!links.includes(expected))
+      throw new Error(
+        `${label}: no attention line leads to ${expected} (links: ${links.join(", ")})`,
+      );
+  }
+  if (links.some((href) => href?.startsWith("/cockpit/cockpit")))
+    throw new Error(`${label}: an attention link carries the base twice`);
+  const text = await block.innerText();
+  if (!text.includes("Mailer: needs reauth"))
+    throw new Error(`${label}: the connector cause is not named`);
+}
+
+/**
+ * The same page with nothing wrong says nothing — no "all good" card.
+ *
+ * Swaps the snapshot for a healthy one and restores it in `finally`: a
+ * scenario that leaves its route behind poisons every frame after it.
+ */
+async function verifyHealthyOperationsIsQuiet(page, label) {
+  const pattern = "**/v1/operational-overview*";
+  const healthy = (route) => {
+    const data = operationalOverview();
+    Object.assign(data.core.blocked, { value: 0, value_state: "zero", severity: "healthy" });
+    Object.assign(data.core.health, {
+      value: 100,
+      state: "healthy",
+      severity: "healthy",
+      causes: [],
+      components: data.core.health.components.map((component) => ({
+        ...component,
+        raw_value: component.unit === "count" ? 0 : 1,
+        normalized_score: 100,
+      })),
+    });
+    Object.assign(data.core.data_freshness, {
+      value: 0,
+      value_state: "zero",
+      state: "fresh",
+      severity: "healthy",
+      sources: data.core.data_freshness.sources.map((source) => ({
+        ...source,
+        updated_at: data.generated_at,
+        state: "fresh",
+      })),
+    });
+    return route.fulfill({ json: data });
+  };
+  await page.route(pattern, healthy);
+  try {
+    await stand.visit(page, "operations");
+    await page.locator('[data-testid="operations-health"]').waitFor({ state: "visible" });
+    if (await page.locator('[data-testid="operations-attention"]').count())
+      throw new Error(`${label}: a healthy installation still shows an attention block`);
+  } finally {
+    await page.unroute(pattern, healthy);
+  }
+}
+
+/** `?health=not_ok` lists the enabled connectors that are not ok, and says so. */
+async function assertUnhealthyConnectorsOnly(page, label) {
+  if (!(await page.locator('[data-testid="catalog-health-filter"]').isVisible()))
+    throw new Error(`${label}: the health narrowing is not shown as a removable chip`);
+  const rows = await page.locator("main").innerText();
+  // The fixture rotates Reporting API (ok), Mailer (needs re-auth), Warehouse
+  // (disabled) and Legacy CRM (degraded). Only the two unhealthy enabled ones
+  // count against the health score, so only they may be listed.
+  for (const shown of ["Mailer", "Legacy CRM"])
+    if (!rows.includes(shown)) throw new Error(`${label}: ${shown} is unhealthy and missing`);
+  for (const hidden of ["Reporting API", "Warehouse"])
+    if (rows.includes(hidden)) throw new Error(`${label}: ${hidden} is listed but not unhealthy`);
+}
+
+/** A link that names the log's verbs arrives as a chip the reader can lift. */
+async function assertAuditActionChip(page, label) {
+  if (!(await page.locator('[data-testid="audit-action-filter"]').isVisible()))
+    throw new Error(`${label}: the verbs the link narrowed to are not shown as a chip`);
 }
 
 async function assertRunDetail(page, label) {
@@ -2606,6 +2824,12 @@ for (const locale of variants) {
       await assertHeadingAlignment(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertBlankLists(page, `${locale.artifact}/${viewport.name}/${route}`);
+      if (route === "operations")
+        await assertOperationsNamesItsCauses(page, `${locale.artifact}/${viewport.name}/${route}`);
+      if (route.startsWith("connectors?health="))
+        await assertUnhealthyConnectorsOnly(page, `${locale.artifact}/${viewport.name}/${route}`);
+      if (route.startsWith("audit?") && route.includes("action="))
+        await assertAuditActionChip(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "chat") await assertChat(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "runs")
         await assertOpenOnce(page, `${locale.artifact}/${viewport.name}/${route}`);
@@ -2635,6 +2859,7 @@ for (const locale of variants) {
         fullPage: false,
       });
     }
+    await verifyHealthyOperationsIsQuiet(page, `${locale.artifact}/${viewport.name}/operations`);
     await verifyScheduleHolds(page, stand, uuid, locale.name, operationalOverview, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-schedule-held-${state}`, {
         fullPage: false,

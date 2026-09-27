@@ -4,7 +4,7 @@ import type { ConversationTool } from "../index.ts";
 const ListInput = z
   .object({
     limit: z.number().int().min(1).max(200).optional(),
-    status: z.enum(["proposed", "applied", "rejected", "superseded"]).optional(),
+    status: z.enum(["proposed", "applied", "rejected", "superseded", "inapplicable"]).optional(),
   })
   .openapi("ListPatchCandidatesToolInput");
 const GetInput = z.object({ id: z.string().uuid() }).openapi("GetPatchCandidateToolInput");
@@ -12,23 +12,32 @@ const GetInput = z.object({ id: z.string().uuid() }).openapi("GetPatchCandidateT
 export const listPatchCandidatesTool: ConversationTool = {
   name: "list_patch_candidates",
   description:
-    "List Patch Candidates — LLM-proposed fixes for drifted workflow steps, awaiting approval.",
+    "List Patch Candidates — LLM-proposed fixes for drifted workflow steps. open_total counts the ones a human can decide now; review_reason says why a proposed one cannot be.",
   inputSchema: ListInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof ListInput>) {
-    const rows = await ctx.engineClient.patchCandidates.list({
-      ...(args.limit !== undefined ? { limit: args.limit } : {}),
-      ...(args.status !== undefined ? { status: args.status } : {}),
-    });
+    const [rows, open] = await Promise.all([
+      ctx.engineClient.patchCandidates.list({
+        ...(args.limit !== undefined ? { limit: args.limit } : {}),
+        ...(args.status !== undefined ? { status: args.status } : {}),
+      }),
+      ctx.engineClient.patchCandidates.openDecisions(),
+    ]);
     return {
       ok: true,
       data: {
+        // Proposed AND reviewable on the current workflow version — the count
+        // to quote as "awaiting review". A proposed row with a `review_reason`
+        // cannot be decided as it stands.
+        open_total: open.open_total,
         candidates: rows.map((p) => ({
           id: p.id,
           status: p.status,
           workflow_id: p.workflow_id,
           classification: p.classification,
           fixture_id: p.fixture_id,
+          reviewable: p.reviewable,
+          review_reason: p.review_reason,
           created_at: p.created_at,
         })),
       },

@@ -116,15 +116,18 @@ is tested against the parser its page reads it back with.
 ### Decisions surface
 
 Every proposal that needs a person lives on one page (`/decisions`): proposed fixes, skill
-candidates and conversations waiting for an answer. The navigation entry sits directly under the
-overview and carries the exact open count, taken from the engine totals — when a count cannot be
-read it is omitted rather than guessed. Because each of the three sources is fetched with a page
-cap, the page states how many of the counted positions it is actually showing rather than letting
-the badge and the column disagree in silence.
+candidates and the scheduled workflows that are held or keep failing; the conversations waiting for
+an answer have a tab of their own there. The navigation entry sits directly under the overview and
+carries the exact open count, taken from the engine totals — when a count cannot be read it is
+omitted rather than guessed.
 
-The count never appears without its sources. A bare number is a demand of unknown origin, so the
-heading is followed by the split — how many are fixes distilled from failing runs, how many are
-proposed skills, how many are conversations — and each filter chip carries its own share of it.
+The open count is said in exactly two places: the navigation badge and the kind chips. One rule
+holds them together (`openDecisionQueue` and `chipCounts` in `decisions-model.ts`): the badge counts
+what the chips count — fixes, skills, and held or failing schedules — so the chips always sum to the
+badge. The waiting conversations are not in it: they carry no approve and no reject here (§8.5b) and
+are counted on their own "Rückfragen" tab. There is no summary sentence and no per-rubric count
+badge; each extra copy of the number was one more the reader had to reconcile. "Alle" and "Alle
+anzeigen" are one reset, which clears both the chips and the bucket a tile brought.
 A proposed fix is titled in the reader's language. The engine passes the repair model's own change
 note through verbatim — "Field follows the rename: data.id → data.result.id" — and that note used
 to be the card's title, so the queue read as a list of commit messages from another system. The
@@ -188,8 +191,8 @@ What is settled does not come back onto this page at all: §8.5 keeps state and 
 the decided and rejected positions live in the audit trail, reached by the single link the queue
 carries.
 
-Scheduled workflows held at admission appear in a named blocking group after the section controls,
-kind filters and queue summary. They use compact neutral cards with a status badge, workflow name,
+Scheduled workflows held at admission appear in a named blocking group after the section controls
+and kind filters. They use compact neutral cards with a status badge, workflow name,
 short reason and an explicit review action. The cron expression and full explanation are behind a
 keyboard-accessible disclosure. Holds obey the same kind filtering, loading and error states as the
 rest of the queue; no repeated destructive alerts may precede its controls.
@@ -209,37 +212,27 @@ never starts a run. Names and version labels replace internal identifiers in the
 
 ### Overview surface
 
-The overview answers what is happening, and links to where it is decided. It carries the incident
-banner, a compact line saying how many positions are waiting and how long the oldest has been
-there, the root-cause failure groups, and the runs that happened recently.
+The overview is the family's operational dashboard and nothing else. Its tiles are fixed by the
+family contract (`FAMILY-UI.json`, checked by `checkOperationalDashboard` in
+`scripts/konvention-check.mjs`): four decision counts — blocked, failing, waiting a while, other —
+then the health state and the data freshness, then the product sections. It carries no incident
+banner, no failure groups, no lists and no recent runs; adding, removing or reordering a tile is a
+contract change, not a page change.
 
-Every number about the queue comes from one function, `countOpenDecisions`, and the overview reads
-it through the same query as the navigation badge. It used to read three: the banner filtered the
-health digest's `stuck` flag, the waiting line read the digest's pending patch count, and the badge
-summed the three list endpoints — so one screen showed three totals for one queue and explained
-none of them. The digest knows only patch candidates and cannot answer for the queue; it keeps what
-it does own, the failure groups, the risks and the all-clear.
+Every tile is a number and, where the number counted something, the way to it. The engine owns the
+way (contract 2.3): each metric carries a drilldown aimed at what it counted, the health score at its
+worst component, the data freshness at its stalest source, and the repair rate at the decided
+repairs in the audit trail. The page adds one rule of its own, `metricOffersDrilldown`: a value of
+zero has nothing to open and gets no link — a link under "production incidents: 0" once opened nine
+hundred rows. A value that could not be read gets none either, unless the tile is red: the health
+state turns critical on blocked work alone, with no score when nothing ran, and a red tile always
+keeps its way to the cause.
 
-The incident banner names its shares and borrows their labels from the queue. It states one claim
-per rubric it is about — "Holding something up: 1 of 8", "Expired: 1 of 8", or "at least" where a
-source hit its page cap — and the label of each claim is read from the same catalog key that heads
-that rubric on the decisions page, so the two cannot be worded apart. It carries exactly two claims,
-because §8.7 names exactly two triggers: something is stopped, or a deadline passed unanswered. A
-position that has merely been sitting is not one of them. It briefly was, summed into a single
-sentence that said 25 of 30 were "blocking their workflow" — while the rubric one click away headed
-three of those five with a line that reads "blocking nothing". Age keeps the surfaces it honestly
-owns: Zone A's oldest-position line, the red navigation badge, and the rubric that names it.
-
-Deviation from the family convention, deliberate: Zone A links to the decision queue without
-reproducing any of it. The convention allows the overview to show the queue's top positions as well
-as link to them, and this product did exactly that — the same rows as `/decisions`, not decidable
-here, and titled from a different field, so the two pages disagreed about what one candidate was
-called. A count and a link cannot disagree with anything.
-
-Failures are split by origin. A person building a workflow can fail two dozen trial runs in an
-afternoon, and an overview that counts those alongside a scheduled job failing nightly reports a
-crisis that is not happening — so authoring and manual runs sit under their own heading beneath the
-scheduled ones.
+The causes behind a red tile are not on the overview; they live where they can be acted on. The
+failing and blocked workflows are on the decisions page, each tile linking to its own bucket there.
+The health components, the concrete causes the engine names and the stale sources are on the system
+page. The waiting count uses the same labels as the queue it links to: the fourth tile says
+"Liegt schon länger", the words of the decisions page's own rubric for that bucket.
 
 There is no "next scheduled run" tile. The engine exposes a cron expression, a timezone and a
 paused flag, and computes no next-fire instant anywhere; a time this page derived itself would be a
@@ -247,14 +240,20 @@ guess presented as a fact.
 
 ### System surface
 
-The installation's tools page holds the tools and none of their results. It used to render the
-failure groups and the repair counter a second time, from a second read of the same digest, and it
-showed different numbers than the overview did — because the two counted different things and
-neither said which. The failure groups live on the overview, the proposed repairs live in the
-decision queue, and this page links to both rather than restating either.
+The system page answers "is this installation healthy, and if not, why". It reads the same snapshot
+as the overview (one query key, one read) and shows the problems first: an attention block with one
+line per cause the engine names, per stale or never-run source, and — when the score is not healthy
+and the engine named no cause — per weak component, each with its way to where it is fixed. When
+nothing is wrong the block is absent, not an "all good" card the reader learns to skip; an
+incomplete report or an undetermined state is a problem of its own, never an all-clear. Below it,
+every health component with its value and link, and every freshness source with when it last ran.
+
+It used to hold only the drift scan and a sentence saying its findings were on the overview, while
+the overview's red health tile linked here: a loop with a cause at neither end.
 
 Checking and repairing stay two acts in one order: the drift scan reads and reports, and every
-repair it proposes becomes a decision a person makes. There is no button that does both.
+repair it proposes becomes a decision a person makes. The scan's toast says how many repairs it
+proposed and, when there are any, leads to the decisions page. There is no button that does both.
 
 ### Conversation surface
 
