@@ -32,6 +32,30 @@ const UsageInput = z
  * - `user_id !== self` → requires the `stats:read:all` permission via the
  *   tool ctx principal; denied otherwise.
  */
+/**
+ * Which of a caller's two ceilings refuses the next call first.
+ *
+ * `checkAndDecrement` treats the per-user cap as an ADDITIONAL ceiling on top
+ * of the workspace's, so a caller is bounded by whichever has less room left.
+ * A reader told only about the per-user one reads "nothing bounds you" on
+ * every installation that never set a personal cap — while the workspace cap
+ * is what actually stops them.
+ *
+ * `null` remaining means that ceiling is absent, not that it is exhausted.
+ * Both absent means nothing binds; the caller is unbounded.
+ */
+export function bindingCeiling(
+  userRemaining: number | null,
+  tenantRemaining: number | null,
+): "user" | "tenant" | null {
+  if (userRemaining == null && tenantRemaining == null) return null;
+  if (userRemaining == null) return "tenant";
+  if (tenantRemaining == null) return "user";
+  // Ties go to the user cap: it is the narrower statement about this caller,
+  // and it is the one the dispatch evaluates first.
+  return userRemaining <= tenantRemaining ? "user" : "tenant";
+}
+
 async function resolveUsageScope(
   ctx: ToolContext,
   requestedUserId: string | undefined,
@@ -124,7 +148,7 @@ export const getLlmUsageTool: ConversationTool = {
 export const getTokenBudgetTool: ConversationTool = {
   name: "get_token_budget",
   description:
-    "Report current-month token usage against the configured budget. Defaults to your own usage + per-user budget; pass user_id to scope to another user (requires stats:read:all).",
+    "Report current-month token usage against the ceiling that will actually refuse the next call. A caller is bounded by both a per-user cap and the workspace cap; `budget_tokens`/`remaining_tokens` describe whichever binds first, `binding_scope` names it, and `user`/`tenant` carry both so the answer can be checked. Defaults to your own figures; pass user_id to scope to another user (requires stats:read:all).",
   inputSchema: EmptyInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof EmptyInput>) {
@@ -152,18 +176,48 @@ export const getTokenBudgetTool: ConversationTool = {
       };
     }
 
-    const [used, budget] = await Promise.all([
+    // A caller is bounded by TWO ceilings and the dispatch refuses at
+    // whichever it reaches first (`checkAndDecrement`: the per-user cap is an
+    // ADDITIONAL ceiling on top of the workspace's, not a replacement).
+    //
+    // This branch used to report only the per-user cap. A caller with no
+    // personal cap — which is every caller on an installation that never set
+    // one — therefore read `budget_tokens: null`, "nothing bounds you", while
+    // the workspace cap was what would actually stop the next call. Found on
+    // a live installation minutes after that cap was made settable: the tool
+    // still said `null` with a hundred and fifty million configured.
+    //
+    // So the headline is the binding ceiling, and both are carried beside it
+    // so the answer can be reconciled rather than believed.
+    const [userUsed, userBudget, tenantUsed] = await Promise.all([
       ctx.engineClient.metrics.monthlyTokenUsageForUser(scope.userId),
       ctx.engineClient.metrics.userTokenBudget(scope.userId),
+      ctx.engineClient.metrics.monthlyTokenUsage(),
     ]);
+    const tenantBudget = ctx.engineClient.metrics.tenantTokenBudget();
+    const userRemaining = userBudget == null ? null : Math.max(userBudget - userUsed, 0);
+    const tenantRemaining = tenantBudget == null ? null : Math.max(tenantBudget - tenantUsed, 0);
+    const binding = bindingCeiling(userRemaining, tenantRemaining);
+
     return {
       ok: true,
       data: {
         user_id: scope.userId,
-        used_tokens: used,
-        budget_tokens: budget,
-        remaining_tokens: budget == null ? null : Math.max(budget - used, 0),
         month_bucket: ctx.engineClient.metrics.currentMonthBucket(),
+        used_tokens: binding === "tenant" ? tenantUsed : userUsed,
+        budget_tokens: binding === "tenant" ? tenantBudget : binding === "user" ? userBudget : null,
+        remaining_tokens: binding === "tenant" ? tenantRemaining : userRemaining,
+        binding_scope: binding,
+        user: {
+          used_tokens: userUsed,
+          budget_tokens: userBudget,
+          remaining_tokens: userRemaining,
+        },
+        tenant: {
+          used_tokens: tenantUsed,
+          budget_tokens: tenantBudget,
+          remaining_tokens: tenantRemaining,
+        },
       },
     };
   },
