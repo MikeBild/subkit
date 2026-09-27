@@ -122,16 +122,26 @@ export interface ConsumptionRow {
  * from. Using raw prompt tokens instead would produce a breakdown that cannot
  * be reconciled with the headline.
  */
-export function consumptionRows(envelope: unknown): ConsumptionRow[] {
+export function consumptionRows(envelope: unknown, axis: ConsumptionAxis): ConsumptionRow[] {
   const groups = isRecord(envelope) && Array.isArray(envelope.groups) ? envelope.groups : [];
   const rows = groups.flatMap((group): ConsumptionRow[] => {
-    if (!isRecord(group) || typeof group.key !== "string") return [];
+    if (!isRecord(group)) return [];
+    // `key` is a map of dimension to value — `{ workflow: "ga4-daily-report" }`
+    // — because a caller may group by two dimensions at once. Reading it as a
+    // string dropped every group and left a page that had measured forty
+    // million tokens saying "no model calls in this window".
+    //
+    // The unit test agreed with the mistake: it fed a bare string, matching
+    // the assumption rather than the published contract, and stayed green
+    // while nothing could ever render.
+    const keyed = isRecord(group.key) ? group.key[axis] : undefined;
+    if (typeof keyed !== "string" || keyed.length === 0) return [];
     const totals = isRecord(group.totals) ? group.totals : {};
     const tokens = isRecord(totals.tokens) ? totals.tokens : {};
     const callsEnvelope = isRecord(totals.calls) ? totals.calls : {};
     return [
       {
-        key: group.key,
+        key: keyed,
         calls: typeof callsEnvelope.total === "number" ? callsEnvelope.total : 0,
         tokens: typeof tokens.total === "number" ? tokens.total : 0,
         share: null,
