@@ -14,20 +14,30 @@
 /**
  * Whether a number offers a way in.
  *
- * The engine owns every drilldown now, aimed at what its number counted. What
- * is left to decide here is the reader's side: a count of nothing has nothing
- * to open. On a live installation a link sat under "production incidents: 0"
- * and opened nine hundred rows — a reader clicks a zero expecting to be told
- * there is nothing, and was handed a wall instead.
+ * The engine owns every drilldown, aimed at what its number counted. What is
+ * left to decide here is the reader's side, and it depends on what KIND of
+ * number it is.
+ *
+ * A count of nothing has nothing to open. On a live installation a link sat
+ * under "production incidents: 0" and opened nine hundred rows — a reader
+ * clicks a zero expecting to be told there is nothing, and was handed a wall
+ * instead. That rule is about counts, and only about counts.
+ *
+ * A ratio, a score or a duration at zero is not "nothing": execution success
+ * at 0 %, connector health at 0 %, a health score of 0 are the WORST states
+ * the tile can be in, and each has a cause to go to. Those link whenever the
+ * engine names a path — a red tile without a way to its cause is the one
+ * thing §1 forbids. A metric that names no kind is read as a count, the
+ * narrower rule.
  *
  * `null` is not zero: a value that could not be read is unknown, not empty.
  * An unknown that is also red keeps its way in — the engine makes the health
  * state critical on blocked work alone, with no score when nothing ran in 24
- * hours, and a red tile without a way to its cause is the one thing §1 forbids.
- * A plain unknown offers none. A path that is missing or blank is no way in,
- * whatever the value.
+ * hours. A plain unknown offers none. A path that is missing or blank is no
+ * way in, whatever the value.
  */
 export function metricOffersDrilldown(metric: {
+  kind?: string | null;
   value: number | null | undefined;
   severity?: string | null;
   drilldown?: { path?: string | null } | null;
@@ -35,7 +45,8 @@ export function metricOffersDrilldown(metric: {
   if (!metric.drilldown?.path?.trim()) return false;
   if (metric.value === null || metric.value === undefined)
     return metric.severity === "critical" || metric.severity === "urgent";
-  return metric.value > 0;
+  const isCount = !metric.kind || metric.kind === "count";
+  return isCount ? metric.value > 0 : true;
 }
 
 /**

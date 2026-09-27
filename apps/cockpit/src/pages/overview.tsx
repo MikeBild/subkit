@@ -235,11 +235,12 @@ export function OverviewPage() {
                   label={t(copy.label)}
                   value={value}
                   valueRaw={metric.value}
+                  kind={metric.kind}
                   valueState={metric.value_state}
                   severity={metric.severity}
                   tooltip={t(copy.tooltip)}
                   // The engine's own way to what this number counted — and
-                  // none under a zero, where there is nothing to open.
+                  // none under a counted zero, where there is nothing to open.
                   {...(metricOffersDrilldown(metric)
                     ? { href: absolute(metric.drilldown.path), linkLabel: t(copy.link) }
                     : {})}
@@ -279,13 +280,15 @@ export function OverviewPage() {
                           label={t(copy?.label ?? "operational.metric.value")}
                           value={format(metric, locale, t)}
                           valueRaw={metric.value}
+                          kind={metric.kind}
                           valueState={metric.value_state}
                           severity={metric.severity}
                           tooltip={t(copy?.tooltip ?? "operational.metric.value.tooltip")}
                           // The engine aims every drilldown at what its number
                           // counted (contract 2.3); the page adds only the
-                          // reader's rule — a zero has nothing to open. The rule
-                          // lives in the model, where it is held to a test.
+                          // reader's rule — a counted zero has nothing to open,
+                          // a ratio at zero leads to its cause. The rule lives
+                          // in the model, where it is held to a test.
                           {...(metricOffersDrilldown(metric)
                             ? {
                                 href: absolute(metric.drilldown.path),
