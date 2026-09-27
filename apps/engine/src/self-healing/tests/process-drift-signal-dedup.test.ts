@@ -19,7 +19,7 @@ import { getLatestShape } from "../../schema-versions/service.ts";
 import { analyzeStepFailure } from "../drift-detector.ts";
 import { processDriftSignal } from "../service.ts";
 import { signalFingerprint } from "../terminal-dedup.ts";
-import { createSelfHealingCtx, type SelfHealingTestCtx } from "./setup.ts";
+import { createSelfHealingCtx, resetSeedDag, type SelfHealingTestCtx } from "./setup.ts";
 
 let ctx: SelfHealingTestCtx;
 
@@ -241,7 +241,11 @@ describe("processDriftSignal — new drift on a healed endpoint is NOT masked", 
 
       // NEW drift B on the now-healed endpoint must NOT be masked by the
       // applied A candidate — it must propose a FRESH candidate (the bug:
-      // the applied short-circuit skipped it, leaving B unhealed).
+      // the applied short-circuit skipped it, leaving B unhealed). The mock
+      // repair proposes the same path move for B; restore the pre-drift step
+      // so that move still changes something — against the healed step it is
+      // a `no_change` and the engine closes it as `inapplicable` at birth.
+      await resetSeedDag(local);
       const b = await processDriftSignal(driftB, signalCtx, { allowAutoApply: false }, db);
       expect(b.candidate_id).not.toBe(a.candidate_id);
       expect(b.status).toBe("proposed");

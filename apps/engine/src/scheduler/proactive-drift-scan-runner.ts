@@ -22,7 +22,12 @@ import {
   recordProactiveDriftSignal,
   recordProactiveDriftUnanchored,
 } from "../observability/instrumentation.ts";
-import { driftSignalContext, processDriftSignal, scanForDrift } from "../self-healing/index.ts";
+import {
+  driftSignalContext,
+  processDriftSignal,
+  scanForDrift,
+  sweepUndecidableCandidates,
+} from "../self-healing/index.ts";
 
 /**
  * Execute one proactive drift scan for a single tenant.
@@ -86,6 +91,10 @@ export async function runProactiveDriftScanForTenant(
       db,
     );
 
+    // Close the proposed candidates the current workflow versions prove
+    // undecidable before scanning, so a closed row's signal meets the
+    // version-bound terminal dedup instead of being re-proposed.
+    await sweepUndecidableCandidates(db, tenant_id);
     const scan = await scanForDrift(filters, db);
     signals_detected = scan.signals.length + scan.unanchored.length;
     unanchored_detected = scan.unanchored.length;
