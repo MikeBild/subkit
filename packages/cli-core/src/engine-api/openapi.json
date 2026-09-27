@@ -7354,7 +7354,11 @@
             ],
             "properties": {
               "reason_code": {
-                "type": "string"
+                "type": "string",
+                "enum": [
+                  "execution_authority_required",
+                  "execution_authority_unavailable"
+                ]
               },
               "observed_at": {
                 "type": "string"

@@ -15,6 +15,7 @@ export {
   admitAuthorizedWorkflowExecution,
   assertExecutionAuthorityCurrent,
 } from "./authority-admission.ts";
+export { PREVIEW_CLASSIFICATIONS, type PreviewClassification } from "./classify.ts";
 export * from "./engine.ts";
 export * from "./jsonata-engine.ts";
 export * from "./list.ts";
