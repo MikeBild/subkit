@@ -1,3 +1,5 @@
+import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
+
 /** Browser interactions use fixtures; the route integration suite verifies database enforcement. */
 /**
  * Suggested bounds as the engine shapes them: one `now`, a whole number of
@@ -11,10 +13,18 @@ function wholeDaySpan() {
   };
 }
 
-export async function verifyWorkflowAuthorities(page, stand, workflowId, locale, capture) {
-  const id = "00000000-0000-4000-8000-000000000101";
-  const olderId = "00000000-0000-4000-8000-000000000102";
-  const versionId = "00000000-0000-4000-8000-000000000103";
+export async function verifyWorkflowAuthorities(page, stand, workflowId, locale, photograph) {
+  // Every frame this stand takes is also read for identifiers. The approval
+  // cards were headed by their own UUID and printed version ids raw, and no
+  // frame of them was ever checked: the route sweep never opened this page,
+  // and its check only knew one fixture value anyway.
+  const capture = async (state) => {
+    await assertNoVisibleUuids(page.locator("body"), `workflow authorities/${state}`);
+    await photograph(state);
+  };
+  const id = "a41f7c2e-9b3d-4e58-8f16-2c7d0b9e4a35";
+  const olderId = "d8e2b5a1-4c6f-4a93-b7d0-6e1f3c8a2b94";
+  const versionId = "3f6b9d2c-8e1a-4b75-9c40-a2d5e7f1b3c8";
   const now = Date.now();
   const authority = {
     id,
@@ -128,8 +138,23 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
     await card.waitFor();
     await capture("history");
     const text = await card.innerText();
+    // The heading says what the reader decides by — where, until when, how
+    // often — and the id lives on its title, for quoting, not on the page.
+    const headline = card.getByTestId("authority-headline");
+    if ((await headline.getAttribute("title")) !== id)
+      throw new Error("Authority headline does not keep the exact authority on its title");
+    const headlineText = await headline.innerText();
+    for (const expected of locale === "de"
+      ? ["Produktion", "gültig bis", "bis zu 3 Läufe"]
+      : ["Production", "valid until", "up to 3 runs"])
+      if (!headlineText.includes(expected))
+        throw new Error(`Authority headline ${JSON.stringify(headlineText)} lacks ${expected}`);
+    // A version this page cannot number is shortened, whole on the title.
+    const version = card.getByTestId("authority-version");
+    if ((await version.getAttribute("title")) !== versionId)
+      throw new Error("Authority version does not keep the exact version on its title");
     for (const expected of [
-      versionId,
+      `${versionId.slice(0, 8)}…`,
       "https://reports.example.test/monthly",
       "POST",
       locale === "de" ? "Noch 2 von 3 Runs verfügbar" : "2 of 3 runs remaining",
@@ -150,7 +175,10 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
     const dialog = page.getByRole("dialog");
     await dialog.waitFor();
     await capture("revoke");
-    if (!(await dialog.innerText()).includes(id))
+    // The review names the exact authority it revokes — by what it permits,
+    // with the id on the title — never by printing the UUID.
+    const revokeTarget = dialog.getByTestId("authority-revoke-target");
+    if ((await revokeTarget.getAttribute("title")) !== id)
       throw new Error("Revoke review omitted the exact authority");
     await page.keyboard.press("Escape");
     await dialog.waitFor({ state: "hidden" });
@@ -198,8 +226,8 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
  * without that this whole panel renders in no screenshot at all.
  */
 async function verifyPreparedVersion(page, stand, workflowId, locale, capture) {
-  const activeVersionId = "00000000-0000-4000-8000-000000000201";
-  const draftVersionId = "00000000-0000-4000-8000-000000000202";
+  const activeVersionId = "71c4e8a9-2d5b-4f36-8a1e-9b0c3d7f5e62";
+  const draftVersionId = "b9e3a6d1-5f2c-4e87-a0b4-3c8d1e6f9a27";
   const workflowPattern = `**/v1/workflows/${workflowId}`;
   const draftPattern = `**/v1/workflows/${workflowId}/draft`;
   const previewPattern = `**/v1/workflows/${workflowId}/versions/*/authority-preview?*`;
@@ -382,8 +410,8 @@ async function verifyPreparedVersion(page, stand, workflowId, locale, capture) {
  * `activate-draft` checks the reviewed digest and authorizes no run.
  */
 async function verifyActivationWhenNotApprovable(page, stand, workflowId, capture) {
-  const activeVersionId = "00000000-0000-4000-8000-000000000401";
-  const draftVersionId = "00000000-0000-4000-8000-000000000402";
+  const activeVersionId = "8b1e5d3a-7c4f-4a62-8e95-d0a3c6b2f7e1";
+  const draftVersionId = "f6a9c2e7-1d8b-4b34-a7c5-5e2d9f0b4a86";
   const workflowPattern = `**/v1/workflows/${workflowId}`;
   const draftPattern = `**/v1/workflows/${workflowId}/draft`;
   const previewPattern = `**/v1/workflows/${workflowId}/versions/*/authority-preview?*`;
@@ -544,7 +572,7 @@ async function verifyActivationWhenNotApprovable(page, stand, workflowId, captur
  * up somewhere the reader cannot approve from.
  */
 async function verifyEnvironmentCorrection(page, stand, workflowId, capture) {
-  const versionId = "00000000-0000-4000-8000-000000000501";
+  const versionId = "2c5f8b1e-9a4d-4e73-b6a2-8d1c4f7e3b59";
   const workflowPattern = `**/v1/workflows/${workflowId}`;
   const previewPattern = `**/v1/workflows/${workflowId}/versions/*/authority-preview?*`;
   const grantPattern = `**/v1/workflows/${workflowId}/execution-authorities`;
@@ -701,7 +729,7 @@ async function verifyEnvironmentCorrection(page, stand, workflowId, capture) {
  * caught by what it sends, not only by whether the button is enabled.
  */
 async function verifyLateReviewDropped(page, stand, workflowId) {
-  const versionId = "00000000-0000-4000-8000-000000000601";
+  const versionId = "e4b7a0d3-6c2f-4f98-8b51-3a9e6d2c1f74";
   const workflowPattern = `**/v1/workflows/${workflowId}`;
   const previewPattern = `**/v1/workflows/${workflowId}/versions/*/authority-preview?*`;
   const grantPattern = `**/v1/workflows/${workflowId}/execution-authorities`;
@@ -834,7 +862,7 @@ async function verifyLateReviewDropped(page, stand, workflowId) {
  * preparation route at all.
  */
 async function verifyTrialAlreadyRunning(page, stand, workflowId, locale, capture) {
-  const versionId = "00000000-0000-4000-8000-000000000601";
+  const versionId = "e4b7a0d3-6c2f-4f98-8b51-3a9e6d2c1f74";
   const previewPattern = `**/v1/workflows/${workflowId}/versions/*/authority-preview?*`;
   const preparePattern = `**/v1/workflows/${workflowId}/versions/*/prepare-authority`;
   const historyPattern = `**/v1/workflows/${workflowId}/execution-authorities**`;
@@ -1158,7 +1186,7 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
           status: 200,
           contentType: "application/json",
           body: JSON.stringify({
-            draft: { version_id: "00000000-0000-4000-8000-000000000401", version: 9 },
+            draft: { version_id: "8b1e5d3a-7c4f-4a62-8e95-d0a3c6b2f7e1", version: 9 },
             applied_step_ids: ["publish-report"],
           }),
         });
@@ -1201,8 +1229,8 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
               slug: "monatsreport",
               lifecycle: "active",
               current_version: 8,
-              current_version_id: "00000000-0000-4000-8000-000000000301",
-              draft_version_id: "00000000-0000-4000-8000-000000000302",
+              current_version_id: "5e8a1c7d-3b9f-4d26-b5e0-7a4c2f1d8b63",
+              draft_version_id: "c2d7f4b8-6a1e-4c59-9d83-1f5b8e3a7c40",
               steps: [],
               updated_at: "2026-08-10T09:00:00.000Z",
             }),
@@ -1237,7 +1265,7 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
         : "(the repair panel is gone)";
       throw new Error(`Applying the derived limits sent no request. Panel: ${panel}`);
     }
-    if (applied?.expected_draft_version_id !== "00000000-0000-4000-8000-000000000302")
+    if (applied?.expected_draft_version_id !== "c2d7f4b8-6a1e-4c59-9d83-1f5b8e3a7c40")
       throw new Error("The repair did not build on the draft the workflow actually has");
     await page.unroute(`${proposalPattern}/apply`, proposalRoute);
     await page.unroute(proposalPattern, proposalRoute);

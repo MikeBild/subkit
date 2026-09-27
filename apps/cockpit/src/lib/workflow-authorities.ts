@@ -1,5 +1,6 @@
 import type { components } from "@/api/schema";
-import type { TranslationKey } from "@/lib/i18n";
+import { LOCALE_TAGS, type Locale, type TranslationKey } from "@/lib/i18n";
+import { shortIdentifier } from "@/pages/audit-model";
 
 export type WorkflowAuthority = components["schemas"]["WorkflowExecutionAuthority"];
 export type WorkflowAuthorityList = components["schemas"]["WorkflowExecutionAuthorityList"];
@@ -108,4 +109,53 @@ export function observedAuthorityState(authority: WorkflowAuthority, now: number
   if (from > now) return "not_yet_valid";
   if (authority.remaining_runs <= 0) return "exhausted";
   return authority.state;
+}
+
+type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
+
+/**
+ * A workflow version as a reader names it: `v8`, when the page knows the
+ * number; otherwise the shortened identifier (the caller hangs the whole one
+ * on `title`). The page knows the running and the prepared version, which are
+ * the two an approval is ever about.
+ */
+export function authorityVersionLabel(
+  versionId: string,
+  versions: ReadonlyMap<string, number>,
+): { text: string; full: string | null } {
+  const number = versions.get(versionId);
+  if (number !== undefined) return { text: `v${number}`, full: versionId };
+  const short = shortIdentifier(versionId);
+  return { text: short, full: short === versionId ? null : versionId };
+}
+
+/**
+ * What a reader decides an approval by, as its heading: where it runs, until
+ * when, and how often — "Produktion · gültig bis 28.09., 18:00 · bis zu 24
+ * Läufe". The card used to be headed by the approval's UUID, which is the one
+ * fact about it nobody decides anything by.
+ */
+export function authorityHeadline(
+  authority: Pick<WorkflowAuthority, "execution_environment" | "valid_until" | "max_runs">,
+  t: Translate,
+  locale: Locale,
+): string {
+  const until = Date.parse(authority.valid_until);
+  const when = Number.isFinite(until)
+    ? new Intl.DateTimeFormat(LOCALE_TAGS[locale], {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(until)
+    : null;
+  return [
+    t(
+      authority.execution_environment === "prod" ? "authority.production" : "authority.development",
+    ),
+    ...(when ? [t("authority.headline.until", { until: when })] : []),
+    t(authority.max_runs === 1 ? "authority.headline.runs.one" : "authority.headline.runs.other", {
+      max: authority.max_runs,
+    }),
+  ].join(" · ");
 }
