@@ -15,6 +15,7 @@ import {
   budgetSummary,
   consumptionRows,
   llmStatsEndpoint,
+  windowCost,
 } from "@/pages/usage-model";
 
 describe("the consumption breakdown", () => {
@@ -104,5 +105,57 @@ describe("the month against its cap", () => {
   test("an overspent month does not report more than all of it spent", () => {
     const s = budgetSummary({ tokens_month: 300, monthly_budget_tokens: 100 });
     expect(s.consumedShare).toBe(1);
+  });
+});
+
+describe("the window's money", () => {
+  test("reports a priced window", () => {
+    const cost = windowCost({
+      cost: { amount: 42.8, currency: "EUR", unpriced_models: [], unpriced_calls: 0 },
+    });
+    expect(cost?.amount).toBe(42.8);
+    expect(cost?.currency).toBe("EUR");
+  });
+
+  test("a window nothing could be priced in has no amount at all", () => {
+    // Zero beside a month that plainly consumed tokens reads as "this was
+    // free" — the most expensive misreading this data can produce.
+    expect(
+      windowCost({
+        cost: {
+          amount: 0,
+          currency: "USD",
+          unpriced_models: ["claude-sonnet-4-6"],
+          unpriced_calls: 1_578,
+        },
+      }),
+    ).toBeNull();
+  });
+
+  test("a partly priced window keeps its amount AND what it left out", () => {
+    const cost = windowCost({
+      cost: {
+        amount: 31.1,
+        currency: "USD",
+        unpriced_models: ["some-new-model"],
+        unpriced_calls: 12,
+      },
+    });
+    expect(cost?.amount).toBe(31.1);
+    expect(cost?.unpricedModels).toEqual(["some-new-model"]);
+    expect(cost?.unpricedCalls).toBe(12);
+  });
+
+  test("a genuine zero with nothing unpriced is a real zero", () => {
+    const cost = windowCost({
+      cost: { amount: 0, currency: "USD", unpriced_models: [], unpriced_calls: 0 },
+    });
+    expect(cost?.amount).toBe(0);
+  });
+
+  test("an envelope without a cost block yields nothing", () => {
+    for (const bad of [null, undefined, {}, { cost: "nope" }]) {
+      expect(windowCost(bad)).toBeNull();
+    }
   });
 });

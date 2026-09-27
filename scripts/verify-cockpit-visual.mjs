@@ -1252,6 +1252,16 @@ async function mockApi(route) {
         tokens: { total: rows.reduce((n, r) => n + r[2], 0) },
         latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
       },
+      // PARTLY priced on purpose. A fully priced window would photograph an
+      // amount that looks complete and never show the line that says what it
+      // leaves out — which is the whole point of carrying `unpriced_*`.
+      cost: {
+        amount: 412.87,
+        currency: "EUR",
+        unpriced_models: ["some-new-model"],
+        unpriced_calls: 47,
+        rates_basis: "current",
+      },
     });
   }
   if (path === "/v1/stats/executions") {

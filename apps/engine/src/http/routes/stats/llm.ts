@@ -3,6 +3,8 @@
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
+import { getConfig } from "../../../config/loader.ts";
+import { priceCalls } from "../../../llm/pricing.ts";
 import { can } from "../../../rbac/index.ts";
 import { aggregateLlm, type LlmGroupDim } from "../../../stats/aggregate-llm.ts";
 import { BadRequestError, ForbiddenError } from "../../errors.ts";
@@ -106,6 +108,38 @@ export function registerStatsLlmRoute(app: OpenAPIHono<AppEnv>): void {
       groupBy,
     });
 
+    // Money for the window, priced per model.
+    //
+    // Asked as its own by-model rollup rather than derived from `result`,
+    // because the caller chose the grouping and it is usually not by model —
+    // and a price applied to a flow or a user rollup would multiply tokens by
+    // whichever model happened to be named first. The endpoint is not on a hot
+    // path; a second aggregate is cheaper than a wrong number.
+    const byModel = await aggregateLlm(db, {
+      tenantId: principal.tenant_id,
+      bucket: win.bucket,
+      from: win.from,
+      to: win.to,
+      tz: win.tz,
+      model: q.model,
+      flow: q.flow,
+      userId: q.user_id,
+      groupBy: ["model"],
+    });
+    const tokenPrices = getConfig(principal.tenant_id).tokens;
+    const cost = priceCalls(
+      byModel.groups.map((group) => ({
+        model: group.key.model ?? "",
+        calls: group.totals.calls,
+        prompt_tokens: group.totals.tokens.prompt,
+        completion_tokens: group.totals.tokens.completion,
+        cache_read_tokens: group.totals.tokens.cache_read,
+        cache_creation_tokens: group.totals.tokens.cache_creation,
+      })),
+      tokenPrices?.prices ?? [],
+      tokenPrices?.currency ?? "USD",
+    );
+
     return c.json(
       {
         bucket: win.bucket,
@@ -113,6 +147,7 @@ export function registerStatsLlmRoute(app: OpenAPIHono<AppEnv>): void {
         from: win.from.toISOString(),
         to: win.to.toISOString(),
         ...result,
+        cost,
       },
       200,
     );

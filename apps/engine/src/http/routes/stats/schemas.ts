@@ -230,6 +230,18 @@ export const LlmStatsResponse = z
       tokens: TokenAggSchema,
       latency_ms: LatencyAggSchema,
     }),
+    // Money for the window, priced per model from the configured rates at
+    // read time. `unpriced_*` names what the rates did not cover, so an
+    // amount is never mistaken for a complete one.
+    cost: z
+      .object({
+        amount: z.number(),
+        currency: z.string(),
+        unpriced_models: z.array(z.string()),
+        unpriced_calls: z.number().int(),
+        rates_basis: z.literal("current"),
+      })
+      .openapi("StatsLlmCost"),
   })
   .openapi("StatsLlmResponse");
 

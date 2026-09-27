@@ -109,3 +109,17 @@ describe("pricing a set of calls", () => {
     expect(result.amount).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe("aggregated rows", () => {
+  test("an unpriced row stands for every call it covers, not for one", () => {
+    // Callers group in SQL and hand this one row per model. Counting that row
+    // as a single call would tell an operator two models were unpriced when
+    // it was two thousand calls.
+    const result = priceCalls([call({ model: "unknown-model", calls: 2_000 })], [SONNET], "USD");
+    expect(result.unpriced_calls).toBe(2_000);
+  });
+
+  test("a row without a call count still counts as one", () => {
+    expect(priceCalls([call({ model: "unknown-model" })], [], "USD").unpriced_calls).toBe(1);
+  });
+});

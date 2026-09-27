@@ -62,6 +62,14 @@ export interface ModelPrice {
 
 export interface PricedTokens extends TokenUsageBreakdown {
   model: string;
+  /**
+   * How many provider calls these token sums cover. Defaults to one.
+   *
+   * Callers aggregate in SQL and hand this function one row per model, so an
+   * unpriced row stands for many calls, not one. Without this, an operator
+   * would be told two models were unpriced when it was two thousand calls.
+   */
+  calls?: number;
 }
 
 export interface CostResult {
@@ -99,7 +107,7 @@ export function priceCalls(
   for (const call of calls) {
     const rate = byModel.get(call.model);
     if (!rate) {
-      unpriced.set(call.model, (unpriced.get(call.model) ?? 0) + 1);
+      unpriced.set(call.model, (unpriced.get(call.model) ?? 0) + (call.calls ?? 1));
       continue;
     }
     const uncached = Math.max(

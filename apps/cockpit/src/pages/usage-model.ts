@@ -188,3 +188,39 @@ export function budgetPressure(summary: BudgetSummary): "ample" | "tightening" |
   if (summary.consumedShare >= 0.75) return "tightening";
   return "ample";
 }
+
+export interface WindowCost {
+  amount: number;
+  currency: string;
+  /** Models the configured rates did not cover. Named, never folded into the amount. */
+  unpricedModels: string[];
+  unpricedCalls: number;
+}
+
+/**
+ * The window's money, or nothing.
+ *
+ * `null` when no rate is configured at all: an amount of zero beside a month
+ * that plainly consumed tokens reads as "this was free", which is the most
+ * expensive misreading this data can produce. A partial amount — some models
+ * priced, some not — IS returned, because `unpricedCalls` travels with it and
+ * the surface says so.
+ */
+export function windowCost(envelope: unknown): WindowCost | null {
+  const cost = isRecord(envelope) && isRecord(envelope.cost) ? envelope.cost : null;
+  if (!cost) return null;
+  const amount = numberOrNull(cost.amount);
+  const unpricedCalls = numberOrNull(cost.unpriced_calls) ?? 0;
+  const models = Array.isArray(cost.unpriced_models)
+    ? cost.unpriced_models.filter((m): m is string => typeof m === "string")
+    : [];
+  if (amount === null) return null;
+  // Nothing priced at all is not a cost of nothing.
+  if (amount === 0 && unpricedCalls > 0) return null;
+  return {
+    amount,
+    currency: typeof cost.currency === "string" ? cost.currency : "USD",
+    unpricedModels: models,
+    unpricedCalls,
+  };
+}
