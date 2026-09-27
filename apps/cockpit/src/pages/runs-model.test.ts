@@ -4,6 +4,7 @@ import {
   formatRunDuration,
   requestSourceLabel,
   runAuthorityFacts,
+  runCostFacts,
   runDurationMs,
   runName,
 } from "@/pages/runs-model";
@@ -123,5 +124,57 @@ describe("run naming and request source", () => {
   test("names known request sources and admits when a source is unknown", () => {
     expect(requestSourceLabel("scheduler", t)).toBe(translate("en", "runs.source.scheduler"));
     expect(requestSourceLabel("carrier-pigeon", t)).toBe(translate("en", "common.unknown"));
+  });
+});
+
+describe("what a run consumed", () => {
+  const de = (key: Parameters<typeof translate>[1]) => translate("de", key);
+
+  test("a run that never called a model contributes nothing, not a row of zeros", () => {
+    // "This run cost nothing" and "this run never called a model" are
+    // different facts. A zero states the first.
+    expect(runCostFacts({ llm: { calls: 0 }, external: { cost_usd: 0 } }, t, "en")).toEqual([]);
+  });
+
+  test("an absent or unrecognised payload contributes nothing", () => {
+    for (const bad of [null, undefined, "nope", 42, {}]) {
+      expect(runCostFacts(bad, t, "en")).toEqual([]);
+    }
+  });
+
+  test("names the tokens, the calls and the cache share", () => {
+    const facts = runCostFacts(
+      { llm: { calls: 7, weighted_tokens: 58_472, cache_read_pct: 0.62 }, external: {} },
+      t,
+      "en",
+    );
+    expect(facts.map(([label]) => label)).toEqual([
+      translate("en", "runs.cost.tokens"),
+      translate("en", "runs.cost.calls"),
+      translate("en", "runs.cost.cacheRead"),
+    ]);
+    expect(facts[0]?.[1]).toBe("58,472");
+    expect(facts[2]?.[1]).toBe("62%");
+  });
+
+  test("reads a cache share given as a percentage the same as one given as a ratio", () => {
+    const asRatio = runCostFacts({ llm: { calls: 1, cache_read_pct: 0.62 } }, t, "en");
+    const asPercent = runCostFacts({ llm: { calls: 1, cache_read_pct: 62 } }, t, "en");
+    expect(asRatio[2]?.[1]).toBe(asPercent[2]?.[1]);
+  });
+
+  test("money appears only when money was spent", () => {
+    // `llm_usage` carries no monetary column; `external_call_metering` is the
+    // only real money. "$0.00" beside a run that did spend tokens reads as
+    // "this was free".
+    expect(runCostFacts({ llm: { calls: 3 }, external: { cost_usd: 0 } }, t, "en")).toHaveLength(2);
+    const paid = runCostFacts({ llm: { calls: 3 }, external: { cost_usd: 0.1834 } }, t, "en");
+    expect(paid.at(-1)?.[0]).toBe(translate("en", "runs.cost.external"));
+    expect(paid.at(-1)?.[1]).toContain("0.1834");
+  });
+
+  test("formats in the reader's language", () => {
+    const facts = runCostFacts({ llm: { calls: 1, weighted_tokens: 58_472 } }, de, "de");
+    expect(facts[0]?.[1]).toBe("58.472");
   });
 });

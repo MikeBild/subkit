@@ -39,6 +39,7 @@ import {
   RUN_STATUSES,
   requestSourceLabel,
   runAuthorityFacts,
+  runCostFacts,
   runDurationMs,
   runName,
   SOURCE_KIND_KEYS,
@@ -99,6 +100,13 @@ function RunDetail({ run }: { run: Execution }) {
     queryFn: () =>
       apiRequest<ExecutionStepList>(`/v1/executions/${encodeURIComponent(run.id)}/steps`),
   });
+  // What this run consumed. The endpoint has existed since the August cost
+  // investigation and no cockpit screen had ever called it, so "what did that
+  // run cost" was answerable only from the terminal.
+  const cost = useQuery({
+    queryKey: ["run-cost", run.id],
+    queryFn: () => apiRequest<unknown>(`/v1/executions/${encodeURIComponent(run.id)}/cost`),
+  });
   const current = detail.data ?? run;
   const stepItems: ExecutionStep[] = steps.data?.items ?? [];
   const failedStep = stepItems.find((step) => previewText(step.error) !== null);
@@ -122,6 +130,7 @@ function RunDetail({ run }: { run: Execution }) {
     [t("runs.column.source"), requestSourceLabel(current.request_source, t)],
     [t("resource.field.kind"), t(SOURCE_KIND_KEYS[current.source_kind] ?? "runs.sourceKind.saved")],
     ...runAuthorityFacts(current, t),
+    ...runCostFacts(cost.data, t, locale),
   ];
 
   return (

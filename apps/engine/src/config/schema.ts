@@ -773,8 +773,55 @@ const QueueSection = z
   .prefault({})
   .describe("Queue worker");
 
+/**
+ * What a million tokens costs, per model.
+ *
+ * The engine measures tokens and has never known a price: `llm_usage` carries
+ * no monetary column, and `pricing.ts` holds cache weights, not money. So the
+ * only honest money figure anywhere was `external_call_metering.cost_usd`, and
+ * the question an operator actually asks — what does this automation cost —
+ * could not be answered at all.
+ *
+ * Rates are applied at READ time, never stored on the ledger. Storing them
+ * would freeze a price onto history; recomputing with today's rates and
+ * SAYING so is the honest version, and it is why every cost answer carries
+ * the basis it was computed on.
+ *
+ * A model absent from this list is not free. It is unpriced, and a surface
+ * that meets one reports its tokens and names it as unpriced rather than
+ * adding zero — a nought that means "not measured" is the costliest reading
+ * in the product.
+ */
+const ModelPriceSchema = z.object({
+  model: z.string().min(1).describe("Model identifier as it appears in `llm_usage.model`."),
+  input_per_mtok: z.number().nonnegative().describe("Price per 1M uncached input tokens."),
+  output_per_mtok: z.number().nonnegative().describe("Price per 1M output tokens."),
+  cache_read_per_mtok: z
+    .number()
+    .nonnegative()
+    .default(0)
+    .describe("Price per 1M tokens read from the prompt cache."),
+  cache_write_per_mtok: z
+    .number()
+    .nonnegative()
+    .default(0)
+    .describe("Price per 1M tokens written to the prompt cache."),
+});
+
 const TokensSection = z
   .object({
+    currency: z
+      .string()
+      .default("USD")
+      .describe("ISO 4217 code the prices below are quoted in.")
+      .meta(tenant()),
+    prices: z
+      .array(ModelPriceSchema)
+      .default([])
+      .describe(
+        "Price per million tokens per model. Empty means no model is priced: surfaces then report tokens and say the price is not configured, rather than reporting zero.",
+      )
+      .meta(tenant({ structural: true, runtimeEditable: true })),
     monthly_budget: z
       .number()
       .int()
