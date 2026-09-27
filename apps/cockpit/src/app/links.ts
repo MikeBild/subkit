@@ -63,6 +63,15 @@ export function connectorHref(id: string): string {
   return record("connectors", id);
 }
 
+/**
+ * The connector catalogue. `not_ok` narrows it to the connectors the health
+ * score counts against: enabled and not `ok`. The engine owns the rule and
+ * answers it (`GET /v1/connectors?health=not_ok`, connectors/health-ratio.ts).
+ */
+export function connectorsHref(filter: { health?: "not_ok" | null } = {}): string {
+  return withQuery("/connectors", { health: filter.health });
+}
+
 /** One record of any catalogue — knowledge, skills and files have no builder of their own. */
 export function recordHref(resource: CatalogResource, id: string): string {
   return record(resource, id);
@@ -97,6 +106,8 @@ export function auditHref(
     resourceId?: string | null;
     traceId?: string | null;
     scope?: "all" | "decisions" | "operations" | null;
+    /** The engine's verbs, sent as its own comma list. */
+    actions?: readonly string[] | null;
   } = {},
 ): string {
   return withQuery("/audit", {
@@ -104,6 +115,7 @@ export function auditHref(
     resource_id: filter.resourceId,
     trace_id: filter.traceId,
     scope: filter.scope,
+    action: filter.actions && filter.actions.length > 0 ? filter.actions.join(",") : null,
   });
 }
 

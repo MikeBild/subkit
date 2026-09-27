@@ -11,6 +11,7 @@ import {
   rejectPatchCandidate,
   rejectSkillCandidate,
 } from "@/api/decisions";
+import { workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { useDecisionQueue } from "@/app/use-decisions";
 import { DecisionCard } from "@/components/cockpit/decision-card";
@@ -18,6 +19,7 @@ import { FailingWorkflowCard } from "@/components/cockpit/failing-workflow-card"
 import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
 import { ScheduleReviewCard } from "@/components/cockpit/schedule-review-card";
+import { LoadFailed } from "@/components/failure-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,13 +34,18 @@ import {
   filterByKinds,
   isDecidable,
   partitionByUrgency,
+  QUEUE_KINDS,
+  type QueueKind,
   queueDisplayState,
+  readableQueueKinds,
+  resetView,
+  searchWithoutBucket,
   splitByAge,
+  suggestionTargets,
 } from "./decisions-model";
 
 // Reviewable scheduled workflows share the existing queue and kind filters.
-type QueueKind = DecidableKind | "schedule";
-const KINDS: QueueKind[] = ["patch", "skill", "schedule"];
+const KINDS = QUEUE_KINDS;
 /** What the reader clicked to get here, named so a narrowed list says so. */
 const FOCUS_LABEL: Record<DecisionFocus, TranslationKey> = {
   blocked: "decisions.focus.blocked",
@@ -126,6 +133,22 @@ export function DecisionsPage() {
     writePreferences(next);
   }
 
+  // The one way back to the whole queue. Clears where the reader arrived
+  // from (the tile's `bucket`, in state and in the address) AND the chips —
+  // "Alle" and "Alle anzeigen" both come here, so neither can leave the list
+  // narrowed while calling itself everything.
+  function showWholeQueue(): void {
+    const view = resetView();
+    setFocus(view.focus);
+    if (typeof window !== "undefined")
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${searchWithoutBucket(window.location.search)}`,
+      );
+    persist({ ...preferences, kinds: view.kinds });
+  }
+
   const decide = useMutation({
     mutationFn: async (input: {
       item: DecisionItem;
@@ -209,6 +232,13 @@ export function DecisionsPage() {
   });
   // The breakdown comes from the same count as the badge, not from the rows the
   // page happens to hold: the two disagreed the moment a source hit its cap.
+  // Only the kinds this person can read have a chip; while the count is
+  // pending they show without a number (`count: undefined`).
+  const chips: { kind: QueueKind; index: number; count?: number | null; partial?: boolean }[] =
+    queue.chips ??
+    readableQueueKinds(queue.sources).map((kind) => ({ kind, index: KINDS.indexOf(kind) }));
+  const suggestions = suggestionTargets(queue.items);
+  const questions = queue.questions;
 
   if (!queue.sources.patches && !queue.sources.skills && !queue.sources.conversations)
     return (
@@ -261,7 +291,10 @@ export function DecisionsPage() {
     >
       <div className="grid gap-6">
         <fieldset className="flex flex-wrap gap-2" aria-label={t("nav.decisions")}>
-          {(["decisions", "suggestions", "questions"] as const).map((value) => (
+          {(questions
+            ? (["decisions", "suggestions", "questions"] as const)
+            : (["decisions", "suggestions"] as const)
+          ).map((value) => (
             <Button
               key={value}
               data-testid={`decisions-section-${value}`}
@@ -269,24 +302,45 @@ export function DecisionsPage() {
               aria-pressed={section === value}
               onClick={() => setSection(value)}
             >
-              {t(`decisions.section.${value}`)}
+              {/* The questions carry their own count: they are not in the
+                  badge (they are answered in the chat), so this is the one
+                  place the number of waiting conversations is said. */}
+              {value === "questions" && questions && questions.total !== null
+                ? t("decisions.chip.count", {
+                    label: t("decisions.section.questions"),
+                    count: String(questions.total),
+                  })
+                : t(`decisions.section.${value}`)}
             </Button>
           ))}
         </fieldset>
-        {section !== "decisions" && (
-          <div className="grid gap-3">
+        {section === "suggestions" && (
+          <div className="grid gap-3" data-testid="decisions-suggestions">
             <p className="text-sm text-muted-foreground">{t("decisions.separateHint")}</p>
-            {queue.items
-              .filter((item) =>
-                section === "questions"
-                  ? item.kind === "conversation"
-                  : item.kind !== "conversation" && !isDecidable(item),
-              )
-              .map((item) => (
-                <Alert key={`${item.kind}:${item.id}`}>
+            {queue.isPending && !queue.failed ? (
+              <Skeleton className="h-16 w-full" />
+            ) : queue.failed ? (
+              <LoadFailed
+                title={t("resource.loadFailed", { resource: t("decisions.section.suggestions") })}
+                onRetry={() => queue.refetch()}
+                testId="decisions-suggestions-error"
+              />
+            ) : suggestions.length === 0 ? (
+              <p className="text-sm" data-testid="decisions-suggestions-empty">
+                {t("decisions.suggestions.empty")}
+              </p>
+            ) : (
+              // §8.5b: nothing here can be decided, so each entry earns its
+              // place only by leading to where it can be acted on — its
+              // workflow. One without a workflow is left out, not shown dead.
+              suggestions.map(({ item, workflowId }, index) => (
+                <Alert
+                  key={`${item.kind}:${item.id}`}
+                  data-testid={`decisions-suggestion-${index}`}
+                >
                   <AlertTitle>{item.title}</AlertTitle>
                   <AlertDescription>
-                    <p>{item.summary}</p>
+                    {item.summary ? <p>{item.summary}</p> : null}
                     <p>
                       {t(
                         item.kind === "patch"
@@ -294,18 +348,57 @@ export function DecisionsPage() {
                           : "decisions.advisory",
                       )}
                     </p>
-                    {item.kind === "conversation" && (
+                    <Link
+                      to={workflowHref(workflowId)}
+                      className="underline underline-offset-2"
+                      data-testid={`decisions-suggestion-${index}-workflow`}
+                    >
+                      {t("decisions.suggestions.openWorkflow")}
+                    </Link>
+                  </AlertDescription>
+                </Alert>
+              ))
+            )}
+          </div>
+        )}
+        {section === "questions" && questions && (
+          <div className="grid gap-3" data-testid="decisions-questions">
+            <p className="text-sm text-muted-foreground">{t("decisions.separateHint")}</p>
+            {questions.view === "loading" ? (
+              <Skeleton className="h-16 w-full" />
+            ) : questions.view === "error" ? (
+              <LoadFailed
+                title={t("decisions.questions.loadFailed")}
+                onRetry={() => queue.refetch()}
+                testId="decisions-questions-error"
+              />
+            ) : questions.view === "empty" ? (
+              <p className="text-sm" data-testid="decisions-questions-empty">
+                {t("decisions.questions.empty")}
+              </p>
+            ) : (
+              queue.items
+                .filter((item) => item.kind === "conversation")
+                .map((item, index) => (
+                  <Alert
+                    key={`${item.kind}:${item.id}`}
+                    data-testid={`decisions-question-${index}`}
+                  >
+                    <AlertTitle>{item.title}</AlertTitle>
+                    <AlertDescription>
+                      {item.summary ? <p>{item.summary}</p> : null}
                       <Link
-                        data-testid={`decision-question-${item.id}`}
+                        data-testid={`decision-question-${index}`}
                         to="/chat/$conversationId"
                         params={{ conversationId: item.id }}
+                        className="underline underline-offset-2"
                       >
                         {t("decisions.openQuestion")}
                       </Link>
-                    )}
-                  </AlertDescription>
-                </Alert>
-              ))}
+                    </AlertDescription>
+                  </Alert>
+                ))
+            )}
           </div>
         )}
         {section === "decisions" && (
@@ -321,15 +414,7 @@ export function DecisionsPage() {
                   size="sm"
                   data-testid="decisions-chip-all"
                   aria-pressed={preferences.kinds.length === 0 && focus === null}
-                  onClick={() => {
-                    // Arriving from a tile narrows this list. Clearing has to
-                    // clear that too, or "All" shows one section and calls
-                    // itself everything.
-                    setFocus(null);
-                    if (typeof window !== "undefined")
-                      window.history.replaceState(null, "", window.location.pathname);
-                    persist({ ...preferences, kinds: [] });
-                  }}
+                  onClick={showWholeQueue}
                 >
                   {t("decisions.chip.all")}
                 </Button>
@@ -341,12 +426,23 @@ export function DecisionsPage() {
                 {/* Art-Chips only. §8.5 forbids a chip that puts the queue into a past
               STATE — decided, discarded, deferred — and there is none: this list
               is closed over the two kinds the page can act on. */}
-                {KINDS.map((kind, index) => (
+                {chips.map(({ kind, index, count, partial }) => (
                   <Button
                     key={kind}
                     variant={preferences.kinds.includes(kind) ? "default" : "outline"}
                     size="sm"
+                    // The index in the full kind list, so a hidden chip does
+                    // not shift the ones after it.
                     data-testid={`decisions-chip-${index}`}
+                    data-count-state={
+                      count === undefined
+                        ? "pending"
+                        : count === null
+                          ? "failed"
+                          : partial
+                            ? "partial"
+                            : "answered"
+                    }
                     aria-pressed={preferences.kinds.includes(kind)}
                     onClick={() =>
                       persist({
@@ -357,19 +453,32 @@ export function DecisionsPage() {
                       })
                     }
                   >
-                    {t(KIND_LABEL[kind])}
+                    {/* The open count lives here and on the navigation badge,
+                        nowhere else — and the chips sum to the badge. A
+                        source that failed is said, never counted as 0. */}
+                    {count === undefined
+                      ? t(KIND_LABEL[kind])
+                      : count === null
+                        ? t("decisions.chip.failed", { label: t(KIND_LABEL[kind]) })
+                        : t(partial ? "decisions.chip.countAtLeast" : "decisions.chip.count", {
+                            label: t(KIND_LABEL[kind]),
+                            count: String(count),
+                          })}
                   </Button>
                 ))}
               </div>
             </div>
 
-            <p className="text-sm text-muted-foreground" data-family-slot="queue-summary">
-              {t("decisions.queueSummary", {
-                count: String(queue.open?.total ?? open.length),
-              })}
-            </p>
-
             <div className="grid gap-5" data-family-slot="queue">
+              {/* The digest behind the failing workflows did not answer: said
+                  here, and counted nowhere — not as "none are failing". */}
+              {!queue.isPending && !queue.failed && queue.failingSource === "failed" && (
+                <LoadFailed
+                  title={t("resource.loadFailed", { resource: t("decisions.failing.group") })}
+                  onRetry={() => queue.refetch()}
+                  testId="decisions-failing-error"
+                />
+              )}
               {!queue.isPending && !queue.failed && failing.length > 0 && (
                 <DecisionSection
                   testId="decisions-failing"
@@ -440,7 +549,7 @@ export function DecisionsPage() {
                     size="sm"
                     className="mt-3"
                     data-testid="decisions-show-all"
-                    onClick={() => persist({ ...preferences, kinds: [] })}
+                    onClick={showWholeQueue}
                   >
                     {t("decisions.showAll")}
                   </Button>
@@ -583,7 +692,14 @@ function HistoryLink() {
   );
 }
 
-/** One rubric of the queue: what it is, what it costs, and how many. */
+/**
+ * One rubric of the queue: what it is and what it costs.
+ *
+ * Its size stays machine-readable (`data-count`, read back by the convention
+ * check) and is not printed: the open count is said on the chips and the
+ * navigation badge, and a third and fourth copy of it per rubric was what the
+ * reader had to reconcile.
+ */
 function DecisionSection({
   testId,
   title,
@@ -611,14 +727,9 @@ function DecisionSection({
       data-count={String(count)}
       data-family-decision-bucket={bucket}
     >
-      <div className="flex items-center gap-2">
-        <h2 className="text-sm font-semibold" data-family-slot="decision-group-title">
-          {title}
-        </h2>
-        <Badge variant="secondary" className="tabular-nums">
-          {count}
-        </Badge>
-      </div>
+      <h2 className="text-sm font-semibold" data-family-slot="decision-group-title">
+        {title}
+      </h2>
       <p className="-mt-1 text-xs text-muted-foreground">{hint}</p>
       {children}
     </section>

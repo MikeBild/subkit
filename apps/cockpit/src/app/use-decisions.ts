@@ -8,6 +8,7 @@ import {
   listProposedPatchCandidates,
   listProposedSkillCandidates,
 } from "@/api/decisions";
+import { type QueryView, queryView } from "@/components/failure-state";
 import { type FailingWorkflow, failingWorkflows } from "@/lib/failing-workflows";
 import { useI18n } from "@/lib/i18n-context";
 import type { NameIndex } from "@/lib/name-index";
@@ -20,16 +21,20 @@ import {
 } from "@/lib/name-index";
 import { driftKindKey, proposalKindKey } from "@/pages/decisions-context";
 import {
+  badgeCount,
   conversationDecision,
-  countOpenDecisions,
   type DecisionItem,
   decisionKey,
   hasOverdue,
   isDecidable,
   type OpenDecisions,
+  openDecisionQueue,
   patchChangeKind,
   patchDecision,
   patchTitle,
+  type QueueChip,
+  queueChips,
+  type SourceState,
   skillDecision,
 } from "@/pages/decisions-model";
 
@@ -42,6 +47,12 @@ export interface DecisionSources {
 }
 
 export interface DecisionQueue {
+  /**
+   * The waiting conversations, counted apart from the badge: they are answered
+   * in the chat, not decided here. `total` is the engine's own count. `null`
+   * when this person may not list conversations.
+   */
+  questions: { view: QueryView; total: number | null } | null;
   heldSchedules: HeldSchedule[];
   /** Approved, scheduled, and failing — the opposite of a held schedule. */
   failingWorkflows: FailingWorkflow[];
@@ -55,6 +66,16 @@ export interface DecisionQueue {
   /** The one count: total, per-source breakdown, subsets and oldest age.
    *  Null while it cannot be read — an omitted number beats a guessed one. */
   open: OpenDecisions | null;
+  /** The kind chips this person can read, with their numbers (decisions-model `queueChips`). */
+  chips: QueueChip[] | null;
+  /** The navigation badge: the sum of the chip numbers, or null when there is none to show. */
+  badge: number | null;
+  /**
+   * Whether the digest behind the failing workflows answered. It used to be
+   * caught as an empty list, so a digest that failed read as "nothing is
+   * failing" on the chip, the badge and the section alike.
+   */
+  failingSource: SourceState;
   overdue: boolean;
   isPending: boolean;
   isFetching: boolean;
@@ -81,6 +102,16 @@ export function canSeeDecisions(permissions: readonly string[]): boolean {
 /**
  * One query behind both the navigation counter and the decisions page, so the
  * badge can never disagree with the queue it links to.
+ *
+ * Why not the overview's decision tiles: `GET /v1/operational-overview` needs
+ * `stats:read`, which a reviewer holding only `workflow:read`/`skill:read` does
+ * not have, and it partitions by bucket (blocked/failing/overdue/other), not by
+ * the kinds the chips filter on. The numbers are the same predicates instead:
+ * the patch chip is `reviewable_total` (the engine's `readOpenPatchDecisions`),
+ * the skill chip `reviewable_total` (proposed, not failure/authoring pattern),
+ * held schedules are `/v1/schedules` with `admission_hold` (null for paused or
+ * archived workflows), failing ones the digest's groups filtered as
+ * `failingScheduledGroups` over the same 168-hour window.
  */
 export function useDecisionQueue(permissions: readonly string[]): DecisionQueue {
   const { t } = useI18n();
@@ -126,7 +157,8 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
         sources.patches ? listHeldSchedules() : [],
         // A digest that cannot be read is not a reason to lose the rest of the
         // queue: this section simply stays empty.
-        sources.failing ? listFailingWorkflows().catch(() => []) : [],
+        // `null` is "asked and failed" — never an empty list.
+        sources.failing ? listFailingWorkflows().catch(() => null) : [],
       ]);
       const items: DecisionItem[] = [
         ...(patches?.items ?? []).map((candidate) => {
@@ -158,7 +190,12 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
       ];
       return {
         heldSchedules,
-        failingWorkflows: failingWorkflows(failureGroups),
+        failingWorkflows: failingWorkflows(failureGroups ?? []),
+        failingSource: (!sources.failing
+          ? "not_permitted"
+          : failureGroups === null
+            ? "failed"
+            : "answered") as SourceState,
         // Deduplicated here, not at the card: two sources may hand out the same
         // row, and one position is one decision on every surface that shows it.
         items: [...new Map(items.map((item) => [decisionKey(item), item])).values()],
@@ -175,23 +212,45 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
   const now = Date.now();
   const heldSchedules = query.data?.heldSchedules ?? [];
   const failing = query.data?.failingWorkflows ?? [];
+  // One rule, in the model: the badge counts what the chips count.
   const open = query.data
-    ? countOpenDecisions({ items, totals: query.data.totals, nowMs: now })
+    ? openDecisionQueue({
+        items,
+        totals: query.data.totals,
+        held: heldSchedules.length,
+        failing: failing.length,
+        nowMs: now,
+      })
     : null;
-  if (open) {
-    // Counted with the rest: a workflow that runs and fails is as open a
-    // decision as one that cannot start, and a badge that leaves it out was
-    // the reason nobody looked.
-    open.total += heldSchedules.length + failing.length;
-    open.subsets.blocking += heldSchedules.length + failing.length;
-  }
+  const failingSource: SourceState =
+    query.data?.failingSource ?? (sources.failing ? "answered" : "not_permitted");
+  const chips = queueChips({
+    open,
+    readable: { patches: sources.patches, skills: sources.skills, failing: sources.failing },
+    held: heldSchedules.length,
+    failing: { state: failingSource, count: failing.length },
+  });
   return {
+    // Without the permission there is no answer at all — not "nobody is
+    // waiting", which is a claim this person has no way to check.
+    questions: sources.conversations
+      ? {
+          view: queryView(
+            query,
+            (data) => !data.items.some((item) => item.kind === "conversation"),
+          ),
+          total: query.data?.totals.conversation ?? null,
+        }
+      : null,
     heldSchedules,
     failingWorkflows: failing,
     items,
     names: nameIndex,
     canReadRuns: permissions.includes("execution:read"),
     open,
+    chips,
+    badge: badgeCount(chips),
+    failingSource,
     overdue: hasOverdue(items.filter(isDecidable), now),
     isPending: query.isPending,
     isFetching: query.isFetching,

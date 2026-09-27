@@ -31,7 +31,7 @@ import type {
   DecisionItem,
   DecisionOrigin,
 } from "@/pages/decisions-model";
-import { ageInDays, decisionKey } from "@/pages/decisions-model";
+import { ageInDays, approveBlockedReason, decisionKey } from "@/pages/decisions-model";
 import { GrantWorkflowAuthority } from "./grant-workflow-authority";
 
 /**
@@ -467,6 +467,14 @@ export function DecisionCard({
     enabled: showDiff,
     queryFn: () => getPatchCandidatePreview(item.id),
   });
+  const blockedReason = approveBlockedReason({
+    canDecide,
+    // A card with nothing to expand has nothing to look at first.
+    expanded: expanded || !hasDetail,
+    kind: item.kind,
+    reviewDigest: item.reviewDigest,
+    preview: item.kind === "patch" ? preview.data : undefined,
+  });
   // Replaying needs a recorded response; without one the call only 409s.
   const dryRun = useQuery({
     queryKey: ["patch-candidate", "dry-run", item.id],
@@ -602,8 +610,7 @@ export function DecisionCard({
                 disabled={
                   busy ||
                   rejecting ||
-                  !expanded ||
-                  (item.kind === "skill" && !item.reviewDigest) ||
+                  blockedReason !== null ||
                   (item.kind === "patch" &&
                     (!preview.data?.reviewable || !preview.data?.review_digest))
                 }
@@ -652,6 +659,16 @@ export function DecisionCard({
                   />
                 )}
             </>
+          ) : null}
+          {/* Why "Freigeben" cannot be pressed, said beside it — or, for a
+              role that may not decide, instead of buttons that do nothing. */}
+          {blockedReason && !busy && !rejecting ? (
+            <span
+              className="basis-full text-right text-xs text-muted-foreground"
+              data-testid={`${testId}-approve-blocked`}
+            >
+              {t(blockedReason)}
+            </span>
           ) : null}
         </div>
       </div>

@@ -94,7 +94,7 @@ Deterministic, LLM-free, tenant-scoped digest of failed runs and pending self-he
 Response:
 - `generated_at`, `window_hours`, `headline`, `all_clear` (boolean), `rendered` (a pre-formatted string).
 - `failure_groups[]` — failed runs grouped by root cause. Each: `signature`, `workflow_id`/`workflow_name` (nullable), `step_key` (nullable), `error_code` (nullable), `origin` (`authoring` | `manual` | `scheduled` | `mixed`), `count`, `last_seen`, `cause`, `guidance` (nullable).
-- `patch_candidates` — `{ pending: number, items: [{ id, workflow_id, workflow_name, classification: "safe" | "unsafe", summary }] }`. Self-healing fixes awaiting review.
+- `patch_candidates` — `{ open: number, items: [{ id, workflow_id, workflow_name, classification: "safe" | "unsafe", age_days, stuck, summary }] }`. Self-healing fixes awaiting review. `open` is the exact count of candidates that are `proposed` AND reviewable on the workflow's current version — the same number `GET /v1/patch-candidates` reports as `reviewable_total`, the MCP connect instructions quote, and the operational overview counts; `items` is capped at 50. A proposed fix the current version provably cannot take (it changes nothing, its kind cannot be executed, or the workflow is gone) is closed by the engine as `inapplicable` and is not counted.
 - `risk[]` — risk signals. Each: `kind`, `severity` (`warn` | `critical`), `headline`, `detail`, `metric`, `value`, `threshold`.
 
 How to read: `all_clear=true` means nothing to act on. Otherwise group failures by `signature`/`cause`, prioritize `risk` entries with `severity: critical` (value crossed threshold), and offer the `safe`-classified patch candidates first. `origin` tells you whether a failure came from authoring vs. live scheduled runs.

@@ -551,7 +551,7 @@ export function decisionKey(item: DecisionItem): string {
  * The one count behind the navigation badge, Zone A and the incident banner.
  *
  * Before this there were three: the banner filtered the health digest's own
- * `stuck` flag, Zone A read the digest's `patch_candidates.pending`, and the
+ * `stuck` flag, Zone A read the digest's patch-candidate count, and the
  * badge summed three list endpoints — so the same queue was 25, 30 and 119 on
  * one screen. The digest knows only patch candidates and cannot answer for the
  * queue, which is why the digest is no longer asked: the totals come from the
@@ -694,4 +694,214 @@ export function queueDisplayState(input: {
   // away — and `total` must include every section, or a narrowed-away failing
   // workflow reads as an empty queue.
   return input.narrowed && input.total > 0 ? "filtered-empty" : "empty";
+}
+
+/** The three kind chips. `schedule` holds both held and failing scheduled workflows. */
+export type QueueKind = DecidableKind | "schedule";
+export const QUEUE_KINDS: readonly QueueKind[] = ["patch", "skill", "schedule"];
+
+/**
+ * The count behind the navigation badge, and the rule it keeps.
+ *
+ * One rule: **the badge counts what the chips count** — proposed repairs,
+ * proposed skills, and the scheduled workflows that are held or keep failing.
+ * The waiting conversations ("Rückfragen") are not in it. They carry no
+ * approve and no reject on this page (§8.5b: what has no consequence here is
+ * not a decision here); they are counted on their own tab and answered in the
+ * chat. Before this rule the badge folded the schedules in by hand after the
+ * count was taken, and no chip said where those extra positions were.
+ */
+export function openDecisionQueue(input: {
+  items: readonly DecisionItem[];
+  totals: DecisionTotals | null;
+  held: number;
+  failing: number;
+  nowMs: number;
+}): OpenDecisions {
+  const open = countOpenDecisions({
+    items: input.items,
+    totals: input.totals,
+    nowMs: input.nowMs,
+  });
+  // A workflow that runs and fails is as open a decision as one that cannot
+  // start, and a badge that leaves it out was the reason nobody looked.
+  return {
+    ...open,
+    total: open.total + input.held + input.failing,
+    subsets: { ...open.subsets, blocking: open.subsets.blocking + input.held + input.failing },
+  };
+}
+
+/**
+ * Whether a source was asked and answered. `not_permitted`: this person may
+ * not read it, so it was never asked — which is not the same as "nothing".
+ */
+export type SourceState = "answered" | "failed" | "not_permitted";
+
+/** One kind chip as the page shows it. */
+export interface QueueChip {
+  kind: QueueKind;
+  /** Position in QUEUE_KINDS — the chip's test id stays put when another is hidden. */
+  index: number;
+  /** The number, or null when no source behind this chip answered. Never a guessed 0. */
+  count: number | null;
+  /** True when one of the chip's sources failed and the number is a lower bound. */
+  partial: boolean;
+}
+
+/**
+ * The kind chips, from the same count as the badge — and only the ones this
+ * person can read.
+ *
+ * The chips carry the engine's exact per-kind totals (`reviewable_total`), so
+ * their sum IS the badge; a chip reading from the rows the page holds would be
+ * a second count. Two ways a chip used to say "0" about something nobody had
+ * measured: a source this person may not read (`skill:read`, `workflow:read`)
+ * still got its chip, at "· 0"; and a digest that failed to load was caught as
+ * an empty list, so the failing workflows read as none. A source that cannot
+ * be read has no chip. A source that failed contributes nothing to any number
+ * and says so — a count it is part of becomes "at least", and a chip with no
+ * other source says it could not be loaded.
+ *
+ * `null` while the count cannot be read at all: an omitted number beats a
+ * guessed one.
+ */
+export function queueChips(input: {
+  open: OpenDecisions | null;
+  readable: ReadableSources;
+  held: number;
+  failing: { state: SourceState; count: number };
+}): QueueChip[] | null {
+  const open = input.open;
+  if (!open) return null;
+  const failed = input.failing.state === "failed";
+  return readableQueueKinds(input.readable).map((kind) => {
+    const index = QUEUE_KINDS.indexOf(kind);
+    if (kind !== "schedule") return { kind, index, count: open.byKind[kind], partial: false };
+    // Held schedules are read with the patch source (`workflow:read`); failing
+    // workflows come from the digest (`stats:read`). The chip covers both.
+    const held = input.readable.patches ? input.held : 0;
+    const failing = input.failing.state === "answered" ? input.failing.count : 0;
+    return {
+      kind,
+      index,
+      count: failed && !input.readable.patches ? null : held + failing,
+      partial: failed && input.readable.patches,
+    };
+  });
+}
+
+/** Which sources this person may read — the permission, not the answer. */
+export interface ReadableSources {
+  patches: boolean;
+  skills: boolean;
+  failing: boolean;
+}
+
+/** The kinds with a chip: those with at least one source this person can read. */
+export function readableQueueKinds(readable: ReadableSources): QueueKind[] {
+  return QUEUE_KINDS.filter((kind) =>
+    kind === "patch"
+      ? readable.patches
+      : kind === "skill"
+        ? readable.skills
+        : readable.patches || readable.failing,
+  );
+}
+
+/**
+ * The navigation badge: the sum of the numbers the chips show, nothing else.
+ * `null` when there is no number to show — never a 0 claimed over a source
+ * that failed (the page says that source failed; the badge counts what answered).
+ */
+export function badgeCount(chips: readonly QueueChip[] | null): number | null {
+  if (!chips) return null;
+  const total = chips.reduce((sum, chip) => sum + (chip.count ?? 0), 0);
+  return total > 0 ? total : null;
+}
+
+/** Where the reader arrived from (an overview tile) and what they chose here (chips). */
+export interface DecisionView {
+  focus: "blocked" | "failing" | "overdue" | "other" | null;
+  kinds: QueueKind[];
+}
+
+/**
+ * Back to the whole queue — the ONE way, for every "show all" on the page.
+ *
+ * "Alle anzeigen" under a filtered-empty queue cleared only the chips, so a
+ * reader who arrived from a tile and found nothing there pressed it and got
+ * the same empty, narrowed list back: a dead end labelled as the way out.
+ */
+export function resetView(): DecisionView {
+  return { focus: null, kinds: [] };
+}
+
+/**
+ * The address without the tile's narrowing, and with everything else kept.
+ *
+ * Only `bucket` is the tile's; any other parameter (a workflow the reader was
+ * sent about, say) is not this reset's to drop.
+ */
+export function searchWithoutBucket(search: string): string {
+  const params = new URLSearchParams(search);
+  params.delete("bucket");
+  const rest = params.toString();
+  return rest ? `?${rest}` : "";
+}
+
+/**
+ * Why "Freigeben" cannot be pressed, said where the button is.
+ *
+ * A greyed-out button with no reason is a question the reader cannot answer:
+ * they could not tell "look at the change first" from "your role may not do
+ * this" from "this change cannot be approved as it stands". `null` while
+ * nothing blocks it, or while the block is momentary (a decision in flight, a
+ * preview still loading, the reject note open).
+ */
+export function approveBlockedReason(input: {
+  canDecide: boolean;
+  expanded: boolean;
+  kind: DecidableKind;
+  reviewDigest: string | null | undefined;
+  preview: { reviewable?: boolean | null; review_digest?: string | null } | undefined;
+}): TranslationKey | null {
+  if (!input.canDecide) return "decisions.approveNeedsRole";
+  if (!input.expanded) return "decisions.approveNeedsReview";
+  if (input.kind === "skill") return input.reviewDigest ? null : "decisions.approveNotReviewable";
+  if (!input.preview) return null;
+  return input.preview.reviewable && input.preview.review_digest
+    ? null
+    : "decisions.approveNotReviewable";
+}
+
+/**
+ * The positions under "Vorschläge und Hinweise", each with somewhere to go.
+ *
+ * These cannot be decided here (§8.5b), so an item earns its place only by
+ * leading to where it can be acted on: its workflow. One with no workflow has
+ * nowhere to lead and is left out rather than shown as a dead card.
+ */
+export function suggestionTargets(
+  items: readonly DecisionItem[],
+): Array<{ item: DecisionItem; workflowId: string }> {
+  const out: Array<{ item: DecisionItem; workflowId: string }> = [];
+  for (const item of items) {
+    if (item.kind === "conversation" || isDecidable(item)) continue;
+    const detail = item.detail;
+    const workflowId =
+      detail.kind === "patch" || detail.kind === "skill" ? detail.evidence.workflowId : null;
+    if (workflowId) out.push({ item, workflowId });
+  }
+  return out;
+}
+
+/**
+ * A step key as a person reads it: `fetch_orders` → "fetch orders".
+ *
+ * The failing card named the raw key. Keys are written for the engine, with
+ * underscores and hyphens a reader has to decode.
+ */
+export function humanStep(stepKey: string): string {
+  return stepKey.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 }

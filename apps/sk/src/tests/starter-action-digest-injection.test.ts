@@ -50,7 +50,7 @@ function makeDigest(counts: number[] = [3]): OperatorHealthDigest {
       cause: "Something failed",
       guidance: null,
     })),
-    patch_candidates: { pending: 0, items: [] },
+    patch_candidates: { open: 0, items: [] },
     risk: [],
     rendered: "",
     all_clear: false,

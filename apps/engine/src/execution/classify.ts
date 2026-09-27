@@ -10,22 +10,26 @@
 import type { StepDef } from "../workflows/types.ts";
 import type { RunResult, StepResult } from "./types.ts";
 
-export type PreviewClassification =
-  | "ok"
-  | "auth_failed"
-  | "placeholder_unresolved"
-  | "schema_mismatch"
-  | "timeout"
-  | "aborted"
-  | "connector_missing"
+/** Every class, as a list — so a public schema can declare the enum without a second copy. */
+export const PREVIEW_CLASSIFICATIONS = [
+  "ok",
+  "auth_failed",
+  "placeholder_unresolved",
+  "schema_mismatch",
+  "timeout",
+  "aborted",
+  "connector_missing",
   // The workspace or the run reached its token ceiling. Kept apart from
   // `driver_error` because the remedy is a budget decision, not a repair: a
   // reader sent looking for a bug in a workflow that simply ran out of
   // allowance searches for something that is not there.
-  | "budget_exhausted"
-  | "driver_error"
-  | "preview_unsupported"
-  | "unknown";
+  "budget_exhausted",
+  "driver_error",
+  "preview_unsupported",
+  "unknown",
+] as const;
+
+export type PreviewClassification = (typeof PREVIEW_CLASSIFICATIONS)[number];
 
 export interface PreviewStepSummary {
   ok: boolean;

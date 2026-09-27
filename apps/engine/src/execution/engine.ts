@@ -78,6 +78,7 @@ import { preparedApprovalClock } from "./tool-approval-dispatch.ts";
 import {
   type ExecutionStatus,
   HELD_PREVIEW_WARNING_CODE,
+  hasHeldOutput,
   type RequestSource,
   type RunOptions,
   type RunResult,
@@ -95,13 +96,6 @@ export type { ScopeEnvelope } from "./engine/envelope.ts";
  *  applies on top. Authors opt into a higher bound via
  *  `step.for_each_concurrency`. */
 const DEFAULT_FOR_EACH_CONCURRENCY = 8;
-
-function hasHeldOutput(result: StepResult): boolean {
-  return (
-    result.held === true ||
-    (result.warnings?.some((warning) => warning.code === HELD_PREVIEW_WARNING_CODE) ?? false)
-  );
-}
 
 /**
  * Resolve how many `for_each` iterations may run concurrently.
