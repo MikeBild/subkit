@@ -18,6 +18,11 @@ export type PreviewClassification =
   | "timeout"
   | "aborted"
   | "connector_missing"
+  // The workspace or the run reached its token ceiling. Kept apart from
+  // `driver_error` because the remedy is a budget decision, not a repair: a
+  // reader sent looking for a bug in a workflow that simply ran out of
+  // allowance searches for something that is not there.
+  | "budget_exhausted"
   | "driver_error"
   | "preview_unsupported"
   | "unknown";
@@ -136,6 +141,10 @@ export function classifyFailure(result: StepResult): PreviewClassification {
   const code = result.error?.code ?? "";
   const message = (result.error?.message ?? "").toLowerCase();
   if (code === "connector_not_found") return "connector_missing";
+  // Before the generic matchers: "llm_quota_exhausted" carries the word
+  // "exceeded" in its message and would otherwise be read as a timeout,
+  // sending a reader to look at durations while the cause is money.
+  if (code === "llm_quota_exhausted" || code === "llm_budget_exceeded") return "budget_exhausted";
   if (code === "missing_graphql" || code === "unknown_step_kind") return "driver_error";
   if (code === "data_selector_error") return "schema_mismatch";
   if (/unresolved|placeholder/.test(message) || code === "placeholder_unresolved") {
@@ -163,6 +172,8 @@ export function humanizeClassification(
       return `The ${kind} step exceeded its timeout.`;
     case "aborted":
       return `The ${kind} step was cancelled before completing.`;
+    case "budget_exhausted":
+      return `The ${kind} step was refused because the token allowance is used up — raise the monthly cap or the run's own limit, or wait for the month to roll over.`;
     case "connector_missing":
       return `The connector referenced by this step is not available.`;
     case "preview_unsupported":
