@@ -339,6 +339,10 @@ const createScheduleRoute = createRoute({
       description: "Workflow not found",
       content: { "application/json": { schema: ErrorSchema } },
     },
+    409: {
+      description: "Workflow is archived",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -620,6 +624,9 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       throw new BadRequestError(err instanceof Error ? err.message : "invalid cron");
     }
     if (code === "workflow_not_found") throw new NotFoundError("workflow");
+    if (code === "workflow_archived") {
+      throw new ConflictError(err instanceof Error ? err.message : "workflow is archived");
+    }
     throw err;
   };
 

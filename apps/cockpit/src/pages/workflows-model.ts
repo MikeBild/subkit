@@ -43,6 +43,8 @@ export function triggerLabelKey(trigger: EffectiveTrigger | null | undefined): T
         return "workflows.trigger.schedulePaused";
       case "held":
         return "workflows.trigger.scheduleHeld";
+      case "activation_required":
+        return "workflows.trigger.scheduleInactive";
       case "declared_unbound":
         return "workflows.trigger.scheduleUnbound";
       default:

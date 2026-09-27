@@ -39,3 +39,24 @@ export function parseCronExpression(expr: string): CronValidationResult {
     };
   }
 }
+
+/**
+ * The first occurrence of a 5-field cron strictly after `after`, in `tz`. The
+ * one expansion the reconciler's due check and the published next fire share.
+ * Null for an `every:N` expression or an expression the parser rejects.
+ */
+export function nextCronOccurrence(cron: string, after: Date, tz?: string): Date | null {
+  const trimmed = cron.trim();
+  if (trimmed.startsWith(EVERY_PREFIX)) return null;
+  try {
+    return CronExpressionParser.parse(trimmed, {
+      currentDate: after,
+      strict: false,
+      ...(tz ? { tz } : {}),
+    })
+      .next()
+      .toDate();
+  } catch {
+    return null;
+  }
+}

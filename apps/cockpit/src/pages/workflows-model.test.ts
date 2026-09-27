@@ -37,6 +37,9 @@ describe("workflow trigger words", () => {
     expect(triggerLabelKey({ kind: "schedule", source: "binding", state: "held" })).toBe(
       "workflows.trigger.scheduleHeld",
     );
+    expect(
+      triggerLabelKey({ kind: "schedule", source: "binding", state: "activation_required" }),
+    ).toBe("workflows.trigger.scheduleInactive");
   });
 
   test("a declared but unbound trigger does not read as one that fires", () => {

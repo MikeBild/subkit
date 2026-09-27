@@ -8,6 +8,7 @@ import type { WorkflowTrigger } from "../workflows/types.ts";
 import {
   type EffectiveTrigger,
   resolveEffectiveTrigger,
+  scheduleBindingState,
   type TriggerBinding,
   type WorkflowScheduleBinding,
   workflowTriggerView,
@@ -20,6 +21,7 @@ const row = (over: Partial<WorkflowScheduleBinding> = {}): WorkflowScheduleBindi
   paused: false,
   execution_mode: "prod",
   admission_hold: null,
+  state: "active",
   next_fire_at: "2026-01-01T00:07:00.000Z",
   last_enqueued_at: null,
   ...over,
@@ -57,7 +59,7 @@ const cases: Array<{
     expected: { kind: "schedule", source: "binding", state: "active" },
   },
   {
-    name: "definition says webhook, bound schedule row → the row wins over webhooks too",
+    name: "definition says webhook, firing schedule row → the row wins over webhooks too",
     definition: DEF_WEBHOOK,
     binding: { schedule: row(), webhooks_active: 2 },
     expected: { kind: "schedule", source: "binding", state: "active" },
@@ -65,23 +67,56 @@ const cases: Array<{
   {
     name: "paused row → paused",
     definition: DEF_SCHEDULE,
-    binding: { schedule: row({ paused: true, next_fire_at: null }), webhooks_active: 0 },
+    binding: {
+      schedule: row({ paused: true, state: "paused", next_fire_at: null }),
+      webhooks_active: 0,
+    },
     expected: { kind: "schedule", source: "binding", state: "paused" },
   },
   {
     name: "admission-held row → held",
     definition: null,
-    binding: { schedule: row({ admission_hold: HELD, next_fire_at: null }), webhooks_active: 0 },
+    binding: {
+      schedule: row({ admission_hold: HELD, state: "held", next_fire_at: null }),
+      webhooks_active: 0,
+    },
     expected: { kind: "schedule", source: "binding", state: "held" },
   },
   {
-    name: "paused beats held (the operator stopped it on purpose)",
+    name: "schedule on a workflow that is not active → activation_required",
     definition: null,
     binding: {
-      schedule: row({ paused: true, admission_hold: HELD, next_fire_at: null }),
+      schedule: row({ state: "activation_required", next_fire_at: null }),
       webhooks_active: 0,
     },
-    expected: { kind: "schedule", source: "binding", state: "paused" },
+    expected: { kind: "schedule", source: "binding", state: "activation_required" },
+  },
+  {
+    name: "paused schedule beside active webhooks → the webhooks still fire, so webhook",
+    definition: null,
+    binding: {
+      schedule: row({ paused: true, state: "paused", next_fire_at: null }),
+      webhooks_active: 1,
+    },
+    expected: { kind: "webhook", source: "binding", state: "active" },
+  },
+  {
+    name: "held schedule beside active webhooks → webhook",
+    definition: DEF_SCHEDULE,
+    binding: {
+      schedule: row({ admission_hold: HELD, state: "held", next_fire_at: null }),
+      webhooks_active: 2,
+    },
+    expected: { kind: "webhook", source: "binding", state: "active" },
+  },
+  {
+    name: "schedule awaiting activation beside active webhooks → webhook",
+    definition: null,
+    binding: {
+      schedule: row({ state: "activation_required", next_fire_at: null }),
+      webhooks_active: 1,
+    },
+    expected: { kind: "webhook", source: "binding", state: "active" },
   },
   {
     name: "no schedule row, active webhook rows → webhook from the binding",
@@ -121,6 +156,37 @@ describe("resolveEffectiveTrigger precedence", () => {
       expect(resolveEffectiveTrigger(c.definition, c.binding)).toEqual(c.expected);
     });
   }
+
+  test("binding state: paused beats activation beats held; only an active workflow fires", () => {
+    const active = { lifecycle: "active", current_version_id: "v1" };
+    expect(scheduleBindingState({ paused: true, admission_hold: HELD, ...active })).toBe("paused");
+    expect(
+      scheduleBindingState({
+        paused: false,
+        admission_hold: HELD,
+        lifecycle: "archived",
+        current_version_id: "v1",
+      }),
+    ).toBe("activation_required");
+    expect(
+      scheduleBindingState({
+        paused: false,
+        admission_hold: null,
+        lifecycle: "draft",
+        current_version_id: "v1",
+      }),
+    ).toBe("activation_required");
+    expect(
+      scheduleBindingState({
+        paused: false,
+        admission_hold: null,
+        lifecycle: "active",
+        current_version_id: null,
+      }),
+    ).toBe("activation_required");
+    expect(scheduleBindingState({ paused: false, admission_hold: HELD, ...active })).toBe("held");
+    expect(scheduleBindingState({ paused: false, admission_hold: null, ...active })).toBe("active");
+  });
 
   test("the view carries the binding verbatim next to the resolved trigger", () => {
     const binding = { schedule: row(), webhooks_active: 3 };

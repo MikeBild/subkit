@@ -1,5 +1,6 @@
 // Scheduler barrel.
 export { parseCronExpression } from "./cron.ts";
+export { nextScheduleFire } from "./next-fire.ts";
 export { type ReconcilerOptions, SchedulerReconciler } from "./reconciler.ts";
 export * from "./repo.ts";
 export {
@@ -13,4 +14,4 @@ export {
   type WorkflowTriggerView,
   workflowTriggerView,
 } from "./trigger-bindings.ts";
-export { nextScheduleTime, workflowAutomationView } from "./workflow-automation-view.ts";
+export { workflowAutomationView } from "./workflow-automation-view.ts";

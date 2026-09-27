@@ -7,6 +7,17 @@ import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
 import type { ScheduleRow } from "./repo.ts";
 
+/**
+ * A schedule on a workflow that is not active, or has no committed version,
+ * cannot start a run: the one predicate behind `activation_required` here and
+ * behind a schedule binding's state on the workflow representation.
+ */
+export function scheduleNeedsActivation(
+  workflow: { lifecycle: string; current_version_id: string | null } | null | undefined,
+): boolean {
+  return workflow?.lifecycle !== "active" || !workflow.current_version_id;
+}
+
 /** Observed readiness only: never reserves a run, grants authority or executes. */
 async function inspectScheduleAutomationChecked(schedule: ScheduleRow, db: Executor) {
   const base = { schedule_id: schedule.id, workflow_id: schedule.workflow_id };
@@ -22,7 +33,13 @@ async function inspectScheduleAutomationChecked(schedule: ScheduleRow, db: Execu
       ),
     )
     .limit(1);
-  if (workflow?.lifecycle !== "active" || !workflow.version)
+  if (
+    !workflow?.version ||
+    scheduleNeedsActivation({
+      lifecycle: workflow.lifecycle,
+      current_version_id: workflow.version,
+    })
+  )
     return { ...base, state: "activation_required", ready: false } as const;
   const [version] = await db
     .select({ dag: workflowVersions.dag })
