@@ -305,9 +305,14 @@ function catalogColumns(
       ),
       column.custom(
         "trigger",
-        (row) => row.trigger,
+        (row) => row.effective_trigger,
         t("catalog.trigger"),
-        (row) => t(triggerLabelKey(row.trigger as WorkflowListItem["trigger"] | null | undefined)),
+        (row) =>
+          t(
+            triggerLabelKey(
+              row.effective_trigger as WorkflowListItem["effective_trigger"] | null | undefined,
+            ),
+          ),
         { width: "w-[11%]" },
       ),
       column.date("last_executed_at", (row) => row.last_executed_at, t("catalog.lastRun"), {
