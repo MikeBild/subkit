@@ -538,6 +538,7 @@ const EN = {
   "resource.usage.consumptionDescription":
     "What this workspace spent on model calls, and how much of the monthly cap is left.",
   "resource.usage.monthTokens": "Consumed this month",
+  "resource.usage.unattributed": "Not attributable to one",
   "resource.usage.spend": "Spent in this window",
   "resource.usage.spendBasis": "At the rates configured now",
   "resource.usage.unpriced": "Plus {calls} calls on models with no price set: {models}",
@@ -2413,6 +2414,7 @@ const DE: Record<TranslationKey, string> = {
   "resource.usage.consumptionDescription":
     "Was dieser Arbeitsbereich für Modellaufrufe ausgegeben hat und wie viel vom Monatskontingent übrig ist.",
   "resource.usage.monthTokens": "Diesen Monat verbraucht",
+  "resource.usage.unattributed": "Keinem zuzuordnen",
   "resource.usage.spend": "In diesem Zeitraum ausgegeben",
   "resource.usage.spendBasis": "Zu den aktuell hinterlegten Preisen",
   "resource.usage.unpriced": "Zzgl. {calls} Aufrufe auf Modellen ohne hinterlegten Preis: {models}",

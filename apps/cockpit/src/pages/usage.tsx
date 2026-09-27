@@ -107,7 +107,11 @@ export function UsagePage() {
         "key",
         (row) => row.key,
         t(AXIS_LABEL[axis]),
-        (row) => <span className="truncate">{row.key || MISSING}</span>,
+        (row) => (
+          <span className={row.unattributed ? "truncate text-muted-foreground" : "truncate"}>
+            {row.unattributed ? t("resource.usage.unattributed") : row.key}
+          </span>
+        ),
         { width: "w-[46%]" },
       ),
       column.custom(
