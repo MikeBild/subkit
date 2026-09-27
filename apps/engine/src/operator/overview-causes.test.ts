@@ -96,6 +96,13 @@ test("no core metric or health component drilldown leads to the operations page"
   expect(byId.get("decisions.blocked")).toBe("/cockpit/decisions?bucket=blocked");
   expect(byId.get("executions.success_ratio")).toBe("/cockpit/runs?status=failed&source=scheduler");
   expect(byId.get("connectors.healthy_ratio")).toBe("/cockpit/connectors?health=not_ok");
+  // The section tile of the same ratio leads to the same narrowed list: at 0 %
+  // it links (a ratio at zero is the worst state), and the plain catalogue
+  // would hand the reader every connector instead of the broken ones.
+  const tile = overview.sections
+    .flatMap((section) => section.metrics)
+    .find((metric) => metric.id === "connectors.healthy_ratio");
+  expect(tile?.drilldown.path).toBe("/cockpit/connectors?health=not_ok");
 });
 
 test("a historical repair ratio leads to decided repairs, not to the open queue", async () => {

@@ -276,6 +276,10 @@ type FamilyKpiCardProps = Omit<HTMLAttributes<HTMLElement>, "title"> & {
   label: ReactNode;
   value: ReactNode;
   valueRaw?: number | null;
+  /** What the number is — `count`, `ratio`, `score`, `duration` … — because
+   *  whether a zero may link depends on it: a counted zero has nothing to
+   *  open, a ratio at zero is the worst state and leads to its cause. */
+  kind?: string;
   valueState: FamilyKpiValueState;
   severity: FamilyKpiSeverity;
   tooltip: ReactNode;
@@ -301,6 +305,7 @@ export function FamilyKpiCard({
   label,
   value,
   valueRaw,
+  kind,
   valueState,
   severity,
   tooltip,
@@ -318,6 +323,7 @@ export function FamilyKpiCard({
       data-family-kpi-id={id}
       data-family-kpi-value-state={valueState}
       data-family-kpi-value={valueRaw ?? undefined}
+      data-family-kpi-kind={kind}
       data-family-kpi-severity={severity}
       data-family-primary={primary ? "true" : undefined}
       className={classes(

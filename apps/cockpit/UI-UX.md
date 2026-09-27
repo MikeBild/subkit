@@ -222,9 +222,13 @@ contract change, not a page change.
 Every tile is a number and, where the number counted something, the way to it. The engine owns the
 way (contract 2.3): each metric carries a drilldown aimed at what it counted, the health score at its
 worst component, the data freshness at its stalest source, and the repair rate at the decided
-repairs in the audit trail. The page adds one rule of its own, `metricOffersDrilldown`: a value of
+repairs in the audit trail. The page adds one rule of its own, `metricOffersDrilldown`: a COUNT of
 zero has nothing to open and gets no link — a link under "production incidents: 0" once opened nine
-hundred rows. A value that could not be read gets none either, unless the tile is red: the health
+hundred rows. The rule is about counts only. A ratio, a score or a duration at zero is the worst state
+its tile can be in (execution success 0 %, connector health 0 %, a health score of 0), so it links
+whenever the engine names a way in; the tile carries its kind as `data-family-kpi-kind`, and the
+convention check holds every card, core and product section, to that rule. A value that could not be
+read gets no link either, unless the tile is red: the health
 state turns critical on blocked work alone, with no score when nothing ran, and a red tile always
 keeps its way to the cause.
 

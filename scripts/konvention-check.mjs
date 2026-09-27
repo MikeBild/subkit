@@ -14,6 +14,7 @@ import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
 // once is caught at the next document rather than never. The price is one
 // `page.evaluate` per navigation.
 import { IDENTITY_META, standAt } from "./lib/cockpit-identity.mjs";
+import { expectedKpiLinks } from "./lib/cockpit-kpi-links.mjs";
 
 // The family convention (COCKPIT-KONVENTION.md, the version named by
 // KONVENTION_VERSION below) is deliberately not enforced by shared code — six
@@ -829,6 +830,26 @@ function operationalOverview(gateOpen) {
         visualization: "kpi",
         metrics: [overviewMetric("automation.active_workflows", 14, "/cockpit/workflows")],
         drilldown: { path: "/cockpit/workflows" },
+      },
+      {
+        // A ratio at zero while the gate is open: the worst state the tile can
+        // be in, and it has to lead to its cause (§1). Healthy otherwise, so the
+        // calm stand shows the same card with a value above zero.
+        id: "connections",
+        title: "Connections",
+        visualization: "progress",
+        metrics: [
+          {
+            ...overviewMetric(
+              "connectors.healthy_ratio",
+              gateOpen ? 0 : 1,
+              "/cockpit/connectors?health=not_ok",
+              gateOpen ? "critical" : "healthy",
+            ),
+            kind: "ratio",
+          },
+        ],
+        drilldown: { path: "/cockpit/connectors?health=not_ok" },
       },
     ],
     audit: { path: "/cockpit/audit", snapshot_generated_at: generatedAt },
@@ -1797,20 +1818,27 @@ async function _checkIncidentBanner(page, gateOpen) {
 async function checkOperationalDashboard(page, expectedDecisionTotal) {
   const result = await page.evaluate(() => {
     const core = document.querySelector('[data-family-slot="operational-core"]');
-    const cards = core
-      ? [...core.querySelectorAll(":scope > [data-family-kpi-id]")].map((card) => ({
-          id: card.getAttribute("data-family-kpi-id"),
-          value: Number(card.getAttribute("data-family-kpi-value") ?? 0),
-          unread: !card.hasAttribute("data-family-kpi-value"),
-          severity: card.getAttribute("data-family-kpi-severity"),
-          links: card.querySelectorAll('[data-family-kpi-link="true"]').length,
-          linkLabels: card.querySelectorAll('[data-family-kpi-link-label="true"]').length,
-          tooltips: card.querySelectorAll('[data-family-kpi-tooltip="true"]').length,
-          primary: card.getAttribute("data-family-primary") === "true",
-        }))
+    const read = (card) => ({
+      id: card.getAttribute("data-family-kpi-id"),
+      kind: card.getAttribute("data-family-kpi-kind"),
+      value: Number(card.getAttribute("data-family-kpi-value") ?? 0),
+      unread: !card.hasAttribute("data-family-kpi-value"),
+      severity: card.getAttribute("data-family-kpi-severity"),
+      links: card.querySelectorAll('[data-family-kpi-link="true"]').length,
+      linkLabels: card.querySelectorAll('[data-family-kpi-link-label="true"]').length,
+      tooltips: card.querySelectorAll('[data-family-kpi-tooltip="true"]').length,
+      primary: card.getAttribute("data-family-primary") === "true",
+    });
+    const cards = core ? [...core.querySelectorAll(":scope > [data-family-kpi-id]")].map(read) : [];
+    // The ratios live in the product sections, not in the core row — a rule
+    // about ratios measured on the core row alone would never meet one.
+    const sections = document.querySelector('[data-family-slot="product-metrics"]');
+    const sectionCards = sections
+      ? [...sections.querySelectorAll("[data-family-kpi-id]")].map(read)
       : [];
     return {
       cards,
+      sectionCards,
       incidentBanners: document.querySelectorAll('[data-testid="overview-incident"]').length,
       tables: document.querySelectorAll('[data-testid="overview-page"] table').length,
     };
@@ -1830,20 +1858,16 @@ async function checkOperationalDashboard(page, expectedDecisionTotal) {
       "/cockpit",
       `operational cards are ${actualOrder.join(", ")} instead of ${expectedOrder.join(", ")}`,
     );
-  // A number that counted something leads to it; a zero has nothing to open.
-  // "Kein Zähler ohne Link" was measured as "every tile, one link" — which
-  // demanded a link under "Blockiert: 0" and handed the reader an empty list
-  // (the same wall as "production incidents: 0" opening 977 rows). What §1
-  // does demand stays: a red tile whose value could not be read (the health
-  // state is critical on blocked work alone, with no score) keeps its way in.
-  for (const card of result.cards) {
-    const red = card.severity === "critical" || card.severity === "urgent";
-    const expectedLinks = (card.unread ? red : card.value > 0) ? 1 : 0;
+  // A number that counted something leads to it; a counted zero has nothing
+  // to open; a ratio, score or duration leads to its cause whatever its value
+  // — a red 0 % is the worst state, not an empty one (scripts/lib/cockpit-kpi-links.mjs).
+  for (const card of [...result.cards, ...result.sectionCards]) {
+    const expectedLinks = expectedKpiLinks(card);
     if (card.links !== expectedLinks || card.linkLabels !== expectedLinks || card.tooltips !== 1)
       breach(
         "§1, §8.1",
         `/cockpit · ${card.id}`,
-        `value ${card.value}: ${card.links} card links, ${card.linkLabels} visible link labels (expected ${expectedLinks}), ${card.tooltips} tooltips`,
+        `${card.kind ?? "count"} ${card.value}: ${card.links} card links, ${card.linkLabels} visible link labels (expected ${expectedLinks}), ${card.tooltips} tooltips`,
       );
   }
   const primary = result.cards.filter((card) => card.primary).length;
