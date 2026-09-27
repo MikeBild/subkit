@@ -49,7 +49,12 @@ import {
   recategorizedSlug,
   UNCATEGORIZED,
 } from "@/lib/workflow-category";
-import { workflowsByConnector } from "@/pages/connectors-model";
+import { catalogListParams } from "@/pages/catalog-model";
+import {
+  type ConnectorHealthFilter,
+  connectorHealthFilterFromUrl,
+  workflowsByConnector,
+} from "@/pages/connectors-model";
 import { connectorSlugHref, triggerLabelKey } from "@/pages/workflows-model";
 
 type CatalogResource = "workflows" | "connectors" | "knowledge" | "skills" | "files";
@@ -65,6 +70,11 @@ interface CatalogState {
   connector: string;
   /** Files only: the resource a file is attached to. */
   linkedTo: string;
+  /**
+   * Connectors only: the narrowing the health tile's link brings. Never typed,
+   * so it has no control of its own — only the chip that says so and lifts it.
+   */
+  health: ConnectorHealthFilter | null;
   sort: string;
   order: "asc" | "desc";
   page: number;
@@ -153,6 +163,10 @@ function parseState(config: CatalogConfig): CatalogState {
     category: params.get("category") ?? "all",
     connector: params.get("connector") ?? "",
     linkedTo: params.get("linked_to") ?? "",
+    health:
+      config.endpoint === "/v1/connectors"
+        ? connectorHealthFilterFromUrl(window.location.search)
+        : null,
     sort: params.get("sort") ?? config.defaultSort,
     order: order === "asc" ? "asc" : "desc",
     page: Math.max(0, Number(params.get("page") ?? 0) || 0),
@@ -176,6 +190,7 @@ function useCatalogState(config: CatalogConfig) {
         if (next.category !== "all") params.set("category", next.category);
         if (next.connector) params.set("connector", next.connector);
         if (next.linkedTo) params.set("linked_to", next.linkedTo);
+        if (next.health) params.set("health", next.health);
         if (next.sort !== config.defaultSort) params.set("sort", next.sort);
         if (next.order !== "desc") params.set("order", next.order);
         if (next.page > 0) params.set("page", String(next.page));
@@ -230,7 +245,7 @@ function HealthMark({ row }: { row: CatalogRow }) {
         <span className="min-w-0">{t("workflows.health", { state: statusLabel(t, state) })}</span>
         {reason ? (
           <span className="min-w-0 truncate" data-testid="workflow-health-engine-wording">
-            {t("workflows.healthEngineWording", { reason })}
+            {t("common.engineWording", { text: reason })}
           </span>
         ) : null}
       </span>
@@ -536,34 +551,14 @@ export function CatalogPage({
   const query = useQuery({
     queryKey: ["catalog", resource, state],
     enabled: permissions.includes(config.permission),
-    queryFn: () => {
-      const params = new URLSearchParams({
-        limit: String(PAGE_SIZE),
-        offset: String(state.page * PAGE_SIZE),
-        sort: state.sort,
-        order: state.order,
-      });
-      if (state.q) params.set("q", state.q);
-      if (state.category !== "all") params.set("category", state.category);
-      if (resource === "workflows" && state.connector) params.set("connector", state.connector);
-      if (resource === "files" && state.linkedTo) params.set("linked_to", state.linkedTo);
-      if (state.status !== "all") {
-        if (resource === "connectors") {
-          if (state.status === "enabled" || state.status === "disabled") {
-            params.set("enabled", String(state.status === "enabled"));
-          } else {
-            params.set("health_state", state.status);
-          }
-        } else {
-          params.set("status", state.status);
-        }
-      }
-      return apiRequest<{
+    // Every narrowing, `health=not_ok` included, is the engine's — so the
+    // total and the pages describe the narrowed list (catalog-model.ts).
+    queryFn: () =>
+      apiRequest<{
         items: CatalogRow[];
         total?: number;
         categories?: CategoryCount[];
-      }>(`${config.endpoint}?${params}`);
-    },
+      }>(`${config.endpoint}?${catalogListParams(resource, state, PAGE_SIZE)}`),
   });
 
   // Workflows name their connectors by slug; the detail route needs an id.
@@ -633,7 +628,8 @@ export function CatalogPage({
     state.status !== "all" ||
     state.category !== "all" ||
     Boolean(state.connector) ||
-    Boolean(state.linkedTo);
+    Boolean(state.linkedTo) ||
+    state.health !== null;
 
   const showsZeroStateAction =
     rows.length === 0 &&
@@ -650,6 +646,7 @@ export function CatalogPage({
       category: "all",
       connector: "",
       linkedTo: "",
+      health: null,
       page: 0,
     });
   }, [setState]);
@@ -764,6 +761,17 @@ export function CatalogPage({
                 </SelectContent>
               </Select>
             )}
+            {/* The narrowing a link brought, said out loud and removable. */}
+            {resource === "connectors" && state.health === "not_ok" ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="catalog-health-filter"
+                onClick={() => setState({ health: null, page: 0 })}
+              >
+                {t("catalog.healthNotOkFilter")}
+              </Button>
+            ) : null}
             {hasActiveFilters && (
               <Button
                 variant="ghost"

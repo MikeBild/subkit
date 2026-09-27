@@ -1,4 +1,16 @@
 /** Browser interactions use fixtures; the route integration suite verifies database enforcement. */
+/**
+ * Suggested bounds as the engine shapes them: one `now`, a whole number of
+ * hours after it (`suggestAuthorityBounds`).
+ */
+function wholeDaySpan() {
+  const from = Date.now();
+  return {
+    valid_from: new Date(from).toISOString(),
+    valid_until: new Date(from + 86_400_000).toISOString(),
+  };
+}
+
 export async function verifyWorkflowAuthorities(page, stand, workflowId, locale, capture) {
   const id = "00000000-0000-4000-8000-000000000101";
   const olderId = "00000000-0000-4000-8000-000000000102";
@@ -166,6 +178,7 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
     await verifyPreparedVersion(page, stand, workflowId, locale, capture);
     await verifyActivationWhenNotApprovable(page, stand, workflowId, capture);
     await verifyEnvironmentCorrection(page, stand, workflowId, capture);
+    await verifyLateReviewDropped(page, stand, workflowId);
     await verifyTrialAlreadyRunning(page, stand, workflowId, locale, capture);
   } finally {
     await page.unroute(pattern, handler);
@@ -248,8 +261,10 @@ async function verifyPreparedVersion(page, stand, workflowId, locale, capture) {
         eligible_for_repeated_runs: true,
         unavailable_steps: [],
         suggested_bounds: {
-          valid_from: new Date().toISOString(),
-          valid_until: new Date(Date.now() + 86_400_000).toISOString(),
+          // One clock reading. Two readings a millisecond apart make the span
+          // 24.0000003 hours, which the engine never sends and the dialog
+          // rightly refuses as not a whole number.
+          ...wholeDaySpan(),
           max_runs: 1,
         },
         execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
@@ -434,8 +449,10 @@ async function verifyActivationWhenNotApprovable(page, stand, workflowId, captur
         // screenshot at all.
         request_refusals: [{ step_id: "fetch-route", reason: "stricter_profile_applies" }],
         suggested_bounds: {
-          valid_from: new Date().toISOString(),
-          valid_until: new Date(Date.now() + 86_400_000).toISOString(),
+          // One clock reading. Two readings a millisecond apart make the span
+          // 24.0000003 hours, which the engine never sends and the dialog
+          // rightly refuses as not a whole number.
+          ...wholeDaySpan(),
           max_runs: 1,
         },
         execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
@@ -602,8 +619,10 @@ async function verifyEnvironmentCorrection(page, stand, workflowId, capture) {
         eligible_for_repeated_runs: !mismatched,
         unavailable_steps: [],
         suggested_bounds: {
-          valid_from: new Date().toISOString(),
-          valid_until: new Date(Date.now() + 86_400_000).toISOString(),
+          // One clock reading. Two readings a millisecond apart make the span
+          // 24.0000003 hours, which the engine never sends and the dialog
+          // rightly refuses as not a whole number.
+          ...wholeDaySpan(),
           max_runs: 1,
         },
         execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
@@ -667,6 +686,143 @@ async function verifyEnvironmentCorrection(page, stand, workflowId, capture) {
 }
 
 /**
+ * A review that answers late answers nobody.
+ *
+ * The review request that FINISHES last is not always the one that was ASKED
+ * last. The dialog seeded its review from every call that completed, so an
+ * older answer landing after a newer one replaced the review the reader was
+ * looking at — and, when it named another version or environment, left a
+ * complete-looking review whose confirm button stayed disabled for good. Nor
+ * could the reader close the dialog while a review was loading.
+ *
+ * Hostile on purpose: the FIRST preview is held back until after the dialog
+ * was closed and reopened and the second one has been answered. Each answer
+ * carries its own digest, so an approval issued from the stale review is
+ * caught by what it sends, not only by whether the button is enabled.
+ */
+async function verifyLateReviewDropped(page, stand, workflowId) {
+  const versionId = "00000000-0000-4000-8000-000000000601";
+  const workflowPattern = `**/v1/workflows/${workflowId}`;
+  const previewPattern = `**/v1/workflows/${workflowId}/versions/*/authority-preview?*`;
+  const grantPattern = `**/v1/workflows/${workflowId}/execution-authorities`;
+  const historyPattern = `**/v1/workflows/${workflowId}/execution-authorities**`;
+  let previews = 0;
+  let granted = null;
+  let lateAnswered;
+  const late = new Promise((resolve) => {
+    lateAnswered = resolve;
+  });
+  const noHistory = async (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ items: [], next_cursor: null }),
+        })
+      : route.fallback();
+  const record = async (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            id: workflowId,
+            name: "Monatsreport",
+            slug: "monatsreport",
+            lifecycle: "active",
+            current_version: 8,
+            current_version_id: versionId,
+            draft_version_id: null,
+            steps: [],
+            updated_at: "2026-08-10T09:00:00.000Z",
+          }),
+        })
+      : route.fallback();
+  const preview = async (route) => {
+    previews += 1;
+    const call = previews;
+    const url = new URL(route.request().url());
+    const body = JSON.stringify({
+      digest: String(call).repeat(64),
+      manifest: {
+        schema_version: 1,
+        workflow_id: workflowId,
+        workflow_version_id: url.pathname.split("/").at(-2),
+        execution_environment: url.searchParams.get("environment"),
+        effects: [],
+        issues: [],
+      },
+      eligible_for_repeated_runs: true,
+      unavailable_steps: [],
+      suggested_bounds: { ...wholeDaySpan(), max_runs: 1 },
+      execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
+    });
+    if (call !== 1) return route.fulfill({ status: 200, contentType: "application/json", body });
+    // Held until the second answer is already on screen.
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    try {
+      await route.fulfill({ status: 200, contentType: "application/json", body });
+    } catch {
+      // The page may already have dropped the request; the answer is stale either way.
+    } finally {
+      lateAnswered();
+    }
+  };
+  const grant = async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    granted = route.request().postDataJSON();
+    return route.fulfill({ status: 201, contentType: "application/json", body: "{}" });
+  };
+  await page.route(historyPattern, noHistory);
+  await page.route(workflowPattern, record);
+  await page.route(previewPattern, preview);
+  await page.route(grantPattern, grant);
+  try {
+    await stand.visit(page, `workflows/${workflowId}`);
+    await page.getByTestId("authority-grant-open").click();
+    const dialog = page.getByRole("dialog");
+    await dialog.waitFor();
+    // Closing while the review is still loading: nothing has been submitted,
+    // so nothing may hold the reader in the dialog.
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {
+      throw new Error("The dialog could not be closed while its review was still loading");
+    });
+    if (previews !== 1) throw new Error(`Expected one held review, saw ${previews}`);
+    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("authority-grant-review").waitFor();
+    // Now let the stale answer arrive, and give the page a moment to act on it.
+    await late;
+    await page.waitForTimeout(300);
+    const confirm = page.getByTestId("authority-grant-confirm");
+    await page
+      .waitForFunction(
+        () => {
+          const node = document.querySelector('[data-testid="authority-grant-confirm"]');
+          return Boolean(node) && !node.disabled;
+        },
+        { timeout: 30_000 },
+      )
+      .catch(() => {});
+    if (await confirm.isDisabled())
+      throw new Error(
+        `Approval stayed unavailable after a late review answer. Dialog: ${(await dialog.innerText()).slice(0, 500)}`,
+      );
+    await confirm.click();
+    await dialog.waitFor({ state: "hidden" });
+    if (granted?.expected_manifest_digest !== "2".repeat(64))
+      throw new Error(
+        `Approval was issued from a review nobody was looking at: digest ${granted?.expected_manifest_digest?.slice(0, 1)}… instead of the latest`,
+      );
+  } finally {
+    await page.unroute(grantPattern, grant);
+    await page.unroute(previewPattern, preview);
+    await page.unroute(workflowPattern, record);
+    await page.unroute(historyPattern, noHistory);
+  }
+}
+
+/**
  * A trial run that was already going when this dialog asked for one.
  *
  * Opening this approval STARTS a held run. Nothing said so, and the wait showed
@@ -711,8 +867,10 @@ async function verifyTrialAlreadyRunning(page, stand, workflowId, locale, captur
         preparation_required: true,
         unavailable_steps: [],
         suggested_bounds: {
-          valid_from: new Date().toISOString(),
-          valid_until: new Date(Date.now() + 86_400_000).toISOString(),
+          // One clock reading. Two readings a millisecond apart make the span
+          // 24.0000003 hours, which the engine never sends and the dialog
+          // rightly refuses as not a whole number.
+          ...wholeDaySpan(),
           max_runs: 1,
         },
         execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
@@ -1084,9 +1242,9 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
     await page.unroute(`${proposalPattern}/apply`, proposalRoute);
     await page.unroute(proposalPattern, proposalRoute);
     await page.unroute(recordPattern, recordRoute);
-    // Escape, not the cancel button: after a repair the dialog is reloading
-    // onto the prepared version, and every footer button is disabled while it
-    // does. This scenario is about the repair, not about that button.
+    // Escape while the dialog may still be reloading onto the prepared
+    // version: a review that is only loading must not hold the reader in the
+    // dialog (it used to, and this press was silently dropped).
     await page.keyboard.press("Escape");
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     if (posts !== 2) throw new Error("The repair caused an execution grant");

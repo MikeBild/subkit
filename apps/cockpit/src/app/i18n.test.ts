@@ -86,6 +86,7 @@ describe("cockpit i18n", () => {
       "applied",
       "rejected",
       "superseded",
+      "inapplicable",
       "approved",
       // workflow and skill lifecycle
       "draft",
@@ -140,6 +141,23 @@ describe("cockpit i18n", () => {
       "access.roleDescription.metricsScraper",
       "access.roleDescription.portalTokenUser",
     ] as const) {
+      expect(translate("en", key)).not.toBe("Unknown");
+      expect(translate("de", key)).not.toBe("Unbekannt");
+    }
+  });
+
+  test("the repair-rate tooltip names every status the engine counts as decided", () => {
+    // The engine divides by applied + rejected + superseded; the tooltip named
+    // only the rejected ones, so a superseded repair lowered a rate that
+    // claimed not to count it.
+    expect(translate("en", "operational.metric.repairs.tooltip")).toContain("superseded");
+    expect(translate("de", "operational.metric.repairs.tooltip")).toContain("überholte");
+  });
+
+  test("an undetermined health state or value is not called Unbekannt (§2)", () => {
+    // The overview tile, the /operations state line and every unread KPI value
+    // printed the banned word as a state.
+    for (const key of ["operational.health.unknown", "operational.value.unknown"] as const) {
       expect(translate("en", key)).not.toBe("Unknown");
       expect(translate("de", key)).not.toBe("Unbekannt");
     }

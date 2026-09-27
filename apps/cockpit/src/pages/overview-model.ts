@@ -1,128 +1,52 @@
-import type { components } from "@/api/schema";
-
 // What an overview owes a reader: the operating picture, not a second copy of
-// the work queue.
+// the work queue and not a list of causes.
 //
-// This page used to render the full list of proposed fixes — the same rows as
-// the decisions page, non-actionable, and titled differently, so the two pages
-// disagreed about what the same candidate was called. Whatever else an overview
-// is, it is not a place to read the queue and then be unable to decide it.
+// The tiles are fixed by the family contract (FAMILY-UI.json, checked by
+// scripts/konvention-check.mjs): four decision counts, the health state and the
+// data freshness, then the product sections — no lists, no banners. What this
+// file decides is how each number is read, never which numbers there are.
 //
-// What it owes instead: how many are waiting and how long the oldest has been
-// there (one line, linking to where they can be decided), what is failing and
-// whether that is real, and what actually ran recently.
-//
-// The waiting numbers are NOT derived here. The digest carries only patch
-// candidates and its own `stuck` flag, so every number this file could offer
-// about the queue would be a third of it: `countOpenDecisions` in
-// decisions-model.ts owns that count for every surface, and this file keeps
-// what the digest genuinely owns — failure groups, risks, the all-clear.
-
-export type HealthDigest = components["schemas"]["OperatorHealthDigest"];
-export type FailureGroup = HealthDigest["failure_groups"][number];
-type Execution = components["schemas"]["Execution"];
-
-export interface PartitionedFailures {
-  /** Failures from scheduled or mixed traffic — the real operating picture. */
-  incidents: FailureGroup[];
-  /** Failures from authoring and manual trial runs. */
-  trials: FailureGroup[];
-  /**
-   * Scheduled failures whose workflow has run clean on its schedule since.
-   *
-   * Its own bucket, not folded into `trials`: a production incident that ended
-   * is not an experiment, and filing it as one would label a real outage as
-   * something somebody was trying out. It is history — shown as such, counted
-   * as neither.
-   */
-  recovered: FailureGroup[];
-}
+// The causes behind a red tile live where they can be acted on: the failing and
+// blocked workflows on the decisions page, the health components, causes and
+// stale sources on the system page. The engine names the way to each (contract
+// 2.3); this file only decides when a number offers that way at all.
 
 /**
- * Separate real incidents from trial runs.
+ * Whether a number offers a way in.
  *
- * `origin` tells them apart, and merging them inflates the picture badly: a
- * person building a workflow can produce dozens of failed trial runs in an
- * afternoon, and an overview that counts those alongside a scheduled job
- * failing nightly is reporting a crisis that is not happening.
+ * The engine owns every drilldown, aimed at what its number counted. What is
+ * left to decide here is the reader's side, and it depends on what KIND of
+ * number it is.
+ *
+ * A count of nothing has nothing to open. On a live installation a link sat
+ * under "production incidents: 0" and opened nine hundred rows — a reader
+ * clicks a zero expecting to be told there is nothing, and was handed a wall
+ * instead. That rule is about counts, and only about counts.
+ *
+ * A ratio, a score or a duration at zero is not "nothing": execution success
+ * at 0 %, connector health at 0 %, a health score of 0 are the WORST states
+ * the tile can be in, and each has a cause to go to. Those link whenever the
+ * engine names a path — a red tile without a way to its cause is the one
+ * thing §1 forbids. A metric that names no kind is read as a count, the
+ * narrower rule.
+ *
+ * `null` is not zero: a value that could not be read is unknown, not empty.
+ * An unknown that is also red keeps its way in — the engine makes the health
+ * state critical on blocked work alone, with no score when nothing ran in 24
+ * hours. A plain unknown offers none. A path that is missing or blank is no
+ * way in, whatever the value.
  */
-export function partitionFailures(groups: readonly FailureGroup[]): PartitionedFailures {
-  const sorted = [...groups].sort((a, b) => b.count - a.count);
-  return {
-    // One rule, the same one the decisions queue and the overview tile use:
-    // did the scheduler start any of these runs. Reading `origin` here counted
-    // a group that was tried by hand AND in the editor as an incident, because
-    // two kinds of trial run also merge to "mixed".
-    incidents: sorted.filter((group) => group.scheduled_count > 0 && !group.resolved_at),
-    trials: sorted.filter((group) => group.scheduled_count === 0),
-    recovered: sorted.filter((group) => group.scheduled_count > 0 && Boolean(group.resolved_at)),
-  };
-}
-
-export interface RecentRun {
-  id: string;
-  name: string | null;
-  status: string;
-  startedAt: string | null;
-  /** Wall-clock duration, or null while the run has not finished. */
-  durationMs: number | null;
-}
-
-/**
- * The last handful of runs, newest first.
- *
- * There is deliberately no "next scheduled run" companion to this: the engine
- * exposes a cron expression and a timezone but computes no next-fire instant
- * anywhere, and a time this page derived itself would be a guess presented as a
- * fact.
- */
-export function recentRuns(executions: readonly Execution[], limit = 8): RecentRun[] {
-  return [...executions]
-    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
-    .slice(0, limit)
-    .map((execution) => ({
-      id: execution.id,
-      name: execution.workflow_name ?? null,
-      status: execution.status,
-      startedAt: execution.started_at ?? null,
-      durationMs: runDurationMs(execution),
-    }));
-}
-
-function runDurationMs(execution: Execution): number | null {
-  if (!execution.started_at || !execution.finished_at) return null;
-  const started = Date.parse(execution.started_at);
-  const finished = Date.parse(execution.finished_at);
-  if (Number.isNaN(started) || Number.isNaN(finished)) return null;
-  return Math.max(0, finished - started);
-}
-
-/**
- * The metrics whose drilldown narrows to what the number actually counted.
- *
- * `executions.incidents_24h` is the only one. Its link carries
- * `?status=failed&source=scheduler`, which together are the metric's own
- * definition: failed runs the scheduler started, as distinct from authoring
- * trials. Every other product metric pointed at a list that cannot tell its
- * number apart from any other, so those numbers kept their value and lost
- * their link.
- */
-export const ACTIONABLE_DRILLDOWNS: ReadonlySet<string> = new Set(["executions.incidents_24h"]);
-
-/**
- * Whether this metric offers a way in.
- *
- * Being aimed correctly is necessary and not sufficient. On a live
- * installation the one surviving link sat under "production incidents: 0" and
- * opened nine hundred rows — the worst form of the defect it had survived,
- * because a reader clicks a zero expecting to be told there is nothing and is
- * handed a wall instead. A count of nothing has nothing to open.
- *
- * `null` is not zero: a metric whose value could not be read is unknown, not
- * empty, and an unknown offers no way in either.
- */
-export function metricOffersDrilldown(id: string, value: number | null | undefined): boolean {
-  return ACTIONABLE_DRILLDOWNS.has(id) && (value ?? 0) > 0;
+export function metricOffersDrilldown(metric: {
+  kind?: string | null;
+  value: number | null | undefined;
+  severity?: string | null;
+  drilldown?: { path?: string | null } | null;
+}): boolean {
+  if (!metric.drilldown?.path?.trim()) return false;
+  if (metric.value === null || metric.value === undefined)
+    return metric.severity === "critical" || metric.severity === "urgent";
+  const isCount = !metric.kind || metric.kind === "count";
+  return isCount ? metric.value > 0 : true;
 }
 
 /**

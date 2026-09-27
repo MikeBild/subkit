@@ -21,6 +21,14 @@ export { classifyPatch, classifyRateLimitFromTemplate } from "./classifier.ts";
 export type { FailingStepSnapshot } from "./drift-detector.ts";
 export { analyzeStepFailure, renderDriftDiff } from "./drift-detector.ts";
 export { applyPatchToStep, runFixtureDryRun } from "./fixture-runner.ts";
+export type { OpenPatchDecision, OpenPatchDecisions } from "./open-decisions.ts";
+export {
+  closeIfUndecidable,
+  closeUndecidableCandidate,
+  readOpenPatchDecisions,
+  sweepUndecidableCandidates,
+  UNDECIDABLE_REASONS,
+} from "./open-decisions.ts";
 export type {
   PatchApplyFailure,
   PatchApplyOutcome,

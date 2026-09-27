@@ -34,6 +34,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { environmentToCorrectTo } from "@/lib/resolved-environment";
 import {
   AUTHORITY_EFFECT_KEYS,
+  acceptReview,
   authorityGrantInput,
   type WorkflowAuthority,
   type WorkflowAuthorityPreview,
@@ -112,16 +113,33 @@ export function GrantWorkflowAuthority({
   // first — and a flag that resets only on open is what keeps a disagreement
   // between the two halves from becoming a loop.
   const corrected = useRef(false);
+  // Which review request is the current one. Every request takes the next
+  // number; closing the dialog takes one too. An answer is shown only while its
+  // number is still the latest — the request that FINISHES last is not the one
+  // that was ASKED last, and an older answer landing on top of a newer question
+  // put a review on screen that the confirm button then refused for good.
+  const latestReview = useRef(0);
+  const isLatest = (token: number) => token === latestReview.current;
   const prepare = useMutation({
-    mutationFn: async (env: "dev" | "prod") => {
-      const targetVersion = prepareVersion ? await prepareVersion() : versionId;
-      setReviewVersionId(targetVersion);
+    mutationFn: async ({
+      env,
+      token,
+      version,
+    }: {
+      env: "dev" | "prod";
+      token: number;
+      /** The version to judge, when the caller already knows it (a repair). */
+      version?: string;
+    }) => {
+      const superseded = () => new Error("authority_review_superseded");
+      const targetVersion = version ?? (prepareVersion ? await prepareVersion() : versionId);
       const preview = (forEnvironment: "dev" | "prod") =>
         apiRequest<WorkflowAuthorityPreview>(
           `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(targetVersion)}/authority-preview?environment=${forEnvironment}`,
         );
       let asked = env;
       let result = await preview(asked);
+      if (!isLatest(token)) throw superseded();
       // The answer to "which environment should this have been" arrives with
       // the complaint: every effect names the environment its connector really
       // belongs to, whichever one was asked about. Asked once, acted on once.
@@ -132,6 +150,7 @@ export function GrantWorkflowAuthority({
           asked = belongs;
           setEnvironment(belongs);
           result = await preview(asked);
+          if (!isLatest(token)) throw superseded();
         }
       }
       if (
@@ -153,26 +172,62 @@ export function GrantWorkflowAuthority({
           // going. That is the engine doing the right thing — one run instead
           // of three — and it must not arrive as a red failure. The review is
           // simply not ready yet, and the line below says why.
-          setTrialElsewhere(outcome.reason === "preparation_in_flight");
+          if (isLatest(token)) setTrialElsewhere(outcome.reason === "preparation_in_flight");
         } finally {
-          setTrialStartedAt(null);
+          // Only this request's own timer: a newer request may be running one.
+          if (isLatest(token)) setTrialStartedAt(null);
         }
+        if (!isLatest(token)) throw superseded();
         result = await preview(asked);
       }
-      return result;
-    },
-    onSuccess: (review) => {
-      setRuns(String(review.suggested_bounds.max_runs));
-      setHours(
-        String(
-          (Date.parse(review.suggested_bounds.valid_until) -
-            Date.parse(review.suggested_bounds.valid_from)) /
-            3_600_000,
-        ),
-      );
-      setReview(review);
+      // Stale: a newer question was asked (or the dialog closed) while this
+      // one was out — its answer is dropped. A mismatch on the latest request
+      // is still shown: `authorityGrantInput` refuses to approve from it and
+      // the footer offers the re-check, which is the way out of it.
+      if (
+        acceptReview(
+          latestReview.current,
+          token,
+          { workflowId, versionId: targetVersion, environment: asked },
+          result,
+        ) === "stale"
+      )
+        throw superseded();
+      return { review: result, versionId: targetVersion, environment: asked, token };
     },
   });
+  /**
+   * Start a review, superseding any still in flight. The answer is applied
+   * here, per request, and only while it is still the latest — never from the
+   * mutation's options, which run for every call that completes.
+   */
+  function startReview(env: "dev" | "prod", version?: string) {
+    const token = latestReview.current + 1;
+    latestReview.current = token;
+    setReview(null);
+    setTrialElsewhere(false);
+    setTrialStartedAt(null);
+    prepare.reset();
+    prepare.mutate(
+      { env, token, version },
+      {
+        onSuccess: (answer) => {
+          if (!isLatest(answer.token)) return;
+          setReviewVersionId(answer.versionId);
+          setEnvironment(answer.environment);
+          setRuns(String(answer.review.suggested_bounds.max_runs));
+          setHours(
+            String(
+              (Date.parse(answer.review.suggested_bounds.valid_until) -
+                Date.parse(answer.review.suggested_bounds.valid_from)) /
+                3_600_000,
+            ),
+          );
+          setReview(answer.review);
+        },
+      },
+    );
+  }
   const expected = { workflowId, versionId: reviewVersionId, environment };
   const input = review ? authorityGrantInput(review, expected, runs, hours, Date.now()) : null;
   const grant = useMutation({
@@ -252,19 +307,24 @@ export function GrantWorkflowAuthority({
   });
   const repair = useMutation({
     mutationFn: async () => {
+      // Which opening this repair belongs to. Closing the dialog moves the
+      // counter on, and a repair that lands after that must not reopen a
+      // review in a dialog nobody is looking at.
+      const opening = latestReview.current;
       const current = await apiRequest<{ draft_version_id: string | null }>(
         `/v1/workflows/${encodeURIComponent(workflowId)}`,
       );
-      return apiRequest<{ draft: { version_id: string }; applied_step_ids: string[] }>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/boundary-proposals/apply`,
-        {
-          method: "POST",
-          // Explicitly null when there is no draft yet: an omitted key is not
-          // "no draft", it is a body the engine refuses — and the caller would
-          // read that as the repair being impossible.
-          body: JSON.stringify({ expected_draft_version_id: current.draft_version_id ?? null }),
-        },
-      );
+      const result = await apiRequest<{
+        draft: { version_id: string };
+        applied_step_ids: string[];
+      }>(`/v1/workflows/${encodeURIComponent(workflowId)}/boundary-proposals/apply`, {
+        method: "POST",
+        // Explicitly null when there is no draft yet: an omitted key is not
+        // "no draft", it is a body the engine refuses — and the caller would
+        // read that as the repair being impossible.
+        body: JSON.stringify({ expected_draft_version_id: current.draft_version_id ?? null }),
+      });
+      return { ...result, opening };
     },
     onSuccess: async (result) => {
       // The prepared version IS the thing to review now, so the dialog reloads
@@ -272,11 +332,10 @@ export function GrantWorkflowAuthority({
       await client.invalidateQueries({ queryKey: ["catalog-detail", "workflows", workflowId] });
       await client.invalidateQueries({ queryKey: ["workflow-draft-version", workflowId] });
       await client.invalidateQueries({ queryKey: ["boundary-proposals", workflowId] });
-      setReviewVersionId(result.draft.version_id);
-      setReview(null);
-      prepare.reset();
-      setTrialElsewhere(false);
-      prepare.mutate(environment);
+      if (latestReview.current !== result.opening) return;
+      // The draft by name: the version prop catches up only after the
+      // invalidation above re-renders the caller, which this does not wait for.
+      startReview(environment, result.draft.version_id);
     },
   });
   const actionError = grant.error ?? activateOnly.error;
@@ -285,7 +344,10 @@ export function GrantWorkflowAuthority({
     (actionError.status === 401 ||
       actionError.code === "human_session_expired" ||
       actionError.code === "human_session_required");
-  const busy = prepare.isPending || grant.isPending || activateOnly.isPending;
+  // A submit in flight must not be abandoned by closing the dialog; a review
+  // that is only loading may be — its answer is then dropped (`latestReview`).
+  const submitting = grant.isPending || activateOnly.isPending;
+  const busy = prepare.isPending || repair.isPending || submitting;
   const unsupported = review && !review.eligible_for_repeated_runs;
   const deliveries =
     review?.manifest.effects.flatMap((effect) =>
@@ -310,16 +372,20 @@ export function GrantWorkflowAuthority({
   const boundsVisible = review && !unsupported && !incomplete;
   const adjustUrl = absolute(chatNewHref({ workflowId, prompt: t("authority.adjustPrompt") }));
   function openDialog(value: boolean) {
-    if (busy) return;
+    if (submitting) return;
     setOpen(value);
-    setReview(null);
-    prepare.reset();
     grant.reset();
     activateOnly.reset();
     if (value) {
       corrected.current = false;
       setEnvironment(initialEnvironment);
-      prepare.mutate(initialEnvironment);
+      startReview(initialEnvironment);
+    } else {
+      // Closing is a request too: whatever is still loading answers nobody.
+      latestReview.current += 1;
+      setReview(null);
+      setTrialStartedAt(null);
+      prepare.reset();
     }
   }
   return (
@@ -578,10 +644,8 @@ export function GrantWorkflowAuthority({
                 onValueChange={(value) => {
                   if (value !== "dev" && value !== "prod") return;
                   setEnvironment(value);
-                  setReview(null);
                   grant.reset();
-                  prepare.reset();
-                  prepare.mutate(value);
+                  startReview(value);
                 }}
               >
                 <SelectTrigger id="authority-environment" data-testid="authority-environment">
@@ -776,7 +840,7 @@ export function GrantWorkflowAuthority({
         <DialogFooter className="shrink-0">
           <Button
             variant="outline"
-            disabled={busy}
+            disabled={submitting}
             onClick={() => openDialog(false)}
             data-testid="authority-grant-cancel"
           >
@@ -802,9 +866,7 @@ export function GrantWorkflowAuthority({
                 disabled={busy}
                 onClick={() => {
                   grant.reset();
-                  setReview(null);
-                  prepare.reset();
-                  prepare.mutate(environment);
+                  startReview(environment);
                 }}
                 data-testid="authority-prepare"
               >

@@ -25,7 +25,7 @@ interface NeedsAttentionPanelProps {
 
 const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest }) => {
   const failCount = totalFailureCount(digest);
-  const pending = digest.patch_candidates.pending;
+  const open = digest.patch_candidates.open;
 
   return (
     <Box flexDirection="column" marginBottom={1}>
@@ -70,10 +70,10 @@ const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest })
         );
       })}
 
-      {pending > 0 ? (
+      {open > 0 ? (
         <Box flexDirection="column">
           <Text color="cyan">
-            {pending} self-healing fix{pending === 1 ? "" : "es"} awaiting review
+            {open} self-healing fix{open === 1 ? "" : "es"} awaiting review
           </Text>
           {digest.patch_candidates.items.slice(0, 5).map((p) => {
             const label = p.workflow_name ?? p.workflow_id ?? "(workflow)";

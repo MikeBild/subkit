@@ -19,6 +19,7 @@ import { recordPatchCandidate } from "../observability/instrumentation.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { autoApplyPatch, logPatchNotApplied } from "./auto-apply.ts";
 import { readPatchReadiness } from "./candidate-readiness.ts";
+import { closeIfUndecidable } from "./open-decisions.ts";
 
 export class PatchDecisionError extends Error {
   constructor(public readonly code: string) {
@@ -97,8 +98,9 @@ export async function approvePatchCandidate(
     });
 
     // An approval the engine cannot perform is an approval that changed
-    // nothing. Say so — audit it as an error with the reason, leave the
-    // candidate `proposed`, then throw after committing the refusal audit.
+    // nothing. Say so — audit it as an error with the reason, close the
+    // candidate only when readiness proves it undecidable (otherwise it stays
+    // `proposed`), then throw after committing the refusal audit.
     // The route returns a conflict instead of inventing a version.
     if (!outcome.applied) {
       await auditAwait(
@@ -121,6 +123,9 @@ export async function approvePatchCandidate(
         outcome.reason,
         "manual_approve",
       );
+      // A refusal the current version proves permanent closes the candidate;
+      // anything else stays proposed for the operator to look at again.
+      await closeIfUndecidable(tx, row, "manual_approve");
       return { failure: outcome.reason };
     }
 

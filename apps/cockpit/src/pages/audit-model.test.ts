@@ -5,6 +5,7 @@ import { type Locale, type TranslationKey, translate } from "@/lib/i18n";
 import {
   actorTypeKey,
   auditActionLabel,
+  auditActionsFromUrl,
   auditDetailFacts,
   auditEvidenceBlocks,
   auditFilterFromUrl,
@@ -205,6 +206,9 @@ describe("the decision trail is named", () => {
     "wait.started",
     "wait.completed",
     "webhook.trigger.failed_verification",
+    // Written by the engine, as the system, for every repair it proves it
+    // cannot make — one row per closure, so on a live tenant it is common.
+    "patch_candidate.closed_inapplicable",
   ];
 
   test("every verb a person answers for has a name", () => {
@@ -588,7 +592,13 @@ describe("the narrowing a link brings to the log", () => {
   test("reads a record, a request and a scope", () => {
     expect(
       auditFilterFromUrl(`?resource_type=workflow&resource_id=${id}&trace_id=abc123&scope=all`),
-    ).toEqual({ resourceType: "workflow", resourceId: id, traceId: "abc123", scope: "all" });
+    ).toEqual({
+      resourceType: "workflow",
+      resourceId: id,
+      traceId: "abc123",
+      scope: "all",
+      actions: [],
+    });
   });
 
   test("a record id without its type narrows nothing — the id alone names no record", () => {
@@ -597,17 +607,70 @@ describe("the narrowing a link brings to the log", () => {
 
   test("junk is dropped rather than sent as an exact match", () => {
     const filter = auditFilterFromUrl("?resource_type=a%20b&scope=everything&trace_id=a/b");
-    expect(filter).toEqual({ resourceType: null, resourceId: null, traceId: null, scope: null });
+    expect(filter).toEqual({
+      resourceType: null,
+      resourceId: null,
+      traceId: null,
+      scope: null,
+      actions: [],
+    });
   });
 
   test("becomes exactly the engine's own parameters", () => {
     expect(
-      auditLinkParams({ resourceType: "workflow", resourceId: id, traceId: null, scope: "all" }),
+      auditLinkParams({
+        resourceType: "workflow",
+        resourceId: id,
+        traceId: null,
+        scope: "all",
+        actions: [],
+      }),
     ).toEqual({ resource_type: "workflow", resource_id: id });
     // Scope is not a parameter of its own: it becomes `action`/`actor_type`
     // through `auditScopeParams`, and sending it twice would be two sources.
     expect(
-      auditLinkParams({ resourceType: null, resourceId: null, traceId: "abc", scope: "all" }),
+      auditLinkParams({
+        resourceType: null,
+        resourceId: null,
+        traceId: "abc",
+        scope: "all",
+        actions: [],
+      }),
     ).toEqual({ trace_id: "abc" });
+  });
+
+  test("the verbs a link names arrive as the engine's own comma list", () => {
+    // The overview's repair rate links to the decided repairs exactly this way.
+    const filter = auditFilterFromUrl(
+      "?scope=all&action=patch_candidate.approved,patch_candidate.auto_applied,patch_candidate.rejected",
+    );
+    expect(filter.actions).toEqual([
+      "patch_candidate.approved",
+      "patch_candidate.auto_applied",
+      "patch_candidate.rejected",
+    ]);
+    expect(auditLinkParams(filter).action).toBe(
+      "patch_candidate.approved,patch_candidate.auto_applied,patch_candidate.rejected",
+    );
+  });
+
+  test("a malformed verb drops only itself, and repeats count once", () => {
+    expect(auditActionsFromUrl("?action=a.b,DROP TABLE,a.b,,x/y,c_d.e")).toEqual(["a.b", "c_d.e"]);
+    expect(auditActionsFromUrl("")).toEqual([]);
+  });
+
+  test("the link's verbs win over the decisions scope's own list", () => {
+    const params = new URLSearchParams(auditScopeParams("decisions"));
+    for (const [key, value] of Object.entries(
+      auditLinkParams({ ...auditFilterFromUrl("?action=patch_candidate.closed_inapplicable") }),
+    ))
+      params.set(key, value);
+    expect(params.get("action")).toBe("patch_candidate.closed_inapplicable");
+  });
+
+  test("the engine's closure is housekeeping, not a person's decision", () => {
+    expect(auditScopeParams("decisions").action?.split(",")).not.toContain(
+      "patch_candidate.closed_inapplicable",
+    );
   });
 });

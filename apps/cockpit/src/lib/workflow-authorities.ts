@@ -5,6 +5,39 @@ export type WorkflowAuthority = components["schemas"]["WorkflowExecutionAuthorit
 export type WorkflowAuthorityList = components["schemas"]["WorkflowExecutionAuthorityList"];
 export type WorkflowAuthorityPreview = components["schemas"]["WorkflowAuthorityPreview"];
 
+/** What one review request asked about. */
+export type AuthorityReviewIdentity = {
+  workflowId: string;
+  versionId: string;
+  environment: "dev" | "prod";
+};
+
+/**
+ * Whether a review answer may be shown.
+ *
+ * `stale`: a newer request was started (or the dialog closed) after this one —
+ * its answer is for a question nobody is asking any more, and showing it would
+ * put a review on screen that the confirm button then refuses forever.
+ * `mismatch`: the latest request, but the answer is about a different workflow,
+ * version or environment than it asked. Never approvable (`authorityGrantInput`
+ * refuses it); the dialog shows it with the re-check as the way out.
+ */
+export function acceptReview(
+  latestToken: number,
+  token: number,
+  expected: AuthorityReviewIdentity,
+  review: WorkflowAuthorityPreview,
+): "accept" | "stale" | "mismatch" {
+  if (token !== latestToken) return "stale";
+  if (
+    review.manifest.workflow_id !== expected.workflowId ||
+    review.manifest.workflow_version_id !== expected.versionId ||
+    review.manifest.execution_environment !== expected.environment
+  )
+    return "mismatch";
+  return "accept";
+}
+
 export function authorityGrantInput(
   preview: WorkflowAuthorityPreview,
   expected: { workflowId: string; versionId: string; environment: "dev" | "prod" },
