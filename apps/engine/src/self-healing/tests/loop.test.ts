@@ -34,7 +34,12 @@ import {
 } from "../../queue/handlers/workflow-repair.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { runSelfHealingLoop } from "../service.ts";
-import { createSelfHealingCtx, SEED_STEP_ID, type SelfHealingTestCtx } from "./setup.ts";
+import {
+  createSelfHealingCtx,
+  resetSeedDag,
+  SEED_STEP_ID,
+  type SelfHealingTestCtx,
+} from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
 
@@ -139,7 +144,11 @@ describe("self-healing/loop — direct call", () => {
     // The first test auto-applied a candidate for this same drift
     // fingerprint. A reactive recurrence after an applied patch falls
     // through to a FRESH proposal (patch.applied_but_recurred) — so
-    // this test still gets its own row; no cleanup needed.
+    // this test still gets its own row. Restore the pre-drift definition
+    // first: against the healed version the same proposal changes nothing,
+    // readiness says `no_change`, and the engine closes it as `inapplicable`
+    // instead of parking it (inapplicable-lifecycle.test.ts owns that case).
+    await resetSeedDag(ctx);
     // Override policy for this workflow.
     await db
       .insert(workflowAutohealPolicies)
@@ -197,9 +206,9 @@ describe("self-healing/loop — workflow.repair queue", () => {
     const db = ctx.testDb.db;
     // Prior tests left an applied + a proposed candidate for this exact
     // drift fingerprint. The reactive dedup contract: a still-open
-    // proposed candidate is REFRESHED (updated_at bump / re-evaluated
-    // for auto-apply), never duplicated — a sustained outage is one
-    // drift, not one candidate per failing run.
+    // proposed candidate is REFRESHED (re-evaluated for auto-apply against
+    // the current policy — no `updated_at` bump), never duplicated — a
+    // sustained outage is one drift, not one candidate per failing run.
     const before = await db
       .select()
       .from(patchCandidates)

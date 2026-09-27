@@ -70,7 +70,7 @@ export interface SelfHealingScanResult {
     id: string;
     signal_type: string;
     classification: "safe" | "unsafe";
-    status: "proposed" | "applied" | "rejected" | "superseded";
+    status: "proposed" | "applied" | "rejected" | "superseded" | "inapplicable";
   }>;
   unanchored: Array<{
     signal_type: string;

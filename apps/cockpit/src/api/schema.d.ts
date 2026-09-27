@@ -12902,7 +12902,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    status?: "proposed" | "applied" | "rejected" | "superseded";
+                    status?: "proposed" | "applied" | "rejected" | "superseded" | "inapplicable";
                     workflow_id?: string;
                     reviewable?: "true" | "false";
                     offset?: number | null;
@@ -20852,9 +20852,12 @@ export interface components {
             /** @enum {string} */
             classification: "safe" | "unsafe";
             /** @enum {string} */
-            status: "proposed" | "applied" | "rejected" | "superseded";
+            status: "proposed" | "applied" | "rejected" | "superseded" | "inapplicable";
             fixture_id: string | null;
             diff?: unknown;
+            closed_reason: string | null;
+            closed_against_version_id: string | null;
+            closed_at: string | null;
             created_at: string;
             updated_at: string;
             reviewable?: boolean;
@@ -20868,7 +20871,7 @@ export interface components {
             /** @enum {string} */
             classification: "safe" | "unsafe";
             /** @enum {string} */
-            status: "proposed" | "applied" | "rejected" | "superseded";
+            status: "proposed" | "applied" | "rejected" | "superseded" | "inapplicable";
             drift_summary: string | null;
             proposal: components["schemas"]["PatchProposal"];
             fixture_available: boolean;
@@ -20936,7 +20939,7 @@ export interface components {
             headline: string;
             failure_groups: components["schemas"]["OperatorFailureGroup"][];
             patch_candidates: {
-                pending: number;
+                open: number;
                 items: components["schemas"]["OperatorDigestPatch"][];
             };
             risk: components["schemas"]["OperatorRiskSignal"][];
@@ -20982,7 +20985,7 @@ export interface components {
             /** @enum {string} */
             schema_version: "operational-overview.v1";
             /** @enum {string} */
-            contract_version: "2.2";
+            contract_version: "2.3";
             /** @enum {string} */
             product: "subkit";
             generated_at: string;
@@ -20991,6 +20994,34 @@ export interface components {
             snapshot_state: "ready" | "partial" | "forbidden" | "contract-mismatch";
             core: {
                 blocked: {
+                    id: string;
+                    label: string;
+                    definition: string;
+                    relevance: string;
+                    /** @enum {string} */
+                    kind: "count" | "ratio" | "duration" | "score" | "currency" | "state";
+                    value: number | null;
+                    /** @enum {string} */
+                    value_state: "observed" | "zero" | "missing" | "stale" | "forbidden";
+                    /** @enum {string} */
+                    unit: "count" | "ratio" | "seconds" | "bytes" | "eur" | "state";
+                    /** @enum {string} */
+                    severity: "critical" | "urgent" | "healthy" | "information" | "unknown";
+                    required: boolean;
+                    source_updated_at: string | null;
+                    expected_interval_seconds: number | null;
+                    stale_after_seconds: number | null;
+                    drilldown: {
+                        path: string;
+                        label_id: string;
+                    };
+                    prometheus: {
+                        name: string;
+                        /** @enum {string} */
+                        type: "gauge" | "counter";
+                    };
+                };
+                failing: {
                     id: string;
                     label: string;
                     definition: string;
@@ -21113,6 +21144,20 @@ export interface components {
                         /** @enum {string} */
                         freshness: "fresh" | "stale" | "missing" | "forbidden";
                         required: boolean;
+                        drilldown: {
+                            path: string;
+                            label_id: string;
+                        };
+                    }[];
+                    causes: {
+                        /** @enum {string} */
+                        kind: "failing_group" | "held_schedule" | "connector";
+                        id: string;
+                        label: string;
+                        drilldown: {
+                            path: string;
+                            label_id: string;
+                        };
                     }[];
                 };
                 data_freshness: {
@@ -21151,6 +21196,10 @@ export interface components {
                         stale_after_seconds: number;
                         /** @enum {string} */
                         state: "fresh" | "stale" | "missing" | "forbidden";
+                        drilldown: {
+                            path: string;
+                            label_id: string;
+                        };
                     }[];
                 };
             };
@@ -21196,7 +21245,7 @@ export interface components {
                 /** @enum {string} */
                 path: "/cockpit/audit";
                 /** @enum {string} */
-                contract_version: "2.2";
+                contract_version: "2.3";
                 snapshot_generated_at: string;
             };
         };
@@ -21219,7 +21268,7 @@ export interface components {
             /** @enum {string} */
             classification: "safe" | "unsafe";
             /** @enum {string} */
-            status: "proposed" | "applied" | "rejected" | "superseded";
+            status: "proposed" | "applied" | "rejected" | "superseded" | "inapplicable";
         };
         SelfHealingScanUnanchored: {
             /** @enum {string} */

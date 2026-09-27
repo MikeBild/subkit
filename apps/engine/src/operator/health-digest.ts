@@ -12,10 +12,12 @@
 // error code) — rather than listing 250 independent rows, tags each
 // group by where it came from (authoring trial-run vs manual test vs
 // scheduled workflow), and reuses the runtime failure classifier so
-// the cause reads like a sentence, not a stack trace. Pending patch
-// candidates ride along as the "fixes awaiting review" bucket.
+// the cause reads like a sentence, not a stack trace. Open patch
+// decisions (proposed AND reviewable — `readOpenPatchDecisions`, the one
+// predicate every surface counts) ride along as the "fixes awaiting review"
+// bucket.
 
-import { and, count, desc, eq, gte, inArray, isNull, max } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, max } from "drizzle-orm";
 import { AuditAction, audit } from "../audit/index.ts";
 import {
   RiskSignalClearedMetadataSchema,
@@ -23,10 +25,11 @@ import {
   SYSTEM_TENANT_ID,
 } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
-import { executionSteps, executions, patchCandidates, workflows } from "../db/schema/index.ts";
+import { executionSteps, executions, workflows } from "../db/schema/index.ts";
 import { classifyFailure, humanizeClassification } from "../execution/classify.ts";
 import { monthlyUsage, resolveMonthlyBudget } from "../llm/accounting/index.ts";
 import { getContext } from "../logging/context.ts";
+import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
 import { computeRiskSignals, type RiskSignal, takeRiskEdges, topRisk } from "./risk-signals.ts";
 
 const DEFAULT_WINDOW_HOURS = 24;
@@ -109,9 +112,11 @@ export interface OperatorHealthDigest {
   /** Outcome-first one-liner for the chat surface. */
   headline: string;
   failure_groups: DigestFailureGroup[];
-  /** `pending` is the exact count of proposed candidates; `items` is capped
-   *  at MAX_PENDING_PATCHES so a backlog can't flood the digest. */
-  patch_candidates: { pending: number; items: DigestPatch[] };
+  /** `open` is the exact count of open patch decisions (proposed AND
+   *  reviewable on the current workflow version); `items` is capped at
+   *  MAX_PENDING_PATCHES so a backlog can't flood the digest. Every count the
+   *  digest prints comes from `open`, never from `items.length`. */
+  patch_candidates: { open: number; items: DigestPatch[] };
   /** Leading-indicator risk signals computed from the live process
    *  gauges/counters vs the operator-tuned predictive thresholds. The
    *  failure groups above are lagging (a run already failed); these flag
@@ -392,23 +397,20 @@ export async function buildOperatorHealthDigest(
   const generatedAt = new Date();
   const failureGroups = await collectFailureGroups(db, tenant_id, windowHours, generatedAt);
 
-  // Pending patch candidates (post-flood-fix: ~1 per endpoint). Order OLDEST
-  // first: a candidate's urgency grows with how long it has sat unreviewed, so
-  // when the cap bites it must drop the freshest rows, never the stuck ones.
-  const [pendingRows, pendingCountRows] = await Promise.all([
-    db
-      .select()
-      .from(patchCandidates)
-      .where(and(eq(patchCandidates.tenant_id, tenant_id), eq(patchCandidates.status, "proposed")))
-      .orderBy(patchCandidates.created_at)
-      .limit(MAX_PENDING_PATCHES),
-    // True count — the capped items array under-reports past MAX_PENDING_PATCHES.
-    db
-      .select({ cnt: count() })
-      .from(patchCandidates)
-      .where(and(eq(patchCandidates.tenant_id, tenant_id), eq(patchCandidates.status, "proposed"))),
-  ]);
-  const pendingTotal = Number(pendingCountRows[0]?.cnt ?? 0);
+  // Open patch decisions, OLDEST first: a candidate's urgency grows with how
+  // long it has sat unreviewed, so when the cap bites it must drop the
+  // freshest rows, never the stuck ones. The total is exact and uncapped.
+  const openDecisions = await readOpenPatchDecisions(db, tenant_id, {
+    limit: MAX_PENDING_PATCHES,
+  });
+  const openTotal = openDecisions.open_total;
+  const pendingRows = openDecisions.items.map((item) => item.row);
+  const oldestOpenDays =
+    openDecisions.oldest_open_at === null
+      ? null
+      : Math.floor(
+          (generatedAt.getTime() - openDecisions.oldest_open_at.getTime()) / (24 * 60 * 60 * 1000),
+        );
 
   const patchWfIds = [...new Set(pendingRows.map((r) => r.workflow_id))];
   const patchNameById = patchWfIds.length
@@ -524,29 +526,43 @@ export async function buildOperatorHealthDigest(
     }
   }
 
-  const allClear = failureGroups.length === 0 && patchItems.length === 0 && risk.length === 0;
-  const headline = buildHeadline(failureGroups, patchItems, risk);
-  const rendered = renderDigest(headline, windowHours, failureGroups, patchItems, risk);
+  const openPatches = { total: openTotal, oldest_days: oldestOpenDays };
+  const allClear = failureGroups.length === 0 && openTotal === 0 && risk.length === 0;
+  const headline = buildHeadline(failureGroups, openPatches, risk);
+  const rendered = renderDigest(
+    headline,
+    windowHours,
+    failureGroups,
+    patchItems,
+    openPatches,
+    risk,
+  );
 
   return {
     generated_at: generatedAt.toISOString(),
     window_hours: windowHours,
     headline,
     failure_groups: failureGroups,
-    patch_candidates: { pending: pendingTotal, items: patchItems },
+    patch_candidates: { open: openTotal, items: patchItems },
     risk,
     rendered,
     all_clear: allClear,
   };
 }
 
+/** The open-decision count and the oldest one's age — both uncapped. */
+interface OpenPatchSummary {
+  total: number;
+  oldest_days: number | null;
+}
+
 function buildHeadline(
   groups: DigestFailureGroup[],
-  patches: DigestPatch[],
+  patches: OpenPatchSummary,
   risk: RiskSignal[],
 ): string {
   const top = topRisk(risk);
-  if (groups.length === 0 && patches.length === 0 && risk.length === 0) {
+  if (groups.length === 0 && patches.total === 0 && risk.length === 0) {
     return "All workflows healthy — nothing needs your attention.";
   }
   const parts: string[] = [];
@@ -563,14 +579,15 @@ function buildHeadline(
   if (nonScheduled > 0) {
     parts.push(`${nonScheduled} test/authoring failure${nonScheduled === 1 ? "" : "s"}`);
   }
-  if (patches.length > 0) {
+  if (patches.total > 0) {
     // Call out the stuck backlog explicitly — a fix that's been waiting days is
     // a different signal from a fix proposed an hour ago, and it's the one the
-    // operator has been unknowingly ignoring.
-    const oldest = patches[0]?.age_days ?? 0;
+    // operator has been unknowingly ignoring. The count is the exact total:
+    // the item list is capped and must never be what this line counts.
+    const oldest = patches.oldest_days ?? 0;
     const stuckSuffix = oldest >= STUCK_PATCH_DAYS ? ` (oldest stuck ${oldest}d)` : "";
     parts.push(
-      `${patches.length} fix${patches.length === 1 ? "" : "es"} awaiting review${stuckSuffix}`,
+      `${patches.total} fix${patches.total === 1 ? "" : "es"} awaiting review${stuckSuffix}`,
     );
   }
   // Non-critical risks ride along as a count so they're never lost.
@@ -598,9 +615,10 @@ function renderDigest(
   windowHours: number,
   groups: DigestFailureGroup[],
   patches: DigestPatch[],
+  open: OpenPatchSummary,
   risk: RiskSignal[],
 ): string {
-  if (groups.length === 0 && patches.length === 0 && risk.length === 0) return headline;
+  if (groups.length === 0 && open.total === 0 && risk.length === 0) return headline;
   const lines: string[] = [headline, ""];
   if (risk.length > 0) {
     lines.push("Risk signals (leading indicators):");
@@ -620,11 +638,9 @@ function renderDigest(
     // operator does not go looking for a fault that is already fixed.
     if (g.resolved_at) lines.push(`   last ran clean on its schedule ${g.resolved_at}`);
   }
-  if (patches.length > 0) {
+  if (open.total > 0) {
     lines.push("");
-    lines.push(
-      `${patches.length} self-healing fix${patches.length === 1 ? "" : "es"} awaiting review:`,
-    );
+    lines.push(`${open.total} self-healing fix${open.total === 1 ? "" : "es"} awaiting review:`);
     for (const p of patches) {
       const label = p.workflow_name ?? p.workflow_id ?? "(workflow)";
       // Age rides in the tag when the patch is stuck so the operator sees which
@@ -632,6 +648,8 @@ function renderDigest(
       const ageTag = p.stuck ? ` · stuck ${p.age_days}d` : "";
       lines.push(`   • ${label} [${p.classification}${ageTag}]: ${p.summary}`);
     }
+    const more = open.total - patches.length;
+    if (more > 0) lines.push(`   (+${more} more)`);
   }
   lines.push("");
   lines.push(`Scanned the last ${windowHours}h. Ask me to walk through any of these.`);
