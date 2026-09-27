@@ -551,7 +551,7 @@ export function decisionKey(item: DecisionItem): string {
  * The one count behind the navigation badge, Zone A and the incident banner.
  *
  * Before this there were three: the banner filtered the health digest's own
- * `stuck` flag, Zone A read the digest's `patch_candidates.pending`, and the
+ * `stuck` flag, Zone A read the digest's patch-candidate count, and the
  * badge summed three list endpoints — so the same queue was 25, 30 and 119 on
  * one screen. The digest knows only patch candidates and cannot answer for the
  * queue, which is why the digest is no longer asked: the totals come from the

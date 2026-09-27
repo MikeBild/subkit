@@ -140,7 +140,16 @@
       "states": ["healthy", "limited", "critical", "unknown"],
       "thresholds": { "healthyMin": 90, "limitedMin": 70, "criticalMin": 0 },
       "missingRequiredMeansUnknown": true,
-      "redistributeMissingOptionalWeight": false
+      "redistributeMissingOptionalWeight": false,
+      "drilldown": "worst-component",
+      "componentDrilldowns": true,
+      "maxCauses": 5
+    },
+    "coreDrilldownsNeverLeadTo": ["/cockpit/operations"],
+    "freshness": {
+      "value": "age-seconds-of-stalest-source",
+      "staleSeverity": "critical",
+      "drilldown": "stalest-source"
     },
     "refresh": {
       "recommendedSecondsMin": 10,

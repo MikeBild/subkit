@@ -33,6 +33,11 @@ export const patchStatusEnum = pgEnum("patch_status", [
   "applied",
   "rejected",
   "superseded",
+  // Closed by the engine because the current workflow version proves the
+  // patch cannot be performed (it changes nothing, or its kind has no
+  // executable semantics, or the workflow is gone). Not a decision — nobody
+  // chose it — and not open: no human answer could make it land.
+  "inapplicable",
 ]);
 
 // ----- executions -----------------------------------------------------------
@@ -207,6 +212,9 @@ export const executionSteps = pgTable(
       .default(sql`'[]'::jsonb`),
     started_at: timestamp("started_at", { withTimezone: true }),
     finished_at: timestamp("finished_at", { withTimezone: true }),
+    // The step's write was held (hold-writes / held preview): it produced a
+    // preview, not an effect. Stamped when the step row is finalized.
+    held: boolean("held").default(false).notNull(),
   },
   (t) => [
     index("execution_steps_execution_started_idx").on(t.execution_id, t.started_at),
@@ -280,6 +288,13 @@ export const patchCandidates = pgTable(
     }),
     outcome_successes_after: integer("outcome_successes_after").default(0).notNull(),
     outcome_failures_after: integer("outcome_failures_after").default(0).notNull(),
+    // Set together when the engine moves a candidate to `inapplicable`:
+    // which readiness reason proved it undecidable, and against which
+    // workflow version. A later version re-opens evaluation — the dedup only
+    // suppresses re-proposal while the workflow still sits on this version.
+    closed_reason: text("closed_reason"),
+    closed_against_version_id: uuid("closed_against_version_id"),
+    closed_at: timestamp("closed_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [

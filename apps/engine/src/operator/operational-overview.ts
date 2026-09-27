@@ -1,8 +1,8 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { patchCandidates } from "../db/schema/index.ts";
+import { connectors, selfHealingScans, tenants } from "../db/schema/index.ts";
 import { getMetrics } from "../observability/index.ts";
-import { readPatchReadinessBatch } from "../self-healing/index.ts";
+import { readOpenPatchDecisions } from "../self-healing/index.ts";
 import {
   collectFailureGroups,
   DECISION_FAILURE_WINDOW_HOURS,
@@ -27,10 +27,27 @@ export const OPERATIONAL_SCHEMA_VERSION = "operational-overview.v1" as const;
  * 2.1 shape reads `undefined`. Additive from the inside is still a break from
  * the outside. The OpenAPI response is NOT closed — no `.strict()` anywhere in
  * the route — so it is the published schema that makes this a version.
+ *
+ * 2.3 is additive: every health component carries the `drilldown` to its
+ * cause, `core.health` lists the concrete `causes` behind a red score, and
+ * every freshness source names its `drilldown`. The published schema is closed,
+ * so the new members are declared there (optional, for the sibling products).
  */
-export const OPERATIONAL_OVERVIEW_CONTRACT_VERSION = "2.2" as const;
+export const OPERATIONAL_OVERVIEW_CONTRACT_VERSION = "2.3" as const;
 
 export type ValueState = "observed" | "zero" | "missing" | "stale" | "forbidden";
+export type Freshness = "fresh" | "stale" | "missing" | "forbidden";
+export interface Drilldown {
+  path: string;
+  label_id: string;
+}
+/** A concrete reason a health score is not green, with where to act on it. */
+export interface HealthCause {
+  kind: "failing_group" | "held_schedule" | "connector";
+  id: string;
+  label: string;
+  drilldown: Drilldown;
+}
 export type Severity = "critical" | "urgent" | "healthy" | "information" | "unknown";
 export type HealthState = "healthy" | "limited" | "critical" | "unknown";
 
@@ -48,7 +65,7 @@ export interface OperationalMetric {
   source_updated_at: string | null;
   expected_interval_seconds: number | null;
   stale_after_seconds: number | null;
-  drilldown: { path: string; label_id: string };
+  drilldown: Drilldown;
   prometheus: { name: string; type: "gauge" | "counter" };
 }
 
@@ -82,19 +99,17 @@ export interface OperationalOverview {
         normalized_score: number | null;
         weight: number;
         contribution: number | null;
-        freshness: "fresh" | "stale" | "missing" | "forbidden";
+        freshness: Freshness;
         required: boolean;
+        /** Where the thing this component measures can be acted on. */
+        drilldown: Drilldown;
       }>;
+      /** The concrete causes behind the score, at most MAX_HEALTH_CAUSES. */
+      causes: HealthCause[];
     };
     data_freshness: OperationalMetric & {
-      state: "fresh" | "stale" | "missing" | "forbidden";
-      sources: Array<{
-        id: string;
-        updated_at: string | null;
-        expected_interval_seconds: number;
-        stale_after_seconds: number;
-        state: "fresh" | "stale" | "missing" | "forbidden";
-      }>;
+      state: Freshness;
+      sources: FreshnessSource[];
     };
   };
   sections: Array<{
@@ -110,6 +125,35 @@ export interface OperationalOverview {
     snapshot_generated_at: string;
   };
 }
+
+export interface FreshnessSource {
+  id: string;
+  updated_at: string | null;
+  expected_interval_seconds: number;
+  stale_after_seconds: number;
+  state: Freshness;
+  drilldown: Drilldown;
+}
+
+/** How many concrete causes `core.health` lists before it stops. */
+export const MAX_HEALTH_CAUSES = 5;
+
+/**
+ * The freshness sources and their thresholds.
+ *
+ * Both are written by the scheduler's reconciler on an hourly cadence per
+ * tenant, so each is a real heartbeat of the machinery that produces what the
+ * overview counts: the drift scan feeds the repair decisions, the re-auth scan
+ * feeds connector health. Stale after three missed cadences — one late tick is
+ * load, three is a stopped scheduler.
+ *
+ *   - `self_healing.drift_scan`: newest SUCCEEDED scheduler row in
+ *     `self_healing_scans`. Not the claim stamp on `tenants`, which is written
+ *     before the scan runs and so proves only that it was attempted.
+ *   - `connectors.reauth_scan`: `tenants.last_connector_reauth_scan_at`.
+ */
+export const FRESHNESS_EXPECTED_INTERVAL_SECONDS = 60 * 60;
+export const FRESHNESS_STALE_AFTER_SECONDS = 3 * FRESHNESS_EXPECTED_INTERVAL_SECONDS;
 
 interface SnapshotRow extends Record<string, unknown> {
   blocked: string | number;
@@ -178,15 +222,12 @@ function rowsOf<T>(result: unknown): T[] {
 }
 
 async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverview> {
-  const generatedAt = new Date().toISOString();
-  const candidates = await db
-    .select()
-    .from(patchCandidates)
-    .where(and(eq(patchCandidates.tenant_id, tenantId), eq(patchCandidates.status, "proposed")));
-  const readiness = await readPatchReadinessBatch(tenantId, candidates, db);
-  const readyIds = candidates
-    .filter((_, index) => readiness[index]?.reviewable)
-    .map((candidate) => candidate.id);
+  const now = new Date();
+  const generatedAt = now.toISOString();
+  // The same predicate the digest, the MCP instructions and the list's
+  // `reviewable_total` read: proposed AND reviewable on the current version.
+  const openPatches = await readOpenPatchDecisions(db, tenantId);
+  const readyIds = openPatches.items.map((item) => item.row.id);
   const readyPatches = readyIds.length
     ? sql`id IN (${sql.join(
         readyIds.map((id) => sql`${id}::uuid`),
@@ -198,9 +239,10 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
   // grouping rule is more than a WHERE clause — first failed step per run,
   // origin merged across the group, a scan cap — and a second copy of it in SQL
   // is how the overview came to disagree with the page it links to.
-  const failing = failingScheduledGroups(
+  const failingGroups = failingScheduledGroups(
     await collectFailureGroups(db, tenantId, DECISION_FAILURE_WINDOW_HOURS),
-  ).length;
+  );
+  const failing = failingGroups.length;
 
   const result = await db.execute<SnapshotRow>(sql`
     WITH decisions AS (
@@ -324,6 +366,53 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
     labelId: "operational.open_other",
     prometheus: "subkit_operational_other_decisions",
   });
+  const components = [
+    {
+      id: "decisions.blocked",
+      raw_value: blocked,
+      unit: "count",
+      normalized_score: blockingScore,
+      weight: 0.5,
+      contribution: blockingScore * 0.5,
+      freshness: "fresh" as const,
+      required: true,
+      drilldown: {
+        path: "/cockpit/decisions?bucket=blocked",
+        label_id: "operational.open_blocked",
+      },
+    },
+    {
+      id: "executions.success_ratio",
+      raw_value: successRatio,
+      unit: "ratio",
+      normalized_score: successRatio === null ? null : successRatio * 100,
+      weight: 0.3,
+      contribution: successRatio === null ? null : successRatio * 30,
+      freshness: successRatio === null ? ("missing" as const) : ("fresh" as const),
+      required: true,
+      // The score counts every finished run; what a person can act on is the
+      // failed runs the scheduler started.
+      drilldown: {
+        path: "/cockpit/runs?status=failed&source=scheduler",
+        label_id: "operational.open_runs",
+      },
+    },
+    {
+      id: "connectors.healthy_ratio",
+      raw_value: connectorRatio,
+      unit: "ratio",
+      normalized_score: connectorRatio === null ? null : connectorRatio * 100,
+      weight: 0.2,
+      contribution: connectorRatio === null ? null : connectorRatio * 20,
+      freshness: connectorRatio === null ? ("missing" as const) : ("fresh" as const),
+      required: true,
+      drilldown: {
+        path: "/cockpit/connectors?health=not_ok",
+        label_id: "operational.open_connectors",
+      },
+    },
+  ];
+  const causes = await readHealthCauses(db, tenantId, failingGroups);
   const healthMetric = {
     ...core({
       id: "operations.health",
@@ -342,8 +431,10 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
               ? "critical"
               : "unknown",
       generatedAt,
-      path: "/cockpit/operations",
-      labelId: "operational.open_health",
+      // A red score leads to what made it red. It pointed at the operations
+      // page, which says its findings are on the overview — a loop with no
+      // cause at either end.
+      ...worstComponentLink(components, blocked),
       prometheus: "subkit_operational_health_score",
     }),
     severity: (healthState === "critical"
@@ -354,65 +445,10 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
           ? "urgent"
           : "unknown") as Severity,
     state: healthState,
-    components: [
-      {
-        id: "decisions.blocked",
-        raw_value: blocked,
-        unit: "count",
-        normalized_score: blockingScore,
-        weight: 0.5,
-        contribution: blockingScore * 0.5,
-        freshness: "fresh" as const,
-        required: true,
-      },
-      {
-        id: "executions.success_ratio",
-        raw_value: successRatio,
-        unit: "ratio",
-        normalized_score: successRatio === null ? null : successRatio * 100,
-        weight: 0.3,
-        contribution: successRatio === null ? null : successRatio * 30,
-        freshness: successRatio === null ? ("missing" as const) : ("fresh" as const),
-        required: true,
-      },
-      {
-        id: "connectors.healthy_ratio",
-        raw_value: connectorRatio,
-        unit: "ratio",
-        normalized_score: connectorRatio === null ? null : connectorRatio * 100,
-        weight: 0.2,
-        contribution: connectorRatio === null ? null : connectorRatio * 20,
-        freshness: connectorRatio === null ? ("missing" as const) : ("fresh" as const),
-        required: true,
-      },
-    ],
+    components,
+    causes,
   };
-  const freshnessMetric = {
-    ...core({
-      id: "data.freshness",
-      label: "Data freshness",
-      definition: "Age of the database snapshot used by every dashboard value.",
-      relevance: "Fresh aggregates prevent decisions based on stale execution state.",
-      kind: "duration",
-      value: 0,
-      unit: "seconds",
-      severity: "healthy",
-      generatedAt,
-      path: "/cockpit/operations",
-      labelId: "operational.open_data",
-      prometheus: "subkit_operational_data_age_seconds",
-    }),
-    state: "fresh" as const,
-    sources: [
-      {
-        id: "subkit.database",
-        updated_at: generatedAt,
-        expected_interval_seconds: 30,
-        stale_after_seconds: 90,
-        state: "fresh" as const,
-      },
-    ],
-  };
+  const freshnessMetric = await readDataFreshness(db, tenantId, now, core);
   const product = (input: Omit<Parameters<typeof metric>[0], "generatedAt">) =>
     metric({ ...input, generatedAt });
   const sections: OperationalOverview["sections"] = [
@@ -577,8 +613,10 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
               : repairAppliedRatio >= 0.7
                 ? "healthy"
                 : "information",
-          path: "/cockpit/decisions",
-          labelId: "operational.open_decisions",
+          // A historical ratio leads to the decisions it was computed from, not
+          // to the open queue: the approved, auto-applied and rejected repairs.
+          path: DECIDED_REPAIRS_PATH,
+          labelId: "operational.open_decided_repairs",
           prometheus: "subkit_operational_repairs_applied_ratio",
         }),
         product({
@@ -619,6 +657,203 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       contract_version: OPERATIONAL_OVERVIEW_CONTRACT_VERSION,
       snapshot_generated_at: generatedAt,
     },
+  };
+}
+
+/** The audit rows behind `repairs.applied_ratio`: every decided repair. */
+export const DECIDED_REPAIRS_PATH =
+  "/cockpit/audit?scope=all&action=patch_candidate.approved,patch_candidate.auto_applied,patch_candidate.rejected";
+
+/**
+ * The health metric's own link: the worst-scoring component. Blocked work wins
+ * outright (it makes the state critical on its own); otherwise the lowest
+ * normalized score, in component order on a tie.
+ */
+function worstComponentLink(
+  components: ReadonlyArray<{ normalized_score: number | null; drilldown: Drilldown }>,
+  blocked: number,
+): { path: string; labelId: string } {
+  const scored = components.filter((c) => c.normalized_score !== null);
+  const worst =
+    blocked > 0 || scored.length === 0
+      ? components[0]
+      : scored.reduce((a, b) => ((b.normalized_score ?? 0) < (a.normalized_score ?? 0) ? b : a));
+  const link = worst?.drilldown ?? {
+    path: "/cockpit/decisions?bucket=blocked",
+    label_id: "operational.open_blocked",
+  };
+  return { path: link.path, labelId: link.label_id };
+}
+
+/**
+ * The concrete causes behind the health score, most blocking first: held
+ * schedules (the blocked tile's own predicate), failing scheduled groups (the
+ * failing tile's own list), then unhealthy connectors (the complement of the
+ * connector ratio's numerator). Capped at MAX_HEALTH_CAUSES.
+ */
+async function readHealthCauses(
+  db: Db,
+  tenantId: string,
+  failingGroups: ReadonlyArray<{
+    signature: string;
+    workflow_id: string | null;
+    workflow_name: string | null;
+    cause: string;
+  }>,
+): Promise<HealthCause[]> {
+  const held = rowsOf<{ workflow_id: string; name: string }>(
+    await db.execute(sql`
+      SELECT w.id AS workflow_id, w.name AS name FROM workflows_schedules s
+        JOIN workflows w ON w.id = s.workflow_id AND w.tenant_id = s.tenant_id
+       WHERE s.tenant_id = ${tenantId} AND NOT s.paused AND s.admission_hold IS NOT NULL
+         AND w.deleted_at IS NULL AND w.lifecycle <> 'archived'
+       ORDER BY s.created_at, w.id
+       LIMIT ${MAX_HEALTH_CAUSES}`),
+  );
+  const causes: HealthCause[] = held.map((row) => ({
+    kind: "held_schedule",
+    id: row.workflow_id,
+    label: `${row.name}: automatic runs held for review`,
+    drilldown: { path: "/cockpit/decisions?bucket=blocked", label_id: "operational.open_blocked" },
+  }));
+  for (const group of failingGroups) {
+    causes.push({
+      kind: "failing_group",
+      id: group.signature,
+      label: `${group.workflow_name ?? group.workflow_id ?? "workflow"}: ${group.cause}`,
+      drilldown: {
+        path: "/cockpit/decisions?bucket=failing",
+        label_id: "operational.open_failing",
+      },
+    });
+  }
+  if (causes.length < MAX_HEALTH_CAUSES) {
+    const unhealthy = await db
+      .select({
+        id: connectors.id,
+        name: connectors.display_name,
+        health_state: connectors.health_state,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.tenant_id, tenantId),
+          eq(connectors.enabled, true),
+          isNull(connectors.deleted_at),
+          ne(connectors.health_state, "ok"),
+        ),
+      )
+      .orderBy(connectors.display_name, connectors.id)
+      .limit(MAX_HEALTH_CAUSES);
+    for (const row of unhealthy) {
+      causes.push({
+        kind: "connector",
+        id: row.id,
+        label: `${row.name}: ${row.health_state.replace(/_/g, " ")}`,
+        drilldown: {
+          path: `/cockpit/connectors/${encodeURIComponent(row.id)}`,
+          label_id: "operational.open_connector",
+        },
+      });
+    }
+  }
+  return causes.slice(0, MAX_HEALTH_CAUSES);
+}
+
+function freshnessOf(updatedAt: Date | null, now: Date): Freshness {
+  if (!updatedAt) return "missing";
+  return (now.getTime() - updatedAt.getTime()) / 1000 > FRESHNESS_STALE_AFTER_SECONDS
+    ? "stale"
+    : "fresh";
+}
+
+/**
+ * `data.freshness` from the ages of the sources that feed the overview.
+ *
+ * It was a constant — value 0, always fresh — so it could never turn red,
+ * however long the scheduler had been stopped. The value is now the age in
+ * seconds of the stalest source, and the metric's link names that source.
+ */
+async function readDataFreshness(
+  db: Db,
+  tenantId: string,
+  now: Date,
+  core: (input: Parameters<typeof metric>[0]) => OperationalMetric,
+): Promise<OperationalOverview["core"]["data_freshness"]> {
+  const [scan] = await db
+    .select({ at: selfHealingScans.updated_at })
+    .from(selfHealingScans)
+    .where(
+      and(
+        eq(selfHealingScans.tenant_id, tenantId),
+        eq(selfHealingScans.source, "scheduler"),
+        eq(selfHealingScans.status, "succeeded"),
+      ),
+    )
+    .orderBy(desc(selfHealingScans.updated_at))
+    .limit(1);
+  const [tenant] = await db
+    .select({ at: tenants.last_connector_reauth_scan_at })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .limit(1);
+  const observed: Array<{ id: string; at: Date | null; drilldown: Drilldown }> = [
+    {
+      id: "self_healing.drift_scan",
+      at: scan?.at ?? null,
+      drilldown: { path: "/cockpit/audit?scope=operations", label_id: "operational.open_scans" },
+    },
+    {
+      id: "connectors.reauth_scan",
+      at: tenant?.at ?? null,
+      drilldown: { path: "/cockpit/connectors", label_id: "operational.open_connectors" },
+    },
+  ];
+  const sources: FreshnessSource[] = observed.map((source) => ({
+    id: source.id,
+    updated_at: source.at?.toISOString() ?? null,
+    expected_interval_seconds: FRESHNESS_EXPECTED_INTERVAL_SECONDS,
+    stale_after_seconds: FRESHNESS_STALE_AFTER_SECONDS,
+    state: freshnessOf(source.at, now),
+    drilldown: source.drilldown,
+  }));
+  // The stalest source decides: a missing one first (nothing has ever run),
+  // then the oldest timestamp.
+  const stalest = observed.reduce((a, b) =>
+    !a.at ? a : !b.at ? b : b.at.getTime() < a.at.getTime() ? b : a,
+  );
+  const state: Freshness = sources.some((s) => s.state === "stale")
+    ? "stale"
+    : sources.some((s) => s.state === "missing")
+      ? "missing"
+      : "fresh";
+  const age = stalest.at
+    ? Math.max(0, Math.round((now.getTime() - stalest.at.getTime()) / 1000))
+    : null;
+  const base = core({
+    id: "data.freshness",
+    label: "Data freshness",
+    definition:
+      "Age of the oldest scheduler heartbeat behind these numbers: the drift scan and the connector re-auth scan.",
+    relevance:
+      "A stopped scheduler freezes repair and connector state; stale numbers must not read as healthy.",
+    kind: "duration",
+    value: age,
+    unit: "seconds",
+    severity: state === "stale" ? "critical" : state === "missing" ? "unknown" : "healthy",
+    generatedAt: now.toISOString(),
+    path: stalest.drilldown.path,
+    labelId: stalest.drilldown.label_id,
+    prometheus: "subkit_operational_data_age_seconds",
+  });
+  return {
+    ...base,
+    value_state: state === "stale" ? "stale" : base.value_state,
+    source_updated_at: stalest.at?.toISOString() ?? null,
+    expected_interval_seconds: FRESHNESS_EXPECTED_INTERVAL_SECONDS,
+    stale_after_seconds: FRESHNESS_STALE_AFTER_SECONDS,
+    state,
+    sources,
   };
 }
 
