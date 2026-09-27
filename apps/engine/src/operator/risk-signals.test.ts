@@ -276,3 +276,39 @@ describe("getMetrics gaugeSum / counterSum / histogramCount read-path contract",
     expect(getMetrics().histogramCount(METRIC_NAMES.LLM_CALL_DURATION_MS)).toBe(2);
   });
 });
+
+describe("the month's token allowance", () => {
+  test("says nothing while there is room", () => {
+    expect(computeRiskSignals({ monthTokens: 40_000_000, monthBudget: 150_000_000 })).toEqual([]);
+  });
+
+  test("warns past three quarters and turns critical past nine tenths", () => {
+    const warn = computeRiskSignals({ monthTokens: 76, monthBudget: 100 });
+    expect(warn[0]?.kind).toBe("token_budget");
+    expect(warn[0]?.severity).toBe("warn");
+    const critical = computeRiskSignals({ monthTokens: 95, monthBudget: 100 });
+    expect(critical[0]?.severity).toBe("critical");
+  });
+
+  test("an unbounded workspace raises nothing", () => {
+    // Not "safe" — unmeasured. Warning about a ceiling that does not exist
+    // would be the zero that means "not measured".
+    expect(computeRiskSignals({ monthTokens: 999_999_999, monthBudget: null })).toEqual([]);
+    expect(computeRiskSignals({ monthTokens: 999_999_999 })).toEqual([]);
+    expect(computeRiskSignals({ monthTokens: 5, monthBudget: 0 })).toEqual([]);
+  });
+
+  test("names the consequence, not the metric", () => {
+    // A reader who is not an operator must understand what happens next: runs
+    // get refused, and a refused scheduled run looks like a broken workflow.
+    const [signal] = computeRiskSignals({ monthTokens: 95, monthBudget: 100 });
+    expect(signal?.detail).toMatch(/refused/i);
+    expect(signal?.headline).toMatch(/allowance/i);
+  });
+
+  test("carries the threshold it was judged against", () => {
+    const [warn] = computeRiskSignals({ monthTokens: 80, monthBudget: 100 });
+    expect(warn?.value).toBe(80);
+    expect(warn?.threshold).toBe(75);
+  });
+});

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { components } from "@/api/schema";
+import { ALL_ROUTE_PATHS } from "@/app/route-table";
 import { type Locale, type TranslationKey, translate } from "@/lib/i18n";
 import {
   actorTypeKey,
@@ -12,6 +13,7 @@ import {
   auditTraceFromUrl,
   isAuditEntry,
   isAuditScope,
+  LINKED_RESOURCE_TYPES,
   resourceTypeKey,
   shortIdentifier,
 } from "@/pages/audit-model";
@@ -51,12 +53,67 @@ describe("audit resource relations", () => {
     expect(auditResourceHref("tenant", "abc")).toBeNull();
   });
 
-  test("a run has no detail route, so it stays a word", () => {
-    expect(auditResourceHref("execution", "abc")).toBeNull();
+  test("a run leads to the run it names", () => {
+    // This asserted the opposite until `/runs/$resourceId` existed, and the
+    // absence was the expensive one: the row naming a run is where an
+    // investigation starts, and it was the only row that could not reach what
+    // it named.
+    expect(auditResourceHref("execution", "018f4b4a-6d33-7b3a-9c2d-123456789abc")).toBe(
+      "/cockpit/runs/018f4b4a-6d33-7b3a-9c2d-123456789abc",
+    );
   });
 
   test("a missing id gets no link even when the type is known", () => {
     expect(auditResourceHref("workflow", null)).toBeNull();
+  });
+
+  test("every type that gets a link lands on a route this cockpit registers", () => {
+    // Resolution, not plausibility. The parameter is not spelled the same on
+    // every route — a conversation's segment is `$conversationId` — so what is
+    // checked is the SHAPE: the target must be a registered path whose final
+    // segment is the parameter this id fills.
+    const detailPrefixes = new Set(
+      ALL_ROUTE_PATHS.filter((path) => /\/\$[A-Za-z]+$/.test(path)).map((path) =>
+        path.replace(/\/\$[A-Za-z]+$/, ""),
+      ),
+    );
+    for (const type of LINKED_RESOURCE_TYPES) {
+      const href = auditResourceHref(type, "018f4b4a-6d33-7b3a-9c2d-123456789abc");
+      expect(href, `${type} is mapped but builds no link`).not.toBeNull();
+      const prefix = (href ?? "").replace(/^\/cockpit/, "").replace(/\/[^/]+$/, "");
+      expect(detailPrefixes.has(prefix), `${type} points at ${href}, which no route matches`).toBe(
+        true,
+      );
+    }
+  });
+
+  test("a type with only a list page stays a word, not a guessed path", () => {
+    // Each of these reaches the log and each has a page — `/people`,
+    // `/access`, `/api-access`, `/connections`, `/settings`. None of them
+    // takes an id, so appending one would build an address no route matches,
+    // and a link to a page that does not exist is worse than the plain text
+    // it replaced. Nor is the list itself an honest target: it resolves
+    // whether or not the row recorded an id, which is precisely the fact
+    // `auditResourceHref` refuses to paper over.
+    for (const type of [
+      "user",
+      "role",
+      "api_key",
+      "credential",
+      "session",
+      "setting",
+      "tenant",
+      "schedule",
+      "notification_delivery",
+      "mcp_oauth_token",
+      "patch_candidate",
+      "skill_candidate",
+    ]) {
+      expect(
+        auditResourceHref(type, "018f4b4a-6d33-7b3a-9c2d-123456789abc"),
+        `${type} guessed a path`,
+      ).toBeNull();
+    }
   });
 });
 

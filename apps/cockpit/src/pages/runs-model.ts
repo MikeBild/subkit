@@ -1,5 +1,6 @@
 import type { components } from "@/api/schema";
 import { LOCALE_TAGS, type Locale, type TranslationKey } from "@/lib/i18n";
+import { shortIdentifier } from "@/pages/audit-model";
 
 type Execution = components["schemas"]["Execution"];
 
@@ -78,20 +79,70 @@ export function filterFromUrl(search: string): { status: string; q: string; sour
   };
 }
 
+/**
+ * The run an address names, or nothing.
+ *
+ * `/runs` had a list and no per-record path, so the sheet was reachable only
+ * by clicking a row: an audit entry, a decision or a metric that named one run
+ * could point at the list and no further. The id now lives in the path
+ * (`app/route-table.ts`), and it is read here rather than in the page so the
+ * reading can be proven without a DOM.
+ *
+ * Only the exact `/runs/<id>` shape is a run. The bare list, a trailing slash
+ * and anything deeper are not, and guessing one out of them would open a sheet
+ * on a record the address never named.
+ */
+export function runIdFromPath(pathname: string): string | null {
+  const id = /\/runs\/([^/]+)$/.exec(pathname)?.[1];
+  return id ? decodeURIComponent(id) : null;
+}
+
 export type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
+
+/**
+ * One row of the run sheet: a label, what the reader sees, and — only where
+ * the displayed value is an abbreviated identifier — the whole value, which
+ * the sheet hangs on the element's `title` so it stays copyable.
+ *
+ * The third slot is absent, not empty, on every row that shows its value in
+ * full: an empty title would advertise a hidden value that isn't there.
+ */
+export type RunFact = [label: string, value: string, full?: string];
+
+/**
+ * A fact whose value is an identifier: shortened on screen, whole in the title.
+ *
+ * `shortIdentifier` truncates UUID-shaped text and nothing else, so a value it
+ * returns untouched was never hidden and gets no title — the reader is not
+ * told to hover over something they can already read in full.
+ */
+function identifierFact(label: string, value: string): RunFact {
+  const shown = shortIdentifier(value);
+  return shown === value ? [label, value] : [label, shown, value];
+}
 
 /** Describe the execution's stored binding, never the workflow's current grant. */
 export function runAuthorityFacts(
   run: Pick<Execution, "execution_authority_id" | "workflow_version_id" | "hold_writes">,
   t: Translate,
-): Array<[string, string]> {
+): RunFact[] {
   return [
-    ...(run.hold_writes
-      ? [[t("runs.boundary"), t("runs.preparationDescription")] as [string, string]]
-      : []),
-    [t("authority.usedByRun"), run.execution_authority_id ?? t("authority.noStoredBinding")],
+    ...(run.hold_writes ? [[t("runs.boundary"), t("runs.preparationDescription")] as RunFact] : []),
+    // Both of these were printed raw, so the sheet put two 36-character UUIDs
+    // in front of a person reading "which approval ran this" — the thing
+    // UI-UX.md and COCKPIT-KONVENTION §5 forbid. `shortIdentifier` truncates
+    // only UUID-shaped text, so a human-readable authority name survives
+    // whole; the untruncated value stays reachable in the title.
+    //
+    // The absent case does NOT go through it: "No execution-authority binding
+    // recorded" is a sentence stating a fact, not an identifier, and running
+    // an absence through an id shortener is how absent starts looking like a
+    // value someone merely couldn't be bothered to print.
+    run.execution_authority_id != null
+      ? identifierFact(t("authority.usedByRun"), run.execution_authority_id)
+      : ([t("authority.usedByRun"), t("authority.noStoredBinding")] as RunFact),
     ...(run.workflow_version_id
-      ? [[t("authority.version"), run.workflow_version_id] as [string, string]]
+      ? [identifierFact(t("authority.version"), run.workflow_version_id)]
       : []),
   ];
 }

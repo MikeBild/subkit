@@ -31,8 +31,8 @@ const SEEDED_COUNTS: Record<EventClass, number> = {
   schedule: 3, // fired + bound + unbound
   self_healing: 4, // proposed + approved + rejected + auto_applied
   discovery: 4, // proposed + approved + rejected + superseded
-  execution_lifecycle: 2, // auto_retried + crash_recovered
-  policy: 5, // denied + changed + tool_policy_confirmation_required + tool_policy_changed + connector_draft_credential_rejected
+  execution_lifecycle: 1, // crash_recovered
+  policy: 4, // denied + tool_policy_confirmation_required + tool_policy_changed + connector_draft_credential_rejected
   external_write: 1,
 };
 
@@ -96,12 +96,10 @@ beforeAll(async () => {
   rows.push(row(AuditAction.SKILL_CANDIDATE_SUPERSEDED));
 
   // execution_lifecycle
-  rows.push(row(AuditAction.EXECUTION_AUTO_RETRIED));
   rows.push(row(AuditAction.EXECUTION_CRASH_RECOVERED));
 
   // policy
   rows.push(row(AuditAction.POLICY_DENIED));
-  rows.push(row(AuditAction.POLICY_CHANGED));
   rows.push(row(AuditAction.TOOL_POLICY_CONFIRMATION_REQUIRED));
   rows.push(row(AuditAction.TOOL_POLICY_CHANGED));
   rows.push(row(AuditAction.CONNECTOR_DRAFT_CREDENTIAL_REJECTED));
@@ -170,7 +168,10 @@ test("schedule class does not include policy.denied rows", async () => {
   };
   const actions = body.groups.map((g) => g.key.action);
   expect(actions).not.toContain("policy.denied");
-  expect(actions).not.toContain("policy.changed");
+  // `tool_policy.changed`, not `policy.changed`: the latter is mapped to no
+  // class at all now, so asserting its absence here would pass for the wrong
+  // reason. This one is genuinely in `policy` and must stay out of `schedule`.
+  expect(actions).not.toContain("tool_policy.changed");
 });
 
 // Outcome filter: seed an error row for the policy class and verify outcome=error filter works.

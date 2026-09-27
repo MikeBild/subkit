@@ -98,6 +98,13 @@ const MOUNT_MARKERS = {
   "knowledge/$resourceId": '[data-testid="detail-knowledge"]',
   "skills/$resourceId": '[data-testid="detail-skills"]',
   "files/$resourceId": '[data-testid="detail-files"]',
+  // A run's own address is the LIST with one row's sheet open, not a second
+  // page, so the marker is the list's. Without the entry the fallback builds
+  // `[data-testid="resource-runs/$resourceId"]` out of the route string — a
+  // selector nothing can ever match, and a sweep that fails at the door tells
+  // nobody which of the two it was: a broken page, or a table that had not
+  // been told the page exists.
+  "runs/$resourceId": '[data-testid="resource-runs"]',
 };
 
 const NOW = Date.now();
@@ -2914,6 +2921,28 @@ async function checkSilentWhenEmpty(page) {
  * place, this is the only chance to read it.
  */
 async function sweepDetailSurface(page, route) {
+  // A route that IS the detail surface has nothing to open: `/runs/<id>` is
+  // the run log with that run's sheet already showing, which is the whole
+  // point of giving a run an address. Trying to click a row there fails on
+  // the open dialog intercepting the pointer, and the message — "the surface
+  // exists and this run could not reach it" — would be exactly backwards: the
+  // run reached it by address, which is what was being tested.
+  //
+  // The six rules below still run, against the sheet that is already open.
+  if (route.includes("$")) {
+    const already = page.locator('[role="dialog"][data-state="open"]');
+    if ((await already.count()) > 0) {
+      const where = `/${route} · detail view`;
+      swept.push(where);
+      await checkNoUnknownState(page, where);
+      await checkActionLabels(page, where);
+      await checkNoIdentifiers(page, where);
+      await checkCuratedFieldLabels(page, where);
+      await checkNoRawTimestamps(page, where);
+      await checkScreenReaderLanguage(page, where);
+      return;
+    }
+  }
   const opener = page.locator('[data-testid="data-table-open-0"]');
   if ((await opener.count()) === 0) {
     if ((await page.locator('[data-testid="data-table"]').count()) > 0)

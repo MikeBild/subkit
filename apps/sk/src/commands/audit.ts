@@ -1,7 +1,6 @@
 import { createWriteStream } from "node:fs";
-import { exitCodeFor, reportCommandError } from "@cli-core/errors";
+import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
-import { readSse } from "@cli-core/index.ts";
 import { defineCommand } from "citty";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
@@ -136,28 +135,15 @@ const exportCmd = defineCommand({
   },
 });
 
-// ---------- tail ----------
-
-const tailCmd = defineCommand({
-  meta: { name: "tail", description: "Follow new audit events via SSE stream" },
-  args: {},
-  async run() {
-    const client = makeClient();
-    try {
-      const res = await client.stream("/v1/audit-log/stream");
-      await readSse(res, (frame) => {
-        process.stdout.write(`${frame.data}\n`);
-      });
-    } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(exitCodeFor(err));
-    }
-  },
-});
-
 // ---------- root ----------
 
+// There is no `tail`. It advertised "Follow new audit events via SSE stream"
+// and called `GET /v1/audit-log/stream`, a route registered nowhere — the
+// engine only serves the list, the single entry, and `export.ndjson`
+// (apps/engine/src/http/routes/audit-log.ts). Every invocation 404'd, so the
+// subcommand is deleted rather than pointed at a substitute: `query` answers
+// "what happened", `export` streams the log out.
 export const auditCommand = defineCommand({
   meta: { name: "audit", description: "Query the append-only audit log" },
-  subCommands: { query: queryCmd, show: showCmd, export: exportCmd, tail: tailCmd },
+  subCommands: { query: queryCmd, show: showCmd, export: exportCmd },
 });

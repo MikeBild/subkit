@@ -34,6 +34,8 @@ describe("cockpit route table", () => {
       "CHAT_PATH",
       "NEW_CHAT_PATH",
       "CONVERSATION_PATH",
+      "RUNS_PATH",
+      "RUN_PATH",
     ]);
     const unknown = registeredPaths().filter((path) => !fromTable.has(path));
     expect(unknown, "a route exists that the sweep can never find").toEqual([]);
@@ -64,9 +66,38 @@ describe("cockpit route table", () => {
     // Each of these is reachable by typing, bookmarking or being sent a link,
     // and none of them appears in NAVIGATION.
     const linked = new Set(NAVIGATION.flatMap((group) => group.items).map((item) => item.path));
-    for (const path of ["/chat/new", "/chat/$conversationId"]) {
+    for (const path of ["/chat/new", "/chat/$conversationId", "/runs/$resourceId"]) {
       expect(ALL_ROUTE_PATHS).toContain(path);
       expect(linked.has(path)).toBe(false);
     }
+  });
+
+  test("gives one run an address without giving it a second surface", () => {
+    // The sheet opened from local state, so nothing outside the page could
+    // point at a single run — not an audit row, not a decision, not a metric.
+    // The fix is an address, NOT a second detail view: both paths resolve to
+    // the same component, and to the same FUNCTION, because React preserves a
+    // page's state across a route change only while the element type is
+    // identical. Two components would cost the reader their filters and their
+    // page on every click, and leave two run views to keep in step.
+    expect(ALL_ROUTE_PATHS).toContain("/runs");
+    expect(ALL_ROUTE_PATHS).toContain("/runs/$resourceId");
+    const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
+    expect([...source.matchAll(/component:\s*RunsPage\b/g)]).toHaveLength(2);
+    expect(source).toContain("RUN_ROUTES");
+    // And not through CATALOG_RESOURCES: that list wires the generic
+    // catalogue pair, whose resource maps have no entry for runs.
+    expect(CATALOG_RESOURCES as readonly string[]).not.toContain("runs");
+  });
+
+  test("keeps every parameterised path out of the mapped page list", () => {
+    // PAGE_ROUTES is mapped over in the router, and a mapped tuple collapses
+    // to the union of its members. One parameterised member therefore makes
+    // `params` a REQUIRED prop on every `<Link>` aimed at any member — the
+    // typecheck broke on `to="/runs"` and `to="/audit"` when `/runs/$resourceId`
+    // was first put here. Paths that take a record belong in their own group,
+    // read off by position so they keep their literal type.
+    const parameterised = PAGE_ROUTES.filter((path) => path.includes("$"));
+    expect(parameterised, "a parameterised path in PAGE_ROUTES breaks every Link").toEqual([]);
   });
 });

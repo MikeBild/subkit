@@ -17,7 +17,6 @@
 export const PAGE_ROUTES = [
   "/",
   "/decisions",
-  "/runs",
   "/audit",
   "/usage",
   "/people",
@@ -42,6 +41,32 @@ export const REDIRECT_ROUTES: Readonly<Record<string, string | null>> = {};
 /** The chat, its new-conversation entry, and one conversation by id. */
 export const CHAT_ROUTES = ["/chat", "/chat/new", "/chat/$conversationId"] as const;
 
+/**
+ * The run log, and one run by id.
+ *
+ * `/runs` had a list and nothing else. Its detail sheet opened from local
+ * state, so a single run had no address: an audit row, a decision or a metric
+ * that named one run could point at the list and no further, and every
+ * `/runs/<id>` anyone built landed on "page not found".
+ *
+ * Two reasons this is its own group rather than two entries elsewhere.
+ *
+ * Not in CATALOG_RESOURCES: that list generates the generic catalogue PAIR —
+ * `CatalogPage` and `CatalogDetailPage`, both keyed by `DetailResource`, whose
+ * ENDPOINTS, PERMISSIONS and DESCRIPTION_KEYS maps have no entry for runs. A
+ * run also gets no second surface: both paths render the same page and the id
+ * selects the row whose sheet is already there, because two detail views of
+ * one record are two places to keep in step.
+ *
+ * Not in PAGE_ROUTES either, for the reason written above `CHAT_ROUTES`' own
+ * destructuring in `router.tsx`: the router MAPS over PAGE_ROUTES, a mapped
+ * tuple collapses to the union of its members, and one parameterised member
+ * makes `params` a required prop on every `<Link to="…">` aimed at any of
+ * them. The typecheck says so out loud — `to="/runs"` and `to="/audit"` both
+ * stopped compiling while this pair lived there.
+ */
+export const RUN_ROUTES = ["/runs", "/runs/$resourceId"] as const;
+
 /** The catalogues, each with a list page and a detail page. */
 export const CATALOG_RESOURCES = [
   "workflows",
@@ -64,5 +89,6 @@ export const ALL_ROUTE_PATHS: readonly string[] = [
   ...Object.keys(REDIRECT_ROUTES),
   ...PAGE_ROUTES,
   ...CHAT_ROUTES,
+  ...RUN_ROUTES,
   ...CATALOG_RESOURCES.flatMap((resource) => [`/${resource}`, `/${resource}/$resourceId`]),
 ];
