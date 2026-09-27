@@ -92,6 +92,24 @@ const SavedRunModeSchema = z.boolean().optional().openapi({
     "Omit to discover an existing matching local authority or run a held preparation. True always holds writes without spending a live run. False requires live authorization and rejects a missing or changed authority.",
 });
 
+// The engine records a run's origin from who authenticated the request: a
+// verified cockpit session is "ui", MCP / webhook / chat have their own entry
+// paths, and "scheduler" is written only by the scheduler itself — it feeds
+// the production-incident count, so no client may claim it. The one thing the
+// context cannot see is which program holds an API key, so a key-bearing
+// caller may still say "cli"; under any other origin the field is ignored.
+const CLIENT_DECLARED_RUN_SOURCES = ["api", "cli"] as const;
+export type ClientDeclaredRunSource = (typeof CLIENT_DECLARED_RUN_SOURCES)[number];
+const ClientDeclaredRunSourceSchema = z
+  .enum(CLIENT_DECLARED_RUN_SOURCES, {
+    error: `request_source may only be ${CLIENT_DECLARED_RUN_SOURCES.join(" or ")}; every other origin is recorded by the engine from who started the run, never declared by the caller`,
+  })
+  .optional()
+  .openapi({
+    description:
+      "Which program holds the API key: api or cli. Ignored for a verified cockpit session. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.",
+  });
+
 export const RuntimeRunBodySchema = z.discriminatedUnion("source", [
   z.object({
     source: z.literal("saved"),
@@ -102,9 +120,7 @@ export const RuntimeRunBodySchema = z.discriminatedUnion("source", [
     input: z.unknown().optional(),
     async: z.boolean().optional(),
     idempotency_key: IdempotencyKeySchema.optional(),
-    request_source: z
-      .enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"])
-      .optional(),
+    request_source: ClientDeclaredRunSourceSchema,
   }),
   z.object({
     source: z.literal("draft"),
@@ -112,9 +128,7 @@ export const RuntimeRunBodySchema = z.discriminatedUnion("source", [
     definition: WorkflowDefSchema,
     name: z.string().optional(),
     input: z.unknown().optional(),
-    request_source: z
-      .enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"])
-      .optional(),
+    request_source: ClientDeclaredRunSourceSchema,
   }),
   z.object({
     source: z.literal("step"),
@@ -124,9 +138,7 @@ export const RuntimeRunBodySchema = z.discriminatedUnion("source", [
     input: z.unknown().optional(),
     scope: z.record(z.string(), z.unknown()).optional(),
     timeout_ms: z.number().int().positive().max(60_000).optional(),
-    request_source: z
-      .enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"])
-      .optional(),
+    request_source: ClientDeclaredRunSourceSchema,
   }),
 ]);
 
@@ -161,9 +173,7 @@ export const RunBodySchema = z.discriminatedUnion("source", [
       input: z.unknown().optional(),
       async: z.boolean().optional(),
       idempotency_key: IdempotencyKeySchema.optional(),
-      request_source: z
-        .enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"])
-        .optional(),
+      request_source: ClientDeclaredRunSourceSchema,
     })
     .openapi("ExecutionRunSavedBody"),
   z
@@ -173,9 +183,7 @@ export const RunBodySchema = z.discriminatedUnion("source", [
       definition: OpenApiDraftDefinitionSchema,
       name: z.string().optional(),
       input: z.unknown().optional(),
-      request_source: z
-        .enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"])
-        .optional(),
+      request_source: ClientDeclaredRunSourceSchema,
     })
     .openapi("ExecutionRunDraftBody"),
   z
@@ -187,9 +195,7 @@ export const RunBodySchema = z.discriminatedUnion("source", [
       input: z.unknown().optional(),
       scope: z.record(z.string(), z.unknown()).optional(),
       timeout_ms: z.number().int().positive().max(60_000).optional(),
-      request_source: z
-        .enum(["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"])
-        .optional(),
+      request_source: ClientDeclaredRunSourceSchema,
     })
     .openapi("ExecutionRunStepBody"),
 ]);

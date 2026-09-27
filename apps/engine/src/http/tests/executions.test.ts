@@ -1,6 +1,17 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, executions, workflows, workflowVersions } from "../../db/schema/index.ts";
+import {
+  browserSessionCookie,
+  signBrowserCsrf,
+  signBrowserSession,
+} from "../../auth/browser-session.ts";
+import {
+  auditLog,
+  executions,
+  sessions,
+  workflows,
+  workflowVersions,
+} from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -274,5 +285,126 @@ describe("idempotency key on the saved-workflow trigger", () => {
       idempotency_key: "k".repeat(201),
     });
     expect(r.status).toBe(400);
+  });
+});
+
+describe("a run's source is who started it, not what the body claims", () => {
+  // "scheduler" feeds the production-incident count and the health digest's
+  // scheduled grouping. While the body decided the recorded source, any key
+  // could file its runs there — and the cockpit's own runs read "API".
+  let workflowId = "";
+  let cockpitHeaders: Record<string, string> = {};
+  beforeAll(async () => {
+    workflowId = await seedWorkflow("http-run-source");
+    const [session] = await ctx.db
+      .insert(sessions)
+      .values({
+        tenant_id: ctx.tenantId,
+        user_id: ctx.userId,
+        expires_at: new Date(Date.now() + 60 * 60_000), // allow-wall-clock: live browser fixture
+        absolute_expires_at: new Date(Date.now() + 60 * 60_000), // allow-wall-clock: live browser fixture
+      })
+      .returning();
+    if (!session) throw new Error("missing browser session fixture");
+    const payload = { tenant_id: ctx.tenantId, user_id: ctx.userId, session_id: session.id };
+    cockpitHeaders = {
+      cookie: browserSessionCookie(await signBrowserSession(payload)),
+      "x-subkit-csrf": await signBrowserCsrf(payload),
+      "x-subkit-client": "cockpit",
+    };
+  });
+
+  async function start(
+    body: Record<string, unknown>,
+    headers: Record<string, string>,
+    path = "/v1/executions",
+  ) {
+    const response = await fetch(`${ctx.baseUrl}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+    return {
+      status: response.status,
+      body: (await response.json()) as Record<string, unknown> & { execution_id?: string },
+    };
+  }
+
+  async function recordedSource(executionId: string | undefined): Promise<string | undefined> {
+    if (!executionId) throw new Error("no execution id");
+    const [row] = await ctx.db
+      .select({ request_source: executions.request_source })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, executionId)));
+    return row?.request_source;
+  }
+
+  async function runCount(): Promise<number> {
+    const rows = await ctx.db
+      .select({ id: executions.id })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.workflow_id, workflowId)));
+    return rows.length;
+  }
+
+  test("a body claiming the scheduler is refused and starts nothing", async () => {
+    const before = await runCount();
+    const r = await start(
+      {
+        source: "saved",
+        workflow_id: workflowId,
+        input: { date: "s" },
+        request_source: "scheduler",
+      },
+      { Authorization: `Bearer ${ctx.apiKey}` },
+    );
+    expect(r.status).toBe(400);
+    const details = r.body.details as { fieldErrors?: Record<string, string[]> } | undefined;
+    expect(details?.fieldErrors?.request_source?.[0]).toContain("request_source may only be");
+    expect(await runCount()).toBe(before);
+  });
+
+  test("a verified cockpit session records ui even when the body says api", async () => {
+    const r = await start(
+      { source: "saved", workflow_id: workflowId, input: { date: "c" }, request_source: "api" },
+      cockpitHeaders,
+    );
+    expect(r.status).toBe(200);
+    expect(await recordedSource(r.body.execution_id)).toBe("ui");
+  });
+
+  test("a cockpit rerun records ui, not a fixed api", async () => {
+    const original = await start(
+      { source: "saved", workflow_id: workflowId, input: { date: "o" } },
+      { Authorization: `Bearer ${ctx.apiKey}` },
+    );
+    expect(original.status).toBe(200);
+    const rerun = await start(
+      {},
+      cockpitHeaders,
+      `/v1/executions/${original.body.execution_id}/rerun`,
+    );
+    expect(rerun.status).toBe(200);
+    expect(await recordedSource(rerun.body.execution_id)).toBe("ui");
+  });
+
+  test("an API key records api, even when it claims to be the cockpit", async () => {
+    // The header alone is not a session: without the verified cookie the
+    // request stays an API call.
+    const r = await start(
+      { source: "saved", workflow_id: workflowId, input: { date: "k" } },
+      { Authorization: `Bearer ${ctx.apiKey}`, "x-subkit-client": "cockpit" },
+    );
+    expect(r.status).toBe(200);
+    expect(await recordedSource(r.body.execution_id)).toBe("api");
+  });
+
+  test("an API key may still name the program holding it", async () => {
+    const r = await start(
+      { source: "saved", workflow_id: workflowId, input: { date: "l" }, request_source: "cli" },
+      { Authorization: `Bearer ${ctx.apiKey}` },
+    );
+    expect(r.status).toBe(200);
+    expect(await recordedSource(r.body.execution_id)).toBe("cli");
   });
 });

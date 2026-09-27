@@ -6,8 +6,9 @@
 //   • step   → single StepDef, one-step synthetic workflow
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import type { Context } from "hono";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { AuditAction, actorType, auditAwait } from "../../../audit/index.ts";
+import { AuditAction, actorType, auditAwait, readRequestSource } from "../../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/index.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
 import {
@@ -18,13 +19,19 @@ import {
   type RunExecutionSource,
   runExecution,
 } from "../../../execution/index.ts";
+import type { RequestSource } from "../../../observability/index.ts";
 import type { ExecutionRunJob } from "../../../queue/index.ts";
 import { EXECUTION_RUN_QUEUE, getBoss } from "../../../queue/index.ts";
 import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { RunBodySchema, RunResponseSchema, RuntimeRunBodySchema } from "./schemas.ts";
+import {
+  type ClientDeclaredRunSource,
+  RunBodySchema,
+  RunResponseSchema,
+  RuntimeRunBodySchema,
+} from "./schemas.ts";
 
 const runExecutionRoute = createRoute({
   method: "post",
@@ -98,6 +105,16 @@ export async function enforceSavedWorkflowAllowlist(
   });
 }
 
+/** The origin a run started over HTTP is recorded under. It comes from who
+ *  authenticated the request — a verified cockpit session is "ui" — never
+ *  from what the body claims. Only when the context says no more than "a key
+ *  called the API" may the caller name the program holding it ("cli").
+ *  Shared with the rerun route, which has no body field at all. */
+export function runRequestSource(c: Context, declared?: ClientDeclaredRunSource): RequestSource {
+  const verified = readRequestSource(c) ?? "api";
+  return verified === "api" ? (declared ?? "api") : verified;
+}
+
 async function enforceWorkflowAllowlist(
   principal: ResolvedPrincipal,
   body: z.infer<typeof RuntimeRunBodySchema>,
@@ -149,6 +166,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
     }
     const body = runtimeBody.data;
     await enforceWorkflowAllowlist(principal, body, db);
+    const request_source = runRequestSource(c, body.request_source);
 
     // Both live reservations and preparation replays validate the full stored
     // boundary. A known key alone must not release a different workflow.
@@ -188,7 +206,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
             workflow_version_id: body.version_id,
             execution_authority_id: body.execution_authority_id,
             execution_environment: execution_mode,
-            request_source: body.request_source ?? "api",
+            request_source,
             input: body.input ?? null,
             idempotency_key: idempotencyKey ?? undefined,
             hold_writes: body.hold_writes,
@@ -216,7 +234,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
               reason: code,
               message: (error as Error).message,
               workflow_id: body.workflow_id,
-              request_source: body.request_source ?? "api",
+              request_source,
               actor_id: principal.id ?? null,
               actor_type: actorType(principal),
             },
@@ -248,7 +266,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
               workflow_id: body.workflow_id,
               execution_id: admitted.execution_id,
               input: admitted.input,
-              request_source: body.request_source ?? "api",
+              request_source,
               trace_id: c.get("trace_id") ?? null,
               execution_mode,
             } satisfies ExecutionRunJob,
@@ -295,7 +313,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           existing_execution_id: admitted.execution_id,
           principal,
           execution_mode,
-          request_source: body.request_source ?? "api",
+          request_source,
         },
       });
       return c.json(
@@ -330,7 +348,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
         source,
         input: "input" in body ? (body.input ?? null) : null,
         options: {
-          request_source: body.request_source ?? "api",
+          request_source,
           principal,
           execution_mode,
           idempotency_key: idempotencyKey,

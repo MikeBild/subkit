@@ -22,14 +22,14 @@ export type RunExecutionBody =
       async?: boolean;
       /** Caller-chosen key that makes the trigger safe to repeat. */
       idempotency_key?: string;
-      request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler" | "chat";
+      request_source?: "api" | "cli";
     }
   | {
       source: "draft";
       definition: Record<string, unknown>;
       name?: string;
       input?: unknown;
-      request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler" | "chat";
+      request_source?: "api" | "cli";
     }
   | {
       source: "step";
@@ -38,7 +38,7 @@ export type RunExecutionBody =
       input?: unknown;
       scope?: Record<string, unknown>;
       timeout_ms?: number;
-      request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler" | "chat";
+      request_source?: "api" | "cli";
     };
 
 /** Response shape of POST /v1/executions. Kept in sync with the engine's

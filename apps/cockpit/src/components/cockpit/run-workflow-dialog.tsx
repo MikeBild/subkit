@@ -86,7 +86,6 @@ export function RunWorkflowDialog({
         body: JSON.stringify({
           source: "saved",
           workflow_id: workflowId,
-          request_source: "api",
           ...(fields.length > 0 ? { input: buildInput(fields, values) } : {}),
         }),
       }),
