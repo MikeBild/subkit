@@ -15,6 +15,7 @@ import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
 import { verifyScheduleHolds } from "./lib/cockpit-schedule-holds.mjs";
+import { assertNoVisibleUuids } from "./lib/cockpit-visible-uuids.mjs";
 import { verifyWorkflowAuthorities } from "./lib/cockpit-workflow-authorities.mjs";
 import { verifyWorkflowPreview } from "./lib/cockpit-workflow-preview.mjs";
 
@@ -89,6 +90,25 @@ const spawnedPreview = process.env.COCKPIT_BASE_URL ? null : await startPreviewS
 const baseUrl = (process.env.COCKPIT_BASE_URL || spawnedPreview.baseUrl).replace(/\/$/, "");
 const outputDir = resolve(process.env.COCKPIT_SCREENSHOT_DIR || ".artifacts/cockpit-sweep/local");
 const uuid = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
+// The run sheet's own record belongs to a workflow with NO open repair, so the
+// remedy it offers is the one its cause asks for — a rejected sign-in leads to
+// the connector — rather than the review the fixture's other workflow has
+// waiting. Real-looking, and different from `uuid`: the identifier check finds
+// shapes, not this one value.
+const runWorkflowId = "5b2e9c14-7a3d-4f68-b1e0-8c9d2a4f6e37";
+const runConnectorId = "c3a8f1d2-6b4e-4c97-a5f0-1e2d3b4c5a69";
+const runVersionId = "9d4f6a21-3c8b-4e05-b7a2-6f1e0d9c8b34";
+// A hostile authority for the workflow page: every identifier on it real and
+// different, so a card that prints any of them fails the identifier check. The
+// previous card printed its own UUID as its heading and passed, because the
+// check only knew `uuid`.
+const hostileAuthority = {
+  id: "e7b1c4d9-2a6f-4b83-9c05-d3e8f1a2b4c6",
+  workflow_version_id: "8a3d5f7b-1c9e-4d26-a0b8-f4e6c2d1a9b3",
+  connector_id: "2f9e8d7c-6b5a-4f39-8e21-0d1c2b3a4f5e",
+  created_by: "b6c5d4e3-f2a1-4098-8765-4a3b2c1d0e9f",
+  tenant_id: "4c3b2a1f-0e9d-4c8b-9a76-5f4e3d2c1b0a",
+};
 const routes = [
   // The landing page was never photographed, which is how a whole class of
   // page-shell defect stayed invisible to this sweep.
@@ -111,6 +131,10 @@ const routes = [
   // stored approval, its steps, its result — was never taken. The route
   // shipped; nothing photographed it.
   `runs/${uuid}`,
+  // The workflow's own page: health beside the title, the cause and its fix,
+  // the latest runs, and the approval cards. It was only ever visited by the
+  // authority stand, which checked none of it for identifiers.
+  `workflows/${uuid}`,
   "connectors",
   // The connector-health component's own drilldown. Photographed narrowed,
   // because the fixture's healthy connectors are exactly what it must hide.
@@ -957,8 +981,60 @@ async function mockApi(route) {
   }
   if (path === `/v1/conversations/${uuid}/messages`)
     return sse(route, { conversation, status: "active" });
-  if (path === `/v1/workflows/${uuid}/execution-authorities`)
-    return json(route, { items: [], next_cursor: null });
+  if (path === `/v1/workflows/${uuid}/execution-authorities`) {
+    const now = Date.now();
+    return json(route, {
+      items: [
+        {
+          id: hostileAuthority.id,
+          workflow_id: uuid,
+          workflow_version_id: hostileAuthority.workflow_version_id,
+          effect_manifest_digest: "7".repeat(64),
+          execution_environment: "prod",
+          valid_from: new Date(now - 3_600_000).toISOString(),
+          valid_until: new Date(now + 5 * 86_400_000).toISOString(),
+          max_runs: 24,
+          reserved_runs: 3,
+          remaining_runs: 21,
+          active_version: false,
+          ready_for_new_run: false,
+          state: "approved",
+          created_at: new Date(now - 3_600_000).toISOString(),
+          created_by: hostileAuthority.created_by,
+          revoked_at: null,
+          revoked_by: null,
+          target_constraints: { targets: ["https://reports.example.test/monthly"] },
+          effect_manifest: {
+            schema_version: 1,
+            tenant_id: hostileAuthority.tenant_id,
+            workflow_id: uuid,
+            workflow_version_id: hostileAuthority.workflow_version_id,
+            workflow_digest: "8".repeat(64),
+            execution_environment: "prod",
+            execution_options_digest: "9".repeat(64),
+            effects: [
+              {
+                tenant_id: hostileAuthority.tenant_id,
+                step_id: "publish-report",
+                connector_id: hostileAuthority.connector_id,
+                driver: "http",
+                environment: "prod",
+                request_digest: "1".repeat(64),
+                configuration_digest: "2".repeat(64),
+                credential_binding_digest: "3".repeat(64),
+                target: "https://reports.example.test/monthly",
+                rewrites_target: false,
+                operation: "POST",
+                effect: "write",
+              },
+            ],
+            issues: [],
+          },
+        },
+      ],
+      next_cursor: null,
+    });
+  }
   if (path === `/v1/workflows/${uuid}`)
     return json(route, {
       id: uuid,
@@ -971,6 +1047,12 @@ async function mockApi(route) {
         { id: "fetch", name: "Daten laden", kind: "request" },
         { id: "transform", name: "Report berechnen", kind: "transform" },
       ],
+      // Unhealthy, with the engine's own English reason: the page has to say
+      // the cause in its own words and keep this one behind "Wortlaut der
+      // Engine", and offer the way to the fix.
+      health_state: "degraded",
+      health_reason: "3 consecutive scheduled runs failed",
+      health_changed_at: "2026-08-10T08:00:00.000Z",
       updated_at: "2026-08-10T09:00:00.000Z",
     });
   if (path === `/v1/connectors/${uuid}`)
@@ -1285,9 +1367,27 @@ async function mockApi(route) {
         started_at: started.toISOString(),
         finished_at: rotate === 1 ? null : new Date(started.getTime() + 119_600).toISOString(),
         created_at: started.toISOString(),
+        // The cause group a failed row carries (§3). A timed-out run's class is
+        // one this build has no word for, so the list must set it as the
+        // engine's value — never as "Unbekannt".
+        failure:
+          rotate === 2
+            ? { step_key: "write_products", cause_class: "auth_failed" }
+            : rotate === 3
+              ? { step_key: null, cause_class: "timeout" }
+              : null,
       };
     });
-    return json(route, { items, total: 240, next_cursor: null });
+    // The workflow page asks for the newest failed run and for the newest
+    // five; a mock that ignored both answered "24 runs" to "the latest five".
+    const status = url.searchParams.get("status");
+    const limit = Number(url.searchParams.get("limit") ?? "0");
+    const narrowed = status ? items.filter((item) => item.status === status) : items;
+    return json(route, {
+      items: limit > 0 ? narrowed.slice(0, limit) : narrowed,
+      total: status ? narrowed.length : 240,
+      next_cursor: null,
+    });
   }
   // One run, by id. Without this the sheet's refresh fell through to the
   // catch-all `{ items: [] }` at the foot of this function — a 200 with no
@@ -1300,9 +1400,9 @@ async function mockApi(route) {
     const started = new Date(Date.parse(conversation.updated_at));
     return json(route, {
       id: decodeURIComponent(oneExecution[1]),
-      workflow_id: uuid,
+      workflow_id: runWorkflowId,
       workflow_name: "Monatsreport 1",
-      workflow_version_id: null,
+      workflow_version_id: runVersionId,
       execution_authority_id: null,
       hold_writes: false,
       source_kind: "saved",
@@ -1313,6 +1413,17 @@ async function mockApi(route) {
       started_at: started.toISOString(),
       finished_at: new Date(started.getTime() + 6_900).toISOString(),
       created_at: started.toISOString(),
+      // The engine's verdict: which step stopped the run, and why, as a class.
+      // The sheet composes its sentence from this, never from the English
+      // message the step stored.
+      outcome: {
+        kind: "failed",
+        failed_step: { step_key: "write_products", kind: "request" },
+        cause_class: "auth_failed",
+        error_code: "http_401",
+        steps: { total: 3, succeeded: 2, failed: 1, held: 0, skipped: 0 },
+        output_contract: "none",
+      },
     });
   }
   // The steps of one run. Until this existed the sheet's own address fell
@@ -1359,6 +1470,15 @@ async function mockApi(route) {
           step_index: 2,
           status: "failed",
           duration_ms: 69,
+          // Which connector the step called — the sign-in remedy leads there.
+          request_meta: {
+            connector: {
+              step_key: "write_products",
+              connector_id: runConnectorId,
+              connector_slug: "berichtsablage",
+              driver: "http",
+            },
+          },
           error: {
             code: "request_outside_declared_boundary",
             message:
@@ -1915,6 +2035,10 @@ async function mockApi(route) {
         },
       ],
     });
+  // Asked for one workflow's open repair, the answer is that workflow's — the
+  // run sheet's workflow has none, so its remedy is the one its cause asks for.
+  if (path === "/v1/patch-candidates" && url.searchParams.get("workflow_id") === runWorkflowId)
+    return json(route, { total: 0, reviewable_total: 0, items: [] });
   if (path === "/v1/patch-candidates")
     return json(route, {
       total: 2,
@@ -2120,6 +2244,7 @@ function markerFor(route) {
   // on the list marker would photograph the page before the record arrived,
   // which is the frame that proves nothing.
   if (/^runs\/.+/.test(path)) return '[data-testid="run-detail-facts"]';
+  if (/^workflows\/.+/.test(path)) return '[data-testid="workflow-recent-runs"]';
   if (path === "chat") return '[data-testid="chat-workspace"]';
   if (path === "") return '[data-testid="overview-page"]';
   // Decisions owns its page rather than rendering a list of records.
@@ -2322,25 +2447,148 @@ async function assertAuditActionChip(page, label) {
     throw new Error(`${label}: the verbs the link narrowed to are not shown as a chip`);
 }
 
-async function assertRunDetail(page, label) {
+async function assertRunDetail(page, label, language) {
   const facts = page.locator('[data-testid="run-detail-facts"]');
   if (!(await facts.isVisible()))
     throw new Error(`${label} opened no run sheet — the address rendered the bare list`);
-  const result = page.locator('[data-testid="run-detail-result"]');
-  if (await result.isVisible()) {
-    const shown = (await result.innerText()).trim();
-    // The heading is part of the block, so compare what follows it.
-    const body = shown.split("\n").slice(1).join("\n").trim();
-    if (body === "null" || body === "undefined")
-      throw new Error(
-        `${label} prints '${body}' as the run's result — a step that produced nothing has no result section`,
-      );
-  }
+  // The title is the workflow, and leads there.
+  const titleLink = page.locator('[data-testid="run-detail-workflow-link"]');
+  await titleLink.waitFor();
+  const titleHref = await titleLink.getAttribute("href");
+  if (titleHref !== `/cockpit/workflows/${runWorkflowId}`)
+    throw new Error(`${label} run title leads to ${titleHref}, not to its workflow`);
+  // The verdict, as the cockpit's sentence composed from the engine's outcome.
+  const outcome = page.locator('[data-testid="run-detail-outcome"]');
+  await outcome.waitFor();
+  const sentence = (await outcome.innerText()).trim();
+  const expected =
+    language === "de"
+      ? "Abgebrochen bei Schritt „write_products“ – Ursache: Anmeldung abgelehnt. Zuvor abgeschlossen: 2 von 3 Schritten."
+      : "Stopped at step “write_products” — cause: Sign-in rejected. Completed before that: 2 of 3 steps.";
+  if (sentence !== expected)
+    throw new Error(`${label} states the outcome as ${JSON.stringify(sentence)}`);
   // The error the failing step reported has to reach the reader; a sheet that
   // swallows it sends someone to the terminal for the one fact they came for.
   const failure = page.locator('[data-testid="run-detail-error"]');
   if (!(await failure.isVisible()))
     throw new Error(`${label} hides the error of a run whose last step failed`);
+  // …and exactly ONCE. It used to stand in its own block AND in the step card,
+  // so the reader read one failure twice and wondered whether there were two.
+  const errorCount = await page
+    .locator('[data-testid="run-detail"]')
+    .evaluate(
+      (sheet, needle) =>
+        [...sheet.querySelectorAll("pre")].filter((node) =>
+          (node.textContent ?? "").includes(needle),
+        ).length,
+      "outside the folder boundary its step declares",
+    );
+  if (errorCount !== 1)
+    throw new Error(`${label} shows the run's error ${errorCount} times, not once`);
+  // The fix, for THIS cause: a rejected sign-in leads to the connector.
+  const remedy = page.locator('[data-testid="run-detail-cause-remedy"]');
+  await remedy.waitFor();
+  const remedyHref = await remedy.getAttribute("href");
+  if (remedyHref !== `/cockpit/connectors/${runConnectorId}`)
+    throw new Error(`${label} remedy leads to ${remedyHref}, not to the connector to sign in to`);
+  const remedyText = (await remedy.innerText()).trim();
+  if (remedyText !== (language === "de" ? "Neu anmelden" : "Sign in again"))
+    throw new Error(`${label} remedy reads ${JSON.stringify(remedyText)}`);
+  const audit = await page.locator('[data-testid="run-detail-cause-more-0"]').getAttribute("href");
+  if (!audit?.startsWith("/cockpit/audit?resource_type=execution&resource_id="))
+    throw new Error(`${label} offers no way into the audit trail (${audit})`);
+  // The payload is evidence, not the headline: closed until asked for, and a
+  // failed run's newest output is named for its step — never "Ergebnis".
+  const toggle = page.locator('[data-testid="run-detail-payload-toggle"]');
+  await toggle.waitFor();
+  if (await page.locator('[data-testid="run-detail-result"]').isVisible())
+    throw new Error(`${label} opens the payload drawer by itself`);
+  const toggleText = (await toggle.innerText()).trim();
+  if (toggleText === (language === "de" ? "Ergebnis" : "Result"))
+    throw new Error(`${label} labels an earlier step's output as the failed run's result`);
+  await toggle.click();
+  const result = page.locator('[data-testid="run-detail-result"]');
+  await result.waitFor();
+  const shown = (await result.innerText()).trim();
+  // The heading is part of the block, so compare what follows it.
+  const body = shown.split("\n").slice(1).join("\n").trim();
+  if (body === "null" || body === "undefined")
+    throw new Error(
+      `${label} prints '${body}' as the run's result — a step that produced nothing has no result section`,
+    );
+  // Running it again states its consequence before anything runs, and
+  // cancelling runs nothing.
+  let reruns = 0;
+  const countRerun = (request) => {
+    if (request.method() === "POST" && request.url().includes("/rerun")) reruns += 1;
+  };
+  page.on("request", countRerun);
+  try {
+    await page.locator('[data-testid="run-rerun-open"]').click();
+    const consequence = page.locator('[data-testid="run-rerun-consequence"]');
+    await consequence.waitFor();
+    const said = await consequence.innerText();
+    for (const word of language === "de"
+      ? ["derselben Version", "derselben Eingabe", "echter Lauf"]
+      : ["same version", "same input", "real run"])
+      if (!said.includes(word))
+        throw new Error(`${label} rerun dialog does not state its consequence: ${said}`);
+    await page.locator('[data-testid="run-rerun-cancel"]').click();
+    await consequence.waitFor({ state: "hidden" });
+  } finally {
+    page.off("request", countRerun);
+  }
+  if (reruns !== 0) throw new Error(`${label} cancelling the rerun started one`);
+  // Leave the sheet as it was photographed: drawer closed.
+  await toggle.click();
+  await result.waitFor({ state: "hidden" });
+}
+
+/**
+ * A workflow's own page: red leads to its cause, the cause is the cockpit's
+ * sentence, and the latest runs lead to their sheets.
+ */
+async function assertWorkflowDetail(page, label, language) {
+  const badge = page.locator('[data-testid="workflow-health-badge"]');
+  await badge.waitFor();
+  const cause = page.locator('[data-testid="workflow-cause"]');
+  await cause.waitFor();
+  const causeText = await page.locator('[data-testid="workflow-cause-cause"]').innerText();
+  // The newest failed run in the fixture stopped at `write_products` because
+  // a sign-in was rejected; the engine's English reason is NOT the cause.
+  const expected = language === "de" ? "Ursache: Anmeldung abgelehnt" : "cause: Sign-in rejected";
+  if (!causeText.includes(expected) || causeText.includes("consecutive"))
+    throw new Error(`${label} states the workflow's cause as ${JSON.stringify(causeText)}`);
+  const guidance = await page.locator('[data-testid="workflow-cause-guidance"]').innerText();
+  if (!guidance.includes("3 consecutive scheduled runs failed"))
+    throw new Error(`${label} drops the engine's own wording of the health reason`);
+  if (!(await page.locator('[data-testid="workflow-cause-remedy"]').isVisible()))
+    throw new Error(`${label} shows red with no way to the fix`);
+  const runs = page.locator('[data-testid^="workflow-recent-run-"]');
+  const count = await runs.count();
+  if (count < 1 || count > 5)
+    throw new Error(`${label} lists ${count} latest runs, not up to five`);
+  const first = await runs.first().getAttribute("href");
+  if (!first?.startsWith("/cockpit/runs/"))
+    throw new Error(`${label} latest run leads to ${first}, not to its sheet`);
+  const all = await page.locator('[data-testid="workflow-all-runs"]').getAttribute("href");
+  if (all !== `/cockpit/runs?workflow_id=${uuid}`)
+    throw new Error(`${label} "all runs" leads to ${all}`);
+  // The approval card is headed by what the reader decides by.
+  const headline = await page.locator('[data-testid="authority-headline"]').first().innerText();
+  for (const expectedPart of language === "de"
+    ? ["Produktion", "gültig bis", "bis zu 24 Läufe"]
+    : ["Production", "valid until", "up to 24 runs"])
+    if (!headline.includes(expectedPart))
+      throw new Error(
+        `${label} authority headline ${JSON.stringify(headline)} lacks ${expectedPart}`,
+      );
+  const headlineTitle = await page
+    .locator('[data-testid="authority-headline"]')
+    .first()
+    .getAttribute("title");
+  if (headlineTitle !== hostileAuthority.id)
+    throw new Error(`${label} authority id is not kept on the headline's title`);
 }
 
 async function assertChat(page, label) {
@@ -2832,13 +3080,11 @@ for (const locale of variants) {
       // a bare identifier set in backticks mid-sentence, it is still banned;
       // monospace is not permission.
       const text = await page.locator("body").innerText();
-      const visibleText = await page.evaluate(() => {
-        const body = document.body.cloneNode(true);
-        for (const block of [...body.querySelectorAll("pre")]) block.remove();
-        return body.innerText ?? "";
-      });
-      if (visibleText.includes(uuid))
-        throw new Error(`${locale.artifact}/${viewport.name}/${route} exposes a UUID`);
+      // Any UUID-shaped text, not the one this fixture happens to know.
+      await assertNoVisibleUuids(
+        page.locator("body"),
+        `${locale.artifact}/${viewport.name}/${route}`,
+      );
       if ((await page.locator("html").getAttribute("lang")) !== locale.name)
         throw new Error(`${locale.artifact}/${viewport.name}/${route} uses the wrong locale`);
       if (!documentThemeMatches(await page.locator("html").getAttribute("class"), locale.theme))
@@ -2858,7 +3104,13 @@ for (const locale of variants) {
       if (route === "runs")
         await assertOpenOnce(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (/^runs\/.+/.test(route))
-        await assertRunDetail(page, `${locale.artifact}/${viewport.name}/${route}`);
+        await assertRunDetail(page, `${locale.artifact}/${viewport.name}/${route}`, locale.name);
+      if (/^workflows\/.+/.test(route))
+        await assertWorkflowDetail(
+          page,
+          `${locale.artifact}/${viewport.name}/${route}`,
+          locale.name,
+        );
       if (route === "settings")
         await assertAuthProviderSettings(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "access") {
