@@ -14,6 +14,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { apiRequest } from "@/api/client";
+import { absolute, auditHref, type DecisionBucket, decisionsHref } from "@/app/links";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
 import {
@@ -25,7 +26,7 @@ import {
 } from "@/components/family-ui";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { metricOffersDrilldown } from "@/pages/overview-model";
+import { distinctStatus, metricOffersDrilldown } from "@/pages/overview-model";
 
 type ValueState = "observed" | "zero" | "missing" | "stale" | "forbidden";
 type Severity = "critical" | "urgent" | "healthy" | "information" | "unknown";
@@ -223,16 +224,16 @@ export function OverviewPage() {
             {core.map((metric) => {
               const copy = CORE_COPY[metric.id]!;
               const Icon = ICONS[metric.id] ?? Gauge;
+              const value =
+                metric.id === "operations.health"
+                  ? t(`operational.health.${snapshot.core.health.state}`)
+                  : format(metric, locale, t);
               return (
                 <FamilyKpiCard
                   key={metric.id}
                   id={metric.id}
                   label={t(copy.label)}
-                  value={
-                    metric.id === "operations.health"
-                      ? t(`operational.health.${snapshot.core.health.state}`)
-                      : format(metric, locale, t)
-                  }
+                  value={value}
                   valueRaw={metric.value}
                   valueState={metric.value_state}
                   severity={metric.severity}
@@ -240,15 +241,16 @@ export function OverviewPage() {
                   href={metric.drilldown.path}
                   linkLabel={t(copy.link)}
                   icon={<Icon className="size-4" />}
-                  status={
+                  status={distinctStatus(
+                    value,
                     metric.id === "operations.health"
                       ? t(`operational.health.${snapshot.core.health.state}` as TranslationKey)
                       : metric.id === "data.freshness"
                         ? t(
                             `operational.freshness.${snapshot.core.data_freshness.state}` as TranslationKey,
                           )
-                        : undefined
-                  }
+                        : undefined,
+                  )}
                   primary={primary(snapshot) === metric.id}
                 />
               );
@@ -344,11 +346,11 @@ function Fallback({ loading }: { loading: boolean }) {
               valueState="missing"
               severity="unknown"
               tooltip={t(copy.tooltip)}
-              href={
+              href={absolute(
                 id.startsWith("decisions.")
-                  ? `/cockpit/decisions?bucket=${id.split(".")[1]}`
-                  : "/cockpit/operations"
-              }
+                  ? decisionsHref({ bucket: id.split(".")[1] as DecisionBucket })
+                  : "/operations",
+              )}
               linkLabel={t(copy.link)}
               icon={<Icon className="size-4" />}
               status={loading ? t("operational.loading") : t("operational.unavailable")}
@@ -366,7 +368,7 @@ function Fallback({ loading }: { loading: boolean }) {
         auditLink={
           <a
             className="font-medium underline underline-offset-4"
-            href="/cockpit/audit"
+            href={absolute(auditHref())}
             data-testid="overview-audit-open"
           >
             {t("operational.audit")}

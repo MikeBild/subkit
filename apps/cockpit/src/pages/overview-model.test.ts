@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { FailureGroup } from "./overview-model";
-import { metricOffersDrilldown, partitionFailures, recentRuns } from "./overview-model";
+import {
+  distinctStatus,
+  metricOffersDrilldown,
+  partitionFailures,
+  recentRuns,
+} from "./overview-model";
 
 const group = (
   origin: FailureGroup["origin"],
@@ -150,5 +155,21 @@ describe("the way in from a number", () => {
     // collapse back into one another.
     expect(metricOffersDrilldown("executions.incidents_24h", 1)).toBe(true);
     expect(metricOffersDrilldown("executions.trial_failures_24h", 1)).toBe(false);
+  });
+});
+
+describe("distinctStatus", () => {
+  test("a status line that repeats the value is dropped", () => {
+    // "Betriebszustand: Gesund / Gesund" and "Datenstand: Aktuell / Aktuell".
+    expect(distinctStatus("Gesund", "Gesund")).toBeUndefined();
+    expect(distinctStatus("Aktuell", " Aktuell ")).toBeUndefined();
+  });
+
+  test("a status line that adds a fact stays", () => {
+    expect(distinctStatus("3 h", "Veraltet")).toBe("Veraltet");
+  });
+
+  test("no status is no status", () => {
+    expect(distinctStatus("12", undefined)).toBeUndefined();
   });
 });

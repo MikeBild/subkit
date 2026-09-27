@@ -37,10 +37,11 @@ import {
   auditActionLabel,
   auditDetailFacts,
   auditEvidenceBlocks,
+  auditFilterFromUrl,
+  auditLinkParams,
   auditResourceHref,
   auditResultKey,
   auditScopeParams,
-  auditTraceFromUrl,
   isAuditEntry,
   isAuditScope,
   resourceTypeKey,
@@ -152,18 +153,18 @@ export function AuditPage() {
   // The one link on the decisions page arrives here with the scope it means
   // (§8.5). Read from the location the way the chat reads its opening prompt —
   // this router validates no search schema, so the URL is the contract.
-  const [scope, setScope] = useState<AuditScope>(() => {
-    // Decisions by default: the page exists for what a person answered for,
-    // and the engine's housekeeping arrives fast enough to bury it.
-    const value = new URLSearchParams(window.location.search).get("scope");
-    return isAuditScope(value) ? value : "decisions";
-  });
-  const [search, setSearch] = useState("");
-  // A correlation key arrives from the surface that showed it — a run, a step,
-  // a log line — and is never typed from memory.
-  const [trace, setTrace] = useState<string | null>(() =>
-    auditTraceFromUrl(window.location.search),
+  // What a link narrowed the log to. A correlation key or a record arrives
+  // from the surface that showed it — a run, a step, a workflow's page — and
+  // is never typed from memory, so each part is a chip the reader can lift.
+  const [linked, setLinked] = useState(() => auditFilterFromUrl(window.location.search));
+  // Decisions by default: the page exists for what a person answered for, and
+  // the engine's housekeeping arrives fast enough to bury it. A link that
+  // names a record or a request means everything that happened to it, so it
+  // opens on every scope unless it says otherwise.
+  const [scope, setScope] = useState<AuditScope>(
+    () => linked.scope ?? (linked.resourceType || linked.traceId ? "all" : "decisions"),
   );
+  const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   // The row a reader opened. The table shipped an "open" label for a button it
@@ -174,7 +175,7 @@ export function AuditPage() {
   const debouncedSearch = useDebouncedValue(search);
 
   const query = useQuery({
-    queryKey: ["audit", result, scope, trace, page, cursors[page]],
+    queryKey: ["audit", result, scope, linked, page, cursors[page]],
     enabled: allowed,
     queryFn: () => {
       const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
@@ -182,9 +183,9 @@ export function AuditPage() {
       // The engine filters on `action` and takes a list, so the scope is a
       // query and not a sieve over an already-paged answer.
       for (const [key, value] of Object.entries(auditScopeParams(scope))) params.set(key, value);
-      // Narrowed to one request, server-side: the engine matches `trace_id`
-      // exactly and this is the whole point of carrying it.
-      if (trace) params.set("trace_id", trace);
+      // Narrowed server-side: the engine matches `trace_id`, `resource_type`
+      // and `resource_id` exactly, and this is the whole point of carrying them.
+      for (const [key, value] of Object.entries(auditLinkParams(linked))) params.set(key, value);
       const before = cursors[page];
       if (before) params.set("before", before);
       return apiRequest<AuditList>(`/v1/audit-log?${params}`);
@@ -286,7 +287,16 @@ export function AuditPage() {
   const selectedAction = selected ? auditActionLabel(selected.action) : null;
 
   const hasActiveFilters =
-    Boolean(debouncedSearch.trim()) || result !== "all" || scope !== "decisions" || trace !== null;
+    Boolean(debouncedSearch.trim()) ||
+    result !== "all" ||
+    scope !== "decisions" ||
+    linked.traceId !== null ||
+    linked.resourceType !== null;
+  const lift = useCallback((part: Partial<typeof linked>) => {
+    setLinked((current) => ({ ...current, ...part }));
+    setPage(0);
+    setCursors([undefined]);
+  }, []);
   const resetFilters = useCallback(() => {
     setSearch("");
     setResult("all");
@@ -294,7 +304,7 @@ export function AuditPage() {
     // A narrowing that cannot be lifted is invisible state. This one arrives
     // from a link, so without a way out a reader would be stuck on one request
     // with no sign of why the log looks almost empty.
-    setTrace(null);
+    setLinked({ resourceType: null, resourceId: null, traceId: null, scope: null });
     setPage(0);
     setCursors([undefined]);
   }, []);
@@ -310,13 +320,7 @@ export function AuditPage() {
     );
 
   return (
-    <PageFrame
-      surface="audit"
-      testId="resource-audit"
-      title={title}
-      description={t("resource.audit.description")}
-      scroll="content"
-    >
+    <PageFrame surface="audit" testId="resource-audit" title={title} scroll="content">
       <DataTable
         columns={columns}
         data={rows}
@@ -395,17 +399,25 @@ export function AuditPage() {
               </SelectContent>
             </Select>
             {/* The narrowing a link brought, said out loud and removable. */}
-            {trace ? (
+            {linked.resourceType ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="audit-resource-filter"
+                onClick={() => lift({ resourceType: null, resourceId: null })}
+              >
+                {t(linked.resourceId ? "audit.recordFilter" : "audit.resourceFilter", {
+                  resource: t(resourceTypeKey(linked.resourceType)),
+                })}
+              </Button>
+            ) : null}
+            {linked.traceId ? (
               <Button
                 variant="secondary"
                 size="sm"
                 data-testid="audit-trace-filter"
-                onClick={() => {
-                  setTrace(null);
-                  setPage(0);
-                  setCursors([undefined]);
-                }}
-                title={trace}
+                onClick={() => lift({ traceId: null })}
+                title={linked.traceId}
               >
                 {t("audit.traceFilter")}
               </Button>
@@ -439,7 +451,6 @@ export function AuditPage() {
         emptyState={{
           zero: {
             title: t("resource.audit.empty"),
-            description: t("resource.emptyDescription"),
           },
           filtered: {
             title: t("resource.noMatches"),

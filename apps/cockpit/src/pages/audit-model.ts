@@ -1,4 +1,6 @@
 import type { components } from "@/api/schema";
+import { absolute, conversationHref, identifierParam, recordHref, runHref } from "@/app/links";
+import type { CatalogResource } from "@/app/route-table";
 import type { TranslationKey } from "@/lib/i18n";
 
 type AuditEntry = components["schemas"]["AuditEntry"];
@@ -27,7 +29,7 @@ type FormatDateTime = (value: string | Date) => string;
  * this function exists to keep. Appending the id anyway would build
  * `/people/<id>`: an address no route matches.
  */
-const RESOURCE_ROUTES: Record<string, string> = {
+const RESOURCE_ROUTES: Record<string, CatalogResource | "chat" | "runs"> = {
   workflow: "workflows",
   connector: "connectors",
   knowledge_source: "knowledge",
@@ -48,7 +50,14 @@ export const LINKED_RESOURCE_TYPES: readonly string[] = Object.keys(RESOURCE_ROU
 export function auditResourceHref(resourceType: string, resourceId: string | null): string | null {
   if (!resourceId) return null;
   const route = RESOURCE_ROUTES[resourceType];
-  return route ? `/cockpit/${route}/${encodeURIComponent(resourceId)}` : null;
+  if (!route) return null;
+  return absolute(
+    route === "chat"
+      ? conversationHref(resourceId)
+      : route === "runs"
+        ? runHref(resourceId)
+        : recordHref(route, resourceId),
+  );
 }
 
 const ACTOR_KEYS: Record<string, TranslationKey> = {
@@ -370,6 +379,46 @@ export function auditTraceFromUrl(search: string): string | null {
   // log rather than a bad query.
   if (!raw || raw.length > 128 || !/^[\w-]+$/.test(raw)) return null;
   return raw;
+}
+
+/**
+ * Everything a link can narrow the log to, read back from its address.
+ *
+ * The trace was the only narrowing a link could carry, so a record's own page
+ * could say "what happened to this workflow" only by sending the reader to the
+ * whole log. The engine filters by `resource_type` and `resource_id` as
+ * exactly as by `trace_id`; `auditHref` in app/links.ts writes all four and
+ * this reads them. Each is bounded like the trace and dropped when it could
+ * not be one, for the same reason: an exact match on junk reads as an empty
+ * log rather than a bad link. A resource id without its type narrows nothing
+ * — the id alone names no record.
+ */
+export interface AuditLinkFilter {
+  resourceType: string | null;
+  resourceId: string | null;
+  traceId: string | null;
+  scope: AuditScope | null;
+}
+
+export function auditFilterFromUrl(search: string): AuditLinkFilter {
+  const params = new URLSearchParams(search);
+  const resourceType = identifierParam(params, "resource_type");
+  const scope = params.get("scope");
+  return {
+    resourceType,
+    resourceId: resourceType ? identifierParam(params, "resource_id") : null,
+    traceId: auditTraceFromUrl(search),
+    scope: isAuditScope(scope) ? scope : null,
+  };
+}
+
+/** The engine's own parameters for the narrowing a link brought. */
+export function auditLinkParams(filter: AuditLinkFilter): Record<string, string> {
+  const params: Record<string, string> = {};
+  if (filter.resourceType) params.resource_type = filter.resourceType;
+  if (filter.resourceId) params.resource_id = filter.resourceId;
+  if (filter.traceId) params.trace_id = filter.traceId;
+  return params;
 }
 
 /**

@@ -1,3 +1,4 @@
+import { connectorHref, conversationHref, runHref, workflowHref } from "@/app/links";
 import type { Relation } from "@/components/cockpit/table-columns";
 import type { TranslationKey } from "@/lib/i18n";
 import type { NameIndex } from "@/lib/name-index";
@@ -38,15 +39,14 @@ function href(
   id: string | null,
 ): string | null {
   if (!id) return null;
-  if (kind === "workflow") return `/workflows/${encodeURIComponent(id)}`;
-  if (kind === "connector") return `/connectors/${encodeURIComponent(id)}`;
-  if (kind === "conversation") return `/chat/${encodeURIComponent(id)}`;
+  if (kind === "workflow") return workflowHref(id);
+  if (kind === "connector") return connectorHref(id);
+  if (kind === "conversation") return conversationHref(id);
   // A run has its own address now. This said "runs have no detail route; the
   // list is the honest destination", which was true when written and is the
   // reason the route was built: a decision that names the run which failed
   // could point at the list and no further. It points at the run.
-  if (kind === "run") return `/runs/${encodeURIComponent(id)}`;
-  return "/runs";
+  return runHref(id);
 }
 
 /** The shape `patchDecision` reads out of a candidate's `diff` blob. */

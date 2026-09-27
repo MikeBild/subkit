@@ -14,6 +14,8 @@
 // This turns those groups into the decisions they are, and keeps out the ones
 // that are not: an authoring trial that failed is feedback, not an incident.
 
+import { runsHref } from "@/app/links";
+
 export interface DigestFailureGroup {
   signature: string;
   workflow_id: string | null;
@@ -100,9 +102,17 @@ export function failingWorkflows(
       // (`isKnownRequestSource` in pages/runs-model.ts), and `scheduler` is
       // one it knows. It goes on the unnamed branch too: a group with no
       // workflow name is the one where an unfiltered list explains least.
-      runs_href: group.workflow_name
-        ? `/runs?status=failed&source=scheduler&q=${encodeURIComponent(group.workflow_name)}`
-        : "/runs?status=failed&source=scheduler",
+      //
+      // `workflow_id` where the group knows it: a name search also matches
+      // every workflow whose name merely contains this one's, and a renamed
+      // workflow not at all. The name stays beside it because the search box
+      // is what tells the reader, in words, which workflow the list is about.
+      runs_href: runsHref({
+        workflowId: group.workflow_id,
+        status: "failed",
+        source: "scheduler",
+        q: group.workflow_name,
+      }),
     }))
     .sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : 1));
 }
