@@ -16,7 +16,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { getConfig } from "../../../config/loader.ts";
 import { executions, externalCallMetering, llmUsage } from "../../../db/schema/index.ts";
-import { priceCalls } from "../../../llm/pricing.ts";
+import { priceCalls } from "../../../llm/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
