@@ -212,10 +212,19 @@ jobs:
   konvention:
     name: cockpit convention
     runs-on: ubuntu-24.04
-    # ~3x the observed local runtime (28 s for 27 routes in the convention
-    # check, ~3 min for the 296-frame visual sweep) plus the browser install
-    # and a cold bun cache.
-    timeout-minutes: 25
+    # Measured on this runner, not derived from a local number: three
+    # consecutive green runs of this job took 23 minutes each, against a cap of
+    # 25. The old figure behind that cap — "~3 min for the 296-frame visual
+    # sweep" — described a sweep that no longer exists; it writes roughly 800
+    # frames now, and each route added costs six stands. A two-minute margin
+    # means the next honest addition to the sweep fails as a timeout, which
+    # reads like a hang and is only growth.
+    #
+    # 40 is ~1.7x the measured runtime: still short enough that a genuinely
+    # stuck browser fails the job rather than burning the budget, and wide
+    # enough that adding a route is a decision about coverage rather than
+    # about the clock.
+    timeout-minutes: 40
     env:
       TZ: UTC
       LANG: C.UTF-8
