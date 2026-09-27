@@ -1160,6 +1160,43 @@ async function mockApi(route) {
   // group consumed nothing, so the share column must show a dash and not
   // "0 %"; and one workflow name is long enough to test the truncation that
   // a tidy fixture would never reach.
+  // A run's own consumption. Awkward on purpose: a cache share that is not a
+  // round number, and a metered external cost small enough to need four
+  // decimals — a tidy fixture would photograph neither.
+  if (/^\/v1\/executions\/[^/]+\/cost$/.test(path)) {
+    return json(route, {
+      llm: {
+        calls: 7,
+        weighted_tokens: 58_472,
+        prompt_tokens: 61_400,
+        completion_tokens: 812,
+        cache_read_tokens: 38_100,
+        cache_read_pct: 0.62,
+        latency_ms: 14_300,
+        by_flow: [
+          {
+            flow: "converse",
+            calls: 5,
+            weighted_tokens: 51_000,
+            prompt_tokens: 54_000,
+            completion_tokens: 700,
+            cache_read_tokens: 35_000,
+            latency_ms: 11_000,
+          },
+          {
+            flow: "judge",
+            calls: 2,
+            weighted_tokens: 7_472,
+            prompt_tokens: 7_400,
+            completion_tokens: 112,
+            cache_read_tokens: 3_100,
+            latency_ms: 3_300,
+          },
+        ],
+      },
+      external: { calls: 3, cost_usd: 0.1834, units: 3, latency_ms: 900 },
+    });
+  }
   if (path === "/v1/status") {
     return json(route, {
       tokens_today: 1_240_000,

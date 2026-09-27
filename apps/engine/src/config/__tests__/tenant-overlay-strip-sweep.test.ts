@@ -75,7 +75,17 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
       // 30 covers a representative sample across every section; full
       // sweep would just be a slow restate of the same code path.
       try {
-        await setConfigKey(leaf.path, leaf.kind === "boolean" ? true : "x", {
+        // A structural leaf is written as one whole value; "x" is a type error
+        // for it, not a narrow value. The sweep used to hand every leaf a string
+        // because `auth.providers` — the only json leaf at the time — is global
+        // and never reached this tenant-scoped loop.
+        const probe =
+          leaf.kind === "boolean"
+            ? true
+            : leaf.kind === "json"
+              ? structuralProbe(dottedPath(leaf))
+              : "x";
+        await setConfigKey(leaf.path, probe, {
           tenantId: "tenant-x",
           force: true,
         });
@@ -147,6 +157,10 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
         case "string-array":
           value = [`tenant-${salt++}`];
           break;
+        case "json":
+          // Whole-value leaf: a generated string is a type error for it.
+          value = structuralProbe(dotted);
+          break;
         default:
           value = `tenant-${salt++}`;
       }
@@ -187,3 +201,33 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
     expect(getConfig().llm.provider).toBe("mock");
   });
 });
+
+/**
+ * A valid whole value for a structural leaf, by path.
+ *
+ * Structural leaves are validated atomically, so a generic probe cannot stand
+ * in for one. Adding a structural leaf without adding its probe fails here
+ * with a sentence rather than a type error nobody can place.
+ */
+function structuralProbe(dotted: string): unknown {
+  const probes: Record<string, unknown> = {
+    "auth.providers": [{ protocol: "api_key", id: "api-key", label: "SubKit API key" }],
+    "tokens.prices": [
+      {
+        model: "model-probe",
+        input_per_mtok: 3,
+        output_per_mtok: 15,
+        cache_read_per_mtok: 0.3,
+        cache_write_per_mtok: 3.75,
+      },
+    ],
+  };
+  const probe = probes[dotted];
+  if (probe === undefined) {
+    throw new Error(
+      `no structural probe for "${dotted}". Add one to \`probes\` in this file — a structural ` +
+        "leaf is written as one whole value and cannot be probed with a scalar.",
+    );
+  }
+  return probe;
+}

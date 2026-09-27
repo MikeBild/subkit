@@ -135,19 +135,47 @@ function valueFor(leaf: ConfigLeaf, salt: number): unknown {
       return [tag];
     case "string-array":
       return [tag];
-    case "json":
-      return [
-        { protocol: "api_key", id: "api-key", label: "SubKit API key" },
-        {
-          protocol: "oidc",
-          id: `oidc-${salt}`,
-          label: "Public OIDC",
-          issuer_url: "https://identity.example.test",
-          client_id: `client-${salt}`,
-          scopes: "openid profile email",
-          tenant_slug: "default",
-        },
-      ];
+    case "json": {
+      // A structural leaf is validated as one whole value, so its sample has
+      // to have that leaf's shape. This used to return the auth-provider list
+      // unconditionally — correct while `auth.providers` was the only json
+      // leaf in the schema, and silently wrong for the second one, which got
+      // handed an array of OIDC providers and failed as "expected array,
+      // received ...". A new structural leaf now fails with an instruction
+      // rather than a puzzle.
+      const samples: Record<string, unknown> = {
+        "auth.providers": [
+          { protocol: "api_key", id: "api-key", label: "SubKit API key" },
+          {
+            protocol: "oidc",
+            id: `oidc-${salt}`,
+            label: "Public OIDC",
+            issuer_url: "https://identity.example.test",
+            client_id: `client-${salt}`,
+            scopes: "openid profile email",
+            tenant_slug: "default",
+          },
+        ],
+        "tokens.prices": [
+          {
+            model: `model-${salt}`,
+            input_per_mtok: 3,
+            output_per_mtok: 15,
+            cache_read_per_mtok: 0.3,
+            cache_write_per_mtok: 3.75,
+          },
+        ],
+      };
+      const dotted = dottedPath(leaf);
+      const sample = samples[dotted];
+      if (sample === undefined) {
+        throw new Error(
+          `no sample value for structural leaf "${dotted}". Add one to \`samples\` in this file — ` +
+            "a structural leaf is written as one whole value and cannot be synthesised generically.",
+        );
+      }
+      return sample;
+    }
     default:
       return tag;
   }
