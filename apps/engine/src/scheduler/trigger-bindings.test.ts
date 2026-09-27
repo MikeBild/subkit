@@ -26,7 +26,7 @@ const row = (over: Partial<WorkflowScheduleBinding> = {}): WorkflowScheduleBindi
 });
 
 const HELD = {
-  reason_code: "execution_authority_unavailable",
+  reason_code: "execution_authority_unavailable" as const,
   observed_at: "2026-01-01T00:00:00.000Z",
 };
 const DEF_SCHEDULE: WorkflowTrigger = { kind: "schedule", cron: "0 6 * * *", tz: "UTC" };

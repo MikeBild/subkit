@@ -6,8 +6,7 @@
 import { z } from "@hono/zod-openapi";
 import { paginatedResponse } from "../../../api/common-schemas.ts";
 import type { executionSteps, executions } from "../../../db/schema/index.ts";
-import { PREVIEW_CLASSIFICATIONS } from "../../../execution/classify.ts";
-import { RequestMetaSchema } from "../../../execution/index.ts";
+import { PREVIEW_CLASSIFICATIONS, RequestMetaSchema } from "../../../execution/index.ts";
 import { ResponseFilterSchema, StepSchema, WorkflowDefSchema } from "../../../workflows/index.ts";
 
 export const ExecSchema = z
