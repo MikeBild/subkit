@@ -78,11 +78,57 @@ export function resourceTypeKey(resourceType: string): TranslationKey {
  * value, the naming and the filter belong IN the log, not the sections back in
  * the queue.
  *
- * The map is deliberately partial. An action nobody has named yet renders as
- * the engine's own string rather than as "Unbekannt": a raw verb is worse than
- * a German one and far better than a word that claims the log recorded nothing.
+ * The map is deliberately partial, and what happens to the rest matters as
+ * much as the map. An action nobody has named yet renders as the engine's own
+ * string, marked as a machine value — a raw verb is worse than a German one
+ * and far better than a word that claims the log recorded nothing.
+ *
+ * It did the latter for a long time. The fallback resolved to
+ * `audit.action.other`, which reads "Weiterer Vorgang" — semantically the
+ * banned "Unbekannt" — while this very comment promised the opposite. On a
+ * production installation two of the ten visible rows said it, and the
+ * paragraph above described behaviour the code did not have.
  */
 const ACTION_KEYS: Record<string, TranslationKey> = {
+  "approval.requested": "audit.action.approvalRequested",
+  "approval.granted": "audit.action.approvalGranted",
+  "approval.approved": "audit.action.approvalApproved",
+  "approval.rejected": "audit.action.approvalRejected",
+  "approval.declined": "audit.action.approvalDeclined",
+  "approval.grant_abandoned": "audit.action.approvalAbandoned",
+  "approval.dispatch_denied": "audit.action.approvalDispatchDenied",
+  "workflow.authority_granted": "audit.action.authorityGranted",
+  "workflow.authority_revoked": "audit.action.authorityRevoked",
+  "policy.denied": "audit.action.policyDenied",
+  "execution.boundary_refused": "audit.action.boundaryRefused",
+  "rbac.role_created": "audit.action.roleCreated",
+  "rbac.role_deleted": "audit.action.roleDeleted",
+  "rbac.permission_granted": "audit.action.permissionGranted",
+  "rbac.permission_revoked": "audit.action.permissionRevoked",
+  "rbac.user_role_assigned": "audit.action.userRoleAssigned",
+  "rbac.user_role_revoked": "audit.action.userRoleRevoked",
+  "user.created": "audit.action.userCreated",
+  "user.deleted": "audit.action.userDeleted",
+  "user.role_changed": "audit.action.userRoleChanged",
+  "user.invited": "audit.action.userInvited",
+  "api_key.issued": "audit.action.apiKeyIssued",
+  "api_key.revoked": "audit.action.apiKeyRevoked",
+  "api_key.rotated": "audit.action.apiKeyRotated",
+  "session.revoked": "audit.action.sessionRevoked",
+  "auth.login_failed": "audit.action.loginFailed",
+  "schedule.created": "audit.action.scheduleCreated",
+  "schedule.updated": "audit.action.scheduleUpdated",
+  "schedule.deleted": "audit.action.scheduleDeleted",
+  "workflow.deleted": "audit.action.workflowDeleted",
+  "workflow.version_restored": "audit.action.workflowRestored",
+  "connector.created": "audit.action.connectorCreated",
+  "connector.updated": "audit.action.connectorUpdated",
+  "connector.deleted": "audit.action.connectorDeleted",
+  "secret.version_created": "audit.action.secretCreated",
+  "secret.version_revoked": "audit.action.secretRevoked",
+  external_write: "audit.action.externalWrite",
+  "execution.aborted": "audit.action.executionAborted",
+  "self_healing.scan.completed": "audit.action.healingScanCompleted",
   "patch_candidate.approved": "audit.action.patchApproved",
   "patch_candidate.rejected": "audit.action.patchRejected",
   "patch_candidate.proposed": "audit.action.patchProposed",
@@ -99,7 +145,6 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   // A dispatch the runtime stopped because it was outside what a person
   // approved. It reads as its own line, not as "other": a trail that lists its
   // permissions and not its refusals cannot answer whether the limit held.
-  "execution.boundary_refused": "audit.action.boundaryRefused",
   // Written on the edge only — a schedule that starts being held, or one whose
   // hold clears. Which of the two it is, is the row's own denied/allowed, so
   // one line covers both directions without the list growing a second entry.
@@ -136,8 +181,26 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "secret.version_rejected": "audit.action.secretRejected",
 };
 
-export function auditActionKey(action: string): TranslationKey {
-  return ACTION_KEYS[action] ?? "audit.action.other";
+/**
+ * How a row's verb should read.
+ *
+ * Two shapes, because the caller must be able to tell them apart: a named
+ * action is prose, an unnamed one is the engine's own token and has to LOOK
+ * like one (§15.2 — the machine value, recognisably as such). Returning a
+ * translation key for both is what let the fallback masquerade as a name.
+ */
+export type AuditActionLabel =
+  | { kind: "named"; key: TranslationKey }
+  | { kind: "machine"; value: string };
+
+export function auditActionLabel(action: string): AuditActionLabel {
+  const key = ACTION_KEYS[action];
+  return key ? { kind: "named", key } : { kind: "machine", value: action };
+}
+
+/** How many of the engine's verbs this build can name. Read by the coverage guard. */
+export function namedActionCount(): number {
+  return Object.keys(ACTION_KEYS).length;
 }
 
 /**
