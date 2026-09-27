@@ -86,6 +86,7 @@ describe("cockpit i18n", () => {
       "applied",
       "rejected",
       "superseded",
+      "inapplicable",
       "approved",
       // workflow and skill lifecycle
       "draft",
