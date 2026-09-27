@@ -7374,6 +7374,8 @@ export interface paths {
                     environment?: "dev" | "prod";
                     enabled?: "true" | "false";
                     health_state?: "ok" | "degraded" | "needs_reauth" | "needs_update" | "needs_attention";
+                    /** @description `not_ok`: only the connectors that count against the connector-health ratio of the operational overview — enabled and any health state but `ok`. `total` and paging apply to the narrowed list; combined with `enabled=false` the list is empty. */
+                    health?: "not_ok";
                     q?: string;
                     sort?: "name" | "driver" | "environment" | "enabled" | "updated_at";
                     order?: "asc" | "desc";

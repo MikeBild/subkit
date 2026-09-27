@@ -25,28 +25,13 @@ export function workflowsByConnector(
   return byConnector;
 }
 
-/** The one narrowing a link can put on the connector list: `?health=not_ok`. */
+/**
+ * The one narrowing a link can put on the connector list: `?health=not_ok`.
+ * The engine answers it (`GET /v1/connectors?health=not_ok`) with the predicate
+ * the connector-health ratio counts against; this page only carries it.
+ */
 export type ConnectorHealthFilter = "not_ok";
 
 export function connectorHealthFilterFromUrl(search: string): ConnectorHealthFilter | null {
   return new URLSearchParams(search).get("health") === "not_ok" ? "not_ok" : null;
-}
-
-/**
- * Whether a connector counts against the installation's health.
- *
- * The engine's own predicate, not a second opinion: the connector-health ratio
- * divides the healthy by every ENABLED connector, and "healthy" is
- * `health_state = 'ok'` (operator/operational-overview.ts). So the list a red
- * connector tile opens is exactly the complement of that numerator — enabled
- * and anything but `ok`. A disabled connector is not in the ratio at all, and
- * `needs_reauth` is not consulted on its own: the engine writes the same fact
- * into `health_state`, and reading both could list a connector the ratio does
- * not count.
- */
-export function connectorNeedsAttention(connector: {
-  enabled?: unknown;
-  health_state?: unknown;
-}): boolean {
-  return connector.enabled === true && connector.health_state !== "ok";
 }

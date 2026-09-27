@@ -1113,10 +1113,13 @@ async function mockApi(route) {
         created_at: conversation.updated_at,
       };
     };
+    // `health=not_ok` is answered by the engine (enabled and not ok), with a
+    // total of the narrowed list — the mock does the same.
+    const narrowed = path === "/v1/connectors" && url.searchParams.get("health") === "not_ok";
     const items = Array.from({ length: 42 }, (_, index) => ({
       ...rowFor(index),
       id: index === 0 ? uuid : `catalog-record-${index}`,
-    }));
+    })).filter((row) => !narrowed || (row.enabled === true && row.health_state !== "ok"));
     const categories =
       path === "/v1/workflows" || path === "/v1/connectors"
         ? [

@@ -1,4 +1,8 @@
-import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
+import {
+  connectorCountsAgainstHealth,
+  connectorCountsTowardHealth,
+} from "../connectors/health-ratio.ts";
 import type { Db } from "../db/client.ts";
 import { connectors, selfHealingScans, tenants } from "../db/schema/index.ts";
 import { getMetrics } from "../observability/index.ts";
@@ -165,7 +169,7 @@ interface SnapshotRow extends Record<string, unknown> {
   production_failures_24h: string | number;
   trial_failures_24h: string | number;
   connectors_total: string | number;
-  connectors_healthy: string | number;
+  connectors_not_ok: string | number;
   repairs_applied: string | number;
   repairs_decided: string | number;
   skills_total: string | number;
@@ -269,8 +273,8 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       (SELECT count(*) FROM finished WHERE status = 'succeeded') AS execution_success_24h,
       (SELECT count(*) FROM finished WHERE status IN ('failed', 'timed_out') AND source_kind = 'saved' AND request_source = 'scheduler') AS production_failures_24h,
       (SELECT count(*) FROM finished WHERE status IN ('failed', 'timed_out') AND (source_kind IN ('draft', 'step') OR request_source <> 'scheduler')) AS trial_failures_24h,
-      (SELECT count(*) FROM connectors WHERE tenant_id = ${tenantId} AND enabled = TRUE AND deleted_at IS NULL) AS connectors_total,
-      (SELECT count(*) FROM connectors WHERE tenant_id = ${tenantId} AND enabled = TRUE AND deleted_at IS NULL AND health_state = 'ok') AS connectors_healthy,
+      (SELECT count(*) FROM connectors WHERE tenant_id = ${tenantId} AND ${connectorCountsTowardHealth()}) AS connectors_total,
+      (SELECT count(*) FROM connectors WHERE tenant_id = ${tenantId} AND ${connectorCountsAgainstHealth()}) AS connectors_not_ok,
       (SELECT count(*) FROM patch_candidates WHERE tenant_id = ${tenantId} AND status = 'applied') AS repairs_applied,
       (SELECT count(*) FROM patch_candidates WHERE tenant_id = ${tenantId} AND status IN ('applied', 'rejected', 'superseded')) AS repairs_decided,
       (SELECT count(*) FROM skills WHERE tenant_id = ${tenantId}) AS skills_total,
@@ -285,7 +289,9 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
   const executions = numberOf(row.execution_total_24h);
   const successes = numberOf(row.execution_success_24h);
   const connectors = numberOf(row.connectors_total);
-  const healthyConnectors = numberOf(row.connectors_healthy);
+  // The numerator is the complement of `GET /v1/connectors?health=not_ok`:
+  // one predicate, so the list a red tile opens holds exactly what it counted.
+  const healthyConnectors = connectors - numberOf(row.connectors_not_ok);
   const successRatio = executions > 0 ? successes / executions : null;
   const connectorRatio = connectors > 0 ? healthyConnectors / connectors : null;
   const repairsDecided = numberOf(row.repairs_decided);
@@ -744,14 +750,7 @@ async function readHealthCauses(
         health_state: connectors.health_state,
       })
       .from(connectors)
-      .where(
-        and(
-          eq(connectors.tenant_id, tenantId),
-          eq(connectors.enabled, true),
-          isNull(connectors.deleted_at),
-          ne(connectors.health_state, "ok"),
-        ),
-      )
+      .where(and(eq(connectors.tenant_id, tenantId), connectorCountsAgainstHealth()))
       .orderBy(connectors.display_name, connectors.id)
       .limit(MAX_HEALTH_CAUSES);
     for (const row of unhealthy) {
