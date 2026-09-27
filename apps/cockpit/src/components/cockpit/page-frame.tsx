@@ -9,6 +9,15 @@ import { cn } from "@/lib/utils";
  * explaining sentence behind a help icon. The description is a visible
  * paragraph here — a page description is what the page is *for* (CUI-WORDS-1),
  * and a sentence nobody can see without hovering is not a description.
+ *
+ * It is opt-in. Where the title already says what the page is for — "Workflows",
+ * "Einstellungen", "Audit" — a sentence under it restated the title in more
+ * words and pushed the list down by a line on every visit. A page passes one
+ * only where the title alone does not say what the page is for.
+ *
+ * `action` is the list's primary action, and a list that is empty carries it in
+ * its own empty state instead. A caller hands it here only when there are rows,
+ * so the same button never stands twice on one screen.
  */
 export function PageFrame({
   testId,

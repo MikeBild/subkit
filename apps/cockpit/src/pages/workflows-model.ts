@@ -1,4 +1,5 @@
 import type { components } from "@/api/schema";
+import { absolute, connectorHref } from "@/app/links";
 import type { TranslationKey } from "@/lib/i18n";
 
 type WorkflowTrigger = components["schemas"]["WorkflowTrigger"];
@@ -11,9 +12,12 @@ type WorkflowTrigger = components["schemas"]["WorkflowTrigger"];
  * A slug the map does not know renders as plain text. A link to nowhere is
  * worse than a word.
  */
-export function connectorHref(slug: string, slugToId: ReadonlyMap<string, string>): string | null {
+export function connectorSlugHref(
+  slug: string,
+  slugToId: ReadonlyMap<string, string>,
+): string | null {
   const id = slugToId.get(slug);
-  return id ? `/cockpit/connectors/${encodeURIComponent(id)}` : null;
+  return id ? absolute(connectorHref(id)) : null;
 }
 
 const ON_REQUEST: TranslationKey = "workflows.trigger.request";

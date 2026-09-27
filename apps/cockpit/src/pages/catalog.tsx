@@ -5,6 +5,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
+import {
+  absolute,
+  chatNewHref,
+  connectorHref,
+  recordHref,
+  workflowHref,
+  workflowsHref,
+} from "@/app/links";
 import { type CockpitColumn, DataTable } from "@/components/cockpit/data-table";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
@@ -42,7 +50,7 @@ import {
   UNCATEGORIZED,
 } from "@/lib/workflow-category";
 import { workflowsByConnector } from "@/pages/connectors-model";
-import { connectorHref, triggerLabelKey } from "@/pages/workflows-model";
+import { connectorSlugHref, triggerLabelKey } from "@/pages/workflows-model";
 
 type CatalogResource = "workflows" | "connectors" | "knowledge" | "skills" | "files";
 type CatalogRow = Record<string, unknown>;
@@ -71,7 +79,12 @@ interface CatalogConfig {
   endpoint: string;
   permission: string;
   titleKey: TranslationKey;
-  descriptionKey: TranslationKey;
+  /**
+   * Only where the title does not say what the list is for. "Konnektoren"
+   * next to "Anbindungen" needs the sentence that tells them apart, and
+   * "Skills" says nothing on its own; "Workflows", "Wissen" and "Dateien" do.
+   */
+  descriptionKey?: TranslationKey;
   emptyKey: TranslationKey;
   actionKey?: TranslationKey;
   defaultSort: string;
@@ -83,7 +96,6 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     endpoint: "/v1/workflows",
     permission: "workflow:read",
     titleKey: "resource.workflows.title",
-    descriptionKey: "resource.workflows.description",
     emptyKey: "resource.workflows.empty",
     actionKey: "resource.workflows.action",
     defaultSort: "updated_at",
@@ -103,7 +115,6 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     endpoint: "/v1/knowledge-sources",
     permission: "knowledge:read",
     titleKey: "resource.knowledge.title",
-    descriptionKey: "resource.knowledge.description",
     emptyKey: "resource.knowledge.empty",
     actionKey: "resource.knowledge.action",
     defaultSort: "updated_at",
@@ -123,7 +134,6 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     endpoint: "/v1/files",
     permission: "file:read",
     titleKey: "resource.files.title",
-    descriptionKey: "resource.files.description",
     emptyKey: "resource.files.empty",
     defaultSort: "created_at",
     statuses: ["pending", "uploading", "scanning", "ready", "failed", "expired"],
@@ -287,7 +297,7 @@ function catalogColumns(
         "connectors",
         (row) =>
           stringList(row, "connectors").map((slug) => ({
-            href: connectorHref(slug, relations.connectorIdBySlug),
+            href: connectorSlugHref(slug, relations.connectorIdBySlug),
             label: slug,
           })),
         t("resource.connectors.title"),
@@ -312,21 +322,13 @@ function catalogColumns(
 
   if (resource === "connectors") {
     const columns: CockpitColumn<CatalogRow>[] = [
-      column.link(
-        "name",
-        (row): Relation | null => {
-          const name = stringField(row, "display_name");
-          const id = stringField(row, "id");
-          return name
-            ? {
-                href: id ? `/cockpit/connectors/${encodeURIComponent(id)}` : null,
-                label: name,
-              }
-            : null;
-        },
-        t("common.name"),
-        { sortable: true, width: "w-[20%]" },
-      ),
+      // The name is text. It was a link to the very record the row click and
+      // the row's open button already open — three ways to one place, and the
+      // one styled as a link looked like it led somewhere else.
+      column.text("name", (row) => row.display_name, t("common.name"), {
+        sortable: true,
+        width: "w-[20%]",
+      }),
       column.custom(
         "auth",
         (row) => row.health_state,
@@ -367,7 +369,7 @@ function catalogColumns(
             const users = relations.workflowsByConnectorSlug.get(slug) ?? [];
             if (users.length === 0) return null;
             return {
-              href: `/cockpit/workflows?connector=${encodeURIComponent(slug)}`,
+              href: absolute(workflowsHref({ connector: slug })),
               label: t("connectors.usedByCount", { count: users.length }),
             };
           },
@@ -397,10 +399,7 @@ function catalogColumns(
           const workflowId = stringField(row, "workflow_id");
           const key = SCOPE_KEYS[scope];
           return {
-            href:
-              scope === "workflow" && workflowId
-                ? `/cockpit/workflows/${encodeURIComponent(workflowId)}`
-                : null,
+            href: scope === "workflow" && workflowId ? absolute(workflowHref(workflowId)) : null,
             label: key ? t(key) : scope,
           };
         },
@@ -444,9 +443,9 @@ function catalogColumns(
           const workflowId = stringField(row, "workflow_id");
           const href =
             scope === "connector" && connectorId
-              ? `/cockpit/connectors/${encodeURIComponent(connectorId)}`
+              ? absolute(connectorHref(connectorId))
               : scope === "workflow" && workflowId
-                ? `/cockpit/workflows/${encodeURIComponent(workflowId)}`
+                ? absolute(workflowHref(workflowId))
                 : null;
           const key = SCOPE_KEYS[scope];
           return { href, label: key ? t(key) : scope };
@@ -489,21 +488,11 @@ function catalogColumns(
   }
 
   return [
-    column.link(
-      "filename",
-      (row): Relation | null => {
-        const filename = stringField(row, "filename");
-        const id = stringField(row, "id");
-        return filename
-          ? {
-              href: id ? `/cockpit/files/${encodeURIComponent(id)}` : null,
-              label: filename,
-            }
-          : null;
-      },
-      t("catalog.filename"),
-      { sortable: true, width: "w-[27%]" },
-    ),
+    // Text, like the connector name: the row already opens this record.
+    column.text("filename", (row) => row.filename, t("catalog.filename"), {
+      sortable: true,
+      width: "w-[27%]",
+    }),
     column.status("status", (row) => row.status, t("resource.field.status"), {
       sortable: true,
       width: "w-[13%]",
@@ -669,25 +658,26 @@ export function CatalogPage({
     );
   }
 
-  const primaryAction = config.actionKey ? (
-    <Button asChild>
-      <a
-        href={`/cockpit/chat/new?prompt=${encodeURIComponent(t(config.actionKey))}`}
-        data-testid="catalog-primary-action"
-      >
-        <Bot data-icon="inline-start" />
-        {t(config.actionKey)}
-      </a>
-    </Button>
-  ) : undefined;
+  // One action, one place. With rows it heads the page; with none it stands in
+  // the empty state, where the reader is looking — it used to stand in both,
+  // the same button twice on one screen.
+  const primaryAction = (testId: string) =>
+    config.actionKey ? (
+      <Button asChild size={testId === "catalog-empty-action" ? "sm" : "default"}>
+        <a href={absolute(chatNewHref({ prompt: t(config.actionKey) }))} data-testid={testId}>
+          <Bot data-icon="inline-start" />
+          {t(config.actionKey)}
+        </a>
+      </Button>
+    ) : undefined;
 
   return (
     <PageFrame
       surface="collection"
       testId={`catalog-${resource}`}
       title={title}
-      description={t(config.descriptionKey)}
-      action={primaryAction}
+      {...(config.descriptionKey ? { description: t(config.descriptionKey) } : {})}
+      action={rows.length > 0 ? primaryAction("catalog-primary-action") : undefined}
       scroll="content"
     >
       <DataTable
@@ -791,18 +781,7 @@ export function CatalogPage({
         emptyState={{
           zero: {
             title: t(config.emptyKey),
-            description: t("resource.emptyDescription"),
-            action: config.actionKey ? (
-              <Button asChild variant="outline" size="sm">
-                <a
-                  href={`/cockpit/chat/new?prompt=${encodeURIComponent(t(config.actionKey))}`}
-                  data-testid="catalog-empty-action"
-                >
-                  <Bot data-icon="inline-start" />
-                  {t(config.actionKey)}
-                </a>
-              </Button>
-            ) : undefined,
+            action: primaryAction("catalog-empty-action"),
           },
           filtered: {
             title: t("resource.noMatches"),
@@ -824,7 +803,7 @@ export function CatalogPage({
         }}
         onOpen={(row) => {
           const id = row.id;
-          if (typeof id === "string") window.location.assign(`/cockpit/${resource}/${id}`);
+          if (typeof id === "string") window.location.assign(absolute(recordHref(resource, id)));
         }}
         {...(canRecategorize
           ? {
