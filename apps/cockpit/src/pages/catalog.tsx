@@ -49,10 +49,10 @@ import {
   recategorizedSlug,
   UNCATEGORIZED,
 } from "@/lib/workflow-category";
+import { catalogListParams } from "@/pages/catalog-model";
 import {
   type ConnectorHealthFilter,
   connectorHealthFilterFromUrl,
-  connectorNeedsAttention,
   workflowsByConnector,
 } from "@/pages/connectors-model";
 import { connectorSlugHref, triggerLabelKey } from "@/pages/workflows-model";
@@ -551,47 +551,14 @@ export function CatalogPage({
   const query = useQuery({
     queryKey: ["catalog", resource, state],
     enabled: permissions.includes(config.permission),
-    queryFn: async () => {
-      // The engine filters `health_state` by one value and has no "anything
-      // but ok", so this narrowing reads the enabled connectors once and pages
-      // them here. Paging first and filtering after would hand out short pages
-      // and a total that counts rows the list then hides.
-      const byHealth = resource === "connectors" && state.health === "not_ok";
-      const params = new URLSearchParams({
-        limit: String(byHealth ? RELATION_INDEX_LIMIT : PAGE_SIZE),
-        offset: String(byHealth ? 0 : state.page * PAGE_SIZE),
-        sort: state.sort,
-        order: state.order,
-      });
-      if (byHealth) params.set("enabled", "true");
-      if (state.q) params.set("q", state.q);
-      if (state.category !== "all") params.set("category", state.category);
-      if (resource === "workflows" && state.connector) params.set("connector", state.connector);
-      if (resource === "files" && state.linkedTo) params.set("linked_to", state.linkedTo);
-      if (state.status !== "all") {
-        if (resource === "connectors") {
-          if (state.status === "enabled" || state.status === "disabled") {
-            params.set("enabled", String(state.status === "enabled"));
-          } else {
-            params.set("health_state", state.status);
-          }
-        } else {
-          params.set("status", state.status);
-        }
-      }
-      const answer = await apiRequest<{
+    // Every narrowing, `health=not_ok` included, is the engine's — so the
+    // total and the pages describe the narrowed list (catalog-model.ts).
+    queryFn: () =>
+      apiRequest<{
         items: CatalogRow[];
         total?: number;
         categories?: CategoryCount[];
-      }>(`${config.endpoint}?${params}`);
-      if (!byHealth) return answer;
-      const unhealthy = answer.items.filter(connectorNeedsAttention);
-      return {
-        ...answer,
-        items: unhealthy.slice(state.page * PAGE_SIZE, (state.page + 1) * PAGE_SIZE),
-        total: unhealthy.length,
-      };
-    },
+      }>(`${config.endpoint}?${catalogListParams(resource, state, PAGE_SIZE)}`),
   });
 
   // Workflows name their connectors by slug; the detail route needs an id.

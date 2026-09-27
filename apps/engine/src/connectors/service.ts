@@ -18,6 +18,7 @@ import {
   withMcpConfigDefaults,
 } from "./config-schemas.ts";
 import { closePoolForConnector } from "./drivers/postgres.ts";
+import { connectorCountsAgainstHealth } from "./health-ratio.ts";
 import { enrichConnectorFromTemplate } from "./template-enrichment.ts";
 import { buildTemplateBindingFields, resolveConnectorTemplate } from "./template-resolver.ts";
 import type {
@@ -317,6 +318,12 @@ export async function listConnectors(
     category?: string;
     enabled?: boolean;
     health_state?: string;
+    /**
+     * `not_ok`: the connectors that count against the connector-health ratio
+     * (`connectorCountsAgainstHealth` — enabled and anything but `ok`). ANDed
+     * with every other filter, so `enabled=false` beside it is an empty list.
+     */
+    health?: "not_ok";
     q?: string;
     sort?: "name" | "driver" | "environment" | "enabled" | "updated_at";
     order?: "asc" | "desc";
@@ -331,6 +338,7 @@ export async function listConnectors(
   if (opts.category) tenantConds.push(eq(connectors.driver, opts.category));
   if (opts.enabled !== undefined) tenantConds.push(eq(connectors.enabled, opts.enabled));
   if (opts.health_state) tenantConds.push(eq(connectors.health_state, opts.health_state));
+  if (opts.health === "not_ok") tenantConds.push(connectorCountsAgainstHealth());
   if (opts.q) {
     const needle = `%${opts.q}%`;
     const search = or(

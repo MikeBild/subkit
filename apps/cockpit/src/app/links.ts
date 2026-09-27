@@ -65,7 +65,8 @@ export function connectorHref(id: string): string {
 
 /**
  * The connector catalogue. `not_ok` narrows it to the connectors the health
- * score counts against: enabled and not `ok` (connectors-model.ts owns the rule).
+ * score counts against: enabled and not `ok`. The engine owns the rule and
+ * answers it (`GET /v1/connectors?health=not_ok`, connectors/health-ratio.ts).
  */
 export function connectorsHref(filter: { health?: "not_ok" | null } = {}): string {
   return withQuery("/connectors", { health: filter.health });

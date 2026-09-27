@@ -68,6 +68,12 @@ const listRoute = createRoute({
         health_state: z
           .enum(["ok", "degraded", "needs_reauth", "needs_update", "needs_attention"])
           .optional(),
+        health: z
+          .enum(["not_ok"])
+          .optional()
+          .describe(
+            "`not_ok`: only the connectors that count against the connector-health ratio of the operational overview — enabled and any health state but `ok`. `total` and paging apply to the narrowed list; combined with `enabled=false` the list is empty.",
+          ),
         q: z.string().min(1).max(200).optional(),
         sort: z.enum(["name", "driver", "environment", "enabled", "updated_at"]).optional(),
         order: z.enum(["asc", "desc"]).optional(),
@@ -173,6 +179,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.category) opts.category = q.category;
     if (q.enabled !== undefined) opts.enabled = q.enabled;
     if (q.health_state) opts.health_state = q.health_state;
+    if (q.health) opts.health = q.health;
     if (q.q) opts.q = q.q;
     if (q.sort) opts.sort = q.sort;
     if (q.order) opts.order = q.order;
