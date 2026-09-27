@@ -104,11 +104,21 @@ export function PageFrame({
         </div>
       )}
       {scroll === "content" ? (
-        <div
-          data-family-slot="content"
-          className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", column)}
-        >
-          {children}
+        // The promise above held for the scrolling branch only. Here the body
+        // had no horizontal padding at all, so every list sat 24px left of the
+        // heading naming it. Nothing caught it because the alignment check
+        // measured the first paragraph below the title — the page description,
+        // which lives INSIDE the header and so always lined up. Removing the
+        // descriptions that restated their titles left the table as the first
+        // thing below the heading, and the check finally measured it. Same
+        // nesting as the scrolling branch: padding outside, width cap inside.
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 sm:px-6">
+          <div
+            data-family-slot="content"
+            className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", column)}
+          >
+            {children}
+          </div>
         </div>
       ) : (
         <div
