@@ -106,8 +106,10 @@ export function llmStatsEndpoint(axis: ConsumptionAxis, now = new Date()): strin
 }
 
 export interface ConsumptionRow {
-  /** The workflow, purpose, user or model this row is about. */
+  /** The workflow, purpose, user or model this row is about. Empty when none. */
   key: string;
+  /** True when the engine could not attribute these calls along this axis. */
+  unattributed: boolean;
   calls: number;
   tokens: number;
   /** This row's share of the window, 0–1. `null` when the total is zero. */
@@ -135,13 +137,24 @@ export function consumptionRows(envelope: unknown, axis: ConsumptionAxis): Consu
     // the assumption rather than the published contract, and stayed green
     // while nothing could ever render.
     const keyed = isRecord(group.key) ? group.key[axis] : undefined;
-    if (typeof keyed !== "string" || keyed.length === 0) return [];
+    if (typeof keyed !== "string") return [];
     const totals = isRecord(group.totals) ? group.totals : {};
     const tokens = isRecord(totals.tokens) ? totals.tokens : {};
     const callsEnvelope = isRecord(totals.calls) ? totals.calls : {};
     return [
       {
         key: keyed,
+        // An empty dimension is a real answer, not a missing row.
+        //
+        // `llm_usage` carries no workflow: the attribution comes from a join
+        // on `executions`, so every call without a run — conversations,
+        // self-healing, discovery — has no workflow and arrives with an empty
+        // key. Dropping those rows made a page about consumption report "no
+        // model calls in this window" beside a header naming forty million
+        // tokens, because on this installation nearly all of it is chat.
+        //
+        // "Cannot be attributed" and "did not happen" are different facts.
+        unattributed: keyed.length === 0,
         calls: typeof callsEnvelope.total === "number" ? callsEnvelope.total : 0,
         tokens: typeof tokens.total === "number" ? tokens.total : 0,
         share: null,
