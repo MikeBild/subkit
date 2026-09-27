@@ -1,5 +1,4 @@
 import {
-  bigint,
   boolean,
   index,
   integer,
@@ -34,7 +33,9 @@ export const tenants = pgTable(
     display_name: text("display_name").notNull(),
     llm_primary: text("llm_primary"),
     llm_fallback: text("llm_fallback"),
-    llm_monthly_token_budget: bigint("llm_monthly_token_budget", { mode: "number" }),
+    // `llm_monthly_token_budget` lived here as the oldest of three homes for
+    // the monthly cap. It had no writer; the cap is now owned solely by the
+    // `tokens.monthly_budget` config leaf (see `resolveMonthlyBudget`).
     egress_guard_mode: egressGuardModeEnum("egress_guard_mode"),
     // Default timezone for cron triggers authored from natural language.
     // Resolution chain: conversation prompt → this column → 'UTC'.

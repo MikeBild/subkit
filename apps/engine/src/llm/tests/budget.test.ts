@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { setConfigKey } from "../../config/loader.ts";
 import { llmUsage, tenantLlmSettings } from "../../db/schema/index.ts";
 import { LlmQuotaExhausted } from "../errors.ts";
 import { runGenerateFlow } from "../flows/generate.ts";
@@ -9,13 +10,17 @@ let ctx: LlmTestCtx;
 
 beforeAll(async () => {
   ctx = await createLlmTestCtx("budget");
-  // Seed a tiny budget — 200 tokens is smaller than any real prompt we
-  // assemble, so the very first call should trip the budget check.
   await ctx.testDb.db.insert(tenantLlmSettings).values({
     tenant_id: ctx.tenant_id,
     llm_provider: "mock",
-    llm_monthly_token_budget: 200,
   });
+  // Seed a tiny budget — 200 tokens is smaller than any real prompt we
+  // assemble, so the very first call should trip the budget check.
+  //
+  // Set where an operator sets it. This used to write a column that the
+  // settings surface could not reach, which is how the enforced cap and the
+  // editable one drifted apart.
+  await setConfigKey("tokens.monthly_budget", 200, { tenantId: ctx.tenant_id, force: true });
 });
 
 afterAll(async () => {

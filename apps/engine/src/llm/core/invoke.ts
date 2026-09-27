@@ -43,6 +43,7 @@ import {
   checkBudget,
   contextCapFor,
   recordUsage,
+  resolveMonthlyBudget,
 } from "../accounting/index.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../errors.ts";
 import { getMockProvider, type MockResult } from "../mock-provider.ts";
@@ -222,9 +223,13 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
   const provider =
     (settings?.llm_provider as LlmProviderKind | undefined) ?? currentProvider(tenant_id);
   const fallback_provider = currentFallbackProvider(provider, tenant_id);
-  const monthly_budget =
-    settings?.llm_monthly_token_budget ??
-    (tenant?.llm_monthly_token_budget != null ? Number(tenant.llm_monthly_token_budget) : null);
+  // Asked of the one function that owns this answer, rather than rebuilt from
+  // the two columns this used to chain. Those columns had no writer, so the
+  // chain could only ever produce `null` while the cap an operator had
+  // actually typed — the `tokens.monthly_budget` config leaf — was read by
+  // nobody. A second derivation of the same cap is how they drifted apart in
+  // the first place.
+  const monthly_budget = resolveMonthlyBudget(tenant_id);
 
   return {
     tenant_id,

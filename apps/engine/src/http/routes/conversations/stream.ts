@@ -208,15 +208,25 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
       }
       // Compute turn usage for the completed event so CLI clients
       // (sk) can surface token counts without a second round-trip.
-      let usage:
-        | { turn_tokens: number; remaining_monthly_budget_tokens: number | null }
-        | undefined;
+      // What this route can honestly say is how much of the month's budget is
+      // left — and nothing about this turn.
+      //
+      // It used to fill `turn_tokens` with the tenant's month-to-date total.
+      // The other emitter of that field, `conversations/loop.ts`, computes a
+      // real per-turn delta, and `sk` renders it as "{turn_tokens}t" beside
+      // the prompt. So one frame said a turn cost sixty thousand tokens and
+      // the other said it cost thirty-four million, for the same field, on the
+      // same screen. This route never runs the turn, so it holds no
+      // before-value and cannot derive the delta — the field is therefore
+      // omitted rather than filled with the nearest number to hand. `sk`
+      // already reads it as optional and shows nothing when it is absent.
+      let usage: { remaining_monthly_budget_tokens: number | null } | undefined;
       try {
         const used = await monthlyUsage(principal.tenant_id, db);
         const route = await resolveModelRoute(principal.tenant_id, db);
         const remaining =
           route.monthly_budget != null ? Math.max(0, route.monthly_budget - used) : null;
-        usage = { turn_tokens: used, remaining_monthly_budget_tokens: remaining };
+        usage = { remaining_monthly_budget_tokens: remaining };
       } catch {
         /* usage lookup is best-effort */
       }
