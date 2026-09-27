@@ -26,7 +26,11 @@ import {
 } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { executionSteps, executions, workflows } from "../db/schema/index.ts";
-import { classifyFailure, humanizeClassification } from "../execution/classify.ts";
+import {
+  classifyFailure,
+  humanizeClassification,
+  type PreviewClassification,
+} from "../execution/classify.ts";
 import { monthlyUsage, resolveMonthlyBudget } from "../llm/accounting/index.ts";
 import { getContext } from "../logging/context.ts";
 import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
@@ -90,6 +94,12 @@ export interface DigestFailureGroup {
   resolved_at: string | null;
   /** One-sentence human cause, classifier-derived. */
   cause: string;
+  /**
+   * The classifier's class behind `cause` — the structured half of the same
+   * verdict, so a surface can word the cause itself instead of repeating the
+   * engine's English sentence.
+   */
+  cause_class: PreviewClassification;
   /** The connector-authored remediation hint, when the step carried one. */
   guidance: string | null;
 }
@@ -314,6 +324,7 @@ export async function collectFailureGroups(
       last_seen: lastSeen,
       resolved_at: null,
       cause,
+      cause_class: classification,
       guidance,
     });
   }

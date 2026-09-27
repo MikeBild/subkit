@@ -20961,8 +20961,11 @@ export interface components {
             last_seen: string;
             resolved_at: string | null;
             cause: string;
+            cause_class: components["schemas"]["FailureCauseClass"];
             guidance: string | null;
         };
+        /** @enum {string} */
+        FailureCauseClass: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown";
         OperatorDigestPatch: {
             id: string;
             workflow_id: string | null;
@@ -21155,7 +21158,20 @@ export interface components {
                         /** @enum {string} */
                         kind: "failing_group" | "held_schedule" | "connector";
                         id: string;
+                        /** @description The engine's own English sentence. Kept for the contract; a UI composes its words from `subject` and `reason`. */
                         label: string;
+                        subject: {
+                            /** @enum {string} */
+                            kind: "workflow" | "connector";
+                            id: string | null;
+                            name: string | null;
+                        };
+                        /** @enum {string} */
+                        reason: "held_for_review" | "failing" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy";
+                        /** @description Residual engine free text (a failing group's cause, a connector's health reason), or null. Show it as the engine's wording. */
+                        detail: string | null;
+                        /** @enum {string|null} */
+                        cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown" | null;
                         drilldown: {
                             path: string;
                             label_id: string;

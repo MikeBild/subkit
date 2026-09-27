@@ -1,11 +1,15 @@
 import { AlertTriangle, ArrowRight, CircleAlert } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
 
 export interface AttentionListItem {
   id: string;
   tone: "critical" | "warning";
+  /** The cockpit's own sentence. */
   text: string;
+  /** Free text the engine wrote, shown on its own line as the engine's wording — never as ours. */
+  engineWording: string | null;
   /** A browser address (already absolute), or null when there is nowhere to go. */
   href: string | null;
   actionLabel: string | null;
@@ -27,6 +31,7 @@ export function AttentionList({
   title?: string;
   testId?: string;
 }) {
+  const { t } = useI18n();
   if (items.length === 0) return null;
   return (
     <Card data-testid={testId} data-family-slot="attention">
@@ -58,7 +63,17 @@ export function AttentionList({
                         : "text-amber-700 dark:text-amber-400",
                     )}
                   />
-                  <span className="min-w-0 break-words">{item.text}</span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="min-w-0 break-words">{item.text}</span>
+                    {item.engineWording ? (
+                      <span
+                        className="min-w-0 break-words text-xs text-muted-foreground"
+                        data-testid={`${testId}-engine-wording-${index}`}
+                      >
+                        {t("common.engineWording", { text: item.engineWording })}
+                      </span>
+                    ) : null}
+                  </span>
                 </span>
                 {item.href && item.actionLabel ? (
                   <a
