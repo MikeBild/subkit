@@ -90,8 +90,13 @@ export function pickStoppingStep<
   return failed[failed.length - 1] ?? null;
 }
 
-/** Classify a run's stopping failure: the stopping step row, else the execution's own failure. */
-function classifyRunFailure(
+/**
+ * Classify a run's stopping failure: the stopping step row, else the
+ * execution's own failure (e.g. `validation_failed`, which no step carries).
+ * The one classifier for a whole run — the execution outcome, the list's
+ * `failure`, and the operator health digest all name the same cause.
+ */
+export function classifyRunFailure(
   exec: Pick<ExecutionRow, "status" | "failure">,
   stopping: Pick<OutcomeStepRow, "status" | "error"> | null,
 ): PersistedFailureClass | null {
