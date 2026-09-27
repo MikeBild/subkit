@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { translate } from "@/lib/i18n";
 import {
   formatRunDuration,
+  previewText,
   requestSourceLabel,
   runAuthorityFacts,
   runCostFacts,
@@ -239,5 +240,53 @@ describe("the run an address names", () => {
     // to undo exactly that, or the sheet asks the engine for a different run.
     expect(runIdFromPath(`/cockpit/runs/${encodeURIComponent("run/42")}`)).toBe("run/42");
     expect(runIdFromPath(`/cockpit/runs/${encodeURIComponent("a b")}`)).toBe("a b");
+  });
+});
+
+describe("previewText — what a step left behind", () => {
+  // The exact production shape, read out of `execution_steps` for a run whose
+  // sheet showed the word `null` under the heading "Ergebnis":
+  //
+  //   step_key       | output_preview (jsonb) | result_preview (text)
+  //   write_products | SQL NULL               | 'null'
+  //
+  // `output_preview ?? result_preview` skips the empty jsonb and lands on the
+  // four characters. Both halves are pinned below, because a test that only
+  // fed `null` would have agreed with the old code.
+  test("the text column's JSON-null literal is not a result", () => {
+    expect(previewText("null")).toBeNull();
+    expect(previewText("  null  ")).toBeNull();
+    expect(previewText("undefined")).toBeNull();
+  });
+
+  test("the whole coalesce a failed step produces yields nothing", () => {
+    const step = { output_preview: null, result_preview: "null" };
+    expect(previewText(step.output_preview ?? step.result_preview)).toBeNull();
+  });
+
+  test("absent and empty previews stay absent", () => {
+    expect(previewText(null)).toBeNull();
+    expect(previewText(undefined)).toBeNull();
+    expect(previewText("")).toBeNull();
+    expect(previewText("   ")).toBeNull();
+  });
+
+  test("a real result survives, JSON and text alike", () => {
+    expect(previewText({ ok: true })).toBe('{\n  "ok": true\n}');
+    expect(previewText("delivered")).toBe("delivered");
+    // Falsy JSON values are results, not emptiness: a step that answered
+    // `false` or `0` said something, and dropping it would be the same lie in
+    // the other direction.
+    expect(previewText(false)).toBe("false");
+    expect(previewText(0)).toBe("0");
+  });
+
+  test("content that merely mentions null is kept", () => {
+    // Only the whole value is refused. A message about a null field is a
+    // result a reader needs.
+    expect(previewText("null was returned by the upstream API")).toBe(
+      "null was returned by the upstream API",
+    );
+    expect(previewText({ value: null })).toBe('{\n  "value": null\n}');
   });
 });
