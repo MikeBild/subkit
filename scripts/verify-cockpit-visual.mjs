@@ -105,6 +105,11 @@ const routes = [
   "chat",
   "workflows",
   "runs",
+  // One run, at its own address. The sheet used to open only from local list
+  // state, so the frame that shows a single run's evidence — its boundary, its
+  // stored approval, its steps, its result — was never taken. The route
+  // shipped; nothing photographed it.
+  `runs/${uuid}`,
   "connectors",
   "knowledge",
   "skills",
@@ -1157,6 +1162,62 @@ async function mockApi(route) {
     });
     return json(route, { items, total: 240, next_cursor: null });
   }
+  // The steps of one run. Until this existed the sheet's own address fell
+  // through to the catch-all `{ items: [] }` — so the run detail photographed
+  // as a record with no steps, no error and no result, and no defect in how
+  // any of the three is RENDERED could appear in the frame.
+  //
+  // The shapes below are the ones production actually stores, not tidy ones:
+  //
+  //   `result_preview` is a TEXT column holding a JSON serialisation, so a
+  //   step that produced nothing stores the four characters `null` while
+  //   `output_preview` (jsonb) is SQL NULL beside it. The sheet read
+  //   `output_preview ?? result_preview`, the coalesce skipped the empty jsonb
+  //   and the word `null` was printed under the heading "Ergebnis".
+  //
+  // The last step carries exactly that pair. A frame that shows `null` as a
+  // result is the finding.
+  if (/^\/v1\/executions\/[^/]+\/steps$/.test(path)) {
+    return json(route, {
+      items: [
+        {
+          step_key: "read_current",
+          step_index: 0,
+          status: "succeeded",
+          duration_ms: 78,
+          error: null,
+          input_preview: { bucket: "reports" },
+          output_preview: { rows: 412, bytes: 337_858 },
+          result_preview: null,
+        },
+        {
+          step_key: "summarise",
+          step_index: 1,
+          status: "succeeded",
+          duration_ms: 4_120,
+          error: null,
+          // An empty object is a measured emptiness and must photograph as
+          // such — not as a blank panel under a heading.
+          output_preview: {},
+          result_preview: null,
+        },
+        {
+          step_key: "write_products",
+          step_index: 2,
+          status: "failed",
+          duration_ms: 69,
+          error: {
+            code: "request_outside_declared_boundary",
+            message:
+              "This request is outside the folder boundary its step declares: the content is 337858 bytes but `s3.scope.max_bytes` is 131072. Nothing was sent.",
+          },
+          output_preview: null,
+          result_preview: "null",
+        },
+      ],
+      next_cursor: null,
+    });
+  }
   if (path === "/v1/audit-log") {
     // The engine filters on `action` and takes a comma-separated list. A mock
     // that ignored it would photograph a filter labelled "Entscheidungen" over
@@ -1887,13 +1948,21 @@ async function mockApi(route) {
  * that before it happened.
  */
 function artifactRouteName(route) {
-  return (route || "overview").replace("?bucket=", "-bucket-");
+  // A parameterised route carries a slash, and a slash in an artifact name is
+  // a directory that does not exist. The record's id is not part of the name:
+  // the frame is of the DETAIL surface, and a second id would make two names
+  // for one photograph.
+  return (route || "overview").replace("?bucket=", "-bucket-").replace(/\/[^/]+$/, "-detail");
 }
 
 function markerFor(route) {
   // A route may carry the bucket a tile linked with; the page it renders is the
   // same page.
   const path = route.split("?")[0];
+  // A run's own address renders the list AND the sheet for that run. Waiting
+  // on the list marker would photograph the page before the record arrived,
+  // which is the frame that proves nothing.
+  if (/^runs\/.+/.test(path)) return '[data-testid="run-detail-facts"]';
   if (path === "chat") return '[data-testid="chat-workspace"]';
   if (path === "") return '[data-testid="overview-page"]';
   // Decisions owns its page rather than rendering a list of records.
@@ -1938,6 +2007,43 @@ async function assertViewport(page, label) {
     geometry.contentBottom > geometry.viewportHeight + 1
   )
     throw new Error(`${label} grows beyond the viewport`);
+}
+
+/**
+ * One run's sheet, opened at its own address.
+ *
+ * Two things this frame has to prove, and both of them were true on the
+ * running product before they were true here.
+ *
+ * The address itself: a run reached by URL must render THAT run's evidence.
+ * Before the route existed every `/runs/<id>` landed on "page not found", so
+ * no audit row, decision or metric could point at a single run.
+ *
+ * And the result: the steps fixture ends with the pair production stores for a
+ * step that produced nothing — `output_preview` absent, `result_preview` the
+ * four characters `null`. The sheet printed that word under the heading
+ * "Ergebnis". A machine value rendered as prose is the shape §2 bans, and a
+ * screenshot of it is only evidence if something reads the frame.
+ */
+async function assertRunDetail(page, label) {
+  const facts = page.locator('[data-testid="run-detail-facts"]');
+  if (!(await facts.isVisible()))
+    throw new Error(`${label} opened no run sheet — the address rendered the bare list`);
+  const result = page.locator('[data-testid="run-detail-result"]');
+  if (await result.isVisible()) {
+    const shown = (await result.innerText()).trim();
+    // The heading is part of the block, so compare what follows it.
+    const body = shown.split("\n").slice(1).join("\n").trim();
+    if (body === "null" || body === "undefined")
+      throw new Error(
+        `${label} prints '${body}' as the run's result — a step that produced nothing has no result section`,
+      );
+  }
+  // The error the failing step reported has to reach the reader; a sheet that
+  // swallows it sends someone to the terminal for the one fact they came for.
+  const failure = page.locator('[data-testid="run-detail-error"]');
+  if (!(await failure.isVisible()))
+    throw new Error(`${label} hides the error of a run whose last step failed`);
 }
 
 async function assertChat(page, label) {
@@ -2439,6 +2545,8 @@ for (const locale of variants) {
       await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertBlankLists(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "chat") await assertChat(page, `${locale.artifact}/${viewport.name}/${route}`);
+      if (/^runs\/.+/.test(route))
+        await assertRunDetail(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "settings")
         await assertAuthProviderSettings(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "access") {

@@ -97,6 +97,33 @@ export function runIdFromPath(pathname: string): string | null {
   return id ? decodeURIComponent(id) : null;
 }
 
+/**
+ * The text of a stored preview, or nothing when the step left none.
+ *
+ * `execution_steps.result_preview` is a **text** column holding the JSON
+ * serialisation of what the step produced. A step that produced nothing stores
+ * the four characters `null` — not SQL NULL — and `output_preview`, which is
+ * `jsonb`, is SQL NULL in that same row. The sheet read
+ * `output_preview ?? result_preview`, so the nullish coalescing skipped the
+ * empty jsonb and handed the word `null` straight to the screen: production
+ * showed a failed run whose heading "Ergebnis" was followed by `null`.
+ *
+ * That is a machine value rendered as prose — the same shape as §2's banned
+ * "Unbekannt". A run that produced no result has no result section at all,
+ * which is the truthful rendering of the third kind of emptiness: not zero,
+ * not unmeasured, simply absent.
+ *
+ * Only the JSON literal is refused, and only when it is the whole value. A
+ * preview whose content merely mentions null keeps it.
+ */
+export function previewText(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const trimmed = text?.trim() ?? "";
+  if (!trimmed || trimmed === "null" || trimmed === "undefined") return null;
+  return text;
+}
+
 export type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
 /**

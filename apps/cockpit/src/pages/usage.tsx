@@ -373,6 +373,19 @@ export function UsagePage() {
             ))}
           </div>
 
+          {/* The breakdown's window, said where the breakdown is read.
+              Production showed "Diesen Monat verbraucht 39.847.696" and,
+              immediately below, one row totalling 40.626.498 at "100 %" — both
+              figures correct, over two different periods, with nothing on
+              screen saying so. A reader takes the table for a decomposition of
+              the number above it and finds it does not add up. Naming the
+              window is cheaper than making the two agree, and truer: the
+              calendar month is what a cap is spent against, thirty days is
+              what a trend is read from. */}
+          <p className="text-muted-foreground text-xs" data-testid="usage-breakdown-window">
+            {t("resource.usage.breakdownWindow")}
+          </p>
+
           <div className="overflow-hidden rounded-xl border">
             <DataTable
               // A second table on one page needs its own identity. Every
