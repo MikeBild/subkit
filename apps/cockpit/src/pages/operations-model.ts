@@ -222,6 +222,23 @@ export function operationsAttention(
 }
 
 /**
+ * The line under "Zustand dieser Installation".
+ *
+ * It printed "Zustand: Unbekannt" — the word §2 bans, as a state. A state the
+ * engine could not work out is said as that, with the reason: the same
+ * sentence the attention block raises for it, so the page says it one way.
+ */
+export function healthStateLine(
+  state: Health["state"],
+  t: (key: TranslationKey, values?: Record<string, string>) => string,
+): string {
+  if (state === "unknown") return t("operations.attention.undetermined");
+  return t("operations.health.state", {
+    state: t(`operational.health.${state}` as TranslationKey),
+  });
+}
+
+/**
  * What the drift scan's toast says, and whether it offers the way to the queue.
  *
  * The toast said "completed" and nothing else, so a scan that proposed three
