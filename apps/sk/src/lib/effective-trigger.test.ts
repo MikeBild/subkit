@@ -8,6 +8,7 @@ const schedule = {
   paused: false,
   execution_mode: "prod" as const,
   admission_hold: null,
+  state: "active" as const,
   next_fire_at: null,
   last_enqueued_at: null,
 };

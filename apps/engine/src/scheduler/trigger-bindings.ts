@@ -15,9 +15,24 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
-import { webhooksInbound, workflowsSchedules } from "../db/schema/index.ts";
+import { webhooksInbound, workflows, workflowsSchedules } from "../db/schema/index.ts";
 import type { WorkflowTrigger } from "../workflows/types.ts";
-import { nextScheduleTime } from "./workflow-automation-view.ts";
+import { scheduleNeedsActivation } from "./automation-status.ts";
+import { nextScheduleFire } from "./next-fire.ts";
+
+/**
+ * Whether a bound schedule fires. `activation_required` is the same predicate
+ * the schedule automation status reports (`scheduleNeedsActivation`): a draft
+ * or archived workflow, or one without a committed version, never runs from
+ * its schedule — the reconciler skips archived rows and admission refuses the
+ * rest.
+ */
+export const ScheduleBindingStateSchema = z.enum([
+  "active",
+  "paused",
+  "held",
+  "activation_required",
+]);
 
 export const WorkflowScheduleBindingSchema = z
   .object({
@@ -33,7 +48,12 @@ export const WorkflowScheduleBindingSchema = z
         observed_at: z.string(),
       })
       .nullable(),
-    /** Null while paused or held — a schedule that will not fire has no next fire. */
+    /** Whether this schedule fires; paused wins, then activation, then an admission hold. */
+    state: ScheduleBindingStateSchema,
+    /**
+     * When it really fires next (calendar gates applied; see scheduler/next-fire.ts).
+     * Null unless `state` is `active`, or when the gates close every day for too long to name.
+     */
     next_fire_at: z.string().nullable(),
     last_enqueued_at: z.string().nullable(),
   })
@@ -48,7 +68,7 @@ export const EffectiveTriggerSchema = z
      * `declared_unbound`: the definition names a schedule/webhook but no bound
      * row exists, so nothing fires it.
      */
-    state: z.enum(["active", "paused", "held", "declared_unbound"]),
+    state: z.enum(["active", "paused", "held", "activation_required", "declared_unbound"]),
   })
   .openapi("EffectiveTrigger");
 
@@ -90,9 +110,20 @@ export async function loadTriggerBindings(
         paused: workflowsSchedules.paused,
         execution_mode: workflowsSchedules.execution_mode,
         admission_hold: workflowsSchedules.admission_hold,
+        input: workflowsSchedules.input,
         last_enqueued_at: workflowsSchedules.last_enqueued_at,
+        created_at: workflowsSchedules.created_at,
+        lifecycle: workflows.lifecycle,
+        current_version_id: workflows.current_version_id,
       })
       .from(workflowsSchedules)
+      .innerJoin(
+        workflows,
+        and(
+          eq(workflows.id, workflowsSchedules.workflow_id),
+          eq(workflows.tenant_id, workflowsSchedules.tenant_id),
+        ),
+      )
       .where(
         and(
           eq(workflowsSchedules.tenant_id, tenantId),
@@ -115,7 +146,7 @@ export async function loadTriggerBindings(
       .groupBy(webhooksInbound.workflow_id),
   ]);
   for (const s of schedules) {
-    const firing = !s.paused && s.admission_hold === null;
+    const state = scheduleBindingState(s);
     out.set(s.workflow_id, {
       webhooks_active: 0,
       schedule: {
@@ -125,7 +156,8 @@ export async function loadTriggerBindings(
         paused: s.paused,
         execution_mode: s.execution_mode,
         admission_hold: s.admission_hold ?? null,
-        next_fire_at: firing ? nextScheduleTime(s.cron, s.timezone, now) : null,
+        state,
+        next_fire_at: state === "active" ? nextScheduleFire(s, now) : null,
         last_enqueued_at: s.last_enqueued_at?.toISOString() ?? null,
       },
     });
@@ -137,6 +169,19 @@ export async function loadTriggerBindings(
   return out;
 }
 
+/** Paused wins (the operator stopped it), then activation, then an admission hold. */
+export function scheduleBindingState(row: {
+  paused: boolean;
+  admission_hold: unknown;
+  lifecycle: string;
+  current_version_id: string | null;
+}): WorkflowScheduleBinding["state"] {
+  if (row.paused) return "paused";
+  if (scheduleNeedsActivation(row)) return "activation_required";
+  if (row.admission_hold) return "held";
+  return "active";
+}
+
 export function bindingFor(
   bindings: ReadonlyMap<string, TriggerBinding>,
   workflowId: string,
@@ -145,21 +190,24 @@ export function bindingFor(
 }
 
 /**
- * Precedence: a bound schedule row beats everything (the scheduler fires from
- * the row, whatever the definition says); then active webhook rows; then the
- * definition's own trigger — which, for a schedule or webhook, means it was
- * declared but never bound and does not fire; else the request default.
+ * Precedence — only what fires may outrank what fires:
+ *   1. a bound schedule that fires (the scheduler fires from the row, whatever
+ *      the definition says);
+ *   2. active webhook rows — still starting runs even when a schedule beside
+ *      them is paused, held or waiting for activation;
+ *   3. a bound schedule that does not fire, in its own state;
+ *   4. the definition's own trigger — for a schedule or webhook, declared but
+ *      never bound, so nothing fires it;
+ *   5. the request default.
  */
 export function resolveEffectiveTrigger(
   definitionTrigger: WorkflowTrigger | null | undefined,
   binding: TriggerBinding,
 ): EffectiveTrigger {
   const schedule = binding.schedule;
-  if (schedule) {
-    const state = schedule.paused ? "paused" : schedule.admission_hold ? "held" : "active";
-    return { kind: "schedule", source: "binding", state };
-  }
+  if (schedule?.state === "active") return { kind: "schedule", source: "binding", state: "active" };
   if (binding.webhooks_active > 0) return { kind: "webhook", source: "binding", state: "active" };
+  if (schedule) return { kind: "schedule", source: "binding", state: schedule.state };
   if (definitionTrigger?.kind === "schedule" || definitionTrigger?.kind === "webhook") {
     return { kind: definitionTrigger.kind, source: "definition", state: "declared_unbound" };
   }
