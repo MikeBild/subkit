@@ -12,7 +12,7 @@
 //   3. Failing runs  — the deterministic operator health-digest, grouped
 //                      by root cause + tagged by origin.
 //   4. Risk signals  — leading indicators from the same digest.
-//   5. Self-healing  — pending patch candidates awaiting review.
+//   5. Self-healing  — open patch candidates awaiting review.
 //   6. Schema drift  — one-line status (embedded vs. DB migration sets);
 //                      `sk doctor` owns the detailed resolution guidance.
 //   7. Process runtime — uptime, memory, DB-pool saturation, event-loop
@@ -115,10 +115,10 @@ function renderDigest(digest: OperatorHealthDigest): void {
     }
   }
   // Pending self-healing patch candidates.
-  if (digest.patch_candidates.pending > 0) {
+  if (digest.patch_candidates.open > 0) {
     process.stdout.write(`\n${pc.bold("Self-healing")}\n`);
     process.stdout.write(
-      `  ${pc.yellow(`${digest.patch_candidates.pending} patch candidate(s) awaiting review`)}\n`,
+      `  ${pc.yellow(`${digest.patch_candidates.open} patch candidate(s) awaiting review`)}\n`,
     );
     for (const p of digest.patch_candidates.items.slice(0, 4)) {
       const label = p.workflow_name ?? p.workflow_id ?? "(workflow)";

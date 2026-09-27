@@ -58,7 +58,8 @@ export interface OperatorHealthDigest {
   window_hours: number;
   headline: string;
   failure_groups: DigestFailureGroup[];
-  patch_candidates: { pending: number; items: DigestPatch[] };
+  /** `open`: exact count of proposed AND reviewable candidates; `items` is capped. */
+  patch_candidates: { open: number; items: DigestPatch[] };
   risk: RiskSignal[];
   rendered: string;
   all_clear: boolean;
@@ -68,7 +69,7 @@ export const selfHealingMethods = {
   // -------------------- Operator --------------------
   /**
    * Deterministic operator health digest — failed runs grouped by root
-   * cause + tagged by origin, plus pending self-healing fixes. The REPL
+   * cause + tagged by origin, plus open self-healing fixes. The REPL
    * renders this as a colored first assistant turn at startup.
    */
   getOperatorHealthDigest(
