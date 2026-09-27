@@ -27,10 +27,11 @@ import {
 import type { Db } from "../db/client.ts";
 import { executionSteps, executions, workflows } from "../db/schema/index.ts";
 import {
-  classifyFailure,
+  classifyPersistedFailure,
   humanizeClassification,
   type PreviewClassification,
 } from "../execution/classify.ts";
+import { classifyRunFailure, pickStoppingStep } from "../execution/outcome.ts";
 import { monthlyUsage, resolveMonthlyBudget } from "../llm/accounting/index.ts";
 import { getContext } from "../logging/context.ts";
 import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
@@ -242,6 +243,8 @@ export async function collectFailureGroups(
       source_ref: executions.source_ref,
       request_source: executions.request_source,
       created_at: executions.created_at,
+      status: executions.status,
+      failure: executions.failure,
     })
     .from(executions)
     .where(
@@ -262,31 +265,43 @@ export async function collectFailureGroups(
           step_key: executionSteps.step_key,
           status: executionSteps.status,
           error: executionSteps.error,
+          started_at: executionSteps.started_at,
         })
         .from(executionSteps)
         .where(
           and(
             eq(executionSteps.tenant_id, tenant_id),
             inArray(executionSteps.execution_id, execIds),
-            eq(executionSteps.status, "failed"),
+            inArray(executionSteps.status, ["failed", "timed_out", "aborted"]),
           ),
         )
     : [];
 
-  // First failed step per execution (the one that stopped the run).
-  const stepByExec = new Map<string, (typeof failedSteps)[number]>();
+  // The step that stopped each run — the same rule the execution outcome
+  // uses (`pickStoppingStep`), so the digest and a run's own page name the
+  // same step: an earlier `on_error:"continue"` failure did not stop anything.
+  const rowsByExec = new Map<string, (typeof failedSteps)[number][]>();
   for (const s of failedSteps) {
-    if (!stepByExec.has(s.execution_id)) stepByExec.set(s.execution_id, s);
+    const list = rowsByExec.get(s.execution_id) ?? [];
+    list.push(s);
+    rowsByExec.set(s.execution_id, list);
+  }
+  const stepByExec = new Map<string, (typeof failedSteps)[number]>();
+  for (const exec of failedExecs) {
+    const stopping = pickStoppingStep(rowsByExec.get(exec.id) ?? [], exec.failure?.step_id);
+    if (stopping) stepByExec.set(exec.id, stopping);
   }
 
   // Group by root-cause signature.
   const groups = new Map<string, DigestFailureGroup>();
   for (const exec of failedExecs) {
     const step = stepByExec.get(exec.id);
-    const err = asRecord(step?.error);
-    const errorCode = typeof err.code === "string" ? err.code : null;
-    const message = typeof err.message === "string" ? err.message : "";
-    const guidance = typeof err.guidance === "string" ? err.guidance : null;
+    const classified =
+      classifyRunFailure(exec, step ?? null) ??
+      classifyPersistedFailure({ status: exec.status, error: null });
+    const errorCode = classified.error_code;
+    const message = classified.message;
+    const guidance = classified.guidance;
     const stepKey = step?.step_key ?? null;
     const wfKey = exec.workflow_id ?? `${exec.source_kind}`;
     const signature = `${wfKey}:${stepKey ?? "-"}:${errorCode ?? "-"}`;
@@ -302,14 +317,9 @@ export async function collectFailureGroups(
       continue;
     }
 
-    const classification = classifyFailure({
-      status: "failed",
-      retry_count: 0,
-      duration_ms: 0,
-      error: errorCode ? { code: errorCode, message } : null,
-    });
     const cause =
-      guidance ?? humanizeClassification(classification, message, step?.status ?? "step");
+      guidance ??
+      humanizeClassification(classified.classification, message, step?.status ?? "step");
 
     groups.set(signature, {
       signature,
@@ -324,7 +334,7 @@ export async function collectFailureGroups(
       last_seen: lastSeen,
       resolved_at: null,
       cause,
-      cause_class: classification,
+      cause_class: classified.classification,
       guidance,
     });
   }

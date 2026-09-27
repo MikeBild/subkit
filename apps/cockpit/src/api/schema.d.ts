@@ -5779,6 +5779,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description Workflow is archived */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -6507,7 +6516,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Execution"];
+                        "application/json": components["schemas"]["ExecutionDetail"];
                     };
                 };
                 /** @description Not found */
@@ -18318,6 +18327,31 @@ export interface components {
             category: string;
             connectors: string[];
         };
+        WorkflowScheduleBinding: {
+            id: string;
+            cron: string;
+            timezone: string;
+            paused: boolean;
+            /** @enum {string} */
+            execution_mode: "dev" | "prod";
+            admission_hold: {
+                /** @enum {string} */
+                reason_code: "execution_authority_required" | "execution_authority_unavailable";
+                observed_at: string;
+            } | null;
+            /** @enum {string} */
+            state: "active" | "paused" | "held" | "activation_required";
+            next_fire_at: string | null;
+            last_enqueued_at: string | null;
+        } | null;
+        EffectiveTrigger: {
+            /** @enum {string} */
+            kind: "schedule" | "webhook" | "request";
+            /** @enum {string} */
+            source: "binding" | "definition" | "default";
+            /** @enum {string} */
+            state: "active" | "paused" | "held" | "activation_required" | "declared_unbound";
+        };
         Workflow: {
             id: string;
             tenant_id: string;
@@ -18349,6 +18383,9 @@ export interface components {
             timeout_ms: number | null;
             max_llm_tokens_per_run: number | null;
             trigger: components["schemas"]["WorkflowTrigger"];
+            schedule: components["schemas"]["WorkflowScheduleBinding"];
+            webhooks_active: number;
+            effective_trigger: components["schemas"]["EffectiveTrigger"];
         };
         ScheduleListResponse: {
             schedules: components["schemas"]["ScheduleEntry"][];
@@ -18749,9 +18786,16 @@ export interface components {
             request_source?: "api" | "cli";
         };
         ExecutionListResponse: {
-            items: components["schemas"]["Execution"][];
+            items: components["schemas"]["ExecutionListItem"][];
             total: number;
             next_cursor?: string | null;
+        };
+        ExecutionListItem: components["schemas"]["Execution"] & {
+            failure: {
+                step_key: string | null;
+                /** @enum {string|null} */
+                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown" | null;
+            } | null;
         };
         Execution: {
             id: string;
@@ -18773,6 +18817,29 @@ export interface components {
             started_at: string | null;
             finished_at: string | null;
             created_at: string;
+        };
+        ExecutionDetail: components["schemas"]["Execution"] & {
+            outcome: components["schemas"]["ExecutionOutcome"];
+        };
+        ExecutionOutcome: {
+            /** @enum {string} */
+            kind: "succeeded" | "failed" | "held" | "partial" | "running";
+            failed_step: {
+                step_key: string;
+                kind: string;
+            } | null;
+            /** @enum {string|null} */
+            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown" | null;
+            error_code: string | null;
+            steps: {
+                total: number;
+                succeeded: number;
+                failed: number;
+                held: number;
+                skipped: number;
+            };
+            /** @enum {string} */
+            output_contract: "passed" | "violated" | "none";
         };
         ExecutionStepListResponse: {
             items: components["schemas"]["ExecutionStep"][];
