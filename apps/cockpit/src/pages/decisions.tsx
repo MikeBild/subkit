@@ -28,7 +28,6 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
 import {
-  chipCounts,
   type DecidableItem,
   type DecidableKind,
   type DecisionItem,
@@ -38,6 +37,7 @@ import {
   QUEUE_KINDS,
   type QueueKind,
   queueDisplayState,
+  readableQueueKinds,
   resetView,
   searchWithoutBucket,
   splitByAge,
@@ -232,10 +232,11 @@ export function DecisionsPage() {
   });
   // The breakdown comes from the same count as the badge, not from the rows the
   // page happens to hold: the two disagreed the moment a source hit its cap.
-  const counts = chipCounts(queue.open, {
-    held: queue.heldSchedules.length,
-    failing: queue.failingWorkflows.length,
-  });
+  // Only the kinds this person can read have a chip; while the count is
+  // pending they show without a number (`count: undefined`).
+  const chips: { kind: QueueKind; index: number; count?: number | null; partial?: boolean }[] =
+    queue.chips ??
+    readableQueueKinds(queue.sources).map((kind) => ({ kind, index: KINDS.indexOf(kind) }));
   const suggestions = suggestionTargets(queue.items);
   const questions = queue.questions;
 
@@ -425,12 +426,23 @@ export function DecisionsPage() {
                 {/* Art-Chips only. §8.5 forbids a chip that puts the queue into a past
               STATE — decided, discarded, deferred — and there is none: this list
               is closed over the two kinds the page can act on. */}
-                {KINDS.map((kind, index) => (
+                {chips.map(({ kind, index, count, partial }) => (
                   <Button
                     key={kind}
                     variant={preferences.kinds.includes(kind) ? "default" : "outline"}
                     size="sm"
+                    // The index in the full kind list, so a hidden chip does
+                    // not shift the ones after it.
                     data-testid={`decisions-chip-${index}`}
+                    data-count-state={
+                      count === undefined
+                        ? "pending"
+                        : count === null
+                          ? "failed"
+                          : partial
+                            ? "partial"
+                            : "answered"
+                    }
                     aria-pressed={preferences.kinds.includes(kind)}
                     onClick={() =>
                       persist({
@@ -442,19 +454,31 @@ export function DecisionsPage() {
                     }
                   >
                     {/* The open count lives here and on the navigation badge,
-                        nowhere else — and the chips sum to the badge. */}
-                    {counts
-                      ? t("decisions.chip.count", {
-                          label: t(KIND_LABEL[kind]),
-                          count: String(counts[kind]),
-                        })
-                      : t(KIND_LABEL[kind])}
+                        nowhere else — and the chips sum to the badge. A
+                        source that failed is said, never counted as 0. */}
+                    {count === undefined
+                      ? t(KIND_LABEL[kind])
+                      : count === null
+                        ? t("decisions.chip.failed", { label: t(KIND_LABEL[kind]) })
+                        : t(partial ? "decisions.chip.countAtLeast" : "decisions.chip.count", {
+                            label: t(KIND_LABEL[kind]),
+                            count: String(count),
+                          })}
                   </Button>
                 ))}
               </div>
             </div>
 
             <div className="grid gap-5" data-family-slot="queue">
+              {/* The digest behind the failing workflows did not answer: said
+                  here, and counted nowhere — not as "none are failing". */}
+              {!queue.isPending && !queue.failed && queue.failingSource === "failed" && (
+                <LoadFailed
+                  title={t("resource.loadFailed", { resource: t("decisions.failing.group") })}
+                  onRetry={() => queue.refetch()}
+                  testId="decisions-failing-error"
+                />
+              )}
               {!queue.isPending && !queue.failed && failing.length > 0 && (
                 <DecisionSection
                   testId="decisions-failing"
