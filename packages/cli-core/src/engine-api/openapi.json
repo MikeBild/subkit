@@ -8546,7 +8546,7 @@
               "api",
               "cli"
             ],
-            "description": "Which program holds the API key: api or cli. Ignored for a verified cockpit session. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here."
+            "description": "Which program holds the API key: api or cli. Honoured only when the credential is an API key; ignored for a verified cockpit session, an MCP token or any other credential. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here."
           }
         },
         "required": [
@@ -8583,7 +8583,7 @@
               "api",
               "cli"
             ],
-            "description": "Which program holds the API key: api or cli. Ignored for a verified cockpit session. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here."
+            "description": "Which program holds the API key: api or cli. Honoured only when the credential is an API key; ignored for a verified cockpit session, an MCP token or any other credential. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here."
           }
         },
         "required": [
@@ -8670,7 +8670,7 @@
               "api",
               "cli"
             ],
-            "description": "Which program holds the API key: api or cli. Ignored for a verified cockpit session. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here."
+            "description": "Which program holds the API key: api or cli. Honoured only when the credential is an API key; ignored for a verified cockpit session, an MCP token or any other credential. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here."
           }
         },
         "required": [
@@ -8755,6 +8755,14 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200
+          },
+          "request_source": {
+            "type": "string",
+            "enum": [
+              "api",
+              "cli"
+            ],
+            "description": "Which program holds the API key: api or cli. Honoured only when the credential is an API key; ignored for a verified cockpit session, an MCP token or any other credential. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here."
           }
         }
       },

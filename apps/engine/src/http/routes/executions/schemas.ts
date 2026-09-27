@@ -100,14 +100,14 @@ const SavedRunModeSchema = z.boolean().optional().openapi({
 // caller may still say "cli"; under any other origin the field is ignored.
 const CLIENT_DECLARED_RUN_SOURCES = ["api", "cli"] as const;
 export type ClientDeclaredRunSource = (typeof CLIENT_DECLARED_RUN_SOURCES)[number];
-const ClientDeclaredRunSourceSchema = z
+export const ClientDeclaredRunSourceSchema = z
   .enum(CLIENT_DECLARED_RUN_SOURCES, {
     error: `request_source may only be ${CLIENT_DECLARED_RUN_SOURCES.join(" or ")}; every other origin is recorded by the engine from who started the run, never declared by the caller`,
   })
   .optional()
   .openapi({
     description:
-      "Which program holds the API key: api or cli. Ignored for a verified cockpit session. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.",
+      "Which program holds the API key: api or cli. Honoured only when the credential is an API key; ignored for a verified cockpit session, an MCP token or any other credential. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.",
   });
 
 export const RuntimeRunBodySchema = z.discriminatedUnion("source", [

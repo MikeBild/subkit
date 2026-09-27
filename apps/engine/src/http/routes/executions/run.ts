@@ -108,11 +108,16 @@ export async function enforceSavedWorkflowAllowlist(
 /** The origin a run started over HTTP is recorded under. It comes from who
  *  authenticated the request — a verified cockpit session is "ui" — never
  *  from what the body claims. Only when the context says no more than "a key
- *  called the API" may the caller name the program holding it ("cli").
- *  Shared with the rerun route, which has no body field at all. */
+ *  called the API" may the caller name the program holding it ("cli") — and
+ *  only when the credential really is an API key. An MCP OAuth token or a
+ *  browser session without the cockpit header also reads as "api" here, and
+ *  none of them is the CLI; letting them say so would put a label on a run
+ *  that no credential behind it can back. Shared with the rerun route. */
 export function runRequestSource(c: Context, declared?: ClientDeclaredRunSource): RequestSource {
   const verified = readRequestSource(c) ?? "api";
-  return verified === "api" ? (declared ?? "api") : verified;
+  if (verified !== "api") return verified;
+  const heldByKey = Boolean(c.get("principal")?.api_key_id);
+  return heldByKey ? (declared ?? "api") : "api";
 }
 
 async function enforceWorkflowAllowlist(

@@ -133,6 +133,11 @@ export const executionsMethods = {
     id: string,
     body: { input?: unknown; async?: boolean } = {},
   ): Promise<RunExecutionResponse> {
-    return this.request("POST", `/v1/executions/${encodeURIComponent(id)}/rerun`, body);
+    // The CLI names itself on a rerun as it does on a run; otherwise its
+    // reruns were recorded as "api" while its runs said "cli".
+    return this.request("POST", `/v1/executions/${encodeURIComponent(id)}/rerun`, {
+      ...body,
+      request_source: "cli",
+    });
   },
 };

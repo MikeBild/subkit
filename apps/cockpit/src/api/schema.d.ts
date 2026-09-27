@@ -18647,7 +18647,7 @@ export interface components {
              */
             idempotency_key?: string;
             /**
-             * @description Which program holds the API key: api or cli. Ignored for a verified cockpit session. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.
+             * @description Which program holds the API key: api or cli. Honoured only when the credential is an API key; ignored for a verified cockpit session, an MCP token or any other credential. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.
              * @enum {string}
              */
             request_source?: "api" | "cli";
@@ -18667,7 +18667,7 @@ export interface components {
             name?: string;
             input?: unknown;
             /**
-             * @description Which program holds the API key: api or cli. Ignored for a verified cockpit session. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.
+             * @description Which program holds the API key: api or cli. Honoured only when the credential is an API key; ignored for a verified cockpit session, an MCP token or any other credential. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.
              * @enum {string}
              */
             request_source?: "api" | "cli";
@@ -18706,7 +18706,7 @@ export interface components {
             };
             timeout_ms?: number;
             /**
-             * @description Which program holds the API key: api or cli. Ignored for a verified cockpit session. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.
+             * @description Which program holds the API key: api or cli. Honoured only when the credential is an API key; ignored for a verified cockpit session, an MCP token or any other credential. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.
              * @enum {string}
              */
             request_source?: "api" | "cli";
@@ -18740,6 +18740,11 @@ export interface components {
             /** Format: uuid */
             execution_authority_id?: string;
             idempotency_key?: string;
+            /**
+             * @description Which program holds the API key: api or cli. Honoured only when the credential is an API key; ignored for a verified cockpit session, an MCP token or any other credential. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.
+             * @enum {string}
+             */
+            request_source?: "api" | "cli";
         };
         ExecutionListResponse: {
             items: components["schemas"]["Execution"][];
