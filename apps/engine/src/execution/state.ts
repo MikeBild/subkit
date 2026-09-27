@@ -247,6 +247,8 @@ export async function requestExecutionAbort(
 
 /** Failure detail carried into the `execution.failed` event payload so a
  *  notification / webhook names what broke without a follow-up lookup. */
+export type OutputContractVerdict = "passed" | "violated" | "none";
+
 export interface ExecutionFailureDetail {
   step_id: string | null;
   error_code: string;
@@ -271,6 +273,10 @@ export async function finalizeExecution(
   // only act on a specific prior state (e.g. queued-cancel) narrow it.
   expectedStatuses: ExecutionStatus[] = NON_TERMINAL_STATUSES,
   result_sha256: string | null = null,
+  // The `output_schema` verdict on the final output (see engine.ts). Only the
+  // engine's own completion knows it; every other terminal path (cancel,
+  // timeout, crash) evaluated nothing and records `none`.
+  output_contract: OutputContractVerdict = "none",
 ): Promise<void> {
   // workflow_id is NULL for draft and step runs; observability code must
   // handle the null case (e.g. report duration without workflow breakdown).
@@ -286,6 +292,8 @@ export async function finalizeExecution(
         finished_at: new Date(),
         result_storage_uri,
         result_sha256,
+        failure: failure ?? null,
+        output_contract,
       })
       .where(and(eq(executions.id, execution_id), inArray(executions.status, expectedStatuses)))
       .returning({

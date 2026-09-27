@@ -4,6 +4,7 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient, type ExecutionCost } from "../engine-client.ts";
+import { executionOutcomeLine } from "../lib/execution-outcome.ts";
 import { pickId } from "../lib/pick.ts";
 import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
 import {
@@ -181,6 +182,12 @@ const getCommand = defineCommand({
         // Step bottleneck view: each step's duration as a share of the
         // summed step duration, slowest-first.
         printStepBottlenecks(steps);
+        // What happened, from the engine's structured outcome — a held
+        // preview or a tolerated step failure both finalize "succeeded".
+        const outcomeLine = executionOutcomeLine(
+          (execution as { outcome?: Parameters<typeof executionOutcomeLine>[0] }).outcome,
+        );
+        if (outcomeLine) process.stderr.write(`\n${pc.dim("outcome:")} ${outcomeLine}\n`);
         // A failed execution is useless without the reason — print the
         // step errors inline instead of making the operator run
         // `executions steps … --json | grep`.

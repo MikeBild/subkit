@@ -102,6 +102,19 @@ export const executions = pgTable(
     // below refuses the second insert, and the run route answers with the
     // first execution instead. NULL for every run that did not ask for it.
     idempotency_key: text("idempotency_key"),
+    // Why a terminal run failed, as the engine decided it: the step that
+    // stopped the run and its error code/message — or a workflow-level
+    // failure (e.g. `validation_failed`) with no step at all, which no step
+    // row can carry. NULL for runs that did not fail.
+    failure: jsonb("failure").$type<{
+      step_id: string | null;
+      error_code: string;
+      error_message: string;
+    } | null>(),
+    // Verdict of the definition's `output_schema` check on the final output:
+    // `passed` | `violated`, or `none` when there was no contract or it was not
+    // evaluated (failed run, held preview). NULL until the run finalizes.
+    output_contract: text("output_contract"),
     started_at: timestamp("started_at", { withTimezone: true }),
     finished_at: timestamp("finished_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
