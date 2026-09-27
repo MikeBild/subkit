@@ -2303,7 +2303,10 @@ async function verifyHealthyOperationsIsQuiet(page, label) {
 async function assertUnhealthyConnectorsOnly(page, label) {
   if (!(await page.locator('[data-testid="catalog-health-filter"]').isVisible()))
     throw new Error(`${label}: the health narrowing is not shown as a removable chip`);
-  const rows = await page.locator("main").innerText();
+  // The table body of THIS page. `main` matched both the shell and the page
+  // frame; and the whole page would let a name in a chip or a heading satisfy
+  // a check that is about which rows are listed.
+  const rows = await page.locator('[data-testid="catalog-connectors"] tbody').innerText();
   // The fixture rotates Reporting API (ok), Mailer (needs re-auth), Warehouse
   // (disabled) and Legacy CRM (degraded). Only the two unhealthy enabled ones
   // count against the health score, so only they may be listed.
