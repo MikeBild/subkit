@@ -49,7 +49,12 @@ import {
   recategorizedSlug,
   UNCATEGORIZED,
 } from "@/lib/workflow-category";
-import { workflowsByConnector } from "@/pages/connectors-model";
+import {
+  type ConnectorHealthFilter,
+  connectorHealthFilterFromUrl,
+  connectorNeedsAttention,
+  workflowsByConnector,
+} from "@/pages/connectors-model";
 import { connectorSlugHref, triggerLabelKey } from "@/pages/workflows-model";
 
 type CatalogResource = "workflows" | "connectors" | "knowledge" | "skills" | "files";
@@ -65,6 +70,11 @@ interface CatalogState {
   connector: string;
   /** Files only: the resource a file is attached to. */
   linkedTo: string;
+  /**
+   * Connectors only: the narrowing the health tile's link brings. Never typed,
+   * so it has no control of its own — only the chip that says so and lifts it.
+   */
+  health: ConnectorHealthFilter | null;
   sort: string;
   order: "asc" | "desc";
   page: number;
@@ -153,6 +163,10 @@ function parseState(config: CatalogConfig): CatalogState {
     category: params.get("category") ?? "all",
     connector: params.get("connector") ?? "",
     linkedTo: params.get("linked_to") ?? "",
+    health:
+      config.endpoint === "/v1/connectors"
+        ? connectorHealthFilterFromUrl(window.location.search)
+        : null,
     sort: params.get("sort") ?? config.defaultSort,
     order: order === "asc" ? "asc" : "desc",
     page: Math.max(0, Number(params.get("page") ?? 0) || 0),
@@ -176,6 +190,7 @@ function useCatalogState(config: CatalogConfig) {
         if (next.category !== "all") params.set("category", next.category);
         if (next.connector) params.set("connector", next.connector);
         if (next.linkedTo) params.set("linked_to", next.linkedTo);
+        if (next.health) params.set("health", next.health);
         if (next.sort !== config.defaultSort) params.set("sort", next.sort);
         if (next.order !== "desc") params.set("order", next.order);
         if (next.page > 0) params.set("page", String(next.page));
@@ -536,13 +551,19 @@ export function CatalogPage({
   const query = useQuery({
     queryKey: ["catalog", resource, state],
     enabled: permissions.includes(config.permission),
-    queryFn: () => {
+    queryFn: async () => {
+      // The engine filters `health_state` by one value and has no "anything
+      // but ok", so this narrowing reads the enabled connectors once and pages
+      // them here. Paging first and filtering after would hand out short pages
+      // and a total that counts rows the list then hides.
+      const byHealth = resource === "connectors" && state.health === "not_ok";
       const params = new URLSearchParams({
-        limit: String(PAGE_SIZE),
-        offset: String(state.page * PAGE_SIZE),
+        limit: String(byHealth ? RELATION_INDEX_LIMIT : PAGE_SIZE),
+        offset: String(byHealth ? 0 : state.page * PAGE_SIZE),
         sort: state.sort,
         order: state.order,
       });
+      if (byHealth) params.set("enabled", "true");
       if (state.q) params.set("q", state.q);
       if (state.category !== "all") params.set("category", state.category);
       if (resource === "workflows" && state.connector) params.set("connector", state.connector);
@@ -558,11 +579,18 @@ export function CatalogPage({
           params.set("status", state.status);
         }
       }
-      return apiRequest<{
+      const answer = await apiRequest<{
         items: CatalogRow[];
         total?: number;
         categories?: CategoryCount[];
       }>(`${config.endpoint}?${params}`);
+      if (!byHealth) return answer;
+      const unhealthy = answer.items.filter(connectorNeedsAttention);
+      return {
+        ...answer,
+        items: unhealthy.slice(state.page * PAGE_SIZE, (state.page + 1) * PAGE_SIZE),
+        total: unhealthy.length,
+      };
     },
   });
 
@@ -633,7 +661,8 @@ export function CatalogPage({
     state.status !== "all" ||
     state.category !== "all" ||
     Boolean(state.connector) ||
-    Boolean(state.linkedTo);
+    Boolean(state.linkedTo) ||
+    state.health !== null;
 
   const showsZeroStateAction =
     rows.length === 0 &&
@@ -650,6 +679,7 @@ export function CatalogPage({
       category: "all",
       connector: "",
       linkedTo: "",
+      health: null,
       page: 0,
     });
   }, [setState]);
@@ -764,6 +794,17 @@ export function CatalogPage({
                 </SelectContent>
               </Select>
             )}
+            {/* The narrowing a link brought, said out loud and removable. */}
+            {resource === "connectors" && state.health === "not_ok" ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="catalog-health-filter"
+                onClick={() => setState({ health: null, page: 0 })}
+              >
+                {t("catalog.healthNotOkFilter")}
+              </Button>
+            ) : null}
             {hasActiveFilters && (
               <Button
                 variant="ghost"

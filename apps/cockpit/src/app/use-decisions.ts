@@ -8,6 +8,7 @@ import {
   listProposedPatchCandidates,
   listProposedSkillCandidates,
 } from "@/api/decisions";
+import { type QueryView, queryView } from "@/components/failure-state";
 import { type FailingWorkflow, failingWorkflows } from "@/lib/failing-workflows";
 import { useI18n } from "@/lib/i18n-context";
 import type { NameIndex } from "@/lib/name-index";
@@ -21,12 +22,12 @@ import {
 import { driftKindKey, proposalKindKey } from "@/pages/decisions-context";
 import {
   conversationDecision,
-  countOpenDecisions,
   type DecisionItem,
   decisionKey,
   hasOverdue,
   isDecidable,
   type OpenDecisions,
+  openDecisionQueue,
   patchChangeKind,
   patchDecision,
   patchTitle,
@@ -42,6 +43,12 @@ export interface DecisionSources {
 }
 
 export interface DecisionQueue {
+  /**
+   * The waiting conversations, counted apart from the badge: they are answered
+   * in the chat, not decided here. `total` is the engine's own count. `null`
+   * when this person may not list conversations.
+   */
+  questions: { view: QueryView; total: number | null } | null;
   heldSchedules: HeldSchedule[];
   /** Approved, scheduled, and failing — the opposite of a held schedule. */
   failingWorkflows: FailingWorkflow[];
@@ -175,17 +182,28 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
   const now = Date.now();
   const heldSchedules = query.data?.heldSchedules ?? [];
   const failing = query.data?.failingWorkflows ?? [];
+  // One rule, in the model: the badge counts what the chips count.
   const open = query.data
-    ? countOpenDecisions({ items, totals: query.data.totals, nowMs: now })
+    ? openDecisionQueue({
+        items,
+        totals: query.data.totals,
+        held: heldSchedules.length,
+        failing: failing.length,
+        nowMs: now,
+      })
     : null;
-  if (open) {
-    // Counted with the rest: a workflow that runs and fails is as open a
-    // decision as one that cannot start, and a badge that leaves it out was
-    // the reason nobody looked.
-    open.total += heldSchedules.length + failing.length;
-    open.subsets.blocking += heldSchedules.length + failing.length;
-  }
   return {
+    // Without the permission there is no answer at all — not "nobody is
+    // waiting", which is a claim this person has no way to check.
+    questions: sources.conversations
+      ? {
+          view: queryView(
+            query,
+            (data) => !data.items.some((item) => item.kind === "conversation"),
+          ),
+          total: query.data?.totals.conversation ?? null,
+        }
+      : null,
     heldSchedules,
     failingWorkflows: failing,
     items,

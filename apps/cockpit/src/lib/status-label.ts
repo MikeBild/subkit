@@ -35,6 +35,8 @@ const STATUS_KEYS: Partial<Record<string, TranslationKey>> = {
   proposed: "status.proposed",
   applied: "status.applied",
   superseded: "status.superseded",
+  // A repair the engine proved it cannot make, closed by the engine itself.
+  inapplicable: "status.inapplicable",
   // Workflow and skill lifecycle
   draft: "status.draft",
   archived: "status.archived",
