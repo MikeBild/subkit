@@ -733,23 +733,91 @@ export function openDecisionQueue(input: {
 }
 
 /**
- * What each kind chip says, from the same count as the badge.
- *
- * The chips carry the engine's exact per-kind totals, so their sum IS the
- * badge — a chip reading from the rows the page happens to hold would be a
- * second count, and the two would part the moment a source hit its page cap.
- * `null` while the count cannot be read: an omitted number beats a guessed one.
+ * Whether a source was asked and answered. `not_permitted`: this person may
+ * not read it, so it was never asked — which is not the same as "nothing".
  */
-export function chipCounts(
-  open: OpenDecisions | null,
-  schedules: { held: number; failing: number },
-): Record<QueueKind, number> | null {
+export type SourceState = "answered" | "failed" | "not_permitted";
+
+/** One kind chip as the page shows it. */
+export interface QueueChip {
+  kind: QueueKind;
+  /** Position in QUEUE_KINDS — the chip's test id stays put when another is hidden. */
+  index: number;
+  /** The number, or null when no source behind this chip answered. Never a guessed 0. */
+  count: number | null;
+  /** True when one of the chip's sources failed and the number is a lower bound. */
+  partial: boolean;
+}
+
+/**
+ * The kind chips, from the same count as the badge — and only the ones this
+ * person can read.
+ *
+ * The chips carry the engine's exact per-kind totals (`reviewable_total`), so
+ * their sum IS the badge; a chip reading from the rows the page holds would be
+ * a second count. Two ways a chip used to say "0" about something nobody had
+ * measured: a source this person may not read (`skill:read`, `workflow:read`)
+ * still got its chip, at "· 0"; and a digest that failed to load was caught as
+ * an empty list, so the failing workflows read as none. A source that cannot
+ * be read has no chip. A source that failed contributes nothing to any number
+ * and says so — a count it is part of becomes "at least", and a chip with no
+ * other source says it could not be loaded.
+ *
+ * `null` while the count cannot be read at all: an omitted number beats a
+ * guessed one.
+ */
+export function queueChips(input: {
+  open: OpenDecisions | null;
+  readable: ReadableSources;
+  held: number;
+  failing: { state: SourceState; count: number };
+}): QueueChip[] | null {
+  const open = input.open;
   if (!open) return null;
-  return {
-    patch: open.byKind.patch,
-    skill: open.byKind.skill,
-    schedule: schedules.held + schedules.failing,
-  };
+  const failed = input.failing.state === "failed";
+  return readableQueueKinds(input.readable).map((kind) => {
+    const index = QUEUE_KINDS.indexOf(kind);
+    if (kind !== "schedule") return { kind, index, count: open.byKind[kind], partial: false };
+    // Held schedules are read with the patch source (`workflow:read`); failing
+    // workflows come from the digest (`stats:read`). The chip covers both.
+    const held = input.readable.patches ? input.held : 0;
+    const failing = input.failing.state === "answered" ? input.failing.count : 0;
+    return {
+      kind,
+      index,
+      count: failed && !input.readable.patches ? null : held + failing,
+      partial: failed && input.readable.patches,
+    };
+  });
+}
+
+/** Which sources this person may read — the permission, not the answer. */
+export interface ReadableSources {
+  patches: boolean;
+  skills: boolean;
+  failing: boolean;
+}
+
+/** The kinds with a chip: those with at least one source this person can read. */
+export function readableQueueKinds(readable: ReadableSources): QueueKind[] {
+  return QUEUE_KINDS.filter((kind) =>
+    kind === "patch"
+      ? readable.patches
+      : kind === "skill"
+        ? readable.skills
+        : readable.patches || readable.failing,
+  );
+}
+
+/**
+ * The navigation badge: the sum of the numbers the chips show, nothing else.
+ * `null` when there is no number to show — never a 0 claimed over a source
+ * that failed (the page says that source failed; the badge counts what answered).
+ */
+export function badgeCount(chips: readonly QueueChip[] | null): number | null {
+  if (!chips) return null;
+  const total = chips.reduce((sum, chip) => sum + (chip.count ?? 0), 0);
+  return total > 0 ? total : null;
 }
 
 /** Where the reader arrived from (an overview tile) and what they chose here (chips). */

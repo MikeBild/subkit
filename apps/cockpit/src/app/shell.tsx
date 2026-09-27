@@ -302,13 +302,15 @@ function RecordBreadcrumb() {
 function DecisionsCounter() {
   const session = useSession();
   const queue = useDecisionQueue(session.permissions);
-  if (queue.failed || queue.open === null || queue.open.total === 0) return null;
+  // The sum of the chips the page shows — a source this person cannot read or
+  // that failed adds nothing, and a badge of 0 is never shown.
+  if (queue.failed || queue.badge === null) return null;
   return (
     <SidebarMenuBadge
       className={queue.overdue ? "text-destructive" : undefined}
       data-testid="nav-decisions-count"
     >
-      {queue.open.total}
+      {queue.badge}
     </SidebarMenuBadge>
   );
 }
