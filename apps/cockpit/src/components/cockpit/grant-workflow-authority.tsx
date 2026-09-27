@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
+import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -307,7 +308,7 @@ export function GrantWorkflowAuthority({
   const invalidRuns = !Number.isInteger(Number(runs)) || Number(runs) < 1 || Number(runs) > 10000;
   const invalidHours = !Number.isInteger(Number(hours)) || Number(hours) < 1 || Number(hours) > 744;
   const boundsVisible = review && !unsupported && !incomplete;
-  const adjustUrl = `/cockpit/chat/new?workflow_id=${encodeURIComponent(workflowId)}&prompt=${encodeURIComponent(t("authority.adjustPrompt"))}`;
+  const adjustUrl = absolute(chatNewHref({ workflowId, prompt: t("authority.adjustPrompt") }));
   function openDialog(value: boolean) {
     if (busy) return;
     setOpen(value);

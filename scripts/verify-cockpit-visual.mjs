@@ -13,6 +13,7 @@ import { verifyChatReauth } from "./lib/cockpit-chat-reauth.mjs";
 import { verifyChatReplies } from "./lib/cockpit-chat-replies.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
+import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
 import { verifyScheduleHolds } from "./lib/cockpit-schedule-holds.mjs";
 import { verifyWorkflowAuthorities } from "./lib/cockpit-workflow-authorities.mjs";
 import { verifyWorkflowPreview } from "./lib/cockpit-workflow-preview.mjs";
@@ -2614,6 +2615,15 @@ for (const locale of variants) {
       shoot(page, `${locale.artifact}-${viewport.name}-chat-reply-${state}`, { fullPage: false }),
     );
     await verifyChatReauth(page, stand, conversation);
+    // Once per locale and theme, on desktop: the assertion is about which
+    // state a page renders, not about layout, and each refused read waits out
+    // a retry — repeating it at every width would spend the sweep's headroom.
+    if (viewport.name === "desktop")
+      await verifyLoadFailures(page, stand, conversation, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-load-failed-${state}`, {
+          fullPage: false,
+        }),
+      );
     await verifyChatOAuth(page, stand, conversation, locale.name);
     await verifyChatActivation(page, stand, conversation, locale.name);
     await verifyChatActivity(page, stand, conversation, locale.name, (state) =>

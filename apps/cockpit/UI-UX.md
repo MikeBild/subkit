@@ -92,12 +92,26 @@ column declares its own width through `columnDef.meta.width`, and cells wrap ins
 page sideways. A column that cannot state a width does not belong in the set.
 
 One page frame (`src/components/cockpit/page-frame.tsx`) and one table
-(`src/components/cockpit/data-table.tsx`) render every list. The frame owns the heading, the visible
-one-sentence page description, the single primary action and which element scrolls; the table owns
-the toolbar strip, the column picker, refresh, sorting, paging and all four load states. Refresh sits
-in the table's own action column rather than in the page header, because it acts on the rows and not
-on the page. Cell shapes — text, state, date, size, relation link and relation chips — come from
+(`src/components/cockpit/data-table.tsx`) render every list. The frame owns the heading, the single
+primary action and which element scrolls; the table owns the toolbar strip, the column picker,
+refresh, sorting, paging and all four load states. Refresh sits in the table's own action column
+rather than in the page header, because it acts on the rows and not on the page. Cell shapes — text,
+state, date, size, relation link and relation chips — come from
 `src/components/cockpit/table-columns.tsx` so a date on Runs and a date on Files cannot drift apart.
+
+The page description is opt-in: a visible sentence under the heading only where the title does not
+already say what the page is for (Connectors beside Connections, Skills, Access, System,
+Notifications, Decisions, the Overview). A list's primary action heads the page only while the list
+has rows; an empty list carries it in its empty state, so the same button never stands twice. A row
+opens by its own click and by one named "Open" button — the "⋯" glyph is reserved for a real menu of
+further actions — and a name cell is text, not a third way to the same record. The breadcrumb stands
+only on a record's page, as "List › Record", and its list crumb is the way back.
+
+Every read has four states — loading, error, empty, ready — decided once by `queryView` in
+`src/components/failure-state.tsx`. A failed read renders `LoadFailed` (what did not load, what to
+do, retry), never the empty state it would otherwise fall through to. Addresses come from the
+builders in `src/app/links.ts`, router-relative, with `absolute()` only for a raw `href`; each builder
+is tested against the parser its page reads it back with.
 
 ### Decisions surface
 

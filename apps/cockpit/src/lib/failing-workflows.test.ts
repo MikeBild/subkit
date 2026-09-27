@@ -61,12 +61,21 @@ test("the link leads to those runs, not to every run", () => {
   // > 0`), so a link that also brings back chat and authoring trials cannot
   // add up to the count printed beside it.
   expect(failing?.runs_href).toBe(
-    "/runs?status=failed&source=scheduler&q=Product%20analytics%20hourly",
+    "/runs?workflow_id=wf-1&status=failed&source=scheduler&q=Product+analytics+hourly",
   );
   // Without a name there is nothing to search for, but status and source still
   // narrow — the nameless group is the one an unfiltered list helps least.
-  const [unnamed] = failingWorkflows([group({ workflow_name: null })]);
+  const [unnamed] = failingWorkflows([group({ workflow_id: null, workflow_name: null })]);
   expect(unnamed?.runs_href).toBe("/runs?status=failed&source=scheduler");
+});
+
+test("a group that knows its workflow narrows the runs by id, not only by name", () => {
+  // A name search also matches every workflow whose name contains this one's,
+  // and a renamed workflow not at all. The id is what the engine filters by.
+  const id = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
+  const [failing] = failingWorkflows([group({ workflow_id: id })]);
+  const href = failing?.runs_href ?? "";
+  expect(filterFromUrl(href.slice(href.indexOf("?"))).workflowId).toBe(id);
 });
 
 test("the runs page can read back every filter this href sends", () => {
@@ -82,7 +91,14 @@ test("the runs page can read back every filter this href sends", () => {
   // (http/routes/executions/list.ts).
   const [failing] = failingWorkflows([group({})]);
   const filter = filterFromUrl(failing?.runs_href.slice(failing.runs_href.indexOf("?")) ?? "");
-  expect(filter).toEqual({ status: "failed", q: "Product analytics hourly", source: "scheduler" });
+  // `wf-1` is not a UUID, so the page drops it rather than hand the engine an
+  // id it would refuse; the UUID case is pinned in the test above.
+  expect(filter).toEqual({
+    status: "failed",
+    q: "Product analytics hourly",
+    source: "scheduler",
+    workflowId: null,
+  });
 });
 
 test("an authoring trial that failed is feedback, not an incident", () => {
