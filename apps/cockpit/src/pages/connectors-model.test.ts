@@ -1,11 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { connectorsHref } from "@/app/links";
 import { stringValue } from "@/components/cockpit/table-columns";
-import {
-  connectorHealthFilterFromUrl,
-  connectorNeedsAttention,
-  workflowsByConnector,
-} from "@/pages/connectors-model";
+import { catalogListParams } from "@/pages/catalog-model";
+import { connectorHealthFilterFromUrl, workflowsByConnector } from "@/pages/connectors-model";
 
 const workflows = [
   { id: "w1", name: "Monthly report", connectors: ["reporting-api", "mailer"] },
@@ -37,25 +34,33 @@ describe("connector usage", () => {
 });
 
 describe("connectors that count against health", () => {
-  test("enabled and not ok is the engine's own complement", () => {
-    expect(connectorNeedsAttention({ enabled: true, health_state: "needs_reauth" })).toBe(true);
-    expect(connectorNeedsAttention({ enabled: true, health_state: "degraded" })).toBe(true);
-    expect(connectorNeedsAttention({ enabled: true, health_state: "needs_update" })).toBe(true);
-    expect(connectorNeedsAttention({ enabled: true, health_state: "ok" })).toBe(false);
+  const state = {
+    q: "",
+    status: "all",
+    category: "all",
+    connector: "",
+    linkedTo: "",
+    health: "not_ok" as const,
+    sort: "name",
+    order: "asc" as const,
+    page: 2,
+  };
+
+  test("the narrowing is the engine's, and the page is a page of the narrowed list", () => {
+    // It used to read 200 enabled connectors and filter them here, so past 200
+    // the list was short and its total wrong.
+    const params = catalogListParams("connectors", state, 25);
+    expect(params.get("health")).toBe("not_ok");
+    expect(params.get("limit")).toBe("25");
+    expect(params.get("offset")).toBe("50");
+    expect(params.has("enabled")).toBe(false);
   });
 
-  test("a disabled connector is outside the ratio, however unhealthy", () => {
-    expect(connectorNeedsAttention({ enabled: false, health_state: "needs_reauth" })).toBe(false);
-  });
-
-  test("the list a red tile opens holds exactly the unhealthy enabled ones", () => {
-    const rows = [
-      { id: "a", enabled: true, health_state: "ok", needs_reauth: false },
-      { id: "b", enabled: true, health_state: "needs_reauth", needs_reauth: true },
-      { id: "c", enabled: false, health_state: "degraded", needs_reauth: false },
-      { id: "d", enabled: true, health_state: "ok", needs_reauth: false },
-    ];
-    expect(rows.filter(connectorNeedsAttention).map((row) => row.id)).toEqual(["b"]);
+  test("only the connector list carries it", () => {
+    expect(catalogListParams("workflows", state, 25).has("health")).toBe(false);
+    expect(catalogListParams("connectors", { ...state, health: null }, 25).has("health")).toBe(
+      false,
+    );
   });
 
   test("the address carries one narrowing, and nothing else is read as it", () => {

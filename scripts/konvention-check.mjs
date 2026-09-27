@@ -974,7 +974,15 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
       });
 
     if (DETAIL_LISTS.includes(path)) {
-      const items = catalogRows(path);
+      // `health=not_ok` is the engine's narrowing now (enabled and not ok), so
+      // the mock answers it the way the engine does rather than handing the
+      // page every row to filter.
+      const items = catalogRows(path).filter(
+        (row) =>
+          path !== "/v1/connectors" ||
+          url.searchParams.get("health") !== "not_ok" ||
+          (row.enabled === true && row.health_state !== "ok"),
+      );
       const categories =
         path === "/v1/workflows" || path === "/v1/connectors"
           ? [

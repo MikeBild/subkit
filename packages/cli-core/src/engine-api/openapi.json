@@ -31405,6 +31405,19 @@
           {
             "schema": {
               "type": "string",
+              "enum": [
+                "not_ok"
+              ],
+              "description": "`not_ok`: only the connectors that count against the connector-health ratio of the operational overview — enabled and any health state but `ok`. `total` and paging apply to the narrowed list; combined with `enabled=false` the list is empty."
+            },
+            "required": false,
+            "description": "`not_ok`: only the connectors that count against the connector-health ratio of the operational overview — enabled and any health state but `ok`. `total` and paging apply to the narrowed list; combined with `enabled=false` the list is empty.",
+            "name": "health",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
               "minLength": 1,
               "maxLength": 200
             },
