@@ -19,6 +19,15 @@ import {
   type UiMessage,
 } from "@/api/client";
 import { dryRunPatchCandidate, getPatchCandidatePreview } from "@/api/decisions";
+import {
+  absolute,
+  chatNewHref,
+  chatSeedFromUrl,
+  connectorHref,
+  conversationHref,
+  runHref,
+  workflowHref,
+} from "@/app/links";
 import { useSession } from "@/app/session";
 import { useDecisionQueue } from "@/app/use-decisions";
 import { BackgroundTools } from "@/components/ai-elements/background-tools";
@@ -48,6 +57,7 @@ import {
 import { DiffCard } from "@/components/cockpit/diff-card";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { MentionChips, MentionPicker, useMentionInput } from "@/components/cockpit/mention-picker";
+import { LoadFailed, queryView } from "@/components/failure-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
@@ -194,9 +204,8 @@ function catalogHref(kind: string, id: string): string {
   // and the comment here said so. The route exists, so the comment was the
   // thing that went stale, and a reader following a run out of a transcript
   // would still have arrived at a list of eleven thousand.
-  if (kind === "execution") return `/cockpit/runs/${encodeURIComponent(id)}`;
-  const section = kind === "workflow" ? "workflows" : "connectors";
-  return `/cockpit/${section}/${encodeURIComponent(id)}`;
+  if (kind === "execution") return absolute(runHref(id));
+  return absolute(kind === "workflow" ? workflowHref(id) : connectorHref(id));
 }
 
 export interface StreamedDiff {
@@ -775,14 +784,14 @@ function selectionFromPath(initialPrompt: string): ConversationSelection {
 }
 
 function setChatPath(id: string | null, replace = false): void {
-  const path = id ? `/cockpit/chat/${encodeURIComponent(id)}` : "/cockpit/chat/new";
+  const path = absolute(id ? conversationHref(id) : chatNewHref());
   window.history[replace ? "replaceState" : "pushState"]({}, "", path);
 }
 
 export function ChatPage() {
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
-  const initialPrompt = new URLSearchParams(window.location.search).get("prompt") ?? "";
+  const initialPrompt = chatSeedFromUrl(window.location.search).prompt;
   const [selection, setSelection] = useState<ConversationSelection>(() =>
     selectionFromPath(initialPrompt),
   );
@@ -810,7 +819,7 @@ export function ChatPage() {
   const [listOpen, setListOpen] = useState(false);
   useEffect(() => {
     const onPopState = () => {
-      const prompt = new URLSearchParams(window.location.search).get("prompt") ?? "";
+      const prompt = chatSeedFromUrl(window.location.search).prompt;
       setSelection(selectionFromPath(prompt));
     };
     window.addEventListener("popstate", onPopState);
@@ -860,9 +869,7 @@ export function ChatPage() {
       setStreamedDiffs([]);
       setLiveCalls([]);
 
-      const params = new URLSearchParams(window.location.search);
-      const workflowId = params.get("workflow_id");
-      const connectorId = params.get("connector_id");
+      const { workflowId, connectorId } = chatSeedFromUrl(window.location.search);
       return sendConversationTurn(
         activeId
           ? {
@@ -1097,8 +1104,25 @@ export function ChatPage() {
       })),
     [ordered, t],
   );
+  const startNew = () => {
+    setSelection({ kind: "new" });
+    setNewPermissionMode("default");
+    setChatPath(null);
+    setListOpen(false);
+  };
+  // A conversation that cannot be opened — unknown, not yours, or the read
+  // failed — used to fall through to the empty new-chat screen: starter cards
+  // and a composer, as if nothing had been asked for, and a message typed
+  // there would have gone to the conversation that had just failed.
+  const conversationFailed = Boolean(activeId) && queryView(detail, () => false) === "error";
+  const listFailed = queryView(conversations, () => false) === "error";
   const list = (
     <ConversationList
+      failed={
+        listFailed
+          ? { title: t("chat.list.loadFailed"), onRetry: () => void conversations.refetch() }
+          : null
+      }
       conversations={listRows}
       activeId={activeId}
       showHidden={showHidden}
@@ -1178,16 +1202,7 @@ export function ChatPage() {
               </IconButton>
               {/* "New" is a reset to the empty state, not a form: the composer
                 and the starter cards are the way in. */}
-              <IconButton
-                label={t("chat.new")}
-                data-testid="conversation-new"
-                onClick={() => {
-                  setSelection({ kind: "new" });
-                  setNewPermissionMode("default");
-                  setChatPath(null);
-                  setListOpen(false);
-                }}
-              >
+              <IconButton label={t("chat.new")} data-testid="conversation-new" onClick={startNew}>
                 <MessageSquarePlus />
               </IconButton>
               <IconButton
@@ -1278,7 +1293,22 @@ export function ChatPage() {
               style={{ scrollbarGutter: "stable both-edges" }}
             >
               <MessageScrollerContent className={COLUMN}>
-                {messages.length === 0 && !send.isPending ? (
+                {conversationFailed ? (
+                  <LoadFailed
+                    title={t("chat.loadFailed")}
+                    onRetry={() => void detail.refetch()}
+                    testId="chat-load-failed"
+                  >
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={startNew}
+                      data-testid="chat-load-failed-new"
+                    >
+                      {t("chat.new")}
+                    </Button>
+                  </LoadFailed>
+                ) : messages.length === 0 && !send.isPending ? (
                   // `place-items-center` on a box taller than the scroller splits
                   // the overflow between top and bottom, and the top half is
                   // clipped — which is where the icon sat. `m-auto` centres the
@@ -1528,6 +1558,8 @@ export function ChatPage() {
         <div
           className="scrollbar-thin shrink-0 overflow-y-auto border-t bg-background/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable_both-edges]"
           data-testid="chat-composer-area"
+          // No composer aimed at a conversation that could not be opened.
+          hidden={conversationFailed}
         >
           <div className={COLUMN}>
             {(pendingChoice || pendingForm) && (

@@ -7,6 +7,8 @@ import {
   auditActionLabel,
   auditDetailFacts,
   auditEvidenceBlocks,
+  auditFilterFromUrl,
+  auditLinkParams,
   auditResourceHref,
   auditResultKey,
   auditScopeParams,
@@ -577,5 +579,35 @@ describe("identifiers a reader is shown", () => {
   test("keeps enough to match a row against a log line", () => {
     // Eight characters is what the CLI prints for a session.
     expect(shortIdentifier("018f4b4a-6d33-7b3a-9c2d-123456789abc")).toContain("018f4b4a");
+  });
+});
+
+describe("the narrowing a link brings to the log", () => {
+  const id = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
+
+  test("reads a record, a request and a scope", () => {
+    expect(
+      auditFilterFromUrl(`?resource_type=workflow&resource_id=${id}&trace_id=abc123&scope=all`),
+    ).toEqual({ resourceType: "workflow", resourceId: id, traceId: "abc123", scope: "all" });
+  });
+
+  test("a record id without its type narrows nothing — the id alone names no record", () => {
+    expect(auditFilterFromUrl(`?resource_id=${id}`).resourceId).toBeNull();
+  });
+
+  test("junk is dropped rather than sent as an exact match", () => {
+    const filter = auditFilterFromUrl("?resource_type=a%20b&scope=everything&trace_id=a/b");
+    expect(filter).toEqual({ resourceType: null, resourceId: null, traceId: null, scope: null });
+  });
+
+  test("becomes exactly the engine's own parameters", () => {
+    expect(
+      auditLinkParams({ resourceType: "workflow", resourceId: id, traceId: null, scope: "all" }),
+    ).toEqual({ resource_type: "workflow", resource_id: id });
+    // Scope is not a parameter of its own: it becomes `action`/`actor_type`
+    // through `auditScopeParams`, and sending it twice would be two sources.
+    expect(
+      auditLinkParams({ resourceType: null, resourceId: null, traceId: "abc", scope: "all" }),
+    ).toEqual({ trace_id: "abc" });
   });
 });
