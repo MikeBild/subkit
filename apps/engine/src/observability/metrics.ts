@@ -31,6 +31,14 @@ const HTTP_DURATION_BUCKETS_MS = [5, 25, 100, 500, 2500, 10000] as const;
 // 1d / 1w. Surfaces the compounding learning loop (docs/concepts/workflows.md).
 const LOOP_LAG_BUCKETS_SECONDS = [60, 300, 1800, 3600, 21600, 86400, 604800] as const;
 
+/** Every value the `decision` label of `patch_candidates_total` can take. */
+export type PatchCandidateDecision =
+  | "auto_applied"
+  | "parked"
+  | "approved"
+  | "rejected"
+  | "closed_inapplicable";
+
 export const METRIC_NAMES = {
   OPERATIONAL_BLOCKED: "subkit_operational_blocked",
   OPERATIONAL_FAILING: "subkit_operational_failing",

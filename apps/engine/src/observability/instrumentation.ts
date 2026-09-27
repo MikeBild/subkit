@@ -11,7 +11,7 @@ import {
   CONNECTOR_HEALTH_VALUES,
   DB_TRANSIENT_RETRY_LABELS,
 } from "./metric-label-allowlists.ts";
-import { getMetrics, METRIC_NAMES } from "./metrics.ts";
+import { getMetrics, METRIC_NAMES, type PatchCandidateDecision } from "./metrics.ts";
 
 function safe(fn: () => void): void {
   try {
@@ -279,7 +279,10 @@ export function setOutboxCursorLag(args: {
   });
 }
 
-export function recordPatchCandidate(args: { classification: string; decision: string }): void {
+export function recordPatchCandidate(args: {
+  classification: string;
+  decision: PatchCandidateDecision;
+}): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.PATCH_CANDIDATES_TOTAL, {
       classification: args.classification,

@@ -93,8 +93,21 @@ export async function runProactiveDriftScanForTenant(
 
     // Close the proposed candidates the current workflow versions prove
     // undecidable before scanning, so a closed row's signal meets the
-    // version-bound terminal dedup instead of being re-proposed.
-    await sweepUndecidableCandidates(db, tenant_id);
+    // version-bound terminal dedup instead of being re-proposed. Isolated: a
+    // sweep failure is logged and must never fail the scan — the scan row's
+    // status is what data.freshness reads as the scheduler's heartbeat.
+    try {
+      await sweepUndecidableCandidates(db, tenant_id);
+    } catch (err) {
+      logger.error({
+        module: "scheduler",
+        action: "drift_scan.sweep_failed",
+        msg: "undecidable-candidate sweep failed — drift scan continues",
+        tenant_id,
+        scan_id,
+        ...errorFields(err),
+      });
+    }
     const scan = await scanForDrift(filters, db);
     signals_detected = scan.signals.length + scan.unanchored.length;
     unanchored_detected = scan.unanchored.length;
