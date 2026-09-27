@@ -20,8 +20,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
-import { patchCandidates, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { events, patchCandidates, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
+import { getMetrics, resetMetricsRegistryForTests } from "../../observability/metrics.ts";
 import { getLatestShape } from "../../schema-versions/service.ts";
 import { approvePatchCandidate, PatchDecisionError } from "../candidate-decision.ts";
 import { analyzeStepFailure } from "../drift-detector.ts";
@@ -126,12 +127,13 @@ describe("inapplicable lifecycle", () => {
   let closedVersion = "";
   let reopenedId = "";
 
-  test("a safe candidate whose auto-apply is no_change ends inapplicable with an audit row", async () => {
+  test("a safe candidate whose apply is no_change is closed at creation — audited, never announced", async () => {
     await healStepInPlace();
     closedVersion = await currentVersionId();
+    resetMetricsRegistryForTests();
 
-    // Unattended scan, default safe-patches policy: auto-apply is attempted
-    // and fails with `no_change`.
+    // Unattended scan, default safe-patches policy. Readiness already proves
+    // `no_change`, so the row is closed before anything announces it.
     const result = await processDriftSignal(
       await proactiveSignal(),
       signalCtx(),
@@ -158,6 +160,28 @@ describe("inapplicable lifecycle", () => {
     expect(audits[0]?.actor_type).toBe("system");
     expect(audits[0]?.reason).toBe("no_change");
     expect(audits[0]?.metadata).toMatchObject({ closed_against_version_id: closedVersion });
+
+    // Closed at birth: no "proposed" audit, no `patch.proposed` notification —
+    // a fix nobody can apply must not be announced as one — and the metric
+    // records the closure, not a parked proposal.
+    const proposedAudits = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.resource_id, closedId), eq(auditLog.action, "patch_candidate.proposed")),
+      );
+    expect(proposedAudits).toHaveLength(0);
+    const announced = (
+      await ctx.testDb.db.select().from(events).where(eq(events.tenant_id, ctx.tenant_id))
+    ).filter(
+      (e) =>
+        e.type === "patch.proposed" &&
+        (e.payload as Record<string, unknown>).patch_candidate_id === closedId,
+    );
+    expect(announced).toHaveLength(0);
+    const exposition = getMetrics().render();
+    expect(exposition).toMatch(/patch_candidates_total\{[^}]*decision="closed_inapplicable"/);
+    expect(exposition).not.toMatch(/patch_candidates_total\{[^}]*decision="parked"/);
   });
 
   test("the same drift on the same version is deduped against the closure — no LLM, no row", async () => {
