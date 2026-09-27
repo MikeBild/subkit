@@ -2871,6 +2871,8 @@ The trigger is recorded in every Execution and every Audit Log entry alongside t
 
 All three variants land at the same `runExecution()` core through the same execution contract; only the way the run is initiated differs.
 
+**What really starts a workflow.** `trigger` on a workflow is only what the definition declares; a schedule created with `POST /v1/schedules` exists only as its bound row. Every workflow representation (`GET /v1/workflows`, `GET /v1/workflows/{id}`, `list_workflows` / `get_workflow` / `find_workflow`) therefore also carries `schedule` (the bound row with its `state` and `next_fire_at`), `webhooks_active`, and `effective_trigger` `{ kind, source, state }`: a firing schedule wins, then active webhooks, then a schedule that does not fire (`paused`, `held`, `activation_required`), then the definition — whose declared schedule or webhook without a row is `declared_unbound`. `sk workflows list` shows this as the `runs_on` column. `next_fire_at` applies the calendar gates and is `null` whenever the schedule does not fire.
+
 **Schedule resource upserts.** `POST /v1/schedules` is an upsert on `(tenant_id, workflow_id)`. A new row returns 201 with `upsert_status: "created"` and audits `schedule.created`; replacing the existing workflow schedule returns 200 with `upsert_status: "updated"` and audits `schedule.updated`. The persisted JSON `input`—including arrays, scalars, and `null`—is returned by create/update responses and by `GET /v1/schedules`, so the catalog shows the exact payload that unattended runs receive.
 
 **Webhook trigger, exactly.** Two facts trip up authors; both are grounded in `apps/engine/src/webhooks/inbound/service.ts`:
@@ -3075,6 +3077,13 @@ for recovery, but new writes never use PostgreSQL as a blob fallback.
 
 The `GET /v1/executions/:id` route hydrates from the storage URI when
 present; consumers never read the URI directly.
+
+The same route returns the run's `outcome`: `kind` (`succeeded`, `failed`,
+`held` — a hold-writes preview that wrote nothing — `partial` — a tolerated
+`on_error: "continue"` failure — or `running`), the `failed_step` that stopped
+it, its `cause_class` and `error_code`, step counts, and the `output_contract`
+verdict. The execution list carries `failure` (`step_key`, `cause_class`) on
+failed runs only; `sk executions get` prints the outcome line.
 
 Inside a run, a loop that spills large body payloads keeps its
 `iterationResults` array bounded by substituting an `OffloadRef` — a
