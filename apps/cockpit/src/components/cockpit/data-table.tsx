@@ -15,7 +15,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Columns3,
-  MoreHorizontal,
   RefreshCw,
   Search,
 } from "lucide-react";
@@ -65,8 +64,12 @@ export interface TableErrorState {
 }
 
 export interface TableEmptyState {
-  /** Nothing exists yet. */
-  zero: { title: string; description: string; action?: ReactNode };
+  /**
+   * Nothing exists yet. The description is the concrete next step where one
+   * exists and absent otherwise — a sentence that only restates the title
+   * ("records appear here") is filler, not guidance.
+   */
+  zero: { title: string; description?: string; action?: ReactNode };
   /** Things exist, the current filters exclude them all. */
   filtered: {
     title: string;
@@ -213,7 +216,9 @@ export function DataTable<TData extends RowData>({
       data-family-state="empty"
     >
       <p className="text-sm font-medium">{emptyCopy.title}</p>
-      <p className="max-w-md text-sm text-muted-foreground">{emptyCopy.description}</p>
+      {emptyCopy.description ? (
+        <p className="max-w-md text-sm text-muted-foreground">{emptyCopy.description}</p>
+      ) : null}
       {hasActiveFilters ? (
         <Button
           variant="outline"
@@ -337,7 +342,7 @@ export function DataTable<TData extends RowData>({
                     </TableHead>
                   );
                 })}
-                <TableHead className="w-24">
+                <TableHead className={rowActions ? "w-32" : "w-24"}>
                   <span className="flex items-center justify-end">
                     <span className="sr-only">{actionsLabel}</span>
                     {onRefresh && refreshLabel && (
@@ -404,19 +409,23 @@ export function DataTable<TData extends RowData>({
                   <TableCell>
                     <span className="flex items-center justify-end gap-1">
                       {rowActions?.(row.original, index)}
+                      {/* One named way in, beside the row click. It was a "⋯"
+                          icon labelled "Öffnen": the glyph every other list
+                          uses for a menu of further actions, opening no menu.
+                          A row that says what its button does needs no
+                          hover to find out. */}
                       {onOpen && (
-                        <IconButton
+                        <Button
                           variant="ghost"
-                          size="icon-sm"
-                          label={openLabel}
+                          size="sm"
                           data-testid={`${collectionId}-open-${index}`}
                           onClick={(event) => {
                             event.stopPropagation();
                             onOpen(row.original);
                           }}
                         >
-                          <MoreHorizontal />
-                        </IconButton>
+                          {openLabel}
+                        </Button>
                       )}
                     </span>
                   </TableCell>

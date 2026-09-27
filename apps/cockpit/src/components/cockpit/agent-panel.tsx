@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Bot } from "lucide-react";
 import { useState } from "react";
 import { sendConversationTurn } from "@/api/client";
+import { absolute, chatNewHref } from "@/app/links";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -115,10 +116,7 @@ export function AgentPanel({
           />
           <div className="flex items-center justify-between gap-2">
             <Button variant="ghost" size="sm" asChild>
-              <a
-                href={`/cockpit/chat/new?workflow_id=${encodeURIComponent(workflowId)}`}
-                data-testid="agent-panel-full-chat"
-              >
+              <a href={absolute(chatNewHref({ workflowId }))} data-testid="agent-panel-full-chat">
                 {t("agentPanel.openChat")}
               </a>
             </Button>

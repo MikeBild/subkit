@@ -1,5 +1,8 @@
+import type { ReactNode } from "react";
 import type { components } from "@/api/schema";
+import { uuidParam } from "@/app/links";
 import { LOCALE_TAGS, type Locale, type TranslationKey } from "@/lib/i18n";
+import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 import { shortIdentifier } from "@/pages/audit-model";
 
 type Execution = components["schemas"]["Execution"];
@@ -65,10 +68,21 @@ export function isKnownRequestSource(source: string): boolean {
  * whose definition says it excludes them. A parameter the link sends and the
  * page drops is indistinguishable from no filter at all.
  *
+ * `workflow_id` is the third: a name search matches every workflow whose name
+ * contains the words, and a renamed workflow not at all. The engine filters
+ * `/v1/executions` by id, so a link that knows the workflow says which one.
+ *
  * It lives here, beside the map it validates against, so it can be tested
- * without standing up the page.
+ * without standing up the page. `runsHref` in app/links.ts builds what it reads.
  */
-export function filterFromUrl(search: string): { status: string; q: string; source: string } {
+export interface RunsFilter {
+  status: string;
+  q: string;
+  source: string;
+  workflowId: string | null;
+}
+
+export function filterFromUrl(search: string): RunsFilter {
   const params = new URLSearchParams(search);
   const status = params.get("status") ?? "";
   const source = params.get("source") ?? "";
@@ -76,7 +90,25 @@ export function filterFromUrl(search: string): { status: string; q: string; sour
     status: RUN_STATUSES.includes(status as (typeof RUN_STATUSES)[number]) ? status : "all",
     q: (params.get("q") ?? "").slice(0, 200),
     source: isKnownRequestSource(source) ? source : "all",
+    workflowId: uuidParam(params, "workflow_id"),
   };
+}
+
+/** The `/v1/executions` query for one page of a filter. */
+export function executionsQuery(
+  filter: RunsFilter,
+  page: { limit: number; offset: number },
+): URLSearchParams {
+  const params = new URLSearchParams({ limit: String(page.limit), offset: String(page.offset) });
+  if (filter.status !== "all") params.set("status", filter.status);
+  if (filter.source !== "all") params.set("request_source", filter.source);
+  if (filter.workflowId) params.set("workflow_id", filter.workflowId);
+  // The engine searches the whole log by the workflow's name. The list used
+  // to narrow the page it had already fetched, which reads as search and is
+  // not: a run outside the newest fifty could not be found by name at all.
+  const needle = filter.q.trim();
+  if (needle) params.set("q", needle);
+  return params;
 }
 
 /**
@@ -156,7 +188,7 @@ export type Translate = (key: TranslationKey, values?: Record<string, string | n
  * The third slot is absent, not empty, on every row that shows its value in
  * full: an empty title would advertise a hidden value that isn't there.
  */
-export type RunFact = [label: string, value: string, full?: string];
+export type RunFact = [label: string, value: ReactNode, full?: string];
 
 /**
  * A fact whose value is an identifier: shortened on screen, whole in the title.
@@ -201,9 +233,15 @@ export function runName(run: Execution, t: Translate): string {
   return t(SOURCE_KIND_KEYS[run.source_kind] ?? "runs.sourceKind.saved");
 }
 
-export function requestSourceLabel(source: string, t: Translate): string {
-  const key = REQUEST_SOURCE_KEYS[source];
-  return key ? t(key) : t("common.unknown");
+/**
+ * Who started a run, as a word — or the engine's own value, marked as one.
+ *
+ * A source this build has no word for used to read "Unbekannt", which is
+ * false: the engine recorded exactly which source it was. §2 bans the word and
+ * §15.2 names the replacement, the machine value recognisably as such.
+ */
+export function requestSourceLabel(source: string, t: Translate): CatalogLabel {
+  return catalogLabel(source, REQUEST_SOURCE_KEYS[source], t);
 }
 
 export function formatRunDuration(locale: Locale, ms: number): string {

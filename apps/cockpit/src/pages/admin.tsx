@@ -20,6 +20,7 @@ import { ContextHelp } from "@/components/cockpit/context-help";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
 import { PreparedChanges } from "@/components/cockpit/prepared-changes";
+import { LoadFailed, queryView } from "@/components/failure-state";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -72,7 +73,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { LabelText } from "@/lib/machine-label";
 import { statusLabel } from "@/lib/status-label";
+import { permissionLabel, roleLabel, settingMetaLabel } from "@/pages/admin-model";
 
 type Envelope<T> = { items: T[] };
 type RoleName = "admin" | "member" | "enduser";
@@ -229,7 +232,8 @@ function AdminFrame({
   testId,
 }: {
   titleKey: TranslationKey;
-  descriptionKey: TranslationKey;
+  /** Only where the title does not already say what the page is for. */
+  descriptionKey?: TranslationKey;
   action?: ReactNode;
   children: ReactNode;
   testId: string;
@@ -239,7 +243,7 @@ function AdminFrame({
     <PageFrame
       testId={testId}
       title={t(titleKey)}
-      description={t(descriptionKey)}
+      {...(descriptionKey ? { description: t(descriptionKey) } : {})}
       action={action}
       scroll="page"
     >
@@ -258,28 +262,21 @@ function LoadingCards({ testId }: { testId: string }) {
   );
 }
 
+/**
+ * Nothing here yet, said once.
+ *
+ * Every empty card used to add "new records of the workspace appear here",
+ * which restates the title and tells the reader nothing to do. Where there is
+ * a next step on these pages it is the page's own action in the header.
+ */
 function EmptyCard({ text, testId }: { text: string; testId: string }) {
-  const { t } = useI18n();
   return (
     <Empty className="min-h-52 border" data-testid={testId}>
       <EmptyHeader>
         <EmptyTitle>{text}</EmptyTitle>
-        <EmptyDescription>{t("admin.emptyHint")}</EmptyDescription>
       </EmptyHeader>
     </Empty>
   );
-}
-
-function roleLabel(role: string, t: ReturnType<typeof useI18n>["t"]): string {
-  const key: Record<string, TranslationKey> = {
-    config: "settings.meta.configuration",
-    admin: "role.admin",
-    member: "role.member",
-    enduser: "role.enduser",
-    metrics_scraper: "role.metricsScraper",
-    portal_token_user: "role.portalTokenUser",
-  };
-  return key[role] ? t(key[role]) : t("common.unknown");
 }
 
 function builtinRoleDescription(
@@ -295,65 +292,6 @@ function builtinRoleDescription(
     portal_token_user: "access.roleDescription.portalTokenUser",
   };
   return key[role] ? t(key[role]) : fallback;
-}
-
-const PERMISSION_RESOURCE_KEYS: Readonly<Record<string, TranslationKey>> = {
-  api_key: "nav.apiAccess",
-  audit: "nav.audit",
-  chat_identity: "permission.resource.chatIdentity",
-  chat_workspace: "permission.resource.chatWorkspace",
-  connector: "resource.connectors.title",
-  conversation: "nav.chat",
-  credential: "permission.resource.credentials",
-  discovery: "permission.resource.discovery",
-  execution: "resource.runs.title",
-  file: "resource.files.title",
-  identity: "resource.people.title",
-  inbound_hook: "permission.resource.inboundHooks",
-  knowledge: "resource.knowledge.title",
-  mcp: "permission.resource.mcp",
-  mcp_oauth_client: "permission.resource.mcpClients",
-  metrics: "permission.resource.metrics",
-  notification: "resource.inbox.title",
-  portal_token: "permission.resource.portalTokens",
-  rbac: "resource.access.title",
-  self_healing: "resource.operations.title",
-  settings: "resource.settings.title",
-  skill: "resource.skills.title",
-  stats: "resource.usage.title",
-  workflow: "resource.workflows.title",
-};
-
-const PERMISSION_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
-  abort: "permission.action.abort",
-  activate: "permission.action.activate",
-  admin: "permission.action.admin",
-  approve: "permission.action.approve",
-  archive: "permission.action.archive",
-  authoring: "permission.action.authoring",
-  cancel: "permission.action.cancel",
-  delete: "permission.action.delete",
-  list: "permission.action.list",
-  oauth: "permission.action.oauth",
-  promote: "permission.action.promote",
-  read: "permission.action.read",
-  revoke: "permission.action.revoke",
-  rotate: "permission.action.rotate",
-  run: "permission.action.run",
-  signal: "permission.action.signal",
-  test: "permission.action.test",
-  write: "permission.action.write",
-};
-
-function permissionLabel(permission: string, t: ReturnType<typeof useI18n>["t"]): string {
-  const [resource, action] = permission.split(":");
-  const resourceKey = resource ? PERMISSION_RESOURCE_KEYS[resource] : undefined;
-  const actionKey = action ? PERMISSION_ACTION_KEYS[action] : undefined;
-  if (!resourceKey || !actionKey) return t("common.unknown");
-  return t("permission.label", {
-    resource: t(resourceKey),
-    action: t(actionKey),
-  });
 }
 
 export function PeoplePage() {
@@ -415,11 +353,12 @@ export function PeoplePage() {
     onSuccess: (result) => setSecret(result.plaintext_token),
   });
 
+  const view = queryView(query, (data) => data.items.length === 0);
+
   return (
     <AdminFrame
       testId="admin-people"
       titleKey="resource.people.title"
-      descriptionKey="resource.people.description"
       action={
         canWrite ? (
           <Button
@@ -433,19 +372,27 @@ export function PeoplePage() {
         ) : undefined
       }
     >
-      {query.isPending ? (
+      {view === "loading" ? (
         <LoadingCards testId="people-loading" />
-      ) : !query.data?.items.length ? (
+      ) : view === "error" ? (
+        <LoadFailed
+          title={t("resource.loadFailed", { resource: t("resource.people.title") })}
+          onRetry={() => void query.refetch()}
+          testId="people-load-failed"
+        />
+      ) : view === "empty" ? (
         <EmptyCard text={t("resource.people.empty")} testId="people-empty" />
       ) : (
         <div className="grid gap-2" data-testid="people-list">
-          {query.data.items.map((user, index) => (
+          {(query.data?.items ?? []).map((user, index) => (
             <Card key={user.id} size="sm" data-testid={`people-item-${index}`}>
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
                   <CardTitle className="truncate text-sm">{user.email}</CardTitle>
                   <CardDescription className="mt-1 flex flex-wrap gap-2">
-                    <Badge variant="outline">{roleLabel(user.effective_role, t)}</Badge>
+                    <Badge variant="outline">
+                      <LabelText label={roleLabel(user.effective_role, t)} />
+                    </Badge>
                     <Badge variant="secondary">{statusLabel(t, user.status)}</Badge>
                     {(user.oauth_connections ?? 0) > 0 && (
                       <Badge variant="outline" data-testid={`people-connections-${index}`}>
@@ -485,7 +432,7 @@ export function PeoplePage() {
                               value={name}
                               data-testid={`people-role-${index}-${name}`}
                             >
-                              {roleLabel(name, t)}
+                              <LabelText label={roleLabel(name, t)} />
                             </SelectItem>
                           ))}
                         </SelectGroup>
@@ -544,7 +491,7 @@ export function PeoplePage() {
                         value={name}
                         data-testid={`people-create-role-${name}`}
                       >
-                        {roleLabel(name, t)}
+                        <LabelText label={roleLabel(name, t)} />
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -670,15 +617,22 @@ function ConnectedClients() {
   });
   if (!canRead) return null;
   const items = query.data?.items ?? [];
+  const view = queryView(query, (data) => data.items.length === 0);
   return (
     <section className="flex flex-col gap-2" data-testid="connected-clients">
       <div>
         <h2 className="text-sm font-medium">{t("connectedClients.title")}</h2>
         <p className="text-xs text-muted-foreground">{t("connectedClients.description")}</p>
       </div>
-      {query.isPending ? (
+      {view === "loading" ? (
         <LoadingCards testId="connected-clients-loading" />
-      ) : !items.length ? (
+      ) : view === "error" ? (
+        <LoadFailed
+          title={t("resource.loadFailed", { resource: t("connectedClients.title") })}
+          onRetry={() => void query.refetch()}
+          testId="connected-clients-load-failed"
+        />
+      ) : view === "empty" ? (
         <EmptyCard text={t("connectedClients.empty")} testId="connected-clients-empty" />
       ) : (
         <div className="grid gap-2" data-testid="connected-clients-list">
@@ -770,11 +724,11 @@ export function ApiAccessPage() {
       toast.success(t("apiKeys.revoked"));
     },
   });
+  const view = queryView(query, (data) => data.items.length === 0);
   return (
     <AdminFrame
       testId="admin-api-access"
       titleKey="resource.apiAccess.title"
-      descriptionKey="resource.apiAccess.description"
       action={
         canWrite ? (
           <Button
@@ -797,13 +751,19 @@ export function ApiAccessPage() {
           </pre>
         </CardContent>
       </Card>
-      {query.isPending ? (
+      {view === "loading" ? (
         <LoadingCards testId="api-keys-loading" />
-      ) : !query.data?.items.length ? (
+      ) : view === "error" ? (
+        <LoadFailed
+          title={t("resource.loadFailed", { resource: t("resource.apiAccess.title") })}
+          onRetry={() => void query.refetch()}
+          testId="api-keys-load-failed"
+        />
+      ) : view === "empty" ? (
         <EmptyCard text={t("resource.apiAccess.empty")} testId="api-keys-empty" />
       ) : (
         <div className="grid gap-2" data-testid="api-keys-list">
-          {query.data.items.map((key, index) => (
+          {(query.data?.items ?? []).map((key, index) => (
             <Card key={key.id} size="sm" data-testid={`api-key-item-${index}`}>
               <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
@@ -911,18 +871,39 @@ export function ApiAccessPage() {
   );
 }
 
+/**
+ * One tab's list in all four of its states. Each tab used to ask only
+ * "pending?" and then render the rows, so a failed read fell through to "no
+ * roles" — an installation told it had no roles because a request failed.
+ */
 function AccessCollection<T extends { id?: string; name?: string; description?: string | null }>({
+  name,
+  query,
   items,
+  failedTitle,
   empty,
-  testId,
   render,
 }: {
+  /** `roles` → `roles-loading`, `roles-load-failed`, `roles-list`, `roles-list-empty`. */
+  name: string;
+  query: Parameters<typeof queryView>[0] & { refetch(): unknown };
   items: T[];
+  failedTitle: string;
   empty: string;
-  testId: string;
   render?: (item: T, index: number) => ReactNode;
 }) {
-  if (!items.length) return <EmptyCard text={empty} testId={`${testId}-empty`} />;
+  const testId = `${name}-list`;
+  const view = queryView(query, () => items.length === 0);
+  if (view === "loading") return <LoadingCards testId={`${name}-loading`} />;
+  if (view === "error")
+    return (
+      <LoadFailed
+        title={failedTitle}
+        onRetry={() => void query.refetch()}
+        testId={`${name}-load-failed`}
+      />
+    );
+  if (view === "empty") return <EmptyCard text={empty} testId={`${testId}-empty`} />;
   return (
     <div className="grid gap-2" data-testid={testId}>
       {items.map((item, index) =>
@@ -1120,41 +1101,41 @@ export function AccessPage() {
               </Button>
             )}
           </div>
-          {roles.isPending ? (
-            <LoadingCards testId="roles-loading" />
-          ) : (
-            <AccessCollection
-              items={roles.data?.items ?? []}
-              empty={t("access.noRoles")}
-              testId="roles-list"
-              render={(role, index) => (
-                <Card key={role.id} size="sm" data-testid={`roles-list-${index}`}>
-                  <CardHeader>
-                    <div className="flex items-center gap-2">
-                      <CardTitle>{roleLabel(role.name, t)}</CardTitle>
-                      {role.is_builtin && <Badge variant="secondary">{t("access.builtin")}</Badge>}
-                    </div>
-                    {builtinRoleDescription(role.name, role.description, t) && (
-                      <CardDescription>
-                        {builtinRoleDescription(role.name, role.description, t)}
-                      </CardDescription>
-                    )}
-                    {canWrite && !role.is_builtin && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-3 w-fit"
-                        onClick={() => setManagedRole(role)}
-                        data-testid={`role-manage-${index}`}
-                      >
-                        {t("access.managePermissions")}
-                      </Button>
-                    )}
-                  </CardHeader>
-                </Card>
-              )}
-            />
-          )}
+          <AccessCollection
+            name="roles"
+            query={roles}
+            items={roles.data?.items ?? []}
+            failedTitle={t("resource.loadFailed", { resource: t("access.roles") })}
+            empty={t("access.noRoles")}
+            render={(role, index) => (
+              <Card key={role.id} size="sm" data-testid={`roles-list-${index}`}>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <CardTitle>
+                      <LabelText label={roleLabel(role.name, t)} />
+                    </CardTitle>
+                    {role.is_builtin && <Badge variant="secondary">{t("access.builtin")}</Badge>}
+                  </div>
+                  {builtinRoleDescription(role.name, role.description, t) && (
+                    <CardDescription>
+                      {builtinRoleDescription(role.name, role.description, t)}
+                    </CardDescription>
+                  )}
+                  {canWrite && !role.is_builtin && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 w-fit"
+                      onClick={() => setManagedRole(role)}
+                      data-testid={`role-manage-${index}`}
+                    >
+                      {t("access.managePermissions")}
+                    </Button>
+                  )}
+                </CardHeader>
+              </Card>
+            )}
+          />
         </TabsContent>
         <TabsContent value="groups" className="grid gap-4 pt-4">
           <div className="flex justify-end">
@@ -1169,15 +1150,13 @@ export function AccessPage() {
               </Button>
             )}
           </div>
-          {groups.isPending ? (
-            <LoadingCards testId="groups-loading" />
-          ) : (
-            <AccessCollection
-              items={groups.data?.items ?? []}
-              empty={t("access.noGroups")}
-              testId="groups-list"
-            />
-          )}
+          <AccessCollection
+            name="groups"
+            query={groups}
+            items={groups.data?.items ?? []}
+            failedTitle={t("resource.loadFailed", { resource: t("access.groups") })}
+            empty={t("access.noGroups")}
+          />
         </TabsContent>
         <TabsContent value="grants" className="pt-4">
           <div className="mb-4 flex justify-end">
@@ -1192,60 +1171,58 @@ export function AccessPage() {
               </Button>
             )}
           </div>
-          {grants.isPending ? (
-            <LoadingCards testId="grants-loading" />
-          ) : (
-            <AccessCollection
-              items={grants.data?.items ?? []}
-              empty={t("access.noGrants")}
-              testId="grants-list"
-              render={(grant, index) => (
-                <Card key={grant.id} size="sm" data-testid={`grants-list-${index}`}>
-                  <CardContent className="flex items-center gap-3 p-4">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium">{permissionLabel(grant.permission, t)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {subjectName(grant)} · {workflowName(grant)} · {grant.permission}
-                      </p>
-                    </div>
-                    {canWrite && (
-                      <IconButton
-                        label={t("access.revokeGrant")}
-                        data-testid={`grant-revoke-${index}`}
-                        onClick={() => revokeGrant.mutate(grant.id)}
-                      >
-                        <Trash2 />
-                      </IconButton>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-            />
-          )}
+          <AccessCollection
+            name="grants"
+            query={grants}
+            items={grants.data?.items ?? []}
+            failedTitle={t("resource.loadFailed", { resource: t("access.grants") })}
+            empty={t("access.noGrants")}
+            render={(grant, index) => (
+              <Card key={grant.id} size="sm" data-testid={`grants-list-${index}`}>
+                <CardContent className="flex items-center gap-3 p-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">
+                      <LabelText label={permissionLabel(grant.permission, t)} />
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {subjectName(grant)} · {workflowName(grant)} · {grant.permission}
+                    </p>
+                  </div>
+                  {canWrite && (
+                    <IconButton
+                      label={t("access.revokeGrant")}
+                      data-testid={`grant-revoke-${index}`}
+                      onClick={() => revokeGrant.mutate(grant.id)}
+                    >
+                      <Trash2 />
+                    </IconButton>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          />
         </TabsContent>
         <TabsContent value="permissions" className="pt-4">
-          {permissions.isPending ? (
-            <LoadingCards testId="permissions-loading" />
-          ) : (
-            <AccessCollection
-              items={(permissions.data?.items ?? []).map((permission) => ({
-                ...permission,
-                id: permission.name,
-              }))}
-              empty={t("access.noPermissions")}
-              testId="permissions-list"
-              render={(permission, index) => (
-                <Card key={permission.name} size="sm" data-testid={`permissions-list-${index}`}>
-                  <CardHeader>
-                    <CardTitle>{permissionLabel(permission.name, t)}</CardTitle>
-                    <CardDescription className="font-mono text-xs">
-                      {permission.name}
-                    </CardDescription>
-                  </CardHeader>
-                </Card>
-              )}
-            />
-          )}
+          <AccessCollection
+            name="permissions"
+            query={permissions}
+            items={(permissions.data?.items ?? []).map((permission) => ({
+              ...permission,
+              id: permission.name,
+            }))}
+            failedTitle={t("resource.loadFailed", { resource: t("access.permissions") })}
+            empty={t("access.noPermissions")}
+            render={(permission, index) => (
+              <Card key={permission.name} size="sm" data-testid={`permissions-list-${index}`}>
+                <CardHeader>
+                  <CardTitle>
+                    <LabelText label={permissionLabel(permission.name, t)} />
+                  </CardTitle>
+                  <CardDescription className="font-mono text-xs">{permission.name}</CardDescription>
+                </CardHeader>
+              </Card>
+            )}
+          />
         </TabsContent>
       </Tabs>
       <Dialog open={Boolean(createKind)} onOpenChange={(open) => !open && setCreateKind(null)}>
@@ -1383,7 +1360,7 @@ export function AccessPage() {
                           value={permission.name}
                           data-testid={`grant-permission-${index}`}
                         >
-                          {permissionLabel(permission.name, t)}
+                          <LabelText label={permissionLabel(permission.name, t)} />
                         </SelectItem>
                       ))}
                   </SelectGroup>
@@ -1441,7 +1418,9 @@ export function AccessPage() {
                     data-testid={`role-permission-${index}`}
                   />
                   <span className="min-w-0">
-                    <span className="block font-medium">{permissionLabel(permission.name, t)}</span>
+                    <span className="block font-medium">
+                      <LabelText label={permissionLabel(permission.name, t)} />
+                    </span>
                     <span className="block font-mono text-xs text-muted-foreground">
                       {permission.name}
                     </span>
@@ -1495,6 +1474,7 @@ export function OperationsPage() {
       toast.success(t("operations.scanStarted"));
     },
   });
+  const view = queryView(query, () => false);
   return (
     <AdminFrame
       testId="admin-operations"
@@ -1514,10 +1494,20 @@ export function OperationsPage() {
         ) : undefined
       }
     >
-      {query.isPending ? (
+      {view === "loading" ? (
         <LoadingCards testId="operations-loading" />
       ) : (
         <div className="grid gap-4">
+          {/* The scan still works when the digest could not be read, so the
+              tools stay; the failure is said above them instead of leaving
+              the card without its "generated" line and no reason why. */}
+          {view === "error" ? (
+            <LoadFailed
+              title={t("operations.loadFailed")}
+              onRetry={() => void query.refetch()}
+              testId="operations-load-failed"
+            />
+          ) : null}
           <Card data-testid="operations-tools">
             <CardHeader>
               <CardTitle>{t("operations.scanTitle")}</CardTitle>
@@ -1592,6 +1582,8 @@ export function NotificationsPage() {
   });
   const ruleItems = rules.data?.items ?? [];
   const channelItems = channels.data?.items ?? [];
+  const rulesView = queryView(rules, (data) => data.items.length === 0);
+  const channelsView = queryView(channels, (data) => data.items.length === 0);
   const word = (map: Readonly<Record<string, TranslationKey>>, value: string, fallback: string) => {
     const key = map[value];
     return key ? t(key) : fallback;
@@ -1603,8 +1595,19 @@ export function NotificationsPage() {
       titleKey="resource.notifications.title"
       descriptionKey="resource.notifications.description"
     >
-      {rules.isPending || channels.isPending ? (
+      {rulesView === "loading" || channelsView === "loading" ? (
         <LoadingCards testId="notifications-loading" />
+      ) : rulesView === "error" || channelsView === "error" ? (
+        // Either half missing makes the other misleading: rules without the
+        // channels they deliver to cannot say where anything goes.
+        <LoadFailed
+          title={t("resource.loadFailed", { resource: t("resource.notifications.title") })}
+          onRetry={() => {
+            void rules.refetch();
+            void channels.refetch();
+          }}
+          testId="notifications-load-failed"
+        />
       ) : ruleItems.length === 0 && channelItems.length === 0 ? (
         // Never used, not measured zero: the next step belongs in the empty
         // state, not in a manual somewhere else (§4).
@@ -1819,20 +1822,6 @@ function settingLabel(path: string, t: ReturnType<typeof useI18n>["t"]): string 
   return providerLabel
     ? t("settings.providerLabel", { provider: providerLabel, label: t(key) })
     : t(key);
-}
-
-function settingMetaLabel(value: string, t: ReturnType<typeof useI18n>["t"]): string {
-  const key: Record<string, TranslationKey> = {
-    default: "settings.meta.default",
-    env: "settings.meta.environment",
-    environment: "settings.meta.environment",
-    global: "settings.meta.global",
-    tenant: "settings.meta.workspace",
-    override: "settings.meta.override",
-    workspace: "settings.meta.workspace",
-  };
-  const labelKey = key[value.toLowerCase()];
-  return labelKey ? t(labelKey) : t("common.unknown");
 }
 
 function authProvidersFrom(value: unknown): AuthProviderSetting[] {
@@ -2124,12 +2113,9 @@ export function SettingsPage() {
     },
     onError: () => toast.error(t("settings.saveFailed")),
   });
+  const settingsView = queryView(query, () => false);
   return (
-    <AdminFrame
-      testId="admin-settings"
-      titleKey="resource.settings.title"
-      descriptionKey="resource.settings.description"
-    >
+    <AdminFrame testId="admin-settings" titleKey="resource.settings.title">
       <PreparedChanges canDecide={canWrite} />
       <div
         className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end"
@@ -2151,8 +2137,17 @@ export function SettingsPage() {
           <RefreshCw />
         </IconButton>
       </div>
-      {query.isPending ? (
+      {settingsView === "loading" ? (
         <LoadingCards testId="settings-loading" />
+      ) : settingsView === "error" ? (
+        // Rendering the list anyway showed an installation with nothing
+        // configured, every activation fact unset — a failed read presented as
+        // a fact about the configuration.
+        <LoadFailed
+          title={t("resource.loadFailed", { resource: t("resource.settings.title") })}
+          onRetry={() => void query.refetch()}
+          testId="settings-load-failed"
+        />
       ) : (
         <div className="grid gap-5 pb-20" data-testid="settings-list">
           <section
@@ -2283,8 +2278,8 @@ export function SettingsPage() {
                                 >
                                   {t("settings.resolution", {
                                     path: item.path,
-                                    source: settingMetaLabel(item.meta.source, t),
-                                    scope: settingMetaLabel(item.meta.scope, t),
+                                    source: settingMetaLabel(item.meta.source, t).text,
+                                    scope: settingMetaLabel(item.meta.scope, t).text,
                                   })}
                                 </ContextHelp>
                               </FieldLabel>
@@ -2302,7 +2297,7 @@ export function SettingsPage() {
                                 />
                                 <FieldDescription className="flex flex-wrap gap-1.5 pt-1.5">
                                   <Badge variant="secondary">
-                                    {settingMetaLabel(item.meta.source, t)}
+                                    <LabelText label={settingMetaLabel(item.meta.source, t)} />
                                   </Badge>
                                 </FieldDescription>
                               </FieldContent>
@@ -2342,8 +2337,8 @@ export function SettingsPage() {
                               >
                                 {t("settings.resolution", {
                                   path: item.path,
-                                  source: settingMetaLabel(item.meta.source, t),
-                                  scope: settingMetaLabel(item.meta.scope, t),
+                                  source: settingMetaLabel(item.meta.source, t).text,
+                                  scope: settingMetaLabel(item.meta.scope, t).text,
                                 })}
                               </ContextHelp>
                             </FieldLabel>
@@ -2392,7 +2387,7 @@ export function SettingsPage() {
                               )}
                               <FieldDescription className="flex flex-wrap gap-1.5 pt-1.5">
                                 <Badge variant="secondary">
-                                  {settingMetaLabel(item.meta.source, t)}
+                                  <LabelText label={settingMetaLabel(item.meta.source, t)} />
                                 </Badge>
                                 {item.meta.requiresRestart && (
                                   <Badge

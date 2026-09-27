@@ -124,3 +124,15 @@ export const ACTIONABLE_DRILLDOWNS: ReadonlySet<string> = new Set(["executions.i
 export function metricOffersDrilldown(id: string, value: number | null | undefined): boolean {
   return ACTIONABLE_DRILLDOWNS.has(id) && (value ?? 0) > 0;
 }
+
+/**
+ * The status line under a tile's value, or nothing when it would repeat it.
+ *
+ * "Betriebszustand" printed "Gesund" as its value and "Gesund" again as its
+ * status; "Datenstand" printed "Aktuell" twice. A second line that says the
+ * same word is not a second fact. It stays where it adds one — "Veraltet"
+ * under a measured age says what the age means.
+ */
+export function distinctStatus(value: string, status: string | undefined): string | undefined {
+  return status && status.trim() !== value.trim() ? status : undefined;
+}

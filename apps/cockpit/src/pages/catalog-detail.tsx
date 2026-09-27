@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bot, CheckCircle2, Pencil, RefreshCw, ShieldCheck } from "lucide-react";
+import { Bot, Pencil, RefreshCw, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest, apiText, listConversationsAbout } from "@/api/client";
 import type { components } from "@/api/schema";
+import { absolute, chatNewHref, conversationHref } from "@/app/links";
+import { useRecordCrumb } from "@/app/record-crumb";
 import { AgentPanel } from "@/components/cockpit/agent-panel";
 import { ConnectorCredentials } from "@/components/cockpit/connector-credentials";
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
@@ -11,6 +13,7 @@ import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { bytes, MISSING } from "@/components/cockpit/table-columns";
 import { WorkflowAuthorities } from "@/components/cockpit/workflow-authorities";
 import { WorkflowGallery } from "@/components/cockpit/workflow-gallery";
+import { LoadFailed, queryView } from "@/components/failure-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,14 +44,6 @@ const ENDPOINTS: Record<DetailResource, string> = {
   knowledge: "/v1/knowledge-sources",
   skills: "/v1/skills",
   files: "/v1/files",
-};
-
-const DESCRIPTION_KEYS: Record<DetailResource, Parameters<ReturnType<typeof useI18n>["t"]>[0]> = {
-  workflows: "resource.workflows.description",
-  connectors: "resource.connectors.description",
-  knowledge: "resource.knowledge.description",
-  skills: "resource.skills.description",
-  files: "resource.files.description",
 };
 
 const PERMISSIONS: Record<DetailResource, { read: string; write: string }> = {
@@ -146,7 +141,7 @@ function ConversationsAbout({
             <li key={conversation.id}>
               <a
                 className="flex items-baseline justify-between gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
-                href={`/cockpit/chat/${encodeURIComponent(conversation.id)}`}
+                href={absolute(conversationHref(conversation.id))}
                 aria-label={t("catalog.conversations.open")}
                 data-testid={`detail-conversation-${index}`}
               >
@@ -527,16 +522,19 @@ export function CatalogDetailPage({
     enabled: canRead && Boolean(id),
   });
   const record = query.data;
-  const prompt = useMemo(
-    () => encodeURIComponent(`${t("detail.continueInChat")}: ${recordTitle(record)}`),
-    [record, t],
+  const chatHref = useMemo(
+    () =>
+      absolute(
+        chatNewHref({
+          prompt: `${t("detail.continueInChat")}: ${recordTitle(record)}`,
+          workflowId: resource === "workflows" ? id : null,
+          connectorId: resource === "connectors" ? id : null,
+        }),
+      ),
+    [record, t, resource, id],
   );
-  const chatTarget =
-    resource === "workflows"
-      ? `&workflow_id=${encodeURIComponent(id)}`
-      : resource === "connectors"
-        ? `&connector_id=${encodeURIComponent(id)}`
-        : "";
+  // The breadcrumb names the record once it has one; an id never stands in.
+  useRecordCrumb(record ? recordTitle(record) : null);
   // A probe result is a paragraph that names latency or the missing scopes,
   // not a cell in a list. It belongs on the connector it describes.
   const probe = useMutation({
@@ -554,19 +552,28 @@ export function CatalogDetailPage({
         <AlertDescription>{t("resource.permission.description")}</AlertDescription>
       </Alert>
     );
-  if (query.isPending)
+  // `record` is narrowed below by the view, not by a second test of it: a 200
+  // that carries no object is a failed read, the same as a 500.
+  const view = queryView(query, () => false);
+  if (view === "loading")
     return (
       <div className="grid gap-4 p-6">
         <Skeleton className="h-12 w-80" />
         <Skeleton className="h-96 w-full" />
       </div>
     );
-  if (query.error || !record)
+  if (view === "error" || !record)
     return (
-      <Alert variant="destructive" className="m-6">
-        <AlertTitle>{t("resource.loadFailed", { resource })}</AlertTitle>
-        <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
-      </Alert>
+      <div className="p-6">
+        {/* It used to hand the route key to the sentence, so the reader was
+            told "workflows konnten nicht geladen werden" — a machine word in
+            the one line meant to explain. The way back is the breadcrumb. */}
+        <LoadFailed
+          title={t("detail.loadFailed")}
+          onRetry={() => void query.refetch()}
+          testId="detail-load-failed"
+        />
+      </div>
     );
 
   return (
@@ -580,28 +587,15 @@ export function CatalogDetailPage({
         className="flex flex-wrap items-center justify-between gap-4 border-b p-6"
       >
         <div className="min-w-0">
-          <Button
-            variant="ghost"
-            size="sm"
-            asChild
-            className="-ml-2 mb-2"
-            data-family-slot="detail-navigation"
-          >
-            <a href={`/cockpit/${resource}`} data-testid="detail-back">
-              <ArrowLeft data-icon="inline-start" />
-              {t("detail.back")}
-            </a>
-          </Button>
           <h1 className="truncate text-2xl font-semibold tracking-tight">{recordTitle(record)}</h1>
           {/* The record's OWN description when it has one — what this thing is
-              for, in the words of whoever built it. The generic line under it
-              describes the whole catalogue and is the same sentence on every
-              record, so a reader who opens one workflow to decide about it was
-              told nothing specific. The engine has published `description` all
-              along; only this line stood in its place. */}
-          <p className="mt-1 text-sm text-muted-foreground">
-            {recordPurpose(record) ?? t(DESCRIPTION_KEYS[resource])}
-          </p>
+              for, in the words of whoever built it. Where it has none the line
+              is absent: the fallback was the catalogue's sentence, the same on
+              every record, which told a reader who opened one workflow to
+              decide about it nothing specific. */}
+          {recordPurpose(record) ? (
+            <p className="mt-1 text-sm text-muted-foreground">{recordPurpose(record)}</p>
+          ) : null}
         </div>
         <div data-family-slot="detail-actions" className="flex flex-wrap gap-2">
           {resource === "workflows" && permissions.includes("workflow:run") && (
@@ -629,10 +623,7 @@ export function CatalogDetailPage({
             </Button>
           )}
           <Button asChild variant="outline">
-            <a
-              href={`/cockpit/chat/new?prompt=${prompt}${chatTarget}`}
-              data-testid="detail-chat-action"
-            >
+            <a href={chatHref} data-testid="detail-chat-action">
               <Bot data-icon="inline-start" />
               {t("detail.continueInChat")}
             </a>
@@ -703,10 +694,6 @@ export function CatalogDetailPage({
             target={resource === "workflows" ? { workflow_id: id } : { connector_id: id }}
           />
         ) : null}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <CheckCircle2 className="size-4" />
-          {t("detail.workspaceScoped")}
-        </div>
       </div>
     </main>
   );

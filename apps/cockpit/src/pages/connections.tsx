@@ -6,6 +6,7 @@ import { ApiError, apiRequest } from "@/api/client";
 import { useSession } from "@/app/session";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
+import { LoadFailed } from "@/components/failure-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -150,19 +151,11 @@ export function ConnectionsPage() {
           ))}
         </div>
       ) : query.error ? (
-        <Alert variant="destructive" data-testid="connections-error">
-          <AlertTitle>{t("connections.loadFailed")}</AlertTitle>
-          <AlertDescription>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void query.refetch()}
-              data-testid="connections-retry"
-            >
-              {t("common.refresh")}
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <LoadFailed
+          title={t("connections.loadFailed")}
+          onRetry={() => void query.refetch()}
+          testId="connections-error"
+        />
       ) : items.length === 0 ? (
         <Empty className="min-h-52 border" data-testid="connections-empty">
           <EmptyHeader>
