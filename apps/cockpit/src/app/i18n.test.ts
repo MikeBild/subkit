@@ -146,6 +146,14 @@ describe("cockpit i18n", () => {
     }
   });
 
+  test("the repair-rate tooltip names every status the engine counts as decided", () => {
+    // The engine divides by applied + rejected + superseded; the tooltip named
+    // only the rejected ones, so a superseded repair lowered a rate that
+    // claimed not to count it.
+    expect(translate("en", "operational.metric.repairs.tooltip")).toContain("superseded");
+    expect(translate("de", "operational.metric.repairs.tooltip")).toContain("überholte");
+  });
+
   test("an undetermined health state or value is not called Unbekannt (§2)", () => {
     // The overview tile, the /operations state line and every unread KPI value
     // printed the banned word as a state.
