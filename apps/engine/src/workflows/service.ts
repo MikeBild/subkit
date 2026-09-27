@@ -3,7 +3,7 @@
 // Restore is additive: it duplicates an old version's dag as a new version
 // with N+1, never overwriting history.
 
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -122,46 +122,54 @@ async function loadWorkflowView(
       and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, id), isNull(workflows.deleted_at)),
     )
     .limit(1);
-  const wf = rows[0];
-  if (!wf) return null;
-  let version: number | null = null;
-  let def: WorkflowDef = { name: wf.name, steps: [] } as WorkflowDef;
-  if (wf.current_version_id) {
-    const vRows = await exec
-      .select()
-      .from(workflowVersions)
-      .where(
-        and(
-          eq(workflowVersions.tenant_id, tenant_id),
-          eq(workflowVersions.id, wf.current_version_id),
-        ),
-      )
-      .limit(1);
-    const v = vRows[0];
-    if (v) {
-      version = v.version;
-      def = WorkflowDefSchema.parse(v.dag);
-    }
-  }
-  return {
-    id: wf.id,
-    tenant_id: wf.tenant_id,
-    slug: wf.slug,
-    name: wf.name,
-    description: wf.description ?? null,
-    lifecycle: wf.lifecycle as "draft" | "active" | "archived",
-    current_version_id: wf.current_version_id,
-    draft_version_id: wf.draft_version_id,
-    current_version: version,
-    created_at: wf.created_at,
-    updated_at: wf.updated_at,
-    last_executed_at: wf.last_executed_at ?? null,
-    health_state: wf.health_state,
-    health_reason: wf.health_reason ?? null,
-    health_changed_at: wf.health_changed_at ?? null,
-    definition: def,
-    steps: def.steps,
-  };
+  return (await workflowViewsFromRows(tenant_id, rows, exec))[0] ?? null;
+}
+
+/** Views for already-selected rows: one version query for the whole set, never one per row. */
+async function workflowViewsFromRows(
+  tenant_id: string,
+  rows: Array<typeof workflows.$inferSelect>,
+  exec: Executor,
+): Promise<WorkflowView[]> {
+  const versionIds = rows.flatMap((wf) => (wf.current_version_id ? [wf.current_version_id] : []));
+  const versions = versionIds.length
+    ? await exec
+        .select({
+          id: workflowVersions.id,
+          version: workflowVersions.version,
+          dag: workflowVersions.dag,
+        })
+        .from(workflowVersions)
+        .where(
+          and(eq(workflowVersions.tenant_id, tenant_id), inArray(workflowVersions.id, versionIds)),
+        )
+    : [];
+  const byId = new Map(versions.map((v) => [v.id, v]));
+  return rows.map((wf) => {
+    const v = wf.current_version_id ? byId.get(wf.current_version_id) : undefined;
+    const def: WorkflowDef = v
+      ? WorkflowDefSchema.parse(v.dag)
+      : ({ name: wf.name, steps: [] } as WorkflowDef);
+    return {
+      id: wf.id,
+      tenant_id: wf.tenant_id,
+      slug: wf.slug,
+      name: wf.name,
+      description: wf.description ?? null,
+      lifecycle: wf.lifecycle as "draft" | "active" | "archived",
+      current_version_id: wf.current_version_id,
+      draft_version_id: wf.draft_version_id,
+      current_version: v?.version ?? null,
+      created_at: wf.created_at,
+      updated_at: wf.updated_at,
+      last_executed_at: wf.last_executed_at ?? null,
+      health_state: wf.health_state,
+      health_reason: wf.health_reason ?? null,
+      health_changed_at: wf.health_changed_at ?? null,
+      definition: def,
+      steps: def.steps,
+    };
+  });
 }
 
 export interface CreateWorkflowInput {
@@ -681,12 +689,8 @@ export async function listWorkflows(
       .where(and(...tenantConds))
       .orderBy(ordered, asc(workflows.id));
     const kept = all.filter((r) => derived.keep(r.row));
-    const out: WorkflowView[] = [];
-    for (const r of kept.slice(offset, offset + limit)) {
-      const v = await loadWorkflowView(tenant_id, r.row.id, db);
-      if (v) out.push(v);
-    }
-    return { rows: out, total: kept.length };
+    const page = kept.slice(offset, offset + limit).map((r) => r.row);
+    return { rows: await workflowViewsFromRows(tenant_id, page, db), total: kept.length };
   }
 
   const rows = await db
@@ -697,12 +701,12 @@ export async function listWorkflows(
     .limit(limit)
     .offset(offset);
   const total = await resolveWindowTotal(rows, offset, () => countWorkflows(db, tenant_id, opts));
-  const out: WorkflowView[] = [];
-  for (const r of rows) {
-    const v = await loadWorkflowView(tenant_id, r.row.id, db);
-    if (v) out.push(v);
-  }
-  return { rows: out, total };
+  const views = await workflowViewsFromRows(
+    tenant_id,
+    rows.map((r) => r.row),
+    db,
+  );
+  return { rows: views, total };
 }
 
 export interface WorkflowSummary {

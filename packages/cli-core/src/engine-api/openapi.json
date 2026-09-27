@@ -7322,6 +7322,108 @@
           }
         ]
       },
+      "WorkflowScheduleBinding": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "cron": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
+          "admission_hold": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "reason_code": {
+                "type": "string"
+              },
+              "observed_at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason_code",
+              "observed_at"
+            ]
+          },
+          "next_fire_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_enqueued_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "cron",
+          "timezone",
+          "paused",
+          "execution_mode",
+          "admission_hold",
+          "next_fire_at",
+          "last_enqueued_at"
+        ]
+      },
+      "EffectiveTrigger": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "webhook",
+              "request"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "binding",
+              "definition",
+              "default"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "held",
+              "declared_unbound"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "source",
+          "state"
+        ]
+      },
       "Workflow": {
         "type": "object",
         "properties": {
@@ -7454,6 +7556,16 @@
           },
           "trigger": {
             "$ref": "#/components/schemas/WorkflowTrigger"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/WorkflowScheduleBinding"
+          },
+          "webhooks_active": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "effective_trigger": {
+            "$ref": "#/components/schemas/EffectiveTrigger"
           }
         },
         "required": [
@@ -7482,7 +7594,10 @@
           "validation_function",
           "timeout_ms",
           "max_llm_tokens_per_run",
-          "trigger"
+          "trigger",
+          "schedule",
+          "webhooks_active",
+          "effective_trigger"
         ]
       },
       "ScheduleListResponse": {

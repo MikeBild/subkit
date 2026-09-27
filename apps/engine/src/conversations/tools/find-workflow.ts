@@ -7,7 +7,13 @@
 // month". For "fetch by exact id" call `get_workflow`.
 
 import { z } from "@hono/zod-openapi";
+import {
+  bindingFor,
+  type EffectiveTrigger,
+  workflowTriggerView,
+} from "../../scheduler/trigger-bindings.ts";
 import { UNCATEGORIZED } from "../../workflows/categorize.ts";
+import type { WorkflowTrigger } from "../../workflows/types.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { keywordSearch } from "./keyword-search.ts";
 
@@ -43,6 +49,8 @@ interface WorkflowSummary {
   description: string | null;
   category?: string;
   connectors?: string[];
+  /** What really starts the workflow — see `scheduler/trigger-bindings.ts`. */
+  effective_trigger?: EffectiveTrigger;
   steps: Array<{ id: string; kind: string; connector_id: string | null }>;
 }
 
@@ -71,6 +79,15 @@ export function summarize(wf: {
       connector_id: typeof s.connector_id === "string" ? s.connector_id : null,
     })),
   };
+}
+
+function withTrigger(
+  summary: WorkflowSummary,
+  definitionTrigger: WorkflowTrigger | undefined,
+  bindings: Parameters<typeof bindingFor>[0],
+): WorkflowSummary {
+  const view = workflowTriggerView(definitionTrigger, bindingFor(bindings, summary.id));
+  return { ...summary, effective_trigger: view.effective_trigger };
 }
 
 function searchableText(s: WorkflowSummary): string {
@@ -116,7 +133,11 @@ export const findWorkflowTool: ConversationTool = {
           next_best_actions: ["find_workflow", "list_workflows"],
         };
       }
-      return { ok: true, data: { matches: [summarize(wf)], total: 1 } };
+      const bindings = await ctx.engineClient.workflows.triggerBindings([wf.id]);
+      return {
+        ok: true,
+        data: { matches: [withTrigger(summarize(wf), wf.definition.trigger, bindings)], total: 1 },
+      };
     }
     // Complete catalog (service default = safety bound) so a match can
     // never be missed because it sat beyond an arbitrary page size.
@@ -126,12 +147,13 @@ export const findWorkflowTool: ConversationTool = {
     });
     // Derived over the whole catalog, so a match reports the block it really
     // belongs to even when the search was narrowed.
-    const [categories, connectorRefs] = await Promise.all([
+    const [categories, connectorRefs, bindings] = await Promise.all([
       ctx.engineClient.workflows.categories(),
       ctx.engineClient.workflows.connectorRefs(),
+      ctx.engineClient.workflows.triggerBindings(list.map((wf) => wf.id)),
     ]);
     const summaries = list.map((wf) => ({
-      ...summarize(wf),
+      ...withTrigger(summarize(wf), wf.definition.trigger, bindings),
       category: categories.get(wf.slug) ?? UNCATEGORIZED,
       connectors: connectorRefs.get(wf.id) ?? [],
     }));
