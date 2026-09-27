@@ -27,6 +27,30 @@ export type PreviewClassification =
   | "preview_unsupported"
   | "unknown";
 
+/** Every classification, in one list — the enum a wire schema publishes. */
+export const PREVIEW_CLASSIFICATIONS = [
+  "ok",
+  "auth_failed",
+  "placeholder_unresolved",
+  "schema_mismatch",
+  "timeout",
+  "aborted",
+  "connector_missing",
+  "budget_exhausted",
+  "driver_error",
+  "preview_unsupported",
+  "unknown",
+] as const satisfies readonly PreviewClassification[];
+// Compile-time completeness: a classification added to the union but not to
+// the list above makes this type non-never and the assignment fail.
+const _classificationsComplete: Exclude<
+  PreviewClassification,
+  (typeof PREVIEW_CLASSIFICATIONS)[number]
+> extends never
+  ? true
+  : never = true;
+void _classificationsComplete;
+
 export interface PreviewStepSummary {
   ok: boolean;
   step_id: string;
@@ -154,6 +178,47 @@ export function classifyFailure(result: StepResult): PreviewClassification {
   if (/timeout|timed out|exceeded/i.test(message)) return "timeout";
   if (/abort/i.test(message)) return "aborted";
   return "driver_error";
+}
+
+/** A failure as it was persisted: a step row's `status` + `error` jsonb, or
+ *  the execution row's own `failure` (code + message, no step). */
+export interface PersistedFailure {
+  status: string;
+  error: unknown;
+}
+
+export interface PersistedFailureClass {
+  classification: PreviewClassification;
+  error_code: string | null;
+  message: string;
+  /** Author- or driver-supplied remedy stored on the error, when present. */
+  guidance: string | null;
+}
+
+/**
+ * The one adapter from persisted rows to `classifyFailure`. The health digest
+ * and the execution outcome both read failures back out of the database, and
+ * both must classify the same row the same way.
+ */
+export function classifyPersistedFailure(failure: PersistedFailure): PersistedFailureClass {
+  const err =
+    failure.error && typeof failure.error === "object"
+      ? (failure.error as Record<string, unknown>)
+      : {};
+  const error_code = typeof err.code === "string" ? err.code : null;
+  const message = typeof err.message === "string" ? err.message : "";
+  const guidance = typeof err.guidance === "string" ? err.guidance : null;
+  const status =
+    failure.status === "timed_out" || failure.status === "aborted" || failure.status === "skipped"
+      ? failure.status
+      : "failed";
+  const classification = classifyFailure({
+    status,
+    retry_count: 0,
+    duration_ms: 0,
+    error: error_code ? { code: error_code, message } : null,
+  });
+  return { classification, error_code, message, guidance };
 }
 
 export function humanizeClassification(

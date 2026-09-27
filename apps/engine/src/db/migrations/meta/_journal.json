@@ -463,6 +463,13 @@
       "when": 1790532274905,
       "tag": "0065_lush_madrox",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1790537597881,
+      "tag": "0066_safe_patch",
+      "breakpoints": true
     }
   ]
 }

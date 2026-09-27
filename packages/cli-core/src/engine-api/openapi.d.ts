@@ -6507,7 +6507,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Execution"];
+                        "application/json": components["schemas"]["ExecutionDetail"];
                     };
                 };
                 /** @description Not found */
@@ -18772,9 +18772,16 @@ export interface components {
             request_source?: "api" | "cli";
         };
         ExecutionListResponse: {
-            items: components["schemas"]["Execution"][];
+            items: components["schemas"]["ExecutionListItem"][];
             total: number;
             next_cursor?: string | null;
+        };
+        ExecutionListItem: components["schemas"]["Execution"] & {
+            failure: {
+                step_key: string | null;
+                /** @enum {string|null} */
+                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown" | null;
+            } | null;
         };
         Execution: {
             id: string;
@@ -18796,6 +18803,29 @@ export interface components {
             started_at: string | null;
             finished_at: string | null;
             created_at: string;
+        };
+        ExecutionDetail: components["schemas"]["Execution"] & {
+            outcome: components["schemas"]["ExecutionOutcome"];
+        };
+        ExecutionOutcome: {
+            /** @enum {string} */
+            kind: "succeeded" | "failed" | "held" | "partial" | "running";
+            failed_step: {
+                step_key: string;
+                kind: string;
+            } | null;
+            /** @enum {string|null} */
+            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown" | null;
+            error_code: string | null;
+            steps: {
+                total: number;
+                succeeded: number;
+                failed: number;
+                held: number;
+                skipped: number;
+            };
+            /** @enum {string} */
+            output_contract: "passed" | "violated" | "none";
         };
         ExecutionStepListResponse: {
             items: components["schemas"]["ExecutionStep"][];

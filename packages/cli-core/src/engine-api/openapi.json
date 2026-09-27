@@ -8887,7 +8887,7 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Execution"
+              "$ref": "#/components/schemas/ExecutionListItem"
             }
           },
           "total": {
@@ -8904,6 +8904,59 @@
         "required": [
           "items",
           "total"
+        ]
+      },
+      "ExecutionListItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Execution"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "failure": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "step_key": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "cause_class": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "ok",
+                      "auth_failed",
+                      "placeholder_unresolved",
+                      "schema_mismatch",
+                      "timeout",
+                      "aborted",
+                      "connector_missing",
+                      "budget_exhausted",
+                      "driver_error",
+                      "preview_unsupported",
+                      "unknown",
+                      null
+                    ]
+                  }
+                },
+                "required": [
+                  "step_key",
+                  "cause_class"
+                ]
+              }
+            },
+            "required": [
+              "failure"
+            ]
+          }
         ]
       },
       "Execution": {
@@ -8998,6 +9051,131 @@
           "started_at",
           "finished_at",
           "created_at"
+        ]
+      },
+      "ExecutionDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Execution"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "outcome": {
+                "$ref": "#/components/schemas/ExecutionOutcome"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          }
+        ]
+      },
+      "ExecutionOutcome": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "succeeded",
+              "failed",
+              "held",
+              "partial",
+              "running"
+            ]
+          },
+          "failed_step": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "step_key": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "step_key",
+              "kind"
+            ]
+          },
+          "cause_class": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "ok",
+              "auth_failed",
+              "placeholder_unresolved",
+              "schema_mismatch",
+              "timeout",
+              "aborted",
+              "connector_missing",
+              "budget_exhausted",
+              "driver_error",
+              "preview_unsupported",
+              "unknown",
+              null
+            ]
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "steps": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "succeeded": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "held": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "skipped": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "total",
+              "succeeded",
+              "failed",
+              "held",
+              "skipped"
+            ]
+          },
+          "output_contract": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "violated",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "failed_step",
+          "cause_class",
+          "error_code",
+          "steps",
+          "output_contract"
         ]
       },
       "ExecutionStepListResponse": {
@@ -30623,7 +30801,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Execution"
+                  "$ref": "#/components/schemas/ExecutionDetail"
                 }
               }
             }

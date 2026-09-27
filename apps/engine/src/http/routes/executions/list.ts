@@ -8,15 +8,19 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { events, executionSteps, executions, workflows } from "../../../db/schema/index.ts";
-import { listExecutions } from "../../../execution/index.ts";
+import {
+  listExecutions,
+  loadExecutionOutcome,
+  loadFailureSummaries,
+} from "../../../execution/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { streamOutboxTail } from "../sse-outbox-tail.ts";
 import {
+  ExecDetailSchema,
   ExecListResponse,
-  ExecSchema,
   StepListResponse,
   serializeExec,
   serializeStep,
@@ -56,7 +60,7 @@ const getExecutionRoute = createRoute({
   security: [{ bearerAuth: [] }],
   request: { params: IdParam },
   responses: {
-    200: { description: "OK", content: { "application/json": { schema: ExecSchema } } },
+    200: { description: "OK", content: { "application/json": { schema: ExecDetailSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -118,18 +122,22 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     // Name join in one pass, mirroring the schedules route: consumers
     // render WHAT ran, not an opaque workflow_id.
     const ids = [...new Set(rows.map((r) => r.workflow_id).filter((v): v is string => v !== null))];
-    const named = ids.length
-      ? await db
-          .select({ id: workflows.id, name: workflows.name })
-          .from(workflows)
-          .where(and(eq(workflows.tenant_id, principal.tenant_id), inArray(workflows.id, ids)))
-      : [];
+    const [named, failures] = await Promise.all([
+      ids.length
+        ? db
+            .select({ id: workflows.id, name: workflows.name })
+            .from(workflows)
+            .where(and(eq(workflows.tenant_id, principal.tenant_id), inArray(workflows.id, ids)))
+        : Promise.resolve([]),
+      loadFailureSummaries(principal.tenant_id, rows, db),
+    ]);
     const nameById = new Map(named.map((w) => [w.id, w.name]));
     return c.json(
       {
-        items: rows.map((r) =>
-          serializeExec(r, r.workflow_id ? (nameById.get(r.workflow_id) ?? null) : null),
-        ),
+        items: rows.map((r) => ({
+          ...serializeExec(r, r.workflow_id ? (nameById.get(r.workflow_id) ?? null) : null),
+          failure: failures.get(r.id) ?? null,
+        })),
         total,
       },
       200,
@@ -147,16 +155,19 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
       .limit(1);
     const row = rows[0];
     if (!row) throw new NotFoundError("execution");
-    const named = row.workflow_id
-      ? await db
-          .select({ name: workflows.name })
-          .from(workflows)
-          .where(
-            and(eq(workflows.tenant_id, principal.tenant_id), eq(workflows.id, row.workflow_id)),
-          )
-          .limit(1)
-      : [];
-    return c.json(serializeExec(row, named[0]?.name ?? null), 200);
+    const [named, outcome] = await Promise.all([
+      row.workflow_id
+        ? db
+            .select({ name: workflows.name })
+            .from(workflows)
+            .where(
+              and(eq(workflows.tenant_id, principal.tenant_id), eq(workflows.id, row.workflow_id)),
+            )
+            .limit(1)
+        : Promise.resolve([]),
+      loadExecutionOutcome(principal.tenant_id, row, db),
+    ]);
+    return c.json({ ...serializeExec(row, named[0]?.name ?? null), outcome }, 200);
   });
 
   app.openapi(getStepsRoute, async (c) => {
