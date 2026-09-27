@@ -495,6 +495,10 @@ export const log = {
         logger.warn({ module: "self-healing", action: "patch.not_applicable", ...ctx }),
       closedInapplicable: (ctx: Ctx) =>
         logger.info({ module: "self-healing", action: "patch.closed_inapplicable", ...ctx }),
+      // The undecidable-candidate sweep could not evaluate or close a row or a
+      // workflow's rows. Isolated: the rest of the sweep and the drift scan go on.
+      sweepFailed: (ctx: Ctx) =>
+        logger.error({ module: "self-healing", action: "patch.sweep_failed", ...ctx }),
       rejected: (ctx: Ctx) =>
         logger.warn({ module: "self-healing", action: "patch.rejected", ...ctx }),
       classified: (ctx: Ctx) =>
