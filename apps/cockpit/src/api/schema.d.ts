@@ -18324,7 +18324,8 @@ export interface components {
             /** @enum {string} */
             execution_mode: "dev" | "prod";
             admission_hold: {
-                reason_code: string;
+                /** @enum {string} */
+                reason_code: "execution_authority_required" | "execution_authority_unavailable";
                 observed_at: string;
             } | null;
             next_fire_at: string | null;

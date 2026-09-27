@@ -27,7 +27,12 @@ export const WorkflowScheduleBindingSchema = z
     paused: z.boolean(),
     execution_mode: z.enum(["dev", "prod"]),
     /** Non-null while the scheduler refuses to admit a run (e.g. no execution authority). */
-    admission_hold: z.object({ reason_code: z.string(), observed_at: z.string() }).nullable(),
+    admission_hold: z
+      .object({
+        reason_code: z.enum(["execution_authority_required", "execution_authority_unavailable"]),
+        observed_at: z.string(),
+      })
+      .nullable(),
     /** Null while paused or held — a schedule that will not fire has no next fire. */
     next_fire_at: z.string().nullable(),
     last_enqueued_at: z.string().nullable(),
