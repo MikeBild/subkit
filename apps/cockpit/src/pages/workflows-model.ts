@@ -2,7 +2,7 @@ import type { components } from "@/api/schema";
 import { absolute, connectorHref } from "@/app/links";
 import type { TranslationKey } from "@/lib/i18n";
 
-type WorkflowTrigger = components["schemas"]["WorkflowTrigger"];
+type EffectiveTrigger = components["schemas"]["EffectiveTrigger"];
 
 /**
  * A workflow list item names the connectors it uses by **slug**; the connector
@@ -22,18 +22,37 @@ export function connectorSlugHref(
 
 const ON_REQUEST: TranslationKey = "workflows.trigger.request";
 
-const TRIGGER_KEYS: Record<string, TranslationKey | undefined> = {
-  request: ON_REQUEST,
-  webhook: "workflows.trigger.webhook",
-  schedule: "workflows.trigger.schedule",
-};
-
 /**
- * No trigger means the workflow runs when something asks it to, which is the
- * request trigger — not an unknown state. "Unknown" would be a claim the
- * engine never made.
+ * The word for what really starts a workflow, read from the engine's
+ * `effective_trigger` — never from the definition's `trigger`. A schedule set
+ * up on its own lives only in the schedule binding; reading the definition
+ * called such a workflow "Auf Anfrage" while it fired every hour.
+ *
+ * A schedule or webhook that is declared but not bound fires nothing, so it
+ * must not read as "Zeitplan": its word says it runs on request only. Paused
+ * and held schedules keep their own words for the same reason.
+ *
+ * No effective trigger (an older engine) is the request default, not an
+ * unknown state — "unknown" would be a claim the engine never made.
  */
-export function triggerLabelKey(trigger: WorkflowTrigger | null | undefined): TranslationKey {
+export function triggerLabelKey(trigger: EffectiveTrigger | null | undefined): TranslationKey {
   if (!trigger) return ON_REQUEST;
-  return TRIGGER_KEYS[trigger.kind] ?? ON_REQUEST;
+  if (trigger.kind === "schedule") {
+    switch (trigger.state) {
+      case "paused":
+        return "workflows.trigger.schedulePaused";
+      case "held":
+        return "workflows.trigger.scheduleHeld";
+      case "declared_unbound":
+        return "workflows.trigger.scheduleUnbound";
+      default:
+        return "workflows.trigger.schedule";
+    }
+  }
+  if (trigger.kind === "webhook") {
+    return trigger.state === "declared_unbound"
+      ? "workflows.trigger.webhookUnbound"
+      : "workflows.trigger.webhook";
+  }
+  return ON_REQUEST;
 }

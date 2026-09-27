@@ -16,17 +16,42 @@ describe("workflow connector relations", () => {
 });
 
 describe("workflow trigger words", () => {
-  test("a workflow without a trigger runs on request, it is not unknown", () => {
+  test("a workflow without an effective trigger runs on request, it is not unknown", () => {
     expect(triggerLabelKey(null)).toBe("workflows.trigger.request");
     expect(triggerLabelKey(undefined)).toBe("workflows.trigger.request");
   });
 
-  test("names the declared trigger kinds", () => {
-    expect(triggerLabelKey({ kind: "schedule", cron: "0 6 * * *", tz: "UTC" })).toBe(
+  test("a bound schedule reads as a schedule, whatever the definition said", () => {
+    expect(triggerLabelKey({ kind: "schedule", source: "binding", state: "active" })).toBe(
       "workflows.trigger.schedule",
     );
-    expect(triggerLabelKey({ kind: "webhook", source: "stripe", events: [], verify: "none" })).toBe(
+    expect(triggerLabelKey({ kind: "webhook", source: "binding", state: "active" })).toBe(
       "workflows.trigger.webhook",
     );
+  });
+
+  test("paused and held schedules have their own words", () => {
+    expect(triggerLabelKey({ kind: "schedule", source: "binding", state: "paused" })).toBe(
+      "workflows.trigger.schedulePaused",
+    );
+    expect(triggerLabelKey({ kind: "schedule", source: "binding", state: "held" })).toBe(
+      "workflows.trigger.scheduleHeld",
+    );
+  });
+
+  test("a declared but unbound trigger does not read as one that fires", () => {
+    const schedule = triggerLabelKey({
+      kind: "schedule",
+      source: "definition",
+      state: "declared_unbound",
+    });
+    const webhook = triggerLabelKey({
+      kind: "webhook",
+      source: "definition",
+      state: "declared_unbound",
+    });
+    expect(schedule).toBe("workflows.trigger.scheduleUnbound");
+    expect(webhook).toBe("workflows.trigger.webhookUnbound");
+    expect(schedule).not.toBe("workflows.trigger.schedule");
   });
 });

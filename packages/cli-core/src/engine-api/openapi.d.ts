@@ -18316,6 +18316,28 @@ export interface components {
             category: string;
             connectors: string[];
         };
+        WorkflowScheduleBinding: {
+            id: string;
+            cron: string;
+            timezone: string;
+            paused: boolean;
+            /** @enum {string} */
+            execution_mode: "dev" | "prod";
+            admission_hold: {
+                reason_code: string;
+                observed_at: string;
+            } | null;
+            next_fire_at: string | null;
+            last_enqueued_at: string | null;
+        } | null;
+        EffectiveTrigger: {
+            /** @enum {string} */
+            kind: "schedule" | "webhook" | "request";
+            /** @enum {string} */
+            source: "binding" | "definition" | "default";
+            /** @enum {string} */
+            state: "active" | "paused" | "held" | "declared_unbound";
+        };
         Workflow: {
             id: string;
             tenant_id: string;
@@ -18347,6 +18369,9 @@ export interface components {
             timeout_ms: number | null;
             max_llm_tokens_per_run: number | null;
             trigger: components["schemas"]["WorkflowTrigger"];
+            schedule: components["schemas"]["WorkflowScheduleBinding"];
+            webhooks_active: number;
+            effective_trigger: components["schemas"]["EffectiveTrigger"];
         };
         ScheduleListResponse: {
             schedules: components["schemas"]["ScheduleEntry"][];

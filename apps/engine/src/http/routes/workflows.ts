@@ -4,13 +4,20 @@ import { ScheduleEntry } from "./workflow-schedule-schemas.ts";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
+import type { Executor } from "../../db/client.ts";
 import {
+  bindingFor,
   createSchedule,
   deleteSchedule,
+  EffectiveTriggerSchema,
   getSchedule,
   listSchedules,
+  loadTriggerBindings,
   type ScheduleRow,
+  type TriggerBinding,
   updateSchedule,
+  WorkflowScheduleBindingSchema,
+  workflowTriggerView,
 } from "../../scheduler/index.ts";
 import * as svc from "../../workflows/index.ts";
 import {
@@ -66,6 +73,15 @@ const WorkflowSchema = z
     // get_workflow definition — non-MCP callers (and the `sk` CLI banner)
     // previously couldn't read the trigger from the bare HTTP response.
     trigger: TriggerSchema.nullable(),
+    // What really starts the workflow. `trigger` above is only what the
+    // definition declares; the scheduler fires from the bound
+    // `workflows_schedules` row, which `POST /v1/schedules` creates without
+    // touching the definition, and deliveries arrive through active
+    // `webhooks_inbound` rows. A client that reads `trigger` alone reports an
+    // hourly schedule as "on request".
+    schedule: WorkflowScheduleBindingSchema.nullable(),
+    webhooks_active: z.number().int().nonnegative(),
+    effective_trigger: EffectiveTriggerSchema,
   })
   .openapi("Workflow");
 
@@ -150,7 +166,7 @@ const CreateBody = z
 
 const IdVersionParam = z.object({ id: z.string().uuid(), version: z.string() });
 
-function serializeWorkflow(w: svc.WorkflowView) {
+function serializeWorkflow(w: svc.WorkflowView, binding: TriggerBinding) {
   return {
     id: w.id,
     tenant_id: w.tenant_id,
@@ -188,7 +204,14 @@ function serializeWorkflow(w: svc.WorkflowView) {
     timeout_ms: w.definition.timeout_ms ?? null,
     max_llm_tokens_per_run: w.definition.max_llm_tokens_per_run ?? null,
     trigger: w.definition.trigger ?? null,
+    ...workflowTriggerView(w.definition.trigger, binding),
   };
+}
+
+/** One workflow, serialized with its trigger bindings read in the same call. */
+async function serializeOne(w: svc.WorkflowView, tenantId: string, db: Executor) {
+  const bindings = await loadTriggerBindings(tenantId, [w.id], db);
+  return serializeWorkflow(w, bindingFor(bindings, w.id));
 }
 
 type WorkflowBody = z.infer<typeof CreateBody>;
@@ -627,12 +650,17 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const { rows, total } = await svc.listWorkflows(principal.tenant_id, opts, db);
     // Derived over the whole catalog, not the page, so a workflow reports the
     // same block whether or not the caller filtered or paged.
-    const [categories, connectorRefs] = await Promise.all([
+    const [categories, connectorRefs, bindings] = await Promise.all([
       loadCategoryIndex(principal.tenant_id, db),
       listConnectorRefs(principal.tenant_id, db),
+      loadTriggerBindings(
+        principal.tenant_id,
+        rows.map((w) => w.id),
+        db,
+      ),
     ]);
     const items = rows.map((w) => ({
-      ...serializeWorkflow(w),
+      ...serializeWorkflow(w, bindingFor(bindings, w.id)),
       category: categories.get(w.slug) ?? UNCATEGORIZED,
       connectors: connectorRefs.get(w.id) ?? [],
     }));
@@ -843,7 +871,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     if ("errors" in result) {
       throw new BadRequestError("invalid workflow", { errors: result.errors });
     }
-    return c.json(serializeWorkflow(result.workflow), 201);
+    return c.json(await serializeOne(result.workflow, principal.tenant_id, db), 201);
   });
 
   app.openapi(validateRoute, async (c) => {
@@ -860,7 +888,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     const wf = await svc.getWorkflow(principal.tenant_id, id, db);
     if (!wf) throw new NotFoundError("workflow");
-    return c.json(serializeWorkflow(wf), 200);
+    return c.json(await serializeOne(wf, principal.tenant_id, db), 200);
   });
 
   app.openapi(inputSchemaRoute, async (c) => {
@@ -905,7 +933,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       }
       throw new BadRequestError("invalid workflow", { errors: result.errors });
     }
-    return c.json(serializeWorkflow(result.workflow), 200);
+    return c.json(await serializeOne(result.workflow, principal.tenant_id, db), 200);
   });
 
   app.openapi(metadataRoute, async (c) => {
@@ -926,7 +954,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
     if ("workflow" in result && result.workflow) {
-      return c.json(serializeWorkflow(result.workflow), 200);
+      return c.json(await serializeOne(result.workflow, principal.tenant_id, db), 200);
     }
     // Error variant. Map a slug collision to 409, missing workflow to 404,
     // everything else (bad slug shape, no-op) to 400.
@@ -981,6 +1009,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     }
     const wf = await svc.restoreWorkflowVersion(principal.tenant_id, id, v, principal.id, db);
     if (!wf) throw new NotFoundError("workflow_version");
-    return c.json(serializeWorkflow(wf), 200);
+    return c.json(await serializeOne(wf, principal.tenant_id, db), 200);
   });
 }
