@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
+import { absolute } from "@/app/links";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -131,7 +132,7 @@ export function ConnectorCredentials({
                 ? t("connectorCredentials.noConnections")
                 : t("connectorCredentials.chooseHint")}{" "}
               <a
-                href="/cockpit/connections"
+                href={absolute("/connections")}
                 className="underline"
                 data-testid="connector-connections-link"
               >

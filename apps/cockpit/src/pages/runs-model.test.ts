@@ -155,9 +155,17 @@ describe("run naming and request source", () => {
     expect(runName(run({ workflow_name: "Monthly report" }), t)).toBe("Monthly report");
   });
 
-  test("names known request sources and admits when a source is unknown", () => {
-    expect(requestSourceLabel("scheduler", t)).toBe(translate("en", "runs.source.scheduler"));
-    expect(requestSourceLabel("carrier-pigeon", t)).toBe(translate("en", "common.unknown"));
+  test("names known request sources and shows an unnamed one as the machine value", () => {
+    expect(requestSourceLabel("scheduler", t)).toEqual({
+      text: translate("en", "runs.source.scheduler"),
+      machine: false,
+    });
+    // "Unknown" claimed the engine had not said; it had, in a word this build
+    // lacks. §2 bans the word, §15.2 names the replacement.
+    expect(requestSourceLabel("carrier-pigeon", t)).toEqual({
+      text: "carrier-pigeon",
+      machine: true,
+    });
   });
 });
 

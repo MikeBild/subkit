@@ -242,13 +242,7 @@ export function UsagePage() {
   ];
 
   return (
-    <PageFrame
-      surface="collection"
-      testId="resource-usage"
-      title={title}
-      description={t("resource.usage.description")}
-      scroll="page"
-    >
+    <PageFrame surface="collection" testId="resource-usage" title={title} scroll="page">
       <div className="grid gap-8">
         <section className="grid gap-3" data-testid="usage-consumption">
           <header className="grid gap-1">
@@ -414,7 +408,6 @@ export function UsagePage() {
               emptyState={{
                 zero: {
                   title: t("resource.usage.consumptionEmpty"),
-                  description: t("resource.emptyDescription"),
                 },
                 filtered: {
                   title: t("resource.noMatches"),
@@ -443,7 +436,14 @@ export function UsagePage() {
 
         <section className="grid gap-3" data-testid="usage-runtime">
           <header className="grid gap-1">
-            <h2 className="font-medium text-base">{t("resource.usage.runtime")}</h2>
+            {/* The window, said once for all four cards. Each card used to
+                carry it as a footer — "Letzte 30 Tage" four times in a row. */}
+            <h2 className="font-medium text-base" data-testid="usage-runtime-heading">
+              {t("resource.usage.runtime")}{" "}
+              <span className="font-normal text-muted-foreground">
+                · {t("resource.usage.window")}
+              </span>
+            </h2>
             <p className="text-muted-foreground text-sm">
               {t("resource.usage.runtimeDescription")}
             </p>
@@ -457,9 +457,6 @@ export function UsagePage() {
                       <CardDescription>{t(label)}</CardDescription>
                       <CardTitle className="text-2xl tabular-nums">{display}</CardTitle>
                     </CardHeader>
-                    <CardFooter className="text-muted-foreground text-xs">
-                      {t("resource.usage.window")}
-                    </CardFooter>
                   </Card>
                 ))}
           </div>
@@ -484,7 +481,6 @@ export function UsagePage() {
               emptyState={{
                 zero: {
                   title: t("resource.usage.empty"),
-                  description: t("resource.emptyDescription"),
                 },
                 filtered: {
                   title: t("resource.noMatches"),

@@ -1,9 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
+import { absolute, runHref, runsHref, workflowHref, workflowsHref } from "@/app/links";
+import { useRecordCrumb } from "@/app/record-crumb";
 import { useSession } from "@/app/session";
 import { type CockpitColumn, DataTable } from "@/components/cockpit/data-table";
 import { PageFrame } from "@/components/cockpit/page-frame";
@@ -20,19 +23,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
+import { LabelText } from "@/lib/machine-label";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
+  executionsQuery,
   filterFromUrl,
   formatRunDuration,
   isExecutionRecord,
@@ -128,7 +127,7 @@ function RunDetail({ run }: { run: Execution }) {
         ? MISSING
         : formatRunDuration(locale, runDurationMs(current) ?? 0),
     ],
-    [t("runs.column.source"), requestSourceLabel(current.request_source, t)],
+    [t("runs.column.source"), <LabelText label={requestSourceLabel(current.request_source, t)} />],
     [t("resource.field.kind"), t(SOURCE_KIND_KEYS[current.source_kind] ?? "runs.sourceKind.saved")],
     ...runAuthorityFacts(current, t),
     ...runCostFacts(cost.data, t, locale),
@@ -241,6 +240,10 @@ export function RunsPage() {
   const [statusFilter, setStatusFilter] = useState<string>(initial.status);
   const [sourceFilter, setSourceFilter] = useState<string>(initial.source);
   const [search, setSearch] = useState(initial.q);
+  // A link that knows the workflow narrows by its id. It arrives from a
+  // decision or a workflow page and is never typed, so it has no control of
+  // its own — only the chip below that says so and lifts it.
+  const [workflowFilter, setWorkflowFilter] = useState<string | null>(initial.workflowId);
   const [page, setPage] = useState(0);
   // The run the address names. It was a `useState<Execution | null>` holding
   // the row itself, which is why nothing outside this component could ever
@@ -255,19 +258,13 @@ export function RunsPage() {
   const query = useQuery({
     // The needle is part of the key: it is a filter the engine applies, so a
     // changed needle is a different question and gets its own answer.
-    queryKey: ["runs", statusFilter, sourceFilter, needle, page],
+    queryKey: ["runs", statusFilter, sourceFilter, workflowFilter, needle, page],
     enabled: allowed,
     queryFn: () => {
-      const params = new URLSearchParams({
-        limit: String(PAGE_SIZE),
-        offset: String(page * PAGE_SIZE),
-      });
-      if (statusFilter !== "all") params.set("status", statusFilter);
-      if (sourceFilter !== "all") params.set("request_source", sourceFilter);
-      // The engine searches the whole log by the workflow's name. The list used
-      // to narrow the page it had already fetched, which reads as search and is
-      // not: a run outside the newest fifty could not be found by name at all.
-      if (needle) params.set("q", needle);
+      const params = executionsQuery(
+        { status: statusFilter, source: sourceFilter, workflowId: workflowFilter, q: needle },
+        { limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+      );
       return apiRequest<ExecutionList>(`/v1/executions?${params}`);
     },
   });
@@ -290,6 +287,7 @@ export function RunsPage() {
   // changes with the id, and a stale record under the previous one would title
   // the sheet after a run the reader had already closed.
   const selected = rowForId ?? (addressed.data?.id === selectedId ? addressed.data : null);
+  useRecordCrumb(selected ? runName(selected, t) : null);
 
   /**
    * Show one run, or none, and say so in the address.
@@ -301,7 +299,7 @@ export function RunsPage() {
    * arrived with — dropping it would silently widen the list on a reload.
    */
   const showRun = useCallback((id: string | null) => {
-    const path = id ? `/cockpit/runs/${encodeURIComponent(id)}` : "/cockpit/runs";
+    const path = absolute(id ? runHref(id) : runsHref());
     window.history.pushState({}, "", `${path}${window.location.search}`);
     setSelectedId(id);
   }, []);
@@ -327,9 +325,7 @@ export function RunsPage() {
       column.link(
         "workflow",
         (run): Relation | null => ({
-          href: run.workflow_id
-            ? `/cockpit/workflows/${encodeURIComponent(run.workflow_id)}`
-            : null,
+          href: run.workflow_id ? absolute(workflowHref(run.workflow_id)) : null,
           label: runName(run, t),
         }),
         t("runs.column.workflow"),
@@ -356,7 +352,7 @@ export function RunsPage() {
         "request_source",
         (run) => run.request_source,
         t("runs.column.source"),
-        (run) => requestSourceLabel(run.request_source, t),
+        (run) => <LabelText label={requestSourceLabel(run.request_source, t)} />,
         { width: "w-[15%]" },
       ),
       column.custom(
@@ -381,11 +377,15 @@ export function RunsPage() {
   }, [t, dateTime, locale]);
 
   const hasActiveFilters =
-    Boolean(debouncedSearch.trim()) || statusFilter !== "all" || sourceFilter !== "all";
+    Boolean(debouncedSearch.trim()) ||
+    statusFilter !== "all" ||
+    sourceFilter !== "all" ||
+    workflowFilter !== null;
   const resetFilters = useCallback(() => {
     setSearch("");
     setStatusFilter("all");
     setSourceFilter("all");
+    setWorkflowFilter(null);
     setPage(0);
   }, []);
 
@@ -400,13 +400,7 @@ export function RunsPage() {
     );
 
   return (
-    <PageFrame
-      surface="collection"
-      testId="resource-runs"
-      title={title}
-      description={t("resource.runs.description")}
-      scroll="content"
-    >
+    <PageFrame surface="collection" testId="resource-runs" title={title} scroll="content">
       <DataTable
         columns={columns}
         data={rows}
@@ -482,12 +476,26 @@ export function RunsPage() {
                   </SelectItem>
                   {REQUEST_SOURCES.map((source) => (
                     <SelectItem key={source} value={source} data-testid={`runs-source-${source}`}>
-                      {requestSourceLabel(source, t)}
+                      <LabelText label={requestSourceLabel(source, t)} />
                     </SelectItem>
                   ))}
                 </SelectGroup>
               </SelectContent>
             </Select>
+            {/* The narrowing a link brought, said out loud and removable. */}
+            {workflowFilter ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="runs-workflow-filter"
+                onClick={() => {
+                  setWorkflowFilter(null);
+                  setPage(0);
+                }}
+              >
+                {t("runs.workflowFilter")}
+              </Button>
+            ) : null}
             {hasActiveFilters && (
               <Button
                 variant="ghost"
@@ -517,7 +525,14 @@ export function RunsPage() {
         emptyState={{
           zero: {
             title: t("resource.runs.empty"),
-            description: t("resource.emptyDescription"),
+            // Never used: a run comes from a workflow, so the next step is one.
+            action: (
+              <Button asChild variant="outline" size="sm">
+                <Link to={workflowsHref()} data-testid="runs-empty-action">
+                  {t("runs.empty.action")}
+                </Link>
+              </Button>
+            ),
           },
           filtered: {
             title: t("resource.noMatches"),
@@ -549,12 +564,12 @@ export function RunsPage() {
           closeLabel={t("common.close")}
           closeTestId="run-detail-close"
           data-testid="run-detail"
+          aria-describedby={undefined}
         >
           <SheetHeader>
             <SheetTitle data-testid="run-detail-title">
               {selected ? runName(selected, t) : title}
             </SheetTitle>
-            <SheetDescription>{t("runs.detail.description")}</SheetDescription>
           </SheetHeader>
           {/* Three different facts, told apart. The record is here; it is on
               its way; or this address names no run this installation has. A

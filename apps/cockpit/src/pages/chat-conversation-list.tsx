@@ -14,6 +14,7 @@
 import { Eye, EyeOff, Pencil, Search } from "lucide-react";
 import type { Conversation } from "@/api/client";
 import { IconButton } from "@/components/cockpit/icon-button";
+import { LoadFailed } from "@/components/failure-state";
 import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -35,6 +36,8 @@ export interface ConversationListProps {
   onRename(conversation: Conversation): void;
   /** Row labels the page computes, so presentation rules stay in one place. */
   labelsFor(conversation: Conversation): ConversationRowLabels;
+  /** Set when the list could not be read; it then says so instead of looking empty. */
+  failed?: { title: string; onRetry(): void } | null;
 }
 
 export function ConversationList({
@@ -48,6 +51,7 @@ export function ConversationList({
   onToggleHidden,
   onHide,
   labelsFor,
+  failed,
 }: ConversationListProps) {
   const { t, locale } = useI18n();
   const now = t("chat.time.now");
@@ -75,6 +79,14 @@ export function ConversationList({
       </div>
       <ScrollArea className="h-0 min-h-0 flex-1">
         <div className="grid gap-0.5 p-2">
+          {/* A list that did not load is not a list with nothing in it. */}
+          {failed ? (
+            <LoadFailed
+              title={failed.title}
+              onRetry={failed.onRetry}
+              testId="conversation-list-load-failed"
+            />
+          ) : null}
           {conversations.map((conversation, index) => {
             const row = conversationRow(conversation, labelsFor(conversation));
             const active = activeId === conversation.id;
@@ -149,7 +161,7 @@ export function ConversationList({
               </div>
             );
           })}
-          {showHidden && conversations.length === 0 && (
+          {!failed && showHidden && conversations.length === 0 && (
             <p
               className="px-3 py-2 text-xs text-muted-foreground"
               data-testid="conversation-hidden-empty"

@@ -20,7 +20,8 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ALL_ROUTE_PATHS } from "./route-table";
+import * as links from "./links";
+import { ALL_ROUTE_PATHS, CATALOG_RESOURCES } from "./route-table";
 
 const SRC = join(import.meta.dir, "..");
 const ROUTES = new Set<string>(ALL_ROUTE_PATHS);
@@ -62,6 +63,48 @@ test("a router link never repeats the base path the router already carries", () 
     .filter((entry) => entry.router && entry.value.startsWith("/cockpit"))
     .map((entry) => `${entry.file}: to="${entry.value}"`);
   expect(doubled).toEqual([]);
+});
+
+// The builders in links.ts are where addresses are made now, so the scan above
+// finds almost nothing — which is the point, and also why the builders need a
+// check of their own: their output is computed, not a literal a scan can read.
+// Each registered path compiles to a pattern (`$param` matches one segment),
+// and every builder's output, query stripped, has to match one of them.
+const ROUTE_PATTERNS = ALL_ROUTE_PATHS.map(
+  (path) => new RegExp(`^${path.replace(/\$[A-Za-z]+/g, "[^/]+")}$`),
+);
+const resolves = (href: string) =>
+  ROUTE_PATTERNS.some((pattern) => pattern.test(href.split("?")[0] ?? ""));
+
+test("every address a link builder produces resolves to one of the cockpit's pages", () => {
+  const id = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
+  const built = {
+    runs: links.runsHref({ workflowId: id, status: "failed", source: "scheduler", q: "x" }),
+    run: links.runHref(id),
+    workflow: links.workflowHref(id),
+    connector: links.connectorHref(id),
+    ...Object.fromEntries(
+      CATALOG_RESOURCES.map((resource) => [`record:${resource}`, links.recordHref(resource, id)]),
+    ),
+    workflows: links.workflowsHref({ connector: "crm" }),
+    conversation: links.conversationHref(id),
+    decisions: links.decisionsHref({ bucket: "failing", workflowId: id }),
+    settings: links.settingsHref("server.public_base_url"),
+    audit: links.auditHref({
+      resourceType: "workflow",
+      resourceId: id,
+      traceId: "t",
+      scope: "all",
+    }),
+    chatNew: links.chatNewHref({ prompt: "p", workflowId: id }),
+    apiAccess: links.apiAccessHref("keys"),
+  };
+  const dead = Object.entries(built)
+    .filter(([, href]) => !resolves(href))
+    .map(([name, href]) => `${name}: ${href}`);
+  expect(dead).toEqual([]);
+  // And the absolute form is the same page under the router's base.
+  for (const href of Object.values(built)) expect(links.absolute(href)).toBe(`/cockpit${href}`);
 });
 
 test("every address the cockpit builds resolves to one of its pages", () => {
