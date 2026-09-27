@@ -263,7 +263,12 @@ export const DECISION_ACTIONS = [
   "user.role_changed",
   "api_key.issued",
   "api_key.revoked",
-  "session.revoked",
+  // `session.revoked` is deliberately NOT here. The engine writes it itself
+  // whenever a sliding session lapses, so on a live installation it arrived
+  // ten rows at a time with actor "Engine" and reason "expired_sliding" —
+  // filling a view called "decisions" with the housekeeping that view exists
+  // to separate out. It is a decision only when a person revokes a session,
+  // and the row does not distinguish the two.
   // Things that stop existing, or start running on a clock.
   "workflow.deleted",
   "workflow.version_restored",

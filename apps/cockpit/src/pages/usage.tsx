@@ -326,9 +326,16 @@ export function UsagePage() {
                   <span data-testid="usage-budget-uncapped">{t("resource.usage.noCapHint")}</span>
                 ) : (
                   <>
-                    <span>
-                      {t("resource.usage.monthTokens")}: {tokens(budget.usedTokens)}
-                    </span>
+                    {/* Only when the title is an AMOUNT. With no rates the
+                        title already shows this very number, and repeating it
+                        here was the duplicate display this cockpit keeps
+                        removing — introduced by the same change that split the
+                        two windows apart. */}
+                    {money ? (
+                      <span>
+                        {t("resource.usage.monthTokens")}: {tokens(budget.usedTokens)}
+                      </span>
+                    ) : null}
                     <span>
                       {t("resource.usage.cap")}: {tokens(budget.budgetTokens)}
                     </span>
