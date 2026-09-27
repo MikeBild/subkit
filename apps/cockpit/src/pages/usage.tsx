@@ -26,6 +26,7 @@ import {
   usageRows,
   usageStatsEndpoint,
   usageTotals,
+  windowCost,
 } from "@/pages/usage-model";
 
 const AXIS_LABEL: Record<ConsumptionAxis, TranslationKey> = {
@@ -81,6 +82,7 @@ export function UsagePage() {
   const totals = useMemo(() => usageTotals(runtime.data), [runtime.data]);
   const spend = useMemo(() => consumptionRows(consumption.data), [consumption.data]);
   const budget = useMemo(() => budgetSummary(status.data), [status.data]);
+  const money = useMemo(() => windowCost(consumption.data), [consumption.data]);
   const pressure = budgetPressure(budget);
 
   const number = useMemo(
@@ -208,8 +210,41 @@ export function UsagePage() {
           ) : (
             <Card size="sm" data-testid="usage-budget">
               <CardHeader>
-                <CardDescription>{t("resource.usage.monthTokens")}</CardDescription>
-                <CardTitle className="text-2xl tabular-nums">{tokens(budget.usedTokens)}</CardTitle>
+                {/* Money leads when it can be computed; tokens stay as the
+                    evidence beside it. With no rate configured the amount is
+                    absent rather than zero — a nought here would tell an
+                    operator the month was free. */}
+                <CardDescription>
+                  {money ? t("resource.usage.spend") : t("resource.usage.monthTokens")}
+                </CardDescription>
+                <CardTitle className="text-2xl tabular-nums">
+                  {money
+                    ? new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", {
+                        style: "currency",
+                        currency: money.currency,
+                      }).format(money.amount)
+                    : tokens(budget.usedTokens)}
+                </CardTitle>
+                {money ? (
+                  <p className="text-muted-foreground text-xs" data-testid="usage-spend-basis">
+                    {t("resource.usage.spendBasis")} · {tokens(budget.usedTokens)}{" "}
+                    {t("resource.field.tokens")}
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground text-xs" data-testid="usage-no-prices">
+                    {t("resource.usage.noPrices")}
+                  </p>
+                )}
+                {/* What the amount does NOT cover, said out loud. An amount
+                    that silently omits calls looks complete. */}
+                {money && money.unpricedCalls > 0 ? (
+                  <p className="text-muted-foreground text-xs" data-testid="usage-unpriced">
+                    {t("resource.usage.unpriced", {
+                      calls: money.unpricedCalls,
+                      models: money.unpricedModels.join(", "),
+                    })}
+                  </p>
+                ) : null}
               </CardHeader>
               <CardFooter className="flex flex-wrap items-center gap-x-6 gap-y-1 text-muted-foreground text-xs">
                 {/* No cap is stated as no cap. A dash here, or a zero, would

@@ -1394,6 +1394,9 @@
               "tokens",
               "latency_ms"
             ]
+          },
+          "cost": {
+            "$ref": "#/components/schemas/StatsLlmCost"
           }
         },
         "required": [
@@ -1402,7 +1405,8 @@
           "from",
           "to",
           "groups",
-          "totals"
+          "totals",
+          "cost"
         ]
       },
       "StatsTokenAgg": {
@@ -1430,6 +1434,39 @@
           "cache_read",
           "cache_creation",
           "total"
+        ]
+      },
+      "StatsLlmCost": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "unpriced_models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "unpriced_calls": {
+            "type": "integer"
+          },
+          "rates_basis": {
+            "type": "string",
+            "enum": [
+              "current"
+            ]
+          }
+        },
+        "required": [
+          "amount",
+          "currency",
+          "unpriced_models",
+          "unpriced_calls",
+          "rates_basis"
         ]
       },
       "StatsQualityResponse": {
@@ -8984,6 +9021,9 @@
                 "items": {
                   "$ref": "#/components/schemas/ExecutionCostPerFlow"
                 }
+              },
+              "cost": {
+                "$ref": "#/components/schemas/ExecutionCostMoney"
               }
             },
             "required": [
@@ -8994,7 +9034,8 @@
               "cache_read_tokens",
               "cache_read_pct",
               "latency_ms",
-              "by_flow"
+              "by_flow",
+              "cost"
             ]
           },
           "external": {
@@ -9059,6 +9100,39 @@
           "completion_tokens",
           "cache_read_tokens",
           "latency_ms"
+        ]
+      },
+      "ExecutionCostMoney": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "unpriced_models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "unpriced_calls": {
+            "type": "integer"
+          },
+          "rates_basis": {
+            "type": "string",
+            "enum": [
+              "current"
+            ]
+          }
+        },
+        "required": [
+          "amount",
+          "currency",
+          "unpriced_models",
+          "unpriced_calls",
+          "rates_basis"
         ]
       },
       "ExecutionSignalResponse": {

@@ -16857,6 +16857,7 @@ export interface components {
                 tokens: components["schemas"]["StatsTokenAgg"];
                 latency_ms: components["schemas"]["StatsLatencyAgg"];
             };
+            cost: components["schemas"]["StatsLlmCost"];
         };
         StatsTokenAgg: {
             prompt: number;
@@ -16864,6 +16865,14 @@ export interface components {
             cache_read: number;
             cache_creation: number;
             total: number;
+        };
+        StatsLlmCost: {
+            amount: number;
+            currency: string;
+            unpriced_models: string[];
+            unpriced_calls: number;
+            /** @enum {string} */
+            rates_basis: "current";
         };
         StatsQualityResponse: {
             /** @enum {string} */
@@ -18780,6 +18789,7 @@ export interface components {
                 cache_read_pct: number;
                 latency_ms: number;
                 by_flow: components["schemas"]["ExecutionCostPerFlow"][];
+                cost: components["schemas"]["ExecutionCostMoney"];
             };
             external: {
                 calls: number;
@@ -18796,6 +18806,14 @@ export interface components {
             completion_tokens: number;
             cache_read_tokens: number;
             latency_ms: number;
+        };
+        ExecutionCostMoney: {
+            amount: number;
+            currency: string;
+            unpriced_models: string[];
+            unpriced_calls: number;
+            /** @enum {string} */
+            rates_basis: "current";
         };
         ExecutionSignalResponse: {
             /** Format: uuid */

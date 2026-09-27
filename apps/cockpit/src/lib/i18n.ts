@@ -538,6 +538,10 @@ const EN = {
   "resource.usage.consumptionDescription":
     "What this workspace spent on model calls, and how much of the monthly cap is left.",
   "resource.usage.monthTokens": "Consumed this month",
+  "resource.usage.spend": "Spent in this window",
+  "resource.usage.spendBasis": "At the rates configured now",
+  "resource.usage.unpriced": "Plus {calls} calls on models with no price set: {models}",
+  "resource.usage.noPrices": "No model prices configured — tokens only",
   "resource.usage.cap": "Monthly cap",
   "resource.usage.remaining": "Remaining",
   "resource.usage.noCap": "No cap configured",
@@ -2371,6 +2375,10 @@ const DE: Record<TranslationKey, string> = {
   "resource.usage.consumptionDescription":
     "Was dieser Arbeitsbereich für Modellaufrufe ausgegeben hat und wie viel vom Monatskontingent übrig ist.",
   "resource.usage.monthTokens": "Diesen Monat verbraucht",
+  "resource.usage.spend": "In diesem Zeitraum ausgegeben",
+  "resource.usage.spendBasis": "Zu den aktuell hinterlegten Preisen",
+  "resource.usage.unpriced": "Zzgl. {calls} Aufrufe auf Modellen ohne hinterlegten Preis: {models}",
+  "resource.usage.noPrices": "Keine Modellpreise hinterlegt — nur Token",
   "resource.usage.cap": "Monatskontingent",
   "resource.usage.remaining": "Verbleibend",
   "resource.usage.noCap": "Kein Kontingent gesetzt",
