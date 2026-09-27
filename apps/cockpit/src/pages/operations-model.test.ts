@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { type TranslationKey, translate } from "@/lib/i18n";
 import {
   type AttentionFormat,
   drilldownHref,
   drilldownLabelKey,
+  healthStateLine,
   type OperationalOverview,
   operationsAttention,
   scanOutcome,
@@ -152,6 +154,22 @@ function overview(input: {
     },
   };
 }
+
+describe("the state line on /operations", () => {
+  test("an undetermined state says it cannot be determined and why, never 'Unbekannt'", () => {
+    const de = (key: TranslationKey, values?: Record<string, string>) =>
+      translate("de", key, values);
+    const line = healthStateLine("unknown", de);
+    expect(line).toBe(de("operations.attention.undetermined"));
+    expect(line).not.toContain("Unbekannt");
+  });
+
+  test("a determined state is named", () => {
+    const de = (key: TranslationKey, values?: Record<string, string>) =>
+      translate("de", key, values);
+    expect(healthStateLine("limited", de)).toBe("Zustand: Eingeschränkt");
+  });
+});
 
 describe("what the system page raises", () => {
   test("a healthy installation raises nothing at all", () => {
