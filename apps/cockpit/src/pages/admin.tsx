@@ -221,7 +221,7 @@ interface HealthDigest {
     detail: string;
     severity: "warn" | "critical";
   }>;
-  patch_candidates: { pending: number };
+  patch_candidates: { open: number };
 }
 
 function AdminFrame({

@@ -27,6 +27,7 @@ import {
   PatchReadinessSchema,
   preparePatchCandidate,
   previewPatchCandidate,
+  readOpenPatchDecisions,
   readPatchReadiness,
   readPatchReadinessBatch,
   rejectPatchCandidate,
@@ -51,9 +52,15 @@ const PatchCandidateSchema = z
     connector_id: z.string().nullable(),
     endpoint_key: z.string().nullable(),
     classification: z.enum(["safe", "unsafe"]),
-    status: z.enum(["proposed", "applied", "rejected", "superseded"]),
+    status: z.enum(["proposed", "applied", "rejected", "superseded", "inapplicable"]),
     fixture_id: z.string().nullable(),
     diff: z.unknown(),
+    // Set when the engine closed the candidate as `inapplicable`: the readiness
+    // reason that proved it undecidable and the workflow version it was proven
+    // against. Null on every other status.
+    closed_reason: z.string().nullable(),
+    closed_against_version_id: z.string().nullable(),
+    closed_at: z.string().nullable(),
     created_at: z.string(),
     updated_at: z.string(),
     ...PatchReadinessSchema.partial().shape,
@@ -66,13 +73,17 @@ const ListResponse = z
     // True matching-row count for the applied filters (ignores limit)
     // — clients rendering counts must not derive them from a capped page.
     total: z.number().int().min(0),
+    // Open decisions — proposed AND reviewable on the current workflow
+    // version — for the tenant (narrowed only by `workflow_id`). The same
+    // number the health digest, the MCP instructions and the operational
+    // overview report: all four read `readOpenPatchDecisions`.
     reviewable_total: z.number().int().min(0),
   })
   .openapi("PatchCandidateListResponse");
 
 const ListQuery = z
   .object({
-    status: z.enum(["proposed", "applied", "rejected", "superseded"]).optional(),
+    status: z.enum(["proposed", "applied", "rejected", "superseded", "inapplicable"]).optional(),
     workflow_id: z.string().uuid().optional(),
     reviewable: z.enum(["true", "false"]).optional(),
     offset: z.coerce.number().int().min(0).default(0),
@@ -97,6 +108,9 @@ function serialize(row: typeof patchCandidates.$inferSelect, workflowName: strin
     status: row.status,
     fixture_id: row.fixture_id ?? null,
     diff: row.diff,
+    closed_reason: row.closed_reason ?? null,
+    closed_against_version_id: row.closed_against_version_id ?? null,
+    closed_at: row.closed_at?.toISOString() ?? null,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -176,7 +190,7 @@ const PreviewResponse = z
     candidate_id: z.string(),
     workflow_id: z.string(),
     classification: z.enum(["safe", "unsafe"]),
-    status: z.enum(["proposed", "applied", "rejected", "superseded"]),
+    status: z.enum(["proposed", "applied", "rejected", "superseded", "inapplicable"]),
     drift_summary: z.string().nullable(),
     proposal: PatchProposalSchema.nullable(),
     fixture_available: z.boolean(),
@@ -366,11 +380,15 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
       q.reviewable === undefined
         ? items
         : items.filter((item) => item.reviewable === (q.reviewable === "true"));
+    const open = await readOpenPatchDecisions(db, principal.tenant_id, {
+      ...(q.workflow_id ? { workflow_id: q.workflow_id } : {}),
+      limit: 0,
+    });
     return c.json(
       {
         items: filtered.slice(q.offset, q.offset + (q.limit ?? 50)),
         total: filtered.length,
-        reviewable_total: items.filter((item) => item.reviewable).length,
+        reviewable_total: open.open_total,
       },
       200,
     );

@@ -195,6 +195,15 @@ export type StepWarningCode =
  *  lifts a held run into a preview envelope keys off this one constant. */
 export const HELD_PREVIEW_WARNING_CODE = "held_preview_no_writes" as const;
 
+/** A step whose write was held: it produced a preview, not an effect. One
+ *  predicate for the engine's skip bookkeeping and the persisted step row. */
+export function hasHeldOutput(result: StepResult): boolean {
+  return (
+    result.held === true ||
+    (result.warnings?.some((warning) => warning.code === HELD_PREVIEW_WARNING_CODE) ?? false)
+  );
+}
+
 export interface StepWarning {
   code: StepWarningCode;
   /** Concrete identifier / placeholder path that could not be resolved. */
