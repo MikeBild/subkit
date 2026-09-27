@@ -35,6 +35,7 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   filterFromUrl,
   formatRunDuration,
+  previewText,
   REQUEST_SOURCES,
   RUN_STATUSES,
   type RunFact,
@@ -57,12 +58,6 @@ type ExecutionStep = components["schemas"]["ExecutionStep"];
 type ExecutionStepList = components["schemas"]["ExecutionStepListResponse"];
 
 const PAGE_SIZE = 25;
-
-function previewText(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  return text?.trim() ? text : null;
-}
 
 function EvidenceBlock({
   title,

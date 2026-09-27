@@ -534,6 +534,8 @@ const EN = {
   "resource.usage.description": "Workspace runtime and execution statistics.",
   "resource.usage.empty": "No execution statistics yet.",
   "resource.usage.window": "Last 30 days",
+  "resource.usage.breakdownWindow":
+    "Breakdown covers the last 30 days — a different period from the calendar month above, so the totals differ.",
   "resource.usage.consumption": "Consumption",
   "resource.usage.consumptionDescription":
     "What this workspace spent on model calls, and how much of the monthly cap is left.",
@@ -2442,6 +2444,8 @@ const DE: Record<TranslationKey, string> = {
   "resource.usage.description": "Laufzeit- und Ausführungsstatistiken des Arbeitsbereichs.",
   "resource.usage.empty": "Noch keine Ausführungsstatistiken.",
   "resource.usage.window": "Letzte 30 Tage",
+  "resource.usage.breakdownWindow":
+    "Der Aufriss umfasst die letzten 30 Tage — ein anderer Zeitraum als der Kalendermonat darüber, deshalb weichen die Summen ab.",
   "resource.usage.consumption": "Verbrauch",
   "resource.usage.consumptionDescription":
     "Was dieser Arbeitsbereich für Modellaufrufe ausgegeben hat und wie viel vom Monatskontingent übrig ist.",
