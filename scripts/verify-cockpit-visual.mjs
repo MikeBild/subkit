@@ -140,21 +140,51 @@ const AUDIT_FIXTURE_ROWS = [
     action: "patch_candidate.approved",
     resource_type: "patch_candidate",
     result: "success",
+    // The pair that says what a decision actually changed. The engine has
+    // always returned these two columns and the page dropped them, so no frame
+    // could ever show a snapshot rendered wrongly — or rendered at all. This
+    // row keeps its metadata EMPTY on purpose: `{}` must photograph as nothing,
+    // not as an empty box under a heading.
+    before: { empfaenger: ["team@example.com"], format: "pdf", anhang: true },
+    after: { empfaenger: ["team@example.com", "leitung@example.com"], format: "pdf", anhang: true },
   },
   {
     action: "skill_candidate.rejected",
     resource_type: "skill_candidate",
     result: "success",
   },
-  { action: "workflow.updated", resource_type: "workflow", result: "success" },
+  {
+    action: "workflow.updated",
+    resource_type: "workflow",
+    result: "success",
+    // Recorded details with nothing missing about them: a zero, a false and an
+    // empty string are values the engine wrote down, and each one disappears
+    // under a rendering rule that treats "empty" as "absent".
+    metadata: { geaenderte_schritte: 2, wiederholungen: 0, benachrichtigt: false, hinweis: "" },
+  },
   { action: "connector.invoked", resource_type: "connector", result: "denied" },
-  { action: "settings.changed", resource_type: "settings", result: "error" },
+  {
+    action: "settings.changed",
+    resource_type: "settings",
+    result: "error",
+    // A change that never landed: there is a before and there is no after. One
+    // block, and the sheet must not invent the second one.
+    before: { aufbewahrung_tage: 30 },
+  },
   // The one verb this build has NO word for, so the honest fallback — the
   // engine's own token in a machine face — appears in a frame. `settings.changed`
   // used to serve that purpose and has since been named, which would have left
   // the fallback unphotographed and free to rot back into "Weiterer Vorgang".
   // A real `AuditAction` (see `audit/types.ts`), not a plausible invention.
-  { action: "mcp_oauth.client_registered", resource_type: "mcp_oauth_client", result: "success" },
+  {
+    action: "mcp_oauth.client_registered",
+    resource_type: "mcp_oauth_client",
+    result: "success",
+    // Performed by the engine, so the Operations view has something to show
+    // and the Decisions view has something it legitimately leaves out.
+    actor_type: "system",
+    metadata: { anwendung: "Berichtsportal", zugriffsrechte: ["mcp:read"] },
+  },
   // A schedule the engine put on hold. It belongs in a frame for two reasons:
   // it is the newest word the log has, and it is the only row whose `denied`
   // comes from a state change rather than a rejected call — a label that
@@ -164,6 +194,8 @@ const AUDIT_FIXTURE_ROWS = [
     action: "schedule.admission.changed",
     resource_type: "workflow_schedule",
     result: "denied",
+    before: { zulassung: "erlaubt" },
+    after: { zulassung: "angehalten" },
   },
 ];
 
@@ -204,6 +236,62 @@ const conversation = {
   last_message_role: "assistant",
   last_message_excerpt: `{"tool":"run_workflow","output":{"execution_id":"${uuid}"}}`,
 };
+
+/**
+ * Every audit row this sweep can show, built ONCE.
+ *
+ * Actions the engine ACTUALLY emits. The four this fixture used to rotate
+ * through — workflow.update, connector.test, skill.archive, settings.write —
+ * exist in no AuditAction: the sweep was photographing a log of verbs the
+ * product cannot write, so no frame could ever show one of them named wrongly,
+ * or named at all.
+ *
+ * One row carries an action the cockpit has no word for, so the honest
+ * fallback — the engine's own token, in a machine face — is visible in a frame.
+ * Without it nobody notices the fallback rotting back into a phrase that claims
+ * the log recorded something indistinct.
+ *
+ * The list answers from this array and so does the single-entry fetch the
+ * detail sheet makes. A second builder there would let the sheet photograph a
+ * record the list never had — the row saying one verb and the sheet another,
+ * each frame looking correct on its own.
+ */
+const AUDIT_FIXTURE_ENTRIES = Array.from({ length: 24 }, (_, index) => {
+  const row = AUDIT_FIXTURE_ROWS[index % AUDIT_FIXTURE_ROWS.length];
+  return {
+    id: index === 0 ? uuid : `audit-${index}`,
+    ts: new Date(Date.parse(conversation.updated_at) - index * 120_000).toISOString(),
+    tenant_id: uuid,
+    // The row's own actor when it declares one, so the Operations filter and
+    // the Akteur column cannot disagree — a view filtered to the engine must
+    // not print "Person".
+    actor_type: row.actor_type ?? ["user", "system_account", "system", "user"][index % 4],
+    actor_id: index % 4 === 2 ? null : uuid,
+    action: row.action,
+    resource_type: row.resource_type,
+    resource_id: row.resource_type === "settings" ? null : uuid,
+    result: row.result,
+    // Written on most rows and absent on a third of them, deliberately. The
+    // detail sheet says so in words where the engine recorded nothing, and a
+    // fixture in which every one of these is null photographs only the half of
+    // that rule that prints a dash.
+    trace_id: index % 3 === 0 ? null : `cli-949cacce25ff43${70 + (index % 10)}`,
+    ip: index % 3 === 0 ? null : "203.0.113.42",
+    user_agent: index % 3 === 0 ? null : "SubKit-CLI (macOS)",
+    reason:
+      row.result === "denied"
+        ? "Rolle deckt skill:write nicht ab."
+        : row.action === "skill_candidate.rejected"
+          ? "Deckt sich mit einem schon freigegebenen Skill."
+          : null,
+    // What the table never showed. `before`/`after` are absent unless the row
+    // records them, and `metadata` defaults to the empty object that most rows
+    // genuinely carry — the shape that must render as nothing at all.
+    before: row.before ?? null,
+    after: row.after ?? null,
+    metadata: row.metadata ?? {},
+  };
+});
 
 // Deliberately unfriendly: a conversation the engine never named must make the
 // cockpit's own fallback wording appear in a screenshot. Fixtures that always
@@ -1070,55 +1158,40 @@ async function mockApi(route) {
     return json(route, { items, total: 240, next_cursor: null });
   }
   if (path === "/v1/audit-log") {
-    // Actions the engine ACTUALLY emits. The four this fixture used to rotate
-    // through — workflow.update, connector.test, skill.archive, settings.write —
-    // exist in no AuditAction: the sweep was photographing a log of verbs the
-    // product cannot write, so no frame could ever show one of them named
-    // wrongly, or named at all.
-    //
-    // One row carries an action the cockpit has no word for, so the honest
-    // fallback — the engine's own token, in a machine face — is visible in a
-    // frame. Without it nobody notices the fallback rotting back into a phrase
-    // that claims the log recorded something indistinct. Whichever verb plays
-    // that part must be a real `AuditAction`: the first version of this list
-    // wrote `settings.updated`, which no `AuditAction` carries, so the commit
-    // that removed four invented verbs shipped a fifth.
-    const catalogue = AUDIT_FIXTURE_ROWS;
     // The engine filters on `action` and takes a comma-separated list. A mock
     // that ignored it would photograph a filter labelled "Entscheidungen" over
     // rows that are not decisions.
-    const wanted = (new URL(request.url()).searchParams.get("action") ?? "")
+    const wanted = (url.searchParams.get("action") ?? "")
       .split(",")
       .map((entry) => entry.trim())
       .filter(Boolean);
-    const rows = wanted.length
-      ? catalogue.filter((entry) => wanted.includes(entry.action))
-      : catalogue;
-    const items = Array.from({ length: wanted.length ? rows.length * 4 : 24 }, (_, index) => {
-      const row = rows[index % rows.length];
-      return {
-        id: index === 0 ? uuid : `audit-${index}`,
-        ts: new Date(Date.parse(conversation.updated_at) - index * 120_000).toISOString(),
-        tenant_id: uuid,
-        actor_type: ["user", "system_account", "system", "user"][index % 4],
-        actor_id: index % 4 === 2 ? null : uuid,
-        action: row.action,
-        resource_type: row.resource_type,
-        resource_id: row.resource_type === "settings" ? null : uuid,
-        result: row.result,
-        trace_id: null,
-        ip: null,
-        user_agent: null,
-        reason:
-          row.result === "denied"
-            ? "Rolle deckt skill:write nicht ab."
-            : row.action === "skill_candidate.rejected"
-              ? "Deckt sich mit einem schon freigegebenen Skill."
-              : null,
-        metadata: {},
-      };
-    });
+    // `actor_type` is the other axis: the Operations view asks the engine for
+    // its own housekeeping rather than sieving a page client-side. A mock that
+    // ignored it would photograph a view labelled "Betrieb" over rows a person
+    // performed.
+    //
+    // Sieved on the field the row RENDERS. The old filter read the catalogue
+    // entry behind the row instead, so a row printing "Engine" in the Akteur
+    // column was missing from the very view that claims to list exactly those.
+    const actorType = url.searchParams.get("actor_type");
+    const byAction = wanted.length
+      ? AUDIT_FIXTURE_ENTRIES.filter((entry) => wanted.includes(entry.action))
+      : AUDIT_FIXTURE_ENTRIES;
+    const items = actorType ? byAction.filter((entry) => entry.actor_type === actorType) : byAction;
     return json(route, { items, next_cursor: "audit-cursor-2" });
+  }
+  // The one entry the detail sheet asks for, answered from the same array the
+  // list answered with. An id this fixture does not know is a 404 and not a
+  // cheerful stand-in: the catch-all at the foot of this function answers every
+  // unmatched path with `{ items: [] }` and a 200, and a sheet that accepted
+  // that would print an empty record the engine never wrote.
+  const auditEntryPath = /^\/v1\/audit-log\/([^/]+)$/.exec(path);
+  if (auditEntryPath) {
+    const id = decodeURIComponent(auditEntryPath[1]);
+    const entry = AUDIT_FIXTURE_ENTRIES.find((candidate) => candidate.id === id);
+    return entry
+      ? json(route, entry)
+      : json(route, { error: { code: "not_found", message: "audit_entry" } }, 404);
   }
   if (path === "/v1/notifications/inbox") {
     // A real inbox row: whether a person has to act, what it concerns, and
@@ -1178,7 +1251,9 @@ async function mockApi(route) {
         prompt_tokens: 61_400,
         completion_tokens: 812,
         cache_read_tokens: 38_100,
-        cache_read_pct: 0.62,
+        // 0–100, the shape `cost.ts` actually emits — a ratio here let the
+        // page's unit guess photograph only its safe branch.
+        cache_read_pct: 62,
         latency_ms: 14_300,
         by_flow: [
           {
@@ -1222,7 +1297,6 @@ async function mockApi(route) {
         ["mission-control-reporting-rollup-monthly-with-a-very-long-name", 812, 96_400_000],
         ["ga4-daily-report", 240, 31_600_000],
         ["radar-publish-weekly", 61, 10_000_000],
-        ["never-invoked-workflow", 0, 0],
         // Consumption nothing can be attributed to, which on a real
         // installation is most of it: every call without a run has no
         // workflow. The row must be visible and named, not dropped.
@@ -1234,9 +1308,12 @@ async function mockApi(route) {
         ["judge", 180, 12_000_000],
         ["repair", 33, 4_000_000],
       ],
+      // Keyed by `llm_usage.user_id`, which is a UUID or NULL — never an
+      // address. Sending readable names meant the sweep never exercised the
+      // UUID-to-name resolution, which is the only reason that lookup exists.
       user: [
-        ["operator@example.com", 900, 120_000_000],
-        ["scheduler", 223, 18_000_000],
+        ["465c1424-676e-44c4-8ec0-7ff754f167b4", 900, 120_000_000],
+        ["b221a085-3c6f-49e1-8553-3298949ab4db", 223, 18_000_000],
       ],
       model: [
         ["claude-sonnet-4-6", 820, 104_000_000],
@@ -1256,14 +1333,25 @@ async function mockApi(route) {
         key: { [axis]: key },
         buckets: [],
         totals: {
-          calls: { total: calls, by_result: { success: calls } },
+          // PER GROUP this is a plain number; only the envelope-level total is
+          // `{ total, by_result }`. The fixture sent the envelope shape — the
+          // exact defect already fixed in the page — so every photographed row
+          // rendered "0 calls" beside ninety-six million tokens and the sweep
+          // passed, because a screenshot gate asserts that pixels exist.
+          calls,
           tokens: { prompt: total, completion: 0, cache_read: 0, cache_creation: 0, total },
           latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
         },
       })),
       totals: {
         calls: { total: rows.reduce((n, r) => n + r[1], 0), by_result: {} },
-        tokens: { total: rows.reduce((n, r) => n + r[2], 0) },
+        tokens: {
+          prompt: rows.reduce((n, r) => n + r[2], 0),
+          completion: 0,
+          cache_read: 0,
+          cache_creation: 0,
+          total: rows.reduce((n, r) => n + r[2], 0),
+        },
         latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
       },
       // PARTLY priced on purpose. A fully priced window would photograph an

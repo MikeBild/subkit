@@ -1,4 +1,9 @@
+import type { components } from "@/api/schema";
 import type { TranslationKey } from "@/lib/i18n";
+
+type AuditEntry = components["schemas"]["AuditEntry"];
+type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
+type FormatDateTime = (value: string | Date) => string;
 
 /**
  * Which audited resource types the Cockpit can actually open.
@@ -29,6 +34,24 @@ const ACTOR_KEYS: Record<string, TranslationKey> = {
 
 export function actorTypeKey(actorType: string): TranslationKey {
   return ACTOR_KEYS[actorType] ?? "common.unknown";
+}
+
+const RESULT_KEYS: Record<string, TranslationKey> = {
+  success: "audit.result.success",
+  denied: "audit.result.denied",
+  error: "audit.result.error",
+};
+
+/**
+ * How a row's outcome reads.
+ *
+ * This map sat in the page beside the table while the actor and resource
+ * vocabularies lived here. The detail sheet has to print the same word the row
+ * printed, and two copies of one map are how a surface and the row it was
+ * opened from start disagreeing about what "denied" is called.
+ */
+export function auditResultKey(result: string): TranslationKey {
+  return RESULT_KEYS[result] ?? "common.unknown";
 }
 
 const RESOURCE_KEYS: Record<string, TranslationKey> = {
@@ -211,14 +234,235 @@ export function namedActionCount(): number {
  * have returned short pages and an unusable "next".
  */
 export const DECISION_ACTIONS = [
+  // Proposals a person accepted or turned down.
   "patch_candidate.approved",
   "patch_candidate.rejected",
   "skill_candidate.approved",
   "skill_candidate.rejected",
+  // Permission to act, given and taken away.
+  "approval.granted",
+  "approval.approved",
+  "approval.rejected",
+  "approval.declined",
+  "workflow.authority_granted",
+  "workflow.authority_revoked",
+  // Refusals. A denial is a decision the system made on a person's behalf and
+  // is the row an auditor looks for first.
+  "policy.denied",
+  "approval.dispatch_denied",
+  "execution.boundary_refused",
+  // Who may do what.
+  "rbac.role_created",
+  "rbac.role_deleted",
+  "rbac.permission_granted",
+  "rbac.permission_revoked",
+  "rbac.user_role_assigned",
+  "rbac.user_role_revoked",
+  "user.created",
+  "user.deleted",
+  "user.role_changed",
+  "api_key.issued",
+  "api_key.revoked",
+  "session.revoked",
+  // Things that stop existing, or start running on a clock.
+  "workflow.deleted",
+  "workflow.version_restored",
+  "schedule.created",
+  "schedule.deleted",
+  "connector.deleted",
+  "secret.version_created",
+  "secret.version_revoked",
+  "settings.changed",
 ] as const;
 
-export type AuditScope = "all" | "decisions";
+/**
+ * Which half of the log a reader is looking at.
+ *
+ * `decisions` is the default and the point of the page: what a person
+ * answered for. `operations` is the engine keeping itself alive — token
+ * refreshes, key reads, probes — which on a live installation arrives ten
+ * rows a minute and buries everything else. Nothing is hidden and nothing is
+ * deleted; `all` is one click away and the ordering never changes.
+ *
+ * The two are filtered on different axes because they are different
+ * questions. `decisions` filters by ACTION: a person changing a setting is a
+ * decision whoever typed it. `operations` filters by ACTOR: the engine acting
+ * on its own account, whatever it happened to be doing. Filtering both by one
+ * axis would fold one of the questions into the other.
+ */
+export type AuditScope = "all" | "decisions" | "operations";
 
 export function isAuditScope(value: unknown): value is AuditScope {
-  return value === "all" || value === "decisions";
+  return value === "all" || value === "decisions" || value === "operations";
+}
+
+/** The query narrowing for a scope, as the engine's own parameters. */
+export function auditScopeParams(scope: AuditScope): Record<string, string> {
+  if (scope === "decisions") return { action: DECISION_ACTIONS.join(",") };
+  if (scope === "operations") return { actor_type: "system" };
+  return {};
+}
+
+/**
+ * The correlation key a row was opened with, if any.
+ *
+ * `trace_id` is the only thing that ties a log row to the request that caused
+ * it: the same value appears on the run, on every step, and on each of the
+ * engine's own log lines. The page offered no way to filter by it, so a reader
+ * holding a red run and a log of thousands of rows had no way from one to the
+ * other — §1's "no red without a path to the cause" is unmeetable in a log
+ * that cannot be asked "show me this one request".
+ *
+ * Read from the URL rather than typed, because nobody memorises a trace id:
+ * it arrives from whatever surface showed it.
+ */
+export function auditTraceFromUrl(search: string): string | null {
+  const raw = new URLSearchParams(search).get("trace_id")?.trim() ?? "";
+  // Bounded, and refused when it could not be one: a free-text value forwarded
+  // to the engine as an exact match narrows to nothing and reads like an empty
+  // log rather than a bad query.
+  if (!raw || raw.length > 128 || !/^[\w-]+$/.test(raw)) return null;
+  return raw;
+}
+
+/**
+ * Is this an audit record, or something else that arrived with a 200?
+ *
+ * The list row already carries all sixteen fields — the engine serializes the
+ * same shape for a page and for a single entry — so the sheet's own fetch
+ * REFRESHES a record the page already holds rather than filling an empty one.
+ * That makes substituting whatever came back dangerous in a way it is not
+ * where the fetch IS the data: a mistyped path, a proxy's courtesy page or the
+ * visual fixture's catch-all all answer `{ items: [] }` with a 200, and taking
+ * that for the record would blank a complete sheet and blame the log for it.
+ */
+export function isAuditEntry(value: unknown): value is AuditEntry {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.ts === "string" &&
+    typeof candidate.action === "string"
+  );
+}
+
+export type AuditEvidenceKind = "before" | "after" | "metadata";
+
+export interface AuditEvidenceBlock {
+  kind: AuditEvidenceKind;
+  /** The snapshot as the engine stored it, indented to be read. */
+  text: string;
+}
+
+function formatSnapshot(value: unknown): string {
+  return JSON.stringify(value, null, 2) ?? String(value);
+}
+
+/**
+ * Which of a row's snapshots are evidence, and which are simply not there.
+ *
+ * `before`, `after` and `metadata` are what the table dropped on the floor: the
+ * engine has always returned them, six of sixteen fields reached the screen,
+ * and what a recorded change actually changed was readable only from the
+ * terminal.
+ *
+ * Absent and empty are different facts, and they are told apart here rather
+ * than in the markup. Only `null`/`undefined` counts as absent — a recorded
+ * `false`, `0` or `""` is what the engine wrote and falls out of a falsy test,
+ * which would silently delete the evidence that a flag was cleared or a limit
+ * set to zero. `metadata` is the one exception and it is an exception about
+ * emptiness, not about absence: `{}` is a box with nothing in it, and drawing
+ * the box claims the engine recorded something it did not.
+ */
+export function auditEvidenceBlocks(
+  entry: Pick<AuditEntry, "before" | "after" | "metadata">,
+): AuditEvidenceBlock[] {
+  const blocks: AuditEvidenceBlock[] = [];
+  // Before, then after. The pair is read as one change, and a change read
+  // backwards states the opposite of what happened.
+  for (const kind of ["before", "after"] as const) {
+    const value = entry[kind];
+    if (value === null || value === undefined) continue;
+    blocks.push({ kind, text: formatSnapshot(value) });
+  }
+  const { metadata } = entry;
+  if (metadata && Object.keys(metadata).length > 0) {
+    blocks.push({ kind: "metadata", text: formatSnapshot(metadata) });
+  }
+  return blocks;
+}
+
+export interface AuditFact {
+  label: string;
+  /** `null` is "the engine recorded nothing here"; the surface says so in words. */
+  value: string | null;
+  /** A machine value — an id, a correlation key, an address — never prose. */
+  mono?: boolean;
+}
+
+/**
+ * A blank text field holds nothing a reader can read.
+ *
+ * The table already prints the missing marker for an empty string, so folding
+ * the two here is what keeps the row and the sheet it opens from stating
+ * different things about the same field. This is deliberately NOT the rule for
+ * a snapshot: there, `""` is the value the engine stored and stays evidence.
+ */
+function recordedText(value: string | null | undefined): string | null {
+  const text = value?.trim() ?? "";
+  return text.length > 0 ? text : null;
+}
+
+/**
+ * Everything the engine wrote down about one operation, labelled.
+ *
+ * The verb itself is not in this list: it is the sheet's title, because a
+ * record whose heading is an id tells a reader nothing about what happened.
+ * The ids ARE here, each behind its own label — they are what a reader carries
+ * into `sk audit show`, a ticket or a second surface, and a trail that hides
+ * its own correlation key cannot be followed anywhere.
+ */
+export function auditDetailFacts(
+  entry: AuditEntry,
+  t: Translate,
+  dateTime: FormatDateTime,
+): AuditFact[] {
+  return [
+    // Absolute. "3 hours ago" is not a fact an auditor can quote.
+    { label: t("audit.column.time"), value: dateTime(entry.ts) },
+    { label: t("audit.column.result"), value: t(auditResultKey(entry.result)) },
+    // Kind and id side by side. "Person" alone does not say which person, and
+    // a bare id does not say that it is one.
+    { label: t("audit.column.actor"), value: t(actorTypeKey(entry.actor_type)) },
+    { label: t("audit.detail.actorId"), value: recordedText(entry.actor_id), mono: true },
+    { label: t("audit.column.resource"), value: t(resourceTypeKey(entry.resource_type)) },
+    { label: t("audit.detail.resourceId"), value: recordedText(entry.resource_id), mono: true },
+    { label: t("audit.column.reason"), value: recordedText(entry.reason) },
+    { label: t("audit.detail.trace"), value: recordedText(entry.trace_id), mono: true },
+    { label: t("audit.detail.ip"), value: recordedText(entry.ip), mono: true },
+    { label: t("audit.detail.userAgent"), value: recordedText(entry.user_agent), mono: true },
+    { label: t("audit.detail.record"), value: recordedText(entry.id), mono: true },
+  ];
+}
+
+/**
+ * An identifier a reader may need, in a form the cockpit is allowed to print.
+ *
+ * `konvention:check` reads `body.innerText()` and refuses UUID-shaped text
+ * anywhere on the page — with no exemption for a fenced block. That exemption
+ * exists in the VISUAL sweep, not in this gate, and a detail sheet that
+ * printed `actor_id` in full failed it. UI-UX.md is blunt about it too: an
+ * identifier is never what a person reads.
+ *
+ * So the prefix is shown and the whole value travels in the element's title,
+ * where it can still be read and copied. Eight characters is what the CLI
+ * prints for a session and is enough to match a row against a log line; the
+ * full value is one hover away and, unlike a truncated LABEL, nothing here
+ * claims to be the identifier itself.
+ */
+export function shortIdentifier(value: string): string {
+  const looksLikeAnId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+  return looksLikeAnId ? `${value.slice(0, 8)}…` : value;
 }
