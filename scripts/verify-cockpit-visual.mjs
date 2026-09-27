@@ -2052,6 +2052,34 @@ async function assertViewport(page, label) {
  * "Ergebnis". A machine value rendered as prose is the shape §2 bans, and a
  * screenshot of it is only evidence if something reads the frame.
  */
+/**
+ * Enter on a row's "Öffnen" opens the record ONCE.
+ *
+ * The key bubbled from the button to the row, which opened the record, and
+ * the browser then turned the same Enter into the button's click, which
+ * opened it again: two history entries for one intent, and Back had to be
+ * pressed twice to leave the sheet. It only shows through the keyboard, so
+ * no screenshot and no model test could see it.
+ *
+ * Restores what it changed — Back closes the sheet and the list is checked
+ * again — because a scenario that leaves a dialog open poisons a later stand.
+ */
+async function assertOpenOnce(page, label) {
+  const open = page.locator('[data-testid="data-table-open-0"]');
+  if (!(await open.isVisible().catch(() => false))) return;
+  const before = await page.evaluate(() => window.history.length);
+  await open.focus();
+  await page.keyboard.press("Enter");
+  await page.locator('[data-testid="run-detail-facts"]').waitFor({ state: "visible" });
+  const after = await page.evaluate(() => window.history.length);
+  if (after - before !== 1)
+    throw new Error(
+      `${label}: Enter on "Öffnen" added ${after - before} history entries — the record opened more than once`,
+    );
+  await page.goBack();
+  await page.locator('[role="dialog"]').waitFor({ state: "hidden" });
+}
+
 async function assertRunDetail(page, label) {
   const facts = page.locator('[data-testid="run-detail-facts"]');
   if (!(await facts.isVisible()))
@@ -2572,6 +2600,8 @@ for (const locale of variants) {
       await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertBlankLists(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "chat") await assertChat(page, `${locale.artifact}/${viewport.name}/${route}`);
+      if (route === "runs")
+        await assertOpenOnce(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (/^runs\/.+/.test(route))
         await assertRunDetail(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "settings")

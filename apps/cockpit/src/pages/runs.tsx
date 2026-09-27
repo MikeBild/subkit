@@ -298,6 +298,21 @@ export function RunsPage() {
    * The query string travels along because it carries the filter the reader
    * arrived with — dropping it would silently widen the list on a reload.
    */
+  // A filter the reader removed must also leave the address. `showRun` copies
+  // the query string onto every run address, so a cleared narrowing that
+  // stayed in the URL came back on the next reload — after the reader had
+  // explicitly taken it away.
+  const forgetInAddress = useCallback((keys: readonly string[]) => {
+    const params = new URLSearchParams(window.location.search);
+    for (const key of keys) params.delete(key);
+    const query = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}`,
+    );
+  }, []);
+
   const showRun = useCallback((id: string | null) => {
     const path = absolute(id ? runHref(id) : runsHref());
     window.history.pushState({}, "", `${path}${window.location.search}`);
@@ -387,7 +402,8 @@ export function RunsPage() {
     setSourceFilter("all");
     setWorkflowFilter(null);
     setPage(0);
-  }, []);
+    forgetInAddress(["workflow_id", "status", "source", "q"]);
+  }, [forgetInAddress]);
 
   if (!allowed)
     return (
@@ -491,6 +507,7 @@ export function RunsPage() {
                 onClick={() => {
                   setWorkflowFilter(null);
                   setPage(0);
+                  forgetInAddress(["workflow_id"]);
                 }}
               >
                 {t("runs.workflowFilter")}
