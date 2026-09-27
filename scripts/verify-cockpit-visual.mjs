@@ -1223,6 +1223,10 @@ async function mockApi(route) {
         ["ga4-daily-report", 240, 31_600_000],
         ["radar-publish-weekly", 61, 10_000_000],
         ["never-invoked-workflow", 0, 0],
+        // Consumption nothing can be attributed to, which on a real
+        // installation is most of it: every call without a run has no
+        // workflow. The row must be visible and named, not dropped.
+        ["", 611, 74_000_000],
       ],
       flow: [
         ["converse", 690, 88_000_000],

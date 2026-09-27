@@ -198,10 +198,35 @@ describe("the published group shape", () => {
     expect(consumptionRows({ groups: [{ key: "ga4", totals: {} }] }, "workflow")).toEqual([]);
   });
 
-  test("a group missing the requested dimension is dropped, not blank-labelled", () => {
-    // A row with an empty name is a row a reader cannot act on.
+  test("a group missing the requested dimension is dropped", () => {
+    // No such dimension at all — a different thing from a dimension that is
+    // present and empty, which is the case below.
     expect(consumptionRows({ groups: [{ key: { model: "x" }, totals: {} }] }, "workflow")).toEqual(
       [],
     );
+  });
+
+  test("consumption nothing can be attributed to is KEPT and marked", () => {
+    // `llm_usage` has no workflow: attribution comes from a join on
+    // `executions`, so every call without a run — chat, self-healing,
+    // discovery — arrives with an empty key. Dropping those made a page about
+    // consumption say "no model calls in this window" beside a header naming
+    // forty million tokens, because on that installation nearly all of it was
+    // chat. "Cannot be attributed" and "did not happen" are different facts.
+    const rows = consumptionRows(
+      {
+        groups: [
+          { key: { workflow: "" }, totals: { calls: { total: 9 }, tokens: { total: 400 } } },
+          { key: { workflow: "ga4" }, totals: { calls: { total: 1 }, tokens: { total: 100 } } },
+        ],
+      },
+      "workflow",
+    );
+    expect(rows).toHaveLength(2);
+    const unattributed = rows.find((r) => r.unattributed);
+    expect(unattributed?.tokens).toBe(400);
+    expect(rows.find((r) => r.key === "ga4")?.unattributed).toBe(false);
+    // And it counts toward the shares, or the percentages would not add up.
+    expect(rows.reduce((sum, r) => sum + (r.share ?? 0), 0)).toBeCloseTo(1, 5);
   });
 });
