@@ -120,7 +120,22 @@ function pickOverrideValue(leaf: ConfigLeaf, salt: number): string {
       return tag;
     case "string-array":
       return tag;
-    case "json":
+    case "json": {
+      // Keyed by leaf: a structural leaf is written as one whole value,
+      // so a sample shaped like a different leaf fails as a type error.
+      // This returned the auth-provider list unconditionally, which was
+      // right while that was the only json leaf and silently wrong for
+      // the second one.
+      if (dottedPath(leaf) === "tokens.prices")
+        return JSON.stringify([
+          {
+            model: "model-sample",
+            input_per_mtok: 3,
+            output_per_mtok: 15,
+            cache_read_per_mtok: 0.3,
+            cache_write_per_mtok: 3.75,
+          },
+        ]);
       return JSON.stringify([
         { protocol: "api_key", id: "api-key", label: "SubKit API key" },
         {
@@ -133,6 +148,7 @@ function pickOverrideValue(leaf: ConfigLeaf, salt: number): string {
           tenant_slug: "default",
         },
       ]);
+    }
     default:
       return tag;
   }

@@ -131,3 +131,61 @@ export function runDurationMs(run: Pick<Execution, "started_at" | "finished_at">
   const ms = Date.parse(run.finished_at) - Date.parse(run.started_at);
   return Number.isFinite(ms) && ms >= 0 ? ms : null;
 }
+
+/**
+ * What this run consumed, as facts beside its timing.
+ *
+ * `GET /v1/executions/{id}/cost` was built during a cost investigation that
+ * had to be answered with raw SQL over ssh, and then no cockpit screen ever
+ * called it. It is the only place in the API where a token figure and a money
+ * figure sit side by side.
+ *
+ * Three deliberate readings:
+ *
+ * - A run that made no model call contributes NOTHING here rather than a row
+ *   of zeros. "This run cost nothing" and "this run never called a model" are
+ *   different facts, and a zero states the first.
+ * - `external.cost_usd` is the only real money in the ledger; `llm_usage` has
+ *   no monetary column at all. It is shown only when it is non-zero, because
+ *   "$0.00" next to a run that did spend tokens reads as "this was free".
+ * - The cache-read share is worth its own line: it is the difference between
+ *   a turn that re-read a cached prompt and one that paid for it again, and
+ *   it is the first thing anyone asks when a bill moves.
+ */
+export function runCostFacts(cost: unknown, t: Translate, locale: Locale): Array<[string, string]> {
+  if (!cost || typeof cost !== "object") return [];
+  const llm = (cost as { llm?: Record<string, unknown> }).llm;
+  const external = (cost as { external?: Record<string, unknown> }).external;
+  const calls = typeof llm?.calls === "number" ? llm.calls : 0;
+  const out: Array<[string, string]> = [];
+  const number = new Intl.NumberFormat(LOCALE_TAGS[locale]);
+
+  if (calls > 0) {
+    const weighted = typeof llm?.weighted_tokens === "number" ? llm.weighted_tokens : 0;
+    out.push([t("runs.cost.tokens"), number.format(weighted)]);
+    out.push([t("runs.cost.calls"), number.format(calls)]);
+    const cachePct = typeof llm?.cache_read_pct === "number" ? llm.cache_read_pct : null;
+    if (cachePct !== null) {
+      out.push([
+        t("runs.cost.cacheRead"),
+        new Intl.NumberFormat(LOCALE_TAGS[locale], {
+          style: "percent",
+          maximumFractionDigits: 0,
+        }).format(cachePct > 1 ? cachePct / 100 : cachePct),
+      ]);
+    }
+  }
+
+  const usd = typeof external?.cost_usd === "number" ? external.cost_usd : 0;
+  if (usd > 0) {
+    out.push([
+      t("runs.cost.external"),
+      new Intl.NumberFormat(LOCALE_TAGS[locale], {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 4,
+      }).format(usd),
+    ]);
+  }
+  return out;
+}
