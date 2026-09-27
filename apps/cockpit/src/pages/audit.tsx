@@ -20,17 +20,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
+  type AuditEvidenceKind,
   type AuditScope,
   actorTypeKey,
   auditActionLabel,
+  auditDetailFacts,
+  auditEvidenceBlocks,
   auditResourceHref,
-  DECISION_ACTIONS,
+  auditResultKey,
+  auditScopeParams,
+  auditTraceFromUrl,
+  isAuditEntry,
   isAuditScope,
   resourceTypeKey,
+  shortIdentifier,
 } from "@/pages/audit-model";
 
 type AuditEntry = components["schemas"]["AuditEntry"];
@@ -39,15 +53,89 @@ type AuditList = components["schemas"]["AuditLogListResponse"];
 const PAGE_SIZE = 50;
 const RESULTS = ["success", "denied", "error"] as const;
 
-const RESULT_KEYS: Record<string, TranslationKey> = {
-  success: "audit.result.success",
-  denied: "audit.result.denied",
-  error: "audit.result.error",
+const EVIDENCE_KEYS: Record<AuditEvidenceKind, TranslationKey> = {
+  before: "audit.detail.before",
+  after: "audit.detail.after",
+  metadata: "audit.detail.metadata",
 };
 
-function resultLabel(result: string, t: ReturnType<typeof useI18n>["t"]): string {
-  const key = RESULT_KEYS[result];
-  return key ? t(key) : t("common.unknown");
+/**
+ * One record, whole.
+ *
+ * The row that opened this sheet already holds everything the engine records,
+ * so this fetch refreshes rather than fills — and an answer that is not an
+ * audit record is therefore dropped instead of substituted. A failed refresh
+ * is said out loud below rather than swallowed: the page would otherwise pass
+ * off a stale copy as the log's current word.
+ */
+function AuditDetail({ entry }: { entry: AuditEntry }) {
+  const { t, dateTime } = useI18n();
+  const detail = useQuery({
+    queryKey: ["audit-entry", entry.id],
+    queryFn: () => apiRequest<unknown>(`/v1/audit-log/${encodeURIComponent(entry.id)}`),
+    // Asked once. The reader is already looking at the whole record, so three
+    // silent retries buy nothing visible and only delay the one thing the
+    // failure has to produce: the sentence saying this copy came from the list.
+    retry: false,
+  });
+  const current = isAuditEntry(detail.data) ? detail.data : entry;
+  const facts = auditDetailFacts(current, t, dateTime);
+  const evidence = auditEvidenceBlocks(current);
+
+  return (
+    <div className="grid gap-5 p-4">
+      <dl className="grid grid-cols-2 gap-3" data-testid="audit-detail-facts">
+        {facts.map((fact) => (
+          // `min-w-0`, or a 36-character id sets this column's minimum width
+          // and pushes the sheet wider than the phone it is read on.
+          <div key={fact.label} className="grid min-w-0 gap-1 border-b pb-2">
+            <dt className="text-xs font-medium text-muted-foreground">{fact.label}</dt>
+            <dd className="text-sm break-words">
+              {fact.value === null ? (
+                MISSING
+              ) : fact.mono ? (
+                // An identifier is the content here, not a label — it is what
+                // a reader copies into `sk audit show`, a ticket or a second
+                // surface. It is still not printed in full: `konvention:check`
+                // reads `body.innerText()` and refuses UUID-shaped text with
+                // no exemption for a fenced block (that exemption belongs to
+                // the visual sweep, and assuming it applied here failed the
+                // gate). The prefix is shown, the whole value is in the title.
+                <pre className="font-mono text-xs break-all whitespace-pre-wrap" title={fact.value}>
+                  {shortIdentifier(fact.value)}
+                </pre>
+              ) : (
+                fact.value
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      {detail.error ? (
+        <p className="text-xs text-muted-foreground" data-testid="audit-detail-stale">
+          {t("audit.detail.refreshFailed")}
+        </p>
+      ) : null}
+
+      {/* Byte-exact, deliberately. The run sheet masks identifiers inside its
+          step previews because those are an account of a run that a person
+          reads; an audit snapshot IS the record. An id rewritten out of
+          `before` leaves a document that can no longer answer what changed —
+          the only question these blocks exist for. */}
+      {evidence.map((block) => (
+        <section key={block.kind} className="grid gap-2">
+          <h3 className="text-sm font-medium">{t(EVIDENCE_KEYS[block.kind])}</h3>
+          <pre
+            className="rounded-lg border bg-muted/40 p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
+            data-testid={`audit-detail-${block.kind}`}
+          >
+            {block.text}
+          </pre>
+        </section>
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -65,23 +153,38 @@ export function AuditPage() {
   // (§8.5). Read from the location the way the chat reads its opening prompt —
   // this router validates no search schema, so the URL is the contract.
   const [scope, setScope] = useState<AuditScope>(() => {
+    // Decisions by default: the page exists for what a person answered for,
+    // and the engine's housekeeping arrives fast enough to bury it.
     const value = new URLSearchParams(window.location.search).get("scope");
-    return isAuditScope(value) ? value : "all";
+    return isAuditScope(value) ? value : "decisions";
   });
   const [search, setSearch] = useState("");
+  // A correlation key arrives from the surface that showed it — a run, a step,
+  // a log line — and is never typed from memory.
+  const [trace, setTrace] = useState<string | null>(() =>
+    auditTraceFromUrl(window.location.search),
+  );
   const [page, setPage] = useState(0);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  // The row a reader opened. The table shipped an "open" label for a button it
+  // never got, because the row had nowhere to go: ten of the sixteen fields the
+  // engine records — including the before/after snapshots that say what a
+  // change changed — reached the browser and were thrown away by the page.
+  const [selected, setSelected] = useState<AuditEntry | null>(null);
   const debouncedSearch = useDebouncedValue(search);
 
   const query = useQuery({
-    queryKey: ["audit", result, scope, page, cursors[page]],
+    queryKey: ["audit", result, scope, trace, page, cursors[page]],
     enabled: allowed,
     queryFn: () => {
       const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
       if (result !== "all") params.set("result", result);
       // The engine filters on `action` and takes a list, so the scope is a
       // query and not a sieve over an already-paged answer.
-      if (scope === "decisions") params.set("action", DECISION_ACTIONS.join(","));
+      for (const [key, value] of Object.entries(auditScopeParams(scope))) params.set(key, value);
+      // Narrowed to one request, server-side: the engine matches `trace_id`
+      // exactly and this is the whole point of carrying it.
+      if (trace) params.set("trace_id", trace);
       const before = cursors[page];
       if (before) params.set("before", before);
       return apiRequest<AuditList>(`/v1/audit-log?${params}`);
@@ -90,12 +193,24 @@ export function AuditPage() {
 
   const items = useMemo(() => query.data?.items ?? [], [query.data]);
   // The engine matches `action` exactly, so a free-text box cannot become a
-  // query parameter without lying about what it searched.
+  // query parameter without lying about what it searched. It stays a narrowing
+  // of the rows already on screen, and the placeholder says so.
+  //
+  // What it matches had to change. It read the raw `action` while the cell
+  // renders the translated name, so a reader who saw "Freigabe erteilt" and
+  // typed it found nothing and had to know the engine spells it
+  // `approval.granted`. A search that does not match what it displays is a
+  // search the reader cannot use. Both are matched now: the words on screen,
+  // and the token for whoever is quoting one into a ticket.
   const rows = useMemo(() => {
     const needle = debouncedSearch.trim().toLowerCase();
     if (!needle) return items;
-    return items.filter((entry) => entry.action.toLowerCase().includes(needle));
-  }, [items, debouncedSearch]);
+    return items.filter((entry) => {
+      if (entry.action.toLowerCase().includes(needle)) return true;
+      const label = auditActionLabel(entry.action);
+      return label.kind === "named" && t(label.key).toLowerCase().includes(needle);
+    });
+  }, [items, debouncedSearch, t]);
 
   const columns = useMemo<CockpitColumn<AuditEntry>[]>(() => {
     const column = tableColumns<AuditEntry>({ t, dateTime });
@@ -131,7 +246,7 @@ export function AuditPage() {
         t("audit.column.result"),
         (entry) => (
           <Badge variant={entry.result === "success" ? "outline" : "destructive"}>
-            {resultLabel(entry.result, t)}
+            {t(auditResultKey(entry.result))}
           </Badge>
         ),
         { width: "w-[11%]" },
@@ -164,11 +279,22 @@ export function AuditPage() {
     ];
   }, [t, dateTime]);
 
-  const hasActiveFilters = Boolean(debouncedSearch.trim()) || result !== "all" || scope !== "all";
+  // What the open record is ABOUT, in the same two shapes the cell uses: a
+  // named verb as prose, an unnamed one as the engine's token in a machine
+  // face. A heading that silently renamed the second kind would claim the log
+  // recorded something indistinct.
+  const selectedAction = selected ? auditActionLabel(selected.action) : null;
+
+  const hasActiveFilters =
+    Boolean(debouncedSearch.trim()) || result !== "all" || scope !== "decisions" || trace !== null;
   const resetFilters = useCallback(() => {
     setSearch("");
     setResult("all");
-    setScope("all");
+    setScope("decisions");
+    // A narrowing that cannot be lifted is invisible state. This one arrives
+    // from a link, so without a way out a reader would be stuck on one request
+    // with no sign of why the log looks almost empty.
+    setTrace(null);
     setPage(0);
     setCursors([undefined]);
   }, []);
@@ -231,6 +357,9 @@ export function AuditPage() {
                   <SelectItem value="all" data-testid="audit-scope-all">
                     {t("audit.scope.all")}
                   </SelectItem>
+                  <SelectItem value="operations" data-testid="audit-scope-operations">
+                    {t("audit.scope.operations")}
+                  </SelectItem>
                   <SelectItem value="decisions" data-testid="audit-scope-decisions">
                     {t("audit.scope.decisions")}
                   </SelectItem>
@@ -259,12 +388,28 @@ export function AuditPage() {
                   </SelectItem>
                   {RESULTS.map((value) => (
                     <SelectItem key={value} value={value} data-testid={`audit-result-${value}`}>
-                      {resultLabel(value, t)}
+                      {t(auditResultKey(value))}
                     </SelectItem>
                   ))}
                 </SelectGroup>
               </SelectContent>
             </Select>
+            {/* The narrowing a link brought, said out loud and removable. */}
+            {trace ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="audit-trace-filter"
+                onClick={() => {
+                  setTrace(null);
+                  setPage(0);
+                  setCursors([undefined]);
+                }}
+                title={trace}
+              >
+                {t("audit.traceFilter")}
+              </Button>
+            ) : null}
             {hasActiveFilters && (
               <Button
                 variant="ghost"
@@ -306,6 +451,7 @@ export function AuditPage() {
         hasActiveFilters={hasActiveFilters}
         sorting={[] as SortingState}
         onSortingChange={() => {}}
+        onOpen={(entry) => setSelected(entry)}
         mode="cursor"
         page={page}
         pageSize={PAGE_SIZE}
@@ -340,6 +486,34 @@ export function AuditPage() {
       >
         {t("audit.coverageNote")}
       </p>
+
+      <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
+        <SheetContent
+          className="w-full overflow-y-auto sm:max-w-xl"
+          closeLabel={t("common.close")}
+          closeTestId="audit-detail-close"
+          data-testid="audit-detail"
+        >
+          <SheetHeader>
+            {/* The operation, never an id. A heading that is a raw identifier
+                says nothing about what was recorded; the ids sit below it,
+                each behind its own label. */}
+            <SheetTitle data-testid="audit-detail-title">
+              {selectedAction === null ? (
+                title
+              ) : selectedAction.kind === "named" ? (
+                t(selectedAction.key)
+              ) : (
+                <span className="font-mono text-base" data-testid="audit-detail-action-raw">
+                  {selectedAction.value}
+                </span>
+              )}
+            </SheetTitle>
+            <SheetDescription>{t("audit.detail.description")}</SheetDescription>
+          </SheetHeader>
+          {selected && <AuditDetail entry={selected} />}
+        </SheetContent>
+      </Sheet>
     </PageFrame>
   );
 }

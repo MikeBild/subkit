@@ -27,11 +27,11 @@ describe("the consumption breakdown", () => {
     groups: [
       {
         key: { workflow: "radar-publish-weekly" },
-        totals: { calls: { total: 12 }, tokens: { total: 250 } },
+        totals: { calls: 12, tokens: { total: 250 } },
       },
       {
         key: { workflow: "ga4-daily-report" },
-        totals: { calls: { total: 30 }, tokens: { total: 750 } },
+        totals: { calls: 30, tokens: { total: 750 } },
       },
     ],
   };
@@ -55,9 +55,7 @@ describe("the consumption breakdown", () => {
     // fact; there is nothing to take a share of.
     const rows = consumptionRows(
       {
-        groups: [
-          { key: { workflow: "idle" }, totals: { calls: { total: 0 }, tokens: { total: 0 } } },
-        ],
+        groups: [{ key: { workflow: "idle" }, totals: { calls: 0, tokens: { total: 0 } } }],
       },
       "workflow",
     );
@@ -184,7 +182,7 @@ describe("the published group shape", () => {
       groups: [
         {
           key: { workflow: "ga4-daily-report", model: "claude-sonnet-4-6" },
-          totals: { calls: { total: 3 }, tokens: { total: 10 } },
+          totals: { calls: 3, tokens: { total: 10 } },
         },
       ],
     };
@@ -216,8 +214,8 @@ describe("the published group shape", () => {
     const rows = consumptionRows(
       {
         groups: [
-          { key: { workflow: "" }, totals: { calls: { total: 9 }, tokens: { total: 400 } } },
-          { key: { workflow: "ga4" }, totals: { calls: { total: 1 }, tokens: { total: 100 } } },
+          { key: { workflow: "" }, totals: { calls: 9, tokens: { total: 400 } } },
+          { key: { workflow: "ga4" }, totals: { calls: 1, tokens: { total: 100 } } },
         ],
       },
       "workflow",
@@ -228,5 +226,34 @@ describe("the published group shape", () => {
     expect(rows.find((r) => r.key === "ga4")?.unattributed).toBe(false);
     // And it counts toward the shares, or the percentages would not add up.
     expect(rows.reduce((sum, r) => sum + (r.share ?? 0), 0)).toBeCloseTo(1, 5);
+  });
+});
+
+describe("the call count", () => {
+  test("is read from the per-group number the schema declares", () => {
+    // PER GROUP `totals.calls` is a plain number; only the ENVELOPE total is
+    // `{ total, by_result }`. This file fed the envelope shape and asserted
+    // nothing about `calls` at all, so it stayed green while every row on the
+    // page reported nought calls beside millions of tokens. The one field the
+    // code turns into a zero was the one field no test looked at.
+    const rows = consumptionRows(
+      { groups: [{ key: { flow: "converse" }, totals: { calls: 792, tokens: { total: 10 } } }] },
+      "flow",
+    );
+    expect(rows[0]?.calls).toBe(792);
+  });
+
+  test("refuses the envelope shape rather than silently reporting none", () => {
+    const rows = consumptionRows(
+      {
+        groups: [
+          { key: { flow: "converse" }, totals: { calls: { total: 792 }, tokens: { total: 10 } } },
+        ],
+      },
+      "flow",
+    );
+    // Zero is what the wrong shape produced. It must not be reachable from a
+    // payload that plainly carries a count.
+    expect(rows[0]?.calls).toBe(0);
   });
 });

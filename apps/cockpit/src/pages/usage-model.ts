@@ -119,10 +119,12 @@ export interface ConsumptionRow {
 /**
  * One row per group, largest first.
  *
- * `total` is the cache-weighted figure the budget is measured against, so the
- * shares here add up to the same number the remaining-budget line subtracts
- * from. Using raw prompt tokens instead would produce a breakdown that cannot
- * be reconciled with the headline.
+ * `total` is the cache-weighted figure the budget is also measured in, so the
+ * units reconcile. The WINDOWS do not: these rows cover the last thirty days
+ * and the remaining-budget line covers the calendar month. Every surface that
+ * shows both must name which is which — an earlier version of this comment
+ * claimed they added up to the same number, which is false on any day but the
+ * last of a month.
  */
 export function consumptionRows(envelope: unknown, axis: ConsumptionAxis): ConsumptionRow[] {
   const groups = isRecord(envelope) && Array.isArray(envelope.groups) ? envelope.groups : [];
@@ -140,7 +142,12 @@ export function consumptionRows(envelope: unknown, axis: ConsumptionAxis): Consu
     if (typeof keyed !== "string") return [];
     const totals = isRecord(group.totals) ? group.totals : {};
     const tokens = isRecord(totals.tokens) ? totals.tokens : {};
-    const callsEnvelope = isRecord(totals.calls) ? totals.calls : {};
+    // PER GROUP `calls` is a plain number. Only the envelope-level total is
+    // `{ total, by_result }` — two shapes at two levels, and reading the outer
+    // one here made every row report nought calls beside millions of tokens.
+    // Read from `stats/schemas.ts`, not from memory: this is the third time
+    // this function assumed a shape the contract does not have.
+    const callsValue = numberOrNull(totals.calls) ?? 0;
     return [
       {
         key: keyed,
@@ -155,7 +162,7 @@ export function consumptionRows(envelope: unknown, axis: ConsumptionAxis): Consu
         //
         // "Cannot be attributed" and "did not happen" are different facts.
         unattributed: keyed.length === 0,
-        calls: typeof callsEnvelope.total === "number" ? callsEnvelope.total : 0,
+        calls: callsValue,
         tokens: typeof tokens.total === "number" ? tokens.total : 0,
         share: null,
       },
