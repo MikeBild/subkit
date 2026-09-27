@@ -146,21 +146,61 @@ function pickValue(leaf: ConfigLeaf, salt: number): unknown {
     case "string-array":
       return [tag];
     case "json":
-      return [
-        { protocol: "api_key", id: "api-key", label: "SubKit API key" },
-        {
-          protocol: "oidc",
-          id: `oidc-${salt}`,
-          label: "Public OIDC",
-          issuer_url: "https://identity.example.test",
-          client_id: `client-${salt}`,
-          scopes: "openid profile email",
-          tenant_slug: "default",
-        },
-      ];
+      return structuralSample(dottedPath(leaf), salt);
     default:
       return tag;
   }
+}
+
+/**
+ * A valid value for a structural leaf — one whose element shape the generator
+ * above cannot invent.
+ *
+ * This used to be a single unconditional `case "json"` returning the
+ * `auth.providers` array, written when that was the only structural leaf in
+ * the schema. `tokens.prices` became the second one and was handed a list of
+ * auth providers, which its element schema rejected: the sweep reported
+ * `tokens.prices: PUT 422 expected string, received undefined` — a message
+ * about the wrong leaf entirely, three commits red on main before anyone read
+ * it closely.
+ *
+ * So the samples are keyed by path, and a structural leaf with no sample fails
+ * by name (below) instead of being silently handed another leaf's shape. The
+ * next one added cannot repeat this.
+ */
+const STRUCTURAL_SAMPLES: Record<string, (salt: number) => unknown> = {
+  "auth.providers": (salt) => [
+    { protocol: "api_key", id: "api-key", label: "SubKit API key" },
+    {
+      protocol: "oidc",
+      id: `oidc-${salt}`,
+      label: "Public OIDC",
+      issuer_url: "https://identity.example.test",
+      client_id: `client-${salt}`,
+      scopes: "openid profile email",
+      tenant_slug: "default",
+    },
+  ],
+  "tokens.prices": (salt) => [
+    {
+      model: `sweep-model-${salt}`,
+      input_per_mtok: 3,
+      output_per_mtok: 15,
+      cache_read_per_mtok: 0.3,
+      cache_write_per_mtok: 3.75,
+    },
+  ],
+};
+
+function structuralSample(dotted: string, salt: number): unknown {
+  const make = STRUCTURAL_SAMPLES[dotted];
+  if (!make) {
+    throw new Error(
+      `no sweep sample for structural leaf '${dotted}' — add one to STRUCTURAL_SAMPLES; ` +
+        `without it the sweep PUTs another leaf's shape and reports a 422 about the wrong thing`,
+    );
+  }
+  return make(salt);
 }
 
 const LEAVES = listConfigLeaves();
