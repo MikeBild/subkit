@@ -6,7 +6,7 @@ const EmptyInput = z.object({}).openapi("StatusSummaryInput");
 export const getStatusSummaryTool: ConversationTool = {
   name: "get_engine_status",
   description:
-    "Return a one-shot tenant-state summary (counts of workflows, connectors, executions, audit entries).",
+    "Return a one-shot tenant-state summary (counts of workflows, connectors, executions, audit entries, and self-healing fixes open for review).",
   inputSchema: EmptyInput,
   // `tenant_read` — reachable by any conversation principal. The operator
   // health digest (failing runs + risk signals) is intentionally NOT folded

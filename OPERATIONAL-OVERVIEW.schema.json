@@ -20,7 +20,7 @@
       "const": "operational-overview.v1"
     },
     "contract_version": {
-      "const": "2.2"
+      "const": "2.3"
     },
     "product": {
       "enum": [
@@ -100,7 +100,7 @@
           "const": "/cockpit/audit"
         },
         "contract_version": {
-          "const": "2.2"
+          "const": "2.3"
         },
         "snapshot_generated_at": {
           "type": "string",
@@ -358,6 +358,39 @@
         },
         "required": {
           "type": "boolean"
+        },
+        "drilldown": {
+          "$ref": "#/$defs/drilldown"
+        }
+      }
+    },
+    "healthCause": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "label",
+        "drilldown"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "failing_group",
+            "held_schedule",
+            "connector"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "drilldown": {
+          "$ref": "#/$defs/drilldown"
         }
       }
     },
@@ -385,6 +418,13 @@
               "type": "array",
               "items": {
                 "$ref": "#/$defs/healthComponent"
+              }
+            },
+            "causes": {
+              "type": "array",
+              "maxItems": 5,
+              "items": {
+                "$ref": "#/$defs/healthCause"
               }
             }
           }
@@ -429,6 +469,9 @@
             "missing",
             "forbidden"
           ]
+        },
+        "drilldown": {
+          "$ref": "#/$defs/drilldown"
         }
       }
     },

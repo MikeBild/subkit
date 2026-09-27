@@ -90,7 +90,7 @@ export function digestAsContext(digest: OperatorHealthDigest): string {
     }
     parts.push("");
   }
-  if (digest.patch_candidates.pending > 0) {
+  if (digest.patch_candidates.open > 0) {
     parts.push("Self-healing fixes awaiting review:");
     for (const p of digest.patch_candidates.items) {
       const label = p.workflow_name ?? p.workflow_id ?? "(workflow)";
