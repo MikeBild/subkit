@@ -196,14 +196,19 @@ export function DataTable<TData extends RowData>({
     >
       <p className="text-sm font-medium text-destructive">{error.title}</p>
       <p className="max-w-md text-sm text-muted-foreground">{error.description}</p>
-      <Button variant="outline" size="sm" data-testid="data-table-retry" onClick={error.onRetry}>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid={`${collectionId}-retry`}
+        onClick={error.onRetry}
+      >
         {error.retryLabel}
       </Button>
     </div>
   ) : (
     <div
       className="grid justify-items-center gap-2 py-10 text-center"
-      data-testid="data-table-empty"
+      data-testid={`${collectionId}-empty`}
       data-family-slot="data-state"
       data-family-state="empty"
     >
@@ -213,7 +218,7 @@ export function DataTable<TData extends RowData>({
         <Button
           variant="outline"
           size="sm"
-          data-testid="data-table-reset-filters"
+          data-testid={`${collectionId}-reset-filters`}
           onClick={emptyState.filtered.onReset}
         >
           {emptyState.filtered.resetLabel}
@@ -227,7 +232,7 @@ export function DataTable<TData extends RowData>({
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
-      data-testid="data-table"
+      data-testid={`${collectionId}`}
       data-family-slot="list-surface"
       data-family-list-kind="table"
       data-family-collection-id={collectionId}
@@ -259,7 +264,7 @@ export function DataTable<TData extends RowData>({
               placeholder={searchLabel}
               className="pl-8"
               data-family-action="search"
-              data-testid="data-table-search"
+              data-testid={`${collectionId}-search`}
             />
           </label>
         )}
@@ -270,7 +275,7 @@ export function DataTable<TData extends RowData>({
               variant="outline"
               size="sm"
               className="ms-auto"
-              data-testid="data-table-columns"
+              data-testid={`${collectionId}-columns`}
             >
               <Columns3 data-icon="inline-start" />
               {columnsLabel}
@@ -299,7 +304,7 @@ export function DataTable<TData extends RowData>({
       </div>
       <div
         className="hidden min-h-0 flex-1 overflow-auto md:block"
-        data-testid="data-table-desktop"
+        data-testid={`${collectionId}-desktop`}
       >
         <Table>
           <TableHeader className="sticky top-0 z-10 bg-background">
@@ -315,7 +320,7 @@ export function DataTable<TData extends RowData>({
                           size="sm"
                           className="-ml-2"
                           onClick={header.column.getToggleSortingHandler()}
-                          data-testid={`data-table-sort-${header.column.id}`}
+                          data-testid={`${collectionId}-sort-${header.column.id}`}
                         >
                           <table.FlexRender header={header} />
                           {sorted === "asc" ? (
@@ -340,7 +345,7 @@ export function DataTable<TData extends RowData>({
                         variant="ghost"
                         size="icon-sm"
                         label={refreshLabel}
-                        data-testid="data-table-refresh"
+                        data-testid={`${collectionId}-refresh`}
                         onClick={onRefresh}
                       >
                         <RefreshCw className={refreshing ? "animate-spin" : undefined} />
@@ -358,7 +363,7 @@ export function DataTable<TData extends RowData>({
           >
             {pending ? (
               Array.from({ length: SKELETON_ROWS }, (_, rowIndex) => (
-                <TableRow key={rowIndex} data-testid={`data-table-skeleton-row-${rowIndex}`}>
+                <TableRow key={rowIndex} data-testid={`${collectionId}-skeleton-row-${rowIndex}`}>
                   {visibleColumns.map((column) => (
                     <TableCell key={column.id}>
                       <Skeleton className="h-4 w-full" />
@@ -381,7 +386,7 @@ export function DataTable<TData extends RowData>({
                   data-family-collection-row="true"
                   className={onOpen ? "cursor-pointer" : undefined}
                   tabIndex={onOpen ? 0 : undefined}
-                  data-testid={`data-table-row-${index}`}
+                  data-testid={`${collectionId}-row-${index}`}
                   onClick={onOpen ? () => onOpen(row.original) : undefined}
                   onKeyDown={
                     onOpen
@@ -404,7 +409,7 @@ export function DataTable<TData extends RowData>({
                           variant="ghost"
                           size="icon-sm"
                           label={openLabel}
-                          data-testid={`data-table-open-${index}`}
+                          data-testid={`${collectionId}-open-${index}`}
                           onClick={(event) => {
                             event.stopPropagation();
                             onOpen(row.original);
@@ -421,7 +426,10 @@ export function DataTable<TData extends RowData>({
           </TableBody>
         </Table>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto md:hidden" data-testid="data-table-mobile">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto md:hidden"
+        data-testid={`${collectionId}-mobile`}
+      >
         {pending ? (
           <div
             className="grid gap-3 p-4"
@@ -469,7 +477,7 @@ export function DataTable<TData extends RowData>({
                   type="button"
                   className="flex min-w-0 flex-col gap-3 p-4 text-left"
                   onClick={() => onOpen(row.original)}
-                  data-testid={`data-table-mobile-row-${index}`}
+                  data-testid={`${collectionId}-mobile-row-${index}`}
                   data-family-slot="list-row"
                   data-family-collection-row="true"
                   data-family-collection-mobile-card="true"
@@ -480,7 +488,7 @@ export function DataTable<TData extends RowData>({
                 <div
                   key={row.id}
                   className="flex min-w-0 flex-col gap-3 p-4 text-left"
-                  data-testid={`data-table-mobile-row-${index}`}
+                  data-testid={`${collectionId}-mobile-row-${index}`}
                   data-family-slot="list-row"
                   data-family-collection-row="true"
                   data-family-collection-mobile-card="true"
@@ -512,7 +520,7 @@ export function DataTable<TData extends RowData>({
             size="sm"
             disabled={!canPrevious}
             onClick={() => onPageChange(page - 1)}
-            data-testid="data-table-previous"
+            data-testid={`${collectionId}-previous`}
           >
             <ChevronLeft data-icon="inline-start" />
             {previousLabel}
@@ -522,7 +530,7 @@ export function DataTable<TData extends RowData>({
             size="sm"
             disabled={!canNext}
             onClick={() => onPageChange(page + 1)}
-            data-testid="data-table-next"
+            data-testid={`${collectionId}-next`}
           >
             {nextLabel}
             <ChevronRight data-icon="inline-end" />
