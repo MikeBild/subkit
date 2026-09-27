@@ -8,13 +8,11 @@ describe("cockpit workflow previews", () => {
     expect(workflowPreviewRequest({ source: "draft", definition })).toEqual({
       source: "draft",
       definition,
-      request_source: "api",
       hold_writes: true,
     });
     expect(workflowPreviewRequest({ source: "step", step })).toEqual({
       source: "step",
       step,
-      request_source: "api",
       hold_writes: true,
     });
   });

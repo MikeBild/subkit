@@ -190,7 +190,6 @@ function renderInvokeSnippet(opts: {
   const body = {
     source: "saved",
     workflow_id: workflowId,
-    request_source: "api",
     input: {},
   };
 
