@@ -6,8 +6,12 @@
 //   `/cockpit/runs?…`  handed to a router Link, which already carries /cockpit
 //                      as its base — so it became /cockpit/cockpit/runs. That
 //                      was the ONLY way out of a failing decision.
-//   `/cockpit/runs/<id>` for a run named in a conversation — runs have a list
-//                      and no addressable detail page, so every such link 404ed.
+//   `/cockpit/runs/<id>` for a run named in a conversation — runs had a list
+//                      and no addressable detail page, so every such link
+//                      404ed. That address exists now (`/runs/$resourceId` in
+//                      route-table.ts); this test is what proves it, because
+//                      the same link written before the route would still be
+//                      caught here.
 //
 // The existing route test only checks that NAVIGATION targets are routed. A
 // link built in a component was never checked at all, which is exactly where

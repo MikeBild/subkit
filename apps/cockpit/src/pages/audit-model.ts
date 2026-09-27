@@ -8,8 +8,24 @@ type FormatDateTime = (value: string | Date) => string;
 /**
  * Which audited resource types the Cockpit can actually open.
  *
- * An execution is deliberately absent: there is no run detail route, and a
- * link that lands nowhere is worse than plain text.
+ * The rule for membership is narrow and it is the whole value of the map: the
+ * id the log recorded must be the id a detail route takes. The engine writes
+ * about sixty resource types; these are the ones whose record has an address,
+ * and the rest stay plain text, because a link that lands nowhere is worse
+ * than the word it replaced.
+ *
+ * `execution` used to be excluded, and this comment used to say why: there was
+ * no run detail route. That was the costliest of the absences, because the row
+ * naming a run is the row an investigation starts from, and it was the one row
+ * that could not reach what it named. `/runs/$resourceId` exists now
+ * (`app/route-table.ts`) and takes exactly the id the log records.
+ *
+ * A LIST page is deliberately not a target. `/people`, `/access`,
+ * `/api-access` and the rest resolve perfectly well, and they answer "who are
+ * the people here", not "which user is this row about" — and they would answer
+ * it whether or not the row recorded an id at all, which is the distinction
+ * this function exists to keep. Appending the id anyway would build
+ * `/people/<id>`: an address no route matches.
  */
 const RESOURCE_ROUTES: Record<string, string> = {
   workflow: "workflows",
@@ -18,7 +34,16 @@ const RESOURCE_ROUTES: Record<string, string> = {
   skill: "skills",
   file: "files",
   conversation: "chat",
+  execution: "runs",
 };
+
+/**
+ * The types that get a link, for the guard that proves each one resolves.
+ *
+ * Derived rather than written out a second time: a target added above is
+ * checked against the router without anyone remembering to list it here.
+ */
+export const LINKED_RESOURCE_TYPES: readonly string[] = Object.keys(RESOURCE_ROUTES);
 
 export function auditResourceHref(resourceType: string, resourceId: string | null): string | null {
   if (!resourceId) return null;

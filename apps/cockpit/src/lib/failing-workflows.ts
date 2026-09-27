@@ -91,9 +91,18 @@ export function failingWorkflows(
       // and the one link out of a failing decision led to "page not found" —
       // the number named something and then went nowhere, which is the exact
       // defect this href exists to fix.
+      //
+      // `source=scheduler` because the decision is about the SCHEDULED runs —
+      // that is the filter above, `scheduled_count > 0`. Without it the link
+      // handed back every failed run of the workflow, authoring trials
+      // included, so the list the reader landed on could not add up to the
+      // count the decision showed. The runs page validates the parameter
+      // (`isKnownRequestSource` in pages/runs-model.ts), and `scheduler` is
+      // one it knows. It goes on the unnamed branch too: a group with no
+      // workflow name is the one where an unfiltered list explains least.
       runs_href: group.workflow_name
-        ? `/runs?status=failed&q=${encodeURIComponent(group.workflow_name)}`
-        : "/runs?status=failed",
+        ? `/runs?status=failed&source=scheduler&q=${encodeURIComponent(group.workflow_name)}`
+        : "/runs?status=failed&source=scheduler",
     }))
     .sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : 1));
 }

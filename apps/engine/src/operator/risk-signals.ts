@@ -62,7 +62,23 @@ function sortBySeverity(a: RiskSignal, b: RiskSignal): number {
  * mutates a gauge, never throws (a config-read failure collapses to an empty
  * list so the digest still renders). Sorted highest-severity-first.
  */
-export function computeRiskSignals(): RiskSignal[] {
+/**
+ * What the caller knows that the metrics registry cannot.
+ *
+ * The month's token consumption is a database sum against a configured cap.
+ * `llm_tokens_total` is a COUNTER since process start: it resets on restart
+ * and knows nothing about a calendar month, so reading it here would produce
+ * a signal that quietly lies after every deploy. The digest already holds
+ * both figures; it passes them in rather than this function guessing.
+ */
+export interface RiskInputs {
+  /** Weighted tokens consumed this calendar month. */
+  monthTokens?: number;
+  /** The cap in force, or null when nothing bounds the workspace. */
+  monthBudget?: number | null;
+}
+
+export function computeRiskSignals(inputs: RiskInputs = {}): RiskSignal[] {
   let predictive: Config["observability"]["predictive"];
   try {
     predictive = getConfig().observability.predictive;
@@ -77,6 +93,39 @@ export function computeRiskSignals(): RiskSignal[] {
   //    in-use percentage escalates it. Total 0 → pool not yet sampled.
   const poolTotal = reg.gaugeSum(METRIC_NAMES.DB_POOL_TOTAL_CONNECTIONS);
   const poolIdle = reg.gaugeSum(METRIC_NAMES.DB_POOL_IDLE_CONNECTIONS);
+  // The month's allowance, when the caller supplied both halves.
+  //
+  // This belongs here and NOT in the decisions queue. That queue's grammar is
+  // approve or reject — every position carries an id, an action and an audit
+  // row — and a budget running low has none of those: there is nothing to
+  // approve. §8.5b is explicit that a position with no consequence is not a
+  // decision. It is a leading indicator that needs a person and has a next
+  // step, which is what a risk signal is.
+  //
+  // A null cap raises nothing. An unbounded workspace is not at risk of
+  // hitting a limit; it is simply unmeasured, and warning about a ceiling
+  // that does not exist would be the zero that means "not measured".
+  const { monthTokens, monthBudget } = inputs;
+  if (typeof monthTokens === "number" && typeof monthBudget === "number" && monthBudget > 0) {
+    const usedPct = Math.round((monthTokens / monthBudget) * 100);
+    if (usedPct >= 75) {
+      const critical = usedPct >= 90;
+      signals.push({
+        kind: "token_budget",
+        severity: critical ? "critical" : "warn",
+        headline: critical
+          ? `Token allowance ${usedPct}% spent`
+          : `Token allowance ${usedPct}% spent this month`,
+        detail: critical
+          ? "Model calls start being refused when it runs out, and a refused scheduled run looks like a broken workflow. Raise the monthly cap or let the month roll over."
+          : "Consumption is past three quarters of the monthly cap with the month still running. Worth deciding now whether to raise it.",
+        metric: METRIC_NAMES.LLM_TOKENS_TOTAL,
+        value: usedPct,
+        threshold: critical ? 90 : 75,
+      });
+    }
+  }
+
   const poolWaiting = reg.gaugeSum(METRIC_NAMES.DB_POOL_WAITING_CONNECTIONS);
   if (poolTotal > 0) {
     const inUsePct = ((poolTotal - poolIdle) / poolTotal) * 100;

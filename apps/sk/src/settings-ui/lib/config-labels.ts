@@ -155,6 +155,8 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "queue.crash_recovery_sweep_interval_ms": "Orphaned execution recovery interval (ms)",
   "queue.crash_recovery_threshold_ms": "Orphaned execution threshold (ms)",
   "tokens.monthly_budget": "Monthly token budget",
+  "tokens.currency": "Currency for model prices",
+  "tokens.prices": "Price per million tokens, per model",
 
   // ── Boot operations ────────────────────────────────────────────
   "operations.update_check_enabled": "Check for updates at startup",

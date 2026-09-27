@@ -400,7 +400,17 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "admin",
     routing: "local",
   },
-  { name: "audit", help: "Tail your audit log", category: "admin", requires: "audit:read" },
+  {
+    // "Tail your audit log" promised a live stream. The handler reads
+    // `GET /v1/audit-log` once and prints the newest rows — there is no audit
+    // stream anywhere in the engine, which is also why `sk audit tail` was
+    // removed. Help string now mirrors observed behavior so /help and the
+    // command don't drift.
+    name: "audit",
+    help: "Show the 20 most recent audit-log entries",
+    category: "admin",
+    requires: "audit:read",
+  },
   {
     name: "logs",
     help: "Tail recent engine errors via /v1/diagnostics/errors — `/logs [limit] [trace_id]`",

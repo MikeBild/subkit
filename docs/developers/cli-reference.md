@@ -22,7 +22,7 @@ every API call.
 | `sk agent` | `skill:read` | Coding-agent integration: session briefings and hook setup | `briefing`, `capture`, `init` |
 | `sk apikeys` | `api_key:read` | Manage API keys | `create`, `list`, `revoke`, `rotate` |
 | `sk attach` | `file:write` | Upload a file and link it to a conversation (shortcut) | — |
-| `sk audit` | `audit:read` | Query the append-only audit log | `export`, `query`, `show`, `tail` |
+| `sk audit` | `audit:read` | Query the append-only audit log | `export`, `query`, `show` |
 | `sk auth` | `connector:write` | Start a reauthentication flow for a connector (OAuth2 authorize URL). An mcp connector authorizes through `sk connectors mcp-authorize` instead — it discovers its authorization server rather than reading one from config. | — |
 | `sk chat` | `chat_workspace:read` | Manage external chat spaces (Google Chat / Slack) | `install-space`, `remove-space`, `spaces` |
 | `sk connector-templates` | `connector:read` | Manage connector templates | `create`, `delete`, `list`, `recipe`, `recipe-pack`, `recipes`, `search`, `set-oauth` |
@@ -182,12 +182,6 @@ Filter the audit log
 Fetch one audit event by id
 
 - `<id>` (positional, required) — Audit event id
-
-#### `sk audit tail`
-
-Follow new audit events via SSE stream
-
-_No arguments._
 
 
 ### `sk auth`
