@@ -35,6 +35,7 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   filterFromUrl,
   formatRunDuration,
+  isExecutionRecord,
   previewText,
   REQUEST_SOURCES,
   RUN_STATUSES,
@@ -104,7 +105,10 @@ function RunDetail({ run }: { run: Execution }) {
     queryKey: ["run-cost", run.id],
     queryFn: () => apiRequest<unknown>(`/v1/executions/${encodeURIComponent(run.id)}/cost`),
   });
-  const current = detail.data ?? run;
+  // The list row is the floor: a refresh that did not return an execution
+  // leaves the record the reader already had, instead of replacing it with
+  // whatever answered 200.
+  const current = isExecutionRecord(detail.data) ? detail.data : run;
   const stepItems: ExecutionStep[] = steps.data?.items ?? [];
   const failedStep = stepItems.find((step) => previewText(step.error) !== null);
   const errorEvidence = failedStep ? previewText(failedStep.error) : null;

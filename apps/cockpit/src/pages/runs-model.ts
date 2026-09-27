@@ -98,6 +98,28 @@ export function runIdFromPath(pathname: string): string | null {
 }
 
 /**
+ * Is this answer an execution, or something else that arrived with a 200?
+ *
+ * The sheet already holds the run its list row carried, so the detail fetch
+ * REFRESHES a record rather than filling an empty one — which makes
+ * substituting whatever came back dangerous in a way it is not where the fetch
+ * IS the data. A mistyped path, a proxy's courtesy page and the visual
+ * fixture's catch-all all answer `{ items: [] }` with a 200. Taken for the
+ * record, that object has no `status`, and the status label — reached with a
+ * value its type says cannot be missing — took the whole page down with
+ * `Cannot read properties of undefined (reading 'toLowerCase')`. Not a blank
+ * sheet: a blank page, in front of someone who asked to see one run.
+ *
+ * The audit sheet has carried this guard since the same 200 blanked a complete
+ * record there. This is the same rule at the second place that needed it.
+ */
+export function isExecutionRecord(value: unknown): value is Execution {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.id === "string" && typeof record.status === "string";
+}
+
+/**
  * The text of a stored preview, or nothing when the step left none.
  *
  * `execution_steps.result_preview` is a **text** column holding the JSON

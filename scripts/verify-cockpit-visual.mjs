@@ -1162,6 +1162,32 @@ async function mockApi(route) {
     });
     return json(route, { items, total: 240, next_cursor: null });
   }
+  // One run, by id. Without this the sheet's refresh fell through to the
+  // catch-all `{ items: [] }` at the foot of this function — a 200 with no
+  // `status` — and the page died on the status label before the sheet could
+  // mount. The cockpit now refuses an answer that is not an execution, and
+  // this route makes the sweep exercise the path that actually ships rather
+  // than only the refusal.
+  const oneExecution = /^\/v1\/executions\/([^/]+)$/.exec(path);
+  if (oneExecution) {
+    const started = new Date(Date.parse(conversation.updated_at));
+    return json(route, {
+      id: decodeURIComponent(oneExecution[1]),
+      workflow_id: uuid,
+      workflow_name: "Monatsreport 1",
+      workflow_version_id: null,
+      execution_authority_id: null,
+      hold_writes: false,
+      source_kind: "saved",
+      source_ref: null,
+      status: "failed",
+      request_source: "scheduler",
+      parent_execution_id: null,
+      started_at: started.toISOString(),
+      finished_at: new Date(started.getTime() + 6_900).toISOString(),
+      created_at: started.toISOString(),
+    });
+  }
   // The steps of one run. Until this existed the sheet's own address fell
   // through to the catch-all `{ items: [] }` — so the run detail photographed
   // as a record with no steps, no error and no result, and no defect in how

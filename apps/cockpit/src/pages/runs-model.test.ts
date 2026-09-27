@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { translate } from "@/lib/i18n";
 import {
   formatRunDuration,
+  isExecutionRecord,
   previewText,
   requestSourceLabel,
   runAuthorityFacts,
@@ -288,5 +289,35 @@ describe("previewText — what a step left behind", () => {
       "null was returned by the upstream API",
     );
     expect(previewText({ value: null })).toBe('{\n  "value": null\n}');
+  });
+});
+
+describe("isExecutionRecord — what came back with a 200", () => {
+  // The sheet already holds the run its list row carried, so the detail fetch
+  // refreshes a record instead of filling an empty one. Substituting whatever
+  // answered 200 crashed the whole page: the visual fixture's catch-all
+  // `{ items: [] }` has no `status`, and the status label — reached with a
+  // value its own type says cannot be missing — threw
+  // "Cannot read properties of undefined (reading 'toLowerCase')".
+  test("the courtesy 200 that crashed the page is refused", () => {
+    expect(isExecutionRecord({ items: [] })).toBe(false);
+    expect(isExecutionRecord({})).toBe(false);
+    expect(isExecutionRecord(null)).toBe(false);
+    expect(isExecutionRecord(undefined)).toBe(false);
+    expect(isExecutionRecord("<!doctype html>")).toBe(false);
+    expect(isExecutionRecord([])).toBe(false);
+  });
+
+  test("a half-shaped answer is not an execution either", () => {
+    // Both halves matter: the id is what proves it is THIS run, the status is
+    // what the label reads.
+    expect(isExecutionRecord({ id: "run-1" })).toBe(false);
+    expect(isExecutionRecord({ status: "succeeded" })).toBe(false);
+    expect(isExecutionRecord({ id: 7, status: "succeeded" })).toBe(false);
+  });
+
+  test("the engine's own record is accepted", () => {
+    expect(isExecutionRecord(run())).toBe(true);
+    expect(isExecutionRecord({ id: "run-1", status: "failed" })).toBe(true);
   });
 });
