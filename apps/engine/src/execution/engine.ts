@@ -64,12 +64,14 @@ import { checkOutputContract, summarizeViolations } from "./output-contract.ts";
 import { capturePreparedWorkflowReferences } from "./prepared-workflow-references.ts";
 import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
 import { applyResponseFilters } from "./response-filter.ts";
+import { settleTerminalOutcome } from "./settle-terminal.ts";
 import {
   createExecution,
   finalizeExecution,
   finalizeStepRow,
   insertStepRow,
   markExecutionRunning,
+  type OutputContractVerdict,
 } from "./state.ts";
 import { type RunStepOutcome, runStep } from "./step-runner.ts";
 import { classifyRequestStepSideEffects } from "./steps/request/side-effects.ts";
@@ -1747,6 +1749,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       },
     });
   }
+  // Persisted on the execution row so a reader can tell a run whose output
+  // broke its contract from one that honoured it — the warning below rides
+  // only the in-flight RunResult.
+  let outputContract: OutputContractVerdict = "none";
   if (
     def.output_schema &&
     lastOutput !== undefined &&
@@ -1754,6 +1760,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     !outputUnavailableDueToHolds
   ) {
     const contract = checkOutputContract(lastOutput, def.output_schema);
+    if (contract.ok) outputContract = contract.valid ? "passed" : "violated";
     if (!contract.ok) {
       logger.warn({
         module: "execution",
@@ -1889,13 +1896,16 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   }
 
   clearTimeout(totalTimer);
-  // Re-evaluate finalStatus if total timeout fired.
-  if (totalTimeoutCtrl.signal.aborted && finalStatus === "succeeded") {
-    finalStatus = "timed_out";
-  }
-  if (ctrl.signal.aborted && finalStatus === "succeeded") {
-    finalStatus = "aborted";
-  }
+  // Re-evaluate finalStatus if the total timeout fired or the run was
+  // aborted — and only then settle what the row records about it.
+  const settled = settleTerminalOutcome({
+    status: finalStatus,
+    timed_out: totalTimeoutCtrl.signal.aborted,
+    aborted: ctrl.signal.aborted,
+    output_contract: outputContract,
+    failure: validationError ?? lastError,
+  });
+  finalStatus = settled.status;
 
   // Offload top-level execution result.
   const offload = await maybeOffload(db, {
@@ -1910,22 +1920,22 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   // workflow-level validation/offload failures take precedence over the
   // last step error, so a run that failed validation (with every step
   // green) records the typed `validation_failed` code instead of null.
-  const failureDetail = validationError ?? lastError;
   await finalizeExecution(
     db,
     tenant_id,
     execution_id,
     finalStatus,
     offload.storage_uri,
-    finalStatus !== "succeeded" && failureDetail
+    settled.failure
       ? {
           step_id: failedStepId,
-          error_code: failureDetail.code,
-          error_message: failureDetail.message,
+          error_code: settled.failure.code,
+          error_message: settled.failure.message,
         }
       : null,
     undefined,
     offload.sha256,
+    settled.output_contract,
   );
   // Closed-loop patch-candidate outcome tracking: every finalised
   // execution updates any open outcome window for this workflow so

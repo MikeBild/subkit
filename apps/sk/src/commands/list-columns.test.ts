@@ -13,6 +13,7 @@ import {
   CONNECTOR_LIST_COLUMNS,
   CONNECTOR_SYNTHESISED_COLUMNS,
   WORKFLOW_LIST_COLUMNS,
+  WORKFLOW_SYNTHESISED_COLUMNS,
 } from "./list-columns.ts";
 
 type Schema = {
@@ -49,10 +50,20 @@ describe("catalog list columns match the engine schema", () => {
     expect(propertiesOf("ConnectorListItem").size).toBeGreaterThan(5);
   });
 
-  test("every workflow column exists on WorkflowListItem", () => {
+  test("every workflow column exists on WorkflowListItem, or is synthesised", () => {
     const available = propertiesOf("WorkflowListItem");
-    const missing = WORKFLOW_LIST_COLUMNS.filter((c) => !available.has(c));
+    const missing = WORKFLOW_LIST_COLUMNS.filter(
+      (c) => !available.has(c) && !WORKFLOW_SYNTHESISED_COLUMNS.includes(c),
+    );
     expect(missing).toEqual([]);
+  });
+
+  test("the trigger column is synthesised from the effective trigger, not the definition", () => {
+    const available = propertiesOf("WorkflowListItem");
+    expect(available.has("effective_trigger")).toBe(true);
+    expect(available.has("schedule")).toBe(true);
+    expect(WORKFLOW_LIST_COLUMNS).not.toContain("trigger");
+    for (const c of WORKFLOW_SYNTHESISED_COLUMNS) expect(available.has(c)).toBe(false);
   });
 
   test("every connector column exists on ConnectorListItem, or is synthesised", () => {

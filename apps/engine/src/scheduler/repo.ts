@@ -3,7 +3,7 @@
 // take effect within one reconcile window. Unit-testable without
 // pg-boss because the table is the source of truth.
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
@@ -36,6 +36,7 @@ export interface ScheduleRow {
   execution_mode: "dev" | "prod";
   admission_hold: typeof workflowsSchedules.$inferSelect.admission_hold;
   input: unknown;
+  last_enqueued_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -68,12 +69,26 @@ export async function createSchedule(
   }
   // Confirm workflow belongs to tenant before we insert the schedule.
   const wf = await db
-    .select({ id: workflows.id })
+    .select({ id: workflows.id, lifecycle: workflows.lifecycle })
     .from(workflows)
-    .where(and(eq(workflows.tenant_id, input.tenant_id), eq(workflows.id, input.workflow_id)))
+    .where(
+      and(
+        eq(workflows.tenant_id, input.tenant_id),
+        eq(workflows.id, input.workflow_id),
+        isNull(workflows.deleted_at),
+      ),
+    )
     .limit(1);
   if (wf.length === 0) {
     throw Object.assign(new Error("workflow_not_found"), { code: "workflow_not_found" });
+  }
+  // The reconciler never fires an archived workflow, and archiving removes its
+  // schedule; a new one would sit there looking bound while nothing runs.
+  if (wf[0]?.lifecycle === "archived") {
+    throw Object.assign(
+      new Error("workflow is archived; restore it to active before scheduling it"),
+      { code: "workflow_archived" },
+    );
   }
   // Update-or-insert on (tenant_id, workflow_id) — a workflow carries at most
   // one schedule, exactly as the inline-trigger path (`bindFromWorkflow`)
