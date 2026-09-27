@@ -70,6 +70,7 @@ import {
   finalizeStepRow,
   insertStepRow,
   markExecutionRunning,
+  type OutputContractVerdict,
 } from "./state.ts";
 import { type RunStepOutcome, runStep } from "./step-runner.ts";
 import { classifyRequestStepSideEffects } from "./steps/request/side-effects.ts";
@@ -1747,6 +1748,10 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       },
     });
   }
+  // Persisted on the execution row so a reader can tell a run whose output
+  // broke its contract from one that honoured it — the warning below rides
+  // only the in-flight RunResult.
+  let outputContract: OutputContractVerdict = "none";
   if (
     def.output_schema &&
     lastOutput !== undefined &&
@@ -1754,6 +1759,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     !outputUnavailableDueToHolds
   ) {
     const contract = checkOutputContract(lastOutput, def.output_schema);
+    if (contract.ok) outputContract = contract.valid ? "passed" : "violated";
     if (!contract.ok) {
       logger.warn({
         module: "execution",
@@ -1926,6 +1932,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       : null,
     undefined,
     offload.sha256,
+    outputContract,
   );
   // Closed-loop patch-candidate outcome tracking: every finalised
   // execution updates any open outcome window for this workflow so

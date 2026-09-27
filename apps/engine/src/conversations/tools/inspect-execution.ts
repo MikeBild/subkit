@@ -29,7 +29,7 @@ const Input = z
 export const inspectExecutionTool: ConversationTool = {
   name: "inspect_execution",
   description:
-    "Inspect a completed execution with step-level diagnosis — per-step status, duration, warnings, truncated output previews, and scope shapes — so the next edit is grounded in the real runtime output. Omit execution_id to inspect the tenant's most recent execution.",
+    "Inspect a completed execution with its structured `outcome` (kind, failed step, cause class, step counts, output-contract verdict) and step-level diagnosis — per-step status, duration, warnings, truncated output previews, and scope shapes — so the next edit is grounded in the real runtime output. Omit execution_id to inspect the tenant's most recent execution.",
   use_case:
     "Check why a run failed or warned, or see the actual per-step output shapes before authoring a transform. Available on both the chat and MCP surfaces.",
   important_notes: [
@@ -61,8 +61,11 @@ export const inspectExecutionTool: ConversationTool = {
         };
       }
     }
-    const result = await buildExecutionDiagnosis(ctx.db, ctx.tenant_id, executionId);
-    if (!result.found) {
+    const [result, row] = await Promise.all([
+      buildExecutionDiagnosis(ctx.db, ctx.tenant_id, executionId),
+      ctx.engineClient.executions.get(executionId),
+    ]);
+    if (!result.found || !row) {
       return {
         ok: false,
         data: {
@@ -73,7 +76,11 @@ export const inspectExecutionTool: ConversationTool = {
     }
     return {
       ok: true,
-      data: { execution: result.execution, diagnosis: result.diagnosis },
+      data: {
+        execution: result.execution,
+        outcome: await ctx.engineClient.executions.outcome(row),
+        diagnosis: result.diagnosis,
+      },
     };
   },
 };

@@ -31,6 +31,7 @@ import {
   workflows as workflowsTable,
 } from "../db/schema/index.ts";
 import { listExecutions } from "../execution/list.ts";
+import { loadExecutionOutcome } from "../execution/outcome.ts";
 import * as identitySvc from "../identity/service.ts";
 import { listKnowledgeChunks } from "../knowledge/bundle-service.ts";
 import * as knowledgeSvc from "../knowledge/service.ts";
@@ -202,6 +203,9 @@ export class EngineClient {
         .limit(1);
       return rows[0] ?? null;
     },
+    /** The run's structured outcome (see `execution/outcome.ts`). */
+    outcome: (row: Parameters<typeof loadExecutionOutcome>[1]) =>
+      loadExecutionOutcome(this.tenant_id, row, this.db),
   };
 
   skills = {
