@@ -407,4 +407,44 @@ describe("a run's source is who started it, not what the body claims", () => {
     expect(r.status).toBe(200);
     expect(await recordedSource(r.body.execution_id)).toBe("cli");
   });
+
+  test("only an API key may say cli — another credential cannot borrow the label", async () => {
+    // A browser session without the cockpit header also reads as "api" in the
+    // context. It holds no key, so nothing behind it is the CLI.
+    const { "x-subkit-client": _client, ...sessionWithoutCockpit } = cockpitHeaders;
+    const r = await start(
+      { source: "saved", workflow_id: workflowId, input: { date: "b" }, request_source: "cli" },
+      sessionWithoutCockpit,
+    );
+    expect(r.status).toBe(200);
+    expect(await recordedSource(r.body.execution_id)).toBe("api");
+  });
+
+  test("the CLI's rerun says cli, as its run does", async () => {
+    const original = await start(
+      { source: "saved", workflow_id: workflowId, input: { date: "r" }, request_source: "cli" },
+      { Authorization: `Bearer ${ctx.apiKey}` },
+    );
+    expect(original.status).toBe(200);
+    const rerun = await start(
+      { request_source: "cli" },
+      { Authorization: `Bearer ${ctx.apiKey}` },
+      `/v1/executions/${original.body.execution_id}/rerun`,
+    );
+    expect(rerun.status).toBe(200);
+    expect(await recordedSource(rerun.body.execution_id)).toBe("cli");
+  });
+
+  test("a rerun cannot claim the scheduler either", async () => {
+    const original = await start(
+      { source: "saved", workflow_id: workflowId, input: { date: "x" } },
+      { Authorization: `Bearer ${ctx.apiKey}` },
+    );
+    const rerun = await start(
+      { request_source: "scheduler" },
+      { Authorization: `Bearer ${ctx.apiKey}` },
+      `/v1/executions/${original.body.execution_id}/rerun`,
+    );
+    expect(rerun.status).toBe(400);
+  });
 });

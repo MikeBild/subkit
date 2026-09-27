@@ -28,7 +28,7 @@ import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { enforceSavedWorkflowAllowlist, runRequestSource } from "./run.ts";
-import { RunResponseSchema } from "./schemas.ts";
+import { ClientDeclaredRunSourceSchema, RunResponseSchema } from "./schemas.ts";
 
 const RerunBody = z
   .object({
@@ -39,6 +39,9 @@ const RerunBody = z
     hold_writes: z.boolean().optional(),
     execution_authority_id: z.string().uuid().optional(),
     idempotency_key: z.string().min(1).max(200).optional(),
+    /** Same rule as a run: a key-bearing caller may name its program. Without
+     *  this, `sk` recorded its runs as "cli" and its reruns as "api". */
+    request_source: ClientDeclaredRunSourceSchema,
   })
   .openapi("RerunExecutionBody");
 
@@ -124,7 +127,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
 
     const input = body.input !== undefined ? body.input : (original.input ?? null);
     const execution_mode: ExecutionMode = original.execution_mode ?? "dev";
-    const request_source = runRequestSource(c);
+    const request_source = runRequestSource(c, body.request_source);
 
     if (!original.workflow_version_id) {
       // Refused for the same class of reason as the codes caught below, and so
