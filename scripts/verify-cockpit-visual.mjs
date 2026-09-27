@@ -1246,7 +1246,10 @@ async function mockApi(route) {
       from: "2026-07-11T00:00:00.000Z",
       to: "2026-08-10T00:00:00.000Z",
       groups: rows.map(([key, calls, total]) => ({
-        key,
+        // The PUBLISHED shape: a map of dimension to value. This fixture used
+        // to send a bare string, which is what the page assumed — so the sweep
+        // photographed a table that could never fill on a real installation.
+        key: { [axis]: key },
         buckets: [],
         totals: {
           calls: { total: calls, by_result: { success: calls } },

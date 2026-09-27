@@ -19,22 +19,32 @@ import {
 } from "@/pages/usage-model";
 
 describe("the consumption breakdown", () => {
+  // The PUBLISHED shape: `key` is a map of dimension to value, because a
+  // caller may group by two at once. An earlier version of this test fed a
+  // bare string — the shape the code assumed rather than the one the engine
+  // sends — and stayed green while the page could render nothing at all.
   const envelope = {
     groups: [
-      { key: "radar-publish-weekly", totals: { calls: { total: 12 }, tokens: { total: 250 } } },
-      { key: "ga4-daily-report", totals: { calls: { total: 30 }, tokens: { total: 750 } } },
+      {
+        key: { workflow: "radar-publish-weekly" },
+        totals: { calls: { total: 12 }, tokens: { total: 250 } },
+      },
+      {
+        key: { workflow: "ga4-daily-report" },
+        totals: { calls: { total: 30 }, tokens: { total: 750 } },
+      },
     ],
   };
 
   test("is ordered by what it costs, not by name", () => {
-    expect(consumptionRows(envelope).map((r) => r.key)).toEqual([
+    expect(consumptionRows(envelope, "workflow").map((r) => r.key)).toEqual([
       "ga4-daily-report",
       "radar-publish-weekly",
     ]);
   });
 
   test("shares add up to the whole", () => {
-    const rows = consumptionRows(envelope);
+    const rows = consumptionRows(envelope, "workflow");
     expect(rows[0]?.share).toBeCloseTo(0.75, 5);
     expect(rows[1]?.share).toBeCloseTo(0.25, 5);
     expect(rows.reduce((sum, r) => sum + (r.share ?? 0), 0)).toBeCloseTo(1, 5);
@@ -43,15 +53,20 @@ describe("the consumption breakdown", () => {
   test("a window that consumed nothing has no shares, not shares of zero", () => {
     // 0/0 is not 0 %. A row claiming "0 % of the month" reads as a measured
     // fact; there is nothing to take a share of.
-    const rows = consumptionRows({
-      groups: [{ key: "idle", totals: { calls: { total: 0 }, tokens: { total: 0 } } }],
-    });
+    const rows = consumptionRows(
+      {
+        groups: [
+          { key: { workflow: "idle" }, totals: { calls: { total: 0 }, tokens: { total: 0 } } },
+        ],
+      },
+      "workflow",
+    );
     expect(rows[0]?.share).toBeNull();
   });
 
   test("survives an envelope it does not recognise", () => {
     for (const bad of [null, undefined, {}, { groups: "nope" }, { groups: [1, 2] }]) {
-      expect(consumptionRows(bad)).toEqual([]);
+      expect(consumptionRows(bad, "workflow")).toEqual([]);
     }
   });
 
@@ -157,5 +172,36 @@ describe("the window's money", () => {
     for (const bad of [null, undefined, {}, { cost: "nope" }]) {
       expect(windowCost(bad)).toBeNull();
     }
+  });
+});
+
+describe("the published group shape", () => {
+  test("reads the value for the axis that was asked for", () => {
+    // A two-dimension grouping puts both in the key. Picking the wrong one
+    // would label every row with a model name under a heading that says
+    // workflow.
+    const envelope = {
+      groups: [
+        {
+          key: { workflow: "ga4-daily-report", model: "claude-sonnet-4-6" },
+          totals: { calls: { total: 3 }, tokens: { total: 10 } },
+        },
+      ],
+    };
+    expect(consumptionRows(envelope, "workflow")[0]?.key).toBe("ga4-daily-report");
+    expect(consumptionRows(envelope, "model")[0]?.key).toBe("claude-sonnet-4-6");
+  });
+
+  test("a bare string key is NOT accepted", () => {
+    // The shape this code used to assume. Accepting it would let the same
+    // mistake back in behind a passing test.
+    expect(consumptionRows({ groups: [{ key: "ga4", totals: {} }] }, "workflow")).toEqual([]);
+  });
+
+  test("a group missing the requested dimension is dropped, not blank-labelled", () => {
+    // A row with an empty name is a row a reader cannot act on.
+    expect(consumptionRows({ groups: [{ key: { model: "x" }, totals: {} }] }, "workflow")).toEqual(
+      [],
+    );
   });
 });

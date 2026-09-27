@@ -80,7 +80,7 @@ export function UsagePage() {
 
   const rows = useMemo(() => usageRows(runtime.data), [runtime.data]);
   const totals = useMemo(() => usageTotals(runtime.data), [runtime.data]);
-  const spend = useMemo(() => consumptionRows(consumption.data), [consumption.data]);
+  const spend = useMemo(() => consumptionRows(consumption.data, axis), [consumption.data, axis]);
   const budget = useMemo(() => budgetSummary(status.data), [status.data]);
   const money = useMemo(() => windowCost(consumption.data), [consumption.data]);
   const pressure = budgetPressure(budget);
