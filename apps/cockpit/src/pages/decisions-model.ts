@@ -157,6 +157,11 @@ export function patchTitle(input: { workflow: string | null; change: string | nu
   return { key: "decisions.fallbackTitle.patch", params: {} };
 }
 
+/** The workflow a decision acts on, where the decision knows it. */
+export function decisionWorkflowId(item: DecisionItem): string | null {
+  return item.detail.kind === "patch" ? item.detail.evidence.workflowId : null;
+}
+
 export function patchDecision(candidate: PatchCandidate, title: string): DecisionItem {
   const envelope = readDiffEnvelope(candidate.diff);
   return {
