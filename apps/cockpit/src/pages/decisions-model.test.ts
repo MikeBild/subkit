@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   ageInDays,
   approveBlockedReason,
+  badgeCount,
   bannerSubset,
-  chipCounts,
   conversationDecision,
   countOpenDecisions,
   type DecisionItem,
@@ -16,6 +16,7 @@ import {
   patchDecision,
   patchTitle,
   QUESTION_LINE_MAX,
+  queueChips,
   queueDisplayState,
   resetView,
   searchWithoutBucket,
@@ -640,13 +641,83 @@ describe("the badge counts what the chips count", () => {
   ];
   const totals = { patch: 2, skill: 1, conversation: 2 };
 
+  const everything = { patches: true, skills: true, failing: true };
+  const shown = (chips: ReturnType<typeof queueChips>) =>
+    (chips ?? []).map((chip) => [chip.kind, chip.count, chip.partial]);
+  const sum = (chips: ReturnType<typeof queueChips>) =>
+    (chips ?? []).reduce((total, chip) => total + (chip.count ?? 0), 0);
+
   test("badge equals the sum of the chips", () => {
     const open = openDecisionQueue({ items, totals, held: 1, failing: 2, nowMs: NOW });
-    const chips = chipCounts(open, { held: 1, failing: 2 });
-    expect(chips).toEqual({ patch: 2, skill: 1, schedule: 3 });
-    const sum = Object.values(chips ?? {}).reduce((total, count) => total + count, 0);
-    expect(open.total).toBe(sum);
+    const chips = queueChips({
+      open,
+      readable: everything,
+      held: 1,
+      failing: { state: "answered", count: 2 },
+    });
+    expect(shown(chips)).toEqual([
+      ["patch", 2, false],
+      ["skill", 1, false],
+      ["schedule", 3, false],
+    ]);
+    expect(badgeCount(chips)).toBe(sum(chips));
+    expect(open.total).toBe(sum(chips));
     expect(open.total).toBe(6);
+  });
+
+  test("a source this person cannot read has no chip, never a chip at 0", () => {
+    // Without skill:read the skill chip read "· 0" — a number nobody measured.
+    const open = openDecisionQueue({
+      items: items.filter((entry) => entry.kind !== "skill"),
+      totals: { patch: 2, skill: 0, conversation: 2 },
+      held: 1,
+      failing: 0,
+      nowMs: NOW,
+    });
+    const chips = queueChips({
+      open,
+      readable: { patches: true, skills: false, failing: false },
+      held: 1,
+      failing: { state: "not_permitted", count: 0 },
+    });
+    expect(chips?.map((chip) => chip.kind)).toEqual(["patch", "schedule"]);
+    // The index stays the position in the full list, so ids do not shift.
+    expect(chips?.map((chip) => chip.index)).toEqual([0, 2]);
+    expect(badgeCount(chips)).toBe(sum(chips));
+    // Without workflow:read neither the patch chip nor the held half is there.
+    const noWorkflows = queueChips({
+      open,
+      readable: { patches: false, skills: true, failing: true },
+      held: 0,
+      failing: { state: "answered", count: 2 },
+    });
+    expect(noWorkflows?.map((chip) => chip.kind)).toEqual(["skill", "schedule"]);
+  });
+
+  test("a source that failed is never counted as 0", () => {
+    // The digest failed and used to be caught as an empty list: "none failing".
+    const open = openDecisionQueue({ items, totals, held: 1, failing: 0, nowMs: NOW });
+    const partial = queueChips({
+      open,
+      readable: everything,
+      held: 1,
+      failing: { state: "failed", count: 0 },
+    });
+    const schedule = partial?.find((chip) => chip.kind === "schedule");
+    // What answered is shown, as a lower bound, and the badge counts only it.
+    expect(schedule).toMatchObject({ count: 1, partial: true });
+    expect(badgeCount(partial)).toBe(sum(partial));
+
+    // With no other source behind the chip, it has no number at all.
+    const alone = queueChips({
+      open: openDecisionQueue({ items: [], totals: null, held: 0, failing: 0, nowMs: NOW }),
+      readable: { patches: false, skills: false, failing: true },
+      held: 0,
+      failing: { state: "failed", count: 0 },
+    });
+    expect(shown(alone)).toEqual([["schedule", null, false]]);
+    // And the badge does not claim 0 over it.
+    expect(badgeCount(alone)).toBeNull();
   });
 
   test("the waiting conversations are counted on their own, never in the badge", () => {
@@ -656,7 +727,14 @@ describe("the badge counts what the chips count", () => {
   });
 
   test("no count read, no chip numbers — an omitted number beats a guessed one", () => {
-    expect(chipCounts(null, { held: 4, failing: 0 })).toBeNull();
+    const chips = queueChips({
+      open: null,
+      readable: everything,
+      held: 4,
+      failing: { state: "answered", count: 0 },
+    });
+    expect(chips).toBeNull();
+    expect(badgeCount(chips)).toBeNull();
   });
 });
 
