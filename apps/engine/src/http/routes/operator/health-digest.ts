@@ -8,10 +8,14 @@
 // /v1/stats/*.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { PREVIEW_CLASSIFICATIONS } from "../../../execution/classify.ts";
 import { buildOperatorHealthDigest } from "../../../operator/health-digest.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
+
+/** The classifier's class behind a failure group's `cause`. */
+const CauseClass = z.enum(PREVIEW_CLASSIFICATIONS).openapi("FailureCauseClass");
 
 const FailureGroupSchema = z
   .object({
@@ -26,6 +30,7 @@ const FailureGroupSchema = z
     last_seen: z.string(),
     resolved_at: z.string().nullable(),
     cause: z.string(),
+    cause_class: CauseClass,
     guidance: z.string().nullable(),
   })
   .openapi("OperatorFailureGroup");

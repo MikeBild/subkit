@@ -54,6 +54,30 @@ function component(
   };
 }
 
+type Cause = OperationalOverview["core"]["health"]["causes"][number];
+
+const HELD_CAUSE: Cause = {
+  kind: "held_schedule",
+  id: "w1",
+  label: "Monatsreport: automatic runs held for review",
+  subject: { kind: "workflow", id: "w1", name: "Monatsreport" },
+  reason: "held_for_review",
+  detail: null,
+  cause_class: null,
+  drilldown: { path: "/cockpit/decisions?bucket=blocked", label_id: "operational.open_blocked" },
+};
+
+const CONNECTOR_CAUSE: Cause = {
+  kind: "connector",
+  id: "c1",
+  label: "CRM: needs reauth",
+  subject: { kind: "connector", id: "c1", name: "CRM" },
+  reason: "needs_reauth",
+  detail: null,
+  cause_class: null,
+  drilldown: { path: "/cockpit/connectors/c1", label_id: "operational.open_connector" },
+};
+
 function overview(input: {
   state?: "healthy" | "limited" | "critical" | "unknown";
   snapshot?: "ready" | "partial";
@@ -138,23 +162,7 @@ describe("what the system page raises", () => {
     const items = operationsAttention(
       overview({
         state: "critical",
-        causes: [
-          {
-            kind: "held_schedule",
-            id: "w1",
-            label: "Monatsreport: automatic runs held for review",
-            drilldown: {
-              path: "/cockpit/decisions?bucket=blocked",
-              label_id: "operational.open_blocked",
-            },
-          },
-          {
-            kind: "connector",
-            id: "c1",
-            label: "CRM: needs reauth",
-            drilldown: { path: "/cockpit/connectors/c1", label_id: "operational.open_connector" },
-          },
-        ],
+        causes: [HELD_CAUSE, CONNECTOR_CAUSE],
       }),
       format,
     );
@@ -167,7 +175,64 @@ describe("what the system page raises", () => {
       ],
       ["cause:connector:c1", "warning", "/cockpit/connectors/c1", "operations.link.open_connector"],
     ]);
-    expect(items[0]?.text).toBe("Monatsreport: automatic runs held for review");
+  });
+
+  test("a cause is the cockpit's own sentence, never the engine's English label", () => {
+    // The live defect: "Monatsreport: automatic runs held for review" printed
+    // verbatim inside a German page.
+    const [held, connector] = operationsAttention(
+      overview({ state: "critical", causes: [HELD_CAUSE, CONNECTOR_CAUSE] }),
+      format,
+    );
+    expect(held?.text).toBe('operations.cause.held_for_review{"name":"Monatsreport"}');
+    expect(held?.engineWording).toBeNull();
+    expect(connector?.text).toBe('operations.cause.needs_reauth{"name":"CRM"}');
+    for (const item of [held, connector]) expect(item?.text).not.toContain("automatic runs");
+  });
+
+  test("the engine's free text travels beside the sentence, marked as the engine's", () => {
+    const [failing] = operationsAttention(
+      overview({
+        state: "critical",
+        causes: [
+          {
+            kind: "failing_group",
+            id: "sig-1",
+            label: "Monatsreport: The step driver failed: Object not found",
+            subject: { kind: "workflow", id: "w1", name: "Monatsreport" },
+            reason: "failing",
+            detail: "The step driver failed: Object not found",
+            cause_class: "driver_error",
+            drilldown: {
+              path: "/cockpit/decisions?bucket=failing",
+              label_id: "operational.open_failing",
+            },
+          },
+        ],
+      }),
+      format,
+    );
+    expect(failing?.text).toBe('operations.cause.failing{"name":"Monatsreport"}');
+    expect(failing?.engineWording).toBe("The step driver failed: Object not found");
+    expect(failing?.href).toBe("/cockpit/decisions?bucket=failing");
+  });
+
+  test("a subject without a name is said as such, not as an id or an empty name", () => {
+    const [item] = operationsAttention(
+      overview({
+        state: "critical",
+        causes: [
+          {
+            ...HELD_CAUSE,
+            kind: "failing_group",
+            reason: "failing",
+            subject: { kind: "workflow", id: null, name: null },
+          },
+        ],
+      }),
+      format,
+    );
+    expect(item?.text).toBe('operations.cause.failing{"name":"operations.cause.unnamed.workflow"}');
   });
 
   test("an unhealthy score the engine named no cause for points at its weak component", () => {
@@ -183,14 +248,7 @@ describe("what the system page raises", () => {
       overview({
         state: "limited",
         connectorScore: 50,
-        causes: [
-          {
-            kind: "connector",
-            id: "c1",
-            label: "CRM: needs reauth",
-            drilldown: { path: "/cockpit/connectors/c1", label_id: "operational.open_connector" },
-          },
-        ],
+        causes: [CONNECTOR_CAUSE],
       }),
       format,
     );

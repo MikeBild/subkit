@@ -3,8 +3,10 @@ import {
   connectorCountsAgainstHealth,
   connectorCountsTowardHealth,
 } from "../connectors/health-ratio.ts";
+import type { ConnectorHealthState } from "../connectors/health-state.ts";
 import type { Db } from "../db/client.ts";
 import { connectors, selfHealingScans, tenants } from "../db/schema/index.ts";
+import type { PreviewClassification } from "../execution/classify.ts";
 import { getMetrics } from "../observability/index.ts";
 import { readOpenPatchDecisions } from "../self-healing/index.ts";
 import {
@@ -45,12 +47,57 @@ export interface Drilldown {
   path: string;
   label_id: string;
 }
+/**
+ * Why a cause counts, as a fact a reader can word in their own language.
+ *
+ * `label` stays for the family contract's other readers, but it is an English
+ * sentence the engine wrote: the cockpit rendered it verbatim inside a German
+ * page. The structured pair — `subject` and `reason` — is what a surface
+ * composes its own sentence from; `detail` is the residual free text (a
+ * failing group's classifier sentence, a connector's `health_reason`) that no
+ * surface can translate, so it is marked as the engine's wording wherever it
+ * is shown.
+ */
+export type HealthCauseReason =
+  | "held_for_review"
+  | "failing"
+  | "needs_reauth"
+  | "needs_update"
+  | "degraded"
+  /** A connector `health_state` this build does not name; `detail` carries it. */
+  | "unhealthy";
+
+/** The thing a cause is about. Nullable id/name: a failing group of an unsaved run has neither. */
+export interface HealthCauseSubject {
+  kind: "workflow" | "connector";
+  id: string | null;
+  name: string | null;
+}
+
 /** A concrete reason a health score is not green, with where to act on it. */
 export interface HealthCause {
   kind: "failing_group" | "held_schedule" | "connector";
   id: string;
+  /** The engine's own English sentence. Kept for the contract; a UI composes from subject + reason. */
   label: string;
+  subject: HealthCauseSubject;
+  reason: HealthCauseReason;
+  /** Residual engine free text, or null. Never a sentence a surface should pass off as its own. */
+  detail: string | null;
+  /** Failing groups only: the classifier's class for the cause, else null. */
+  cause_class: PreviewClassification | null;
   drilldown: Drilldown;
+}
+
+/** Every connector state that counts against health, named. A new state is a compile error here. */
+const CONNECTOR_REASON = {
+  needs_reauth: "needs_reauth",
+  needs_update: "needs_update",
+  degraded: "degraded",
+} as const satisfies Record<Exclude<ConnectorHealthState, "ok">, HealthCauseReason>;
+
+function connectorReason(state: string): HealthCauseReason {
+  return (CONNECTOR_REASON as Record<string, HealthCauseReason>)[state] ?? "unhealthy";
 }
 export type Severity = "critical" | "urgent" | "healthy" | "information" | "unknown";
 export type HealthState = "healthy" | "limited" | "critical" | "unknown";
@@ -714,6 +761,7 @@ async function readHealthCauses(
     workflow_id: string | null;
     workflow_name: string | null;
     cause: string;
+    cause_class: PreviewClassification;
   }>,
 ): Promise<HealthCause[]> {
   const held = rowsOf<{ workflow_id: string; name: string }>(
@@ -729,6 +777,10 @@ async function readHealthCauses(
     kind: "held_schedule",
     id: row.workflow_id,
     label: `${row.name}: automatic runs held for review`,
+    subject: { kind: "workflow", id: row.workflow_id, name: row.name },
+    reason: "held_for_review",
+    detail: null,
+    cause_class: null,
     drilldown: { path: "/cockpit/decisions?bucket=blocked", label_id: "operational.open_blocked" },
   }));
   for (const group of failingGroups) {
@@ -736,6 +788,10 @@ async function readHealthCauses(
       kind: "failing_group",
       id: group.signature,
       label: `${group.workflow_name ?? group.workflow_id ?? "workflow"}: ${group.cause}`,
+      subject: { kind: "workflow", id: group.workflow_id, name: group.workflow_name },
+      reason: "failing",
+      detail: group.cause,
+      cause_class: group.cause_class,
       drilldown: {
         path: "/cockpit/decisions?bucket=failing",
         label_id: "operational.open_failing",
@@ -748,16 +804,23 @@ async function readHealthCauses(
         id: connectors.id,
         name: connectors.display_name,
         health_state: connectors.health_state,
+        health_reason: connectors.health_reason,
       })
       .from(connectors)
       .where(and(eq(connectors.tenant_id, tenantId), connectorCountsAgainstHealth()))
       .orderBy(connectors.display_name, connectors.id)
       .limit(MAX_HEALTH_CAUSES);
     for (const row of unhealthy) {
+      const reason = connectorReason(row.health_state);
       causes.push({
         kind: "connector",
         id: row.id,
         label: `${row.name}: ${row.health_state.replace(/_/g, " ")}`,
+        subject: { kind: "connector", id: row.id, name: row.name },
+        reason,
+        // A state this build does not name is still said — as the engine's word.
+        detail: row.health_reason ?? (reason === "unhealthy" ? row.health_state : null),
+        cause_class: null,
         drilldown: {
           path: `/cockpit/connectors/${encodeURIComponent(row.id)}`,
           label_id: "operational.open_connector",

@@ -387,7 +387,41 @@
         },
         "label": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The producing engine's own sentence. A UI composes its words from subject and reason where they are present."
+        },
+        "subject": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "id", "name"],
+          "properties": {
+            "kind": {
+              "enum": ["workflow", "connector"]
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "name": {
+              "type": ["string", "null"]
+            }
+          }
+        },
+        "reason": {
+          "enum": [
+            "held_for_review",
+            "failing",
+            "needs_reauth",
+            "needs_update",
+            "degraded",
+            "unhealthy"
+          ]
+        },
+        "detail": {
+          "type": ["string", "null"],
+          "description": "Residual engine free text, shown only as the engine's wording."
+        },
+        "cause_class": {
+          "type": ["string", "null"]
         },
         "drilldown": {
           "$ref": "#/$defs/drilldown"

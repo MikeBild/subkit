@@ -17868,6 +17868,9 @@
           "cause": {
             "type": "string"
           },
+          "cause_class": {
+            "$ref": "#/components/schemas/FailureCauseClass"
+          },
           "guidance": {
             "type": [
               "string",
@@ -17887,7 +17890,24 @@
           "last_seen",
           "resolved_at",
           "cause",
+          "cause_class",
           "guidance"
+        ]
+      },
+      "FailureCauseClass": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "auth_failed",
+          "placeholder_unresolved",
+          "schema_mismatch",
+          "timeout",
+          "aborted",
+          "connector_missing",
+          "budget_exhausted",
+          "driver_error",
+          "preview_unsupported",
+          "unknown"
         ]
       },
       "OperatorDigestPatch": {
@@ -18781,7 +18801,75 @@
                           "type": "string"
                         },
                         "label": {
-                          "type": "string"
+                          "type": "string",
+                          "description": "The engine's own English sentence. Kept for the contract; a UI composes its words from `subject` and `reason`."
+                        },
+                        "subject": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "workflow",
+                                "connector"
+                              ]
+                            },
+                            "id": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "name": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id",
+                            "name"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "held_for_review",
+                            "failing",
+                            "needs_reauth",
+                            "needs_update",
+                            "degraded",
+                            "unhealthy"
+                          ]
+                        },
+                        "detail": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Residual engine free text (a failing group's cause, a connector's health reason), or null. Show it as the engine's wording."
+                        },
+                        "cause_class": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "ok",
+                            "auth_failed",
+                            "placeholder_unresolved",
+                            "schema_mismatch",
+                            "timeout",
+                            "aborted",
+                            "connector_missing",
+                            "budget_exhausted",
+                            "driver_error",
+                            "preview_unsupported",
+                            "unknown",
+                            null
+                          ]
                         },
                         "drilldown": {
                           "type": "object",
@@ -18803,6 +18891,10 @@
                         "kind",
                         "id",
                         "label",
+                        "subject",
+                        "reason",
+                        "detail",
+                        "cause_class",
                         "drilldown"
                       ]
                     }

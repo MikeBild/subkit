@@ -1,4 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { PREVIEW_CLASSIFICATIONS } from "../../../execution/classify.ts";
 import { getOperationalOverview } from "../../../operator/operational-overview.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -44,7 +45,33 @@ const Health = Metric.extend({
     z.object({
       kind: z.enum(["failing_group", "held_schedule", "connector"]),
       id: z.string(),
-      label: z.string(),
+      label: z
+        .string()
+        .describe(
+          "The engine's own English sentence. Kept for the contract; a UI composes its words from `subject` and `reason`.",
+        ),
+      subject: z.object({
+        kind: z.enum(["workflow", "connector"]),
+        id: z.string().nullable(),
+        name: z.string().nullable(),
+      }),
+      reason: z.enum([
+        "held_for_review",
+        "failing",
+        "needs_reauth",
+        "needs_update",
+        "degraded",
+        "unhealthy",
+      ]),
+      detail: z
+        .string()
+        .nullable()
+        .describe(
+          "Residual engine free text (a failing group's cause, a connector's health reason), or null. Show it as the engine's wording.",
+        ),
+      // Inline, not the named `FailureCauseClass`: a nullable $ref is emitted as
+      // `allOf` and the generated client loses the null.
+      cause_class: z.enum(PREVIEW_CLASSIFICATIONS).nullable(),
       drilldown: Drilldown,
     }),
   ),
