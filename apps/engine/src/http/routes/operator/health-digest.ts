@@ -61,8 +61,9 @@ const DigestResponse = z
     headline: z.string(),
     failure_groups: z.array(FailureGroupSchema),
     patch_candidates: z.object({
-      // Exact count of proposed candidates; `items` is capped.
-      pending: z.number().int(),
+      // Exact count of open patch decisions (proposed AND reviewable on the
+      // current workflow version); `items` is capped.
+      open: z.number().int(),
       items: z.array(PatchSchema),
     }),
     risk: z.array(RiskSignalSchema),

@@ -1,5 +1,5 @@
 // Operator health digest — grouping, origin tagging, and the
-// pending-patch bucket. Seeds failed executions from three origins and
+// open-patch-decision bucket. Seeds failed executions from three origins and
 // asserts they collapse by root-cause signature and tag correctly.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -14,6 +14,11 @@ import {
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
+import {
+  noChangeDiff,
+  reviewableDiff,
+  seedPatchableWorkflow,
+} from "../test-helpers/patch-candidates.ts";
 import { buildOperatorHealthDigest, MAX_PENDING_PATCHES } from "./health-digest.ts";
 
 let testDb: TestDb;
@@ -116,15 +121,16 @@ beforeAll(async () => {
     workflow: false,
   });
 
-  // One pending patch candidate.
+  // One open patch decision — proposed and reviewable on the current version.
+  const patchable = await seedPatchableWorkflow(db, tenant_id, "messages-sync");
   await db.insert(patchCandidates).values({
     tenant_id,
-    workflow_id,
+    workflow_id: patchable.workflow_id,
     connector_id: conn!.id,
     endpoint_key: "GET /messages",
     classification: "safe",
     status: "proposed",
-    diff: { proposal: { description: "Widen messages selector" } },
+    diff: reviewableDiff("Widen messages selector"),
   });
 });
 
@@ -154,9 +160,9 @@ describe("buildOperatorHealthDigest", () => {
     expect(authoring?.workflow_name).toBe("Draft Run");
   });
 
-  test("surfaces pending patch candidates and an outcome-first headline", async () => {
+  test("surfaces open patch decisions and an outcome-first headline", async () => {
     const digest = await buildOperatorHealthDigest(testDb.db, tenant_id);
-    expect(digest.patch_candidates.pending).toBe(1);
+    expect(digest.patch_candidates.open).toBe(1);
     expect(digest.patch_candidates.items[0]?.summary).toBe("Widen messages selector");
     expect(digest.headline.startsWith("Needs attention:")).toBe(true);
     expect(digest.rendered).toContain("[scheduled]");
@@ -171,7 +177,7 @@ describe("buildOperatorHealthDigest", () => {
     const digest = await buildOperatorHealthDigest(testDb.db, empty!.id);
     expect(digest.all_clear).toBe(true);
     expect(digest.failure_groups.length).toBe(0);
-    expect(digest.patch_candidates.pending).toBe(0);
+    expect(digest.patch_candidates.open).toBe(0);
     expect(digest.headline).toContain("healthy");
   });
 
@@ -180,10 +186,7 @@ describe("buildOperatorHealthDigest", () => {
       .insert(tenants)
       .values({ slug: "t-digest-stuck", display_name: "Stuck" })
       .returning();
-    const [wf] = await testDb.db
-      .insert(workflows)
-      .values({ tenant_id: t!.id, slug: "sync", name: "Sync", lifecycle: "active" })
-      .returning();
+    const wf = { id: (await seedPatchableWorkflow(testDb.db, t!.id, "sync", "Sync")).workflow_id };
     const [conn] = await testDb.db
       .insert(connectors)
       .values({
@@ -211,7 +214,7 @@ describe("buildOperatorHealthDigest", () => {
         classification: "unsafe",
         status: "proposed",
         created_at: new Date(now - 5 * 24 * 60 * 60 * 1000),
-        diff: { proposal: { description: "Rename removed field" } },
+        diff: reviewableDiff("Rename removed field"),
       },
       {
         tenant_id: t!.id,
@@ -221,12 +224,12 @@ describe("buildOperatorHealthDigest", () => {
         classification: "safe",
         status: "proposed",
         created_at: new Date(now - 1 * 60 * 60 * 1000),
-        diff: { proposal: { description: "Fresh fix" } },
+        diff: reviewableDiff("Fresh fix"),
       },
     ]);
 
     const digest = await buildOperatorHealthDigest(testDb.db, t!.id, { audit: false });
-    expect(digest.patch_candidates.pending).toBe(2);
+    expect(digest.patch_candidates.open).toBe(2);
     const first = digest.patch_candidates.items[0];
     expect(first?.summary).toBe("Rename removed field");
     expect(first?.classification).toBe("unsafe");
@@ -237,31 +240,44 @@ describe("buildOperatorHealthDigest", () => {
     expect(digest.rendered).toContain("stuck 5d");
   });
 
-  test("pending reports the exact count when the backlog exceeds the item cap", async () => {
+  test("every count reports the exact total when the backlog exceeds the item cap", async () => {
     const [t] = await testDb.db
       .insert(tenants)
       .values({ slug: "t-digest-backlog", display_name: "Backlog" })
       .returning();
-    const [wf] = await testDb.db
-      .insert(workflows)
-      .values({ tenant_id: t!.id, slug: "bulk", name: "Bulk", lifecycle: "active" })
-      .returning();
+    const wf = { id: (await seedPatchableWorkflow(testDb.db, t!.id, "bulk", "Bulk")).workflow_id };
 
     const now = getTestNow();
-    const backlog = MAX_PENDING_PATCHES + 5;
+    // 60 open decisions against a cap of 50. The headline, the rendered
+    // block and `open` must all say 60 — the headline used to count the capped
+    // list and said 50 while `pending` said 60.
+    const backlog = 60;
+    expect(backlog).toBeGreaterThan(MAX_PENDING_PATCHES);
     await testDb.db.insert(patchCandidates).values(
       Array.from({ length: backlog }, (_, i) => ({
         tenant_id: t!.id,
-        workflow_id: wf!.id,
+        workflow_id: wf.id,
         classification: "safe" as const,
         status: "proposed" as const,
         created_at: new Date(now - i * 60_000),
-        diff: { proposal: { description: `Fix ${i}` } },
+        diff: reviewableDiff(`Fix ${i}`),
       })),
     );
+    // Undecidable rows are not open and must not be counted anywhere.
+    await testDb.db.insert(patchCandidates).values({
+      tenant_id: t!.id,
+      workflow_id: wf.id,
+      classification: "safe",
+      status: "proposed",
+      diff: noChangeDiff("Moves a field to itself"),
+    });
 
     const digest = await buildOperatorHealthDigest(testDb.db, t!.id, { audit: false });
-    expect(digest.patch_candidates.pending).toBe(backlog);
+    expect(digest.patch_candidates.open).toBe(backlog);
     expect(digest.patch_candidates.items.length).toBe(MAX_PENDING_PATCHES);
+    expect(digest.headline).toContain(`${backlog} fixes awaiting review`);
+    expect(digest.headline).not.toContain(`${MAX_PENDING_PATCHES} fixes`);
+    expect(digest.rendered).toContain(`${backlog} self-healing fixes awaiting review:`);
+    expect(digest.rendered).toContain(`(+${backlog - MAX_PENDING_PATCHES} more)`);
   });
 });
