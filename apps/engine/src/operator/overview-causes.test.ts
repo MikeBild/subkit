@@ -120,6 +120,12 @@ test("a seeded unhealthy connector appears in causes with a link to that connect
   expect(causes.length).toBeLessThanOrEqual(MAX_HEALTH_CAUSES);
   const cause = causes.find((c) => c.kind === "connector" && c.id === brokenConnectorId);
   expect(cause?.label).toContain("broken-api");
+  // The structured half a surface words in its own language — the cockpit
+  // rendered the English label verbatim inside a German page.
+  expect(cause?.subject).toEqual({ kind: "connector", id: brokenConnectorId, name: "broken-api" });
+  expect(cause?.reason).toBe("needs_reauth");
+  expect(cause?.detail).toBeNull();
+  expect(cause?.cause_class).toBeNull();
   expect(cause?.drilldown.path).toBe(`/cockpit/connectors/${brokenConnectorId}`);
   // Only the unhealthy one — a healthy connector is not a cause.
   expect(causes.filter((c) => c.kind === "connector")).toHaveLength(1);

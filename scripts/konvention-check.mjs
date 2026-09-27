@@ -789,6 +789,10 @@ function operationalOverview(gateOpen) {
               kind: "failing_group",
               id: group.signature,
               label: `${group.workflow_name}: ${group.cause}`,
+              subject: { kind: "workflow", id: group.workflow_id, name: group.workflow_name },
+              reason: "failing",
+              detail: group.cause,
+              cause_class: "driver_error",
               drilldown: {
                 path: "/cockpit/decisions?bucket=failing",
                 label_id: "operational.open_failing",

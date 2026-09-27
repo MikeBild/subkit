@@ -245,7 +245,7 @@ function HealthMark({ row }: { row: CatalogRow }) {
         <span className="min-w-0">{t("workflows.health", { state: statusLabel(t, state) })}</span>
         {reason ? (
           <span className="min-w-0 truncate" data-testid="workflow-health-engine-wording">
-            {t("workflows.healthEngineWording", { reason })}
+            {t("common.engineWording", { text: reason })}
           </span>
         ) : null}
       </span>

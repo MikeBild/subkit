@@ -143,7 +143,11 @@
       "redistributeMissingOptionalWeight": false,
       "drilldown": "worst-component",
       "componentDrilldowns": true,
-      "maxCauses": 5
+      "maxCauses": 5,
+      "causeWording": {
+        "composeFrom": ["subject", "reason"],
+        "engineWording": ["label", "detail"]
+      }
     },
     "coreDrilldownsNeverLeadTo": ["/cockpit/operations"],
     "freshness": {

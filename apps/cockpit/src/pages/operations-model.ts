@@ -1,5 +1,5 @@
 import type { components } from "@/api/schema";
-import { absolute } from "@/app/links";
+import { absolute, connectorHref, connectorsHref, decisionsHref } from "@/app/links";
 import type { TranslationKey } from "@/lib/i18n";
 
 // What the system page owes a reader: is this installation healthy, and if
@@ -24,9 +24,63 @@ export interface AttentionItem {
   id: string;
   tone: AttentionTone;
   text: string;
+  /**
+   * Free text the engine wrote (a failing group's cause, a connector's health
+   * reason), shown on its own line and marked as the engine's — never folded
+   * into `text`, which is always the cockpit's own sentence.
+   */
+  engineWording: string | null;
   /** A browser address, or null when there is nowhere to go from here. */
   href: string | null;
   actionLabel: string | null;
+}
+
+type Cause = Health["causes"][number];
+
+const CAUSE_TEXT: Record<Cause["reason"], TranslationKey> = {
+  held_for_review: "operations.cause.held_for_review",
+  failing: "operations.cause.failing",
+  needs_reauth: "operations.cause.needs_reauth",
+  needs_update: "operations.cause.needs_update",
+  degraded: "operations.cause.degraded",
+  unhealthy: "operations.cause.unhealthy",
+};
+
+const UNNAMED_SUBJECT: Record<Cause["subject"]["kind"], TranslationKey> = {
+  workflow: "operations.cause.unnamed.workflow",
+  connector: "operations.cause.unnamed.connector",
+};
+
+/**
+ * One engine cause as the cockpit's own sentence, and the way to where it is
+ * fixed.
+ *
+ * The engine's `label` is an English sentence ("Monatsreport: automatic runs
+ * held for review"); rendered verbatim it sat inside a German page as if the
+ * cockpit had written it. The sentence is composed here from what the cause is
+ * about and why it counts; the one piece nobody can translate — the engine's
+ * free-text detail — travels beside it, marked as the engine's.
+ *
+ * The way in is built here too, from the subject, by the same builders every
+ * other link uses: the blocked or failing bucket of the queue for a workflow,
+ * the connector itself for a connector.
+ */
+export function causeAttention(cause: Cause, format: AttentionFormat): AttentionItem {
+  const name = cause.subject.name?.trim() || format.t(UNNAMED_SUBJECT[cause.subject.kind]);
+  const path =
+    cause.subject.kind === "connector"
+      ? cause.subject.id
+        ? connectorHref(cause.subject.id)
+        : connectorsHref({ health: "not_ok" })
+      : decisionsHref({ bucket: cause.reason === "held_for_review" ? "blocked" : "failing" });
+  return {
+    id: `cause:${cause.kind}:${cause.id}`,
+    tone: cause.subject.kind === "connector" ? "warning" : "critical",
+    text: format.t(CAUSE_TEXT[cause.reason], { name }),
+    engineWording: cause.detail?.trim() || null,
+    href: absolute(path),
+    actionLabel: format.t(drilldownLabelKey(cause.drilldown.label_id)),
+  };
 }
 
 export interface AttentionFormat {
@@ -114,25 +168,19 @@ export function operationsAttention(
     items.push({
       id: "snapshot",
       tone: "warning",
+      engineWording: null,
       text: format.t("operations.attention.partial"),
       href: null,
       actionLabel: null,
     });
   }
-  for (const cause of health.causes) {
-    items.push({
-      id: `cause:${cause.kind}:${cause.id}`,
-      tone: cause.kind === "connector" ? "warning" : "critical",
-      text: cause.label,
-      href: drilldownHref(cause.drilldown),
-      actionLabel: format.t(drilldownLabelKey(cause.drilldown.label_id)),
-    });
-  }
+  for (const cause of health.causes) items.push(causeAttention(cause, format));
   if (health.state === "unknown") {
     const missing = health.components.find((component) => component.normalized_score === null);
     items.push({
       id: "health:undetermined",
       tone: "warning",
+      engineWording: null,
       text: format.t("operations.attention.undetermined"),
       href: missing ? drilldownHref(missing.drilldown) : null,
       actionLabel: missing ? format.t(drilldownLabelKey(missing.drilldown.label_id)) : null,
@@ -142,6 +190,7 @@ export function operationsAttention(
       if (component.raw_value === null) continue;
       items.push({
         id: `component:${component.id}`,
+        engineWording: null,
         tone: health.state === "critical" ? "critical" : "warning",
         text: format.t("operations.attention.component", {
           component: componentName(component, format),
@@ -156,6 +205,7 @@ export function operationsAttention(
     if (source.state !== "stale" && source.state !== "missing") continue;
     items.push({
       id: `freshness:${source.id}`,
+      engineWording: null,
       tone: source.state === "stale" ? "critical" : "warning",
       text:
         source.state === "stale" && source.updated_at

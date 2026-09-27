@@ -683,6 +683,10 @@ function operationalOverview() {
             kind: "held_schedule",
             id: uuid,
             label: "Monatsreport: automatic runs held for review",
+            subject: { kind: "workflow", id: uuid, name: "Monatsreport" },
+            reason: "held_for_review",
+            detail: null,
+            cause_class: null,
             drilldown: {
               path: "/cockpit/decisions?bucket=blocked",
               label_id: "operational.open_blocked",
@@ -692,6 +696,10 @@ function operationalOverview() {
             kind: "connector",
             id: uuid,
             label: "Mailer: needs reauth",
+            subject: { kind: "connector", id: uuid, name: "Mailer" },
+            reason: "needs_reauth",
+            detail: "Token refresh rejected by the provider.",
+            cause_class: null,
             drilldown: {
               path: `/cockpit/connectors/${uuid}`,
               label_id: "operational.open_connector",
@@ -2231,8 +2239,18 @@ async function assertOperationsNamesItsCauses(page, label) {
   if (links.some((href) => href?.startsWith("/cockpit/cockpit")))
     throw new Error(`${label}: an attention link carries the base twice`);
   const text = await block.innerText();
-  if (!text.includes("Mailer: needs reauth"))
-    throw new Error(`${label}: the connector cause is not named`);
+  if (!text.includes("Mailer")) throw new Error(`${label}: the connector cause is not named`);
+  // The engine's `label` is English prose; the page words the cause itself
+  // from `subject` + `reason`, in either language.
+  for (const engineLabel of ["Mailer: needs reauth", "automatic runs held for review"])
+    if (text.includes(engineLabel))
+      throw new Error(`${label}: the engine's sentence "${engineLabel}" is shown as the page's`);
+  // The free text the engine wrote is kept — on its own line, as the engine's.
+  const wording = await block
+    .locator('[data-testid^="operations-attention-engine-wording-"]')
+    .allInnerTexts();
+  if (!wording.some((line) => line.includes("Token refresh rejected by the provider.")))
+    throw new Error(`${label}: the engine's detail is not shown as the engine's wording`);
 }
 
 /**

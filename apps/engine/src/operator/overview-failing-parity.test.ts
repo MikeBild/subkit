@@ -176,6 +176,23 @@ test("the overview tile and the decision queue report the same failing workflows
   // what sent people to a list of eleven thousand runs.
   expect(overview.core.failing.drilldown.path).toBe("/cockpit/decisions?bucket=failing");
   expect(overview.core.failing.severity).toBe("urgent");
+
+  // Each failing group is a cause a surface can word itself: the workflow it
+  // is about, the reason, the classifier's class — and the engine's English
+  // sentence only as `detail`, never as the whole of what the cause says.
+  const failingCauses = overview.core.health.causes.filter((c) => c.kind === "failing_group");
+  expect(failingCauses).toHaveLength(queue.length);
+  for (const cause of failingCauses) {
+    const group = queue.find((g) => g.signature === cause.id);
+    expect(cause.subject).toEqual({
+      kind: "workflow",
+      id: group?.workflow_id ?? null,
+      name: group?.workflow_name ?? null,
+    });
+    expect(cause.reason).toBe("failing");
+    expect(cause.detail).toBe(group?.cause ?? "");
+    expect(cause.cause_class).toBe(group?.cause_class ?? "unknown");
+  }
 });
 
 test("a failure four days old still counts — the window is the queue's, not a day", async () => {

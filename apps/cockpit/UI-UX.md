@@ -252,6 +252,13 @@ nothing is wrong the block is absent, not an "all good" card the reader learns t
 incomplete report or an undetermined state is a problem of its own, never an all-clear. Below it,
 every health component with its value and link, and every freshness source with when it last ran.
 
+A cause line is the cockpit's own sentence, composed from the cause's `subject` (the workflow or
+connector, by name) and its `reason`; its link is built by the same `links.ts` builders as every
+other link. The engine's `label` is English prose kept for the family contract and is never shown.
+What the engine wrote that nobody can translate — a failing group's cause, a connector's health
+reason — arrives as `detail` and stands on its own line behind "Wortlaut der Engine", the same
+marking the catalogue's health reason carries.
+
 It used to hold only the drift scan and a sentence saying its findings were on the overview, while
 the overview's red health tile linked here: a loop with a cause at neither end.
 
