@@ -28,6 +28,16 @@ export type { PatchProposal } from "./flows/repair.ts";
 export { PatchProposalSchema, runRepairFlow } from "./flows/repair.ts";
 export { runSummarizeFlow } from "./flows/summarize.ts";
 export { getMockProvider, resetMockProvider } from "./mock-provider.ts";
+// Read-time money. Routes reach pricing through this entry point, never the
+// module: the layering invariant exists so a subsystem can move its files
+// without breaking every caller, and a route that imports an internal is the
+// first step to a route that imports three.
+export {
+  type CostResult,
+  type ModelPrice,
+  type PricedTokens,
+  priceCalls,
+} from "./pricing.ts";
 export * from "./provider-errors.ts";
 export * from "./runtime-context.ts";
 export * from "./types.ts";
