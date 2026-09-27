@@ -27,7 +27,7 @@ import {
 import type { Db } from "../db/client.ts";
 import { executionSteps, executions, workflows } from "../db/schema/index.ts";
 import { classifyPersistedFailure, humanizeClassification } from "../execution/classify.ts";
-import { pickStoppingStep } from "../execution/outcome.ts";
+import { classifyRunFailure, pickStoppingStep } from "../execution/outcome.ts";
 import { monthlyUsage, resolveMonthlyBudget } from "../llm/accounting/index.ts";
 import { getContext } from "../logging/context.ts";
 import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
@@ -286,7 +286,9 @@ export async function collectFailureGroups(
   const groups = new Map<string, DigestFailureGroup>();
   for (const exec of failedExecs) {
     const step = stepByExec.get(exec.id);
-    const classified = classifyPersistedFailure(step ?? { status: "failed", error: null });
+    const classified =
+      classifyRunFailure(exec, step ?? null) ??
+      classifyPersistedFailure({ status: exec.status, error: null });
     const errorCode = classified.error_code;
     const message = classified.message;
     const guidance = classified.guidance;
