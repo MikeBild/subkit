@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { FailingWorkflow } from "@/lib/failing-workflows";
 import { useI18n } from "@/lib/i18n-context";
+import { humanStep } from "@/pages/decisions-model";
 
 /**
  * A workflow that was approved, runs on time, and fails every time.
@@ -20,12 +21,12 @@ export function FailingWorkflowCard({ failing }: { failing: FailingWorkflow }) {
       <CardHeader>
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 flex-col gap-1.5">
+            {/* "Scheitert" is the section's heading. Saying it again as a
+                badge and again in the description was three times on one
+                card; the card adds only how often and where. */}
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="destructive">
                 <AlertTriangle data-icon="inline-start" />
-                {t("decisions.failing.status")}
-              </Badge>
-              <Badge variant="outline">
                 {t("decisions.failing.count", { count: String(failing.count) })}
               </Badge>
             </div>
@@ -34,11 +35,11 @@ export function FailingWorkflowCard({ failing }: { failing: FailingWorkflow }) {
                 {failing.workflow_name ?? t("decisions.failing.unnamed")}
               </h3>
             </CardTitle>
-            <CardDescription>
-              {failing.step_key
-                ? t("decisions.failing.atStep", { step: failing.step_key })
-                : t("decisions.failing.description")}
-            </CardDescription>
+            {failing.step_key ? (
+              <CardDescription data-testid="decision-failing-step">
+                {t("decisions.failing.step", { step: humanStep(failing.step_key) })}
+              </CardDescription>
+            ) : null}
             <p className="text-muted-foreground text-xs" data-testid="decision-failing-since">
               {t("decisions.failing.lastSeen", { when: dateTime(failing.last_seen) })}
             </p>

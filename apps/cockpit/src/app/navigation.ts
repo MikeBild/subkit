@@ -50,8 +50,6 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         path: "/",
         permission: "stats:read",
         icon: LayoutDashboard,
-        // The recent-runs block is gated separately on `execution:read`, which
-        // `stats:read` does not imply.
         api: ["GET /v1/operational-overview"],
       },
       {
@@ -155,7 +153,7 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         path: "/operations",
         permission: "stats:read",
         icon: Cpu,
-        api: ["GET /v1/operator/health-digest"],
+        api: ["GET /v1/operational-overview", "POST /v1/self-healing/scans"],
       },
       {
         labelKey: "nav.settings",
