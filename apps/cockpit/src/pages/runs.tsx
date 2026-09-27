@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import { Search } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
@@ -37,10 +37,12 @@ import {
   formatRunDuration,
   REQUEST_SOURCES,
   RUN_STATUSES,
+  type RunFact,
   requestSourceLabel,
   runAuthorityFacts,
   runCostFacts,
   runDurationMs,
+  runIdFromPath,
   runName,
   SOURCE_KIND_KEYS,
 } from "@/pages/runs-model";
@@ -117,7 +119,7 @@ function RunDetail({ run }: { run: Execution }) {
   const resultEvidence = resultStep
     ? previewText(resultStep.output_preview ?? resultStep.result_preview)
     : null;
-  const facts: Array<[string, string]> = [
+  const facts: RunFact[] = [
     [t("resource.field.status"), statusLabel(t, current.status)],
     [t("runs.column.started"), current.started_at ? dateTime(current.started_at) : MISSING],
     [t("runs.detail.finished"), current.finished_at ? dateTime(current.finished_at) : MISSING],
@@ -136,10 +138,15 @@ function RunDetail({ run }: { run: Execution }) {
   return (
     <div className="grid gap-5 p-4">
       <dl className="grid grid-cols-2 gap-3" data-testid="run-detail-facts">
-        {facts.map(([label, value]) => (
+        {facts.map(([label, value, full]) => (
           <div key={label} className="grid gap-1 border-b pb-2">
             <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-            <dd className="text-sm break-words">{value}</dd>
+            {/* `title` only where the row shows a shortened identifier — the
+                whole value has to stay copyable, but a tooltip repeating text
+                that is already fully on screen is noise. */}
+            <dd className="text-sm break-words" title={full}>
+              {value}
+            </dd>
           </div>
         ))}
       </dl>
@@ -236,7 +243,12 @@ export function RunsPage() {
   const [sourceFilter, setSourceFilter] = useState<string>(initial.source);
   const [search, setSearch] = useState(initial.q);
   const [page, setPage] = useState(0);
-  const [selected, setSelected] = useState<Execution | null>(null);
+  // The run the address names. It was a `useState<Execution | null>` holding
+  // the row itself, which is why nothing outside this component could ever
+  // open one: the only way in was a click, and local state has no address.
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    runIdFromPath(window.location.pathname),
+  );
   const debouncedSearch = useDebouncedValue(search);
   const allowed = session.permissions.includes("execution:read");
   const title = t("resource.runs.title");
@@ -262,6 +274,47 @@ export function RunsPage() {
   });
   const rows = useMemo(() => query.data?.items ?? [], [query.data]);
   const total = query.data?.total ?? rows.length;
+
+  const rowForId = selectedId ? (rows.find((run) => run.id === selectedId) ?? null) : null;
+  // A run reached by its address need not be among the rows on screen: a
+  // different filter, a later page, or simply older than the newest
+  // twenty-five. Everywhere else on this page the row IS the record, so when
+  // there is no row the sheet asks the engine for one — under the very key
+  // `RunDetail` reads, so arriving by address costs no second request.
+  const addressedId = rowForId ? null : selectedId;
+  const addressed = useQuery({
+    queryKey: ["run", addressedId ?? ""],
+    enabled: allowed && addressedId !== null,
+    queryFn: () => apiRequest<Execution>(`/v1/executions/${encodeURIComponent(addressedId ?? "")}`),
+  });
+  // Never the answer to a question that is no longer being asked: the key
+  // changes with the id, and a stale record under the previous one would title
+  // the sheet after a run the reader had already closed.
+  const selected = rowForId ?? (addressed.data?.id === selectedId ? addressed.data : null);
+
+  /**
+   * Show one run, or none, and say so in the address.
+   *
+   * `/runs` and `/runs/$resourceId` render the same component (app/router.tsx),
+   * so this moves the history entry without remounting the page: the filters,
+   * the page number and the loaded rows are exactly as the reader left them.
+   * The query string travels along because it carries the filter the reader
+   * arrived with — dropping it would silently widen the list on a reload.
+   */
+  const showRun = useCallback((id: string | null) => {
+    const path = id ? `/cockpit/runs/${encodeURIComponent(id)}` : "/cockpit/runs";
+    window.history.pushState({}, "", `${path}${window.location.search}`);
+    setSelectedId(id);
+  }, []);
+
+  // Back and forward are the two buttons every reader already knows for
+  // "close that again". Without this the address would change and the sheet
+  // would not, which is the same lie as a sheet with no address.
+  useEffect(() => {
+    const onPopState = () => setSelectedId(runIdFromPath(window.location.pathname));
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const columns = useMemo<CockpitColumn<Execution>[]>(() => {
     const column = tableColumns<Execution>({ t, dateTime });
@@ -311,8 +364,12 @@ export function RunsPage() {
         "kind",
         (run) => run.source_kind,
         t("resource.field.kind"),
-        // A child run says so in a word. There is no run detail route, so it
-        // does not pretend to link to the parent.
+        // A child run says so in a word. The line that stood here — "there is
+        // no run detail route" — was true until `/runs/$resourceId` existed
+        // and is not any more; a restraint justified by a fact that has since
+        // changed justifies nothing. The cell is still a word because this
+        // renderer returns a string: making the parent reachable is a change
+        // to the cell, not to the route, and it is not this one.
         (run) =>
           `${run.hold_writes ? `${t("runs.preparation")} · ` : ""}${
             run.parent_execution_id
@@ -473,7 +530,7 @@ export function RunsPage() {
         hasActiveFilters={hasActiveFilters}
         sorting={[] as SortingState}
         onSortingChange={() => {}}
-        onOpen={(run) => setSelected(run)}
+        onOpen={(run) => showRun(run.id)}
         page={page}
         pageSize={PAGE_SIZE}
         total={total}
@@ -487,7 +544,7 @@ export function RunsPage() {
         openLabel={t("common.open")}
       />
 
-      <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
+      <Sheet open={Boolean(selectedId)} onOpenChange={(open) => !open && showRun(null)}>
         <SheetContent
           className="w-full overflow-y-auto sm:max-w-xl"
           closeLabel={t("common.close")}
@@ -500,7 +557,23 @@ export function RunsPage() {
             </SheetTitle>
             <SheetDescription>{t("runs.detail.description")}</SheetDescription>
           </SheetHeader>
-          {selected && <RunDetail run={selected} />}
+          {/* Three different facts, told apart. The record is here; it is on
+              its way; or this address names no run this installation has. A
+              blank sheet reads as a rendering fault and an empty fact list
+              reads as a run that recorded nothing — neither is what happened. */}
+          {selected ? (
+            <RunDetail run={selected} />
+          ) : addressed.error ? (
+            <Alert variant="destructive" className="m-4 w-auto" data-testid="run-detail-missing">
+              <AlertTitle>{t("runs.detail.loadFailed")}</AlertTitle>
+              <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
+            </Alert>
+          ) : (
+            <div className="grid gap-3 p-4" data-testid="run-detail-pending">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          )}
         </SheetContent>
       </Sheet>
     </PageFrame>

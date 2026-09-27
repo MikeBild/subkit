@@ -25,6 +25,7 @@ import {
 import type { Db } from "../db/client.ts";
 import { executionSteps, executions, patchCandidates, workflows } from "../db/schema/index.ts";
 import { classifyFailure, humanizeClassification } from "../execution/classify.ts";
+import { monthlyUsage, resolveMonthlyBudget } from "../llm/accounting/index.ts";
 import { getContext } from "../logging/context.ts";
 import { computeRiskSignals, type RiskSignal, takeRiskEdges, topRisk } from "./risk-signals.ts";
 
@@ -448,9 +449,15 @@ export async function buildOperatorHealthDigest(
         Number(b.classification === "unsafe") - Number(a.classification === "unsafe"),
     );
 
-  // Leading-indicator risks from the live process metrics. Pure read; the
-  // builder stays deterministic for a fixed registry + config snapshot.
-  const risk = computeRiskSignals();
+  // Leading-indicator risks from the live process metrics, plus the month's
+  // allowance, which the registry cannot answer: `llm_tokens_total` is a
+  // counter since process start and resets on every deploy. The digest holds
+  // both halves already, so it hands them over rather than letting the signal
+  // guess. Still deterministic for a fixed registry + config + usage snapshot.
+  const risk = computeRiskSignals({
+    monthTokens: await monthlyUsage(tenant_id, db),
+    monthBudget: resolveMonthlyBudget(tenant_id),
+  });
 
   // Audit each critical risk ONCE on the false→true edge and once on recovery
   // — not on every digest read (the builder runs on every MCP connect /

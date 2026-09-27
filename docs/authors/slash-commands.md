@@ -73,7 +73,7 @@ so this column is the UX gate, not the security boundary.
 | ------- | ------- | -------- | ----------- |
 | `/admin` | — | — | Open the admin palette — RBAC, API keys, system accounts, portal tokens, hooks |
 | `/apikeys` | — | `api_key:read` | List API keys (masked) |
-| `/audit` | — | `audit:read` | Tail your audit log |
+| `/audit` | — | `audit:read` | Show the 20 most recent audit-log entries |
 | `/discovery` | — | `discovery:read` | List discovery runs and artifacts |
 | `/executions` | `/runs` | `execution:read` | List recent workflow executions |
 | `/install-space` | — | `chat_workspace:write` | List/install pending chat spaces (Google Chat) |

@@ -41,7 +41,11 @@ function href(
   if (kind === "workflow") return `/workflows/${encodeURIComponent(id)}`;
   if (kind === "connector") return `/connectors/${encodeURIComponent(id)}`;
   if (kind === "conversation") return `/chat/${encodeURIComponent(id)}`;
-  // Runs have no detail route; the list is the honest destination.
+  // A run has its own address now. This said "runs have no detail route; the
+  // list is the honest destination", which was true when written and is the
+  // reason the route was built: a decision that names the run which failed
+  // could point at the list and no further. It points at the run.
+  if (kind === "run") return `/runs/${encodeURIComponent(id)}`;
   return "/runs";
 }
 

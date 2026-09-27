@@ -98,7 +98,7 @@ credentials work together.
 
 - `sk workflows list` — see what's defined.
 - `sk executions list` — watch executions.
-- `sk audit tail` — confirm every state change is recorded.
+- `sk audit query` — confirm every state change is recorded.
 - `curl -H "Authorization: Bearer <key>" http://localhost:3000/metrics` — Prometheus scrape target.
 - `sk settings configure` — interactive form for every runtime config leaf (database, LLM provider, observability, etc.). See [`subkit.config.example.json`](../../subkit.config.example.json) at the repo root for the full schema with defaults.
 

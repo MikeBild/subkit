@@ -1,6 +1,7 @@
 // What counts as "approved and failing", and what a link to it must lead to.
 
 import { expect, test } from "bun:test";
+import { filterFromUrl } from "@/pages/runs-model";
 import { type DigestFailureGroup, failingWorkflows } from "./failing-workflows";
 
 const group = (over: Partial<DigestFailureGroup>): DigestFailureGroup => ({
@@ -54,10 +55,34 @@ test("the link leads to those runs, not to every run", () => {
   // absolute href became `/cockpit/cockpit/runs` and the one way out of a
   // failing decision landed on "page not found". A test that agrees with the
   // defect is worse than no test: it certifies it.
-  expect(failing?.runs_href).toBe("/runs?status=failed&q=Product%20analytics%20hourly");
-  // Without a name there is nothing to search for, but the status still narrows.
+  //
+  // `source=scheduler` is the second half of "those runs, not every run". The
+  // decision only exists because the scheduler started these (`scheduled_count
+  // > 0`), so a link that also brings back chat and authoring trials cannot
+  // add up to the count printed beside it.
+  expect(failing?.runs_href).toBe(
+    "/runs?status=failed&source=scheduler&q=Product%20analytics%20hourly",
+  );
+  // Without a name there is nothing to search for, but status and source still
+  // narrow — the nameless group is the one an unfiltered list helps least.
   const [unnamed] = failingWorkflows([group({ workflow_name: null })]);
-  expect(unnamed?.runs_href).toBe("/runs?status=failed");
+  expect(unnamed?.runs_href).toBe("/runs?status=failed&source=scheduler");
+});
+
+test("the runs page can read back every filter this href sends", () => {
+  // A parameter the link sends and the page drops is indistinguishable from no
+  // filter at all — the defect `filterFromUrl`'s own doc was written for. This
+  // pins the half that is a pure function: the href parses into exactly the
+  // three filters it means, with `source` surviving validation rather than
+  // falling back to "all" the way an unknown value would.
+  //
+  // The rest of the chain is not testable here without a DOM, and is wired:
+  // pages/runs.tsx seeds its state from `filterFromUrl` and sends the result on
+  // as `request_source`, which the engine accepts as a list filter
+  // (http/routes/executions/list.ts).
+  const [failing] = failingWorkflows([group({})]);
+  const filter = filterFromUrl(failing?.runs_href.slice(failing.runs_href.indexOf("?")) ?? "");
+  expect(filter).toEqual({ status: "failed", q: "Product analytics hourly", source: "scheduler" });
 });
 
 test("an authoring trial that failed is feedback, not an incident", () => {

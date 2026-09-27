@@ -6,6 +6,7 @@ import {
   runAuthorityFacts,
   runCostFacts,
   runDurationMs,
+  runIdFromPath,
   runName,
 } from "@/pages/runs-model";
 
@@ -48,6 +49,37 @@ describe("run authority evidence", () => {
     expect(
       runAuthorityFacts({ execution_authority_id: null, workflow_version_id: null }, t),
     ).toEqual([["Authority recorded for this run", "No execution-authority binding recorded"]]);
+  });
+  test("shortens the two identifiers a person actually gets, and keeps them copyable", () => {
+    // The fixtures above are prose-shaped, so they proved nothing about the
+    // defect: the sheet printed two 36-character UUIDs under "Authority
+    // recorded for this run" and "Exact workflow version", which UI-UX.md and
+    // COCKPIT-KONVENTION §5 forbid where a person reads. Real UUIDs here.
+    const authority = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
+    const version = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+    const facts = runAuthorityFacts(
+      { execution_authority_id: authority, workflow_version_id: version },
+      t,
+    );
+    expect(facts).toEqual([
+      ["Authority recorded for this run", "018f4b4a…", authority],
+      ["Exact workflow version", "7c9e6679…", version],
+    ]);
+    // No UUID survives into what is rendered.
+    for (const [, shown] of facts) {
+      expect(shown).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    }
+  });
+  test("a value that was never shortened is not given a tooltip of itself", () => {
+    // The third slot is what the sheet hangs on `title`. Emitting it for a
+    // value already shown whole would promise a hidden rest that does not
+    // exist — absent and identical are not the same fact.
+    const [authority, version] = runAuthorityFacts(
+      { execution_authority_id: "historical-authority", workflow_version_id: "historical-version" },
+      t,
+    );
+    expect(authority).toHaveLength(2);
+    expect(version).toHaveLength(2);
   });
   test("localizes the absence of stored evidence without translating identifiers", () => {
     const de = (key: Parameters<typeof translate>[1]) => translate("de", key);
@@ -182,5 +214,30 @@ describe("what a run consumed", () => {
   test("formats in the reader's language", () => {
     const facts = runCostFacts({ llm: { calls: 1, weighted_tokens: 58_472 } }, de, "de");
     expect(facts[0]?.[1]).toBe("58.472");
+  });
+});
+
+describe("the run an address names", () => {
+  test("reads the id out of a run's own path", () => {
+    // The sheet used to open from local state alone, so a run had no address
+    // and nothing could link to one. This is the reading half of the fix.
+    expect(runIdFromPath("/cockpit/runs/018f4b4a-6d33-7b3a-9c2d-123456789abc")).toBe(
+      "018f4b4a-6d33-7b3a-9c2d-123456789abc",
+    );
+  });
+
+  test("the list itself names no run", () => {
+    // Opening a sheet here would show a record the address never asked for.
+    expect(runIdFromPath("/cockpit/runs")).toBeNull();
+    expect(runIdFromPath("/cockpit/runs/")).toBeNull();
+    expect(runIdFromPath("/cockpit/workflows/abc")).toBeNull();
+    expect(runIdFromPath("/cockpit/runs/abc/steps")).toBeNull();
+  });
+
+  test("an id that had to be escaped survives the round trip", () => {
+    // The page writes the path with `encodeURIComponent`; reading it back has
+    // to undo exactly that, or the sheet asks the engine for a different run.
+    expect(runIdFromPath(`/cockpit/runs/${encodeURIComponent("run/42")}`)).toBe("run/42");
+    expect(runIdFromPath(`/cockpit/runs/${encodeURIComponent("a b")}`)).toBe("a b");
   });
 });
