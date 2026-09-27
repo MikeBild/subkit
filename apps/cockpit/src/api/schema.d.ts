@@ -5779,6 +5779,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description Workflow is archived */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -18328,6 +18337,8 @@ export interface components {
                 reason_code: "execution_authority_required" | "execution_authority_unavailable";
                 observed_at: string;
             } | null;
+            /** @enum {string} */
+            state: "active" | "paused" | "held" | "activation_required";
             next_fire_at: string | null;
             last_enqueued_at: string | null;
         } | null;
@@ -18337,7 +18348,7 @@ export interface components {
             /** @enum {string} */
             source: "binding" | "definition" | "default";
             /** @enum {string} */
-            state: "active" | "paused" | "held" | "declared_unbound";
+            state: "active" | "paused" | "held" | "activation_required" | "declared_unbound";
         };
         Workflow: {
             id: string;

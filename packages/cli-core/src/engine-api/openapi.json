@@ -7369,6 +7369,15 @@
               "observed_at"
             ]
           },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "held",
+              "activation_required"
+            ]
+          },
           "next_fire_at": {
             "type": [
               "string",
@@ -7389,6 +7398,7 @@
           "paused",
           "execution_mode",
           "admission_hold",
+          "state",
           "next_fire_at",
           "last_enqueued_at"
         ]
@@ -7418,6 +7428,7 @@
               "active",
               "paused",
               "held",
+              "activation_required",
               "declared_unbound"
             ]
           }
@@ -29937,6 +29948,16 @@
           },
           "404": {
             "description": "Workflow not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow is archived",
             "content": {
               "application/json": {
                 "schema": {

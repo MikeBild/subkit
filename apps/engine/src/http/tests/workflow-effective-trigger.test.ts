@@ -11,7 +11,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
-import { workflowsSchedules } from "../../db/schema/index.ts";
+import { workflows, workflowsSchedules } from "../../db/schema/index.ts";
+import { inspectScheduleAutomation } from "../../scheduler/automation-status.ts";
+import { getSchedule } from "../../scheduler/repo.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 // Counts every query the app issues through its db handle. The app is built
@@ -55,6 +57,7 @@ interface WorkflowBody {
     id: string;
     cron: string;
     paused: boolean;
+    state: string;
     next_fire_at: string | null;
   } | null;
   webhooks_active: number;
@@ -154,6 +157,53 @@ describe("effective trigger on the workflow representation", () => {
     const detail = await getWorkflow(wf.id);
     expect(detail.effective_trigger.state).toBe("held");
     expect(detail.schedule?.next_fire_at).toBeNull();
+  });
+
+  test("a schedule on a draft workflow does not fire, and agrees with the automation status", async () => {
+    const wf = await createWorkflow("et-draft");
+    const scheduleId = await bindSchedule(wf.id);
+    // The metadata route does not demote to draft; a workflow saved but never
+    // activated is exactly this row.
+    await ctx.db
+      .update(workflows)
+      .set({ lifecycle: "draft" })
+      .where(and(eq(workflows.tenant_id, ctx.tenantId), eq(workflows.id, wf.id)));
+    const detail = await getWorkflow(wf.id);
+    expect(detail.effective_trigger).toEqual({
+      kind: "schedule",
+      source: "binding",
+      state: "activation_required",
+    });
+    expect(detail.schedule?.state).toBe("activation_required");
+    expect(detail.schedule?.next_fire_at).toBeNull();
+    const row = await getSchedule(ctx.db, ctx.tenantId, scheduleId);
+    if (!row) throw new Error("schedule row missing");
+    expect((await inspectScheduleAutomation(row, ctx.db)).state).toBe("activation_required");
+  });
+
+  test("an archived workflow cannot be scheduled", async () => {
+    const wf = await createWorkflow("et-archived");
+    const patched = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}/metadata`, {
+      method: "PATCH",
+      headers: headers(),
+      body: JSON.stringify({ lifecycle: "archived" }),
+    });
+    expect(patched.status).toBe(200);
+    const res = await fetch(`${ctx.baseUrl}/v1/schedules`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ workflow_id: wf.id, cron: "7 * * * *" }),
+    });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { message?: string }).message ?? "").toContain("archived");
+  });
+
+  test("an active every:N schedule has a next fire", async () => {
+    const wf = await createWorkflow("et-every");
+    await bindSchedule(wf.id, "every:30");
+    const detail = await getWorkflow(wf.id);
+    expect(detail.effective_trigger.state).toBe("active");
+    expect(detail.schedule?.next_fire_at).not.toBeNull();
   });
 
   test("a declared schedule without a bound row is declared_unbound", async () => {
