@@ -71,7 +71,7 @@ const ScanCandidateSchema = z
     id: z.string().uuid(),
     signal_type: SignalTypeEnum,
     classification: z.enum(["safe", "unsafe"]),
-    status: z.enum(["proposed", "applied", "rejected", "superseded"]),
+    status: z.enum(["proposed", "applied", "rejected", "superseded", "inapplicable"]),
   })
   .openapi("SelfHealingScanCandidate");
 
@@ -345,7 +345,7 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
       id: string;
       signal_type: z.infer<typeof SignalTypeEnum>;
       classification: "safe" | "unsafe";
-      status: "proposed" | "applied" | "rejected" | "superseded";
+      status: "proposed" | "applied" | "rejected" | "superseded" | "inapplicable";
     }> = [];
     const unanchored: Array<{
       signal_type: z.infer<typeof SignalTypeEnum>;

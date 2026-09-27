@@ -69,28 +69,24 @@ const reviewCommand = defineCommand({
     }
 
     const [patchItems, skillItems, failedItems] = await Promise.all([
-      safeList("patch-candidates", () => client.listPatchCandidates({ limit })),
+      // Open decisions only: proposed AND reviewable on the current workflow
+      // version — the engine's one predicate, not a status filter of our own.
+      safeList("patch-candidates", () => client.listPatchCandidates({ limit, reviewable: "true" })),
       safeList("skill-candidates", () => client.listSkillCandidates({ limit, status: "proposed" })),
       safeList("executions", () => client.listExecutions({ limit, status: "failed" })),
     ]);
 
-    const patchRows: ReviewRow[] = patchItems
-      // Pending only — already-approved/rejected candidates are not work.
-      .filter((it) => {
-        const s = str(it.status);
-        return s === undefined || s === "pending" || s === "proposed";
-      })
-      .map((it) => {
-        const id = str(it.id) ?? "(unknown)";
-        return {
-          kind: "patch_candidate" as const,
-          id,
-          summary: str(it.summary) ?? str(it.workflow_id) ?? "(patch candidate)",
-          status: str(it.status),
-          created_at: str(it.created_at),
-          action: `sk patch-candidates approve ${id}`,
-        };
-      });
+    const patchRows: ReviewRow[] = patchItems.map((it) => {
+      const id = str(it.id) ?? "(unknown)";
+      return {
+        kind: "patch_candidate" as const,
+        id,
+        summary: str(it.summary) ?? str(it.workflow_id) ?? "(patch candidate)",
+        status: str(it.status),
+        created_at: str(it.created_at),
+        action: `sk patch-candidates approve ${id}`,
+      };
+    });
 
     const skillRows: ReviewRow[] = skillItems.map((it) => {
       const id = str(it.id) ?? "(unknown)";

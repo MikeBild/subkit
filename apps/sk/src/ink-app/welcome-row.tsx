@@ -146,7 +146,7 @@ export const WelcomeRow: React.FC<WelcomeRowProps> = ({
     digestSnapshot &&
       (digestSnapshot.failure_groups.length > 0 ||
         digestSnapshot.risk.length > 0 ||
-        digestSnapshot.patch_candidates.pending > 0),
+        digestSnapshot.patch_candidates.open > 0),
   );
   const digestNode =
     hasDigest && digestSnapshot ? <NeedsAttentionPanel digest={digestSnapshot} /> : null;

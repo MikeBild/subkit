@@ -107,7 +107,7 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
     // failure_groups and patch_candidates are tenant-scoped.
     const digestOther = await buildOperatorHealthDigest(testDb.db, other!.id);
     expect(digestOther.failure_groups).toHaveLength(0);
-    expect(digestOther.patch_candidates.pending).toBe(0);
+    expect(digestOther.patch_candidates.open).toBe(0);
     // Risk signals are process-scoped (shared infrastructure), not tenant-scoped.
     expect(digestOther.risk.length).toBeGreaterThanOrEqual(1);
   });

@@ -112,15 +112,50 @@ export async function findMatchingTerminalEndpointCandidate(
         params.endpoint_key
           ? eq(patchCandidates.endpoint_key, params.endpoint_key)
           : isNull(patchCandidates.endpoint_key),
-        inArray(patchCandidates.status, ["rejected", "superseded"]),
+        inArray(patchCandidates.status, ["rejected", "superseded", "inapplicable"]),
       ),
     )
     .orderBy(desc(patchCandidates.created_at));
   const fingerprint = signalFingerprint(params.signal);
   return (
-    rows.find(
-      (r) => matchesCandidateBoundary(r, params) && candidateDriftFingerprint(r) === fingerprint,
+    rows.find((r) =>
+      r.status === "inapplicable"
+        ? matchesInapplicableBoundary(r, params, fingerprint)
+        : matchesCandidateBoundary(r, params) && candidateDriftFingerprint(r) === fingerprint,
     ) ?? null
+  );
+}
+
+/**
+ * An `inapplicable` candidate was proven undecidable against ONE workflow
+ * version. It suppresses re-proposal only while the workflow still sits on
+ * that version — strictly, never the lenient either-side-null boundary: a new
+ * version is exactly what can make a repair possible again, so it re-opens
+ * evaluation. Without the strict match the sweep would close, the next scan
+ * re-propose, and the pair would loop on every cadence tick.
+ */
+function matchesInapplicableBoundary(
+  candidate: typeof patchCandidates.$inferSelect,
+  params: {
+    connector_id: string | null;
+    endpoint_key: string | null;
+    base_version_id?: string | null;
+    workflow_step_id?: string | null;
+  },
+  fingerprint: string,
+): boolean {
+  const diff = candidate.diff as Record<string, unknown>;
+  const candidateFingerprint = candidateDriftFingerprint(candidate);
+  return (
+    !!candidate.closed_against_version_id &&
+    candidate.closed_against_version_id === params.base_version_id &&
+    (!params.workflow_step_id ||
+      !diff.workflow_step_id ||
+      diff.workflow_step_id === params.workflow_step_id) &&
+    // Same legacy fallback as the active lookup: a row with no stored signal
+    // on an anchored endpoint dedups by endpoint alone.
+    (candidateFingerprint === fingerprint ||
+      (candidateFingerprint === null && !!params.connector_id && !!params.endpoint_key))
   );
 }
 

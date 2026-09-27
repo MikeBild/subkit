@@ -8,6 +8,7 @@
 import { describe, expect, test } from "bun:test";
 import { settingsLeafFromUrl } from "@/pages/admin-model";
 import { auditFilterFromUrl } from "@/pages/audit-model";
+import { connectorHealthFilterFromUrl } from "@/pages/connectors-model";
 import { readFocus } from "@/pages/decisions";
 import { filterFromUrl } from "@/pages/runs-model";
 import {
@@ -17,6 +18,7 @@ import {
   chatNewHref,
   chatSeedFromUrl,
   connectorHref,
+  connectorsHref,
   conversationHref,
   decisionsHref,
   recordHref,
@@ -100,18 +102,20 @@ describe("decisions", () => {
 });
 
 describe("audit", () => {
-  test("record, request and scope all survive the round trip", () => {
+  test("record, request, scope and verbs all survive the round trip", () => {
     const href = auditHref({
       resourceType: "workflow",
       resourceId: ID,
       traceId: "cli-949cacce25ff4379",
       scope: "all",
+      actions: ["patch_candidate.approved", "patch_candidate.rejected"],
     });
     expect(auditFilterFromUrl(query(href))).toEqual({
       resourceType: "workflow",
       resourceId: ID,
       traceId: "cli-949cacce25ff4379",
       scope: "all",
+      actions: ["patch_candidate.approved", "patch_candidate.rejected"],
     });
   });
 
@@ -121,7 +125,17 @@ describe("audit", () => {
       resourceId: null,
       traceId: null,
       scope: null,
+      actions: [],
     });
+  });
+});
+
+describe("connectors", () => {
+  test("the health narrowing the tile sends is the one the list reads", () => {
+    expect(connectorHealthFilterFromUrl(query(connectorsHref({ health: "not_ok" })))).toBe(
+      "not_ok",
+    );
+    expect(connectorsHref()).toBe("/connectors");
   });
 });
 

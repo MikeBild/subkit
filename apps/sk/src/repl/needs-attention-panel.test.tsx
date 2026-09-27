@@ -6,7 +6,7 @@
 //   - the root-cause string is visible
 //   - it never contains "Reply yes" or "I noticed" (those are prose turn
 //     patterns that the old stdout banner approach used)
-//   - pending patch-candidates render with their summary
+//   - open patch-candidates render with their summary
 //   - risk signals render with headline and detail
 //   - an all-clear digest (no groups, no candidates, no risk) renders nothing
 //     meaningful beyond the header
@@ -29,7 +29,7 @@ function makeDigest(overrides: Partial<OperatorHealthDigest> = {}): OperatorHeal
     window_hours: 24,
     headline: "2 failures in the last 24h",
     failure_groups: [],
-    patch_candidates: { pending: 0, items: [] },
+    patch_candidates: { open: 0, items: [] },
     risk: [],
     rendered: "",
     all_clear: false,
@@ -335,12 +335,12 @@ describe("NeedsAttentionPanel — prose hygiene", () => {
 });
 
 describe("NeedsAttentionPanel — patch candidates", () => {
-  test("renders pending self-healing fix count and summary", () => {
+  test("renders the open self-healing fix count and summary", () => {
     const ui = render(
       <NeedsAttentionPanel
         digest={makeDigest({
           patch_candidates: {
-            pending: 2,
+            open: 2,
             items: [
               {
                 id: "patch-001",
@@ -368,9 +368,9 @@ describe("NeedsAttentionPanel — patch candidates", () => {
     ui.unmount();
   });
 
-  test("renders nothing for patch candidates when pending === 0", () => {
+  test("renders nothing for patch candidates when open === 0", () => {
     const ui = render(
-      <NeedsAttentionPanel digest={makeDigest({ patch_candidates: { pending: 0, items: [] } })} />,
+      <NeedsAttentionPanel digest={makeDigest({ patch_candidates: { open: 0, items: [] } })} />,
     );
     const frame = snapshot(ui);
     expect(frame).not.toContain("self-healing fix");

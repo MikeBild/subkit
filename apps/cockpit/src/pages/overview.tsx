@@ -238,8 +238,11 @@ export function OverviewPage() {
                   valueState={metric.value_state}
                   severity={metric.severity}
                   tooltip={t(copy.tooltip)}
-                  href={metric.drilldown.path}
-                  linkLabel={t(copy.link)}
+                  // The engine's own way to what this number counted — and
+                  // none under a zero, where there is nothing to open.
+                  {...(metricOffersDrilldown(metric)
+                    ? { href: absolute(metric.drilldown.path), linkLabel: t(copy.link) }
+                    : {})}
                   icon={<Icon className="size-4" />}
                   status={distinctStatus(
                     value,
@@ -279,22 +282,15 @@ export function OverviewPage() {
                           valueState={metric.value_state}
                           severity={metric.severity}
                           tooltip={t(copy?.tooltip ?? "operational.metric.value.tooltip")}
-                          // A link only where it leads somewhere that can act
-                          // on THIS number. A section header's link was a
-                          // word-for-word copy of the sidebar entry beside it,
-                          // and most metric links landed on an unfiltered list
-                          // that cannot tell the number apart: "execution
-                          // success 100%" opened every run including the
-                          // successful ones, and production incidents and trial
-                          // failures — two numbers whose whole purpose is to be
-                          // distinguishable — opened the identical URL.
-                          //
-                          // The numbers all stay. Only links that answer
-                          // nothing go, and none is invented to replace them.
-                          // The rule itself lives in the model, where it can
-                          // be held to a test.
-                          {...(metricOffersDrilldown(metric.id, metric.value)
-                            ? { href: metric.drilldown.path, linkLabel: t("operational.details") }
+                          // The engine aims every drilldown at what its number
+                          // counted (contract 2.3); the page adds only the
+                          // reader's rule — a zero has nothing to open. The rule
+                          // lives in the model, where it is held to a test.
+                          {...(metricOffersDrilldown(metric)
+                            ? {
+                                href: absolute(metric.drilldown.path),
+                                linkLabel: t("operational.details"),
+                              }
                             : {})}
                           icon={<Icon className="size-4" />}
                           className="min-h-36"

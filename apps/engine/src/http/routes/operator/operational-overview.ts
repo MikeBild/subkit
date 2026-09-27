@@ -37,6 +37,15 @@ const Health = Metric.extend({
       contribution: z.number().nullable(),
       freshness: z.enum(["fresh", "stale", "missing", "forbidden"]),
       required: z.boolean(),
+      drilldown: Drilldown,
+    }),
+  ),
+  causes: z.array(
+    z.object({
+      kind: z.enum(["failing_group", "held_schedule", "connector"]),
+      id: z.string(),
+      label: z.string(),
+      drilldown: Drilldown,
     }),
   ),
 });
@@ -49,19 +58,21 @@ const Freshness = Metric.extend({
       expected_interval_seconds: z.number().int(),
       stale_after_seconds: z.number().int(),
       state: z.enum(["fresh", "stale", "missing", "forbidden"]),
+      drilldown: Drilldown,
     }),
   ),
 });
 const Response = z
   .object({
     schema_version: z.literal("operational-overview.v1"),
-    contract_version: z.literal("2.2"),
+    contract_version: z.literal("2.3"),
     product: z.literal("subkit"),
     generated_at: z.string(),
     recommended_refresh_seconds: z.number().int().min(10).max(300),
     snapshot_state: z.enum(["ready", "partial", "forbidden", "contract-mismatch"]),
     core: z.object({
       blocked: Metric,
+      failing: Metric,
       overdue: Metric,
       other_decisions: Metric,
       health: Health,
@@ -84,7 +95,7 @@ const Response = z
     ),
     audit: z.object({
       path: z.literal("/cockpit/audit"),
-      contract_version: z.literal("2.2"),
+      contract_version: z.literal("2.3"),
       snapshot_generated_at: z.string(),
     }),
   })

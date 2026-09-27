@@ -94,7 +94,7 @@ export interface PatchCandidatePreview extends PatchReadiness {
   candidate_id: string;
   workflow_id: string;
   classification: "safe" | "unsafe";
-  status: "proposed" | "applied" | "rejected" | "superseded";
+  status: "proposed" | "applied" | "rejected" | "superseded" | "inapplicable";
   drift_summary: string | null;
   proposal: PatchProposal | null;
   fixture_available: boolean;
