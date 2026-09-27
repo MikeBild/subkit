@@ -396,7 +396,16 @@ export function DataTable<TData extends RowData>({
                   onKeyDown={
                     onOpen
                       ? (event) => {
-                          if (event.key === "Enter" || event.key === " ") onOpen(row.original);
+                          // Only the row's own focus opens it. A key pressed
+                          // on a button INSIDE the row bubbles here too, and
+                          // the browser then turns that same Enter into the
+                          // button's click — the record opened twice, and
+                          // Back had to be pressed twice to leave it.
+                          if (event.target !== event.currentTarget) return;
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          // Space would also scroll the page under the reader.
+                          event.preventDefault();
+                          onOpen(row.original);
                         }
                       : undefined
                   }
