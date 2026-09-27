@@ -26,7 +26,7 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   type AuditScope,
   actorTypeKey,
-  auditActionKey,
+  auditActionLabel,
   auditResourceHref,
   DECISION_ACTIONS,
   isAuditScope,
@@ -110,8 +110,18 @@ export function AuditPage() {
         (entry) => entry.action,
         t("resource.field.action"),
         (entry) => {
-          const key = auditActionKey(entry.action);
-          return <span title={entry.action}>{t(key)}</span>;
+          // A verb nobody has named yet shows the engine's own token, in a
+          // face that says so. Rendering it as prose — "Weiterer Vorgang" —
+          // told a reader the log had recorded something indistinct, when it
+          // had recorded precisely this.
+          const label = auditActionLabel(entry.action);
+          return label.kind === "named" ? (
+            <span title={entry.action}>{t(label.key)}</span>
+          ) : (
+            <span title={entry.action} className="font-mono text-xs" data-testid="audit-action-raw">
+              {label.value}
+            </span>
+          );
         },
         { width: "w-[24%]" },
       ),

@@ -149,6 +149,12 @@ const AUDIT_FIXTURE_ROWS = [
   { action: "workflow.updated", resource_type: "workflow", result: "success" },
   { action: "connector.invoked", resource_type: "connector", result: "denied" },
   { action: "settings.changed", resource_type: "settings", result: "error" },
+  // The one verb this build has NO word for, so the honest fallback — the
+  // engine's own token in a machine face — appears in a frame. `settings.changed`
+  // used to serve that purpose and has since been named, which would have left
+  // the fallback unphotographed and free to rot back into "Weiterer Vorgang".
+  // A real `AuditAction` (see `audit/types.ts`), not a plausible invention.
+  { action: "mcp_oauth.client_registered", resource_type: "mcp_oauth_client", result: "success" },
   // A schedule the engine put on hold. It belongs in a frame for two reasons:
   // it is the newest word the log has, and it is the only row whose `denied`
   // comes from a state change rather than a rejected call — a label that
@@ -1070,12 +1076,13 @@ async function mockApi(route) {
     // product cannot write, so no frame could ever show one of them named
     // wrongly, or named at all.
     //
-    // `settings.changed` is left in on purpose as the one action the cockpit has
-    // no word for: the honest fallback — the engine's own string — has to be
-    // visible in a frame, or nobody notices it becoming "Unbekannt". It is the
-    // ENGINE's spelling and not a plausible-looking one: the first version of
-    // this list wrote `settings.updated`, which no `AuditAction` carries, so the
-    // commit that removed four invented verbs shipped a fifth.
+    // One row carries an action the cockpit has no word for, so the honest
+    // fallback — the engine's own token, in a machine face — is visible in a
+    // frame. Without it nobody notices the fallback rotting back into a phrase
+    // that claims the log recorded something indistinct. Whichever verb plays
+    // that part must be a real `AuditAction`: the first version of this list
+    // wrote `settings.updated`, which no `AuditAction` carries, so the commit
+    // that removed four invented verbs shipped a fifth.
     const catalogue = AUDIT_FIXTURE_ROWS;
     // The engine filters on `action` and takes a comma-separated list. A mock
     // that ignored it would photograph a filter labelled "Entscheidungen" over
