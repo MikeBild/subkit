@@ -191,6 +191,8 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "patch_candidate.proposed": "audit.action.patchProposed",
   "patch_candidate.auto_applied": "audit.action.patchAutoApplied",
   "patch_candidate.dry_run_requested": "audit.action.patchDryRun",
+  // Written by the engine for every repair it proves it cannot make.
+  "patch_candidate.closed_inapplicable": "audit.action.patchClosedInapplicable",
   "skill_candidate.approved": "audit.action.skillApproved",
   "skill_candidate.rejected": "audit.action.skillRejected",
   "skill_candidate.proposed": "audit.action.skillProposed",
@@ -398,6 +400,31 @@ export interface AuditLinkFilter {
   resourceId: string | null;
   traceId: string | null;
   scope: AuditScope | null;
+  /**
+   * The verbs a link narrowed to — the overview's repair ratio sends the
+   * decided repairs this way. Empty when the link named none.
+   */
+  actions: string[];
+}
+
+/** At most this many verbs from one address; the engine's own lists are shorter. */
+const MAX_LINKED_ACTIONS = 32;
+const ACTION_TOKEN = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/;
+
+/**
+ * The `action` comma list, each verb checked on its own.
+ *
+ * One malformed token drops only itself: the rest of the list still names what
+ * the link meant, and an exact match on junk would narrow the log to nothing
+ * and read as "nothing happened".
+ */
+export function auditActionsFromUrl(search: string): string[] {
+  const raw = new URLSearchParams(search).get("action") ?? "";
+  const tokens = raw
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0 && token.length <= 96 && ACTION_TOKEN.test(token));
+  return [...new Set(tokens)].slice(0, MAX_LINKED_ACTIONS);
 }
 
 export function auditFilterFromUrl(search: string): AuditLinkFilter {
@@ -409,17 +436,31 @@ export function auditFilterFromUrl(search: string): AuditLinkFilter {
     resourceId: resourceType ? identifierParam(params, "resource_id") : null,
     traceId: auditTraceFromUrl(search),
     scope: isAuditScope(scope) ? scope : null,
+    actions: auditActionsFromUrl(search),
   };
 }
 
-/** The engine's own parameters for the narrowing a link brought. */
+/**
+ * The engine's own parameters for the narrowing a link brought.
+ *
+ * Applied after the scope's: a link that names its verbs means those verbs,
+ * and the "decisions" scope's own `action` list must not silently replace them.
+ */
 export function auditLinkParams(filter: AuditLinkFilter): Record<string, string> {
   const params: Record<string, string> = {};
   if (filter.resourceType) params.resource_type = filter.resourceType;
   if (filter.resourceId) params.resource_id = filter.resourceId;
   if (filter.traceId) params.trace_id = filter.traceId;
+  if (filter.actions.length > 0) params.action = filter.actions.join(",");
   return params;
 }
+
+/** The address keys each link narrowing is read from, for lifting one again. */
+export const AUDIT_LINK_KEYS = {
+  resource: ["resource_type", "resource_id"],
+  trace: ["trace_id"],
+  actions: ["action"],
+} as const;
 
 /**
  * Is this an audit record, or something else that arrived with a 200?

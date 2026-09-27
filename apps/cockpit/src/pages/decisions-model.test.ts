@@ -1,21 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import {
   ageInDays,
+  approveBlockedReason,
   bannerSubset,
+  chipCounts,
   conversationDecision,
   countOpenDecisions,
   type DecisionItem,
   filterByKinds,
   hasOverdue,
+  humanStep,
+  openDecisionQueue,
   partitionByUrgency,
   patchChangeKind,
   patchDecision,
   patchTitle,
   QUESTION_LINE_MAX,
   queueDisplayState,
+  resetView,
+  searchWithoutBucket,
   skillDecision,
   sortDecisions,
   splitByAge,
+  suggestionTargets,
 } from "./decisions-model";
 
 const NOW = Date.parse("2026-08-17T12:00:00.000Z");
@@ -129,6 +136,9 @@ describe("decision adapters", () => {
         diff: {
           proposal: { kind: "update_field_path", description: "Follow the renamed field" },
         },
+        closed_reason: null,
+        closed_against_version_id: null,
+        closed_at: null,
         created_at: daysAgo(18),
         updated_at: daysAgo(18),
       },
@@ -194,6 +204,9 @@ describe("decision adapters", () => {
         status: "proposed",
         fixture_id: null,
         diff: null,
+        closed_reason: null,
+        closed_against_version_id: null,
+        closed_at: null,
         created_at: daysAgo(1),
         updated_at: daysAgo(1),
       },
@@ -611,5 +624,122 @@ describe("queueDisplayState", () => {
     expect(queueDisplayState({ ...base, narrowed: true, total: 4 })).toBe("filtered-empty");
     // Narrowed, but there was never anything: then it really is empty.
     expect(queueDisplayState({ ...base, narrowed: true, total: 0 })).toBe("empty");
+  });
+});
+
+describe("the badge counts what the chips count", () => {
+  // A queue with every kind in it, including what the badge must NOT count:
+  // two waiting conversations and one proposal nobody can decide.
+  const items = [
+    item("patch", 1, "p1", { reviewable: true }),
+    item("patch", 5, "p2", { reviewable: true }),
+    item("patch", 2, "p3", { reviewable: false }),
+    item("skill", 1, "s1", { reviewable: true }),
+    item("conversation", 0, "c1"),
+    item("conversation", 0, "c2"),
+  ];
+  const totals = { patch: 2, skill: 1, conversation: 2 };
+
+  test("badge equals the sum of the chips", () => {
+    const open = openDecisionQueue({ items, totals, held: 1, failing: 2, nowMs: NOW });
+    const chips = chipCounts(open, { held: 1, failing: 2 });
+    expect(chips).toEqual({ patch: 2, skill: 1, schedule: 3 });
+    const sum = Object.values(chips ?? {}).reduce((total, count) => total + count, 0);
+    expect(open.total).toBe(sum);
+    expect(open.total).toBe(6);
+  });
+
+  test("the waiting conversations are counted on their own, never in the badge", () => {
+    const open = openDecisionQueue({ items, totals, held: 0, failing: 0, nowMs: NOW });
+    expect(open.byKind.conversation).toBe(2);
+    expect(open.total).toBe(3);
+  });
+
+  test("no count read, no chip numbers — an omitted number beats a guessed one", () => {
+    expect(chipCounts(null, { held: 4, failing: 0 })).toBeNull();
+  });
+});
+
+describe("one way back to the whole queue", () => {
+  test("reset clears the tile's focus AND the chips", () => {
+    expect(resetView()).toEqual({ focus: null, kinds: [] });
+  });
+
+  test("after a reset, a queue with anything in it is never 'nothing matches'", () => {
+    // The dead end: from the Blocked tile with no blocked workflow, "Alle
+    // anzeigen" cleared only the chips, and the list stayed narrowed and empty.
+    const view = resetView();
+    const narrowed = view.focus !== null || view.kinds.length > 0;
+    expect(queueDisplayState({ shown: 3, held: 0, failing: 0, total: 3, narrowed })).toBe("rows");
+    expect(narrowed).toBe(false);
+  });
+
+  test("the address loses the tile's bucket and keeps everything else", () => {
+    expect(searchWithoutBucket("?bucket=blocked")).toBe("");
+    expect(searchWithoutBucket("?bucket=failing&workflow_id=w1")).toBe("?workflow_id=w1");
+    expect(searchWithoutBucket("")).toBe("");
+  });
+});
+
+describe("why Freigeben cannot be pressed", () => {
+  const base = {
+    canDecide: true,
+    expanded: true,
+    kind: "patch" as const,
+    reviewDigest: null,
+    preview: { reviewable: true, review_digest: "d" },
+  };
+
+  test("a role that may not decide is told so first", () => {
+    expect(approveBlockedReason({ ...base, canDecide: false, expanded: false })).toBe(
+      "decisions.approveNeedsRole",
+    );
+  });
+
+  test("an unopened change asks to be looked at first", () => {
+    expect(approveBlockedReason({ ...base, expanded: false })).toBe("decisions.approveNeedsReview");
+  });
+
+  test("a change the engine will not take says so", () => {
+    expect(approveBlockedReason({ ...base, preview: { reviewable: false } })).toBe(
+      "decisions.approveNotReviewable",
+    );
+    expect(
+      approveBlockedReason({ ...base, kind: "skill", preview: undefined, reviewDigest: null }),
+    ).toBe("decisions.approveNotReviewable");
+  });
+
+  test("nothing blocking, or a preview still loading, gives no reason", () => {
+    expect(approveBlockedReason(base)).toBeNull();
+    expect(approveBlockedReason({ ...base, preview: undefined })).toBeNull();
+    expect(approveBlockedReason({ ...base, kind: "skill", reviewDigest: "d" })).toBeNull();
+  });
+});
+
+describe("suggestions lead somewhere or are not shown", () => {
+  test("an undecidable proposal with a workflow links to it; one without is left out", () => {
+    const withWorkflow = item("patch", 1, "p1", {
+      reviewable: false,
+      detail: { kind: "patch", evidence: { ...PATCH_EVIDENCE, workflowId: "w1" } },
+    });
+    const without = item("patch", 1, "p2", { reviewable: false });
+    const decidable = item("patch", 1, "p3", {
+      reviewable: true,
+      detail: { kind: "patch", evidence: { ...PATCH_EVIDENCE, workflowId: "w2" } },
+    });
+    const conversation = item("conversation", 0, "c1");
+    expect(
+      suggestionTargets([withWorkflow, without, decidable, conversation]).map((entry) => [
+        entry.item.id,
+        entry.workflowId,
+      ]),
+    ).toEqual([["p1", "w1"]]);
+  });
+});
+
+describe("a step key as a person reads it", () => {
+  test("underscores and hyphens become spaces", () => {
+    expect(humanStep("fetch_orders")).toBe("fetch orders");
+    expect(humanStep("send--report_mail")).toBe("send report mail");
   });
 });
