@@ -1153,6 +1153,70 @@ async function mockApi(route) {
       actionable_unread_count: 4,
     });
   }
+  // Consumption — the half of the Usage page that measures spend.
+  //
+  // Deliberately awkward. The cap sits at 92 % so the "nearly exhausted"
+  // badge renders rather than the comfortable one nobody needs to see; one
+  // group consumed nothing, so the share column must show a dash and not
+  // "0 %"; and one workflow name is long enough to test the truncation that
+  // a tidy fixture would never reach.
+  if (path === "/v1/status") {
+    return json(route, {
+      tokens_today: 1_240_000,
+      tokens_month: 138_000_000,
+      monthly_budget_tokens: 150_000_000,
+      remaining_monthly_budget_tokens: 12_000_000,
+      llm_provider: { configured: true, reachable: true },
+    });
+  }
+  if (path === "/v1/stats/llm") {
+    if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
+      return json(route, { code: "validation", message: "request validation failed" }, 400);
+    const axis = url.searchParams.get("group_by") ?? "workflow";
+    const byAxis = {
+      workflow: [
+        ["mission-control-reporting-rollup-monthly-with-a-very-long-name", 812, 96_400_000],
+        ["ga4-daily-report", 240, 31_600_000],
+        ["radar-publish-weekly", 61, 10_000_000],
+        ["never-invoked-workflow", 0, 0],
+      ],
+      flow: [
+        ["converse", 690, 88_000_000],
+        ["generate", 210, 34_000_000],
+        ["judge", 180, 12_000_000],
+        ["repair", 33, 4_000_000],
+      ],
+      user: [
+        ["operator@example.com", 900, 120_000_000],
+        ["scheduler", 223, 18_000_000],
+      ],
+      model: [
+        ["claude-sonnet-4-6", 820, 104_000_000],
+        ["claude-haiku-4-5", 303, 34_000_000],
+      ],
+    };
+    const rows = byAxis[axis] ?? byAxis.workflow;
+    return json(route, {
+      bucket: "day",
+      tz: "UTC",
+      from: "2026-07-11T00:00:00.000Z",
+      to: "2026-08-10T00:00:00.000Z",
+      groups: rows.map(([key, calls, total]) => ({
+        key,
+        buckets: [],
+        totals: {
+          calls: { total: calls, by_result: { success: calls } },
+          tokens: { prompt: total, completion: 0, cache_read: 0, cache_creation: 0, total },
+          latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+        },
+      })),
+      totals: {
+        calls: { total: rows.reduce((n, r) => n + r[1], 0), by_result: {} },
+        tokens: { total: rows.reduce((n, r) => n + r[2], 0) },
+        latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+      },
+    });
+  }
   if (path === "/v1/stats/executions") {
     if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
       return json(route, { code: "validation", message: "request validation failed" }, 400);
