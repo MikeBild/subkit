@@ -227,6 +227,23 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "secret.version_prepared": "audit.action.secretPrepared",
   "secret.version_approved": "audit.action.secretApproved",
   "secret.version_rejected": "audit.action.secretRejected",
+  // Read off the running installation rather than off the enum: 182 distinct
+  // verbs have actually been written there, and the map above named 67 of
+  // them — 96.31 % of rows, because the long tail is housekeeping. These ten
+  // are the remaining ones with real volume that a person either did or would
+  // go looking for after an incident. The rest stay machine values on
+  // purpose: a verb nobody reads is better shown as the token it is than
+  // dressed in prose that was invented for it.
+  "conversation.run_workflow": "audit.action.conversationRanWorkflow",
+  "tool_policy.confirmation_required": "audit.action.toolPolicyConfirmationRequired",
+  "credential.updated": "audit.action.credentialUpdated",
+  "settings.revision_saved": "audit.action.settingsRevisionSaved",
+  "settings.revision_activated": "audit.action.settingsRevisionActivated",
+  "schedule.trigger.fired": "audit.action.scheduleTriggerFired",
+  "llm.invocation": "audit.action.llmInvocation",
+  "wait.started": "audit.action.waitStarted",
+  "wait.completed": "audit.action.waitCompleted",
+  "webhook.trigger.failed_verification": "audit.action.webhookVerificationFailed",
 };
 
 /**
