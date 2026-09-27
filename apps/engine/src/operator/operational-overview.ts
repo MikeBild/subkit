@@ -407,7 +407,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       freshness: connectorRatio === null ? ("missing" as const) : ("fresh" as const),
       required: true,
       drilldown: {
-        path: "/cockpit/connectors?health=not_ok",
+        path: NOT_OK_CONNECTORS_PATH,
         label_id: "operational.open_connectors",
       },
     },
@@ -584,7 +584,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
                 : connectorRatio >= 0.7
                   ? "urgent"
                   : "critical",
-          path: "/cockpit/connectors",
+          path: NOT_OK_CONNECTORS_PATH,
           labelId: "operational.open_connectors",
           prometheus: "subkit_operational_connector_health_ratio",
         }),
@@ -659,6 +659,15 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
     },
   };
 }
+
+/**
+ * The connectors behind `connectors.healthy_ratio` that pull it down: the list
+ * narrowed by `GET /v1/connectors?health=not_ok`, the same predicate the ratio
+ * counts against (`connectorCountsAgainstHealth`). Both the health component
+ * and the section tile lead here — a ratio at 0 % links too, and the plain list
+ * would hand the reader every connector instead of the broken ones.
+ */
+export const NOT_OK_CONNECTORS_PATH = "/cockpit/connectors?health=not_ok";
 
 /** The audit rows behind `repairs.applied_ratio`: every decided repair. */
 export const DECIDED_REPAIRS_PATH =

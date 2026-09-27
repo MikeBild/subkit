@@ -196,6 +196,7 @@
     "kpiId": "data-family-kpi-id",
     "kpiValueState": "data-family-kpi-value-state",
     "kpiSeverity": "data-family-kpi-severity",
+    "kpiKind": "data-family-kpi-kind",
     "kpiLink": "data-family-kpi-link",
     "kpiTooltip": "data-family-kpi-tooltip",
     "visualization": "data-family-visualization",

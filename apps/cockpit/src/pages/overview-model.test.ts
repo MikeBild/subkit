@@ -37,10 +37,37 @@ describe("the way in from a number", () => {
     expect(
       metricOffersDrilldown({ value: null, severity: "unknown", drilldown: at("/cockpit/runs") }),
     ).toBe(false);
-    // A zero never links, however it is coloured.
+    // A counted zero never links, however it is coloured.
     expect(
-      metricOffersDrilldown({ value: 0, severity: "critical", drilldown: at("/cockpit/runs") }),
+      metricOffersDrilldown({
+        kind: "count",
+        value: 0,
+        severity: "critical",
+        drilldown: at("/cockpit/runs"),
+      }),
     ).toBe(false);
+  });
+
+  test("a ratio, score or duration at zero is the worst state, not nothing, and leads to its cause", () => {
+    // Execution success 0 %, connector health 0 %, repair rate 0 %, health
+    // score 0: each is red, and a red tile keeps its way to the cause (§1).
+    for (const kind of ["ratio", "score", "duration"]) {
+      expect(
+        metricOffersDrilldown({
+          kind,
+          value: 0,
+          severity: "critical",
+          drilldown: at("/cockpit/connectors?health=not_ok"),
+        }),
+      ).toBe(true);
+    }
+    // The zero rule is about counts only, and an untyped metric is a count.
+    expect(metricOffersDrilldown({ kind: "count", value: 0, drilldown: at("/cockpit/runs") })).toBe(
+      false,
+    );
+    expect(metricOffersDrilldown({ value: 0, drilldown: at("/cockpit/runs") })).toBe(false);
+    // Still no way in without a path.
+    expect(metricOffersDrilldown({ kind: "ratio", value: 0, drilldown: at(" ") })).toBe(false);
   });
 
   test("no path is no way in, whatever the value", () => {
