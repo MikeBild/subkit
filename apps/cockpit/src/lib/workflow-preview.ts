@@ -4,7 +4,7 @@ export type WorkflowPreviewSource =
 
 /** Cockpit previews never opt into live writes, even on a retry. */
 export function workflowPreviewRequest(source: WorkflowPreviewSource) {
-  return { ...source, request_source: "api" as const, hold_writes: true as const };
+  return { ...source, hold_writes: true as const };
 }
 
 export function workflowPreviewSucceeded(result: Record<string, unknown>): boolean {

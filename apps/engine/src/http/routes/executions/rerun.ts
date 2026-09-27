@@ -27,7 +27,7 @@ import { HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { enforceSavedWorkflowAllowlist } from "./run.ts";
+import { enforceSavedWorkflowAllowlist, runRequestSource } from "./run.ts";
 import { RunResponseSchema } from "./schemas.ts";
 
 const RerunBody = z
@@ -124,6 +124,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
 
     const input = body.input !== undefined ? body.input : (original.input ?? null);
     const execution_mode: ExecutionMode = original.execution_mode ?? "dev";
+    const request_source = runRequestSource(c);
 
     if (!original.workflow_version_id) {
       // Refused for the same class of reason as the codes caught below, and so
@@ -137,7 +138,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
           reason: "workflow_version_unavailable",
           message,
           workflow_id: original.workflow_id,
-          request_source: "api",
+          request_source,
           actor_id: principal.id ?? null,
           actor_type: actorType(principal),
           extra: { rerun_of: original.id },
@@ -156,7 +157,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
           execution_authority_id: body.execution_authority_id,
           hold_writes: body.hold_writes,
           idempotency_key: body.idempotency_key,
-          request_source: "api",
+          request_source,
           parent_execution_id: original.id,
           execution_environment: execution_mode,
           input,
@@ -181,7 +182,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
             reason: code,
             message: (error as Error).message,
             workflow_id: original.workflow_id,
-            request_source: "api",
+            request_source,
             actor_id: principal.id ?? null,
             actor_type: actorType(principal),
             extra: { rerun_of: original.id },
@@ -207,7 +208,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
         workflow_id: original.workflow_id,
         execution_id,
         input: admitted.input,
-        request_source: "api",
+        request_source,
         trace_id,
         execution_mode,
       };
@@ -235,7 +236,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
       },
       input: admitted.input,
       options: {
-        request_source: "api",
+        request_source,
         principal,
         execution_mode,
         parent_execution_id: original.id,

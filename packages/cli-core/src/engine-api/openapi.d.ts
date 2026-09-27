@@ -18646,8 +18646,11 @@ export interface components {
              * @example orders-sync:2026-09-03T07
              */
             idempotency_key?: string;
-            /** @enum {string} */
-            request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler" | "chat";
+            /**
+             * @description Which program holds the API key: api or cli. Ignored for a verified cockpit session. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.
+             * @enum {string}
+             */
+            request_source?: "api" | "cli";
         };
         ExecutionRunDraftBody: {
             /**
@@ -18663,8 +18666,11 @@ export interface components {
             definition: components["schemas"]["ExecutionRunDraftDefinition"];
             name?: string;
             input?: unknown;
-            /** @enum {string} */
-            request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler" | "chat";
+            /**
+             * @description Which program holds the API key: api or cli. Ignored for a verified cockpit session. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.
+             * @enum {string}
+             */
+            request_source?: "api" | "cli";
         };
         ExecutionRunDraftDefinition: {
             name: string;
@@ -18699,8 +18705,11 @@ export interface components {
                 [key: string]: unknown;
             };
             timeout_ms?: number;
-            /** @enum {string} */
-            request_source?: "api" | "cli" | "mcp" | "webhook" | "tool-chain" | "scheduler" | "chat";
+            /**
+             * @description Which program holds the API key: api or cli. Ignored for a verified cockpit session. Every other origin (scheduler, mcp, webhook, chat, tool-chain) is recorded by the engine and rejected here.
+             * @enum {string}
+             */
+            request_source?: "api" | "cli";
         };
         ExecutionRunStep: {
             kind: string;
