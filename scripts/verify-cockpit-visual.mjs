@@ -2276,8 +2276,15 @@ async function assertHeadingAlignment(page, label) {
     if (!heading) return null;
     // The first thing the body renders, whatever it is: a card, a table, a
     // paragraph. Its left edge is what a reader compares the title against.
+    //
+    // A card is in the list for the same reason: a paragraph INSIDE a card is
+    // indented by the card's own padding on purpose, and measuring it reported
+    // a 16px offset for a card that sat exactly under its heading. For years
+    // the first match was the page description in the header, so neither this
+    // nor a real misalignment of every list could show; removing descriptions
+    // that restated their titles made the check measure the body at last.
     const body = document.querySelector(
-      'main [data-testid$="-context"], main article, main [data-slot="table-container"], main section, main p',
+      'main [data-testid$="-context"], main article, main [data-slot="card"], main [data-slot="table-container"], main section, main p',
     );
     if (!body) return null;
     const a = heading.getBoundingClientRect();
