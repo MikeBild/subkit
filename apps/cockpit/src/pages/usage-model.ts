@@ -83,3 +83,108 @@ export function formatDurationMs(value: number | null): string {
   if (value < 1_000) return `${Math.round(value)} ms`;
   return `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)} s`;
 }
+
+// ---------------------------------------------------------------------------
+// Consumption — what the workspace spent, and what it has left
+//
+// The page called "Usage" measured duration and success rate and nothing else.
+// The engine has measured tokens per model, per purpose, per user and per
+// workflow the whole time, and serves them on `/v1/stats/llm`; the cap and the
+// remainder sit on `/v1/status`. No cockpit screen asked for either, so the
+// only surface that could answer "what does this cost us" was the terminal.
+// ---------------------------------------------------------------------------
+
+/** The axes a reader can break consumption down by, in the order offered. */
+export const CONSUMPTION_AXES = ["workflow", "flow", "user", "model"] as const;
+export type ConsumptionAxis = (typeof CONSUMPTION_AXES)[number];
+
+/** Token consumption over the same window, grouped along one axis. */
+export function llmStatsEndpoint(axis: ConsumptionAxis, now = new Date()): string {
+  const from = new Date(now);
+  from.setUTCDate(from.getUTCDate() - 30);
+  return `/v1/stats/llm?bucket=day&from=${encodeURIComponent(from.toISOString())}&group_by=${axis}`;
+}
+
+export interface ConsumptionRow {
+  /** The workflow, purpose, user or model this row is about. */
+  key: string;
+  calls: number;
+  tokens: number;
+  /** This row's share of the window, 0–1. `null` when the total is zero. */
+  share: number | null;
+}
+
+/**
+ * One row per group, largest first.
+ *
+ * `total` is the cache-weighted figure the budget is measured against, so the
+ * shares here add up to the same number the remaining-budget line subtracts
+ * from. Using raw prompt tokens instead would produce a breakdown that cannot
+ * be reconciled with the headline.
+ */
+export function consumptionRows(envelope: unknown): ConsumptionRow[] {
+  const groups = isRecord(envelope) && Array.isArray(envelope.groups) ? envelope.groups : [];
+  const rows = groups.flatMap((group): ConsumptionRow[] => {
+    if (!isRecord(group) || typeof group.key !== "string") return [];
+    const totals = isRecord(group.totals) ? group.totals : {};
+    const tokens = isRecord(totals.tokens) ? totals.tokens : {};
+    const callsEnvelope = isRecord(totals.calls) ? totals.calls : {};
+    return [
+      {
+        key: group.key,
+        calls: typeof callsEnvelope.total === "number" ? callsEnvelope.total : 0,
+        tokens: typeof tokens.total === "number" ? tokens.total : 0,
+        share: null,
+      },
+    ];
+  });
+  const total = rows.reduce((sum, row) => sum + row.tokens, 0);
+  return rows
+    .map((row) => ({ ...row, share: total > 0 ? row.tokens / total : null }))
+    .sort((a, b) => b.tokens - a.tokens || (a.key < b.key ? -1 : 1));
+}
+
+export interface BudgetSummary {
+  usedTokens: number | null;
+  budgetTokens: number | null;
+  remainingTokens: number | null;
+  /** How much of the cap is spent, 0–1. `null` when there is no cap. */
+  consumedShare: number | null;
+}
+
+/**
+ * The month's consumption against the cap.
+ *
+ * A missing cap is `null`, never `0`: "no cap configured" and "a cap of zero
+ * tokens" are different facts, and rendering the first as the second would
+ * tell an operator their workspace is exhausted when nothing bounds it.
+ */
+export function budgetSummary(status: unknown): BudgetSummary {
+  const s = isRecord(status) ? status : {};
+  const used = numberOrNull(s.tokens_month);
+  const budget = numberOrNull(s.monthly_budget_tokens);
+  const remaining = numberOrNull(s.remaining_monthly_budget_tokens);
+  return {
+    usedTokens: used,
+    budgetTokens: budget,
+    remainingTokens: remaining,
+    consumedShare:
+      budget !== null && budget > 0 && used !== null ? Math.min(used / budget, 1) : null,
+  };
+}
+
+/**
+ * How close the workspace is to its cap, as something a reader can act on.
+ *
+ * Deliberately three states and no percentage badge: the number is already on
+ * screen, and a second encoding of it would be the duplicate display this
+ * cockpit keeps removing. `null` when nothing bounds the workspace — an
+ * unbounded installation is not "healthy", it is unmeasured, and saying
+ * otherwise is the zero that means "not measured".
+ */
+export function budgetPressure(summary: BudgetSummary): "ample" | "tightening" | "critical" | null {
+  if (summary.consumedShare === null) return null;
+  if (summary.consumedShare >= 0.9) return "critical";
+  if (summary.consumedShare >= 0.75) return "tightening";
+  return "ample";
+}
