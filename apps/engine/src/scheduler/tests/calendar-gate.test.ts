@@ -24,7 +24,8 @@ import {
   createWorkflowRow,
   type EngineTestCtx,
 } from "../../execution/tests/setup.ts";
-import { calendarGateSkipReason, localDateInTz, SchedulerReconciler } from "../reconciler.ts";
+import { calendarGateSkipReason, localDateInTz } from "../calendar-gates.ts";
+import { SchedulerReconciler } from "../reconciler.ts";
 import { grantScheduleAuthorityFixture } from "./authority-fixture.ts";
 
 let ctx: EngineTestCtx;

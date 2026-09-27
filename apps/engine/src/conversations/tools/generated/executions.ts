@@ -46,14 +46,18 @@ export const listExecutionsTool: ConversationTool = {
 
 export const getExecutionTool: ConversationTool = {
   name: "get_execution",
-  description: "Fetch one execution by id (full row including status and timestamps).",
+  description:
+    "Fetch one execution by id (full row including status and timestamps) plus its structured `outcome`: kind (succeeded / failed / held = writes held in a preview, nothing written / partial = a tolerated step failure / running), the failed step, its cause class and error code, step counts, and the output-contract verdict.",
   inputSchema: GetInput,
   category: "tenant_read",
   permission: { action: "execution:read", resourceType: "execution", resourceIdArg: "id" },
   async execute(ctx, args: z.infer<typeof GetInput>) {
     const e = await ctx.engineClient.executions.get(args.id);
     if (!e) return { ok: false, data: { error: "execution_not_found" } };
-    return { ok: true, data: { execution: e } };
+    return {
+      ok: true,
+      data: { execution: e, outcome: await ctx.engineClient.executions.outcome(e) },
+    };
   },
 };
 

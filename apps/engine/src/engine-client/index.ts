@@ -31,6 +31,7 @@ import {
   workflows as workflowsTable,
 } from "../db/schema/index.ts";
 import { listExecutions } from "../execution/list.ts";
+import { loadExecutionOutcome } from "../execution/outcome.ts";
 import * as identitySvc from "../identity/service.ts";
 import { listKnowledgeChunks } from "../knowledge/bundle-service.ts";
 import * as knowledgeSvc from "../knowledge/service.ts";
@@ -44,6 +45,7 @@ import {
 } from "../llm/accounting/index.ts";
 import { describeConnectorPlaceholders } from "../llm/substitution/resolver.ts";
 import * as rbacRoles from "../rbac/roles.ts";
+import { loadTriggerBindings } from "../scheduler/trigger-bindings.ts";
 import * as selfHealingSvc from "../self-healing/index.ts";
 import * as skillCandidatesSvc from "../skill-candidates/service.ts";
 import * as skillsSvc from "../skills/service.ts";
@@ -111,6 +113,8 @@ export class EngineClient {
     categories: () => loadCategoryIndex(this.tenant_id, this.db),
     /** Connector slugs referenced per workflow id (`connector-refs.ts`). */
     connectorRefs: () => listConnectorRefs(this.tenant_id, this.db),
+    /** Bound schedule + active webhook count per workflow id (two queries per call). */
+    triggerBindings: (ids: readonly string[]) => loadTriggerBindings(this.tenant_id, ids, this.db),
     get: (id: string) => getWorkflow(this.tenant_id, id, this.db),
     getBySlug: (slug: string) => getWorkflowBySlug(this.tenant_id, slug, this.db),
     delete: (id: string) => deleteWorkflow(this.tenant_id, id, this.actor_id, this.db),
@@ -199,6 +203,9 @@ export class EngineClient {
         .limit(1);
       return rows[0] ?? null;
     },
+    /** The run's structured outcome (see `execution/outcome.ts`). */
+    outcome: (row: Parameters<typeof loadExecutionOutcome>[1]) =>
+      loadExecutionOutcome(this.tenant_id, row, this.db),
   };
 
   skills = {
