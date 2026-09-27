@@ -132,13 +132,21 @@ export const getTokenBudgetTool: ConversationTool = {
     if (!scope.ok) return scope.error;
 
     if (scope.tenant || scope.userId == null) {
+      // Both halves, same shape as the per-user branch below. This used to
+      // hardcode `budget_tokens: null` and omit `remaining_tokens` entirely —
+      // so a tool called "get token budget" could not report the workspace's
+      // budget, and its two branches answered with two different objects. The
+      // value was resolvable the whole time; `/v1/status` had been returning
+      // it from the same source.
       const used = await ctx.engineClient.metrics.monthlyTokenUsage();
+      const budget = ctx.engineClient.metrics.tenantTokenBudget();
       return {
         ok: true,
         data: {
           user_id: null,
           used_tokens: used,
-          budget_tokens: null,
+          budget_tokens: budget,
+          remaining_tokens: budget == null ? null : Math.max(budget - used, 0),
           month_bucket: ctx.engineClient.metrics.currentMonthBucket(),
         },
       };

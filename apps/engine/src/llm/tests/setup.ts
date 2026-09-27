@@ -4,6 +4,10 @@
 // a connector + ingested doc chunks are seeded so the context pipeline
 // has something real to pick up.
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
 import {
   connectorDocumentChunks,
   connectorDocuments,
@@ -32,6 +36,19 @@ export async function createLlmTestCtx(label: string): Promise<LlmTestCtx> {
   process.env.LLM_PROVIDER = "mock";
   resetMockProvider();
   const testDb = await createTestDb(`llm_${label}`);
+
+  // The LLM path reads runtime config — the model, the provider, and now the
+  // monthly token cap, which used to be a database column no surface could
+  // write. A test that wants a cap sets it the way an operator does, with
+  // `setConfigKey("tokens.monthly_budget", n, { tenantId })`, and that needs a
+  // loaded config. Each file gets its own directory so one test's leaf cannot
+  // reach another's.
+  const configDir = mkdtempSync(join(tmpdir(), `sk-cfg-llm-${label}-`));
+  _resetConfigForTests();
+  await loadConfig({
+    env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
+    configPathOverride: join(configDir, "subkit.config.json"),
+  });
 
   const [tenant] = await testDb.db
     .insert(tenants)
@@ -159,6 +176,8 @@ export async function createLlmTestCtx(label: string): Promise<LlmTestCtx> {
 
   const cleanup = async () => {
     await testDb.cleanup();
+    _resetConfigForTests();
+    rmSync(configDir, { recursive: true, force: true });
   };
 
   return {

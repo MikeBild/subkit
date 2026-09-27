@@ -8,7 +8,11 @@
 //     applies; tighter-of-two wins.
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { eq } from "drizzle-orm";
+import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { llmUsage, tenantLlmSettings, tenants, userLlmSettings } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
@@ -22,6 +26,7 @@ import {
 const skip = process.env.REQUIRES_PG === "0";
 
 let testDb: TestDb;
+let configDir: string;
 let tenantId: string;
 let otherTenantId: string;
 
@@ -31,6 +36,12 @@ const USER_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 beforeAll(async () => {
   if (skip) return;
   testDb = await createTestDb("user-budget");
+  configDir = mkdtempSync(join(tmpdir(), "sk-cfg-user-budget-"));
+  _resetConfigForTests();
+  await loadConfig({
+    env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
+    configPathOverride: join(configDir, "subkit.config.json"),
+  });
 
   const [tenant] = await testDb.db
     .insert(tenants)
@@ -49,6 +60,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!skip && testDb?.cleanup) await testDb.cleanup();
+  if (configDir) {
+    _resetConfigForTests();
+    rmSync(configDir, { recursive: true, force: true });
+  }
 }, 30_000);
 
 afterEach(async () => {
@@ -56,6 +71,9 @@ afterEach(async () => {
   await testDb.db.delete(llmUsage);
   await testDb.db.delete(userLlmSettings);
   await testDb.db.delete(tenantLlmSettings);
+  // The tenant cap is config now, not a row — clearing the table no longer
+  // clears it, and a leaf left set would silently cap the next test.
+  await setConfigKey("tokens.monthly_budget", 0, { tenantId, force: true });
 }, 30_000);
 
 describe.skipIf(skip)("recordUsage — user_id + actor_type round-trip", () => {
@@ -283,10 +301,9 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
     const bucket = currentMonthBucket();
 
     // Seed tenant budget (large, so tenant cap does not trip first).
-    await testDb.db.insert(tenantLlmSettings).values({
-      tenant_id: tenantId,
-      llm_provider: "mock",
-      llm_monthly_token_budget: 100_000,
+    await setConfigKey("tokens.monthly_budget", 100_000, {
+      tenantId,
+      force: true,
     });
 
     // Per-user budget: 500.
@@ -326,10 +343,9 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
     const bucket = currentMonthBucket();
 
     // Tenant budget: 1000.
-    await testDb.db.insert(tenantLlmSettings).values({
-      tenant_id: tenantId,
-      llm_provider: "mock",
-      llm_monthly_token_budget: 1000,
+    await setConfigKey("tokens.monthly_budget", 1000, {
+      tenantId,
+      force: true,
     });
 
     // No per-user budget.
@@ -361,10 +377,9 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
     const bucket = currentMonthBucket();
 
     // Tenant budget: 500.
-    await testDb.db.insert(tenantLlmSettings).values({
-      tenant_id: tenantId,
-      llm_provider: "mock",
-      llm_monthly_token_budget: 500,
+    await setConfigKey("tokens.monthly_budget", 500, {
+      tenantId,
+      force: true,
     });
 
     // Pre-seed 490 tokens (no user_id).
@@ -392,10 +407,9 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
     const bucket = currentMonthBucket();
 
     // Tenant budget: 10_000 (generous).
-    await testDb.db.insert(tenantLlmSettings).values({
-      tenant_id: tenantId,
-      llm_provider: "mock",
-      llm_monthly_token_budget: 10_000,
+    await setConfigKey("tokens.monthly_budget", 10_000, {
+      tenantId,
+      force: true,
     });
 
     // User budget: 200 (tight).
@@ -433,10 +447,9 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
     const bucket = currentMonthBucket();
 
     // Tenant budget: 10_000.
-    await testDb.db.insert(tenantLlmSettings).values({
-      tenant_id: tenantId,
-      llm_provider: "mock",
-      llm_monthly_token_budget: 10_000,
+    await setConfigKey("tokens.monthly_budget", 10_000, {
+      tenantId,
+      force: true,
     });
 
     // User budget: 1_000.

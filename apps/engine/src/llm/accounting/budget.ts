@@ -5,8 +5,9 @@
 // operators can audit every LLM interaction against the budget.
 
 import { and, eq, sql } from "drizzle-orm";
+import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import { type Executor, getDb } from "../../db/client.ts";
-import { llmUsage, tenantLlmSettings, userLlmSettings } from "../../db/schema/index.ts";
+import { llmUsage, userLlmSettings } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { LlmQuotaExhausted } from "../errors.ts";
 import { weightedTotalTokens } from "../pricing.ts";
@@ -108,23 +109,35 @@ export async function checkBudget(
 }
 
 /**
- * Resolve the effective monthly budget for a tenant from
- * `tenant_llm_settings.llm_monthly_token_budget`. A null return means
- * the tenant has no explicit cap and so is treated as unlimited.
+ * Resolve the effective monthly budget for a tenant. A null return means the
+ * tenant has no explicit cap and so is treated as unlimited.
+ *
+ * The cap lives in `tokens.monthly_budget`, the tenant-scoped runtime config
+ * leaf, and nowhere else.
+ *
+ * It used to live in three places and be usable in none of them. The two
+ * columns this used to read — `tenant_llm_settings.llm_monthly_token_budget`
+ * and the legacy `tenants.llm_monthly_token_budget` — had two readers and
+ * **no writer anywhere in the product**: the only way to set the cap that
+ * actually returns 429 was manual SQL against an internal table. Meanwhile
+ * the config leaf, described in the schema as "Hard cap on tokens consumed
+ * per calendar month", editable in the settings surface, revisioned and
+ * audited, was read by nothing. So the cockpit offered an operator a cap that
+ * could not bite and hid the one that could.
+ *
+ * Now there is one: settable where it is shown, read where it is enforced.
+ *
+ * `0` is the schema default and means unlimited, which is why it maps to
+ * `null` rather than to a cap of zero tokens — a cap of zero would refuse
+ * every call on a fresh installation.
  */
-export async function resolveMonthlyBudget(
-  tenant_id: string,
-  exec?: Executor,
-): Promise<number | null> {
-  const db = exec ?? getDb();
-  const rows = await db
-    .select({ budget: tenantLlmSettings.llm_monthly_token_budget })
-    .from(tenantLlmSettings)
-    .where(eq(tenantLlmSettings.tenant_id, tenant_id))
-    .limit(1);
-  const raw = rows[0]?.budget ?? null;
-  if (raw == null) return null;
-  return Number(raw);
+export function resolveMonthlyBudget(tenant_id: string): number | null {
+  // A caller on a path that runs before `loadConfig()` must not be refused
+  // for want of a cap nobody set; an unreadable config is "no cap", the same
+  // answer an unconfigured tenant gets.
+  if (!isConfigLoaded()) return null;
+  const raw = getConfig(tenant_id).tokens?.monthly_budget ?? 0;
+  return raw > 0 ? raw : null;
 }
 
 export interface CheckAndDecrementResult {
@@ -156,7 +169,7 @@ export async function checkAndDecrement(
   exec?: Executor,
   user_id?: string | null,
 ): Promise<CheckAndDecrementResult> {
-  const tenantBudget = await resolveMonthlyBudget(tenant_id, exec);
+  const tenantBudget = resolveMonthlyBudget(tenant_id);
   const tenantUsed = await monthlyUsage(tenant_id, exec);
   const tenantUnlimited = tenantBudget == null || tenantBudget <= 0;
   const tenantOk = tenantUnlimited || tenantUsed + estimated_tokens <= tenantBudget;
