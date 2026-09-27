@@ -22,18 +22,49 @@
 // that gap permanently.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { boot, cli, type E2EEnv, shutdown } from "./setup.ts";
+import {
+  boot,
+  cli,
+  type E2EEnv,
+  providerFromEnv,
+  realProviderConfigured,
+  shutdown,
+} from "./setup.ts";
 
-// Skip the whole suite when CI forces LLM_PROVIDER=mock (no real API
-// credentials available). The tier-1 assertions expect actual tool
-// calls coming out of a real LLM; the mock provider emits an empty
-// plan, so the tests would always fail with `Expected >=1, Received 0`.
-const REAL_PROVIDER_SET =
-  (Boolean(process.env.AI_GATEWAY_API_KEY) && Boolean(process.env.AI_GATEWAY_MODEL)) ||
-  ["anthropic", "openai", "gemini", "azure", "bedrock", "vertex"].includes(
-    (process.env.LLM_PROVIDER ?? "").toLowerCase(),
-  );
-const SHOULD_RUN = process.env.LLM_PROVIDER !== "mock" && REAL_PROVIDER_SET;
+// Skip the whole suite when no real API credentials are available. The
+// tier-1 assertions expect actual tool calls coming out of a real LLM; the
+// mock provider emits an empty plan, so the tests would always fail with
+// `Expected >=1, Received 0`.
+//
+// The condition is asked of `realProviderConfigured()` rather than restated
+// here. It used to read `process.env.LLM_PROVIDER` directly, which the
+// nightly stopped setting when the engine moved to the config loader's
+// `SK_OVERRIDE_*` import. All six tests then skipped, `bun test` exited 0 on
+// an all-skipped file, and the job reported "passed" — the real-LLM tier was
+// dark and looked healthy. A gate is only as good as the thing it consults.
+const SHOULD_RUN = realProviderConfigured();
+
+// This one never skips.
+//
+// Skipping the suite is correct when nobody supplied credentials — on a pull
+// request there is no key and there is nothing to measure. What is not correct
+// is a run that NAMED a real provider and then measured nothing, which is how
+// this file spent its nights: six skips, exit 0, "passed on attempt 1".
+//
+// So the contradiction itself is the assertion. If the environment names a
+// real provider, the gate must have opened. It reads the raw variables rather
+// than calling `realProviderConfigured()` again — an assertion that consults
+// the same function it is guarding proves only that the function equals
+// itself, and this defect was precisely two readers disagreeing about where
+// the answer lives.
+test("a named provider is never silently skipped", () => {
+  const named = providerFromEnv();
+  const namesReal =
+    (named !== undefined && named !== "mock") ||
+    Boolean(process.env.AI_GATEWAY_API_KEY && process.env.AI_GATEWAY_MODEL);
+  if (!namesReal) return;
+  expect(SHOULD_RUN).toBe(true);
+});
 
 let env: E2EEnv;
 beforeAll(async () => {

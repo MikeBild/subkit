@@ -251,31 +251,57 @@ export async function closeHttpServer(
 }
 
 /**
+ * The provider this run asked for, read straight from the environment.
+ *
+ * The engine does not read `LLM_PROVIDER` from the environment any more: the
+ * config loader imports `SK_OVERRIDE_LLM_PROVIDER` into the canonical config,
+ * and `readEnv` answers from there. A gate that consults only the bare name
+ * therefore sees nothing under CI — which is exactly what happened. The
+ * nightly set `SK_OVERRIDE_LLM_PROVIDER=anthropic`, the tier-1 suite asked
+ * `process.env.LLM_PROVIDER`, found it empty, and skipped all six real-LLM
+ * tests. `bun test` exits 0 on an all-skipped file, so the job printed
+ * "passed on attempt 1" and the whole real-LLM tier measured nothing for as
+ * long as nobody counted the tests.
+ *
+ * Both names live here, once, so the next rename has one place to change
+ * instead of two that drift apart silently.
+ */
+export function providerFromEnv(): string | undefined {
+  const raw = process.env.SK_OVERRIDE_LLM_PROVIDER ?? process.env.LLM_PROVIDER;
+  return raw?.toLowerCase();
+}
+
+/** Whether this run has credentials for a real (non-mock) provider. */
+export function realProviderConfigured(): boolean {
+  const explicit = providerFromEnv();
+  if (explicit === "mock") return false;
+  if (process.env.AI_GATEWAY_API_KEY && process.env.AI_GATEWAY_MODEL) return true;
+  return DIRECT_E2E_PROVIDERS.includes(explicit ?? "");
+}
+
+const DIRECT_E2E_PROVIDERS = ["anthropic", "openai", "gemini", "azure", "bedrock", "vertex"];
+
+/**
  * Real-LLM detection. Mirrors the precedence in
  * `apps/engine/src/llm/core/model-init.ts`: gateway first when both
- * gateway vars are present, otherwise direct provider via LLM_PROVIDER.
+ * gateway vars are present, otherwise the direct provider named by the
+ * environment.
  */
 function detectRealProvider(): { provider: string; reason: string } {
-  const explicit = process.env.LLM_PROVIDER?.toLowerCase();
+  const explicit = providerFromEnv();
   if (explicit === "mock") {
-    return { provider: "mock", reason: "LLM_PROVIDER=mock" };
+    return { provider: "mock", reason: "provider=mock" };
   }
   if (process.env.AI_GATEWAY_API_KEY && process.env.AI_GATEWAY_MODEL) {
     return { provider: "gateway", reason: "AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL set" };
   }
-  if (
-    explicit === "anthropic" ||
-    explicit === "openai" ||
-    explicit === "gemini" ||
-    explicit === "azure" ||
-    explicit === "bedrock" ||
-    explicit === "vertex"
-  ) {
-    return { provider: explicit, reason: `LLM_PROVIDER=${explicit}` };
+  if (DIRECT_E2E_PROVIDERS.includes(explicit ?? "")) {
+    return { provider: explicit as string, reason: `provider=${explicit}` };
   }
   throw new Error(
-    "E2E boot() needs either LLM_PROVIDER=mock, AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL, " +
-      "or LLM_PROVIDER set to anthropic/openai/gemini/azure/bedrock/vertex with the matching credentials.",
+    "E2E boot() needs either a mock provider, AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL, " +
+      "or SK_OVERRIDE_LLM_PROVIDER (or LLM_PROVIDER) set to " +
+      `${DIRECT_E2E_PROVIDERS.join("/")} with the matching credentials.`,
   );
 }
 

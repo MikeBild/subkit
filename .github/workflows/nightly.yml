@@ -82,7 +82,11 @@ jobs:
       # run in-process on boot. Integration tests provision per-file
       # databases via apps/engine/src/db/tests/setup.ts which calls
       # the embedded runner directly — no standalone CI step needed.
-      - name: Verify the ANTHROPIC_API_KEY secret is set
+      # Presence only. A key can be present and rejected, and this step cannot
+      # tell the difference — the tests below are what exercise it. Named for
+      # what it does, because "verify the secret" reads like a guarantee and
+      # the job that found an expired key reported it as a quality score.
+      - name: The ANTHROPIC_API_KEY secret is present
         run: |
           if [ -z "${SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY:-}" ]; then
             echo "ANTHROPIC_API_KEY secret is not configured for this repo."
