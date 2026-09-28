@@ -126,13 +126,7 @@ export function TodayPage() {
   const reviewed = review ? (data?.items.find((item) => item.id === review) ?? null) : null;
 
   return (
-    <PageFrame
-      surface="overview"
-      testId="attention-page"
-      title={title}
-      scroll="page"
-      width="column"
-    >
+    <PageFrame surface="overview" testId="attention-page" title={title} scroll="page">
       <div className="grid gap-6">
         {attention.query.isPending ? (
           <div
