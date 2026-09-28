@@ -14,9 +14,8 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { getConfig } from "../../../config/loader.ts";
 import { executions, externalCallMetering, llmUsage } from "../../../db/schema/index.ts";
-import { effectiveModelPrices, priceCalls } from "../../../llm/index.ts";
+import { priceForTenant } from "../../../stats/llm-cost.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -135,8 +134,8 @@ export function registerCostRoute(app: OpenAPIHono<AppEnv>): void {
       .where(and(eq(llmUsage.tenant_id, principal.tenant_id), eq(llmUsage.execution_id, id)))
       .groupBy(llmUsage.model);
 
-    const tokenPrices = getConfig(principal.tenant_id).tokens;
-    const cost = priceCalls(
+    const cost = priceForTenant(
+      principal.tenant_id,
       modelRows.map((r) => ({
         model: r.model ?? "",
         calls: Number(r.calls),
@@ -145,8 +144,6 @@ export function registerCostRoute(app: OpenAPIHono<AppEnv>): void {
         cache_read_tokens: Number(r.cache_read_tokens),
         cache_creation_tokens: Number(r.cache_creation_tokens),
       })),
-      effectiveModelPrices(tokenPrices ?? {}),
-      tokenPrices?.currency ?? "USD",
     );
 
     const by_flow = llmRows.map((r) => ({

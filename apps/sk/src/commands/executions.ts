@@ -14,6 +14,7 @@ import {
   humanMs,
 } from "../render/format.ts";
 import { collectFileRefs } from "../utils/file-ref.ts";
+import { resolveTime } from "./stats.ts";
 
 /** Candidate rows for the interactive execution picker (TTY only). */
 const fetchExecutionRows = async (client: EngineClient) => {
@@ -93,6 +94,15 @@ const listCommand = defineCommand({
       type: "string",
       description: "Lineage filter: list the reruns spawned from this execution id",
     },
+    from: {
+      type: "string",
+      description:
+        "Only runs that started at or after this instant (ISO-8601 or now-24h, now-7d, startOfMonth)",
+    },
+    to: {
+      type: "string",
+      description: "Only runs that started before this instant (exclusive; default: open)",
+    },
     json: { type: "boolean", description: "JSON output", default: false },
   },
   async run({ args }) {
@@ -103,6 +113,10 @@ const listCommand = defineCommand({
       if (args.status) query.status = args.status;
       if (args.source) query.request_source = String(args.source);
       if (args.parent) query.parent_execution_id = String(args.parent);
+      // The window `sk stats operations` and `sk stats executions` count over.
+      const nowMs = Date.now();
+      if (args.from) query.started_from = resolveTime(String(args.from), nowMs).toISOString();
+      if (args.to) query.started_to = resolveTime(String(args.to), nowMs).toISOString();
       const { items, total } = await client.listExecutions(query);
       // Tag each row by origin so authoring/manual trial-runs are not
       // mistaken for production incidents, and surface a wall-clock

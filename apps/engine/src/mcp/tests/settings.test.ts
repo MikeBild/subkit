@@ -144,12 +144,12 @@ describe("mcp settings tools", () => {
     });
     expect(result.isError).toBeFalsy();
     const body = textBody(result) as unknown as {
-      items: Array<{ path: string; meta: { requires_restart: boolean } }>;
+      items: Array<{ path: string; meta: { requiresRestart: boolean } }>;
     };
     expect(body.items).toEqual([
       expect.objectContaining({
         path: "server.port",
-        meta: expect.objectContaining({ requires_restart: true }),
+        meta: expect.objectContaining({ requiresRestart: true }),
       }),
     ]);
   });

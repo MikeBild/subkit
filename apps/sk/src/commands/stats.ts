@@ -15,6 +15,7 @@ import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import {
   EngineClient,
+  type OperatingFigures,
   type StatsAuditResponse,
   type StatsExecutionsResponse,
   type StatsLlmResponse,
@@ -386,6 +387,65 @@ const llmCommand = defineCommand({
   },
 });
 
+const operationsCommand = defineCommand({
+  meta: {
+    name: "operations",
+    description:
+      "The Übersicht's operations figures: runs, success rate, healthy connectors (now), applied repairs. Example: sk stats operations --window 7d",
+  },
+  args: {
+    window: { type: "string", description: "24h (default), 7d or 30d" },
+    from: { type: "string", description: "Window start (ISO-8601 or now-24h, startOfMonth)" },
+    to: { type: "string", description: "Window end (default: now)" },
+    json: { type: "boolean", description: "Emit the raw engine response" },
+  },
+  async run({ args }) {
+    const { engine_url, api_key, active_tenant_id } = resolveProfile();
+    const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+    try {
+      const window = args.window as string | undefined;
+      if (window && window !== "24h" && window !== "7d" && window !== "30d") {
+        throw new ValidationError(`invalid --window '${window}'; expected one of 24h, 7d, 30d`);
+      }
+      const nowMs = Date.now();
+      const res = await client.statsOperatingFigures({
+        ...(window ? { window: window as "24h" | "7d" | "30d" } : {}),
+        ...(args.from ? { from: resolveTime(args.from as string, nowMs).toISOString() } : {}),
+        ...(args.to ? { to: resolveTime(args.to as string, nowMs).toISOString() } : {}),
+      });
+      if (args.json) return void printJson(res);
+      renderOperations(res);
+    } catch (err) {
+      handleError(err);
+    }
+  },
+});
+
+function percentOrNone(value: number | null, none: string): string {
+  return value === null ? pc.dim(none) : `${value}%`;
+}
+
+function renderOperations(res: OperatingFigures): void {
+  process.stdout.write(
+    `${pc.bold("Operations")} ${pc.dim(`${res.window.from} → ${res.window.to}`)}\n`,
+  );
+  process.stdout.write(
+    `  runs:               ${res.runs.total > 0 ? num(res.runs.total) : pc.dim("no runs in the window")}\n`,
+  );
+  process.stdout.write(
+    `  success rate:       ${percentOrNone(res.runs.success_rate_percent, "no runs in the window")}${res.runs.failed > 0 ? pc.dim(` (${num(res.runs.failed)} failed)`) : ""}\n`,
+  );
+  process.stdout.write(
+    `  healthy connectors: ${percentOrNone(res.connectors.healthy_percent, "no enabled connector")}${res.connectors.not_ok > 0 ? pc.dim(` (${num(res.connectors.not_ok)} of ${num(res.connectors.enabled)} not ok, now)`) : pc.dim(" (now)")}\n`,
+  );
+  process.stdout.write(
+    `  repairs applied:    ${percentOrNone(res.repairs.applied_percent, "no repair decided in the window")}${res.repairs.decided > 0 ? pc.dim(` (${num(res.repairs.applied)} of ${num(res.repairs.decided)} decided)`) : ""}\n`,
+  );
+  process.stdout.write(
+    pc.dim(`  runs counted: sk executions list --from ${res.window.from} --to ${res.window.to}\n`),
+  );
+}
+
 type UsageSurface = "http" | "chat" | "mcp" | "conversations";
 
 const usageArgs = {
@@ -540,6 +600,20 @@ function renderLlm(res: StatsLlmResponse): void {
     `  tokens:       total=${num(k.total)} (prompt=${num(k.prompt)} completion=${num(k.completion)} cache_read=${num(k.cache_read)} cache_creation=${num(k.cache_creation)})\n`,
   );
   process.stdout.write(`  cache hit:    ${hitRate}% (cache_read / prompt)\n`);
+  if (res.cost) {
+    const c = res.cost;
+    // The engine's priced figure: SubKit's list price per model unless an
+    // override replaces it. An unpriced model is named, never counted as free.
+    const sources = c.price_sources.map((s) => `${s.model}=${s.price_source}`).join(" · ");
+    process.stdout.write(
+      `  cost:         ${c.amount.toFixed(4)} ${c.currency}${sources ? pc.dim(` (${sources})`) : ""}\n`,
+    );
+    if (c.unpriced_models.length > 0) {
+      process.stdout.write(
+        `  ${pc.yellow("unpriced:")}     ${c.unpriced_models.join(", ")} ${pc.dim(`(${num(c.unpriced_calls)} calls, not in the amount — set tokens.prices)`)}\n`,
+      );
+    }
+  }
   const l = t.latency_ms;
   process.stdout.write(
     `  latency:      total=${humanMs(l.total)} avg=${humanMs(l.avg)} p50=${humanMs(l.p50)} p95=${humanMs(l.p95)} p99=${humanMs(l.p99)} max=${humanMs(l.max)}\n`,
@@ -616,6 +690,7 @@ export const statsCommand = defineCommand({
     connectors: connectorsCommand,
     events: eventsCommand,
     llm: llmCommand,
+    operations: operationsCommand,
     http: httpCommand,
     chat: chatCommand,
     mcp: mcpCommand,

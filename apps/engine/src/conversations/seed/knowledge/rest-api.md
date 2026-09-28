@@ -248,6 +248,7 @@ Read-only aggregates, all `GET`, filtered by a time window/bucket:
 - `GET /v1/stats/connectors` — per-connector call stats (filterable by HTTP method).
 - `GET /v1/stats/events` — event-class aggregates.
 - `GET /v1/stats/llm` — LLM token/cost usage.
+- `GET /v1/stats/operating-figures` — the Übersicht's operations figures over a window.
 - `GET /v1/stats/quality` — quality metrics.
 
 # Conversations

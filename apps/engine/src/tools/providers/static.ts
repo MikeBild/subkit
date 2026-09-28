@@ -50,6 +50,11 @@ import {
   authenticateTool,
   handleAuthenticate,
 } from "../../mcp/tools/authenticate.ts";
+import { handleListConnections, listConnectionsMcpTool } from "../../mcp/tools/connections.ts";
+import {
+  handleOperatingFigures,
+  operatingFiguresMcpTool,
+} from "../../mcp/tools/operating-figures.ts";
 import {
   handleOperationalOverview,
   operationalOverviewMcpTool,
@@ -175,6 +180,35 @@ const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
     },
   },
   {
+    // The Übersicht's windowed figures. Its own tool, not a field of the
+    // overview above: the overview is a pinned contract whose ratios are
+    // other figures (last-24h finished runs, all-time repair statuses).
+    tool: operatingFiguresMcpTool,
+    visibleInMcpModes: null,
+    visibleOnChat: false,
+    category: "tenant_read",
+    rbac: { permission: "stats:read" },
+    async invoke(ctx, args) {
+      const result = await handleOperatingFigures({ db: ctx.db, principal: ctx.principal }, args);
+      if (result.ok) return envelopeForOk(result.data);
+      return envelopeForError("invalid_args", result.message);
+    },
+  },
+  {
+    // The same views GET /v1/connections returns — read by the same service,
+    // so auto_renew, used_by and the scope list (protocol scopes left out)
+    // cannot differ between the two.
+    tool: listConnectionsMcpTool,
+    visibleInMcpModes: null,
+    visibleOnChat: false,
+    category: "tenant_read",
+    rbac: { permission: "connection:read" },
+    async invoke(ctx) {
+      const result = await handleListConnections({ db: ctx.db, principal: ctx.principal });
+      return envelopeForOk(result.data);
+    },
+  },
+  {
     tool: attentionMcpTool,
     visibleInMcpModes: null,
     visibleOnChat: false,
@@ -259,7 +293,7 @@ const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
     category: "tenant_read",
     rbac: { permission: "settings:read" },
     async invoke(ctx, args) {
-      const result = await handleSubkitSettings({ principal: ctx.principal }, args);
+      const result = await handleSubkitSettings({ db: ctx.db, principal: ctx.principal }, args);
       if (result.ok) return envelopeForOk(result.data);
       return envelopeForError(result.data.error_code, result.data.message, result.data);
     },

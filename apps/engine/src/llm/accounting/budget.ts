@@ -140,6 +140,58 @@ export function resolveMonthlyBudget(tenant_id: string): number | null {
   return raw > 0 ? raw : null;
 }
 
+/** How close a month's consumption is to its cap, as something a reader can act on. */
+export type BudgetState = "ample" | "tightening" | "critical";
+
+/** Share of the cap spent at which the month reads as tightening. */
+export const BUDGET_TIGHTENING_SHARE = 0.75;
+/** Share of the cap spent at which the month reads as critical. */
+export const BUDGET_CRITICAL_SHARE = 0.9;
+
+/**
+ * The one reading of used-against-cap: the attention list's budget item, the
+ * risk signal, `GET /v1/status`, `get_token_budget` and `sk health` all take
+ * it from here, and the cockpit's usage page applies the same two shares.
+ *
+ * `null` when nothing bounds the month: an unbounded workspace is unmeasured,
+ * not ample. The share is exact, never a rounded percentage — 89.6 % spent is
+ * tightening everywhere, not critical on the one surface that rounded first.
+ */
+export function budgetState(used: number, budget: number | null): BudgetState | null {
+  if (budget == null || budget <= 0) return null;
+  const share = used / budget;
+  if (share >= BUDGET_CRITICAL_SHARE) return "critical";
+  if (share >= BUDGET_TIGHTENING_SHARE) return "tightening";
+  return "ample";
+}
+
+/** A month's figures against one cap: used, cap, room left, and its state. */
+export interface MonthlyBudgetFigures {
+  month_bucket: number;
+  used_tokens: number;
+  budget_tokens: number | null;
+  remaining_tokens: number | null;
+  state: BudgetState | null;
+}
+
+export function monthlyBudgetFigures(used: number, budget: number | null): MonthlyBudgetFigures {
+  return {
+    month_bucket: currentMonthBucket(),
+    used_tokens: used,
+    budget_tokens: budget,
+    remaining_tokens: budget == null ? null : Math.max(budget - used, 0),
+    state: budgetState(used, budget),
+  };
+}
+
+/** The workspace's month, as `GET /v1/status` and `get_token_budget` both report it. */
+export async function readTenantMonthlyBudget(
+  tenant_id: string,
+  exec?: Executor,
+): Promise<MonthlyBudgetFigures> {
+  return monthlyBudgetFigures(await monthlyUsage(tenant_id, exec), resolveMonthlyBudget(tenant_id));
+}
+
 export interface CheckAndDecrementResult {
   ok: boolean;
   used: number;
