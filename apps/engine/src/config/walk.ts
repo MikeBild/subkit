@@ -216,6 +216,26 @@ export function listConfigLeaves(): ConfigLeaf[] {
   return leaves;
 }
 
+/**
+ * What the settings surfaces (HTTP and MCP) report about a leaf beyond its
+ * value: the schema's own default and, for an enum, its allowed values. Both
+ * are read from the Zod schema — parsing `undefined` through the leaf applies
+ * its `.default()` — so a changed default or a new enum member reaches every
+ * surface without a second list. A leaf without a default (`database.url`)
+ * reports none rather than an invented one; a secret's default is masked like
+ * its value.
+ */
+export function leafSchemaMeta(leaf: ConfigLeaf): { default?: unknown; enum_values?: string[] } {
+  const out: { default?: unknown; enum_values?: string[] } = {};
+  const parsed = leaf.schema.safeParse(undefined);
+  if (parsed.success && parsed.data !== undefined) {
+    out.default =
+      leaf.meta.secret && parsed.data !== null && parsed.data !== "" ? "***" : parsed.data;
+  }
+  if (leaf.enumValues !== undefined) out.enum_values = [...leaf.enumValues];
+  return out;
+}
+
 export function dottedPath(leaf: ConfigLeaf): string {
   return leaf.path.join(".");
 }

@@ -13,6 +13,10 @@ export interface SettingItem {
     requiresRestart: boolean;
     description?: string;
     kind: string;
+    /** The schema's default; absent where the engine has none to report. */
+    default?: unknown;
+    /** An enum's allowed values, in the engine's order. */
+    enum_values?: string[];
   };
 }
 
@@ -70,10 +74,14 @@ export function settingsLeafFromUrl(search: string): string | null {
  * at, the section and the search. A reload or a shared link lands on the same
  * view; a section name that could not be one is dropped rather than searched for.
  */
+export type SettingsFilter = "all" | "changed";
+
 export interface SettingsView {
   leaf: string | null;
   section: string | null;
   q: string;
+  /** `?filter=changed` shows only settings that differ from their default. */
+  filter: SettingsFilter;
 }
 
 export function settingsViewFromUrl(search: string): SettingsView {
@@ -83,6 +91,7 @@ export function settingsViewFromUrl(search: string): SettingsView {
     leaf: settingsLeafFromUrl(search),
     section: section.length <= 64 && /^[a-z0-9_]+$/i.test(section) ? section : null,
     q: (params.get("q") ?? "").slice(0, 128),
+    filter: params.get("filter") === "changed" ? "changed" : "all",
   };
 }
 
@@ -270,4 +279,209 @@ export function settingFieldValue(
   if (draft !== undefined) return draft;
   if (item.meta.sensitive || isUnset(item)) return "";
   return typeof item.value === "string" ? item.value : JSON.stringify(item.value);
+}
+
+/** Two setting values are the same when their JSON is, whatever the key order. */
+export function sameSettingValue(a: unknown, b: unknown): boolean {
+  const canonical = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonical);
+    if (value && typeof value === "object")
+      return Object.fromEntries(
+        Object.keys(value as Record<string, unknown>)
+          .sort()
+          .map((key) => [key, canonical((value as Record<string, unknown>)[key])]),
+      );
+    return value === undefined ? null : value;
+  };
+  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+}
+
+/** Whether the engine reported a default for this setting at all. */
+export function settingHasDefault(item: Pick<SettingItem, "meta">): boolean {
+  return Object.hasOwn(item.meta, "default");
+}
+
+/** A secret the engine holds a value for: it reports `***`, never the value. */
+export function settingSecretStored(item: Pick<SettingItem, "value" | "meta">): boolean {
+  return item.meta.sensitive && !isUnset(item) && item.value !== "";
+}
+
+/**
+ * Whether the stored value differs from the schema's default — what the
+ * "Geändert" filter shows. A stored secret counts: its default is none. A
+ * setting without a reported default is never "changed"; there is nothing to
+ * compare it with.
+ */
+export function settingIsChanged(item: SettingItem): boolean {
+  if (item.meta.sensitive) return settingSecretStored(item);
+  if (!settingHasDefault(item)) return false;
+  return !sameSettingValue(item.value, item.meta.default);
+}
+
+/** The text a field holds for a value: strings as they are, everything else as JSON. */
+export function settingDraftText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+function isNumberSetting(item: Pick<SettingItem, "value" | "meta">): boolean {
+  return item.meta.kind === "number" || typeof item.value === "number";
+}
+
+/**
+ * The value a draft stands for, by the setting's kind. `undefined` when the
+ * draft is no value of that kind — an empty or non-numeric number, broken
+ * JSON — so its row flags it and it is never sent as a silent 0.
+ */
+export function parseSettingDraft(item: Pick<SettingItem, "value" | "meta">, raw: string): unknown {
+  const kind = item.meta.kind;
+  if (kind === "boolean" || typeof item.value === "boolean") return raw === "true";
+  if (isNumberSetting(item)) {
+    const trimmed = raw.trim();
+    if (trimmed === "") return undefined;
+    const number = Number(trimmed);
+    return Number.isFinite(number) ? number : undefined;
+  }
+  // An enum set to "nicht gesetzt" drafts the empty string: the engine's null.
+  if (kind === "enum") return raw === "" ? null : raw;
+  if (
+    kind === "json" ||
+    kind === "string-list" ||
+    kind === "string-array" ||
+    Array.isArray(item.value) ||
+    (item.value !== null && typeof item.value === "object")
+  ) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return undefined;
+    }
+  }
+  return raw;
+}
+
+/** Why a draft cannot be saved, or null when it can. */
+export function settingDraftError(
+  item: Pick<SettingItem, "value" | "meta">,
+  raw: string | undefined,
+): "settings.invalidNumber" | "settings.invalidJson" | null {
+  if (raw === undefined || item.meta.sensitive) return null;
+  if (parseSettingDraft(item, raw) !== undefined) return null;
+  return isNumberSetting(item) ? "settings.invalidNumber" : "settings.invalidJson";
+}
+
+/**
+ * Whether the value on screen — the draft, else the stored value — differs
+ * from the default; the row then says "Geändert · Standard: X · Zurücksetzen".
+ * Never for a secret (its row says whether one is stored) and never for a
+ * setting without a reported default.
+ */
+export function settingDiffersFromDefault(item: SettingItem, draft: string | undefined): boolean {
+  if (item.meta.sensitive || !settingHasDefault(item)) return false;
+  const value = draft === undefined ? item.value : parseSettingDraft(item, draft);
+  return value === undefined || !sameSettingValue(value, item.meta.default);
+}
+
+/**
+ * The draft "Zurücksetzen" writes: the default, as the field would hold it.
+ * Null where nothing is safe to draft — a secret, whose empty default would
+ * erase a stored credential, or a setting without a reported default.
+ */
+export function settingResetDraft(item: SettingItem): string | null {
+  if (item.meta.sensitive || !settingHasDefault(item)) return null;
+  return settingDraftText(item.meta.default);
+}
+
+/** A value as a row names it: "An"/"Aus", "Nicht gesetzt", "leer", or itself, shortened. */
+export function settingValueText(value: unknown, t: Translate): string {
+  if (value === null || value === undefined) return t("settings.unset");
+  if (typeof value === "boolean") return t(value ? "settings.value.on" : "settings.value.off");
+  if (value === "" || (Array.isArray(value) && value.length === 0))
+    return t("settings.value.empty");
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  return text.length > 60 ? `${text.slice(0, 57)}…` : text;
+}
+
+/**
+ * The unit a number setting counts in, read from its name: `…_ms` is
+ * milliseconds, `…_bytes` bytes. Null where the name does not say — a count,
+ * a fraction — rather than a guess.
+ */
+export function settingUnit(path: string): TranslationKey | null {
+  const leaf = path.split(".").pop() ?? "";
+  if (path === "tokens.monthly_budget") return "settings.unit.tokens";
+  if (/_ms$|Ms$/.test(leaf)) return "settings.unit.ms";
+  if (/_seconds$|Sec$/.test(leaf)) return "settings.unit.seconds";
+  if (/_minutes$|Min$/.test(leaf)) return "settings.unit.minutes";
+  if (/_days$/.test(leaf)) return "settings.unit.days";
+  if (/_bytes$|_byte_cap$/.test(leaf)) return "settings.unit.bytes";
+  if (/_pct$/.test(leaf)) return "settings.unit.percent";
+  if (/_chars(_|$)/.test(leaf)) return "settings.unit.chars";
+  return null;
+}
+
+/**
+ * What to know before changing a setting, in the reader's language, or
+ * nothing. Keyed by the whole path (`settings.help.<path>`); a row without an
+ * entry shows no help. settings-leaf-coverage.test.ts names which settings
+ * must have one.
+ */
+export function settingHelpKey(path: string): TranslationKey | null {
+  const key = `settings.help.${path}`;
+  return Object.hasOwn(CATALOGS.en, key) ? (key as TranslationKey) : null;
+}
+
+/**
+ * The one request a save sends: every draft on the page, against the revision
+ * the page was read at. A secret travels as the `secret://` reference of the
+ * version created for it just before; its plaintext never enters the patch.
+ */
+export interface SettingsPatch {
+  expected_revision: number;
+  changes: Record<string, unknown>;
+  scope: "global";
+}
+
+export function settingsPatch(
+  data: Pick<SettingsResponse, "saved_revision" | "items">,
+  drafts: Readonly<Record<string, string>>,
+  secretReferences: Readonly<Record<string, string>>,
+): SettingsPatch {
+  if (data.saved_revision === null) throw new Error("settings have no saved revision to build on");
+  const changes: Record<string, unknown> = {};
+  for (const item of data.items) {
+    if (!Object.hasOwn(drafts, item.path)) continue;
+    if (item.meta.sensitive) {
+      const reference = secretReferences[item.path];
+      if (!reference) throw new Error(`secret ${item.path} has no stored version`);
+      changes[item.path] = reference;
+      continue;
+    }
+    const value = parseSettingDraft(item, drafts[item.path] ?? "");
+    if (value === undefined) throw new Error(`draft for ${item.path} is not a valid value`);
+    changes[item.path] = value;
+  }
+  return { expected_revision: data.saved_revision, changes, scope: "global" };
+}
+
+/**
+ * Where the revision a save produced is activated. The engine saves a PATCH
+ * without activating it; a setting that needs a restart stays saved and the
+ * activation reports `restart_required`, which the status line then names.
+ */
+export function settingsActivationPath(saved: { saved_revision: number }): string {
+  return `/v1/settings/revisions/${saved.saved_revision}/activate`;
+}
+
+/** The secret name a setting's value is stored under — the engine's own settings naming. */
+export function settingSecretName(path: string): string {
+  return `settings.${path}`;
+}
+
+/**
+ * How a failed save reads. A 409 is somebody else's newer revision: the page
+ * says so and keeps the drafts. Anything else is a plain failure.
+ */
+export function settingsSaveFailure(error: unknown): "conflict" | "failed" {
+  return (error as { status?: unknown } | null)?.status === 409 ? "conflict" : "failed";
 }

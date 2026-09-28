@@ -112,6 +112,26 @@ describe("GET /v1/settings", () => {
       requiresRestart: false,
       scope: "global",
     });
+    // Defaults and enum members come from the schema, not from a second list.
+    const logLevel = body.items.find((i) => i.path === "log.level");
+    expect(logLevel!.meta.default).toBe("info");
+    expect(logLevel!.meta.enum_values).toEqual([
+      "trace",
+      "debug",
+      "info",
+      "warn",
+      "error",
+      "fatal",
+    ]);
+    const budget = body.items.find((i) => i.path === "tokens.monthly_budget");
+    expect(budget!.meta.default).toBe(0);
+    expect(budget!.meta).not.toHaveProperty("enum_values");
+    // A nullable enum defaults to null — reported, not dropped.
+    const fallback = body.items.find((i) => i.path === "llm.fallback_provider");
+    expect(fallback!.meta).toHaveProperty("default", null);
+    // A bootstrap binding has no default to report.
+    const database = body.items.find((i) => i.path === "database.url");
+    expect(database!.meta).not.toHaveProperty("default");
   });
 
   test("tenant source metadata is scoped to the requested tenant", async () => {
@@ -189,6 +209,10 @@ describe("GET /v1/settings/{path}", () => {
     expect(body.value).toBe("info");
     expect(body.meta.kind).toBe("enum");
     expect(body.meta.sensitive).toBe(false);
+    expect(body.meta).toMatchObject({
+      default: "info",
+      enum_values: ["trace", "debug", "info", "warn", "error", "fatal"],
+    });
   });
 
   test("unknown path returns 404", async () => {

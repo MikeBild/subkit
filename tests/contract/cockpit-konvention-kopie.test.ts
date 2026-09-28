@@ -52,7 +52,7 @@ const konvention = konventionBytes.toString("utf8");
 const uiux = readFileSync(UI_UX, "utf8");
 
 describe("the root copy of the family convention", () => {
-  test("it is byte-identical to the reviewed v2.1 document", () => {
+  test("it is byte-identical to the reviewed v2.1.1 document", () => {
     // THE WHOLE FILE, and the digest is typed on purpose: this repository cannot
     // reach the five sibling checkouts, so the only thing it CAN hold is that
     // its own copy still has the bytes that were reviewed. Raising it is a
@@ -71,12 +71,13 @@ describe("the root copy of the family convention", () => {
     // the five siblings, which keep v1.7 (md5 3ca37336047cb1ae1c51b789d1a91aa9)
     // until their own slices adopt v2.x byte for byte. The digest below is the
     // reviewed v2.1 text those slices will copy — v2.1 renames the start page
-    // back to „Übersicht" and puts the operations bar above the attention list. Raising it is a deliberate
+    // back to „Übersicht" and puts the operations bar above the attention list;
+    // v2.1.1 adds the settings rows, filter, secrets and one-save bar to §6. Raising it is a deliberate
     // two-line change — the document AND this line — and never a re-pin to
     // whatever the file happens to hold.
     const digest = createHash("sha256").update(konventionBytes).digest("hex");
-    expect(digest, "COCKPIT-KONVENTION.md is no longer the reviewed v2.1 text").toBe(
-      "4bd26000a3b1aca327fbb6c5638d49dfef8eb88417ff8be7776789cdf747da2f",
+    expect(digest, "COCKPIT-KONVENTION.md is no longer the reviewed v2.1.1 text").toBe(
+      "79c0c5de5b74913218cedc7bcf22fe5a5383b73601b0c1239f2f336f8dc73f1b",
     );
   });
 
@@ -87,7 +88,7 @@ describe("the root copy of the family convention", () => {
     // line is what a hand edit changes: the header alone would pass on a file
     // saying 1.6 whose body is still 1.4, which is exactly the drift §7 leaves
     // to nobody.
-    expect(konvention).toContain("Version 2.1 · 28.09.2026");
+    expect(konvention).toContain("Version 2.1.1 · 28.09.2026");
     expect(konvention).toContain('**Leitregel (v2.1): Aufgaben leben nur auf der „Übersicht".**');
     expect(konvention).toContain("**Betriebsleiste.** Genau vier Werte in einer Zeile");
     expect(konvention).toContain("### 0.1 Ein Fakt, ein Ort");
@@ -166,7 +167,7 @@ describe("the copy of §8 this product's attention page is measured against", ()
     // one and demanding it in the other is exactly the disagreement worth
     // catching — this line said v1.4 while the root copy had moved on.
     expect(uiux).toContain("COCKPIT-KONVENTION.md");
-    const declared = /^Version ([0-9]+\.[0-9]+) · /m.exec(konvention)?.[1];
+    const declared = /^Version ([0-9]+\.[0-9]+(?:\.[0-9]+)?) · /m.exec(konvention)?.[1];
     expect(declared, "COCKPIT-KONVENTION.md declares a version in its header line").toBeDefined();
     expect(uiux, `UI-UX.md names the version its source declares (v${declared})`).toContain(
       `v${declared}`,

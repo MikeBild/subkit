@@ -263,10 +263,24 @@ left of the open section, below that the list is the start view and a section op
 "← Alle Bereiche". A search keeps the list whole, dims sections without a hit and shows the hits of all
 sections. A line above the sections appears only when something waits — a setting saved but waiting
 for a restart, a last change that did not activate — and nothing when all is well. A row is the
-setting's name, the control, "Wirkt nach Neustart" where that holds and the source only when it is not
-the installation's own value or the default; key, source, scope and the engine's English wording are in
-the collapsed "Technische Angaben". `?leaf=`, `?section=` and `?q=` address a setting, a section and a
-search.
+setting's name, its help sentence where the catalogue has one (`settings.help.<path>`;
+`settings-leaf-coverage.test.ts` requires it for every `llm`, `tokens`, `auth` and `notifications`
+setting, every restart and every enum), the control, "Wirkt nach Neustart" where that holds and the
+source only when it is not the installation's own value or the default; key, source, scope and the
+engine's English wording are in the collapsed "Technische Angaben". The control follows the engine's
+`kind`: an enum is a select of its `enum_values`, a boolean a switch, a number a numeric field with its
+unit where the name says one. While the value differs from the engine's `default` the row says
+"Geändert · Standard: X · Zurücksetzen", and Zurücksetzen only drafts the default. A secret never shows:
+"Hinterlegt · Ersetzen" or "Nicht hinterlegt · Hinterlegen", the field appears after the click, and the
+note on what belongs there stands once per section. "Alle | Geändert" beside the search narrows the list
+to settings not at their default ("Alles steht auf Standard." when none is). Drafts belong to the page,
+not to a section: one sticky bar says "N ungespeicherte Änderungen · Verwerfen · Speichern", and saving
+is one `PATCH /v1/settings` with `expected_revision` (secrets first stored as secret versions, sent as
+their references), then the revision's activation — never an autosave. A 409 means somebody saved in
+the meantime; the bar says so and offers the reload, the drafts stay. A restart-sensitive change still
+asks first. Without `settings:write` the page says "Du darfst ansehen, nicht ändern." and every control
+is disabled. `?leaf=`, `?section=`, `?q=` and `?filter=changed` address a setting, a section, a search
+and the filter.
 
 ### Error, cause, fix
 
@@ -405,7 +419,7 @@ Workflow preparation includes inspection, validation and the supported preview w
 
 ## Attention grammar
 
-What follows is a verbatim German copy of §8 of Cockpit Convention v2.1 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). The Übersicht's attention list and its review sheet are measured against it. SubKit offers no "remind me later" in the sheet because the engine has no deferred state, which §8.4 allows; the reason is recorded above under "Review sheet". The copy below is never adjusted to this product, or it would no longer be a copy.
+What follows is a verbatim German copy of §8 of Cockpit Convention v2.1.1 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). The Übersicht's attention list and its review sheet are measured against it. SubKit offers no "remind me later" in the sheet because the engine has no deferred state, which §8.4 allows; the reason is recorded above under "Review sheet". The copy below is never adjusted to this product, or it would no longer be a copy.
 
 ### 8. Anliegen-Grammatik
 

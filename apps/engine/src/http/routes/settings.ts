@@ -47,6 +47,7 @@ import {
   type ConfigLeaf,
   dottedPath,
   findLeafByPath,
+  leafSchemaMeta,
   listConfigLeaves,
 } from "../../config/walk.ts";
 import { logger } from "../../logging/index.ts";
@@ -90,6 +91,10 @@ const LeafMetaSchema = z
     requiresRestart: z.boolean(),
     description: z.string().optional(),
     kind: z.string(),
+    /** The schema's default; absent for a leaf that has none (a bootstrap binding). */
+    default: z.unknown().optional(),
+    /** The allowed values of an enum leaf, in schema order. */
+    enum_values: z.array(z.string()).optional(),
   })
   .openapi("SettingLeafMeta");
 
@@ -230,6 +235,7 @@ function buildLeafEntries(tenantId: string | undefined): Array<z.infer<typeof Le
         requiresRestart: !!leaf.meta.requiresRestart,
         ...(leaf.description ? { description: leaf.description } : {}),
         kind: leafKindLabel(leaf),
+        ...leafSchemaMeta(leaf),
       },
     });
   }
@@ -405,6 +411,7 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
           requiresRestart: !!leaf.meta.requiresRestart,
           ...(leaf.description ? { description: leaf.description } : {}),
           kind: leafKindLabel(leaf),
+          ...leafSchemaMeta(leaf),
         },
       },
       200,
