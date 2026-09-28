@@ -8,7 +8,7 @@
 // and the conversation `list_executions` tool all read from here so the
 // filter surface cannot drift between them.
 
-import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lt, or, sql } from "drizzle-orm";
 import { type Executor, getDb } from "../db/client.ts";
 import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
 import { executions, workflows } from "../db/schema/index.ts";
@@ -33,6 +33,14 @@ export interface ListExecutionsOptions {
    * rows was unreachable by name.
    */
   q?: string;
+  /**
+   * A window on `started_at`: from (inclusive) and to (exclusive). The same
+   * field and the same bounds `GET /v1/stats/executions` counts on, so a
+   * figure computed over a window and the list it links to hold the same runs.
+   * A run that never started has no `started_at` and is outside any window.
+   */
+  started_from?: Date;
+  started_to?: Date;
 }
 
 export const EXECUTION_LIST_MAX_LIMIT = 200;
@@ -47,6 +55,8 @@ function buildExecutionListFilters(tenant_id: string, opts: ListExecutionsOption
   if (opts.request_source) conds.push(eq(executions.request_source, opts.request_source));
   if (opts.parent_execution_id)
     conds.push(eq(executions.parent_execution_id, opts.parent_execution_id));
+  if (opts.started_from) conds.push(gte(executions.started_at, opts.started_from));
+  if (opts.started_to) conds.push(lt(executions.started_at, opts.started_to));
   const needle = opts.q?.trim();
   if (needle) {
     // The workflow carries the name, so the search reaches through the id. The

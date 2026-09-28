@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   ArrowDown,
   ArrowUp,
@@ -401,7 +401,7 @@ function RoleChangeConsequence({
  *
  * The list answered "who is here"; nothing answered "and what can they do".
  * The permissions are the role's, read from the engine — a person's direct
- * grants live on the access page and are named there.
+ * grants are the Freigaben section of this page, and the sheet links there.
  */
 function PersonSheet({
   user,
@@ -413,6 +413,7 @@ function PersonSheet({
   onClose(): void;
 }) {
   const { t } = useI18n();
+  const canReadGrants = useSession().permissions.includes("rbac:read");
   const role = user
     ? (roles?.find((candidate) => candidate.name === user.effective_role) ?? null)
     : null;
@@ -470,7 +471,21 @@ function PersonSheet({
             ) : (
               <Skeleton className="h-20 w-full" />
             )}
-            <p className="text-xs text-muted-foreground">{t("people.sheet.grantsNote")}</p>
+            <p className="text-xs text-muted-foreground" data-testid="people-sheet-grants-note">
+              {t("people.sheet.grantsNote")}{" "}
+              {canReadGrants ? (
+                <Link
+                  to={peopleHref("grants")}
+                  className="font-medium text-foreground underline underline-offset-2"
+                  onClick={onClose}
+                  data-testid="people-sheet-grants-link"
+                >
+                  {t("people.sheet.grantsLink")}
+                </Link>
+              ) : (
+                t("people.sheet.grantsLink")
+              )}
+            </p>
           </section>
         </div>
       </SheetContent>
@@ -902,23 +917,19 @@ export function PeopleAndAccessPage() {
     () => readablePeopleSections({ identity: canIdentity, rbac: canRbac }),
     [canIdentity, canRbac],
   );
-  const [section, setSection] = useState(() =>
-    openPeopleSection(peopleSectionFromUrl(window.location.search), readable),
-  );
-  // A link to another section while this page is open arrives through the
-  // router, not as a fresh load: follow it. The section is read from the
-  // address itself — the router's own search string is re-serialised; it only
-  // says that the address changed.
-  const routerSearch = useRouterState({ select: (state) => state.location.searchStr });
-  useEffect(() => {
-    void routerSearch;
-    setSection(openPeopleSection(peopleSectionFromUrl(window.location.search), readable));
-  }, [routerSearch, readable]);
+  // The section IS the address: read from the router's location on every
+  // render, and changed only by navigating. A tab switch replaces the history
+  // entry (the tabs are one page, not a trail), and a link to another section
+  // while the page is open — the profile sheet's "Freigaben" — arrives the
+  // same way. There is no second copy of the section in local state that
+  // could disagree with the address.
+  const searchStr = useRouterState({ select: (state) => state.location.searchStr });
+  const section = openPeopleSection(peopleSectionFromUrl(searchStr), readable);
+  const navigate = useNavigate();
   const choose = (next: string) => {
     const picked = readable.find((candidate) => candidate === next);
-    if (!picked) return;
-    setSection(picked);
-    window.history.replaceState(window.history.state, "", absolute(peopleHref(picked)));
+    if (!picked || picked === section) return;
+    void navigate({ to: peopleHref(picked), replace: true });
   };
 
   return (
