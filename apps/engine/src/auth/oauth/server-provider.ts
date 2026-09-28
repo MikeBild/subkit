@@ -438,53 +438,122 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const accessExpiresAt = new Date(now.getTime() + cfg.access_token_ttl_seconds * 1000);
     const refreshExpiresAt = new Date(now.getTime() + cfg.refresh_token_ttl_seconds * 1000);
 
-    // Insert refresh token first (access token FK). The audience rides on the
-    // refresh token too so every rotation down the chain can copy it forward
-    // onto the new access token — otherwise the resource server rejects the
-    // rotated token as `audience_missing`.
-    const [refreshRow] = await db
-      .insert(mcpOauthRefreshTokens)
-      .values({
+    // The registration, read under a row lock in the same transaction that
+    // mints the pair. The hourly cleanup can retire a registration between the
+    // consent (issueAuthorizationCode) and this exchange: its NOT EXISTS over
+    // authorization codes does not see a code that is not yet committed. A
+    // person just completed an authorization for it, so a RETIRED registration
+    // is reactivated here — never one an administrator revoked, whose exchange
+    // is refused. Without this, the exchange minted tokens the resource server
+    // then refused as `client_retired` until the person approved again.
+    const minted = await db.transaction(async (tx) => {
+      // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
+      const [client] = await tx
+        .select({
+          disabled_at: mcpOauthClients.disabled_at,
+          retired_at: mcpOauthClients.retired_at,
+        })
+        .from(mcpOauthClients)
+        .where(eq(mcpOauthClients.client_id, codeRow.client_id))
+        .for("update");
+      if (client?.disabled_at && !client.retired_at) return "client_revoked" as const;
+      if (client?.retired_at) {
+        await tx
+          .update(mcpOauthClients)
+          .set({ disabled_at: null, retired_at: null })
+          .where(
+            and(
+              eq(mcpOauthClients.client_id, codeRow.client_id),
+              isNotNull(mcpOauthClients.retired_at),
+            ),
+          );
+        await auditAwait(
+          {
+            tenant_id: codeRow.tenant_id,
+            actor_type: "user",
+            actor_id: codeRow.user_id,
+            action: AuditAction.MCP_OAUTH_CLIENT_REACTIVATED,
+            resource_type: "mcp_oauth_client",
+            resource_id: codeRow.client_id,
+            result: "success",
+            metadata: { request_source: requestSource, client_id: codeRow.client_id },
+          },
+          tx,
+        );
+      }
+
+      // Insert refresh token first (access token FK). The audience rides on the
+      // refresh token too so every rotation down the chain can copy it forward
+      // onto the new access token — otherwise the resource server rejects the
+      // rotated token as `audience_missing`.
+      const [refreshRow] = await tx
+        .insert(mcpOauthRefreshTokens)
+        .values({
+          tenant_id: codeRow.tenant_id,
+          client_id: codeRow.client_id,
+          user_id: codeRow.user_id,
+          prefix: refresh.prefix,
+          token_sha256: refresh.hash,
+          scope: codeRow.scope,
+          resource: codeRow.resource ?? null,
+          expires_at: refreshExpiresAt,
+        })
+        .returning({ id: mcpOauthRefreshTokens.id });
+
+      await tx.insert(mcpOauthAccessTokens).values({
         tenant_id: codeRow.tenant_id,
         client_id: codeRow.client_id,
         user_id: codeRow.user_id,
-        prefix: refresh.prefix,
-        token_sha256: refresh.hash,
+        prefix: access.prefix,
+        token_sha256: access.hash,
         scope: codeRow.scope,
         resource: codeRow.resource ?? null,
-        expires_at: refreshExpiresAt,
-      })
-      .returning({ id: mcpOauthRefreshTokens.id });
+        refresh_token_id: refreshRow?.id ?? null,
+        expires_at: accessExpiresAt,
+      });
 
-    await db.insert(mcpOauthAccessTokens).values({
-      tenant_id: codeRow.tenant_id,
-      client_id: codeRow.client_id,
-      user_id: codeRow.user_id,
-      prefix: access.prefix,
-      token_sha256: access.hash,
-      scope: codeRow.scope,
-      resource: codeRow.resource ?? null,
-      refresh_token_id: refreshRow?.id ?? null,
-      expires_at: accessExpiresAt,
+      await auditAwait(
+        {
+          tenant_id: codeRow.tenant_id,
+          actor_type: "user",
+          actor_id: codeRow.user_id,
+          action: AuditAction.MCP_OAUTH_TOKEN_ISSUED,
+          resource_type: "mcp_oauth_token",
+          resource_id: access.prefix,
+          result: "success",
+          metadata: {
+            request_source: requestSource,
+            client_id: codeRow.client_id,
+            scope: codeRow.scope,
+          },
+        },
+        tx,
+      );
+      return "minted" as const;
     });
 
-    await auditAwait(
-      {
-        tenant_id: codeRow.tenant_id,
-        actor_type: "user",
-        actor_id: codeRow.user_id,
-        action: AuditAction.MCP_OAUTH_TOKEN_ISSUED,
-        resource_type: "mcp_oauth_token",
-        resource_id: access.prefix,
-        result: "success",
-        metadata: {
-          request_source: requestSource,
-          client_id: codeRow.client_id,
-          scope: codeRow.scope,
+    if (minted === "client_revoked") {
+      await auditAwait(
+        {
+          tenant_id: codeRow.tenant_id,
+          actor_type: "system",
+          action: AuditAction.MCP_OAUTH_TOKEN_REJECTED,
+          resource_type: "mcp_oauth_token",
+          resource_id: null,
+          result: "denied",
+          metadata: {
+            request_source: requestSource,
+            reason: "client_revoked",
+            client_id: codeRow.client_id,
+          },
         },
-      },
-      db,
-    );
+        db,
+      );
+      throw Object.assign(new Error("invalid_grant: client_revoked"), {
+        oauth_error: "invalid_grant",
+        oauth_error_description: livenessRefusalDescription("client_revoked"),
+      });
+    }
 
     return {
       access_token: access.plaintext,
