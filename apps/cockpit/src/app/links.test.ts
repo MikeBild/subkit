@@ -99,13 +99,26 @@ describe("runs", () => {
       status: "failed",
       source: "scheduler",
       q: "Monatsreport",
+      startedFrom: "2026-08-03T12:00:00.000Z",
+      startedTo: "2026-08-10T12:00:00.000Z",
     });
     expect(filterFromUrl(query(href))).toEqual({
       workflowId: ID,
       status: "failed",
       source: "scheduler",
       q: "Monatsreport",
+      startedFrom: "2026-08-03T12:00:00.000Z",
+      startedTo: "2026-08-10T12:00:00.000Z",
     });
+  });
+
+  test("a window that is not two instants is dropped, never forwarded", () => {
+    expect(filterFromUrl("?started_from=yesterday").startedFrom).toBeNull();
+    expect(filterFromUrl("?started_to=2026-13-45T99:00:00Z").startedTo).toBeNull();
+    // An offset is taken and said in UTC, the way the engine is asked.
+    expect(filterFromUrl("?started_from=2026-08-03T14:00:00%2B02:00").startedFrom).toBe(
+      "2026-08-03T12:00:00.000Z",
+    );
   });
 
   test("the page's word for no narrowing is left out of the address", () => {
@@ -115,6 +128,8 @@ describe("runs", () => {
       status: "all",
       source: "all",
       q: "",
+      startedFrom: null,
+      startedTo: null,
     });
   });
 });
@@ -137,6 +152,8 @@ describe("audit", () => {
       traceId: "cli-949cacce25ff4379",
       scope: "all",
       actions: ["patch_candidate.approved", "patch_candidate.rejected"],
+      tsFrom: "2026-08-03T12:00:00.000Z",
+      tsTo: "2026-08-10T12:00:00.000Z",
     });
     expect(auditFilterFromUrl(query(href))).toEqual({
       resourceType: "workflow",
@@ -144,6 +161,8 @@ describe("audit", () => {
       traceId: "cli-949cacce25ff4379",
       scope: "all",
       actions: ["patch_candidate.approved", "patch_candidate.rejected"],
+      tsFrom: "2026-08-03T12:00:00.000Z",
+      tsTo: "2026-08-10T12:00:00.000Z",
     });
   });
 
@@ -154,6 +173,8 @@ describe("audit", () => {
       traceId: null,
       scope: null,
       actions: [],
+      tsFrom: null,
+      tsTo: null,
     });
   });
 });

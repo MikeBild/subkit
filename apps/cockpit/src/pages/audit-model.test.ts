@@ -632,6 +632,8 @@ describe("the narrowing a link brings to the log", () => {
       traceId: "abc123",
       scope: "all",
       actions: [],
+      tsFrom: null,
+      tsTo: null,
     });
   });
 
@@ -647,6 +649,8 @@ describe("the narrowing a link brings to the log", () => {
       traceId: null,
       scope: null,
       actions: [],
+      tsFrom: null,
+      tsTo: null,
     });
   });
 
@@ -658,6 +662,8 @@ describe("the narrowing a link brings to the log", () => {
         traceId: null,
         scope: "all",
         actions: [],
+        tsFrom: null,
+        tsTo: null,
       }),
     ).toEqual({ resource_type: "workflow", resource_id: id });
     // Scope is not a parameter of its own: it becomes `action`/`actor_type`
@@ -669,8 +675,10 @@ describe("the narrowing a link brings to the log", () => {
         traceId: "abc",
         scope: "all",
         actions: [],
+        tsFrom: "2026-08-03T12:00:00.000Z",
+        tsTo: null,
       }),
-    ).toEqual({ trace_id: "abc" });
+    ).toEqual({ trace_id: "abc", ts_from: "2026-08-03T12:00:00.000Z" });
   });
 
   test("the verbs a link names arrive as the engine's own comma list", () => {
