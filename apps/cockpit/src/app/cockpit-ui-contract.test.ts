@@ -81,6 +81,7 @@ describe("cockpit-ui family contract", () => {
 
     for (const file of [
       "apps/cockpit/src/pages/admin.tsx",
+      "apps/cockpit/src/pages/settings.tsx",
       "apps/cockpit/src/pages/chat.tsx",
       "apps/cockpit/src/pages/catalog.tsx",
       "apps/cockpit/src/pages/runs.tsx",

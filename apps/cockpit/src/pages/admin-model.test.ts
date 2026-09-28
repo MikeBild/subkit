@@ -1,4 +1,4 @@
-// What the installation pages call a role, a permission and a setting's source.
+// What the installation pages call a role and a permission.
 //
 // Each of these answered "Unbekannt" for a value it had no word for. §2 bans
 // the word; §15.2 names the replacement — the machine value, recognisably as
@@ -8,10 +8,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { settingsHref } from "@/app/links";
 import { translate } from "@/lib/i18n";
 import {
-  activationStatusLabel,
   assignableRoles,
   permissionLabel,
   personRefusal,
@@ -19,16 +17,7 @@ import {
   roleChangeNotes,
   roleLabel,
   roleName,
-  settingLabel,
-  settingLeafTarget,
-  settingMetaLabel,
-  settingSectionOf,
-  settingsLeafFromUrl,
-  settingsViewFromUrl,
-  stripScrollLeft,
 } from "@/pages/admin-model";
-
-const query = (href: string) => href.slice(href.indexOf("?"));
 
 const de = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
   translate("de", key, values);
@@ -67,32 +56,6 @@ describe("permissions", () => {
       text: "telemetry:read",
       machine: true,
     });
-  });
-});
-
-describe("setting sources", () => {
-  test("a known source is named regardless of case", () => {
-    expect(settingMetaLabel("ENV", de)).toEqual({
-      text: de("settings.meta.environment"),
-      machine: false,
-    });
-  });
-
-  test("an unnamed source is the machine value", () => {
-    expect(settingMetaLabel("vault", de)).toEqual({ text: "vault", machine: true });
-  });
-});
-
-describe("the settings leaf a link opens", () => {
-  test("reads a dotted setting path", () => {
-    expect(settingsLeafFromUrl("?leaf=server.public_base_url")).toBe("server.public_base_url");
-    expect(settingsLeafFromUrl("?leaf=llm")).toBe("llm");
-  });
-
-  test("drops what could not name a setting", () => {
-    for (const bad of ["", "?leaf=", "?leaf=a..b", "?leaf=.a", "?leaf=a%20b", "?leaf=a/b"])
-      expect(settingsLeafFromUrl(bad)).toBeNull();
-    expect(settingsLeafFromUrl(`?leaf=${"a".repeat(129)}`)).toBeNull();
   });
 });
 
@@ -181,46 +144,6 @@ describe("roles a person holds", () => {
   });
 });
 
-describe("the settings view a link opens", () => {
-  test("a leaf opens the tab it lives on", () => {
-    expect(settingSectionOf("tokens.monthly_budget")).toBe("tokens");
-    expect(settingSectionOf("llm")).toBe("llm");
-  });
-
-  test("the address carries leaf, tab and search, and drops junk", () => {
-    expect(settingsViewFromUrl(query(settingsHref("tokens.monthly_budget")))).toEqual({
-      leaf: "tokens.monthly_budget",
-      section: null,
-      q: "",
-    });
-    expect(settingsViewFromUrl(query(settingsHref(null, { section: "llm", q: "model" })))).toEqual({
-      leaf: null,
-      section: "llm",
-      q: "model",
-    });
-    expect(settingsViewFromUrl("?section=a%2Fb").section).toBeNull();
-  });
-
-  test("a setting is named in the reader's language, with its parent where needed", () => {
-    expect(settingLabel("tokens.monthly_budget", de)).toEqual({
-      text: "Monatliches Token-Kontingent",
-      machine: false,
-    });
-    expect(settingLabel("llm.providers.anthropic.api_key", de).text).toBe(
-      "Anthropic · API-Schlüssel",
-    );
-  });
-
-  test("the activation state is a word, and an unknown one is the machine value", () => {
-    expect(activationStatusLabel("restart_required", de)).toEqual({
-      text: de("settings.activation.restartRequired"),
-      machine: false,
-    });
-    expect(activationStatusLabel(null, de).machine).toBe(false);
-    expect(activationStatusLabel("rolling", de)).toEqual({ text: "rolling", machine: true });
-  });
-});
-
 describe("what a role change says beyond its permissions", () => {
   test("leaving admin always says people and role management go with it", () => {
     // Admin-only routes check the role NAME: a custom role with every
@@ -243,57 +166,5 @@ describe("what a role change says beyond its permissions", () => {
       de("people.refusal.engine", { reason: "short and stout" }),
     );
     expect(personRefusal(null, de)).toBe(de("people.roleUpdateFailed"));
-  });
-});
-
-describe("where a ?leaf= address lands", () => {
-  const paths = [
-    "llm.provider",
-    "llm.providers.anthropic.api_key",
-    "llm.providers.anthropic.model",
-  ];
-
-  test("a setting is itself; a group opens at its first setting", () => {
-    expect(settingLeafTarget(paths, "llm.provider")).toEqual({ index: 0, kind: "leaf" });
-    expect(settingLeafTarget(paths, "llm.providers.anthropic")).toEqual({
-      index: 1,
-      kind: "group",
-    });
-    expect(settingLeafTarget(paths, "llm")).toEqual({ index: 0, kind: "group" });
-  });
-
-  test("only a path nothing lives under is missing", () => {
-    expect(settingLeafTarget(paths, "llm.providers.frob")).toBeNull();
-    // A prefix of a word is not a group.
-    expect(settingLeafTarget(paths, "llm.prov")).toBeNull();
-  });
-
-  test("an unreported activation state is said as such, not as active", () => {
-    expect(activationStatusLabel(null, de).text).toBe(de("settings.activation.unreported"));
-    expect(activationStatusLabel(null, de).text).not.toBe(de("settings.activation.active"));
-  });
-});
-
-describe("the settings tab strip scrolls on its own", () => {
-  // Opening a leaf used to move the whole page left: the tab and the field
-  // were scrolled into view with every ancestor, including the page's clipped
-  // scroll region. Only the strip moves now, and only as far as it can.
-  const strip = { left: 16, scrollLeft: 0, clientWidth: 400, scrollWidth: 1600 };
-
-  test("a tab far to the right is brought to the strip's middle", () => {
-    // 1000 into the strip, 100 wide: centred when the strip stands at 850.
-    expect(stripScrollLeft(strip, { left: 1016, width: 100 })).toBe(850);
-  });
-
-  test("a tab already at the start leaves the strip at 0, never negative", () => {
-    expect(stripScrollLeft(strip, { left: 16, width: 100 })).toBe(0);
-  });
-
-  test("the strip never scrolls past its end", () => {
-    expect(stripScrollLeft(strip, { left: 1566, width: 50 })).toBe(1200);
-  });
-
-  test("the current scroll is taken into account", () => {
-    expect(stripScrollLeft({ ...strip, scrollLeft: 850 }, { left: 166, width: 100 })).toBe(850);
   });
 });

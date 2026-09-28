@@ -41,7 +41,7 @@ describe("the engine's wording", () => {
   test("the settings page renders a description only through it", () => {
     // A bare `{item.meta.description}` child is the English sentence posing as
     // the Cockpit's own.
-    const source = readFileSync(resolve(import.meta.dir, "../pages/admin.tsx"), "utf8");
+    const source = readFileSync(resolve(import.meta.dir, "../pages/settings.tsx"), "utf8");
     expect(source).not.toMatch(/^\s*\{item\.meta\.description\}\s*$/m);
     expect(source).toContain("<EngineWording");
   });
