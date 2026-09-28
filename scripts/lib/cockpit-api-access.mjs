@@ -99,7 +99,7 @@ export async function verifyApiAccess(page, stand, locale, fixture) {
     ["keys", fixture.activeKeys],
   ]) {
     const text = await page.getByTestId(`api-access-index-${section}`).innerText();
-    if (!new RegExp(`\\b${count}\\b`).test(text))
+    if (!new RegExp(`(^|\\D)${count}(\\D|$)`).test(text))
       throw new Error(`${where}: the index says "${text}" for ${section}, expected ${count}`);
   }
   if (!index) throw new Error(`${where}: no section index`);
