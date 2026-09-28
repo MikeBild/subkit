@@ -536,7 +536,7 @@ A refusal on the token endpoint names what happened
 active …"`); it never tells the client to paste an API key.
 
 The Cockpit shows both sides of this. **Credentials** lists the approved
-connections with the person whose approval keeps each one alive, and **People**
+connections with the person whose approval keeps each one alive, and **People & access**
 says how many connections a deactivation will end before it asks for the
 confirmation.
 

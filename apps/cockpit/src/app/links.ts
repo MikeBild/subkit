@@ -206,6 +206,30 @@ export function apiAccessSectionFromUrl(search: string): ApiAccessSection | null
 }
 
 /**
+ * The four sections of Personen & Rechte — who is here, the roles they hold,
+ * the groups they are in, and the grants on single records. One page: who a
+ * person is and what they may do were two pages, and a role change on one had
+ * its consequence on the other.
+ *
+ * `grants` here are Freigaben — rights on one workflow or connector. The
+ * `grants` section of Zugangsdaten is a different thing (account connections)
+ * and keeps its own word.
+ */
+export const PEOPLE_SECTIONS = ["people", "roles", "groups", "grants"] as const;
+export type PeopleSection = (typeof PEOPLE_SECTIONS)[number];
+
+/** Personen & Rechte, at one section. The people list is the default and needs no parameter. */
+export function peopleHref(section?: PeopleSection | null): string {
+  return withQuery("/people", { section: section === "people" ? null : section });
+}
+
+/** The section an address opens Personen & Rechte at, or none. Anything else is dropped. */
+export function peopleSectionFromUrl(search: string): PeopleSection | null {
+  const raw = new URLSearchParams(search).get("section");
+  return (PEOPLE_SECTIONS as readonly string[]).includes(raw ?? "") ? (raw as PeopleSection) : null;
+}
+
+/**
  * A plain identifier from the address, or nothing.
  *
  * Bounded and refused when it could not be one: a free-text value forwarded to

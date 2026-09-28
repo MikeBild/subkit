@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouterState } from "@tanstack/react-router";
 import {
   ArrowDown,
   ArrowUp,
@@ -12,7 +13,14 @@ import {
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
-import { absolute, chatNewHref, settingsHref } from "@/app/links";
+import {
+  absolute,
+  chatNewHref,
+  type PeopleSection,
+  peopleHref,
+  peopleSectionFromUrl,
+  settingsHref,
+} from "@/app/links";
 import { useSession } from "@/app/session";
 import { ConfirmAction } from "@/components/cockpit/confirm-action";
 import { ContextHelp } from "@/components/cockpit/context-help";
@@ -20,6 +28,7 @@ import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
 import { PreparedChanges } from "@/components/cockpit/prepared-changes";
 import { LoadFailed, queryView } from "@/components/failure-state";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -81,6 +90,7 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { EngineWording, LabelText } from "@/lib/machine-label";
 import { statusLabel } from "@/lib/status-label";
+import { cn } from "@/lib/utils";
 import {
   activationStatusLabel,
   assignableRoles,
@@ -88,10 +98,12 @@ import {
   type GrantResourceType,
   isGrantResourceType,
   isPersonRole,
+  openPeopleSection,
   PERSON_ROLES,
   type PersonRole,
   permissionLabel,
   personRefusal,
+  readablePeopleSections,
   resourceTypeLabel,
   roleChange,
   roleChangeNotes,
@@ -116,7 +128,7 @@ type Envelope<T> = { items: T[] };
 /** How long an invite issued from the people page stays redeemable. */
 const INVITE_TTL_HOURS = 24;
 type RoleName = "admin" | "member" | "enduser";
-type AccessTab = "roles" | "groups" | "grants" | "permissions";
+type AccessSection = Exclude<PeopleSection, "people">;
 
 interface UserItem {
   id: string;
@@ -472,7 +484,7 @@ interface PendingRoleChange {
   to: string;
 }
 
-export function PeoplePage() {
+function PeopleList() {
   const { t, dateTime } = useI18n();
   const session = useSession();
   const client = useQueryClient();
@@ -575,11 +587,9 @@ export function PeoplePage() {
   const view = queryView(query, (data) => data.items.length === 0);
 
   return (
-    <AdminFrame
-      testId="admin-people"
-      titleKey="resource.people.title"
-      action={
-        canWrite ? (
+    <div className="grid gap-4">
+      {canWrite ? (
+        <div className="flex justify-end">
           <Button
             className="w-full sm:w-auto"
             onClick={() => setCreateOpen(true)}
@@ -588,14 +598,13 @@ export function PeoplePage() {
             <Plus data-icon="inline-start" />
             {t("people.create")}
           </Button>
-        ) : undefined
-      }
-    >
+        </div>
+      ) : null}
       {view === "loading" ? (
         <LoadingCards testId="people-loading" />
       ) : view === "error" ? (
         <LoadFailed
-          title={t("resource.loadFailed", { resource: t("resource.people.title") })}
+          title={t("resource.loadFailed", { resource: t("people.section.people") })}
           onRetry={() => void query.refetch()}
           testId="people-load-failed"
         />
@@ -859,6 +868,109 @@ export function PeoplePage() {
             : t("people.inviteReady")
         }
       />
+    </div>
+  );
+}
+
+const PEOPLE_SECTION_LABEL: Record<PeopleSection, TranslationKey> = {
+  people: "people.section.people",
+  roles: "access.roles",
+  groups: "access.groups",
+  grants: "access.grants",
+};
+
+const TAB_COLUMNS = ["grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-4"] as const;
+
+/**
+ * Personen & Rechte — who is here, and what each of them may do.
+ *
+ * Two pages until now: Personen for the people and their role, Zugriff for the
+ * roles, groups and grants. A role changed on one had its consequence on the
+ * other, and the navigation carried two entries for one question. The section
+ * lives in the address (`?section=roles`), so a link, a reload and the old
+ * `/access` address all land where they meant to; the people list is the
+ * default. The permission catalogue is not a section of its own: a role's
+ * permissions are read on the role, and the grant dialog offers the ones a
+ * record can take.
+ */
+export function PeopleAndAccessPage() {
+  const { t } = useI18n();
+  const session = useSession();
+  const canIdentity = session.permissions.includes("identity:read");
+  const canRbac = session.permissions.includes("rbac:read");
+  const readable = useMemo(
+    () => readablePeopleSections({ identity: canIdentity, rbac: canRbac }),
+    [canIdentity, canRbac],
+  );
+  const [section, setSection] = useState(() =>
+    openPeopleSection(peopleSectionFromUrl(window.location.search), readable),
+  );
+  // A link to another section while this page is open arrives through the
+  // router, not as a fresh load: follow it. The section is read from the
+  // address itself — the router's own search string is re-serialised; it only
+  // says that the address changed.
+  const routerSearch = useRouterState({ select: (state) => state.location.searchStr });
+  useEffect(() => {
+    void routerSearch;
+    setSection(openPeopleSection(peopleSectionFromUrl(window.location.search), readable));
+  }, [routerSearch, readable]);
+  const choose = (next: string) => {
+    const picked = readable.find((candidate) => candidate === next);
+    if (!picked) return;
+    setSection(picked);
+    window.history.replaceState(window.history.state, "", absolute(peopleHref(picked)));
+  };
+
+  return (
+    <AdminFrame testId="admin-people" titleKey="resource.people.title">
+      {section === null ? (
+        <Alert data-testid="resource-permission-alert">
+          <AlertTitle>{t("resource.permission.title")}</AlertTitle>
+          <AlertDescription>{t("resource.permission.description")}</AlertDescription>
+        </Alert>
+      ) : (
+        <Tabs value={section} onValueChange={choose} data-testid="people-tabs">
+          {readable.length > 1 ? (
+            <>
+              <Select value={section} onValueChange={choose}>
+                <SelectTrigger
+                  className="w-full sm:hidden"
+                  aria-label={t("access.section")}
+                  data-testid="people-mobile-section"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {readable.map((value) => (
+                      <SelectItem key={value} value={value} data-testid={`people-mobile-${value}`}>
+                        {t(PEOPLE_SECTION_LABEL[value])}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <TabsList
+                variant="line"
+                className={cn(
+                  "hidden h-auto w-full sm:grid",
+                  TAB_COLUMNS[readable.length - 1] ?? "grid-cols-4",
+                )}
+                data-testid="people-tab-list"
+              >
+                {readable.map((value) => (
+                  <TabsTrigger key={value} value={value} data-testid={`people-tab-${value}`}>
+                    {t(PEOPLE_SECTION_LABEL[value])}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </>
+          ) : null}
+          <TabsContent value={section} className="pt-4">
+            {section === "people" ? <PeopleList /> : <AccessSections section={section} />}
+          </TabsContent>
+        </Tabs>
+      )}
     </AdminFrame>
   );
 }
@@ -956,12 +1068,15 @@ function AccessCollection<T extends { id?: string; name?: string; description?: 
   );
 }
 
-export function AccessPage() {
+function AccessSections({ section }: { section: AccessSection }) {
   const { t, dateTime } = useI18n();
   const session = useSession();
   const client = useQueryClient();
   const canWrite = session.permissions.includes("rbac:write");
-  const [activeTab, setActiveTab] = useState<AccessTab>("roles");
+  // Every read here is behind its own permission. A reader who may see the
+  // roles but not the directory reads no people: a refused read is an audit
+  // row and an error state, and the names fall back to their kind.
+  const can = (permission: string) => session.permissions.includes(permission);
   const [createKind, setCreateKind] = useState<"role" | "group" | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -995,14 +1110,17 @@ export function AccessPage() {
   });
   const people = useQuery({
     queryKey: ["admin", "people"],
+    enabled: can("identity:read"),
     queryFn: () => apiRequest<Envelope<UserItem>>("/v1/identity/users?limit=200"),
   });
   const workflows = useQuery({
     queryKey: ["admin", "workflows"],
+    enabled: can("workflow:read"),
     queryFn: () => apiRequest<Envelope<WorkflowItem>>("/v1/workflows?limit=200"),
   });
   const connectors = useQuery({
     queryKey: ["admin", "connectors"],
+    enabled: can("connector:read"),
     queryFn: () =>
       apiRequest<Envelope<WorkflowItem & { display_name?: string | null }>>(
         "/v1/connectors?limit=200",
@@ -1134,53 +1252,9 @@ export function AccessPage() {
     (permission) => permission.resource_type === grantResourceType,
   );
   return (
-    <AdminFrame
-      testId="admin-access"
-      titleKey="resource.access.title"
-      descriptionKey="resource.access.description"
-    >
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => setActiveTab(value as AccessTab)}
-        data-testid="access-tabs"
-      >
-        <Select value={activeTab} onValueChange={(value) => setActiveTab(value as AccessTab)}>
-          <SelectTrigger
-            className="w-full sm:hidden"
-            aria-label={t("access.section")}
-            data-testid="access-mobile-section"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {(["roles", "groups", "grants", "permissions"] as const).map((value) => (
-                <SelectItem key={value} value={value} data-testid={`access-mobile-${value}`}>
-                  {t(`access.${value}`)}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <TabsList
-          variant="line"
-          className="hidden h-auto w-full grid-cols-4 sm:grid"
-          data-testid="access-tab-list"
-        >
-          <TabsTrigger value="roles" data-testid="access-tab-roles">
-            {t("access.roles")}
-          </TabsTrigger>
-          <TabsTrigger value="groups" data-testid="access-tab-groups">
-            {t("access.groups")}
-          </TabsTrigger>
-          <TabsTrigger value="grants" data-testid="access-tab-grants">
-            {t("access.grants")}
-          </TabsTrigger>
-          <TabsTrigger value="permissions" data-testid="access-tab-permissions">
-            {t("access.permissions")}
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="roles" className="grid gap-4 pt-4">
+    <>
+      {section === "roles" ? (
+        <div className="grid gap-4" data-testid="roles-section">
           <div className="flex justify-end">
             {canWrite && (
               <Button
@@ -1228,8 +1302,10 @@ export function AccessPage() {
               </Card>
             )}
           />
-        </TabsContent>
-        <TabsContent value="groups" className="grid gap-4 pt-4">
+        </div>
+      ) : null}
+      {section === "groups" ? (
+        <div className="grid gap-4" data-testid="groups-section">
           <div className="flex justify-end">
             {canWrite && (
               <Button
@@ -1283,8 +1359,10 @@ export function AccessPage() {
           <p className="text-xs text-muted-foreground" data-testid="groups-members-note">
             {t("access.membersNotListed")}
           </p>
-        </TabsContent>
-        <TabsContent value="grants" className="pt-4">
+        </div>
+      ) : null}
+      {section === "grants" ? (
+        <div data-testid="grants-section">
           <div className="mb-4 flex justify-end">
             {canWrite && (
               <Button
@@ -1330,30 +1408,8 @@ export function AccessPage() {
               </Card>
             )}
           />
-        </TabsContent>
-        <TabsContent value="permissions" className="pt-4">
-          <AccessCollection
-            name="permissions"
-            query={permissions}
-            items={(permissions.data?.items ?? []).map((permission) => ({
-              ...permission,
-              id: permission.name,
-            }))}
-            failedTitle={t("resource.loadFailed", { resource: t("access.permissions") })}
-            empty={t("access.noPermissions")}
-            render={(permission, index) => (
-              <Card key={permission.name} size="sm" data-testid={`permissions-list-${index}`}>
-                <CardHeader>
-                  <CardTitle>
-                    <LabelText label={permissionLabel(permission.name, t)} />
-                  </CardTitle>
-                  <CardDescription className="font-mono text-xs">{permission.name}</CardDescription>
-                </CardHeader>
-              </Card>
-            )}
-          />
-        </TabsContent>
-      </Tabs>
+        </div>
+      ) : null}
       <Dialog open={Boolean(createKind)} onOpenChange={(open) => !open && setCreateKind(null)}>
         <DialogContent showCloseButton={false} data-testid="access-create-dialog">
           <DialogHeader>
@@ -1738,7 +1794,7 @@ export function AccessPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </AdminFrame>
+    </>
   );
 }
 

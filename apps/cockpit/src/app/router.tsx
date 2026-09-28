@@ -1,6 +1,6 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { NotFoundPage, RouteErrorPage } from "@/components/failure-state";
-import { AccessPage, NotificationsPage, PeoplePage, SettingsPage } from "@/pages/admin";
+import { NotificationsPage, PeopleAndAccessPage, SettingsPage } from "@/pages/admin";
 import { ApiAccessPage } from "@/pages/api-access";
 import { AuditPage } from "@/pages/audit";
 import { CatalogPage } from "@/pages/catalog";
@@ -64,8 +64,7 @@ const PAGE_COMPONENTS: Record<PageRoute, () => React.ReactElement> = {
   "/": TodayPage,
   "/audit": AuditPage,
   "/usage": UsagePage,
-  "/people": PeoplePage,
-  "/access": AccessPage,
+  "/people": PeopleAndAccessPage,
   "/api-access": ApiAccessPage,
   "/notifications": NotificationsPage,
   "/settings": SettingsPage,

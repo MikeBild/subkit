@@ -1,3 +1,4 @@
+import { PEOPLE_SECTIONS, type PeopleSection } from "@/app/links";
 import { CATALOGS, type TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 
@@ -34,7 +35,7 @@ const PERMISSION_RESOURCE_KEYS: Readonly<Record<string, TranslationKey>> = {
   discovery: "permission.resource.discovery",
   execution: "resource.runs.title",
   file: "resource.files.title",
-  identity: "resource.people.title",
+  identity: "people.section.people",
   mcp_external_tool: "permission.resource.mcpExternalTools",
   memory: "permission.resource.memory",
   schedule: "permission.resource.schedules",
@@ -46,7 +47,7 @@ const PERMISSION_RESOURCE_KEYS: Readonly<Record<string, TranslationKey>> = {
   metrics: "permission.resource.metrics",
   notification: "resource.inbox.title",
   portal_token: "permission.resource.portalTokens",
-  rbac: "resource.access.title",
+  rbac: "permission.resource.rbac",
   self_healing: "resource.operations.title",
   settings: "resource.settings.title",
   skill: "resource.skills.title",
@@ -257,6 +258,28 @@ const SETTING_META_KEYS: Readonly<Record<string, TranslationKey>> = {
 export function settingsLeafFromUrl(search: string): string | null {
   const raw = new URLSearchParams(search).get("leaf")?.trim() ?? "";
   return raw.length <= 128 && /^[a-z0-9_]+(\.[a-z0-9_]+)*$/i.test(raw) ? raw : null;
+}
+
+/**
+ * The sections of Personen & Rechte this reader may read, in page order. The
+ * people list is behind `identity:read`; roles, groups and grants behind
+ * `rbac:read`. A section the reader cannot read is absent, not a failed load.
+ */
+export function readablePeopleSections(can: { identity: boolean; rbac: boolean }): PeopleSection[] {
+  return PEOPLE_SECTIONS.filter((section) => (section === "people" ? can.identity : can.rbac));
+}
+
+/**
+ * The section the page opens at: the one the address names when the reader
+ * may read it, else the first one they may. Null only for a reader who may
+ * read none of them.
+ */
+export function openPeopleSection(
+  requested: PeopleSection | null,
+  readable: readonly PeopleSection[],
+): PeopleSection | null {
+  if (requested && readable.includes(requested)) return requested;
+  return readable[0] ?? null;
 }
 
 /**
