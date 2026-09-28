@@ -154,6 +154,8 @@ Der **Browser-Titel** lautet einheitlich „<Produktname> Cockpit". Ein Cockpit,
 Produktnamen nicht nennt oder ihn anders schreibt als seine Geschwister, ist an der Stelle
 uneinheitlich, an der es zuerst gelesen wird.
 
+**Einstellungen** gliedern ihre Bereiche als gruppierte, senkrechte Liste — keine Tabs, keine Zähler, kein seitliches Scrollen bei keiner Breite: ab 720px Inhaltsbreite steht die Liste links neben dem gewählten Bereich, darunter ist sie die Startansicht, und ein Bereich öffnet sich mit „← Alle Bereiche" an ihrer Stelle.
+
 ## 7. Drift-Kontrolle ohne Shared Code
 
 Die Konvention wird nicht technisch erzwungen. Zwei leichte Mechanismen statt dessen: (1) Diese Datei liegt versioniert in jedem Repo; eine Änderung an der Konvention ist ein PR in sechs Repos — bewusst teuer, damit sie selten ist. (2) Optional prüft WatchKit einzelne Regeln als Vertragsaussagen gegen die laufenden Cockpits (z. B. „kein ‚Unbekannt'-Status im DOM der Startseite"), so wie es heute schon API-Zusagen gegen Verhalten prüft.

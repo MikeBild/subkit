@@ -6,14 +6,11 @@
 // page reads what the address says.
 
 import { describe, expect, test } from "bun:test";
-import {
-  openPeopleSection,
-  readablePeopleSections,
-  settingsLeafFromUrl,
-} from "@/pages/admin-model";
+import { openPeopleSection, readablePeopleSections } from "@/pages/admin-model";
 import { auditFilterFromUrl } from "@/pages/audit-model";
 import { connectorHealthFilterFromUrl } from "@/pages/connectors-model";
 import { filterFromUrl } from "@/pages/runs-model";
+import { settingsLeafFromUrl } from "@/pages/settings-model";
 import {
   API_ACCESS_SECTIONS,
   absolute,
