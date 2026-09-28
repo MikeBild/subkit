@@ -13,7 +13,7 @@
 // administrator's revocation stays a revocation.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { createMcpOAuthProvider } from "../../auth/oauth/server-provider.ts";
 import type { Config } from "../../config/schema.ts";
@@ -36,7 +36,7 @@ const OLD = () => at(-10 * DAY);
 let seq = 0;
 function unique(prefix: string): string {
   seq += 1;
-  return `${prefix}-${seq}-${randomBytes(4).toString("hex")}`;
+  return `${prefix}-${seq}`;
 }
 
 async function seedClient(
