@@ -1103,6 +1103,16 @@ function ConnectionRow({
                 ? t("connections.expiresAt", { date: dateTime(item.expires_at) })
                 : t("connections.noExpiry")}
           </p>
+          {/* A grant that ends and cannot renew itself says why, before it
+              ends — not only as a countdown. */}
+          {item.state === "expiring" ? (
+            <p
+              className="mt-1 text-xs text-muted-foreground"
+              data-testid={`connection-no-auto-renew-${index}`}
+            >
+              {t("connections.noAutoRenew")}
+            </p>
+          ) : null}
           <div className="mt-2 text-xs" data-testid={`connection-used-by-${index}`}>
             {item.used_by.length === 0 ? (
               <span className="text-muted-foreground">{t("connections.notUsed")}</span>

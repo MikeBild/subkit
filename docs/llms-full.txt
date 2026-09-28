@@ -6320,7 +6320,9 @@ füttern. Der Weg hat drei Schritte, und der letzte passiert auf der anderen Sei
    der Schlüssel auf die Konnektor-Seite (siehe unten).
 2. **Name und Rechte.** Die Kontoverbindung bekommt einen kurzen Namen (vorgeschlagen aus dem
    Namen des Systems) und du wählst die Rechte, die SubKit dort haben soll. Nur was du
-   hier wählst, wird auf der anderen Seite erbeten.
+   hier wählst, wird auf der anderen Seite erbeten. `offline_access` steht nicht zur
+   Wahl: Es ist kein Recht, sondern die Bitte um ein Erneuerungs-Token. Nennt das System
+   diesen Wert, erbittet SubKit ihn selbst — beim Verbinden und bei jedem **Erneuern**.
 3. **Freigabe.** **Weiter zur Freigabe** schickt dich zum anderen System. Dort siehst du,
    wer anfragt (SubKit, mit seiner Adresse) und wofür, und klickst auf **Freigeben** —
    oder auf **Ablehnen**. Danach bist du wieder im Cockpit, und die Kontoverbindung steht in
@@ -6329,14 +6331,17 @@ füttern. Der Weg hat drei Schritte, und der letzte passiert auf der anderen Sei
 Was dabei im Hintergrund passiert, musst du nicht wissen; für die Neugierigen: SubKit
 meldet sich beim anderen System als öffentlicher Client an (Dynamic Client Registration),
 startet einen Authorization-Code-Ablauf mit PKCE und tauscht den Code gegen Zugriffs- und
-Erneuerungs-Token. Beide liegen als Versionen im Secret-Speicher dieser Installation —
+Erneuerungs-Token. Ein OpenID-Connect-Server stellt das Erneuerungs-Token nur aus, wenn
+`offline_access` erbeten wurde; ohne es endet der Zugriff nach der ersten Laufzeit des
+Zugriffs-Tokens. Beide liegen als Versionen im Secret-Speicher dieser Installation —
 verschlüsselt wie jedes andere Secret, und kein Schlüssel wurde je eingetippt.
 
 ## Was die Liste zeigt
 
 Jede Zeile nennt den Namen, die Adresse, die gewährten Rechte, wann die Kontoverbindung
 zuletzt verwendet wurde, welche Konnektoren sie nutzen (mit der Zahl ihrer Workflows) und ein
-Zustandswort:
+Zustandswort. Kann sich der Zugriff nicht selbst erneuern, sagt die Zeile auch, warum:
+das andere System hat kein Erneuerungs-Token ausgestellt.
 
 | Wort | Bedeutung | Was zu tun ist |
 |---|---|---|
@@ -6346,7 +6351,9 @@ Zustandswort:
 | **unlesbar** | Der gespeicherte Zugriff lässt sich mit dem Schlüssel dieser Installation nicht lesen. | **Erneuern**. |
 
 **Erneuern** wiederholt den Weg von oben für dieselbe Kontoverbindung: gleicher Name,
-gleiche Rechte, neue Freigabe. **Trennen** (im ⋯-Menü, mit Rückfrage) widerruft den
+gleiche Rechte, neue Freigabe. Eine abgelaufene oder unlesbare Kontoverbindung steht nur
+dann auf **Heute**, wenn ein Konnektor sie nutzt; eine, die niemand nutzt („Von keinem
+Konnektor genutzt"), bricht nichts und bleibt hier in der Liste. **Trennen** (im ⋯-Menü, mit Rückfrage) widerruft den
 gespeicherten Zugriff und vergisst die Kontoverbindung. Ein Konnektor, der sie benutzt hat, steht danach ohne
 Zugangsdaten da und sagt das auf seiner Seite.
 

@@ -12,10 +12,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { _resetConfigForTests, loadConfig } from "../config/loader.ts";
+import { listConnections, secretNames } from "../credentials/connections/index.ts";
 import {
   connectors,
   conversationElicitations,
   conversations,
+  credentials,
   executionSteps,
   executions,
   llmUsage,
@@ -32,6 +34,7 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { currentMonthBucket } from "../llm/accounting/budget.ts";
 import { resetMetricsRegistryForTests } from "../observability/metrics.ts";
 import { grantResource } from "../rbac/grants.ts";
+import { createSecretVersion } from "../runtime-config/service.ts";
 import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { reviewableDiff, seedPatchableWorkflow } from "../test-helpers/patch-candidates.ts";
@@ -66,6 +69,7 @@ const wf: Record<"held" | "fail" | "auth" | "chat" | "patch", string> = {
 };
 let brokenConnectorId: string;
 let connectionId: string;
+let unusedConnectionId: string;
 let ownConversationId: string;
 let othersConversationId: string;
 
@@ -217,22 +221,49 @@ beforeAll(async () => {
     { ...skill, pattern_kind: "failure_pattern", fingerprint: "fp-failure" },
   ]);
 
-  // A connection whose stored token does not decrypt.
+  // A connection whose stored token does not decrypt, used by a connector.
+  const connectionRow = {
+    tenant_id,
+    base_url: "https://wiki.test",
+    issuer: "https://wiki.test",
+    authorization_endpoint: "https://wiki.test/authorize",
+    token_endpoint: "https://wiki.test/token",
+    client_id: "c",
+    scopes: ["read"],
+    access_token_version: 1,
+  };
   const [connection] = await db
     .insert(outboundConnections)
-    .values({
-      tenant_id,
-      name: "wikikit",
-      base_url: "https://wiki.test",
-      issuer: "https://wiki.test",
-      authorization_endpoint: "https://wiki.test/authorize",
-      token_endpoint: "https://wiki.test/token",
-      client_id: "c",
-      scopes: ["read"],
-      access_token_version: 1,
-    })
+    .values({ ...connectionRow, name: "wiki" })
     .returning();
   connectionId = connection!.id;
+  await db.insert(credentials).values({
+    tenant_id,
+    connector_id: brokenConnectorId,
+    environment: "prod",
+    mode: "oauth2",
+    ciphertext: Buffer.from("x"),
+    iv: Buffer.from("x"),
+    auth_tag: Buffer.from("x"),
+    connection_id: connectionId,
+  });
+  // A grant that ended without a refresh token (expired_no_refresh), with a
+  // readable token — but no connector uses it: nothing depends on it.
+  const spareToken = await createSecretVersion(db, {
+    name: secretNames(tenant_id, "spare").access,
+    value: "spare-access-token",
+    created_by: null,
+  });
+  const [unused] = await db
+    .insert(outboundConnections)
+    .values({
+      ...connectionRow,
+      name: "spare",
+      access_token_version: spareToken.version,
+      expires_at: new Date(now - HOUR),
+    })
+    .returning();
+  unusedConnectionId = unused!.id;
 
   // A prepared secret version waiting for approval (installation-wide).
   await db.insert(runtimeSecretVersions).values({
@@ -325,6 +356,15 @@ describe("every source, as an admin reads it", () => {
     expect(classOf("skills")).toBe("decide");
     expect(items.get("skills")?.counts.skills).toBe(1);
     expect(items.get(`connection:${connectionId}`)?.reason).toBe("secret_unreadable");
+    expect(items.get(`connection:${connectionId}`)?.severity).toBe("urgent");
+    // Counter-check: without the usage gate in `readConnections` this item is
+    // failing/urgent too — a connection nothing uses breaks nothing.
+    const spare = (await listConnections(testDb.db, tenant_id)).find(
+      (view) => view.id === unusedConnectionId,
+    );
+    expect(spare).toMatchObject({ state: "expired", state_reason: "expired_no_refresh" });
+    expect(spare?.used_by).toEqual([]);
+    expect(items.has(`connection:${unusedConnectionId}`)).toBe(false);
     expect(items.get(`connector:${brokenConnectorId}`)?.actions[0]?.verb).toBe("reauth");
     expect(items.get(`workflow:${wf.held}`)?.reason).toBe("execution_authority_required");
     expect(Object.values(attention.sources).every((state) => state === "answered")).toBe(true);
