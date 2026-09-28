@@ -1,4 +1,10 @@
-/** UI lifecycle coverage; HTTP integration tests enforce persistence and authorization. */
+/**
+ * UI lifecycle coverage of a decision in Heute's review sheet; HTTP
+ * integration tests enforce persistence and authorization.
+ *
+ * The entry leaves Heute the moment its last decision is taken and comes back
+ * when the engine refuses it; the toast leads to the audit trail.
+ */
 export async function verifyDecisionLifecycle(page, stand, id, locale, capture) {
   let applied = false;
   let attempts = 0;
@@ -34,13 +40,57 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
   const patterns = [
     "**/v1/patch-candidates**",
     "**/v1/skill-candidates**",
+    "**/v1/attention*",
     `**/v1/workflows/${id}/versions/*/authority-preview?*`,
   ];
+  const entry = {
+    id: `workflow:${id}`,
+    class: "failing",
+    severity: "urgent",
+    kind: "workflow",
+    subject: { kind: "workflow", id, name: "Monthly report" },
+    reason: "patch_proposed",
+    cause_class: null,
+    counts: { patches: 1 },
+    since: now,
+    deadline: null,
+    detail: null,
+    actions: [
+      {
+        verb: "review",
+        href: `/cockpit?review=workflow:${id}`,
+        primary: true,
+        permission: "workflow:write",
+      },
+    ],
+  };
+  const attention = () => ({
+    schema_version: "attention.v1",
+    generated_at: new Date().toISOString(),
+    sources: Object.fromEntries(
+      [
+        "conversations",
+        "schedules",
+        "freshness",
+        "failures",
+        "patches",
+        "connectors",
+        "connections",
+        "secret_approvals",
+        "skills",
+        "budget",
+        "risk",
+      ].map((source) => [source, "answered"]),
+    ),
+    status: { health_state: "healthy", next_run_at: null },
+    items: applied ? [] : [entry],
+  });
   const reply = (route, body, status = 200) =>
     route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
   const handler = async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path === "/v1/attention") return reply(route, attention());
     if (path === "/v1/skill-candidates")
       return reply(route, { items: [], total: 0, reviewable_total: 0 });
     if (path === "/v1/patch-candidates")
@@ -126,8 +176,14 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
     return route.fallback();
   };
   for (const pattern of patterns) await page.route(pattern, handler);
+  const listed = () =>
+    page.locator(`[data-testid="attention-list"] > li[data-attention-id="workflow:${id}"]`);
+  const openSheet = async () => {
+    await stand.visit(page, `?review=workflow:${id}`);
+    await page.getByTestId("attention-review-body").waitFor();
+  };
   try {
-    await stand.visit(page, "decisions");
+    await openSheet();
     const card = page.locator(`article[data-decision-key="patch:${id}"]`);
     await card.waitFor();
     const approve = card.locator('[data-testid$="-approve"]');
@@ -145,45 +201,36 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
       .waitFor();
     await capture("failed-review");
     if ((await card.count()) !== 1) throw new Error("Failed approval removed the card");
-    await page.reload();
+    // A refused decision brings its entry back: it was taken off Heute the
+    // moment the button was pressed.
+    await listed().waitFor({ state: "attached" });
+    await openSheet();
     await card.waitFor();
     await card.locator('[data-testid$="-toggle"]').click();
     await approve.click();
-    await card.waitFor({ state: "detached" });
+    // The last decision of the entry closes the sheet and takes the entry off
+    // Heute at once; the toast leads to the audit trail of what was decided.
+    await page.getByTestId("attention-review").waitFor({ state: "hidden" });
+    const audit = page.getByTestId("attention-decided-audit");
+    await audit.waitFor();
+    if (!(await audit.getAttribute("href"))?.includes("/cockpit/audit?"))
+      throw new Error("The decision's toast does not lead to the audit trail");
+    if (await listed().count()) throw new Error("The decided entry is still on Heute");
     await page.reload();
-    await page.getByTestId("decisions-page").waitFor();
-    await page.getByTestId("decisions-history").waitFor();
-    if ((await card.count()) !== 0 || attempts !== 2)
+    await page.getByTestId("attention-page").waitFor();
+    await page.getByTestId("attention-history").waitFor();
+    if ((await listed().count()) !== 0 || attempts !== 2)
       throw new Error("Settled decision returned after reload");
-    // A workflow that was approved and keeps failing is a decision too, and it
-    // used to appear nowhere: the page listed only what could not START. The
-    // fixture's digest carries one scheduled group and one authoring group, and
-    // exactly one of them belongs here — mixing them buries a real incident
-    // among experiments.
-    const failing = page.getByTestId("decision-failing-workflow");
-    await failing.first().waitFor();
-    if ((await failing.count()) !== 1)
-      throw new Error("Failing-workflow section does not separate scheduled runs from trials");
-    const failingText = await failing.first().innerText();
-    for (const expected of ["Monatsreport", "14", "fetch"])
-      if (!failingText.includes(expected))
-        throw new Error(`Failing card omits ${expected}: ${failingText}`);
-    if (failingText.includes("Umsatzrollup"))
-      throw new Error("An authoring trial is presented as a production incident");
-    // The link leads to THESE runs. "Production incidents: 1" used to land on
-    // eleven thousand rows, which is the same as landing nowhere.
-    const href = await page.getByTestId("decision-failing-runs").getAttribute("href");
-    if (!href?.includes("status=failed") || !href.includes("Monatsreport"))
-      throw new Error(`Failing card links to an unfiltered run list: ${href}`);
-    await capture("failing-workflow");
     await capture("settled-reload");
     applied = false;
-    await page.reload();
+    await openSheet();
     await card.waitFor();
     await card.locator('[data-testid$="-toggle"]').click();
     await card.getByTestId("authority-grant-open").click();
     await page.getByTestId("authority-grant-review").waitFor();
-    const dialog = page.getByRole("dialog");
+    const dialog = page
+      .getByRole("dialog")
+      .filter({ has: page.getByTestId("authority-grant-review") });
     const reviewText = await dialog.innerText();
     if (
       !reviewText.includes("data.id") ||
@@ -202,9 +249,9 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
     await capture("combined-review");
     await page.getByTestId("authority-grant-confirm").click();
     await card.waitFor({ state: "detached" });
-    await page.reload();
-    await page.getByTestId("decisions-history").waitFor();
-    if ((await card.count()) !== 0 || attempts !== 3)
+    await stand.visit(page, "");
+    await page.getByTestId("attention-history").waitFor();
+    if ((await listed().count()) !== 0 || attempts !== 3)
       throw new Error("Combined approval did not settle after reload");
   } finally {
     for (const pattern of patterns) await page.unroute(pattern, handler);

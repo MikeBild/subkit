@@ -6,17 +6,14 @@ import {
   Copy,
   Plus,
   RefreshCw,
-  ScanSearch,
   SlidersHorizontal,
   Trash2,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
-import type { components } from "@/api/schema";
-import { absolute, chatNewHref, decisionsHref, settingsHref } from "@/app/links";
+import { absolute, chatNewHref, settingsHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { AttentionList } from "@/components/cockpit/attention-list";
 import { ConfirmAction } from "@/components/cockpit/confirm-action";
 import { ContextHelp } from "@/components/cockpit/context-help";
 import { IconButton } from "@/components/cockpit/icon-button";
@@ -82,7 +79,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { catalogLabel, EngineWording, LabelText } from "@/lib/machine-label";
+import { EngineWording, LabelText } from "@/lib/machine-label";
 import { statusLabel } from "@/lib/status-label";
 import {
   activationStatusLabel,
@@ -114,16 +111,6 @@ import {
   ruleTarget,
   workflowPatternLabel,
 } from "@/pages/notifications-model";
-import {
-  componentLabelKey,
-  drilldownHref,
-  drilldownLabelKey,
-  freshnessSourceLabelKey,
-  healthStateLine,
-  type OperationalOverview,
-  operationsAttention,
-  scanOutcome,
-} from "@/pages/operations-model";
 
 type Envelope<T> = { items: T[] };
 /** How long an invite issued from the people page stays redeemable. */
@@ -1752,231 +1739,6 @@ export function AccessPage() {
         </DialogContent>
       </Dialog>
     </AdminFrame>
-  );
-}
-
-/**
- * Is this installation healthy, and if not, why.
- *
- * The page used to hold a scan button and a sentence saying its findings were
- * on the overview — while the overview's red health tile linked here. A loop
- * with a cause at neither end. It reads the same snapshot as the overview now
- * (one query key, one read) and owns the answer the overview's health tile can
- * only summarise: the problems first, each with its way to the cause, then
- * what the score is made of and how fresh the numbers behind it are.
- *
- * Checking and repairing stay two acts in one order (§13): the scan reads and
- * reports, and every repair it proposes becomes a decision a person makes.
- */
-export function OperationsPage() {
-  const { t, dateTime, locale } = useI18n();
-  const session = useSession();
-  const client = useQueryClient();
-  const query = useQuery({
-    queryKey: ["operational-overview", "v1"],
-    queryFn: () => apiRequest<OperationalOverview>("/v1/operational-overview"),
-  });
-  const scan = useMutation({
-    mutationFn: () =>
-      apiRequest<components["schemas"]["SelfHealingScanResponse"]>("/v1/self-healing/scans", {
-        method: "POST",
-        headers: { "idempotency-key": crypto.randomUUID() },
-        body: JSON.stringify({}),
-      }),
-    onSuccess: async (response) => {
-      await client.invalidateQueries({ queryKey: ["operational-overview"] });
-      await client.invalidateQueries({ queryKey: ["decisions"] });
-      const outcome = scanOutcome(response);
-      toast.success(
-        t(outcome.key, { count: String(outcome.count) }),
-        outcome.offerDecisions
-          ? {
-              action: {
-                label: t("operations.openDecisions"),
-                onClick: () => window.location.assign(absolute(decisionsHref())),
-              },
-            }
-          : undefined,
-      );
-    },
-  });
-  const view = queryView(query, () => false);
-  const formatValue = (raw: number, unit: string) =>
-    unit === "ratio"
-      ? new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 }).format(raw)
-      : new Intl.NumberFormat(locale).format(raw);
-  const snapshot = query.data;
-  const attention = snapshot
-    ? operationsAttention(snapshot, { t, dateTime, value: formatValue })
-    : [];
-  return (
-    <AdminFrame
-      testId="admin-operations"
-      titleKey="resource.operations.title"
-      descriptionKey="resource.operations.description"
-      action={
-        session.permissions.includes("self_healing:write") ? (
-          <Button
-            className="w-full sm:w-auto"
-            onClick={() => scan.mutate()}
-            disabled={scan.isPending}
-            data-testid="operations-scan"
-          >
-            <ScanSearch data-icon="inline-start" />
-            {t("operations.scan")}
-          </Button>
-        ) : undefined
-      }
-    >
-      {view === "loading" ? (
-        <LoadingCards testId="operations-loading" />
-      ) : (
-        <div className="grid gap-4">
-          {/* The scan still works when the report could not be read, so the
-              tools stay; the failure is said above them. An unread report is
-              never shown as an empty — healthy — attention list. */}
-          {view === "error" ? (
-            <LoadFailed
-              title={t("operations.loadFailed")}
-              onRetry={() => void query.refetch()}
-              testId="operations-load-failed"
-            />
-          ) : null}
-          <AttentionList
-            items={attention}
-            title={t("operations.attention.title")}
-            testId="operations-attention"
-          />
-          {snapshot ? <HealthBreakdown snapshot={snapshot} formatValue={formatValue} /> : null}
-          <Card data-testid="operations-tools">
-            <CardHeader>
-              <CardTitle>{t("operations.scanTitle")}</CardTitle>
-              <CardDescription>{t("operations.scanDescription")}</CardDescription>
-            </CardHeader>
-            {snapshot && (
-              <CardContent>
-                <p className="text-sm text-muted-foreground" data-testid="operations-generated">
-                  {t("operations.generated", {
-                    date: dateTime(snapshot.generated_at),
-                  })}
-                </p>
-              </CardContent>
-            )}
-          </Card>
-        </div>
-      )}
-    </AdminFrame>
-  );
-}
-
-/**
- * What the health state is made of, and how fresh the numbers behind it are.
- *
- * Every row carries its value, its own state and the engine's way to what it
- * counts — a component at full marks included, because "why is it healthy"
- * is the same question asked the other way round.
- */
-function HealthBreakdown({
-  snapshot,
-  formatValue,
-}: {
-  snapshot: OperationalOverview;
-  formatValue: (raw: number, unit: string) => string;
-}) {
-  const { t, dateTime } = useI18n();
-  const health = snapshot.core.health;
-  const freshness = snapshot.core.data_freshness;
-  return (
-    <Card data-testid="operations-health">
-      <CardHeader>
-        <CardTitle>{t("operations.health.title")}</CardTitle>
-        <CardDescription data-testid="operations-health-state">
-          {healthStateLine(health.state, t)}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        <ul className="grid gap-2">
-          {health.components.map((component, index) => {
-            const labelKey = componentLabelKey(component.id);
-            const href = drilldownHref(component.drilldown);
-            return (
-              <li
-                key={component.id}
-                className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm"
-                data-testid={`operations-component-${index}`}
-              >
-                <span className="min-w-0">
-                  <span className="font-medium">
-                    <LabelText label={catalogLabel(component.id, labelKey ?? undefined, t)} />
-                  </span>
-                  <span className="text-muted-foreground">
-                    {" · "}
-                    {component.raw_value === null
-                      ? t(`operational.freshness.${component.freshness}` as TranslationKey)
-                      : formatValue(component.raw_value, component.unit)}
-                  </span>
-                </span>
-                {href ? (
-                  <a
-                    href={href}
-                    className="text-sm font-medium underline underline-offset-4"
-                    data-testid={`operations-component-${index}-open`}
-                  >
-                    {t(drilldownLabelKey(component.drilldown.label_id))}
-                  </a>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-        <div className="grid gap-2" data-testid="operations-freshness">
-          <h3 className="text-sm font-semibold">
-            {t("operational.core.freshness")}
-            {" · "}
-            <span className="font-normal text-muted-foreground">
-              {t(`operational.freshness.${freshness.state}` as TranslationKey)}
-            </span>
-          </h3>
-          <ul className="grid gap-2">
-            {freshness.sources.map((source, index) => {
-              const labelKey = freshnessSourceLabelKey(source.id);
-              const href = drilldownHref(source.drilldown);
-              return (
-                <li
-                  key={source.id}
-                  className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm"
-                  data-testid={`operations-freshness-${index}`}
-                  data-state={source.state}
-                >
-                  <span className="min-w-0">
-                    <span className="font-medium">
-                      <LabelText label={catalogLabel(source.id, labelKey ?? undefined, t)} />
-                    </span>
-                    <span className="text-muted-foreground">
-                      {" · "}
-                      {source.updated_at
-                        ? t("operations.freshness.lastRun", { date: dateTime(source.updated_at) })
-                        : t("operations.freshness.never")}
-                      {" · "}
-                      {t(`operational.freshness.${source.state}` as TranslationKey)}
-                    </span>
-                  </span>
-                  {href ? (
-                    <a
-                      href={href}
-                      className="text-sm font-medium underline underline-offset-4"
-                      data-testid={`operations-freshness-${index}-open`}
-                    >
-                      {t(drilldownLabelKey(source.drilldown.label_id))}
-                    </a>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 

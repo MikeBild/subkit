@@ -1,69 +1,78 @@
 import { describe, expect, test } from "bun:test";
-import { NAVIGATION, navigationItem, visibleNavigation } from "./navigation";
+import {
+  ATTENTION_READ_PERMISSIONS,
+  NAVIGATION,
+  navigationItem,
+  visibleNavigation,
+} from "./navigation";
+
+const paths = (permissions: string[]) =>
+  visibleNavigation(permissions)
+    .flatMap((group) => group.items)
+    .map((item) => item.path);
 
 describe("cockpit navigation contract", () => {
   test("does not render entries without their effective permission", () => {
     const groups = visibleNavigation(["conversation:read", "workflow:read"]);
     expect(groups.flatMap((group) => group.items).map((item) => item.labelKey)).toEqual([
-      "nav.decisions",
+      "nav.today",
       "nav.chat",
       "nav.workflows",
     ]);
   });
 
-  test("decisions shows for any of its reading permissions and hides without them", () => {
-    const skillOnly = visibleNavigation(["skill:read"]).flatMap((group) => group.items);
-    expect(skillOnly.map((item) => item.labelKey)).toContain("nav.decisions");
-    const unrelated = visibleNavigation(["audit:read"]).flatMap((group) => group.items);
-    expect(unrelated.map((item) => item.labelKey)).not.toContain("nav.decisions");
+  test("Heute shows for any source a reader may read, and for nothing else", () => {
+    // A reviewer with only a skill or a workflow grant still has something to
+    // do; gating Heute on `stats:read` hid it from exactly them.
+    for (const permission of ATTENTION_READ_PERMISSIONS) expect(paths([permission])).toContain("/");
+    expect(paths(["audit:read"])).not.toContain("/");
   });
 
-  test("decisions sits directly under the overview entry", () => {
-    const home = visibleNavigation(["stats:read", "workflow:read"])[0];
+  test("Heute stands alone at the top, without a heading", () => {
+    const home = NAVIGATION[0];
     expect(home?.id).toBe("home");
-    expect(home?.items.map((item) => item.labelKey)).toEqual(["nav.overview", "nav.decisions"]);
+    expect(home?.labelKey).toBeUndefined();
+    expect(home?.items.map((item) => item.path)).toEqual(["/"]);
+  });
+
+  test("the groups are the v3 information architecture, in order", () => {
+    expect(NAVIGATION.map((group) => group.items.map((item) => item.path))).toEqual([
+      ["/"],
+      ["/chat"],
+      ["/workflows", "/runs", "/connectors"],
+      ["/knowledge", "/skills", "/files"],
+      ["/usage", "/settings", "/api-access", "/people", "/access", "/notifications", "/audit"],
+    ]);
+    expect(NAVIGATION.map((group) => group.labelKey)).toEqual([
+      undefined,
+      "nav.group.work",
+      "nav.group.automation",
+      "nav.group.knowledge",
+      "nav.group.admin",
+    ]);
+  });
+
+  test("no entry for a page that was a second place for the same facts", () => {
+    const all = NAVIGATION.flatMap((group) => group.items).map((item) => item.path);
+    for (const gone of ["/decisions", "/operations", "/connections"])
+      expect(all).not.toContain(gone);
   });
 
   test("keeps the API contract next to each route", () => {
     const item = navigationItem("/workflows/7d222f5a");
     expect(item?.permission).toBe("workflow:read");
     expect(item?.api).toContain("GET /v1/workflows");
-  });
-
-  test("leaves the overview and decisions entries without a group heading", () => {
-    const home = NAVIGATION.find((group) => group.id === "home");
-    expect(home?.labelKey).toBeUndefined();
-  });
-
-  test("keeps the five entries the installation section owes the convention", () => {
-    const installation = NAVIGATION.find((group) => group.id === "admin");
-    expect(installation?.labelKey).toBe("nav.group.admin");
-    // §6 pins the set, not the extras: the five come first and in this order,
-    // product-specific entries follow.
-    expect(installation?.items.slice(0, 5).map((item) => item.path)).toEqual([
-      "/operations",
-      "/settings",
-      "/api-access",
-      "/notifications",
-      "/audit",
-    ]);
+    expect(navigationItem("/")?.api).toContain("GET /v1/attention");
   });
 
   test("Zugangsdaten is the one rights entry, shown for any of its three sections", () => {
-    const labels = (permissions: string[]) =>
-      visibleNavigation(permissions)
-        .flatMap((group) => group.items)
-        .map((item) => item.path);
     for (const permission of ["api_key:read", "mcp_oauth_client:read", "connection:read"]) {
-      expect(labels([permission])).toEqual(["/api-access"]);
+      expect(paths([permission])).toContain("/api-access");
     }
-    const paths = NAVIGATION.flatMap((group) => group.items).map((item) => item.path);
-    expect(paths).not.toContain("/connections");
   });
 
   test("uses the same read permissions as the engine routes", () => {
     expect(navigationItem("/usage")?.permission).toBe("stats:read");
-    expect(navigationItem("/operations")?.permission).toBe("stats:read");
     expect(navigationItem("/settings")?.permission).toBe("settings:read");
   });
 });

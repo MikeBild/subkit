@@ -249,7 +249,7 @@ export function GrantWorkflowAuthority({
       await client.invalidateQueries({ queryKey: ["workflow-authorities", workflowId] });
       await client.invalidateQueries({ queryKey: ["workflow-automation-status", workflowId] });
       await client.invalidateQueries({ queryKey: ["decisions"] });
-      await client.invalidateQueries({ queryKey: ["operational-overview"] });
+      await client.invalidateQueries({ queryKey: ["attention"] });
       await client.invalidateQueries({ queryKey: ["patch-candidate"] });
       await client.invalidateQueries({ queryKey: ["workflow-schedule-holds"] });
       await client.invalidateQueries({ queryKey: ["chat-automation-workflow", workflowId] });

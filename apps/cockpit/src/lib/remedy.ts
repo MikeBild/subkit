@@ -1,4 +1,4 @@
-import { chatNewHref, connectorHref, decisionsHref } from "@/app/links";
+import { attentionHref, chatNewHref, connectorHref } from "@/app/links";
 import type { TranslationKey } from "@/lib/i18n";
 
 /**
@@ -56,7 +56,9 @@ export function remedyFor(input: RemedyInput): Remedy | null {
     return {
       kind: "review_repair",
       labelKey: "remedy.reviewRepair",
-      href: decisionsHref({ workflowId: input.workflowId ?? null }),
+      href: input.workflowId
+        ? attentionHref({ review: `workflow:${input.workflowId}` })
+        : attentionHref(),
     };
   }
   if (input.authState) {

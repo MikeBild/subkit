@@ -946,7 +946,7 @@ export function ChatPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["conversations"] }),
         queryClient.invalidateQueries({ queryKey: ["decisions"] }),
-        queryClient.invalidateQueries({ queryKey: ["operational-overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["attention"] }),
         queryClient.invalidateQueries({ queryKey: ["conversation", result.conversation.id] }),
       ]);
     },
@@ -1019,7 +1019,7 @@ export function ChatPage() {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["conversations"] }),
           queryClient.invalidateQueries({ queryKey: ["decisions"] }),
-          queryClient.invalidateQueries({ queryKey: ["operational-overview"] }),
+          queryClient.invalidateQueries({ queryKey: ["attention"] }),
           queryClient.invalidateQueries({ queryKey: ["conversation", activeId] }),
         ]);
       } finally {

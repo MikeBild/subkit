@@ -14,7 +14,6 @@ import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
 // once is caught at the next document rather than never. The price is one
 // `page.evaluate` per navigation.
 import { IDENTITY_META, standAt } from "./lib/cockpit-identity.mjs";
-import { expectedKpiLinks } from "./lib/cockpit-kpi-links.mjs";
 
 // The family convention (COCKPIT-KONVENTION.md, the version named by
 // KONVENTION_VERSION below) is deliberately not enforced by shared code — six
@@ -76,9 +75,11 @@ function concreteRoute(route) {
 // which routes exist — the two redirects are listed by the page they must land
 // on, which is the whole claim a redirect makes.
 const MOUNT_MARKERS = {
-  "": '[data-testid="overview-page"]',
-  approvals: '[data-testid="decisions-page"]',
-  decisions: '[data-testid="decisions-page"]',
+  "": '[data-testid="attention-page"]',
+  // The decisions queue and the system page are redirects to Heute now; each
+  // is marked by where it must land.
+  decisions: '[data-testid="attention-page"]',
+  operations: '[data-testid="attention-page"]',
   chat: '[data-testid="chat-workspace"]',
   "chat/new": '[data-testid="chat-workspace"]',
   "chat/$conversationId": '[data-testid="chat-workspace"]',
@@ -87,7 +88,6 @@ const MOUNT_MARKERS = {
   "api-access": '[data-testid="admin-api-access"]',
   // The old Kontoverbindungen address: a redirect, marked by where it lands.
   connections: '[data-testid="admin-api-access"]',
-  operations: '[data-testid="admin-operations"]',
   notifications: '[data-testid="admin-notifications"]',
   settings: '[data-testid="admin-settings"]',
   workflows: '[data-testid="catalog-workflows"]',
@@ -303,25 +303,6 @@ const RESUME_SUMMARY = {
 const CONVERSATION_TOTAL = AWAITING_CONVERSATIONS.length + 2;
 
 /**
- * The positions the QUEUE holds — the ones this page can decide.
- *
- * Not the same as QUEUE_TOTAL any more, and that is the point of this round: a
- * waiting conversation is counted and named on its own tile and answered in the
- * conversation, because the queue never had an approve or a reject for it.
- *
- * The line THIS FIXTURE paints reads "35 offen · Korrekturen aus Läufen: 2 ·
- * Skill-Vorschläge: 1 · Unterhaltungen: 32" — the bench's numbers, chosen here,
- * and never a measurement of the product. §8.5b once carried that 32 as one:
- * the mock behind it ignored the status filter, and on PROD the same call
- * answers total=1. What the fixture is for is the rule, which holds at any
- * size: a position with no consequence here is not a decision here.
- */
-const DECIDABLE_TOTAL = PATCH_CANDIDATES.length - 1 + SKILL_CANDIDATES.length;
-
-/** The number of distinct decidable positions the queue can actually render. */
-const QUEUE_SHOWN = DECIDABLE_TOTAL;
-
-/**
  * What the patch endpoint hands over: the three candidates, one of them twice.
  *
  * A row delivered twice must be one decision on every surface — the badge, the
@@ -404,20 +385,6 @@ const FAILURE_GROUPS = [
   },
 ];
 
-/** The groups that are still a decision — the recovered one is history. */
-const LIVE_FAILURE_GROUPS = FAILURE_GROUPS.filter((group) => !group.resolved_at);
-
-/**
- * The number every surface must show: the engine's own counts, summed.
- *
- * A workflow that is approved and keeps failing waits on them too — the page
- * lists it in its own section and the badge counts it. It is NOT part of
- * `DECIDABLE_TOTAL`: the queue has no approve or reject for it, it links to the
- * runs that failed. That is the same split this check already draws for waiting
- * conversations, and drawing it is the whole of §8.1.
- */
-const QUEUE_TOTAL = DECIDABLE_TOTAL + LIVE_FAILURE_GROUPS.length;
-
 function healthDigest(gateOpen) {
   return {
     generated_at: days(0),
@@ -441,6 +408,135 @@ function healthDigest(gateOpen) {
     risk: [],
     rendered: gateOpen ? "Attention needed" : "All clear",
     all_clear: !gateOpen,
+  };
+}
+
+/**
+ * Heute's answer (`GET /v1/attention`, attention.v1).
+ *
+ * The gate-open list carries every class at once — stopped, failing, decide —
+ * one entry per subject, in the order the engine sends: its order is the
+ * page's order. The workflow entry is the one the patch candidates above
+ * belong to, so its review sheet holds their cards. It carries residual engine
+ * wording that must appear in that sheet and nowhere on the list.
+ */
+const ENGINE_DETAIL = "HTTP 401 from upstream: token rejected";
+const CONNECTOR_ID = "018f4b4a-6d33-7b3a-9c2d-00000000c0c0";
+
+const ATTENTION_ITEMS = [
+  {
+    id: `conversation:${ID}`,
+    class: "stopped",
+    severity: "urgent",
+    kind: "conversation",
+    subject: { kind: "conversation", id: ID, name: "Quartalsabschluss" },
+    reason: "awaiting_answer",
+    cause_class: null,
+    counts: {},
+    since: days(1),
+    deadline: null,
+    detail: null,
+    actions: [
+      {
+        verb: "answer",
+        href: `/cockpit/chat/${ID}`,
+        primary: true,
+        permission: "conversation:write",
+      },
+    ],
+  },
+  {
+    id: `workflow:${ID}`,
+    class: "failing",
+    severity: "urgent",
+    kind: "workflow",
+    subject: { kind: "workflow", id: ID, name: "Monatsreport" },
+    reason: "failing",
+    cause_class: "auth_failed",
+    counts: { failures: 4, patches: 3 },
+    since: days(19),
+    deadline: null,
+    detail: ENGINE_DETAIL,
+    actions: [
+      {
+        verb: "review",
+        href: `/cockpit?review=workflow:${ID}`,
+        primary: true,
+        permission: "workflow:write",
+      },
+      {
+        verb: "open_runs",
+        href: `/cockpit/runs?workflow_id=${ID}&status=failed`,
+        primary: false,
+        permission: "execution:read",
+      },
+    ],
+  },
+  {
+    id: `connector:${CONNECTOR_ID}`,
+    class: "failing",
+    severity: "urgent",
+    kind: "connector",
+    subject: { kind: "connector", id: CONNECTOR_ID, name: "CRM" },
+    reason: "needs_reauth",
+    cause_class: null,
+    counts: {},
+    since: days(2),
+    deadline: null,
+    detail: "refresh token revoked",
+    actions: [
+      {
+        verb: "reauth",
+        href: `/cockpit/connectors/${CONNECTOR_ID}`,
+        primary: true,
+        permission: "connector:oauth",
+      },
+    ],
+  },
+  {
+    id: "skills",
+    class: "decide",
+    severity: "urgent",
+    kind: "skill_candidates",
+    subject: null,
+    reason: "skills_proposed",
+    cause_class: null,
+    counts: { skills: SKILL_CANDIDATES.length },
+    since: days(20),
+    deadline: null,
+    detail: null,
+    actions: [
+      { verb: "review", href: "/cockpit?review=skills", primary: true, permission: "skill:write" },
+    ],
+  },
+];
+
+const ATTENTION_SOURCES = [
+  "conversations",
+  "schedules",
+  "freshness",
+  "failures",
+  "patches",
+  "connectors",
+  "connections",
+  "secret_approvals",
+  "skills",
+  "budget",
+  "risk",
+];
+
+function attentionFixture(gateOpen, failedSource = null) {
+  return {
+    schema_version: "attention.v1",
+    generated_at: days(0),
+    sources: Object.fromEntries(
+      ATTENTION_SOURCES.map((source) => [source, source === failedSource ? "failed" : "answered"]),
+    ),
+    status: {
+      health_state: gateOpen ? "critical" : "healthy",
+      next_run_at: new Date(NOW + 3_600_000).toISOString(),
+    },
+    items: gateOpen ? ATTENTION_ITEMS : [],
   };
 }
 
@@ -680,202 +776,14 @@ function json(route, body, status = 200) {
   });
 }
 
-function overviewMetric(id, value, path, severity = "information") {
-  return {
-    id,
-    value,
-    value_state: value === 0 ? "zero" : "observed",
-    severity,
-    kind: "count",
-    drilldown: { path },
-  };
-}
-
-function overviewComponents(gateOpen) {
-  const success = gateOpen ? 0.6 : 1;
-  return [
-    {
-      id: "decisions.blocked",
-      raw_value: 0,
-      unit: "count",
-      normalized_score: 100,
-      weight: 0.5,
-      contribution: 50,
-      freshness: "fresh",
-      required: true,
-      drilldown: {
-        path: "/cockpit/decisions?bucket=blocked",
-        label_id: "operational.open_blocked",
-      },
-    },
-    {
-      id: "executions.success_ratio",
-      raw_value: success,
-      unit: "ratio",
-      normalized_score: success * 100,
-      weight: 0.3,
-      contribution: success * 30,
-      freshness: "fresh",
-      required: true,
-      drilldown: {
-        path: "/cockpit/runs?status=failed&source=scheduler",
-        label_id: "operational.open_runs",
-      },
-    },
-    {
-      id: "connectors.healthy_ratio",
-      raw_value: 1,
-      unit: "ratio",
-      normalized_score: 100,
-      weight: 0.2,
-      contribution: 20,
-      freshness: "fresh",
-      required: true,
-      drilldown: {
-        path: "/cockpit/connectors?health=not_ok",
-        label_id: "operational.open_connectors",
-      },
-    },
-  ];
-}
-
-function operationalOverview(gateOpen) {
-  const generatedAt = new Date(NOW).toISOString();
-  const blocked = 0;
-  const overdue = gateOpen ? 2 : 0;
-  // The failure groups have a tile of their own now. They used to be swept into
-  // "other decisions" by this arithmetic, which is how the overview came to
-  // disagree with the queue it links to while both looked self-consistent.
-  // The engine counts only the live ones (`failingScheduledGroups`); a cause
-  // the workflow has recovered from is history, not a decision.
-  const failing = gateOpen ? LIVE_FAILURE_GROUPS.length : 0;
-  const other = gateOpen ? Math.max(DECIDABLE_TOTAL - overdue, 0) : 0;
-  return {
-    schema_version: "operational-overview.v1",
-    contract_version: "2.3",
-    product: "subkit",
-    generated_at: generatedAt,
-    recommended_refresh_seconds: 60,
-    snapshot_state: "ready",
-    core: {
-      blocked: overviewMetric(
-        "decisions.blocked",
-        blocked,
-        "/cockpit/decisions?bucket=blocked",
-        blocked > 0 ? "critical" : "healthy",
-      ),
-      failing: overviewMetric(
-        "decisions.failing",
-        failing,
-        "/cockpit/decisions?bucket=failing",
-        failing > 0 ? "urgent" : "healthy",
-      ),
-      overdue: overviewMetric(
-        "decisions.overdue",
-        overdue,
-        "/cockpit/decisions?bucket=overdue",
-        overdue > 0 ? "urgent" : "healthy",
-      ),
-      other_decisions: overviewMetric("decisions.other", other, "/cockpit/decisions?bucket=other"),
-      // Contract 2.3: the score links to its worst component, every component
-      // and freshness source carries its own way in, and an open gate comes
-      // with a named cause — which the system page (/operations) must show.
-      health: {
-        ...overviewMetric(
-          "operations.health",
-          gateOpen ? 70 : 94,
-          gateOpen
-            ? "/cockpit/runs?status=failed&source=scheduler"
-            : "/cockpit/decisions?bucket=blocked",
-          gateOpen ? "urgent" : "healthy",
-        ),
-        kind: "score",
-        state: gateOpen ? "limited" : "healthy",
-        components: overviewComponents(gateOpen),
-        causes: gateOpen
-          ? LIVE_FAILURE_GROUPS.map((group) => ({
-              kind: "failing_group",
-              id: group.signature,
-              label: `${group.workflow_name}: ${group.cause}`,
-              subject: { kind: "workflow", id: group.workflow_id, name: group.workflow_name },
-              reason: "failing",
-              detail: group.cause,
-              cause_class: "driver_error",
-              drilldown: {
-                path: "/cockpit/decisions?bucket=failing",
-                label_id: "operational.open_failing",
-              },
-            }))
-          : [],
-      },
-      data_freshness: {
-        ...overviewMetric("data.freshness", 18, "/cockpit/audit?scope=operations", "healthy"),
-        kind: "duration",
-        state: "fresh",
-        sources: [
-          {
-            id: "self_healing.drift_scan",
-            updated_at: generatedAt,
-            expected_interval_seconds: 3600,
-            stale_after_seconds: 7200,
-            state: "fresh",
-            drilldown: {
-              path: "/cockpit/audit?scope=operations",
-              label_id: "operational.open_scans",
-            },
-          },
-          {
-            id: "connectors.reauth_scan",
-            updated_at: generatedAt,
-            expected_interval_seconds: 3600,
-            stale_after_seconds: 7200,
-            state: "fresh",
-            drilldown: { path: "/cockpit/connectors", label_id: "operational.open_connectors" },
-          },
-        ],
-      },
-    },
-    sections: [
-      {
-        id: "workflows",
-        title: "Workflows",
-        visualization: "kpi",
-        metrics: [overviewMetric("automation.active_workflows", 14, "/cockpit/workflows")],
-        drilldown: { path: "/cockpit/workflows" },
-      },
-      {
-        // A ratio at zero while the gate is open: the worst state the tile can
-        // be in, and it has to lead to its cause (§1). Healthy otherwise, so the
-        // calm stand shows the same card with a value above zero.
-        id: "connections",
-        title: "Connections",
-        visualization: "progress",
-        metrics: [
-          {
-            ...overviewMetric(
-              "connectors.healthy_ratio",
-              gateOpen ? 0 : 1,
-              "/cockpit/connectors?health=not_ok",
-              gateOpen ? "critical" : "healthy",
-            ),
-            kind: "ratio",
-          },
-        ],
-        drilldown: { path: "/cockpit/connectors?health=not_ok" },
-      },
-    ],
-    audit: { path: "/cockpit/audit", snapshot_generated_at: generatedAt },
-  };
-}
-
 /**
  * One handler for every /v1 call the cockpit makes.
  *
- * `gateOpen` is the only switch: §8.7 makes two opposite claims about the same
- * page, and the banner rule is only proven when the fixture can also produce
- * the state in which the banner must be absent.
+ * `gateOpen` is the main switch: Heute makes two opposite claims about the
+ * same page — entries to act on, or "Alles erledigt" — and each is only proven
+ * when the fixture can also produce the state in which it must be absent.
  */
-function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
+function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource = null } = {}) {
   return async function handle(route) {
     const request = route.request();
     const url = new URL(request.url());
@@ -885,7 +793,8 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
     if (path === "/v1/cockpit/bootstrap") return json(route, BOOTSTRAP);
     if (path === "/v1/operator/health-digest") return json(route, healthDigest(gateOpen));
     if (path === "/v1/schedules") return json(route, { schedules: [], total: 0 });
-    if (path === "/v1/operational-overview") return json(route, operationalOverview(gateOpen));
+    if (path === "/v1/attention")
+      return json(route, attentionFixture(gateOpen, failedAttentionSource));
 
     // The three decision sources follow `gateOpen` too: the badge, Zone A and
     // the banner all read them now, so the calm variant has to be able to say
@@ -1478,12 +1387,12 @@ gap(
   "every rule runs against de. The silent class: §2 forbids a STATE, what is measured is the WORD „Unbekannt“ — on en the same state reads „Unknown“ and goes unnoticed. English decision-state vocabulary therefore remains outside this sweep",
 );
 gap(
-  "/decisions · §8.5 completeness of the history",
+  "/ · §8.5 completeness of the history",
   "the ONE link and the naming of the four decision verbs in the log are measured; whether the log HOLDS every decision is not — that is the engine's write path, and this check never writes one",
 );
 gap(
-  "/decisions · §8.5b the size of the number itself",
-  "the page-wide badge, Zone A and the actionable queue split are measured, the cut is not: this check cannot say whether 35 positions should have been 5. What it can say — that a position with no consequence here is not a decision here — is asserted; the grouping of like corrections into one decision remains open (SK-R1)",
+  "/ · which entries Heute holds",
+  "the list is measured against the attention fixture — one entry per subject, one primary action, badge = entries; whether the ENGINE puts the right facts into the list is the engine's own tests (operator/attention*.test.ts), not this check",
 );
 
 /** The detail surfaces the sweep actually reached, named in the verdict. */
@@ -1738,16 +1647,20 @@ async function checkAdminGroupName(page) {
 }
 
 /**
- * §6 — the installation section carries the five entries the family shares.
+ * §6 — the installation section, in the order of its questions: how it runs
+ * and costs, how it is configured, who holds and grants rights, what is
+ * announced, what happened.
  *
- * The convention pins the set, not the extras: a product may add its own
- * entries, but a section missing System, Einstellungen, Zugangsdaten,
- * Benachrichtigungen or Audit is a section a person has to learn twice.
+ * "System" is not among them any more, and its absence is asserted: it was a
+ * third place for the health state, which Heute now says once — a line when
+ * nothing is open, an entry for every cause when something is.
  */
 const INSTALLATION_ENTRIES = [
-  "System",
+  "Nutzung",
   "Einstellungen",
   "Zugangsdaten",
+  "Personen",
+  "Zugriff",
   "Benachrichtigungen",
   "Audit",
 ];
@@ -1759,64 +1672,70 @@ async function checkInstallationEntries(page) {
     return [...group.querySelectorAll("a[data-testid]")].map((link) => link.innerText.trim());
   });
   if (labels === null) return;
-  for (const entry of INSTALLATION_ENTRIES) {
-    if (!labels.includes(entry))
-      breach("§6", "/overview · nav-group-admin", `entry "${entry}" is missing`);
-  }
+  if (labels.join("|") !== INSTALLATION_ENTRIES.join("|"))
+    breach(
+      "§6",
+      "/ · nav-group-admin",
+      `entries are ${labels.join(", ")} instead of ${INSTALLATION_ENTRIES.join(", ")}`,
+    );
+  if (labels.includes("System"))
+    breach("§6", "/ · nav-group-admin", 'the "System" entry is back — a third home for health');
 }
 
 /**
- * §6 / §8.1 — the decisions entry is ungrouped, sits directly under the
- * overview, and carries a live counter.
+ * Heute is the start page: the first entry of the sidebar, ungrouped, and the
+ * one place a number of open tasks is shown — its badge.
  *
- * Ungrouped is read off the rendered sidebar rather than off the navigation
- * table: a group that renders a heading above the entry is a group, whatever
- * the data structure calls it.
+ * `nav-overview` is kept as the entry's id on purpose: the deploy verifier
+ * clicks it, and a renamed anchor would turn a working deploy red.
+ *
+ * The entries that were a second and third place for the same facts must be
+ * gone from the sidebar: a decisions entry beside Heute is two task lists.
  */
-async function checkDecisionsNavEntry(page) {
-  const entry = page.locator('[data-testid="nav-decisions"]');
+async function checkTodayNavEntry(page) {
+  const entry = page.locator('[data-testid="nav-overview"]');
   if ((await entry.count()) === 0) {
-    breach("§6, §8.1", "/overview · Sidebar", 'no nav entry "Entscheidungen"');
-    return;
+    breach("§6", "/ · Sidebar", 'no nav entry "Heute"');
+    return null;
   }
-  const label = (await entry.first().innerText()).trim();
-  if (label !== "Entscheidungen") breach("§8.1", "/overview · nav-decisions", label);
-
+  const label = (await entry.first().innerText()).trim().split("\n")[0]?.trim();
+  if (label !== "Heute") breach("§6", "/ · nav-overview", `reads "${label}" instead of "Heute"`);
   const placement = await page.evaluate(() => {
-    const decisions = document.querySelector('[data-testid="nav-decisions"]');
-    if (!decisions) return null;
-    const group = decisions.closest('[data-testid^="nav-group-"]');
+    const today = document.querySelector('[data-testid="nav-overview"]');
+    if (!today) return null;
+    const group = today.closest('[data-testid^="nav-group-"]');
     const heading = group?.querySelector(
       '[data-slot="sidebar-group-label"], [data-sidebar="group-label"]',
     );
     const links = [...document.querySelectorAll('[data-testid^="nav-"]')].filter(
       (element) => element.tagName === "A",
     );
-    const index = links.indexOf(decisions);
     return {
       groupHeading: heading instanceof HTMLElement ? heading.innerText.trim() : "",
-      previous: index > 0 ? links[index - 1].getAttribute("data-testid") : null,
+      first: links[0]?.getAttribute("data-testid") ?? null,
+      gone: ["nav-decisions", "nav-operations"].filter((id) =>
+        document.querySelector(`[data-testid="${id}"]`),
+      ),
     };
   });
   if (placement?.groupHeading)
-    breach(
-      "§6, §8.1",
-      "/overview · nav-decisions",
-      `sits under the group heading "${placement.groupHeading}" instead of ungrouped`,
-    );
-  if (placement && placement.previous !== "nav-overview")
-    breach(
-      "§8.1",
-      "/overview · nav-decisions",
-      `does not sit directly below the overview (preceded by: ${placement.previous})`,
-    );
+    breach("§6", "/ · nav-overview", `sits under the heading "${placement.groupHeading}"`);
+  if (placement && placement.first !== "nav-overview")
+    breach("§6", "/ · Sidebar", `the first entry is ${placement.first}, not Heute`);
+  for (const id of placement?.gone ?? [])
+    breach("§6, §12", "/ · Sidebar", `${id} is still an entry — a second home for Heute's facts`);
 
-  const badge = page.locator('[data-testid="nav-decisions-count"]');
-  if ((await badge.count()) === 0) {
-    breach("§8.1", "/overview · nav-decisions", "no counter badge on the entry");
+  const badge = page.locator('[data-testid="nav-overview-count"]');
+  try {
+    await badge.first().waitFor({ state: "visible", timeout: 10_000 });
+  } catch {
+    breach("§8.1", "/ · nav-overview", "no counter badge on Heute although entries are open");
     return null;
   }
-  return (await badge.first().innerText()).trim();
+  return {
+    count: (await badge.first().innerText()).trim(),
+    stopped: await badge.first().getAttribute("data-attention-stopped"),
+  };
 }
 
 /** §2 — "Unbekannt" is not a state; an unresolved one says since when and why. */
@@ -1836,405 +1755,267 @@ async function checkNoUnknownState(page, where) {
 }
 
 /**
- * §8.7 — the incident banner stands above the tiles and carries exactly one way
- * out, into the decisions page.
+ * Heute with tasks open — the gate-open fixture's every class at once.
  *
- * Both halves matter. A dashboard that reports calm while a gate is open is the
- * breach the paragraph was written for; a banner that appears with nothing open
- * trains people to ignore it.
+ * One entry per subject, in the engine's order, each ONE sentence with ONE
+ * primary action and at most one secondary link. The badge is the number of
+ * entries. What the list must NOT hold is asserted as hard as what it must:
+ * no count in a heading (the badge is the one place a number of tasks lives),
+ * no engine wording on an entry (that is the review sheet's), and no health
+ * word — with entries on the page the health word would only repeat them.
  */
-async function _checkIncidentBanner(page, gateOpen) {
-  const banner = page.locator('[data-testid="overview-incident"]');
-  const present = (await banner.count()) > 0;
-  if (!gateOpen) {
-    if (present)
-      breach(
-        "§8.7",
-        "/overview (fixture without an open gate)",
-        "banner visible despite all-clear",
-      );
-    return;
-  }
-  if (!present) {
-    breach("§8.7", "/overview (fixture with an open gate)", "no incident banner in the DOM");
+async function checkTodayGateOpen(page, badge) {
+  try {
+    await page
+      .locator('[data-testid="attention-list"]')
+      .waitFor({ state: "visible", timeout: 15_000 });
+  } catch {
+    breach("§1", "/", "the gate-open fixture shows no list of entries");
     return;
   }
   const shape = await page.evaluate(() => {
-    const alert = document.querySelector('[data-testid="overview-incident"]');
-    const tiles = document.querySelector('[data-testid="overview-waiting"]');
-    if (!alert || !tiles) return null;
-    const before = Boolean(alert.compareDocumentPosition(tiles) & Node.DOCUMENT_POSITION_FOLLOWING);
-    const links = [...alert.querySelectorAll("a[href]")].map((link) => link.getAttribute("href"));
-    return { before, links };
-  });
-  if (!shape) {
-    breach("§8.7", "/overview", "tiles missing, banner position cannot be determined");
-    return;
-  }
-  if (!shape.before) breach("§8.7", "/overview", "banner sits after the tiles in the DOM");
-  if (shape.links.length !== 1)
-    breach(
-      "§8.7",
-      "/overview · overview-incident",
-      `${shape.links.length} links instead of exactly one`,
-    );
-  else if (!shape.links[0].includes("/decisions"))
-    breach("§8.7", "/overview · overview-incident", `link points at ${shape.links[0]}`);
-  return checkBannerSubset(page);
-}
-
-/** Family dashboard v2 — one compact aggregate surface, never a duplicate incident feed. */
-async function checkOperationalDashboard(page, expectedDecisionTotal) {
-  const result = await page.evaluate(() => {
-    const core = document.querySelector('[data-family-slot="operational-core"]');
-    const read = (card) => ({
-      id: card.getAttribute("data-family-kpi-id"),
-      kind: card.getAttribute("data-family-kpi-kind"),
-      value: Number(card.getAttribute("data-family-kpi-value") ?? 0),
-      unread: !card.hasAttribute("data-family-kpi-value"),
-      severity: card.getAttribute("data-family-kpi-severity"),
-      links: card.querySelectorAll('[data-family-kpi-link="true"]').length,
-      linkLabels: card.querySelectorAll('[data-family-kpi-link-label="true"]').length,
-      tooltips: card.querySelectorAll('[data-family-kpi-tooltip="true"]').length,
-      primary: card.getAttribute("data-family-primary") === "true",
-    });
-    const cards = core ? [...core.querySelectorAll(":scope > [data-family-kpi-id]")].map(read) : [];
-    // The ratios live in the product sections, not in the core row — a rule
-    // about ratios measured on the core row alone would never meet one.
-    const sections = document.querySelector('[data-family-slot="product-metrics"]');
-    const sectionCards = sections
-      ? [...sections.querySelectorAll("[data-family-kpi-id]")].map(read)
-      : [];
+    const list = document.querySelector('[data-testid="attention-list"]');
+    const entries = list ? [...list.querySelectorAll(":scope > li")] : [];
+    const surface = document.querySelector('[data-testid="attention-page"]');
     return {
-      cards,
-      sectionCards,
-      incidentBanners: document.querySelectorAll('[data-testid="overview-incident"]').length,
-      tables: document.querySelectorAll('[data-testid="overview-page"] table').length,
-    };
-  });
-  const expectedOrder = [
-    "decisions.blocked",
-    "decisions.failing",
-    "decisions.overdue",
-    "decisions.other",
-    "operations.health",
-    "data.freshness",
-  ];
-  const actualOrder = result.cards.map((card) => card.id);
-  if (actualOrder.join("|") !== expectedOrder.join("|"))
-    breach(
-      "§1, §8.1",
-      "/cockpit",
-      `operational cards are ${actualOrder.join(", ")} instead of ${expectedOrder.join(", ")}`,
-    );
-  // A number that counted something leads to it; a counted zero has nothing
-  // to open; a ratio, score or duration leads to its cause whatever its value
-  // — a red 0 % is the worst state, not an empty one (scripts/lib/cockpit-kpi-links.mjs).
-  for (const card of [...result.cards, ...result.sectionCards]) {
-    const expectedLinks = expectedKpiLinks(card);
-    if (card.links !== expectedLinks || card.linkLabels !== expectedLinks || card.tooltips !== 1)
-      breach(
-        "§1, §8.1",
-        `/cockpit · ${card.id}`,
-        `${card.kind ?? "count"} ${card.value}: ${card.links} card links, ${card.linkLabels} visible link labels (expected ${expectedLinks}), ${card.tooltips} tooltips`,
-      );
-  }
-  const primary = result.cards.filter((card) => card.primary).length;
-  if (primary !== 1) breach("§1, §8.1", "/cockpit", `${primary} primary actions instead of one`);
-  if (result.incidentBanners > 0)
-    breach("§8.7", "/cockpit", "legacy incident banner duplicates the KPI summary");
-  if (result.tables > 0)
-    breach("§1", "/cockpit", "overview contains a table instead of aggregate KPI cards");
-  // Four decision tiles now, not three. The fourth is not a new number: it is
-  // the one the third used to absorb — failure groups were counted as "other
-  // decisions", so the sum came out right while every part of it was wrong.
-  const decisionTotal = result.cards.slice(0, 4).reduce((sum, card) => sum + card.value, 0);
-  if (decisionTotal !== expectedDecisionTotal)
-    breach(
-      "§8.1",
-      "/cockpit",
-      `decision KPIs total ${decisionTotal}, expected ${expectedDecisionTotal}`,
-    );
-  return decisionTotal;
-}
-
-/**
- * §8.1 / §8.7 — the banner names its subsets, and says of what.
- *
- * The pinned wording changed here on purpose, and it is a correction of the
- * measure rather than a relaxation of it. The earlier regex pinned ONE sentence
- * — "N von M blockieren ihren Workflow" — over a subset that summed the
- * blocking, the lapsed and the merely-old positions. Two of those three claims
- * were false: a lapsed position stopped nothing, and the aged ones sit one
- * click away under a rubric whose own hint reads "Blockiert nichts". The
- * assert therefore pinned a sentence the product could only satisfy by lying.
- *
- * What is pinned now is strictly more: each claim states its own share AND its
- * base (§8.1), and the LABEL of each claim must equal the heading of the rubric
- * it is a share of — which is checked against the rendered queue in
- * checkCounterCoherence. A banner can no longer be worded into agreement with
- * itself while disagreeing with the page it links to.
- */
-const BANNER_CLAIM = /^(.+): (mindestens )?(\d+) von (\d+)$/;
-
-async function readBannerClaim(page, testId) {
-  return page.evaluate((id) => {
-    const element = document.querySelector(`[data-testid="${id}"]`);
-    if (!(element instanceof HTMLElement)) return null;
-    return {
-      text: element.innerText.trim(),
-      count: element.getAttribute("data-subset"),
-    };
-  }, testId);
-}
-
-async function checkBannerSubset(page) {
-  const subset = await page.evaluate(() => {
-    const element = document.querySelector('[data-testid="incident-decisions-count"]');
-    if (!element) return null;
-    return {
-      count: element.getAttribute("data-subset"),
-      total: element.getAttribute("data-subset-total"),
-    };
-  });
-  if (!subset) {
-    breach("§8.1", "/overview · overview-incident", "banner names no subset");
-    return null;
-  }
-  const count = Number(subset.count);
-  const total = Number(subset.total);
-  if (!(count > 0 && count <= total))
-    breach(
-      "§8.1",
-      "/overview · incident-decisions-count",
-      `subset ${subset.count} does not fit inside total ${subset.total}`,
-    );
-
-  const claims = {};
-  let named = 0;
-  for (const [name, testId] of [
-    ["blocking", "incident-blocking"],
-    ["overdue", "incident-overdue"],
-  ]) {
-    const claim = await readBannerClaim(page, testId);
-    if (!claim) continue;
-    named += 1;
-    const match = BANNER_CLAIM.exec(claim.text);
-    if (!match) {
-      breach("§8.1", `/overview · ${testId}`, claim.text);
-      continue;
-    }
-    const [, label, , share, base] = match;
-    if (Number(share) !== Number(claim.count))
-      breach(
-        "§8.1",
-        `/overview · ${testId}`,
-        `sentence says ${share}, the attribute says ${claim.count}`,
-      );
-    if (Number(base) !== total)
-      breach("§8.1", `/overview · ${testId}`, `sentence gives total ${base} instead of ${total}`);
-    claims[name] = { label: label.trim(), count: Number(claim.count) };
-  }
-  if (named === 0)
-    breach("§8.7", "/overview · overview-incident", "banner names not a single subset");
-  const stated = Object.values(claims).reduce((sum, claim) => sum + claim.count, 0);
-  if (stated !== count)
-    breach(
-      "§8.1",
-      "/overview · overview-incident",
-      `subset ${count}, but only ${stated} are named`,
-    );
-  return { total, claims };
-}
-
-/** §1 — Zone A's head is the same number the badge carries, or the page lies. */
-async function _readZoneACount(page) {
-  const value = await page.evaluate(() => {
-    const element = document.querySelector('[data-testid="zone-a-decisions-count"]');
-    return element instanceof HTMLElement ? element.innerText.trim() : null;
-  });
-  if (value === null) {
-    breach("§1, §8.1", "/overview · overview-waiting", "zone A names no count");
-    return null;
-  }
-  return Number(value);
-}
-
-/**
- * §1 — no red without a way to its cause, and the system page is that way.
- *
- * The overview's red health tile used to link here, and this page said its
- * findings were on the overview: a loop with a cause at neither end. The page
- * now owns the answer from the engine's own snapshot (contract 2.3): with the
- * gate open, every cause the engine names is a line with a link to it; with
- * nothing wrong, the attention block is absent — not an "all good" card the
- * reader learns to skip.
- *
- * What stays forbidden is the old defect: a second, digest-read copy of the
- * failure groups or risks (`operations-failure-*`, `operations-risk-*`).
- */
-async function checkOperationsOwnsHealth(page, { gateOpen }) {
-  // The breakdown renders once the snapshot has arrived; before that an absent
-  // attention block would prove nothing either way.
-  try {
-    await page
-      .locator('[data-testid="operations-health"]')
-      .waitFor({ state: "visible", timeout: 15_000 });
-  } catch {
-    breach("§4", "/operations", "the health snapshot never rendered");
-    return;
-  }
-  const seen = await page.evaluate(() => {
-    const block = document.querySelector('[data-testid="operations-attention"]');
-    return {
-      attention: Boolean(block),
-      links: block
-        ? [...block.querySelectorAll('a[data-testid^="operations-attention-link-"]')].map((a) =>
-            a.getAttribute("href"),
+      entries: entries.map((entry) => ({
+        id: entry.getAttribute("data-attention-id"),
+        klass: entry.getAttribute("data-attention-class"),
+        primary: entry.querySelectorAll('[data-testid$="-primary"]').length,
+        secondary: entry.querySelectorAll('[data-testid$="-secondary"]').length,
+        controls: entry.querySelectorAll("a, button").length,
+        text: (entry.querySelector('[data-testid$="-text"]')?.textContent ?? "").trim(),
+      })),
+      headings: surface
+        ? [...surface.querySelectorAll("h1, h2, h3, h4")].map((element) =>
+            element.textContent.trim(),
           )
         : [],
-      texts: block ? block.innerText : "",
-      components: document.querySelectorAll(
-        '[data-testid^="operations-component-"][data-testid$="-open"]',
-      ).length,
-      groups: document.querySelectorAll('[data-testid^="operations-failure-"]').length,
-      risks: document.querySelectorAll('[data-testid^="operations-risk-"]').length,
+      text: surface instanceof HTMLElement ? surface.innerText : "",
+      calm: Boolean(document.querySelector('[data-testid="attention-calm"]')),
+      status: document.querySelectorAll('[data-testid="attention-status"]').length,
     };
   });
-  if (seen.groups > 0)
-    breach("§12", "/operations", `${seen.groups} digest error-group rows beside the snapshot`);
-  if (seen.risks > 0)
-    breach("§12", "/operations", `${seen.risks} digest risk rows beside the snapshot`);
-  if (seen.components === 0)
-    breach("§1", "/operations", "no health component offers its way to what it counts");
-  if (!gateOpen) {
-    if (seen.attention)
-      breach("§1", "/operations", "attention block shown although the installation is healthy");
-    return;
+  const expected = ATTENTION_ITEMS.map((item) => item.id);
+  const actual = shape.entries.map((entry) => entry.id);
+  if (actual.join("|") !== expected.join("|"))
+    breach("§1", "/", `entries are ${actual.join(", ")} — the engine sent ${expected.join(", ")}`);
+  const subjects = shape.entries.map((entry) => {
+    const item = ATTENTION_ITEMS.find((candidate) => candidate.id === entry.id);
+    return item?.subject ? `${item.subject.kind}:${item.subject.id}` : entry.id;
+  });
+  if (new Set(subjects).size !== subjects.length)
+    breach("§12", "/", "two entries about one subject — two places to act on it");
+  for (const entry of shape.entries) {
+    if (entry.primary !== 1)
+      breach("§1", `/ · ${entry.id}`, `${entry.primary} primary actions instead of exactly one`);
+    if (entry.secondary > 1)
+      breach("§1", `/ · ${entry.id}`, `${entry.secondary} secondary links instead of at most one`);
+    if (entry.controls > 2)
+      breach("§1", `/ · ${entry.id}`, `${entry.controls} controls on one entry`);
+    if (!/seit .+\.$/.test(entry.text))
+      breach("§5", `/ · ${entry.id}`, `not one sentence ending in "seit …": "${entry.text}"`);
   }
-  if (!seen.attention) {
-    breach("§1", "/operations", "the engine names causes, the page shows no attention block");
-    return;
-  }
-  for (const group of LIVE_FAILURE_GROUPS) {
-    if (!seen.texts.includes(group.cause))
-      breach("§1", "/operations", `cause "${group.cause}" is not named`);
-  }
-  if (!seen.links.includes("/cockpit/decisions?bucket=failing"))
-    breach("§1", "/operations", "a cause is named without its way to the failing workflows");
-  if (seen.links.some((href) => href?.startsWith("/cockpit/cockpit")))
-    breach("§6", "/operations", "a cause link carries the base twice");
+  if (badge && Number(badge.count) !== shape.entries.length)
+    breach("§8.1", "/ · nav-overview-count", `badge ${badge.count}, list ${shape.entries.length}`);
+  if (badge && badge.stopped !== "true")
+    breach("§8.1", "/ · nav-overview-count", "an entry is stopped and the badge is not red");
+  for (const heading of shape.headings)
+    if (/\d/.test(heading))
+      breach("§1, §12", `/ · heading "${heading}"`, "a count in a heading — the badge owns it");
+  if (shape.text.includes(ENGINE_DETAIL))
+    breach("§5", "/", "the engine's wording stands on an entry — it belongs in the review sheet");
+  if (shape.calm) breach("§1", "/", '"Alles erledigt" beside open entries');
+  if (shape.status > 0)
+    breach("§12", "/", "a status line beside the entries repeats what they already say");
+  const healthy = (shape.text.match(/\bGesund\b/g) ?? []).length;
+  if (healthy > 1) breach("§12", "/", `"Gesund" stands ${healthy} times`);
 }
 
 /**
- * §8.2 — positions older than three days stand under "Liegt schon länger".
- *
- * The name is pinned, and pinned once: the rubric used to sit nested inside a
- * section headed "Kann warten" — the product deciding on the reader's behalf
- * what it has no way to know — and a second rubric wearing the same name would
- * make the pinned one unfindable.
+ * Heute with nothing open: "Alles erledigt." and ONE status line — the health
+ * word and the next scheduled run — and nothing else. No tile, no zero, no
+ * badge. A wall of zeros is what this replaced.
  */
-const AGED_RUBRIC = "Liegt schon länger";
-
-async function checkAgingRubric(page) {
-  const aged = page.locator('[data-testid="decisions-aged"]');
-  if ((await aged.count()) === 0) {
-    breach("§8.2", "/decisions", "no aging rubric although positions are older than 3 days");
+async function checkTodayCalm(page) {
+  try {
+    await page
+      .locator('[data-testid="attention-calm"]')
+      .waitFor({ state: "visible", timeout: 15_000 });
+  } catch {
+    breach("§1", "/ (calm)", 'nothing is open, and the page does not say "Alles erledigt."');
     return;
   }
-  const heading = (await aged.first().locator("h1, h2, h3, h4").first().innerText()).trim();
-  if (heading !== AGED_RUBRIC) breach("§8.2", "/decisions · decisions-aged", heading);
-
-  const headings = await page.evaluate(() =>
-    [
-      ...document.querySelectorAll(
-        '[data-testid^="decisions-"] h1, [data-testid^="decisions-"] h2, [data-testid^="decisions-"] h3, [data-testid^="decisions-"] h4',
-      ),
-    ].map((element) => element.innerText.trim()),
-  );
-  const wearing = headings.filter((entry) => entry === AGED_RUBRIC).length;
-  if (wearing !== 1)
-    breach(
-      "§8.2",
-      "/decisions",
-      `${wearing} rubrics are called "${AGED_RUBRIC}" instead of exactly one`,
+  const shape = await page.evaluate(() => {
+    const content = document.querySelector(
+      '[data-testid="attention-page"] [data-family-slot="content"]',
     );
-  for (const forbidden of ["Kann warten"]) {
-    if (headings.includes(forbidden))
-      breach("§8.2", "/decisions", `rubric "${forbidden}" judges on the reader's behalf`);
+    return {
+      lines:
+        content instanceof HTMLElement
+          ? content.innerText
+              .split("\n")
+              .map((line) => line.trim())
+              .filter(Boolean)
+          : [],
+      status: document.querySelectorAll('[data-testid="attention-status"]').length,
+      list: Boolean(document.querySelector('[data-testid="attention-list"]')),
+      badge: Boolean(document.querySelector('[data-testid="nav-overview-count"]')),
+      unread: Boolean(document.querySelector('[data-testid="attention-unread"]')),
+      body: document.body.innerText,
+    };
+  });
+  if (shape.status !== 1)
+    breach("§1", "/ (calm)", `${shape.status} status lines instead of exactly one`);
+  const [done, status, history, ...rest] = shape.lines;
+  if (done !== german("today.calm"))
+    breach("§5", "/ (calm)", `opens with "${done}" instead of "${german("today.calm")}"`);
+  if (!status?.startsWith(`${german("today.health.healthy")} · `))
+    breach("§1", "/ (calm)", `the status line reads "${status}"`);
+  if (history !== german("today.history.link"))
+    breach("§8.5", "/ (calm)", `the way to the history reads "${history}"`);
+  if (rest.length > 0)
+    breach("§1", "/ (calm)", `more than "Alles erledigt" and one status line: ${rest.join(" / ")}`);
+  if (shape.list) breach("§1", "/ (calm)", "an entry list although nothing is open");
+  if (shape.badge) breach("§8.1", "/ (calm)", "a badge although nothing is open");
+  if (shape.unread) breach("§1", "/ (calm)", "a source is called unreadable in the calm fixture");
+  const healthy = (shape.body.match(/\bGesund\b/g) ?? []).length;
+  if (healthy > 1) breach("§12", "/ (calm)", `"Gesund" stands ${healthy} times`);
+}
+
+/**
+ * Heute when a source could not be read: never "Alles erledigt". The list may
+ * be missing exactly the entry that matters, so the page names what it could
+ * not read and offers to read again.
+ */
+async function checkTodayFailedSource(page) {
+  try {
+    await page
+      .locator('[data-testid="attention-unread"]')
+      .waitFor({ state: "visible", timeout: 15_000 });
+  } catch {
+    breach("§1, §12", "/ (failed source)", "a source failed and the page does not say which");
+    return;
+  }
+  const shape = await page.evaluate(() => ({
+    body: document.body.innerText,
+    unread: document.querySelector('[data-testid="attention-unread"]')?.textContent ?? "",
+    status: document.querySelectorAll('[data-testid="attention-status"]').length,
+  }));
+  if (shape.body.includes(german("today.calm")))
+    breach("§1, §12", "/ (failed source)", '"Alles erledigt" although a source could not be read');
+  if (!shape.unread.includes(german("today.source.connectors")))
+    breach("§1", "/ (failed source)", `the unread source is not named: "${shape.unread}"`);
+  if (shape.status > 0)
+    breach("§12", "/ (failed source)", "a health line stands over an incomplete answer");
+}
+
+/**
+ * No zero-valued KPI tile, anywhere. A tile that counts nothing is a fact with
+ * nothing to say — the wall of zeros Heute replaced.
+ */
+async function checkNoZeroKpiTile(page, where) {
+  const zeros = await page.evaluate(
+    () =>
+      [...document.querySelectorAll("[data-family-kpi-id]")].filter(
+        (tile) => tile.getAttribute("data-family-kpi-value") === "0",
+      ).length,
+  );
+  if (zeros > 0) breach("§1", where, `${zeros} KPI tile(s) showing 0`);
+}
+
+/**
+ * The old addresses land where their facts live now. A mail, an audit row or
+ * a bookmark still points at them.
+ */
+async function checkLegacyRedirects(context) {
+  const cases = [
+    { from: "decisions", path: "/cockpit", review: null },
+    { from: "decisions?bucket=failing", path: "/cockpit", review: null },
+    { from: `decisions?workflow_id=${ID}`, path: "/cockpit", review: `workflow:${ID}` },
+    { from: "operations", path: "/cockpit", review: null },
+  ];
+  for (const { from, path, review } of cases) {
+    const page = await context.newPage();
+    try {
+      await stand.visit(page, from);
+      await page
+        .locator('[data-testid="attention-page"]')
+        .waitFor({ state: "visible", timeout: 15_000 });
+      const url = new URL(page.url());
+      // The redirect sends `/cockpit?review=…`; on load the router rewrites a
+      // query-bearing start address to its own canonical `/cockpit/?review=…`.
+      // Both are the start page — what is asserted is that it IS the start page.
+      if (url.pathname.replace(/\/$/, "") !== path)
+        breach("§6", `/${from}`, `lands on ${url.pathname} instead of ${path}`);
+      if (url.searchParams.get("review") !== review)
+        breach("§6", `/${from}`, `lands with review=${url.searchParams.get("review")}`);
+      if (!review && url.search !== "")
+        breach("§6", `/${from}`, `carries ${url.search} onto Heute, where it means nothing`);
+      if (review)
+        await page
+          .locator('[data-testid="attention-review"]')
+          .waitFor({ state: "visible", timeout: 10_000 });
+    } catch (error) {
+      if (error instanceof NichtGemessen) throw error;
+      breach("§6", `/${from}`, `the old address does not land: ${error.message}`);
+    } finally {
+      await page.close();
+    }
   }
 }
 
 /**
- * §5 / §8.2 — every rubric of the queue is headed in German, and in these words.
- *
- * `checkBannerAgainstConversations()` reads the banner against the count it is a
- * share of, but both sides take their wording from the same catalog key: flip
- * that key to English and the two still agree, in English, and the check stays
- * green. So the German wording is pinned here as well — once per rubric, and
- * the aged one through the constant that already owns it.
- *
- * A rubric the fixture leaves empty is not rendered, and an unrendered heading
- * proves nothing; that is why a missing section is itself a breach rather than
- * a silent skip.
- *
- * Two rubrics left this table with the waiting conversations: "Abgelaufen" and
- * "Blockiert gerade etwas" describe an elicitation deadline and a suspended
- * agent loop, and neither can be true of a proposed fix or a proposed skill.
- * Pinning them here would have pinned a heading the page can no longer produce
- * — which is not a stricter check, it is a check that measures the fixture.
- * The two words did not disappear from the product: they are the banner's two
- * claims on the overview, read back against the conversation source in
- * checkBannerAgainstConversations().
+ * The review sheet: one entry's decisions over Heute, with the cards the
+ * decisions page always had — and the engine's own wording, marked as such,
+ * here and nowhere else.
  */
-const RUBRIC_HEADINGS = {
-  "decisions-current": "Weitere Entscheidungen",
-  "decisions-aged": AGED_RUBRIC,
-};
-
-async function checkRubricLanguage(page) {
-  const headings = await page.evaluate(
-    (ids) =>
-      Object.fromEntries(
-        ids.map((id) => {
-          const heading = document.querySelector(
-            `[data-testid="${id}"] h1, [data-testid="${id}"] h2, [data-testid="${id}"] h3, [data-testid="${id}"] h4`,
-          );
-          return [id, heading instanceof HTMLElement ? heading.innerText.trim() : null];
-        }),
-      ),
-    Object.keys(RUBRIC_HEADINGS),
-  );
-  for (const [testId, expected] of Object.entries(RUBRIC_HEADINGS)) {
-    const actual = headings[testId];
-    if (actual === null) {
-      breach(
-        "§8.2",
-        `/decisions · ${testId}`,
-        `rubric "${expected}" is missing — its wording stays unmeasured`,
-      );
-      continue;
-    }
-    if (actual !== expected)
-      breach("§5", `/decisions · ${testId}`, `rubric reads "${actual}" instead of "${expected}"`);
-  }
+async function openReview(context, id) {
+  const page = await context.newPage();
+  await stand.visit(page, `?review=${id}`);
+  await page
+    .locator('[data-testid="attention-review-body"]')
+    .waitFor({ state: "visible", timeout: 15_000 });
+  return page;
 }
 
-/** §8.5a — one filter row, one actionable queue, one exit to history. */
-async function checkDecisionAnatomy(page) {
-  const shape = await page.evaluate(() => ({
-    filters: document.querySelectorAll('[data-family-slot="filters"]').length,
-    queue: document.querySelectorAll('[data-family-slot="queue"]').length,
-    audit: document.querySelectorAll('[data-family-slot="audit-link"] a').length,
-    legacyTiles: document.querySelectorAll('[data-testid^="decisions-tile-"]').length,
-  }));
-  if (shape.filters !== 1)
-    breach("§8.5a", "/decisions", `expected one filter row, found ${shape.filters}`);
-  if (shape.queue !== 1) breach("§8.5a", "/decisions", `expected one queue, found ${shape.queue}`);
-  if (shape.audit !== 1)
-    breach("§8.5", "/decisions", `expected one audit exit, found ${shape.audit}`);
-  if (shape.legacyTiles !== 0)
-    breach("§8.5a", "/decisions", `found ${shape.legacyTiles} redundant category KPI tiles`);
+async function checkReviewSheet(context) {
+  const where = `/?review=workflow:…`;
+  const page = await openReview(context, `workflow:${ID}`);
+  try {
+    const shape = await page.evaluate(() => {
+      const sheet = document.querySelector('[data-testid="attention-review"]');
+      return {
+        queues: sheet ? sheet.querySelectorAll('[data-family-slot="queue"]').length : 0,
+        cards: sheet ? sheet.querySelectorAll("article[data-decision-key]").length : 0,
+        detail: document.querySelector('[data-testid="attention-review-detail"]'),
+        detailMarked: document
+          .querySelector('[data-testid="attention-review-detail"]')
+          ?.getAttribute("data-engine-wording"),
+        detailText:
+          document.querySelector('[data-testid="attention-review-detail"]')?.textContent ?? "",
+      };
+    });
+    if (shape.queues !== 1) breach("§8.5a", where, `${shape.queues} queues in the sheet`);
+    if (shape.cards === 0) breach("§8.5a", where, "the sheet holds no decision card");
+    if (shape.detailMarked !== "true" || !shape.detailText.includes(ENGINE_DETAIL))
+      breach("§5", where, "the engine's wording is missing or not marked as the engine's");
+    await checkCorrectionTitles(page, where);
+    await checkNoIdentifiers(page, `${where} · sheet`);
+    // Last: it opens every card, and a page left expanded measures a
+    // different surface.
+    await checkNothingSettled(page, where, '[data-testid="attention-review"]');
+  } finally {
+    await page.close();
+  }
+  const skills = await openReview(context, "skills");
+  try {
+    if ((await skills.locator('article[data-decision-key^="skill:"]').count()) === 0)
+      breach("§8.5a", "/?review=skills", "the skills sheet holds no skill proposal");
+    await checkNothingSettled(skills, "/?review=skills", '[data-testid="attention-review"]');
+  } finally {
+    await skills.close();
+  }
 }
 
 const german = (key, values) => interpolate(CATALOGS.de[key], values);
@@ -2515,34 +2296,35 @@ function countedWith(text, word) {
  * read the DOM as it found it would have been green on a console that still had
  * two shelves of decided work under its queue.
  */
-const FOLDED =
-  '[data-testid="decisions-page"] [aria-expanded="false"]:not([aria-haspopup]):not([role="combobox"])';
+const folded = (root) =>
+  `${root} [aria-expanded="false"]:not([aria-haspopup]):not([role="combobox"])`;
 
-async function unfoldDecisions(page) {
-  return page.evaluate(async (selector) => {
-    const settle = () =>
-      new Promise((done) =>
-        setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(done)), 0),
-      );
-    const pressed = new WeakSet();
-    for (let step = 0; step < 120; step += 1) {
-      for (const details of document.querySelectorAll(
-        '[data-testid="decisions-page"] details:not([open])',
-      ))
-        details.open = true;
-      const next = [...document.querySelectorAll(selector)].find(
-        (element) => element instanceof HTMLElement && !pressed.has(element),
-      );
-      if (!next) return 0;
-      pressed.add(next);
-      next.click();
-      // Waited for the STATE to be rendered, not for a fixed delay: React has to
-      // commit before the trigger nested inside this panel exists at all.
-      await settle();
-    }
-    return [...document.querySelectorAll(selector)].filter((element) => !pressed.has(element))
-      .length;
-  }, FOLDED);
+async function unfoldDecisions(page, root) {
+  return page.evaluate(
+    async ({ root, selector }) => {
+      const settle = () =>
+        new Promise((done) =>
+          setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(done)), 0),
+        );
+      const pressed = new WeakSet();
+      for (let step = 0; step < 120; step += 1) {
+        for (const details of document.querySelectorAll(`${root} details:not([open])`))
+          details.open = true;
+        const next = [...document.querySelectorAll(selector)].find(
+          (element) => element instanceof HTMLElement && !pressed.has(element),
+        );
+        if (!next) return 0;
+        pressed.add(next);
+        next.click();
+        // Waited for the STATE to be rendered, not for a fixed delay: React has to
+        // commit before the trigger nested inside this panel exists at all.
+        await settle();
+      }
+      return [...document.querySelectorAll(selector)].filter((element) => !pressed.has(element))
+        .length;
+    },
+    { root, selector: folded(root) },
+  );
 }
 
 /**
@@ -2558,8 +2340,8 @@ async function unfoldDecisions(page) {
  *   5. no settled word stands beside a figure in the rendered text of the page,
  *      in whatever markup — which is the one the other four cannot see.
  */
-async function checkNothingSettled(page) {
-  const unopened = await unfoldDecisions(page);
+async function checkNothingSettled(page, where, root) {
+  const unopened = await unfoldDecisions(page, root);
   // NOT a gap, and this is the whole point of the distinction. A gap is a blind
   // spot the run KNOWS about and prints beside a verdict that still stands; it
   // does not touch the exit code. Reporting an unopened section as one let §8.5
@@ -2570,14 +2352,14 @@ async function checkNothingSettled(page) {
   // "this run says nothing".
   if (unopened > 0)
     throw new NichtGemessen(
-      `/decisions · §8.5: ${unopened} folded section(s) were never opened — Radix does not mount a ` +
+      `${where} · §8.5: ${unopened} folded section(s) were never opened — Radix does not mount a ` +
         "closed Collapsible, so what stands inside them was not in the DOM to be read. The rule " +
         "was not measured on this page.",
     );
 
   const found = await page.evaluate(
-    ({ words, openStates }) => {
-      const surface = document.querySelector('[data-testid="decisions-page"]');
+    ({ words, openStates, root }) => {
+      const surface = document.querySelector(root);
       if (!surface) return null;
       const headings = [...surface.querySelectorAll("h1, h2, h3, h4, summary")]
         .map((element) => element.innerText.trim())
@@ -2601,28 +2383,28 @@ async function checkNothingSettled(page) {
           : "";
       return { headings, cards, controls, stateless, text };
     },
-    { words: [...SETTLED_WORDS.keys()], openStates: OPEN_STATES },
+    { words: [...SETTLED_WORDS.keys()], openStates: OPEN_STATES, root },
   );
   if (found === null) {
-    breach("§8.5", "/decisions", "the page did not mount, nothing about it was measured");
+    breach("§8.5", where, "the surface did not mount, nothing about it was measured");
     return;
   }
   for (const heading of found.headings)
-    breach("§8.5", "/decisions", `section "${heading}" holds settled work on the decisions page`);
+    breach("§8.5", where, `section "${heading}" holds settled work among open decisions`);
   for (const state of found.cards)
     breach(
       "§8.5",
-      "/decisions",
+      where,
       `a position renders with data-state="${state}" — not one of ${OPEN_STATES.join(", ")}`,
     );
   for (const control of found.controls)
-    breach("§8.5", "/decisions", `the control "${control}" puts the queue into a past state`);
+    breach("§8.5", where, `the control "${control}" puts the queue into a past state`);
   // A position without a state cannot be asked what it is, so the rule above
   // would pass on it by saying nothing.
   if (found.stateless > 0)
     breach(
       "§8.5",
-      "/decisions",
+      where,
       `${found.stateless} positions carry no data-state — their state stays unmeasured`,
     );
   // Same currency, same reason: shape 5 — the settled word standing beside a
@@ -2631,7 +2413,7 @@ async function checkNothingSettled(page) {
   // fifth simply absent, under a verdict that read as a clean bill of health.
   if (found.text.length === 0)
     throw new NichtGemessen(
-      "/decisions · §8.5: the page rendered no text at all, so the one shape the other four cannot " +
+      `${where} · §8.5: the page rendered no text at all, so the one shape the other four cannot ` +
         "see — a settled word standing beside a figure — was not looked for.",
     );
   for (const [word, provenance] of SETTLED_WORDS) {
@@ -2639,7 +2421,7 @@ async function checkNothingSettled(page) {
     if (hit !== null)
       breach(
         "§8.5",
-        "/decisions · the rendered text of the page",
+        `${where} · the rendered text of the page`,
         `"${word}" (${provenance}) stands beside a figure — a count of what is over: ${hit}`,
       );
   }
@@ -2654,9 +2436,9 @@ async function checkNothingSettled(page) {
 async function checkHistoryLink(page) {
   const shape = await page.evaluate(() => {
     const links = [
-      ...document.querySelectorAll('[data-testid="decisions-page"] a[href*="/audit"]'),
+      ...document.querySelectorAll('[data-testid="attention-page"] a[href*="/audit"]'),
     ];
-    const sentence = document.querySelector('[data-testid="decisions-history"]');
+    const sentence = document.querySelector('[data-testid="attention-history"]');
     return {
       count: links.length,
       href: links[0]?.getAttribute("href") ?? null,
@@ -2664,22 +2446,18 @@ async function checkHistoryLink(page) {
     };
   });
   if (shape.count === 0) {
-    breach("§8.5", "/decisions", "no way from the decisions page to the recorded history");
+    breach("§8.5", "/", "no way from Heute to the recorded history");
     return;
   }
   if (shape.count !== 1)
-    breach("§8.5", "/decisions", `${shape.count} ways to the history instead of exactly one`);
-  const expected = `${german("decisions.history.label")} ${german("decisions.history.link")}`;
+    breach("§8.5", "/", `${shape.count} ways to the history instead of exactly one`);
+  const expected = german("today.history.link");
   if (shape.text !== expected)
-    breach(
-      "§5",
-      "/decisions · decisions-history",
-      `reads "${shape.text}" instead of "${expected}"`,
-    );
+    breach("§5", "/ · attention-history", `reads "${shape.text}" instead of "${expected}"`);
   if (!(shape.href ?? "").includes("scope=decisions"))
     breach(
       "§8.5",
-      "/decisions · decisions-history",
+      "/ · attention-history",
       `the link leads to ${shape.href} — the log opens unfiltered and the history stays unfindable`,
     );
 }
@@ -2740,22 +2518,13 @@ async function checkDecisionHistoryIsReadable(page) {
 }
 
 /**
- * §8.2 — kind chips are the one ordering control. A second grouping strip is
- * redundant and was removed from the family grammar in v1.7.
- */
-async function checkGroupToggle(page) {
-  if ((await page.locator('[data-testid="decisions-group"]').count()) > 0)
-    breach("§8.2", "/decisions", "a redundant group toggle remains above the queue");
-}
-
-/**
  * §5 — a title is a summary in the reader's language, not the engine's artefact.
  *
  * `proposal.description` arrives as English change notes ("Field follows the
  * rename: …") and used to BE the card title, so the queue read as a list of
  * commit messages from another system.
  */
-async function checkCorrectionTitles(page) {
+async function checkCorrectionTitles(page, where) {
   // The summary moved behind the named toggle when the cards became one line
   // each, and a closed panel is not in the DOM at all — the same lesson the
   // §8.5 rule below is built on. So: open every correction card first, or this
@@ -2783,20 +2552,20 @@ async function checkCorrectionTitles(page) {
     }),
   );
   if (cards.length === 0) {
-    breach("§5", "/decisions", "no correction cards found, the title rule stays unmeasured");
+    breach("§5", where, "no correction cards found, the title rule stays unmeasured");
     return;
   }
   const notes = PATCH_CANDIDATES.map((candidate) => candidate.diff.proposal.description);
   for (const card of cards) {
     if (!card.title || !/^Korrektur(: | für )/.test(card.title))
-      breach("§5", "/decisions · correction card", `title "${card.title}"`);
+      breach("§5", `${where} · correction card`, `title "${card.title}"`);
     else if (notes.includes(card.title))
-      breach("§5", "/decisions · correction card", `title is the engine's own change note`);
+      breach("§5", `${where} · correction card`, `title is the engine's own change note`);
   }
   // The English note is the detail, and dropping it would trade one loss for
   // another: the reader still has to be able to see what would change.
   if (!cards.some((card) => card.summary && notes.includes(card.summary)))
-    breach("§5", "/decisions · correction card", "the engine's change note is missing entirely");
+    breach("§5", `${where} · correction card`, "the engine's change note is missing entirely");
 }
 
 /**
@@ -3031,164 +2800,6 @@ async function checkResumeLine(page) {
 }
 
 /**
- * §8.1 — four surfaces, one number.
- *
- * The badge, Zone A, the banner's base and the queue's own copy are compared
- * against each other rather than against a constant, because the failure this
- * asserts against is not a wrong number: it is two right-looking numbers that
- * were never the same question. The rendered positions are counted separately —
- * they are allowed to be FEWER than the total, and only when the page says so.
- */
-async function checkCounterCoherence(page, surfaces) {
-  const rendered = await page.evaluate(() => {
-    const cards = [...document.querySelectorAll("article[data-testid]")].filter((element) =>
-      /^decision(-deferred|-aged)-\d+$/.test(element.getAttribute("data-testid") ?? ""),
-    );
-    const wrapper = document.querySelector('[data-testid="decisions-queue"]');
-    const rubric = (id) => {
-      const section = document.querySelector(`[data-testid="${id}"]`);
-      if (!section) return null;
-      const heading = section.querySelector("h1, h2, h3, h4");
-      return {
-        count: Number(section.getAttribute("data-count")),
-        heading: heading instanceof HTMLElement ? heading.innerText.trim() : "",
-      };
-    };
-    return {
-      positions: cards.length,
-      keys: cards.map((card) => card.getAttribute("data-decision-key")),
-      total: wrapper?.getAttribute("data-total") ?? null,
-      capped: wrapper?.getAttribute("data-capped") ?? null,
-      rubrics: { aged: rubric("decisions-aged") },
-    };
-  });
-
-  if (rendered.positions !== QUEUE_SHOWN)
-    breach(
-      "§8.1",
-      "/decisions",
-      `${rendered.positions} positions rendered, the fixture serves ${QUEUE_SHOWN} distinct ones`,
-    );
-  const distinct = new Set(rendered.keys.filter((key) => key !== null));
-  if (distinct.size !== rendered.positions)
-    breach(
-      "§8.1",
-      "/decisions",
-      `${rendered.positions} cards but ${distinct.size} distinct positions — counted twice`,
-    );
-  if (rendered.total === null) {
-    breach("§8.1", "/decisions · decisions-queue", "the queue does not name its total");
-    return;
-  }
-
-  // Two numbers, each with its own scope, and neither may drift.
-  //
-  // The badge and Zone A count everything that waits on this person — that is
-  // the whole page, tiles included. The queue counts what it holds, which is
-  // the decidable part. Before the split there was one number for both, and it
-  // was the queue's: a badge saying 35 above a list the reader was expected to
-  // work through, 32 of whose entries could not be worked on here.
-  const queueTotal = Number(rendered.total);
-  const pageWide = {
-    "nav-decisions-count": surfaces.badge === null ? null : Number(surfaces.badge),
-    "overview-decision-kpis": surfaces.overviewDecisions,
-  };
-  for (const [where, value] of Object.entries(pageWide)) {
-    if (value === null || value === undefined) continue;
-    if (value !== QUEUE_TOTAL)
-      breach(
-        "§8.1",
-        `/overview + /decisions · ${where}`,
-        `shows ${value}, the page counts ${QUEUE_TOTAL}`,
-      );
-  }
-  if (queueTotal !== DECIDABLE_TOTAL)
-    breach(
-      "§8.1",
-      "/decisions · decisions-queue",
-      `the queue claims ${queueTotal}, the decidable endpoints report ${DECIDABLE_TOTAL}`,
-    );
-  // The cap indicator must agree with the actual distinct decision count.
-  if (rendered.capped !== String(rendered.positions < queueTotal))
-    breach(
-      "§8.1",
-      "/decisions · decisions-queue",
-      `${rendered.positions} of ${queueTotal} shown, but the cap indicator disagrees`,
-    );
-}
-
-/**
- * §8.1 / §8.7 — the banner and the decisions page describe the same thing.
- *
- * Every claim the banner makes is read back against what the decisions page
- * says about the SAME positions. That used to be a rubric of the queue; it is
- * the conversation tile now, because both states the banner may claim — stopped
- * right now, deadline lapsed — belong to a waiting conversation and to nothing
- * else, and those left the queue.
- *
- * What is asserted is unchanged in substance and one shape stronger: the two
- * claims must be shares of the tile's number and never exceed it, their words
- * must be the two pinned German ones, and no claim may wear the heading of the
- * rubric that says it blocks nothing. The fixture keeps that rubric non-empty on
- * purpose; without one the last assertion proves nothing, so an empty one is
- * itself a breach.
- */
-const BANNER_CLAIM_LABELS = {
-  blocking: "Unterhaltungen, die auf deine Antwort warten",
-  overdue: "Unterhaltungen mit verfallener Frist",
-};
-
-function _checkBannerAgainstConversations(banner, conversationTotal, rubrics) {
-  if (!banner) {
-    gap(
-      "/overview vs. /decisions",
-      "no banner was read — banner and decisions page cannot be reconciled",
-    );
-    return;
-  }
-  if (banner.total !== conversationTotal)
-    breach(
-      "§8.1",
-      "/overview vs. /decisions",
-      `banner states a share of ${banner.total}, the conversation source counts ${conversationTotal}`,
-    );
-  let stated = 0;
-  for (const [name, claim] of Object.entries(banner.claims)) {
-    stated += claim.count;
-    const expected = BANNER_CLAIM_LABELS[name];
-    if (expected === undefined) {
-      breach("§8.7", "/overview", `banner makes an unknown claim "${claim.label}"`);
-      continue;
-    }
-    if (claim.label !== expected)
-      breach("§5", "/overview", `banner claims "${claim.label}" instead of "${expected}"`);
-  }
-  if (stated > conversationTotal)
-    breach(
-      "§8.1",
-      "/overview vs. /decisions",
-      `banner claims ${stated} positions out of ${conversationTotal}`,
-    );
-
-  if (!rubrics.aged || rubrics.aged.count === 0) {
-    breach(
-      "§8.7",
-      "/decisions",
-      "no populated rubric that blocks nothing — the banner boundary stays unmeasured",
-    );
-    return;
-  }
-  for (const claim of Object.values(banner.claims)) {
-    if (claim.label === rubrics.aged.heading)
-      breach(
-        "§8.7",
-        "/overview vs. /decisions",
-        `banner claims "${rubrics.aged.heading}" — that rubric blocks nothing`,
-      );
-  }
-}
-
-/**
  * §4 / §5 — a broken answer meets a designed German state, not a catch-all.
  *
  * The knowledge page read `content.data?.documents[index]`: the optional chain
@@ -3221,20 +2832,6 @@ async function checkFailureState(page, where) {
   for (const phrase of CATCH_ALL_PHRASES) {
     if (seen.text.includes(phrase)) breach("§5", where, `englischer Auffangschirm: "${phrase}"`);
   }
-}
-
-/** §8.1 / §8.7 — nothing open means no badge and no banner, not a quiet zero. */
-async function checkSilentWhenEmpty(page) {
-  const present = await page.evaluate(() => ({
-    badge: Boolean(document.querySelector('[data-testid="nav-decisions-count"]')),
-    banner: Boolean(document.querySelector('[data-testid="overview-incident"]')),
-    zoneA: Boolean(document.querySelector('[data-testid="zone-a-decisions-count"]')),
-  }));
-  if (present.badge)
-    breach("§8.1", "/overview (empty queue)", "counter badge despite zero open positions");
-  if (present.banner) breach("§8.7", "/overview (empty queue)", "banner despite an empty queue");
-  if (present.zoneA)
-    breach("§1", "/overview (empty queue)", "zone A states a number although nothing is open");
 }
 
 /**
@@ -3588,21 +3185,14 @@ async function checkUnknownDecisionKind(browser) {
     localStorage.setItem("sk-cockpit-theme", "light");
   });
   await context.route("**/v1/**", apiMock(true, { unknownDecisionKind: true }));
-  const page = await openPage(context, "decisions");
+  const page = await openReview(context, `workflow:${ID}`);
   try {
-    const queue = page.locator('[data-testid="decisions-queue"]');
-    if (
-      (await queue.count()) !== 1 ||
-      (await page.locator('[data-testid^="decision-"]').count()) === 0
-    )
-      breach(
-        "§4, §8.8",
-        "/decisions unknown kind",
-        "the queue dropped the future kind or unmounted",
-      );
-    const text = await page.locator('[data-testid="decisions-page"]').innerText();
+    const where = "/?review=workflow:… unknown kind";
+    if ((await page.locator('[data-testid^="review-decision-"]').count()) === 0)
+      breach("§4, §8.8", where, "the sheet dropped the future kind or unmounted");
+    const text = await page.locator('[data-testid="attention-review"]').innerText();
     if (text.includes("future_operator_choice"))
-      breach("§5, §8.8", "/decisions unknown kind", "raw future_operator_choice enum is visible");
+      breach("§5, §8.8", where, "raw future_operator_choice enum is visible");
   } finally {
     await page.close();
     await context.close();
@@ -3665,32 +3255,20 @@ try {
   });
   await context.route("**/v1/**", apiMock(true));
 
-  const overview = await openPage(context, "");
-  await checkWordmark(overview);
-  await checkBrowserTitle(overview);
-  await checkFavicon(overview);
-  await checkRoleLabel(overview);
-  await checkAdminGroupName(overview);
-  await checkInstallationEntries(overview);
-  const badgeValue = await checkDecisionsNavEntry(overview);
-  const overviewDecisions = await checkOperationalDashboard(overview, QUEUE_TOTAL);
-  await overview.close();
+  const today = await openPage(context, "");
+  await checkWordmark(today);
+  await checkBrowserTitle(today);
+  await checkFavicon(today);
+  await checkRoleLabel(today);
+  await checkAdminGroupName(today);
+  await checkInstallationEntries(today);
+  const badge = await checkTodayNavEntry(today);
+  await checkTodayGateOpen(today, badge);
+  await checkHistoryLink(today);
+  await today.close();
 
-  const decisions = await openPage(context, "decisions");
-  await checkAgingRubric(decisions);
-  await checkRubricLanguage(decisions);
-  await checkDecisionAnatomy(decisions);
-  await checkCorrectionTitles(decisions);
-  await checkCounterCoherence(decisions, {
-    badge: badgeValue,
-    overviewDecisions,
-  });
-  await checkGroupToggle(decisions);
-  await checkHistoryLink(decisions);
-  // Last on this page: it opens every collapsible it can find, and a page left
-  // expanded would make the assertions above measure a different surface.
-  await checkNothingSettled(decisions);
-  await decisions.close();
+  await checkReviewSheet(context);
+  await checkLegacyRedirects(context);
 
   // The other end of the one link §8.5 allows. Opened with the scope the link
   // carries, because an unfiltered log proves nothing about findability.
@@ -3701,10 +3279,6 @@ try {
     .waitFor({ state: "visible", timeout: 15_000 });
   await checkDecisionHistoryIsReadable(auditHistory);
   await auditHistory.close();
-
-  const operations = await openPage(context, "operations");
-  await checkOperationsOwnsHealth(operations, { gateOpen: true });
-  await operations.close();
 
   const chat = await openPage(context, "chat");
   await checkResumeLine(chat);
@@ -3746,6 +3320,7 @@ try {
     await checkCuratedFieldLabels(page, `/${route}`);
     await checkNoRawTimestamps(page, `/${route}`);
     await checkScreenReaderLanguage(page, `/${route}`);
+    await checkNoZeroKpiTile(page, `/${route}`);
     await sweepDetailSurface(page, route);
     await page.close();
   }
@@ -3755,24 +3330,26 @@ try {
   await checkCollectionDataStates(browser);
   await checkUnknownDecisionKind(browser);
 
-  // Second fixture variant: nothing open, so the banner must be gone.
-  const calm = await browser.newContext({
-    viewport: { width: 1440, height: 1000 },
-    locale: "de-DE",
-  });
-  await calm.addInitScript(() => {
-    localStorage.setItem("sk-cockpit-locale", "de");
-    localStorage.setItem("sk-cockpit-theme", "light");
-  });
-  await calm.route("**/v1/**", apiMock(false));
-  const calmOverview = await openPage(calm, "");
-  await checkOperationalDashboard(calmOverview, 0);
-  await checkSilentWhenEmpty(calmOverview);
-  await calmOverview.close();
-  const calmOperations = await openPage(calm, "operations");
-  await checkOperationsOwnsHealth(calmOperations, { gateOpen: false });
-  await calmOperations.close();
-  await calm.close();
+  // Second fixture variant: nothing open — "Alles erledigt" and one status
+  // line. Then the same calm installation with one source that failed: the
+  // page must say what it could not read, never "Alles erledigt".
+  for (const failedAttentionSource of [null, "connectors"]) {
+    const calm = await browser.newContext({
+      viewport: { width: 1440, height: 1000 },
+      locale: "de-DE",
+    });
+    await calm.addInitScript(() => {
+      localStorage.setItem("sk-cockpit-locale", "de");
+      localStorage.setItem("sk-cockpit-theme", "light");
+    });
+    await calm.route("**/v1/**", apiMock(false, { failedAttentionSource }));
+    const calmToday = await openPage(calm, "");
+    if (failedAttentionSource) await checkTodayFailedSource(calmToday);
+    else await checkTodayCalm(calmToday);
+    await checkNoZeroKpiTile(calmToday, "/ (calm)");
+    await calmToday.close();
+    await calm.close();
+  }
 
   // Third fixture variant: one endpoint answers with a body the page cannot
   // read. A cockpit is judged by what it does when an answer is wrong, not
