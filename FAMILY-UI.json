@@ -1,13 +1,16 @@
 {
-  "familyVersion": "2.3",
+  "familyVersion": "3.0",
+  "status": {
+    "leadProduct": "subkit",
+    "note": "SubKit-first. SubKit implements 3.0; the five siblings still implement 2.3 until their own follow-up slices land. The deviation is deliberate and documented in COCKPIT-KONVENTION.md v2.0."
+  },
   "apiSchemaVersion": "operational-overview.v1",
   "scope": [
     "shell",
     "auth",
     "not-found",
     "fatal-error",
-    "overview",
-    "decisions",
+    "attention",
     "collection",
     "detail",
     "form",
@@ -15,46 +18,63 @@
     "audit"
   ],
   "routes": {
-    "overview": "/cockpit",
-    "decisions": "/cockpit/decisions",
+    "attention": "/cockpit",
     "runs": "/cockpit/runs",
+    "usage": "/cockpit/usage",
     "settings": "/cockpit/settings",
-    "system": "/cockpit/system",
-    "audit": "/cockpit/audit",
+    "credentials": "/cockpit/api-access",
+    "people": "/cockpit/people",
     "notifications": "/cockpit/notifications",
-    "credentials": "/cockpit/credentials"
+    "audit": "/cockpit/audit"
+  },
+  "legacyRoutes": {
+    "/cockpit/decisions": "/cockpit",
+    "/cockpit/decisions?workflow_id=<id>": "/cockpit?review=workflow:<id>",
+    "/cockpit/operations": "/cockpit",
+    "/cockpit/access": "/cockpit/people?section=roles",
+    "/cockpit/connections": "/cockpit/api-access?section=grants"
   },
   "navigation": {
-    "firstItems": ["overview", "decisions"],
-    "groups": ["work", "operations", "installation"],
+    "firstItems": [
+      "attention"
+    ],
+    "groups": [
+      "work",
+      "automation",
+      "knowledge",
+      "installation"
+    ],
     "labels": {
       "de": {
-        "overview": "Übersicht",
-        "decisions": "Entscheidungen",
+        "attention": "Heute",
         "work": "Arbeit",
-        "operations": "Betrieb",
+        "automation": "Automatisierung",
+        "knowledge": "Wissen",
         "installation": "Installation",
         "runs": "Ausführungen",
+        "usage": "Nutzung",
         "settings": "Einstellungen",
-        "system": "System",
-        "audit": "Audit",
+        "credentials": "Zugangsdaten",
+        "people": "Personen & Rechte",
         "notifications": "Benachrichtigungen",
-        "credentials": "Zugangsdaten"
+        "audit": "Audit"
       },
       "en": {
-        "overview": "Overview",
-        "decisions": "Decisions",
+        "attention": "Today",
         "work": "Work",
-        "operations": "Operations",
+        "automation": "Automation",
+        "knowledge": "Knowledge",
         "installation": "Installation",
         "runs": "Runs",
+        "usage": "Usage",
         "settings": "Settings",
-        "system": "System",
-        "audit": "Audit",
+        "credentials": "Credentials",
+        "people": "People & access",
         "notifications": "Notifications",
-        "credentials": "Credentials"
+        "audit": "Audit"
       }
-    }
+    },
+    "badge": "attention-entry-count"
   },
   "geometry": {
     "sidebarExpandedPx": 256,
@@ -82,20 +102,19 @@
       "provider-actions",
       "auth-meta"
     ],
-    "not-found": ["failure-state", "failure-actions"],
-    "fatal-error": ["failure-state", "failure-actions"],
-    "overview": [
-      "page-header",
-      "operational-core",
-      "product-metrics",
-      "audit-meta"
+    "not-found": [
+      "failure-state",
+      "failure-actions"
     ],
-    "decisions": [
+    "fatal-error": [
+      "failure-state",
+      "failure-actions"
+    ],
+    "attention": [
       "page-header",
-      "kind-filters",
-      "queue-summary",
-      "queue",
-      "audit-meta"
+      "status-line",
+      "attention-list",
+      "review-sheet"
     ],
     "collection": [
       "page-header",
@@ -112,75 +131,106 @@
       "evidence",
       "audit-meta"
     ],
-    "form": ["page-header", "fields", "actions"],
-    "installation": ["page-header", "content"],
-    "audit": ["page-header", "filters", "content", "pagination"]
-  },
-  "overview": {
-    "titleId": "overview",
-    "coreOrder": [
-      "decisions.blocked",
-      "decisions.failing",
-      "decisions.overdue",
-      "decisions.other",
-      "operations.health",
-      "data.freshness"
+    "form": [
+      "page-header",
+      "fields",
+      "actions"
     ],
-    "decisionBuckets": {
-      "exclusiveOrder": ["blocked", "failing", "overdue", "other"],
-      "fallbackDeadlineHours": 72,
-      "drilldowns": {
-        "blocked": "/cockpit/decisions?bucket=blocked",
-        "failing": "/cockpit/decisions?bucket=failing",
-        "overdue": "/cockpit/decisions?bucket=overdue",
-        "other": "/cockpit/decisions?bucket=other"
-      }
+    "installation": [
+      "page-header",
+      "content"
+    ],
+    "audit": [
+      "page-header",
+      "filters",
+      "content",
+      "pagination"
+    ]
+  },
+  "attention": {
+    "titleId": "attention",
+    "classes": [
+      "stopped",
+      "failing",
+      "decide"
+    ],
+    "order": "class-then-next-deadline-then-oldest",
+    "oneEntryPer": "subject",
+    "entryAnatomy": [
+      "subject",
+      "reason",
+      "since"
+    ],
+    "entrySentences": 1,
+    "actionsPerEntry": {
+      "primary": 1,
+      "secondaryMax": 1
+    },
+    "emptyState": "all-clear-only-when-all-readable-sources-answered",
+    "unreadableSources": "named-never-all-clear",
+    "noReadableSource": "first-visible-navigation-entry",
+    "statusLine": "only-when-empty",
+    "statusLineContent": [
+      "health-state",
+      "next-scheduled-run"
+    ],
+    "zeroTiles": 0,
+    "badge": "entry-count",
+    "historyLink": "exactly-one-audit-link",
+    "excluded": [
+      "warnings",
+      "test-and-authoring-failures",
+      "unused-keys"
+    ],
+    "reviewSheet": {
+      "address": "?review=<id>",
+      "decideInPlace": true,
+      "afterDecision": "entry-leaves-immediately-toast-links-audit",
+      "cardSlots": [
+        "decision-meta",
+        "decision-title",
+        "decision-effect",
+        "decision-source",
+        "decision-details",
+        "decision-actions"
+      ],
+      "rowTitleCharactersMax": 120,
+      "rowEffectCharactersMax": 160,
+      "technicalDetailsCollapsed": true,
+      "engineWording": "review-sheet-only",
+      "rawIdentifiersOnPrimarySurface": false,
+      "rawErrorsOnPrimarySurface": false,
+      "history": "audit-link-only"
     },
     "health": {
-      "states": ["healthy", "limited", "critical", "unknown"],
-      "thresholds": { "healthyMin": 90, "limitedMin": 70, "criticalMin": 0 },
-      "missingRequiredMeansUnknown": true,
-      "redistributeMissingOptionalWeight": false,
-      "drilldown": "worst-component",
-      "componentDrilldowns": true,
-      "maxCauses": 5,
-      "causeWording": {
-        "composeFrom": ["subject", "reason"],
-        "engineWording": ["label", "detail"]
-      }
+      "states": [
+        "healthy",
+        "limited",
+        "critical",
+        "unknown"
+      ],
+      "home": "status-line-when-empty",
+      "causes": "attention-entries",
+      "componentsAndScore": "api-mcp-prometheus-only"
     },
-    "coreDrilldownsNeverLeadTo": ["/cockpit/operations"],
-    "freshness": {
-      "value": "age-seconds-of-stalest-source",
-      "staleSeverity": "critical",
-      "drilldown": "stalest-source"
-    },
+    "freshness": "entry-only-when-stale",
     "refresh": {
       "recommendedSecondsMin": 10,
       "recommendedSecondsMax": 300,
       "pauseWhenDocumentHidden": true,
       "retainPreviousValues": true
     },
-    "contentLimits": {
-      "headerPurposeSentences": 1,
-      "headerPurposeCharacters": 120,
-      "tooltipSentences": 2,
-      "tooltipCharacters": 240,
-      "sectionDescriptionCharacters": 120,
-      "objectLists": 0,
-      "tables": 0,
-      "feeds": 0,
-      "incidentBanners": 0
-    },
-    "allowedVisualizations": [
-      "kpi",
-      "sparkline",
-      "time-series",
-      "progress",
-      "segmented-distribution"
-    ],
-    "maxSegmentCategories": 5,
-    "trendWindows": ["24h", "7d", "30d"]
+    "metrics": {
+      "home": "usage",
+      "figures": [
+        "executions",
+        "success-rate",
+        "connector-health",
+        "repair-rate"
+      ],
+      "drilldown": "list-counting-the-same-thing-same-window-and-filter",
+      "countZeroLinks": false
+    }
   },
   "states": [
     "loading",
@@ -220,12 +270,18 @@
   },
   "auth": {
     "flow": "direct-provider-choice",
-    "locale": ["de", "en"],
+    "locale": [
+      "de",
+      "en"
+    ],
     "localeSource": "accept-language",
     "fallbackLocale": "en",
     "returnPath": "current-cockpit-path-and-query",
     "productIdentity": "real-cockpit-favicon-and-canonical-product-name",
-    "providerOrder": ["sso", "api-key"],
+    "providerOrder": [
+      "sso",
+      "api-key"
+    ],
     "footer": "{Product} · OAuth 2.1",
     "intermediateSpaSignIn": false
   },
@@ -233,12 +289,19 @@
     "notFound": {
       "transport": "spa-shell-http-200",
       "shellRetained": true,
-      "actions": ["overview"],
+      "actions": [
+        "attention"
+      ],
       "technicalDetails": false
     },
     "fatalError": {
-      "shellActions": ["retry", "overview"],
-      "bootstrapActions": ["retry"],
+      "shellActions": [
+        "retry",
+        "attention"
+      ],
+      "bootstrapActions": [
+        "retry"
+      ],
       "technicalDetails": false,
       "productionCrashRoute": false
     },
@@ -247,46 +310,36 @@
   "integration": {
     "rest": {
       "method": "GET",
-      "path": "/v1/operational-overview",
-      "p95MsMax": 500
+      "path": "/v1/attention",
+      "schemaVersion": "attention.v1",
+      "readOnly": true,
+      "perEntryPermission": true,
+      "sourceStates": [
+        "answered",
+        "failed",
+        "not_permitted"
+      ]
     },
-    "mcp": { "tool": "get_operational_overview", "readOnly": true },
+    "mcp": {
+      "tool": "get_attention",
+      "readOnly": true,
+      "metricsTool": "get_operational_overview"
+    },
     "metrics": {
       "path": "/metrics",
       "scope": "metrics:read",
       "servicePrincipalPerProduct": true,
       "authenticatedPrincipalRateLimitExempt": true,
       "highCardinalityLabelsAllowed": false
-    }
-  },
-  "decisions": {
-    "layout": "operational-workbench",
-    "pageMeasure": "workbench",
-    "order": ["blocked", "failing", "overdue", "other"],
-    "filters": "kind-chips",
-    "grouping": {
-      "blocked": "Blockiert Arbeit",
-      "failing": "Freigegeben, aber scheiternd",
-      "overdue": "Liegt schon länger",
-      "other": "Weitere Entscheidungen"
     },
-    "rowSlots": [
-      "decision-meta",
-      "decision-title",
-      "decision-effect",
-      "decision-source",
-      "decision-details",
-      "decision-actions"
-    ],
-    "rowTitleCharactersMax": 120,
-    "rowEffectCharactersMax": 160,
-    "initialVisibleRowsMax": 25,
-    "technicalDetailsCollapsed": true,
-    "rawIdentifiersOnPrimarySurface": false,
-    "rawErrorsOnPrimarySurface": false,
-    "bucketQuery": ["blocked", "failing", "overdue", "other"],
-    "details": "collapsed-by-default-expandable",
-    "history": "audit-link-only"
+    "restMetrics": {
+      "method": "GET",
+      "path": "/v1/operational-overview",
+      "schemaVersion": "operational-overview.v1",
+      "optional": true,
+      "purpose": "metrics-for-siblings-and-prometheus",
+      "p95MsMax": 500
+    }
   },
   "collections": {
     "pageMeasure": "workbench",
@@ -305,7 +358,11 @@
         "error-state"
       ],
       "defaultPageSize": 25,
-      "pageSizeOptions": [25, 50, 100],
+      "pageSizeOptions": [
+        25,
+        50,
+        100
+      ],
       "stickyToolbar": false,
       "horizontalScrollDesktop": "last-resort"
     },
@@ -321,10 +378,19 @@
       "columnVisibility": "not-required",
       "urlState": "not-required"
     },
-    "rowHeightDesktopPx": { "minimum": 44, "maximum": 72 },
+    "rowHeightDesktopPx": {
+      "minimum": 44,
+      "maximum": 72
+    },
     "mobileCardGapPx": 12,
     "rawIdentifiers": "secondary-only",
-    "technicalText": "collapsed-or-detail-only"
+    "technicalText": "collapsed-or-detail-only",
+    "rowOpen": "name-link-plus-row-click",
+    "namedOpenButton": false,
+    "rowTabStop": false,
+    "menuGlyphOnlyForRealMenus": true,
+    "mobileCard": "title-link-no-nested-links-row-actions-visible",
+    "listHeaderCounts": false
   },
   "visualLanguage": {
     "spacingGridPx": 4,
@@ -339,10 +405,20 @@
         "foregroundToken": "primary-foreground",
         "hoverOpacityPercent": 90
       },
-      "secondary": { "variant": "outline" },
-      "tertiary": { "variant": "ghost" },
-      "link": { "variant": "link", "foregroundToken": "accent" },
-      "destructive": { "variant": "destructive", "foregroundToken": "destructive" }
+      "secondary": {
+        "variant": "outline"
+      },
+      "tertiary": {
+        "variant": "ghost"
+      },
+      "link": {
+        "variant": "link",
+        "foregroundToken": "accent"
+      },
+      "destructive": {
+        "variant": "destructive",
+        "foregroundToken": "destructive"
+      }
     },
     "semanticColors": {
       "critical": "red",
@@ -361,11 +437,32 @@
     "rollback": "whole-family"
   },
   "screenshots": {
-    "viewports": ["desktop", "mobile"],
-    "themes": ["light", "dark"],
+    "viewports": [
+      "desktop",
+      "mobile"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
     "consecutiveRuns": 2,
     "products": 6,
-    "overviewImagesPerAcceptedRelease": 48,
+    "attentionImagesPerAcceptedRelease": 48,
     "updateDashboardAfterEveryAttempt": true
+  },
+  "migration": {
+    "from": "2.3",
+    "to": "3.0",
+    "siblingsMustImplement": [
+      "Replace the overview tiles and the decisions page with one attention page at /cockpit: one entry per subject, classes stopped > failing > decide, one sentence, one primary action, at most one secondary link.",
+      "Serve GET /v1/attention (attention.v1) with per-entry permission checks and per-source status answered|failed|not_permitted; MCP get_attention returns the same list; digest and MCP connect summary render from it.",
+      "Show 'all clear' plus one status line only when every source the reader may read answered; otherwise name what did not answer.",
+      "Move deciding into a review sheet addressed by ?review=<id>; the entry leaves on decision and a toast links the audit trail.",
+      "Drop the system page; health causes become entries, components and score stay in API, MCP and Prometheus.",
+      "Navigation badge = number of attention entries; list headers carry no counts.",
+      "Collection rows: the name cell is a real link, the row is clickable, no named Open button, the menu glyph only for a real menu.",
+      "Redirect the old overview, decisions and system addresses to /cockpit.",
+      "Keep serving /v1/operational-overview (operational-overview.v1) as optional metrics."
+    ]
   }
 }
