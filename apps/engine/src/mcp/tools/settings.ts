@@ -16,7 +16,7 @@ import {
   setConfigKey,
   ValidationError,
 } from "../../config/loader.ts";
-import { dottedPath, findLeafByPath, listConfigLeaves } from "../../config/walk.ts";
+import { dottedPath, findLeafByPath, leafSchemaMeta, listConfigLeaves } from "../../config/walk.ts";
 import type { Db } from "../../db/client.ts";
 import {
   activateRuntimeRevision,
@@ -112,6 +112,8 @@ interface SettingEntry {
     requires_restart: boolean;
     description?: string;
     kind: string;
+    default?: unknown;
+    enum_values?: string[];
   };
 }
 
@@ -162,6 +164,7 @@ function settingEntry(path: string, tenantId?: string): SettingEntry | null {
       requires_restart: !!leaf.meta.requiresRestart,
       ...(leaf.description ? { description: leaf.description } : {}),
       kind: leaf.kind,
+      ...leafSchemaMeta(leaf),
     },
   };
 }

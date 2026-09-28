@@ -10290,7 +10290,7 @@ version with different preview evidence.
 
 ### Runtime configuration across surfaces
 
-Cockpit Settings, `GET /v1/settings` + `PUT /v1/settings/{path}`, and the
+Cockpit Settings (all drafts of a save as one revision), `GET /v1/settings` + `PUT /v1/settings/{path}`, and the
 admin-only MCP tools `subkit_settings` + `subkit_update_setting` share the same
 schema, persistence, RBAC, audit events, tenant scoping, secret masking, and
 activation response. Hot values are visible to the next runtime read. A
@@ -13086,7 +13086,10 @@ The legacy `/v1/setup` aliases remain available for compatible clients.
 
 ## Saved and active revisions
 
-`GET /v1/settings` provides the human-oriented settings view. The canonical state endpoint is
+`GET /v1/settings` provides the human-oriented settings view. Each item's `meta` carries the
+schema's `default` (absent for a bootstrap binding such as `database.url`, masked for a secret) and,
+for an enum, its `enum_values`; the MCP tool `subkit_settings` reports the same fields. The
+canonical state endpoint is
 `GET /v1/settings/runtime`; it reports:
 
 ```json
