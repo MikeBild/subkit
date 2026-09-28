@@ -32,7 +32,7 @@ Navigation follows the work instead of the engine's directory tree:
 - **Installation** — Usage, Settings, Credentials, People & access, Notifications, Audit
 
 The first block carries no heading and the last one carries the family's name for it. The
-convention (v2.1, §1 and §6) names both: Übersicht stands ungrouped at the top, and the
+convention (v2.2, §1 and §6) names both: Übersicht stands ungrouped at the top, and the
 administration block is called "Installation". There is no Decisions, System or Access entry any more:
 their facts each have one home (see "One fact, one home" below), and their old addresses redirect.
 
@@ -129,16 +129,27 @@ default); the operations bar; "Braucht dich", the attention list; a notice namin
 could not be read, only when one failed; and one link into the audit trail, "Was bereits entschieden
 wurde".
 
-The operations bar holds exactly four figures in one row (two by two on a phone), each about 72px
-tall so the attention list stays on the first screen: Ausführungen, Erfolgsquote and Übernommene
-Reparaturen over the chosen window, and Gesunde Konnektoren, marked "Stand jetzt" because it is a
-state of now. Every figure links to the list that counts the same rows over the same bounds — the
-runs by `started_from`/`started_to`, the failed runs of that window, the decided repairs by
-`ts_from`/`ts_to`, the connectors unwell now. A figure with nothing to count says so in words and
-has no link; there is no link beside "100 %" when nothing failed or every connector is healthy. A
-figure whose read failed says "nicht lesbar" with its own retry. The bar is shown to readers with
-`stats:read`; connector health reads connectors only with `connector:read`. The figures and their
-reads live in `src/pages/operations-figures.ts` and `src/pages/operations-bar.tsx`.
+The operations bar holds exactly six figures in a grid that never scrolls sideways — six in a row
+on a wide screen, three by two on a desktop, two columns on a phone — each about 72px tall so the
+attention list stays on the first screen: Ausführungen, Erfolgsquote, Übernommene Reparaturen and
+Kosten over the chosen window, Gesunde Konnektoren, marked "Stand jetzt" because it is a state of
+now, and Kontingent, marked "Monat" because the cap is spent against the calendar month. Every
+figure links to the list that counts the same rows over the same bounds — the runs by
+`started_from`/`started_to`, the failed runs of that window, the decided repairs by
+`ts_from`/`ts_to`, the connectors unwell now, Nutzung over the same window for Kosten
+(`/usage?window=…`), Nutzung for Kontingent. Kosten is the window's amount in the prices' currency
+from `GET /v1/stats/llm` (built-in price catalog plus `tokens.prices` overrides); when some calls
+had no price it reads "mind. …" with the number of unpriced calls, and when none had a price it
+says "Modelle ohne Preis" and leads to Nutzung, never "0,00". Kontingent is the month's share of
+`tokens.monthly_budget` from `GET /v1/status` — "27 % von 150 Mio. Token", the remainder and the
+pressure word (Reichlich · Wird knapp · Fast aufgebraucht, on the rounded percentage at the
+engine's 75/90 thresholds); with no cap it reads "Kein Kontingent", without a percentage, and links
+the setting only for `settings:write`. A figure with nothing to count says so in words and has no
+link; there is no link beside "100 %" when nothing failed or every connector is healthy. A figure
+whose read failed says "nicht lesbar" with its own retry. The bar is shown to readers with
+`stats:read`, which is also what Kosten and Kontingent read; connector health reads connectors only
+with `connector:read`. The figures and their reads live in `src/pages/operations-figures.ts` and
+`src/pages/operations-bar.tsx`.
 
 The attention list reads one engine list, `GET /v1/attention`, which the digest, the MCP connect line
 and the MCP tool `get_attention` render too; the page never assembles its own list from several
@@ -236,9 +247,11 @@ There is no decisions page and no system page. Each fact they showed has one hom
 - The health state is the Übersicht's status line, shown only when nothing is open; every cause of an unwell
   installation is an entry. Health components and the score are available through the API, MCP and
   Prometheus only.
-- Executions, success rate, connector health and repair rate are the Übersicht's operations bar.
-  Nutzung (`/usage`) shows consumption, the cap and its breakdown, and a "Laufzeit" table with its
-  own window — never these figures a second time. Every figure links to a list that counts the same
+- Executions, success rate, connector health, repair rate, spend and budget are the Übersicht's
+  operations bar; spend and budget there only in short form. Nutzung (`/usage`) keeps the detail —
+  the spend and the cap with their breakdown by axis, and a "Laufzeit" table — over one window
+  its address names (`?window=24h|7d`, thirty days by default) — never the four operating figures a
+  second time. Every figure links to a list that counts the same
   thing — the same window, the same filter. A count of zero has nothing to open and gets no link; a ratio, a score or a duration at
   zero is the worst state its figure can be in and keeps its way to the cause.
 - Stale data is an entry on the Übersicht, and only when it is stale.
@@ -405,7 +418,7 @@ Workflow preparation includes inspection, validation and the supported preview w
 
 ## Attention grammar
 
-What follows is a verbatim German copy of §8 of Cockpit Convention v2.1 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). The Übersicht's attention list and its review sheet are measured against it. SubKit offers no "remind me later" in the sheet because the engine has no deferred state, which §8.4 allows; the reason is recorded above under "Review sheet". The copy below is never adjusted to this product, or it would no longer be a copy.
+What follows is a verbatim German copy of §8 of Cockpit Convention v2.2 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). The Übersicht's attention list and its review sheet are measured against it. SubKit offers no "remind me later" in the sheet because the engine has no deferred state, which §8.4 allows; the reason is recorded above under "Review sheet". The copy below is never adjusted to this product, or it would no longer be a copy.
 
 ### 8. Anliegen-Grammatik
 
