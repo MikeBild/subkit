@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chatNewHref, connectorHref, decisionsHref } from "@/app/links";
+import { attentionHref, chatNewHref, connectorHref } from "@/app/links";
 import { type Remedy, type RemedyInput, remedyFor } from "@/lib/remedy";
 
 const WF = "0b6f2d4e-91c3-4a7e-8d52-3f1e6a9c7b20";
@@ -17,7 +17,7 @@ describe("remedyFor", () => {
         patch: { id: "p1" },
         authState: { connectorId: CONNECTOR, state: "expired" },
       },
-      { kind: "review_repair", href: decisionsHref({ workflowId: WF }) },
+      { kind: "review_repair", href: attentionHref({ review: `workflow:${WF}` }) },
     ],
     [
       "an expired sign-in leads to the connector",
@@ -47,7 +47,7 @@ describe("remedyFor", () => {
     [
       "a repair proposal needs no chat permission",
       { ...base, canChat: false, patch: { id: "p1" } },
-      { kind: "review_repair", href: decisionsHref({ workflowId: WF }) },
+      { kind: "review_repair", href: attentionHref({ review: `workflow:${WF}` }) },
     ],
     ["no chat permission and nothing else: no dead link", { ...base, canChat: false }, null],
     [

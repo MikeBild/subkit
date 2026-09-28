@@ -19,8 +19,24 @@ const BASE = "/cockpit";
 
 /** The router-relative path as a browser address, for `<a href>` and history calls. */
 export function absolute(path: string): string {
-  if (path.startsWith(`${BASE}/`) || path === BASE) return path;
-  return path === "/" ? BASE : `${BASE}${path}`;
+  if (path === BASE || path.startsWith(`${BASE}/`) || path.startsWith(`${BASE}?`)) return path;
+  if (path === "/") return BASE;
+  // The start page with a query: `/cockpit?review=…`, never `/cockpit/?review=…`
+  // — the router runs with `trailingSlash: "never"`.
+  if (path.startsWith("/?")) return `${BASE}${path.slice(1)}`;
+  return `${BASE}${path}`;
+}
+
+/**
+ * An address the ENGINE wrote (`/cockpit?review=…`, `/cockpit/connectors/…`)
+ * as a router-relative path. The engine names the cockpit's pages by their
+ * browser address; a router `Link` needs them without the base.
+ */
+export function routerPath(href: string): string {
+  if (href === BASE) return "/";
+  if (href.startsWith(`${BASE}?`)) return `/${href.slice(BASE.length)}`;
+  if (href.startsWith(`${BASE}/`)) return href.slice(BASE.length);
+  return href;
 }
 
 function withQuery(path: string, entries: Record<string, string | null | undefined>): string {
@@ -86,13 +102,24 @@ export function conversationHref(id: string): string {
   return record("chat", id);
 }
 
-/** The four decision tiles on the overview, each a filter on the queue. */
-export type DecisionBucket = "blocked" | "failing" | "overdue" | "other";
+/**
+ * Heute — the one list of what needs the reader now — optionally with one
+ * entry's review sheet open.
+ *
+ * The id stays literal (`?review=workflow:<id>`): it is the engine's own item
+ * id, the engine writes it that way in every address it hands out, and one
+ * spelling is what lets a link, a redirect and a test compare strings. Item
+ * ids are `<kind>:<id>` or a bare word — query-safe as they stand.
+ */
+export function attentionHref(filter: { review?: string | null } = {}): string {
+  return filter.review ? `/?review=${filter.review}` : "/";
+}
 
-export function decisionsHref(
-  filter: { bucket?: DecisionBucket | null; workflowId?: string | null } = {},
-): string {
-  return withQuery("/decisions", { bucket: filter.bucket, workflow_id: filter.workflowId });
+/** The entry whose review sheet an address opens, or none. */
+export function reviewFromUrl(search: string): string | null {
+  const raw = new URLSearchParams(search).get("review")?.trim() ?? "";
+  if (!raw || raw.length > 200 || !/^[\w.:@-]+$/.test(raw)) return null;
+  return raw;
 }
 
 /**

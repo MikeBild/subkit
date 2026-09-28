@@ -95,6 +95,39 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
       total: completed ? 0 : 1,
     }),
   );
+  // Heute's badge counts the held schedule as one entry until it is granted.
+  const baseAttention = await page.evaluate(async () => (await fetch("/v1/attention")).json());
+  await route("**/v1/attention*", (r) =>
+    fulfill(r, {
+      ...baseAttention,
+      items: completed
+        ? baseAttention.items
+        : [
+            {
+              id: `workflow:${workflowId}`,
+              class: "stopped",
+              severity: "critical",
+              kind: "workflow",
+              subject: { kind: "workflow", id: workflowId, name: "Daily report" },
+              reason: "execution_authority_required",
+              cause_class: null,
+              counts: {},
+              since: new Date().toISOString(),
+              deadline: null,
+              detail: null,
+              actions: [
+                {
+                  verb: "review",
+                  href: `/cockpit?review=workflow:${workflowId}`,
+                  primary: true,
+                  permission: "workflow:write",
+                },
+              ],
+            },
+            ...baseAttention.items,
+          ],
+    }),
+  );
   await route(`**/v1/workflows/${workflowId}`, (r) =>
     fulfill(r, {
       id: workflowId,
@@ -338,7 +371,7 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
     });
   });
   const decisionCount = async () => {
-    const count = page.getByTestId("nav-decisions-count");
+    const count = page.getByTestId("nav-overview-count");
     // A refetch can briefly remove the badge. It does not mean the viewport
     // became mobile: toggling the desktop sidebar then would hide the result.
     const mobile = page.viewportSize().width < 768;

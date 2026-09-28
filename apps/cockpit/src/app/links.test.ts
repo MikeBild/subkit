@@ -9,21 +9,22 @@ import { describe, expect, test } from "bun:test";
 import { settingsLeafFromUrl } from "@/pages/admin-model";
 import { auditFilterFromUrl } from "@/pages/audit-model";
 import { connectorHealthFilterFromUrl } from "@/pages/connectors-model";
-import { readFocus } from "@/pages/decisions";
 import { filterFromUrl } from "@/pages/runs-model";
 import {
   API_ACCESS_SECTIONS,
   absolute,
   apiAccessHref,
   apiAccessSectionFromUrl,
+  attentionHref,
   auditHref,
   chatNewHref,
   chatSeedFromUrl,
   connectorHref,
   connectorsHref,
   conversationHref,
-  decisionsHref,
   recordHref,
+  reviewFromUrl,
+  routerPath,
   runHref,
   runsHref,
   settingsHref,
@@ -45,7 +46,8 @@ describe("router-relative, and absolute only on request", () => {
       recordHref("files", ID),
       workflowsHref({ connector: "crm" }),
       conversationHref(ID),
-      decisionsHref(),
+      attentionHref(),
+      attentionHref({ review: "skills" }),
       settingsHref(),
       auditHref(),
       chatNewHref(),
@@ -61,6 +63,21 @@ describe("router-relative, and absolute only on request", () => {
     expect(absolute("/runs")).toBe("/cockpit/runs");
     expect(absolute(absolute("/runs"))).toBe("/cockpit/runs");
     expect(absolute("/")).toBe("/cockpit");
+  });
+
+  test("the start page with a query keeps the router's no-trailing-slash form", () => {
+    expect(absolute("/?review=skills")).toBe("/cockpit?review=skills");
+    expect(absolute("/cockpit?review=skills")).toBe("/cockpit?review=skills");
+    expect(absolute(absolute("/?review=skills"))).toBe("/cockpit?review=skills");
+  });
+
+  test("an engine address becomes a router path, and back again", () => {
+    expect(routerPath("/cockpit")).toBe("/");
+    expect(routerPath("/cockpit?review=skills")).toBe("/?review=skills");
+    expect(routerPath(`/cockpit/connectors/${ID}`)).toBe(`/connectors/${ID}`);
+    expect(routerPath("/runs")).toBe("/runs");
+    for (const href of ["/cockpit", "/cockpit?review=skills", `/cockpit/connectors/${ID}`])
+      expect(absolute(routerPath(href))).toBe(href);
   });
 
   test("an id is encoded, never spliced raw into the path", () => {
@@ -95,11 +112,13 @@ describe("runs", () => {
   });
 });
 
-describe("decisions", () => {
-  test("the bucket a tile links to is the focus the queue opens on", () => {
-    for (const bucket of ["blocked", "failing", "overdue", "other"] as const)
-      expect(readFocus(query(decisionsHref({ bucket })))).toBe(bucket);
-    expect(readFocus(query(decisionsHref()))).toBeNull();
+describe("Heute", () => {
+  test("the entry a link names is the review sheet the page opens", () => {
+    for (const id of [`workflow:${ID}`, "skills", `connector:${ID}`, "secret-approval:mail@3"])
+      expect(reviewFromUrl(query(attentionHref({ review: id })))).toBe(id);
+    expect(reviewFromUrl(query(attentionHref()))).toBeNull();
+    // A value that could not be an entry id opens nothing.
+    expect(reviewFromUrl("?review=<script>")).toBeNull();
   });
 });
 

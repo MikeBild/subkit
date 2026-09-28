@@ -88,7 +88,6 @@ test("every address a link builder produces resolves to one of the cockpit's pag
     ),
     workflows: links.workflowsHref({ connector: "crm" }),
     conversation: links.conversationHref(id),
-    decisions: links.decisionsHref({ bucket: "failing", workflowId: id }),
     settings: links.settingsHref("server.public_base_url"),
     audit: links.auditHref({
       resourceType: "workflow",
@@ -105,6 +104,18 @@ test("every address a link builder produces resolves to one of the cockpit's pag
   expect(dead).toEqual([]);
   // And the absolute form is the same page under the router's base.
   for (const href of Object.values(built)) expect(links.absolute(href)).toBe(`/cockpit${href}`);
+});
+
+test("Heute and its review sheet resolve to the start page, spelled as the engine spells them", () => {
+  const id = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
+  const review = links.attentionHref({ review: `workflow:${id}` });
+  expect(resolves(review)).toBe(true);
+  expect(resolves(links.attentionHref())).toBe(true);
+  // The engine writes `/cockpit?review=workflow:<id>` (operator/attention.ts);
+  // one spelling on both sides is what lets a link and a redirect compare.
+  expect(links.absolute(review)).toBe(`/cockpit?review=workflow:${id}`);
+  expect(links.routerPath(`/cockpit?review=workflow:${id}`)).toBe(review);
+  expect(links.absolute(links.attentionHref())).toBe("/cockpit");
 });
 
 test("every address the cockpit builds resolves to one of its pages", () => {

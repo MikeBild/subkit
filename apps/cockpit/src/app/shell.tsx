@@ -61,7 +61,7 @@ import { type Theme, useTheme } from "@/lib/theme";
 import { navigationItem, visibleNavigation } from "./navigation";
 import { RecordCrumbProvider, recordListPath, useRecordCrumbLabel } from "./record-crumb";
 import { useSession } from "./session";
-import { useDecisionQueue } from "./use-decisions";
+import { useAttention } from "./use-attention";
 
 const THEMES: {
   value: Theme;
@@ -177,9 +177,8 @@ function ShellFrame() {
           <nav aria-label={t("nav.label")}>
             {groups.map((group) => (
               <SidebarGroup key={group.id} data-testid={`nav-group-${group.id}`}>
-                {/* No heading where the group has no name: §8.1 puts the
-                    decisions entry ungrouped under the overview, and a rendered
-                    label above it makes it a group again. */}
+                {/* No heading where the group has no name: Heute stands
+                    ungrouped, and a rendered label above it makes it a group. */}
                 {group.labelKey && <SidebarGroupLabel>{t(group.labelKey)}</SidebarGroupLabel>}
                 <SidebarGroupContent>
                   <SidebarMenu>
@@ -205,7 +204,7 @@ function ShellFrame() {
                               <span>{label}</span>
                             </Link>
                           </SidebarMenuButton>
-                          {item.path === "/decisions" && <DecisionsCounter />}
+                          {item.path === "/" && <AttentionCounter />}
                         </SidebarMenuItem>
                       );
                     })}
@@ -296,21 +295,21 @@ function RecordBreadcrumb() {
 }
 
 /**
- * Exact open count or nothing at all — a stale or guessed badge would be worse
- * than an absent one, and it always sits on the link it counts.
+ * The number of entries on Heute, or nothing at all — a stale or guessed badge
+ * would be worse than an absent one, and it always sits on the link it counts.
+ * Red while anything is stopped.
  */
-function DecisionsCounter() {
+function AttentionCounter() {
   const session = useSession();
-  const queue = useDecisionQueue(session.permissions);
-  // The sum of the chips the page shows — a source this person cannot read or
-  // that failed adds nothing, and a badge of 0 is never shown.
-  if (queue.failed || queue.badge === null) return null;
+  const { query, badge } = useAttention(session.permissions);
+  if (query.isError || badge === null) return null;
   return (
     <SidebarMenuBadge
-      className={queue.overdue ? "text-destructive" : undefined}
-      data-testid="nav-decisions-count"
+      className={badge.stopped ? "text-destructive" : undefined}
+      data-testid="nav-overview-count"
+      data-attention-stopped={String(badge.stopped)}
     >
-      {queue.badge}
+      {badge.count}
     </SidebarMenuBadge>
   );
 }
