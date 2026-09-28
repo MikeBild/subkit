@@ -153,7 +153,12 @@ const routes = [
   // The repair rate's drilldown: the decided repairs, by the engine's verbs.
   "audit?scope=all&action=patch_candidate.approved,patch_candidate.auto_applied,patch_candidate.rejected",
   "usage",
+  // Personen & Rechte, at each of its sections, and the old Zugriff address,
+  // which must land on the roles.
   "people",
+  "people?section=roles",
+  "people?section=groups",
+  "people?section=grants",
   "access",
   "api-access",
   // The old Kontoverbindungen address, with a callback result in its query:
@@ -1313,7 +1318,15 @@ async function mockApi(route) {
     const items = Array.from({ length: 42 }, (_, index) => ({
       ...rowFor(index),
       id: index === 0 ? uuid : `catalog-record-${index}`,
-    })).filter((row) => !narrowed || (row.enabled === true && row.health_state !== "ok"));
+    }))
+      .filter((row) => !narrowed || (row.enabled === true && row.health_state !== "ok"))
+      // `enabled=true` narrows as the engine does (the usage page's health figure).
+      .filter(
+        (row) =>
+          path !== "/v1/connectors" ||
+          url.searchParams.get("enabled") !== "true" ||
+          row.enabled === true,
+      );
     const categories =
       path === "/v1/workflows" || path === "/v1/connectors"
         ? [
@@ -1783,6 +1796,40 @@ async function mockApi(route) {
       },
     });
   }
+  // The repair decisions of a window, per verb — what the usage page's
+  // repair rate is computed from. Two applied of three decided.
+  if (path === "/v1/stats/events") {
+    if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
+      return json(route, { code: "validation", message: "request validation failed" }, 400);
+    const group = (action, total) => ({
+      key: { action },
+      buckets: [],
+      totals: {
+        calls: { total, by_outcome: { success: total, denied: 0, error: 0 } },
+        latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+      },
+    });
+    return json(route, {
+      bucket: url.searchParams.get("bucket"),
+      tz: "UTC",
+      from: url.searchParams.get("from"),
+      to: new Date().toISOString(),
+      groups:
+        url.searchParams.get("class") === "self_healing"
+          ? [
+              group("patch_candidate.proposed", 5),
+              group("patch_candidate.approved", 1),
+              group("patch_candidate.auto_applied", 1),
+              group("patch_candidate.rejected", 1),
+            ]
+          : [],
+      totals: {
+        calls: { total: 0, by_outcome: { success: 0, denied: 0, error: 0 }, by_status_class: {} },
+        latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+      },
+    });
+  }
+
   if (path === "/v1/stats/executions") {
     if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
       return json(route, { code: "validation", message: "request validation failed" }, 400);
@@ -2511,8 +2558,10 @@ function markerFor(route) {
   if (path === "connections") return '[data-testid="connection-failed"]';
   // Installation surfaces name their frame after the section, not the record
   // type.
-  if (["people", "access", "api-access", "settings"].includes(path))
-    return `[data-testid="admin-${path}"]`;
+  if (path === "access") return '[data-testid="roles-section"]';
+  if (path === "people" && query.startsWith("section="))
+    return `[data-testid="${query.slice("section=".length)}-section"]`;
+  if (["people", "api-access", "settings"].includes(path)) return `[data-testid="admin-${path}"]`;
   // Connectors render through the shared catalog table like every other list.
   if (["workflows", "connectors", "knowledge", "skills", "files"].includes(path))
     return `[data-testid="catalog-${path}"]`;
@@ -3420,6 +3469,16 @@ for (const locale of variants) {
       if (route.startsWith("audit?") && route.includes("action="))
         await assertAuditActionChip(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "chat") await assertChat(page, `${locale.artifact}/${viewport.name}/${route}`);
+      // The engine's reason lives on Heute and on the workflow's own page; a
+      // list row states the health word and links to the failures, no more.
+      if (
+        route === "workflows" &&
+        ((await page.getByTestId("workflow-health-engine-wording").count()) > 0 ||
+          /Wortlaut der Engine|Wording from the engine/.test(text))
+      )
+        throw new Error(
+          `${locale.artifact}/${viewport.name}/workflows: a list row repeats the engine's wording`,
+        );
       if (route === "runs")
         await assertOpenOnce(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (/^runs\/.+/.test(route))
@@ -3433,6 +3492,11 @@ for (const locale of variants) {
       if (route === "settings")
         await assertAuthProviderSettings(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "access") {
+        const landed = new URL(page.url());
+        if (landed.pathname !== "/cockpit/people" || landed.searchParams.get("section") !== "roles")
+          throw new Error(
+            `${locale.artifact}/${viewport.name}/access lands on ${landed.pathname}${landed.search}, not the roles of /people`,
+          );
         const localizedRoles =
           locale.name === "de"
             ? ["Metrik-Abruf", "Portalnutzer", "Kann Prometheus-Metriken", "Portal-Zugriffstoken"]

@@ -2,7 +2,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 import { ApiError, apiRequest } from "@/api/client";
-import { absolute, runsHref, settingsHref, workflowHref } from "@/app/links";
+import { absolute, settingsHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { type CockpitColumn, DataTable } from "@/components/cockpit/data-table";
 import { PageFrame } from "@/components/cockpit/page-frame";
@@ -18,13 +18,22 @@ import { canReadDirectory } from "@/pages/audit-model";
 import {
   budgetPressure,
   budgetSummary,
+  CONNECTORS_ENABLED_ENDPOINT,
+  CONNECTORS_NOT_OK_ENDPOINT,
   CONSUMPTION_AXES,
   type ConsumptionAxis,
   type ConsumptionRow,
   consumptionRows,
   formatDurationMs,
+  listTotal,
   llmStatsEndpoint,
+  type OperatingFigureId,
+  operatingFigures,
+  repairStatsEndpoint,
+  repairTotals,
+  USAGE_WINDOWS,
   type UsageRow,
+  type UsageWindow,
   usageRows,
   usageStatsEndpoint,
   usageTotals,
@@ -42,6 +51,25 @@ const AXIS_LABEL: Record<ConsumptionAxis, TranslationKey> = {
 
 /** The setting the cap is, and where every "set / raise the cap" on this page leads. */
 const BUDGET_LEAF = "tokens.monthly_budget";
+
+const WINDOW_OPTION: Record<UsageWindow, TranslationKey> = {
+  "24h": "resource.usage.windowOption.24h",
+  "7d": "resource.usage.windowOption.7d",
+  "30d": "resource.usage.windowOption.30d",
+};
+
+const WINDOW_HEADING: Record<UsageWindow, TranslationKey> = {
+  "24h": "resource.usage.runtimeWindow.24h",
+  "7d": "resource.usage.runtimeWindow.7d",
+  "30d": "resource.usage.runtimeWindow.30d",
+};
+
+const FIGURE_LABEL: Record<OperatingFigureId, TranslationKey> = {
+  runs: "resource.usage.executions",
+  successRate: "resource.usage.successRate",
+  connectorHealth: "resource.usage.connectorHealth",
+  repairRate: "resource.usage.repairRate",
+};
 
 const PRESSURE_LABEL = {
   ample: "resource.usage.pressure.ample",
@@ -65,11 +93,33 @@ export function UsagePage() {
   const allowed = session.permissions.includes("stats:read");
   const title = t("resource.usage.title");
   const [axis, setAxis] = useState<ConsumptionAxis>("workflow");
+  const [span, setSpan] = useState<UsageWindow>("30d");
+  const can = (permission: string) => session.permissions.includes(permission);
+  const canConnectors = can("connector:read");
 
   const runtime = useQuery({
-    queryKey: ["usage"],
+    queryKey: ["usage", span],
     enabled: allowed,
-    queryFn: () => apiRequest<unknown>(usageStatsEndpoint()),
+    queryFn: () => apiRequest<unknown>(usageStatsEndpoint(span)),
+  });
+  // The repair decisions of the same window, per verb — the rows the repair
+  // rate's link opens.
+  const repairs = useQuery({
+    queryKey: ["usage-repairs", span],
+    enabled: allowed,
+    queryFn: () => apiRequest<unknown>(repairStatsEndpoint(span)),
+  });
+  // Connector health is a state, not a trend: two totals the engine counts,
+  // read only by someone who may read connectors at all.
+  const connectorsEnabled = useQuery({
+    queryKey: ["usage-connectors", "enabled"],
+    enabled: allowed && canConnectors,
+    queryFn: () => apiRequest<unknown>(CONNECTORS_ENABLED_ENDPOINT),
+  });
+  const connectorsNotOk = useQuery({
+    queryKey: ["usage-connectors", "not_ok"],
+    enabled: allowed && canConnectors,
+    queryFn: () => apiRequest<unknown>(CONNECTORS_NOT_OK_ENDPOINT),
   });
   const consumption = useQuery({
     queryKey: ["usage-llm", axis],
@@ -294,22 +344,27 @@ export function UsagePage() {
       </main>
     );
 
-  // The count and the rate are about runs, and the run log is where a reader
-  // checks them: all runs behind the count, the failures behind the rate.
-  const runtimeCards: Array<[TranslationKey, string, string | null]> = [
-    [
-      "resource.usage.executions",
-      totals.executions === null ? MISSING : String(totals.executions),
-      runsHref(),
-    ],
-    ["resource.usage.averageDuration", formatDurationMs(totals.averageDurationMs), null],
-    ["resource.usage.p95Duration", formatDurationMs(totals.p95DurationMs), null],
-    [
-      "resource.usage.successRate",
-      totals.successRatePercent === null ? MISSING : `${totals.successRatePercent}%`,
-      runsHref({ status: "failed" }),
-    ],
-  ];
+  // Four figures, each one link into the list it counts: all runs behind the
+  // count, the failures behind the rate, the unwell connectors behind their
+  // health, the decided repairs behind the repair rate. How long runs took is
+  // in the table below, per day.
+  const figures = operatingFigures({
+    totals,
+    connectors: canConnectors
+      ? {
+          enabled: listTotal(connectorsEnabled.data),
+          notOk: listTotal(connectorsNotOk.data),
+        }
+      : null,
+    repairs: repairTotals(repairs.data),
+    canOpen: {
+      runs: can("execution:read"),
+      connectors: canConnectors,
+      audit: can("audit:read"),
+    },
+  });
+  const figureText = (id: OperatingFigureId, value: number) =>
+    id === "runs" ? number.format(value) : `${value} %`;
 
   return (
     <PageFrame surface="collection" testId="resource-usage" title={title} scroll="page">
@@ -526,18 +581,38 @@ export function UsagePage() {
         </section>
 
         <section className="grid gap-3" data-testid="usage-runtime">
-          <header className="grid gap-1">
-            {/* The window, said once for all four cards. Each card used to
-                carry it as a footer — "Letzte 30 Tage" four times in a row. */}
-            <h2 className="font-medium text-base" data-testid="usage-runtime-heading">
-              {t("resource.usage.runtime")}{" "}
-              <span className="font-normal text-muted-foreground">
-                · {t("resource.usage.window")}
-              </span>
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              {t("resource.usage.runtimeDescription")}
-            </p>
+          <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="grid gap-1">
+              {/* The window, said once for the whole block. Each card used to
+                  carry it as a footer — "Letzte 30 Tage" four times in a row. */}
+              <h2 className="font-medium text-base" data-testid="usage-runtime-heading">
+                {t("resource.usage.runtime")}{" "}
+                <span className="font-normal text-muted-foreground">
+                  · {t(WINDOW_HEADING[span])}
+                </span>
+              </h2>
+              <p className="text-muted-foreground text-sm">
+                {t("resource.usage.runtimeDescription")}
+              </p>
+            </div>
+            <fieldset
+              className="flex flex-wrap gap-2"
+              aria-label={t("resource.usage.windowPicker")}
+              data-testid="usage-window"
+            >
+              {USAGE_WINDOWS.map((candidate) => (
+                <Button
+                  key={candidate}
+                  size="sm"
+                  variant={candidate === span ? "default" : "outline"}
+                  aria-pressed={candidate === span}
+                  onClick={() => setSpan(candidate)}
+                  data-testid={`usage-window-${candidate}`}
+                >
+                  {t(WINDOW_OPTION[candidate])}
+                </Button>
+              ))}
+            </fieldset>
           </header>
           <p className="text-muted-foreground text-xs" data-testid="usage-runs-link-note">
             {t("resource.usage.runsLinkNote")}
@@ -545,26 +620,41 @@ export function UsagePage() {
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" data-testid="usage-summary">
             {runtime.isPending
               ? [0, 1, 2, 3].map((index) => <Skeleton key={index} className="h-28 w-full" />)
-              : runtimeCards.map(([label, display, href], index) => (
-                  <Card key={label} size="sm" data-testid={`usage-summary-${index}`}>
-                    <CardHeader>
-                      <CardDescription>{t(label)}</CardDescription>
-                      <CardTitle className="text-2xl tabular-nums">
-                        {href ? (
-                          <a
-                            className="underline-offset-4 hover:underline"
-                            href={absolute(href)}
-                            data-testid={`usage-summary-${index}-link`}
-                          >
-                            {display}
-                          </a>
-                        ) : (
-                          display
-                        )}
-                      </CardTitle>
-                    </CardHeader>
-                  </Card>
-                ))}
+              : figures.map((figure) => {
+                  const display = figureText(figure.id, figure.value);
+                  return (
+                    <Card
+                      key={figure.id}
+                      size="sm"
+                      data-testid={`usage-figure-${figure.id}`}
+                      data-family-kpi-id={figure.id}
+                      data-family-kpi-value={display}
+                    >
+                      <CardHeader>
+                        <CardDescription>{t(FIGURE_LABEL[figure.id])}</CardDescription>
+                        <CardTitle className="text-2xl tabular-nums">
+                          {figure.href ? (
+                            <a
+                              className="underline-offset-4 hover:underline"
+                              href={absolute(figure.href)}
+                              data-testid={`usage-figure-${figure.id}-link`}
+                            >
+                              {display}
+                            </a>
+                          ) : (
+                            display
+                          )}
+                        </CardTitle>
+                        {/* A state measured now, not over the window above. */}
+                        {figure.current ? (
+                          <p className="text-muted-foreground text-xs">
+                            {t("resource.usage.current")}
+                          </p>
+                        ) : null}
+                      </CardHeader>
+                    </Card>
+                  );
+                })}
           </div>
           <div className="overflow-hidden rounded-xl border">
             <DataTable

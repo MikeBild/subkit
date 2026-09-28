@@ -10,7 +10,7 @@ An answered question, a checked repair, a saved version and permission to run ar
 The engine supplies current schedule permission to the chat. A held-write preview cannot prove live
 readiness. After preparation, the same bounded execution review opens inside the chat and working
 context. Only a currently valid grant for the exact active version and environment resolves its
-schedule hold; the transition is audited and the decision queue is refreshed. An inactive version,
+schedule hold; the transition is audited and Heute's attention list is refreshed. An inactive version,
 missing input or a changed, expired, revoked or exhausted boundary never fabricates completion.
 Questions and human-review cards use a subtle accent-blue surface, with visible options and effects.
 Raw runtime messages stay in collapsed technical details.
@@ -25,19 +25,16 @@ AI Elements render messages, tool calls, approval cards, suggestions and the pro
 
 Navigation follows the work instead of the engine's directory tree:
 
-- *(ungrouped)* — Overview and Decisions
-- **Work** — Chat and Inbox
-- **Build** — Workflows, Runs and Connectors
-- **Knowledge** — Knowledge, Skills and Files
-- **Installation** — System, Settings, Credentials, Notifications, Audit, then People, Access and
-  Usage
+- *(ungrouped)* — Heute (Today), with the number of open entries as its badge
+- **Arbeit** (Work) — Chat
+- **Automatisierung** (Automation) — Workflows, Runs and Connectors
+- **Wissen** (Knowledge) — Knowledge, Skills and Files
+- **Installation** — Usage, Settings, Credentials, People & access, Notifications, Audit
 
 The first block carries no heading and the last one carries the family's name for it. The
-convention names both: the decisions entry stands ungrouped directly under the overview, and the
-administration block is called "Installation" in all six products and owns the same five entries —
-System, Settings, Credentials, Notifications, Audit — before anything SubKit adds to it. Audit and
-Usage used to sit in a "Govern" block of their own; a section that has to contain Audit cannot also
-leave it somewhere else.
+convention (v2.0, §1 and §6) names both: Heute stands ungrouped at the top, and the administration
+block is called "Installation". There is no Overview, Decisions, System or Access entry any more:
+their facts each have one home (see "One fact, one home" below), and their old addresses redirect.
 
 `src/app/navigation.ts` is the one declaration of that table and the source of
 this list; when the two disagree the code is right and this paragraph is stale.
@@ -100,7 +97,8 @@ state, date, size, relation link and relation chips — come from
 `src/components/cockpit/table-columns.tsx` so a date on Runs and a date on Files cannot drift apart.
 
 The page description is opt-in: a visible sentence under the heading only where the title does not
-already say what the page is for (Connectors beside Connections, Skills, Access, Notifications).
+already say what the page is for (Connectors, Skills, Notifications). A description that repeats
+the title is removed.
 A list's primary action heads the page only while the list has rows; an empty list carries it in its
 empty state, so the same button never stands twice. A row opens by its name: the name cell is a real
 `<a href>` to the record's own address (a button where the record opens in place and has none), so
@@ -122,21 +120,46 @@ do, retry), never the empty state it would otherwise fall through to. Addresses 
 builders in `src/app/links.ts`, router-relative, with `absolute()` only for a raw `href`; each builder
 is tested against the parser its page reads it back with.
 
-### Decisions surface
+### Heute — the attention list
 
-Every proposal that needs a person lives on one page (`/decisions`): proposed fixes, skill
-candidates and the scheduled workflows that are held or keep failing; the conversations waiting for
-an answer have a tab of their own there. The navigation entry sits directly under the overview and
-carries the exact open count, taken from the engine totals — when a count cannot be read it is
-omitted rather than guessed.
+Heute (`/`, English "Today") is the start page and the only place a task lives. It reads one engine
+list, `GET /v1/attention`, which the digest, the MCP connect line and the MCP tool `get_attention`
+render too; the page never assembles its own list from several reads. Every entry is checked against
+the reader's permissions on its subject, and waiting questions are always the reader's own.
 
-The open count is said in exactly two places: the navigation badge and the kind chips. One rule
-holds them together (`openDecisionQueue` and `chipCounts` in `decisions-model.ts`): the badge counts
-what the chips count — fixes, skills, and held or failing schedules — so the chips always sum to the
-badge. The waiting conversations are not in it: they carry no approve and no reject here (§8.5b) and
-are counted on their own "Rückfragen" tab. There is no summary sentence and no per-rubric count
-badge; each extra copy of the number was one more the reader had to reconcile. "Alle" and "Alle
-anzeigen" are one reset, which clears both the chips and the bucket a tile brought.
+One entry per subject: a failing scheduled workflow and the fixes waiting for it are one entry, not one
+per run and one per fix, and all skill proposals are one entry. Entries are ordered by class —
+stopped, then failing, then decide — and within a class by the next deadline, then by age. An entry
+is one sentence (the subject by name, the reason, "seit …"), one primary action and at most one
+secondary link. The primary action follows the cause: a waiting fix is reviewed first, a refused
+sign-in leads to the connector, anything else opens the chat with the subject attached. Without the
+permission to act the entry says so instead of offering a link. The engine's own wording is not on the
+entry.
+
+The navigation badge is the number of entries. List headers carry no count, and there are no tiles:
+a count that can be zero is not on this page.
+
+When nothing is open and every source the reader may read has answered, the page says "Alles
+erledigt." and one status line — the health state and the next scheduled run. When a source did not
+answer, the page names it and offers to read again; it never says "all clear" over a gap. A source the
+reader may not read does not count as missing. A reader who may read no source at all lands on the
+first navigation entry they can see. Heute carries exactly one link into the audit trail, "Was bereits
+entschieden wurde".
+
+Warnings, test and authoring failures and unused keys are not entries: they are the state of an
+object and stay on that object's page.
+
+The old addresses redirect through `legacyTarget()` in `src/app/route-table.ts`: `/decisions` and
+`/operations` land on Heute, `/decisions?workflow_id=<id>` opens that workflow's review sheet, and
+`/access` lands on the roles section of Personen & Rechte.
+
+### Review sheet
+
+Deciding happens in a sheet over the list, addressed as `?review=<id>`, so a mail, an audit row or a
+bookmark can point straight at it. The sheet renders the existing decision cards; after a decision the
+entry leaves at once and a toast links the audit trail. The engine's wording, raw source data and
+technical details live here and only here, collapsed.
+
 A proposed fix is titled in the reader's language. The engine passes the repair model's own change
 note through verbatim — "Field follows the rename: data.id → data.result.id" — and that note used
 to be the card's title, so the queue read as a list of commit messages from another system. The
@@ -156,59 +179,29 @@ the workflow or connector a decision would act on. A run is linked only for some
 `execution:read`, because that permission is evaluated per object and a link nobody may follow is
 worse than no link.
 
-Expanding a card shows the full reasoning and the raw source data, and this is not decoration: a
-proposed fix carries the engine's own account of what drifted, the model's stated justification,
-the classifier's argument and the attempts that were dropped — all of which arrive with the list
-and were previously read and discarded. A proposed skill shows the text approval would promote,
-with its examples, pitfalls and referenced documentation, and the observed cases it rests on. A
-waiting conversation shows the question being asked. Before this, a person was asked to approve a
-skill body they had never seen and a repair whose cause was never stated.
-
-Deviation from the family convention, deliberate: the queue is not a 780px column. §8.2 asks for
-one, and one was right while a card held a badge, a title and two buttons. A card that has to
-carry the evidence for a decision does not fit in it, and the space beside it was empty. The page
-uses the same full-width frame as every other surface; long prose inside a card is capped at a
-reading measure instead, because the typographic limit belongs to the text and not to the page.
-
-The queue's first division is what a position is doing to you, not how old it is. A conversation
-waiting for an answer is stopped — an elicitation is pending and the agent loop is suspended
-mid-turn — while a proposed fix blocks nothing and instead lets its workflow keep running and keep
-failing. Age still divides the second pile, because that is the honest measure there, but it can no
-longer put the position nobody is waiting on above the one that is stopped dead. That second pile
-is two rubrics side by side and not one nested in the other: "Blocking nothing", and beneath it the
-family's name for what has sat longer than three days. It used to be nested under a heading that
-read "Can wait" — a verdict the product has no way to reach on the reader's behalf, and one that
-buried the rubric the convention actually names. Where the engine
-supplies a deadline the queue sorts by it and says how long is left; a lapsed position moves into
-its own muted rubric rather than sitting in the working queue as if it were still decidable.
+Expanding a card shows the full reasoning and the raw source data: a proposed fix carries the
+engine's own account of what drifted, the model's stated justification, the classifier's argument
+and the attempts that were dropped. A proposed skill shows the text approval would promote, with its
+examples, pitfalls and referenced documentation, and the observed cases it rests on. A waiting
+conversation shows the question being asked.
 
 A proposal is decided where it appears: the diff card carries the before/after lines, the dry-run
-result beside them and the approve/reject actions, both in the conversation and in the queue.
+result beside them and the approve/reject actions, both in the conversation and in the review sheet.
 Both paths call the same engine decision, so the audit trail does not depend on the route taken.
-Inside either card the diff renders without a frame of its own — cards do not nest, and a bordered
-diff inside a bordered card inside a bordered `pre` was three frames for one thing.
+Inside either card the diff renders without a frame of its own — cards do not nest.
 
 A proposed skill states the model's confidence as a word with its scale named and the number of
 observed cases it rests on. Never a bar, never a percentage, and never the success colour for
 "high": a model's confidence is a claim about itself, not a measurement of the world.
 
-Deviation from the family convention, deliberate: there is no "remind me later" action. §8.3 lists
-one in the ⋯ menu, but the engine models a patch candidate as proposed, applied, rejected or
-superseded and has no deferred state; inventing a cockpit-local snooze would show a position as
-parked that the engine still counts as open. Rejecting with a note is the honest alternative.
-What is settled does not come back onto this page at all: §8.5 keeps state and history apart, so
-the decided and rejected positions live in the audit trail, reached by the single link the queue
-carries.
+There is no "remind me later" action, as §8.4 allows where no deferred state exists. The engine
+models a patch candidate as proposed, applied, rejected or superseded and has no deferred state;
+inventing a cockpit-local snooze would show a position as parked that the engine still counts as
+open. Rejecting with a note is the honest alternative.
 
-Scheduled workflows held at admission appear in a named blocking group after the section controls
-and kind filters. They use compact neutral cards with a status badge, workflow name,
-short reason and an explicit review action. The cron expression and full explanation are behind a
-keyboard-accessible disclosure. Holds obey the same kind filtering, loading and error states as the
-rest of the queue; no repeated destructive alerts may precede its controls.
-
-A hold is an observed admission failure, not a prepared approval proposal. Its review action opens
+A held schedule is an observed admission failure, not a prepared approval proposal. Its review opens
 the existing workflow review surface, where execution boundaries and supported approval paths can
-be inspected. It never grants authority or starts a run from the queue. Different workflow versions
+be inspected. It never grants authority or starts a run from the list. Different workflow versions
 and effects must not be collapsed into a blanket approval merely because their reason codes match.
 
 The workflow review continues the same task language: a held schedule keeps its “Review needed”
@@ -219,61 +212,31 @@ Unsupported effects lead to a contextual preparation task, not an impossible gra
 fields never inherit an unrelated review failure. Granting retains finite server defaults and
 never starts a run. Names and version labels replace internal identifiers in the grant review.
 
-### Overview surface
+### One fact, one home
 
-The overview is the family's operational dashboard and nothing else. Its tiles are fixed by the
-family contract (`FAMILY-UI.json`, checked by `checkOperationalDashboard` in
-`scripts/konvention-check.mjs`): four decision counts — blocked, failing, waiting a while, other —
-then the health state and the data freshness, then the product sections. It carries no incident
-banner, no failure groups, no lists and no recent runs; adding, removing or reordering a tile is a
-contract change, not a page change.
+There is no overview page with tiles, no decisions page and no system page. Each fact they showed has
+one home now:
 
-Every tile is a number and, where the number counted something, the way to it. The engine owns the
-way (contract 2.3): each metric carries a drilldown aimed at what it counted, the health score at its
-worst component, the data freshness at its stalest source, and the repair rate at the decided
-repairs in the audit trail. The page adds one rule of its own, `metricOffersDrilldown`: a COUNT of
-zero has nothing to open and gets no link — a link under "production incidents: 0" once opened nine
-hundred rows. The rule is about counts only. A ratio, a score or a duration at zero is the worst state
-its tile can be in (execution success 0 %, connector health 0 %, a health score of 0), so it links
-whenever the engine names a way in; the tile carries its kind as `data-family-kpi-kind`, and the
-convention check holds every card, core and product section, to that rule. A value that could not be
-read gets no link either, unless the tile is red: the health
-state turns critical on blocked work alone, with no score when nothing ran, and a red tile always
-keeps its way to the cause.
+- The health state is Heute's status line, shown only when nothing is open; every cause of an unwell
+  installation is an entry. Health components and the score are available through the API, MCP and
+  Prometheus only.
+- Executions, success rate, connector health and repair rate are in the "Betrieb" block of Nutzung
+  (`/usage`). Every figure links to a list that counts the same thing — the same window, the same
+  filter. A count of zero has nothing to open and gets no link; a ratio, a score or a duration at
+  zero is the worst state its figure can be in and keeps its way to the cause.
+- Stale data is an entry on Heute, and only when it is stale.
+- There is no drift-scan button: the scheduler scans, and the CLI and MCP keep the manual scan.
 
-The causes behind a red tile are not on the overview; they live where they can be acted on. The
-failing and blocked workflows are on the decisions page, each tile linking to its own bucket there.
-The health components, the concrete causes the engine names and the stale sources are on the system
-page. The waiting count uses the same labels as the queue it links to: the fourth tile says
-"Liegt schon länger", the words of the decisions page's own rubric for that bucket.
+### Installation pages
 
-There is no "next scheduled run" tile. The engine exposes a cron expression, a timezone and a
-paused flag, and computes no next-fire instant anywhere; a time this page derived itself would be a
-guess presented as a fact.
+**Zugangsdaten** (`/api-access`) is the one page for API keys, connected applications and account
+connections, each section addressable as `?section=keys|clients|grants`. It carries no attention list
+of its own — that would be a second task list. Keys and connections show their state as chips; renewing
+stays a row action.
 
-### System surface
-
-The system page answers "is this installation healthy, and if not, why". It reads the same snapshot
-as the overview (one query key, one read) and shows the problems first: an attention block with one
-line per cause the engine names, per stale or never-run source, and — when the score is not healthy
-and the engine named no cause — per weak component, each with its way to where it is fixed. When
-nothing is wrong the block is absent, not an "all good" card the reader learns to skip; an
-incomplete report or an undetermined state is a problem of its own, never an all-clear. Below it,
-every health component with its value and link, and every freshness source with when it last ran.
-
-A cause line is the cockpit's own sentence, composed from the cause's `subject` (the workflow or
-connector, by name) and its `reason`; its link is built by the same `links.ts` builders as every
-other link. The engine's `label` is English prose kept for the family contract and is never shown.
-What the engine wrote that nobody can translate — a failing group's cause, a connector's health
-reason — arrives as `detail` and stands on its own line behind "Wortlaut der Engine", the same
-marking the catalogue's health reason carries.
-
-It used to hold only the drift scan and a sentence saying its findings were on the overview, while
-the overview's red health tile linked here: a loop with a cause at neither end.
-
-Checking and repairing stay two acts in one order: the drift scan reads and reports, and every
-repair it proposes becomes a decision a person makes. The scan's toast says how many repairs it
-proposed and, when there are any, leads to the decisions page. There is no button that does both.
+**Personen & Rechte** (`/people`) is the one page for people, roles, groups and grants, each section
+addressable as `?section=people|roles|groups|grants`. The entry shows for `identity:read` or
+`rbac:read`, and each section is behind its own read.
 
 ### Error, cause, fix
 
@@ -403,38 +366,34 @@ authenticated bilingual route sweep after SSO and publishes its screenshots as a
 
 A pending `ask_user_confirm` is one interactive card, available both in the transcript and at the top of Working Context. Match its explicit `tool_call_id`; submit the elicitation ID to the canonical response endpoint. Show the question, short effect and explicit approve/reject buttons. Saving a workflow draft says “Save inactive version” and explains that it does not start the workflow. Technical parameters stay out of the default view. Both surfaces share processing, error and expiry states; prevent duplicate submissions. On completion refresh the canonical state and continue streamed activity. A completed request must not remain “Waiting” after reload.
 
-A pending `ask_user_choice` uses an explicit selection card in both places. Show every option and its one-line effect directly, including a grounded recommendation; do not hide the decision behind a dropdown. Selection has a visible checkmark and requires a separate submit action. Keep the answer bound to the original option value and request ID; choosing an option does not submit it. Disable the text composer with an actionable hint while a selection is required. After the server accepts the selection, show its readable label as the user response and the tool as “Answered”, including after reload. Refresh conversation, decision queue and operational overview after each completed response. A held workflow schedule stays open until its admission requirement is resolved; answering a question or saving an inactive draft is not a run authority. Show this remaining task with a link to the affected workflow in Working Context.
+A pending `ask_user_choice` uses an explicit selection card in both places. Show every option and its one-line effect directly, including a grounded recommendation; do not hide the decision behind a dropdown. Selection has a visible checkmark and requires a separate submit action. Keep the answer bound to the original option value and request ID; choosing an option does not submit it. Disable the text composer with an actionable hint while a selection is required. After the server accepts the selection, show its readable label as the user response and the tool as “Answered”, including after reload. Refresh the conversation and Heute's attention list after each completed response. A held workflow schedule stays open until its admission requirement is resolved; answering a question or saving an inactive draft is not a run authority. Show this remaining task with a link to the affected workflow in Working Context.
 
 Editing a saved workflow invalidates its whole-workflow check and saved status. Do not label an edited version “saved” using evidence from its previous version. An interrupted preparation offers “Check change” through the normal chat turn; run authorization is the next task only after preparation is complete. Historical text remains historical; the header and action card reflect current server state.
 
 Workflow preparation includes inspection, validation and the supported preview within the current request and permission mode. These are assistant tasks, not user choices. Explain the verified result, any untested effects, and the next action briefly in the user's language. Held publications and skipped dependent steps must not be presented as successfully tested or executed. Ask only for missing business input, access, an unresolved tradeoff or authority, and give an evidence-based recommendation. Human-facing labels must not expose internal tool names or bypass flags. Existing persisted technical questions may receive a narrowly matched presentation translation; request identity, option values, explicit submission and server authority remain unchanged.
 
 
-## Decision grammar
+## Attention grammar
 
-What follows is a verbatim German copy of §8 of Cockpit Convention v1.7 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). This product's decisions page is measured against it. Deliberate deviations are justified above under "Decisions surface" — the queue is not a 780 px column (§8.2), and there is no "remind me later" entry in the ⋯ menu (§8.3) because the engine has no deferred state. Both stand; the copy below is not adjusted to them, or it would no longer be a copy.
+What follows is a verbatim German copy of §8 of Cockpit Convention v2.0 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). Heute and its review sheet are measured against it. SubKit offers no "remind me later" in the sheet because the engine has no deferred state, which §8.4 allows; the reason is recorded above under "Review sheet". The copy below is never adjusted to this product, or it would no longer be a copy.
 
-### 8. Entscheidungs-Grammatik
+### 8. Anliegen-Grammatik
 
-Jedes Produkt, das menschliche Entscheidungen sammelt (Freigaben, Reviews, Budget-Gates, Proposals), hat **eine** Entscheidungs-Seite. Sie beantwortet die drei Fragen in dieser Reihenfolge: Was passiert? Braucht es mich? Was tue ich dann? WorkKit ist die Referenz-Implementierung; jedes Produkt kopiert das Muster in eigene Komponenten (kein Import).
+Jedes Produkt, das menschliche Aufmerksamkeit braucht (Freigaben, Reviews, Budget-Gates, Proposals, Rückfragen, gestörte Anmeldungen, scheiternde Automatik), zeigt sie an **einem** Ort: der Anliegen-Liste auf „Heute" (§1). Eine eigene Entscheidungs-Seite, Übersichts-Kacheln und eine System-Seite gibt es daneben nicht. Die Liste beantwortet die drei Fragen in dieser Reihenfolge: Was passiert? Braucht es mich? Was tue ich dann? Jedes Produkt baut das Muster in eigenen Komponenten nach (kein Import).
 
-**8.1 Navigation.** Der Eintrag steht ungruppiert direkt unter der Übersicht und trägt einen Live-Zähler (offene Positionen, dedupliziert). Der Zähler kippt auf rot, sobald eine Position abgelaufen ist oder ein Health-Problem enthalten ist. Produktname des Eintrags einheitlich: „Entscheidungen".
+**8.1 Eine Quelle.** Die Liste kommt von der Engine, nicht aus dem Browser: `GET /v1/attention` (`attention.v1`) liefert die Einträge, je Eintrag gegen die Rechte der lesenden Person geprüft, und je Quelle ihren Stand (`answered` · `failed` · `not_permitted`). Digest, MCP-Verbindungszeile und das MCP-Werkzeug `get_attention` rendern dieselbe Liste. Rückfragen sind immer die eigenen der lesenden Person. Der Navigationseintrag „Heute" trägt als Abzeichen die Zahl der Einträge.
 
-**8.2 Queue.** Eine Spalte, max-w ~780 px. Die Sortierung ist fest: ablaufend zuerst, dann älteste. Positionen älter als 3 Tage stehen in einer eigenen Rubrik „Liegt schon länger". Art-Chips mit Zählern sind das einzige Ordnungswerkzeug; der gewählte Chip bleibt lokal erhalten. Ein zusätzlicher Gruppieren-Umschalter ist Überfluss und damit ein Konventionsbruch.
+**8.2 Ein Eintrag je Gegenstand, drei Klassen.** Was denselben Gegenstand betrifft, ist **ein** Eintrag: ein scheiternder Workflow samt seinen offenen Korrekturen ist ein Eintrag, nicht einer je Lauf und einer je Korrektur; mehrere Skill-Vorschläge sind ein Eintrag. Die Klassen und ihre feste Reihenfolge: **gestoppt** (etwas steht, bis jemand handelt — gehaltener Zeitplan, wartende Rückfrage, abgelaufene Anmeldung) → **scheitert** (etwas läuft und schlägt fehl) → **entscheiden** (ein Vorschlag wartet, nichts ist blockiert). Innerhalb einer Klasse: nächste Frist zuerst, dann älteste. Es gibt keine Art-Chips, keine Rubriken, keinen Gruppieren-Umschalter und keine Zahl im Listenkopf. Nicht aufgenommen werden Warnungen, Test- und Autoren-Fehlschläge und ungenutzte Schlüssel — sie sind Zustand eines Objekts, keine Aufgabe.
 
-**8.3 Zeile.** Meta-Zeile (Status-Glyph + Art-Badge · Quell-Referenz als Link · Frist „Entscheiden bis …" wo vorhanden, mit Herkunft) → Titel (line-clamp-2, nie UUID) → Wirkung in einer Zeile → Quellzeile. Aktionen rechts unten: Buttons benennen die Handlung („Freigeben", „Ablehnen", „Änderung anfordern" — nie „OK"). Ablehnung klappt ein Notizfeld in der Zeile auf. Entscheidung verlässt die Seite nie; Optimistic-Hide + Toast, Fehler bringt die Zeile zurück. ⋯-Menü: Später erinnern (Presets + eigener Zeitpunkt) · Dauerhaft verwerfen (mit Bestätigung; wenn endgültig, sagt die UI das) · Quelle öffnen.
+**8.3 Eintrag.** Ein Satz: Gegenstand (beim Namen, nie UUID) + Grund + „seit …", wo vorhanden mit Frist „Entscheiden bis …" samt Herkunft. Dazu **eine** Hauptaktion und **höchstens ein** Nebenlink. Die Hauptaktion benennt die Handlung („Prüfen", „Anmelden", „Antworten" — nie „OK", nie „Öffnen"); ihre Reihenfolge folgt der Ursache (eine bereitliegende Korrektur wird zuerst geprüft, eine abgelehnte Anmeldung führt zum Konnektor, alles andere in den Chat mit dem Gegenstand im Kontext). Wer die Handlung nicht darf, sieht den Grund statt eines Links. Der Wortlaut der Engine steht nicht am Eintrag.
 
-**Drei Arten von Nein.** Wo das Produkt sie kennt, unterscheidet die Zeile: Ablehnung **mit** Begründung (schickt zurück ans Nacharbeiten) · Ablehnung **ohne** Begründung (beendet) · **Verwerfen** (folgenlos — als „folgenlos" beschriftet). Eine unbeantwortete Frist verfällt sichtbar als „verfallen (nicht entschieden)", nie stillschweigend. Ein wiederholter identischer Vorschlag zeigt die frühere Ablehnung samt Begründung — die Oberfläche bohrt nicht nach, bis der Mensch ja sagt. Wo Auftraggeber und Freigeber getrennte Rollen sind, zeigt die Zeile, wer entscheiden darf; die eigene Beauftragung ist markiert.
+**8.4 Prüf-Seitenblatt.** Entschieden wird im Seitenblatt, das sich über der Liste öffnet und eine eigene Adresse hat (`?review=<id>`), damit Mail, Audit-Zeile und Lesezeichen direkt darauf zeigen können. Das Seitenblatt trägt die Karten-Anatomie: Meta-Zeile (Status-Glyph + Art-Badge · Quell-Referenz als Link · Frist mit Herkunft) → Titel (line-clamp-2, nie UUID) → Wirkung in einer Zeile → Quellzeile → Aktionen, die die Handlung benennen („Freigeben", „Ablehnen", „Änderung anfordern"). Ablehnung klappt ein Notizfeld auf. Mehr Kontext steht hinter einem benannten Toggle („Mehr anzeigen"), nie hinter einem nackten Chevron: volle Begründung, Rohdaten der Quelle, der Wortlaut der Engine, ggf. ein Formular für strukturierte Rückfragen. Technische Details sind zugeklappt. Nach der Entscheidung verschwindet der Eintrag sofort (Optimistic-Hide), ein Toast verlinkt den Audit-Trail; ein Fehler bringt den Eintrag zurück. Wo das Produkt einen zurückgestellten Zustand kennt, bietet das Seitenblatt „Später erinnern" (Presets + eigener Zeitpunkt); wo nicht, fehlt die Aktion, statt einen Zustand vorzutäuschen, den die Engine nicht führt. „Dauerhaft verwerfen" nur mit Bestätigung; wenn endgültig, sagt die UI das.
 
-**8.4 Aufklappen.** Zeilen mit mehr Kontext tragen unten links einen benannten Toggle („Mehr anzeigen"), nie einen nackten Chevron. Aufgeklappt: volle Begründung, Rohdaten der Quelle, ggf. Formular für strukturierte Rückfragen. Die Entscheidungs-Buttons wandern ins Panel (kollabiert Kompakt-Form, expandiert Voll-Form).
+**Drei Arten von Nein.** Wo das Produkt sie kennt, unterscheidet das Seitenblatt: Ablehnung **mit** Begründung (schickt zurück ans Nacharbeiten) · Ablehnung **ohne** Begründung (beendet) · **Verwerfen** (folgenlos — als „folgenlos" beschriftet). Eine unbeantwortete Frist verfällt sichtbar als „verfallen (nicht entschieden)", nie stillschweigend. Ein wiederholter identischer Vorschlag zeigt die frühere Ablehnung samt Begründung — die Oberfläche bohrt nicht nach, bis der Mensch ja sagt. Wo Auftraggeber und Freigeber getrennte Rollen sind, zeigt das Seitenblatt, wer entscheiden darf; die eigene Beauftragung ist markiert.
 
-**8.5 Zustand und Geschichte sind getrennte Flächen.** Die Entscheidungs-Seite zeigt ausschließlich, was auf den Menschen wartet. Zurückgestellt, Verworfen und Entschieden sind Vergangenheit: Erledigtes verlässt die Queue — es wird nicht gedimmt, nicht durchgestrichen, nicht in eigene Sektionen unter der Queue gestellt und nicht über Zustands-Chips wieder hereingeholt. Ein Umschalter, der die Queue auf einen vergangenen Zustand stellt, ist ein Konventionsbruch; Filter auf der Queue filtern die **Art**, nie den Zustand. Die vollständige Geschichte wohnt im Audit-/Aktivitätsprotokoll (append, nie gekürzt) und ist von der Entscheidungs-Seite über **genau einen** Verweis erreichbar — ein Satz mit Link, keine Zähler-Kacheln. Wo die Vergangenheit dort nur als Maschinenwert ankommt, gehören Benennung und Filter ins Protokoll, nicht die Sektionen zurück in die Queue.
+**8.5 Zustand und Geschichte sind getrennte Flächen.** Heute zeigt ausschließlich, was auf den Menschen wartet. Zurückgestellt, Verworfen und Entschieden sind Vergangenheit: Erledigtes verlässt die Liste — es wird nicht gedimmt, nicht durchgestrichen, nicht in eigene Sektionen unter der Liste gestellt und nicht über Zustands-Filter wieder hereingeholt. Die vollständige Geschichte wohnt im Audit-/Aktivitätsprotokoll (append, nie gekürzt) und ist von Heute über **genau einen** Verweis erreichbar — „Was bereits entschieden wurde", ein Satz mit Link, keine Zähler-Kacheln.
 
-**8.5a Zähler-Kacheln.** Für **Offenes** erwünscht — wenn sie Entscheidungen nach **Kategorie**
-aufschlüsseln und dadurch Übersicht schaffen, statt eine Summe zu wiederholen. Jede Kachel führt
-auf die gefilterte Liste. Für **Erledigtes** gibt es keine. *(Mike, 21.08.2026.)*
-
-**8.5b Die Zahl selbst ist eine Design-Frage.** Eine Entscheidungs-Seite, die einem Menschen
+**8.5b Die Zahl selbst ist eine Design-Frage.** Eine Liste, die einem Menschen
 Hunderte Positionen vorlegt, hat ihre Aufgabe verfehlt, egal wie gut sie gegliedert ist.
 Gemessen am 21.08.2026: WatchKit legt **359 Positionen** vor, weil Doku- und Drift-Befunde als
 Entscheidungen zählen; WorkKit zeigt **15 gleichartige Budget-Sperren einzeln**; SubKit lässt
@@ -443,7 +402,8 @@ Unterhaltungen **weder Freigeben noch Ablehnen** — folgenlose Positionen in ei
 Entscheidungs-Queue.
 
 Das ist kein Darstellungs-, sondern ein Zuschnittsproblem: **was gleichartig ist, wird zu
-einer Entscheidung zusammengefasst; was folgenlos ist, ist keine.**
+einer Entscheidung zusammengefasst; was folgenlos ist, ist keine.** §8.2 („ein Eintrag je
+Gegenstand") ist die Antwort darauf.
 
 > **Korrektur, 21.08. 18:40.** Oben stand „bei SubKit sind 32 von 35 Positionen wartende
 > Unterhaltungen". Die 32 stammen aus dem **Prüfstand-Mock**, der den Statusfilter ignorierte;
@@ -457,8 +417,8 @@ einer Entscheidung zusammengefasst; was folgenlos ist, ist keine.**
 > durch einen Markdown-Renderer geschickt hat statt sie zu lesen. **Auch eine Korrektur kann
 > beschädigen, was sie korrigiert.**
 
-**8.6 Leere.** Nie etwas offen: grüner Check, „Alles erledigt" + „Gerade wartet keine Entscheidung auf dich." Nur weggefiltert: eigene, kompaktere Meldung mit Hinweis auf die Filter. Beide getrennt testbar (§4 gilt).
+**8.6 Leere.** Nichts offen und jede lesbare Quelle hat geantwortet: „Alles erledigt." und eine Statuszeile (Gesundheitszustand · nächste geplante Ausführung) — nichts sonst, keine Kachel mit 0. Eine Quelle hat nicht geantwortet: kein „Alles erledigt", sondern ein Hinweis, welche Quelle nicht lesbar war, mit „Erneut lesen"; die Einträge der übrigen Quellen stehen trotzdem da. Eine Quelle, die die Person nicht lesen darf, zählt nicht als fehlend. Die Statuszeile erscheint nur im leeren Zustand; ist etwas offen, sind die Ursachen eines schlechten Zustands selbst Einträge. Alle Fälle sind getrennt testbar (§4 gilt).
 
-**8.7 Incident-Banner.** Die Übersicht zeigt oberhalb aller Kacheln einen nicht schließbaren roten Banner, sobald ein Budget-/Health-Gate offen oder eine Frist gerissen ist — mit konkreten Zahlen und Link auf die Entscheidungs-Seite. Ein Dashboard, das bei offenen Gates Ruhe meldet, ist ein Konventionsbruch.
+**8.7 Kein Incident-Banner.** Ein offenes Budget- oder Health-Gate und eine gerissene Frist sind Einträge der Klasse „gestoppt" oder „scheitert" und stehen damit oben in der Liste. Ein zusätzliches Banner wäre ein zweiter Ort für denselben Fakt (§0.1). Eine Startseite, die bei offenen Gates „Alles erledigt" meldet, bleibt ein Konventionsbruch.
 
-**8.8 Produkt-Spezifisch bleibt:** die Arten (Kinds) und ihre Badges, die Resolver-Formulare, die Quell-Referenzen. Familienweit sind Struktur, Sprache, Sortierung, die Trennung von Zustand und Geschichte, Leere-Zustände und der Banner-Vertrag.
+**8.8 Produkt-Spezifisch bleibt:** die Quellen und Arten (Kinds) und ihre Badges, die Resolver-Formulare im Seitenblatt, die Quell-Referenzen. Familienweit sind die eine Engine-Quelle, die drei Klassen und ihre Reihenfolge, die Eintrags-Anatomie, das Seitenblatt, die Sprache, die Trennung von Zustand und Geschichte und die Leere-Regel.

@@ -104,7 +104,13 @@ export async function verifyApiAccess(page, stand, locale, fixture) {
   }
   if (!index) throw new Error(`${where}: no section index`);
 
-  // Order: attention list, Kontoverbindungen, keys, applications.
+  // No task list on this page: the tasks it used to repeat live on Heute.
+  const taskLists = await page
+    .locator('[data-testid="api-access-attention"], [data-testid="attention-list"]')
+    .count();
+  if (taskLists > 0) throw new Error(`${where}: a second task list stands above the sections`);
+
+  // Order: Kontoverbindungen, keys, applications.
   const order = await page.evaluate(() =>
     [...document.querySelectorAll('[data-testid^="api-access-section-"]')].map((element) =>
       element.getAttribute("data-testid"),

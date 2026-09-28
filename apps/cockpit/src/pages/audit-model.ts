@@ -23,8 +23,8 @@ type FormatDateTime = (value: string | Date) => string;
  * that could not reach what it named. `/runs/$resourceId` exists now
  * (`app/route-table.ts`) and takes exactly the id the log records.
  *
- * A LIST page is deliberately not a target. `/people`, `/access`,
- * `/api-access` and the rest resolve perfectly well, and they answer "who are
+ * A LIST page is deliberately not a target. `/people`, `/api-access` and
+ * the rest resolve perfectly well, and they answer "who are
  * the people here", not "which user is this row about" — and they would answer
  * it whether or not the row recorded an id at all, which is the distinction
  * this function exists to keep. Appending the id anyway would build
@@ -185,8 +185,8 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   notification_delivery: "nav.notifications",
   execution: "nav.runs",
   api_key: "nav.apiAccess",
-  role: "nav.access",
-  user: "nav.people",
+  role: "access.roles",
+  user: "people.section.people",
   settings: "nav.settings",
   connection: "apiAccess.section.grants",
   schedule: "permission.resource.schedules",
