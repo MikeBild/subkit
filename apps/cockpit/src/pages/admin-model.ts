@@ -1,5 +1,5 @@
 import { PEOPLE_SECTIONS, type PeopleSection } from "@/app/links";
-import { CATALOGS, type TranslationKey } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
@@ -239,27 +239,6 @@ export function isGrantResourceType(value: string): value is GrantResourceType {
   return (GRANT_RESOURCE_TYPES as readonly string[]).includes(value);
 }
 
-const SETTING_META_KEYS: Readonly<Record<string, TranslationKey>> = {
-  default: "settings.meta.default",
-  env: "settings.meta.environment",
-  environment: "settings.meta.environment",
-  global: "settings.meta.global",
-  tenant: "settings.meta.workspace",
-  override: "settings.meta.override",
-  workspace: "settings.meta.workspace",
-};
-
-/**
- * The setting a link opens the settings page at — `server.public_base_url` —
- * or nothing. `settingsHref` in app/links.ts writes it. A leaf is a dotted
- * path of plain words; anything else could not name a setting and is dropped
- * rather than searched for.
- */
-export function settingsLeafFromUrl(search: string): string | null {
-  const raw = new URLSearchParams(search).get("leaf")?.trim() ?? "";
-  return raw.length <= 128 && /^[a-z0-9_]+(\.[a-z0-9_]+)*$/i.test(raw) ? raw : null;
-}
-
 /**
  * The sections of Personen & Rechte this reader may read, in page order. The
  * people list is behind `identity:read`; roles, groups and grants behind
@@ -280,106 +259,4 @@ export function openPeopleSection(
 ): PeopleSection | null {
   if (requested && readable.includes(requested)) return requested;
   return readable[0] ?? null;
-}
-
-/**
- * Everything the settings page keeps in its address: the leaf a link opened it
- * at, the tab and the search. A reload or a shared link lands on the same view;
- * a tab name that could not be one is dropped rather than searched for.
- */
-export interface SettingsView {
-  leaf: string | null;
-  section: string | null;
-  q: string;
-}
-
-export function settingsViewFromUrl(search: string): SettingsView {
-  const params = new URLSearchParams(search);
-  const section = params.get("section")?.trim() ?? "";
-  return {
-    leaf: settingsLeafFromUrl(search),
-    section: section.length <= 64 && /^[a-z0-9_]+$/i.test(section) ? section : null,
-    q: (params.get("q") ?? "").slice(0, 128),
-  };
-}
-
-/**
- * What a `?leaf=` address points at among the settings on screen: the setting
- * itself, or — for a group such as `llm.providers.anthropic` — its first
- * setting. `null` only when nothing lives under that path.
- */
-export function settingLeafTarget(
-  paths: readonly string[],
-  leaf: string,
-): { index: number; kind: "leaf" | "group" } | null {
-  const exact = paths.indexOf(leaf);
-  if (exact >= 0) return { index: exact, kind: "leaf" };
-  const first = paths.findIndex((path) => path.startsWith(`${leaf}.`));
-  return first >= 0 ? { index: first, kind: "group" } : null;
-}
-
-/**
- * Where the tab strip's own scroll must stand for a tab to sit in its middle
- * (clamped to what the strip can scroll). The tab is brought into view by
- * moving THIS strip only: `scrollIntoView` on a tab, or a plain `focus()` on a
- * field, also scrolls every ancestor — and the page's scroll region, clipped
- * with `overflow-x: hidden`, then stood shifted left with no way back.
- */
-export function stripScrollLeft(
-  strip: { left: number; scrollLeft: number; clientWidth: number; scrollWidth: number },
-  tab: { left: number; width: number },
-): number {
-  const target = strip.scrollLeft + (tab.left - strip.left) - (strip.clientWidth - tab.width) / 2;
-  const max = Math.max(0, strip.scrollWidth - strip.clientWidth);
-  return Math.min(max, Math.max(0, Math.round(target)));
-}
-
-/**
- * The tab a setting lives on: its first path segment. `tokens.monthly_budget`
- * opens on `tokens`.
- */
-export function settingSectionOf(path: string): string {
-  return path.split(".")[0] || "other";
-}
-
-/**
- * A setting's name in the reader's language, keyed by its whole dotted path.
- *
- * The engine describes each leaf but does not label it. The page first guessed
- * a label from keywords ("Schwellenwert", "Konfigurationswert"), then used the
- * last path segment in English — nine settings read "Api key" on a German
- * page. Every leaf the engine has is named in the catalogue
- * (`settings.leaf.<path>`, held against the engine's own walk by
- * settings-leaf-coverage.test.ts), with its parent where a tab holds several of
- * a kind ("Anthropic · API-Schlüssel"). A path this build does not know is the
- * path itself, marked as a machine value.
- */
-export function settingLabel(path: string, t: Translate): CatalogLabel {
-  const key = `settings.leaf.${path}`;
-  return Object.hasOwn(CATALOGS.en, key)
-    ? { text: t(key as TranslationKey), machine: false }
-    : { text: path, machine: true };
-}
-
-const ACTIVATION_KEYS: Readonly<Record<string, TranslationKey>> = {
-  saved: "settings.activation.saved",
-  preparing: "settings.activation.preparing",
-  active: "settings.activation.active",
-  failed: "settings.activation.failed",
-  restart_required: "settings.activation.restartRequired",
-};
-
-/** Where the saved configuration stands, in words — never `restart required` as the enum spells it. */
-export function activationStatusLabel(
-  status: string | null | undefined,
-  t: Translate,
-): CatalogLabel {
-  // Not reported is not active: a missing state must not read as the good one.
-  if (!status) return { text: t("settings.activation.unreported"), machine: false };
-  return catalogLabel(status, ACTIVATION_KEYS[status], t);
-}
-
-/** Where a setting's value came from, or which scope it applies to. */
-export function settingMetaLabel(value: string, t: Translate): CatalogLabel {
-  return catalogLabel(value, SETTING_META_KEYS[value.toLowerCase()], t);
 }

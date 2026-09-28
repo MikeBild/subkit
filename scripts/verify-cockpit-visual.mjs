@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
+import { listConfigLeaves } from "../apps/engine/src/config/walk.ts";
 import ENGINE_PERMISSIONS from "../apps/engine/src/rbac/permissions.json" with { type: "json" };
 import { verifyApiAccess } from "./lib/cockpit-api-access.mjs";
 import { verifyChatActivation } from "./lib/cockpit-chat-activation.mjs";
@@ -165,6 +166,9 @@ const routes = [
   // it must land on the grants section of Zugangsdaten and say the sentence.
   "connections?failed=denied&name=Postfach",
   "settings",
+  // The sign-in providers live in their own section; the list alone opens on
+  // the first one.
+  "settings?section=auth",
 ];
 
 /**
@@ -674,22 +678,55 @@ const OAUTH_CLIENTS = (() => {
   ];
 })();
 
-/** One real leaf per settings section the fixture otherwise lacks (config/walk.ts). */
-const SETTINGS_SECTION_LEAVES = [
-  ["log.level", "info"],
-  ["llm.provider", "anthropic"],
-  ["storage.object_store.endpoint", "https://objects.example.com"],
-  ["egress.mode", "allow"],
-  ["errors.ring_size", 200],
-  ["spec.allow_private_fetch", false],
-  ["queue.concurrency", 4],
-  ["operations.update_check_enabled", true],
-  ["sandbox.memory_bytes", 67108864],
-  ["repl.permissionMode", "default"],
-  ["ui.theme", "auto"],
-  ["notifications.push.enabled", false],
-  ["connectors.web_scraper.runtime.respect_robots", true],
-];
+/**
+ * Every setting the engine has (config/walk.ts), as `/v1/settings` reports it
+ * on an installation that changed none of them. A real installation shows
+ * twenty sections; a fixture with five hid the tab strip that did not fit the
+ * page, and one with a section the engine does not have counted wrong.
+ */
+const ENGINE_SETTINGS = listConfigLeaves().map((leaf) => {
+  const sensitive = Boolean(leaf.meta?.secret);
+  const value = sensitive
+    ? null
+    : leaf.kind === "boolean"
+      ? false
+      : leaf.kind === "number"
+        ? 0
+        : leaf.kind === "enum"
+          ? (leaf.enumValues?.[0] ?? "")
+          : leaf.kind === "string-list"
+            ? []
+            : leaf.kind === "json"
+              ? {}
+              : "";
+  return {
+    path: leaf.path.join("."),
+    value,
+    meta: {
+      source: "default",
+      scope: leaf.meta?.scope ?? "global",
+      sensitive,
+      requiresRestart: Boolean(leaf.meta?.requiresRestart),
+      ...(leaf.description ? { description: leaf.description } : {}),
+      kind: leaf.kind,
+    },
+  };
+});
+/** How many sections the settings page must list, every one of them on screen. */
+const SETTINGS_SECTION_COUNT = new Set(ENGINE_SETTINGS.map((item) => item.path.split(".")[0])).size;
+
+/** The engine's settings, with the fixture's hostile values put in their place. */
+function settingsWith(overrides) {
+  const byPath = new Map(overrides.map((item) => [item.path, item]));
+  const unknown = overrides.filter(
+    (item) => !ENGINE_SETTINGS.some((setting) => setting.path === item.path),
+  );
+  if (unknown.length)
+    throw new Error(
+      `settings fixture names settings the engine does not have: ${unknown.map((item) => item.path)}`,
+    );
+  return ENGINE_SETTINGS.map((item) => byPath.get(item.path) ?? item);
+}
 
 const API_KEY_BASE = {
   scopes: ["workflow:read", "workflow:run"],
@@ -2023,7 +2060,7 @@ async function mockApi(route) {
       active_revision: 7,
       activation_status: "restart_required",
       pending_restart_fields: ["auth.providers"],
-      items: [
+      items: settingsWith([
         {
           path: "auth.providers",
           value: [
@@ -2058,17 +2095,6 @@ async function mockApi(route) {
           },
         },
         {
-          path: "execution.default_timeout_ms",
-          value: 30000,
-          meta: {
-            source: "default",
-            scope: "tenant",
-            sensitive: false,
-            requiresRestart: false,
-            kind: "number",
-          },
-        },
-        {
           path: "tokens.monthly_budget",
           value: 150000000,
           meta: {
@@ -2091,28 +2117,7 @@ async function mockApi(route) {
             kind: "boolean",
           },
         },
-        // Every other section the engine has, one setting each: a real
-        // installation shows twenty tabs, far wider than the page. With five,
-        // the strip fit, and a settings column blown out to the strip's full
-        // width — the page shifted sideways on a leaf deep link — could not
-        // happen here.
-        ...SETTINGS_SECTION_LEAVES.map(([leaf, value]) => ({
-          path: leaf,
-          value,
-          meta: {
-            source: "default",
-            scope: "global",
-            sensitive: false,
-            requiresRestart: false,
-            kind:
-              typeof value === "boolean"
-                ? "boolean"
-                : typeof value === "number"
-                  ? "number"
-                  : "string",
-          },
-        })),
-      ],
+      ]),
       diagnostics: { pending_restart_keys: [], override_keys: [] },
     });
   if (path === "/v1/identity/users")
@@ -2561,6 +2566,8 @@ function markerFor(route) {
   if (path === "access") return '[data-testid="roles-section"]';
   if (path === "people" && query.startsWith("section="))
     return `[data-testid="${query.slice("section=".length)}-section"]`;
+  if (path === "settings" && query.startsWith("section="))
+    return `[data-testid="settings-section-${query.slice("section=".length)}"]`;
   if (["people", "api-access", "settings"].includes(path)) return `[data-testid="admin-${path}"]`;
   // Connectors render through the shared catalog table like every other list.
   if (["workflows", "connectors", "knowledge", "skills", "files"].includes(path))
@@ -3504,7 +3511,7 @@ for (const locale of variants) {
           `${locale.artifact}/${viewport.name}/${route}`,
           locale.name,
         );
-      if (route === "settings")
+      if (route === "settings?section=auth")
         await assertAuthProviderSettings(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "access") {
         const landed = new URL(page.url());
@@ -3551,10 +3558,15 @@ for (const locale of variants) {
       shoot(page, `${locale.artifact}-${viewport.name}-today-calm`, { fullPage: false }),
     );
     if (viewport.name === "desktop")
-      await verifyInstallationPages(page, stand, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-installation-${state}`, {
-          fullPage: false,
-        }),
+      await verifyInstallationPages(
+        page,
+        stand,
+        locale.name,
+        (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-installation-${state}`, {
+            fullPage: false,
+          }),
+        { settingsSections: SETTINGS_SECTION_COUNT, viewport },
       );
     await verifyApiAccess(page, stand, locale.name, {
       realClients: REAL_OAUTH_CLIENTS,
