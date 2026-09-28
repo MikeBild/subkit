@@ -24,6 +24,7 @@ import type { Db, Executor } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/index.ts";
 import { errorFields, log } from "../logging/logger.ts";
 import { recordPatchCandidate } from "../observability/instrumentation.ts";
+import { invalidateTenantState } from "../operator/index.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import {
   type PatchReadiness,
@@ -242,5 +243,6 @@ export async function sweepUndecidableCandidates(db: Db, tenant_id: string): Pro
       log.selfHealing.patch.sweepFailed({ tenant_id, workflow_id, ...errorFields(err) });
     }
   }
+  if (closed > 0) invalidateTenantState(tenant_id);
   return closed;
 }
