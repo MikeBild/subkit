@@ -673,7 +673,6 @@ const EN = {
   "people.deactivateDescription": "Deactivate {email} and revoke their active access?",
   "people.deactivateConnections":
     "This also ends {count} approval(s) for connected applications — every application {email} approved stops working at once.",
-  "people.connections": "{count} connected application(s)",
   "people.created": "Person added",
   "people.roleUpdated": "Role updated",
   "people.deactivated": "Person deactivated",
@@ -3092,7 +3091,6 @@ const DE: Record<TranslationKey, string> = {
   "people.deactivateDescription": "{email} deaktivieren und aktive Zugriffe widerrufen?",
   "people.deactivateConnections":
     "Damit enden auch {count} Freigabe(n) für verbundene Anwendungen — jede von {email} freigegebene Anwendung funktioniert sofort nicht mehr.",
-  "people.connections": "{count} verbundene Anwendung(en)",
   "people.created": "Person angelegt",
   "people.roleUpdated": "Rolle aktualisiert",
   "people.deactivated": "Person deaktiviert",
