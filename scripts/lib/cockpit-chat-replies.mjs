@@ -112,10 +112,17 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
           throw new Error("A text question displays binary approval actions");
         // "Wartet auf dich" once, amber (§2), in the header badge — not red
         // there and amber in the list, and not repeated under the title.
+        // Read the tone from the unconditional class tokens: every badge carries
+        // `aria-invalid:border-destructive` from its base, which a substring
+        // check mistook for a red badge.
         const status = page.getByTestId("chat-status");
+        const tone = ((await status.getAttribute("class")) ?? "")
+          .split(/\s+/)
+          .filter((token) => !token.includes(":"));
         if (
           (await status.getAttribute("data-waiting")) !== "true" ||
-          (await status.getAttribute("class"))?.includes("destructive")
+          tone.some((token) => token.includes("destructive")) ||
+          !tone.includes("text-warning")
         )
           throw new Error("The waiting badge is not the amber waiting state");
         if (/wartet|waiting/i.test(await page.getByTestId("chat-summary").innerText()))
