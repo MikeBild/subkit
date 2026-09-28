@@ -152,8 +152,24 @@ export function chatSeedFromUrl(search: string): {
   };
 }
 
-export function apiAccessHref(section?: string | null): string {
+/**
+ * The three sections of Zugangsdaten — the one page for everything that holds
+ * or grants rights: keys this installation hands out, applications connected
+ * to it, and accounts it is connected to.
+ */
+export const API_ACCESS_SECTIONS = ["keys", "clients", "grants"] as const;
+export type ApiAccessSection = (typeof API_ACCESS_SECTIONS)[number];
+
+export function apiAccessHref(section?: ApiAccessSection | null): string {
   return withQuery("/api-access", { section });
+}
+
+/** The section an address opens Zugangsdaten at, or none. Anything else is dropped. */
+export function apiAccessSectionFromUrl(search: string): ApiAccessSection | null {
+  const raw = new URLSearchParams(search).get("section");
+  return (API_ACCESS_SECTIONS as readonly string[]).includes(raw ?? "")
+    ? (raw as ApiAccessSection)
+    : null;
 }
 
 /**

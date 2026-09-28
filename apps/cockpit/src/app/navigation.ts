@@ -13,7 +13,6 @@ import {
   ListChecks,
   type LucideIcon,
   MessageSquare,
-  Plug,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -163,11 +162,15 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         api: ["GET /v1/settings"],
       },
       {
+        // The one page for everything that holds or grants rights: API keys,
+        // connected applications, account connections — each section behind
+        // its own read permission, so the entry shows for any of them.
         labelKey: "nav.apiAccess",
         path: "/api-access",
         permission: "api_key:read",
+        anyPermissions: ["api_key:read", "mcp_oauth_client:read", "connection:read"],
         icon: KeyRound,
-        api: ["GET /v1/identity/api-keys"],
+        api: ["GET /v1/identity/api-keys", "GET /v1/oauth/clients", "GET /v1/connections"],
       },
       {
         labelKey: "nav.notifications",
@@ -182,16 +185,6 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         permission: "audit:read",
         icon: History,
         api: ["GET /v1/audit-log"],
-      },
-      {
-        // Outbound connections: what this installation may call on someone's
-        // behalf — the other half of Zugangsdaten (keys we hand out, grants we
-        // hold). After the five entries §6 pins, like every product-specific one.
-        labelKey: "nav.connections",
-        path: "/connections",
-        permission: "connection:read",
-        icon: Plug,
-        api: ["GET /v1/connections"],
       },
       {
         labelKey: "nav.people",
