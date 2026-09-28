@@ -896,22 +896,24 @@ const TAB_COLUMNS = ["grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-4"]
 export function PeopleAndAccessPage() {
   const { t } = useI18n();
   const session = useSession();
-  const readable = readablePeopleSections({
-    identity: session.permissions.includes("identity:read"),
-    rbac: session.permissions.includes("rbac:read"),
-  });
-  const readableKey = readable.join(",");
+  const canIdentity = session.permissions.includes("identity:read");
+  const canRbac = session.permissions.includes("rbac:read");
+  const readable = useMemo(
+    () => readablePeopleSections({ identity: canIdentity, rbac: canRbac }),
+    [canIdentity, canRbac],
+  );
   const [section, setSection] = useState(() =>
     openPeopleSection(peopleSectionFromUrl(window.location.search), readable),
   );
   // A link to another section while this page is open arrives through the
-  // router, not as a fresh load: follow it. The section read from the address
-  // itself — the router's own search string is re-serialised.
+  // router, not as a fresh load: follow it. The section is read from the
+  // address itself — the router's own search string is re-serialised; it only
+  // says that the address changed.
   const routerSearch = useRouterState({ select: (state) => state.location.searchStr });
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `readableKey` stands for `readable`, and the address changes with `routerSearch`
   useEffect(() => {
+    void routerSearch;
     setSection(openPeopleSection(peopleSectionFromUrl(window.location.search), readable));
-  }, [routerSearch, readableKey]);
+  }, [routerSearch, readable]);
   const choose = (next: string) => {
     const picked = readable.find((candidate) => candidate === next);
     if (!picked) return;
