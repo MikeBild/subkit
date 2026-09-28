@@ -95,7 +95,7 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
       total: completed ? 0 : 1,
     }),
   );
-  // Heute's badge counts the held schedule as one entry until it is granted.
+  // Übersicht's badge counts the held schedule as one entry until it is granted.
   // One entry per subject: the base answer's own entry for this workflow is
   // replaced by the held one, or the list would carry the workflow twice.
   const baseAnswer = await page.evaluate(async () => (await fetch("/v1/attention")).json());

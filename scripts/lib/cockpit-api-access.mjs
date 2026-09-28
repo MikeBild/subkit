@@ -104,7 +104,7 @@ export async function verifyApiAccess(page, stand, locale, fixture) {
   }
   if (!index) throw new Error(`${where}: no section index`);
 
-  // No task list on this page: the tasks it used to repeat live on Heute.
+  // No task list on this page: the tasks it used to repeat live on Übersicht.
   const taskLists = await page
     .locator('[data-testid="api-access-attention"], [data-testid="attention-list"]')
     .count();

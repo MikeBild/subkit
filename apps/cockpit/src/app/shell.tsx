@@ -177,7 +177,7 @@ function ShellFrame() {
           <nav aria-label={t("nav.label")}>
             {groups.map((group) => (
               <SidebarGroup key={group.id} data-testid={`nav-group-${group.id}`}>
-                {/* No heading where the group has no name: Heute stands
+                {/* No heading where the group has no name: Übersicht stands
                     ungrouped, and a rendered label above it makes it a group. */}
                 {group.labelKey && <SidebarGroupLabel>{t(group.labelKey)}</SidebarGroupLabel>}
                 <SidebarGroupContent>
@@ -295,7 +295,7 @@ function RecordBreadcrumb() {
 }
 
 /**
- * The number of entries on Heute, or nothing at all — a stale or guessed badge
+ * The number of entries on Übersicht, or nothing at all — a stale or guessed badge
  * would be worse than an absent one, and it always sits on the link it counts.
  * Red while anything is stopped.
  */
