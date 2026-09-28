@@ -1829,6 +1829,10 @@ async function mockApi(route) {
         currency: "EUR",
         unpriced_models: ["some-new-model"],
         unpriced_calls: 47,
+        price_sources: [
+          { model: "claude-sonnet-4-6", price_source: "catalog" },
+          { model: "claude-haiku-4-5", price_source: "override" },
+        ],
         rates_basis: "current",
       },
     });
@@ -2703,9 +2707,10 @@ async function assertOverviewHostile(page, label, language) {
 }
 
 /**
- * The operations bar: four figures above the list — one row on a desktop, two
- * by two on a phone — compact enough that the attention list still starts on
- * the first screen, and every link carrying the window it counted.
+ * The operations bar: six figures above the list — three by two on a desktop,
+ * six in a row where they fit, two columns on a phone, never scrolling
+ * sideways — compact enough that the attention list still starts on the first
+ * screen, and every link carrying the window it counted.
  */
 async function assertOperationsBar(page, label) {
   await page.locator('[data-testid="operations-bar"] [data-figure-state]').first().waitFor();
@@ -2725,22 +2730,49 @@ async function assertOperationsBar(page, label) {
       links: [...(bar?.querySelectorAll("a") ?? [])].map((link) => link.getAttribute("href")),
       innerHeight: window.innerHeight,
       phone: window.innerWidth < 640,
+      overflow: bar ? bar.scrollWidth > bar.clientWidth + 1 : false,
+      cost: (bar?.querySelector('[data-testid="operations-figure-cost"]')?.textContent ?? "")
+        .replace(/\s+/g, " ")
+        .trim(),
+      budget: (bar?.querySelector('[data-testid="operations-figure-budget"]')?.textContent ?? "")
+        .replace(/\s+/g, " ")
+        .trim(),
+      pressure:
+        bar
+          ?.querySelector('[data-testid="operations-figure-budget"]')
+          ?.getAttribute("data-budget-pressure") ?? null,
     };
   });
-  if (shape.count !== 4)
+  if (shape.count !== 6)
     throw new Error(`${label}: the operations bar holds ${shape.count} figures`);
-  const grid = shape.phone ? [2, 2] : [1, 4];
-  if (shape.rows !== grid[0] || shape.columns !== grid[1])
+  // Two columns on a phone; three by two on a desktop, six in a row where
+  // six fit. Never a bar that scrolls sideways.
+  const grids = shape.phone
+    ? [[3, 2]]
+    : [
+        [2, 3],
+        [1, 6],
+      ];
+  if (!grids.some(([rows, columns]) => shape.rows === rows && shape.columns === columns))
     throw new Error(
-      `${label}: the figures stand in ${shape.rows}×${shape.columns}, not ${grid[0]}×${grid[1]}`,
+      `${label}: the figures stand in ${shape.rows}×${shape.columns}, not ${grids
+        .map((grid) => grid.join("×"))
+        .join(" or ")}`,
     );
+  if (shape.overflow) throw new Error(`${label}: the operations bar scrolls sideways`);
   if (shape.height > 96)
     throw new Error(`${label}: a figure is ${shape.height}px tall, not compact`);
   if (shape.belowTop !== null && shape.belowTop > shape.innerHeight)
     throw new Error(`${label}: the bar pushes what needs the reader below the first screen`);
   for (const href of shape.links)
-    if (!/started_from=|ts_from=|health=not_ok/.test(href ?? ""))
+    if (!/started_from=|ts_from=|health=not_ok|\/usage(\?window=24h)?$/.test(href ?? ""))
       throw new Error(`${label}: a figure links to ${href}, not to the list of its window`);
+  // Kosten and Kontingent in short form, from the fixture: the window's amount
+  // as a floor (partly priced), the month's share of the cap in its state.
+  if (!/(mind\.\s*412,87\s*€|at least\s*€412\.87)/.test(shape.cost ?? ""))
+    throw new Error(`${label}: the cost figure reads "${shape.cost}"`);
+  if (!/95\s*%/.test(shape.budget ?? "") || shape.pressure !== "critical")
+    throw new Error(`${label}: the budget figure reads "${shape.budget}" (${shape.pressure})`);
 }
 
 /** An old address lands on Übersicht — with the review it named, and nothing else. */

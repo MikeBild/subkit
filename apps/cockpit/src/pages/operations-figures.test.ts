@@ -1,5 +1,5 @@
-// The operations bar on the Übersicht: four figures, each a link into the
-// list that counts the same rows over the same window (§10.1).
+// The operations bar on the Übersicht: six figures, each a link into the
+// list or page that counts the same thing over the same window (§10.1).
 
 import { describe, expect, test } from "bun:test";
 import { auditFilterFromUrl } from "@/pages/audit-model";
@@ -10,15 +10,19 @@ import {
   DECIDED_REPAIR_ACTIONS,
   executionStatsEndpoint,
   listTotal,
+  llmStatsEndpoint,
   type OperatingFigure,
   operatingFigures,
   repairStatsEndpoint,
   repairTotals,
   runTotals,
+  usageWindowFromUrl,
   windowBounds,
   windowBucket,
+  windowSpend,
 } from "@/pages/operations-figures";
 import { filterFromUrl } from "@/pages/runs-model";
+import { budgetSummary, windowCost } from "@/pages/usage-model";
 
 describe("the window's run totals", () => {
   test("supplies the required window", () => {
@@ -52,16 +56,27 @@ describe("the window's run totals", () => {
 describe("the operations figures", () => {
   const NOW = new Date("2026-08-10T12:00:00.000Z");
   const WEEK = windowBounds("7d", NOW);
-  const all = { runs: true, connectors: true, audit: true };
+  const all = { runs: true, connectors: true, audit: true, usage: true, budgetSetting: true };
   const answered = <T>(value: T) => ({ state: "answered" as const, value });
   const query = (href: string | null) => (href ? href.slice(href.indexOf("?")) : "");
   const stats = (endpoint: string) => new URLSearchParams(endpoint.slice(endpoint.indexOf("?")));
+  const priced = {
+    calls: 120,
+    cost: { amount: 87.22, currency: "USD", unpricedModels: [], unpricedCalls: 0 },
+  };
+  const month = budgetSummary({
+    tokens_month: 40_500_000,
+    monthly_budget_tokens: 150_000_000,
+    remaining_monthly_budget_tokens: 109_500_000,
+  });
   const figuresOf = (overrides: Partial<Parameters<typeof operatingFigures>[0]> = {}) =>
     operatingFigures({
       bounds: WEEK,
       totals: answered({ executions: 40, failedRuns: 2, successRatePercent: 95 }),
       connectors: answered({ enabled: 8, notOk: 2 }),
       repairs: answered({ decided: 4, applied: 3 }),
+      spend: answered(priced),
+      budget: answered(month),
       canOpen: all,
       ...overrides,
     });
@@ -94,8 +109,15 @@ describe("the operations figures", () => {
       ["successRate", 95],
       ["connectorHealth", 75],
       ["repairRate", 75],
+      ["cost", 87.22],
+      ["budget", 27],
     ]);
-    const [runs, rate, connectors, repairs] = figures.map(value);
+    const [runs, rate, connectors, repairs, cost, budget] = figures.map(value);
+    // Cost: Nutzung over the very window the amount was read over.
+    expect(usageWindowFromUrl(query(cost?.href ?? null))).toBe("7d");
+    expect(cost?.href).toBe("/usage?window=7d");
+    // Budget: the month, on Nutzung — the window does not narrow a month.
+    expect(budget?.href).toBe("/usage");
     // Runs: the runs that started in the window — the stats query's bounds.
     const window = { startedFrom: WEEK.from, startedTo: WEEK.to };
     expect(filterFromUrl(query(runs?.href ?? null))).toMatchObject({ status: "all", ...window });
@@ -112,7 +134,14 @@ describe("the operations figures", () => {
     const audit = auditFilterFromUrl(query(repairs?.href ?? null));
     expect(audit).toMatchObject({ scope: "all", tsFrom: WEEK.from, tsTo: WEEK.to });
     expect(audit.actions).toEqual([...DECIDED_REPAIR_ACTIONS]);
-    expect(figures.map((figure) => figure.current)).toEqual([false, false, true, false]);
+    expect(figures.map((figure) => figure.basis)).toEqual([
+      "window",
+      "window",
+      "now",
+      "window",
+      "window",
+      "month",
+    ]);
   });
 
   test("a link that would open an empty list is no link", () => {
@@ -131,13 +160,16 @@ describe("the operations figures", () => {
       totals: answered({ executions: 0, failedRuns: 0, successRatePercent: null }),
       connectors: answered({ enabled: 0, notOk: 0 }),
       repairs: answered({ decided: 0, applied: 0 }),
+      spend: answered({ calls: 0, cost: windowCost({ cost: { amount: 0, currency: "USD" } }) }),
     });
-    // Always four: the bar keeps its shape, and each empty slot says why.
+    // Always six: the bar keeps its shape, and each empty slot says why.
     expect(figures.map((figure) => [figure.id, figure.state])).toEqual([
       ["runs", "none"],
       ["successRate", "none"],
       ["connectorHealth", "none"],
       ["repairRate", "none"],
+      ["cost", "none"],
+      ["budget", "value"],
     ]);
     // A rate of nought over real runs is a fact, and it stays.
     expect(
@@ -151,6 +183,8 @@ describe("the operations figures", () => {
       ["successRate", "value", 0],
       ["connectorHealth", "not_permitted", undefined],
       ["repairRate", "none", undefined],
+      ["cost", "value", 87.22],
+      ["budget", "value", 27],
     ]);
   });
 
@@ -159,18 +193,108 @@ describe("the operations figures", () => {
       totals: { state: "failed" },
       connectors: { state: "failed" },
       repairs: { state: "failed" },
+      spend: { state: "failed" },
+      budget: { state: "failed" },
     });
     expect(figures.map((figure) => [figure.id, figure.state])).toEqual([
       ["runs", "unreadable"],
       ["successRate", "unreadable"],
       ["connectorHealth", "unreadable"],
       ["repairRate", "unreadable"],
+      ["cost", "unreadable"],
+      ["budget", "unreadable"],
     ]);
   });
 
+  test("the cost is the window's money, read over the figures' own bounds", () => {
+    const endpoint = stats(llmStatsEndpoint(WEEK));
+    expect([endpoint.get("from"), endpoint.get("to")]).toEqual([WEEK.from, WEEK.to]);
+    expect(endpoint.get("group_by")).toBeNull();
+    // Nutzung asks the same window, with its breakdown axis.
+    expect(stats(llmStatsEndpoint(WEEK, "model")).get("group_by")).toBe("model");
+    expect(
+      windowSpend({
+        totals: { calls: { total: 12, by_result: {} } },
+        cost: { amount: 3.5, currency: "USD", unpriced_models: [], unpriced_calls: 0 },
+      }),
+    ).toEqual({
+      calls: 12,
+      cost: { amount: 3.5, currency: "USD", unpricedModels: [], unpricedCalls: 0 },
+    });
+  });
+
+  test("a partly priced window is a floor that carries what it leaves out", () => {
+    const cost = value(
+      figuresOf({
+        spend: answered({
+          calls: 120,
+          cost: {
+            amount: 412.87,
+            currency: "EUR",
+            unpricedModels: ["some-new-model"],
+            unpricedCalls: 47,
+          },
+        }),
+      })[4],
+    );
+    expect(cost?.value).toBe(412.87);
+    expect(cost?.money).toEqual({ currency: "EUR", unpricedCalls: 47 });
+  });
+
+  test("calls without any price are said in words, never as an amount of nought", () => {
+    const spend = windowSpend({
+      totals: { calls: { total: 30, by_result: {} } },
+      cost: { amount: 0, currency: "USD", unpriced_models: ["x"], unpriced_calls: 30 },
+    });
+    expect(spend.cost).toBeNull();
+    const cost = figuresOf({ spend: answered(spend) })[4];
+    expect(cost?.state).toBe("unpriced");
+    expect(cost && "href" in cost ? cost.href : null).toBe("/usage?window=7d");
+  });
+
+  test("the budget is the month's whole percentage with the engine's pressure word", () => {
+    const at = (used: number) =>
+      value(
+        figuresOf({
+          budget: answered(
+            budgetSummary({
+              tokens_month: used,
+              monthly_budget_tokens: 1000,
+              remaining_monthly_budget_tokens: Math.max(1000 - used, 0),
+            }),
+          ),
+        })[5],
+      );
+    expect([at(270)?.value, at(270)?.budget?.pressure]).toEqual([27, "ample"]);
+    expect([at(750)?.value, at(750)?.budget?.pressure]).toEqual([75, "tightening"]);
+    // 89.6 % reads "90 %", and the engine raises it as critical — so does the bar.
+    expect([at(896)?.value, at(896)?.budget?.pressure]).toEqual([90, "critical"]);
+    expect(at(270)?.budget).toMatchObject({ budgetTokens: 1000, remainingTokens: 730 });
+  });
+
+  test("no cap is 'no budget' — no percentage — and links the setting only for who may set it", () => {
+    const uncapped = answered(budgetSummary({ tokens_month: 5_000, monthly_budget_tokens: null }));
+    const figure = figuresOf({ budget: uncapped })[5];
+    expect(figure?.state).toBe("uncapped");
+    expect(figure && "href" in figure ? figure.href : null).toBe(
+      "/settings?leaf=tokens.monthly_budget",
+    );
+    const readOnly = figuresOf({ budget: uncapped, canOpen: { ...all, budgetSetting: false } })[5];
+    expect(readOnly && "href" in readOnly ? readOnly.href : "missing").toBeNull();
+  });
+
   test("a value the reader may not open is shown without a link", () => {
-    const figures = figuresOf({ canOpen: { runs: false, connectors: false, audit: false } });
-    expect(figures.map((figure) => value(figure)?.href)).toEqual([null, null, null, null]);
+    const figures = figuresOf({
+      canOpen: { runs: false, connectors: false, audit: false, usage: false, budgetSetting: false },
+    });
+    expect(figures.map((figure) => value(figure)?.href)).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
   });
 
   test("the repair rate counts exactly the verbs its link opens", () => {

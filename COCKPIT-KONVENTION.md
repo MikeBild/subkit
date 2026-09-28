@@ -1,10 +1,10 @@
 # Cockpit-Konvention
 
-Version 2.1 · 28.09.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
+Version 2.2 · 28.09.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
 
 **Modell: Konvention statt Bibliothek.** Jedes Produkt bleibt eigenständig — eigenes Repo, eigene shadcn-Komponenten (vendored, wie shadcn gedacht ist), eigene Releases, kein shared Package. Geteilt wird nur dieses Dokument. Eine Kopie liegt in jedem Repo; Abweichungen sind erlaubt, wo das Produkt es begründet — die Konvention ist der Default, nicht das Gesetz.
 
-**v2.x ist SubKit-first — eine gewollte Abweichung von der Familie, bis die Geschwister folgen.** SubKit setzt v2.1 und `FAMILY-UI.json` 3.0 zuerst um. ContentKit, WorkKit, WikiKit, CodeKit und WatchKit arbeiten nach v1.7 und `FAMILY-UI.json` 2.3, bis ihre eigenen Umsetzungs-Schnitte folgen; bis dahin gilt in ihren Repos die v1.7-Kopie. Den Startseiten-Namen „Übersicht" tragen alle sechs bereits. Was ein Geschwister umsetzen muss, steht in `FAMILY-UI.json` unter `migration`. Die v2.3-Schnittstelle `GET /v1/operational-overview` bleibt in SubKit erhalten, damit Geschwister und Prometheus weiterlesen können.
+**v2.x ist SubKit-first — eine gewollte Abweichung von der Familie, bis die Geschwister folgen.** SubKit setzt v2.2 und `FAMILY-UI.json` 3.0 zuerst um. ContentKit, WorkKit, WikiKit, CodeKit und WatchKit arbeiten nach v1.7 und `FAMILY-UI.json` 2.3, bis ihre eigenen Umsetzungs-Schnitte folgen; bis dahin gilt in ihren Repos die v1.7-Kopie. Den Startseiten-Namen „Übersicht" tragen alle sechs bereits. Was ein Geschwister umsetzen muss, steht in `FAMILY-UI.json` unter `migration`. Die v2.3-Schnittstelle `GET /v1/operational-overview` bleibt in SubKit erhalten, damit Geschwister und Prometheus weiterlesen können.
 
 Referenz-Implementierung: für v2.x ist SubKit die Referenz (Startseite „Übersicht" mit Betriebsleiste und Anliegen-Liste, Prüf-Seitenblatt, Zeilen, „Personen & Rechte"). Die Karten-Anatomie einer Entscheidung (§8.4) stammt aus WorkKit (Übergabe „workkit-entscheidungen-uebergabe"), §9–§11 aus SubKit (Übergabe „subkit-referenzarchitektur-uebergabe").
 
@@ -18,6 +18,7 @@ Referenz-Implementierung: für v2.x ist SubKit die Referenz (Startseite „Über
 Änderungen v1.7: §8.2 auf genau ein Ordnungswerkzeug reduziert. Art-Chips mit Zählern bleiben; der redundante Gruppieren-Umschalter entfällt. Die Sortierung ist fest: ablaufend zuerst, dann älteste.
 Änderungen v2.0: Übersicht, Entscheidungs-Seite und System-Seite verschmelzen zu **einer** Startseite „Heute" mit einer Anliegen-Liste. Neu §0.1 „Ein Fakt, ein Ort" mit Matrix; §1 neu gefasst (Heute statt drei Zonen, keine Null-Kacheln, „Alles erledigt" nur, wenn jede lesbare Quelle geantwortet hat); §6 Installation ohne System, mit „Personen & Rechte"; §8 neu gefasst als Anliegen-Grammatik mit Prüf-Seitenblatt — die Karten-Anatomie aus v1.7 wandert ins Seitenblatt, Art-Chips, Rubriken, Zähler-Kacheln und Incident-Banner entfallen; §9.2 und §12 verweisen auf Heute; §10 Zeilen öffnen über den Namen als echten Link und per Klick, ohne „Öffnen"-Knopf, „⋯" nur für echte Menüs; neu §10.1 „Zahlen führen auf Listen, die dasselbe zählen".
 Änderungen v2.1: Die Startseite heißt wieder **„Übersicht"** (englisch „Overview") wie in allen sechs Produkten. §1 neu gegliedert: Seitenkopf mit Zeitfenster (24 Std · 7 Tage · 30 Tage) → Betriebsleiste mit genau vier Werten → Anliegen-Liste „Braucht dich" → Verweis auf den Audit-Trail; „keine Null-Kacheln" bleibt. §0.1: Ausführungen, Erfolgsquote, Konnektor-Gesundheit und Reparaturquote wohnen in der Betriebsleiste der Übersicht, nicht mehr auf Nutzung. §6 kanonischer Name „Übersicht". §8.5: ein Wert der Betriebsleiste, der auf gefilterte Audit-Einträge führt, ist kein zweiter Verweis auf die Geschichte. §8.6: die Betriebsleiste bleibt im leeren Zustand stehen.
+Änderungen v2.2: Die Betriebsleiste trägt sechs Werte statt vier — dazu **Kosten** (Ausgaben im gewählten Zeitfenster, in der Währung der Preise) und **Kontingent** (Token des Kalendermonats gegen das Monatskontingent, markiert „Monat"), je in Kurzform. §1 Betriebsleiste: ein Raster ohne seitliches Scrollen (breit 6 in einer Zeile oder 3 × 2, Telefon 2 Spalten). §0.1: Kosten und Kontingent wohnen als Kurzform in der Betriebsleiste; Nutzung behält Aufriss und Tabellen.
 
 ---
 
@@ -53,7 +54,7 @@ und verlinken höchstens zur Aufgabe. Jeder Fakt hat genau einen Ort.
 | Gesundheitszustand | Statuszeile auf der Übersicht, **nur im leeren Zustand**; Ursachen sind Einträge | nirgends |
 | Komponenten/Score | nur API, MCP, Prometheus | — |
 | Zahl offener Anliegen | Abzeichen am Navigationseintrag = Zahl der Einträge | Listenköpfe ohne Zahl |
-| Ausführungen, Erfolgsquote, Konnektor-Gesundheit, Reparaturquote | Übersicht, Betriebsleiste (je Wert ein Link in die gefilterte Liste desselben Zeitfensters, §10.1) | Nutzung zeigt Verbrauch, Kontingent und Laufzeit, nicht diese Werte |
+| Ausführungen, Erfolgsquote, Konnektor-Gesundheit, Reparaturquote, Kosten, Kontingent | Übersicht, Betriebsleiste (je Wert ein Link in die gefilterte Liste desselben Zeitfensters, §10.1; Kosten und Kontingent nur in Kurzform: Betrag des Fensters, Prozent vom Monatskontingent mit Zustand) | Nutzung zeigt Aufriss, Tabellen und Laufzeit desselben Fensters, nicht die vier Betriebswerte; ohne Preis kein stiller Teilbetrag („mind. …"), ohne Kontingent „Kein Kontingent" |
 | Datenstand | Eintrag auf der Übersicht, nur wenn veraltet | — |
 | Drift-Scan | kein Knopf im Cockpit (der Scheduler scannt; CLI/MCP behalten ihn) | — |
 | Titel wiederholende Beschreibungen | entfallen | — |
@@ -76,12 +77,17 @@ Entscheidungs-Seite und System-Seite aus v1.7; deren alte Adressen leiten auf di
 lesbare Quellen, nur wenn eine Quelle nicht geantwortet hat → genau ein Verweis „Was bereits
 entschieden wurde" auf den Audit-Trail. Kein Ereignisstrom, keine Liste letzter Läufe.
 
-**Betriebsleiste.** Genau vier Werte in einer Zeile, auf dem Telefon 2 × 2: Ausführungen,
-Erfolgsquote, Gesunde Konnektoren, Übernommene Reparaturen. Ausführungen, Erfolgsquote und
-Reparaturen zählen im gewählten Zeitfenster; „Gesunde Konnektoren" ist ein Zustand und trägt
-„Stand jetzt". Jeder Wert führt auf die gefilterte Liste desselben Fensters (§10.1). Ein Wert,
+**Betriebsleiste.** Genau sechs Werte in einem Raster ohne seitliches Scrollen — breit in einer
+Zeile oder 3 × 2, auf dem Telefon in zwei Spalten: Ausführungen, Erfolgsquote, Gesunde
+Konnektoren, Übernommene Reparaturen, Kosten, Kontingent. Ausführungen, Erfolgsquote,
+Reparaturen und Kosten zählen im gewählten Zeitfenster; „Gesunde Konnektoren" ist ein Zustand
+und trägt „Stand jetzt", „Kontingent" gilt dem Kalendermonat und trägt „Monat". Kosten zeigen den
+Betrag des Fensters — sind Modelle ohne Preis dabei, „mind. …" mit der Zahl der Aufrufe ohne
+Preis, nie ein stiller Teilbetrag; Kontingent zeigt den Anteil am Monatskontingent mit Rest und
+Zustand, ohne Kontingent „Kein Kontingent". Jeder Wert führt auf die gefilterte Liste desselben
+Fensters (§10.1), Kosten und Kontingent auf Nutzung, die den Aufriss trägt. Ein Wert,
 der nicht gelesen werden konnte, sagt „nicht lesbar" und bietet an, erneut zu lesen — je Wert,
-nicht für die ganze Leiste. Die Leiste ist kompakt (etwa 72 px hoch), damit die Anliegen im
+nicht für die ganze Leiste. Die Leiste ist kompakt (je Wert etwa 72 px hoch), damit die Anliegen im
 ersten Screen stehen. Sie zeigt Zahlen, keine Aufgaben: was jemanden braucht, ist ein Eintrag
 der Liste.
 
@@ -100,9 +106,9 @@ Navigationseintrag.
 **Abzeichen.** Der Navigationseintrag „Übersicht" trägt die Zahl der Einträge der Liste —
 dieselbe Zahl, nicht eine zweite Zählung.
 
-Regeln: Kein Zähler ohne Link. Kein Rot ohne Weg zur Ursache. Die vier Betriebswerte wohnen
-in der Betriebsleiste der Übersicht; Nutzung zeigt Verbrauch, Kontingent und Laufzeit, nicht
-diese Werte. Komponenten und Score liefern API, MCP und Prometheus. „Nichts zu tun" ist ein
+Regeln: Kein Zähler ohne Link. Kein Rot ohne Weg zur Ursache. Die sechs Betriebswerte wohnen
+in der Betriebsleiste der Übersicht; Nutzung zeigt Aufriss, Tabellen und Laufzeit, nicht
+diese Werte ein zweites Mal. Komponenten und Score liefern API, MCP und Prometheus. „Nichts zu tun" ist ein
 ruhiger Zustand, kein inszenierter Erfolg.
 
 ## 2. Zustandsvokabular
