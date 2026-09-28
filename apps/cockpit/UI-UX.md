@@ -266,6 +266,36 @@ Checking and repairing stay two acts in one order: the drift scan reads and repo
 repair it proposes becomes a decision a person makes. The scan's toast says how many repairs it
 proposed and, when there are any, leads to the decisions page. There is no button that does both.
 
+### Error, cause, fix
+
+A failure never ends at a red word. Wherever the cockpit shows one — a run sheet, an unhealthy
+workflow — one block (`components/cockpit/cause-fix.tsx`) says the state, the cause in the
+cockpit's own words, the engine's wording where it wrote some, and exactly one next step. The step
+is chosen by `lib/remedy.ts` in a fixed order: an open repair proposal is reviewed first, a
+rejected sign-in leads to the connector, and anything else opens the chat with the workflow and
+the run attached. Without the permission to act there is no link at all.
+
+The run sheet follows the Reference Architecture's run dialog: the title is the workflow and leads
+there, with the status beside it; then the short facts; then one sentence composed from the
+engine's structured `outcome` — the step that stopped the run, the classified cause, how many steps
+completed — never from its English error text. A cause class this build has no word for stays the
+engine's value, set as one. The stopping step's error appears once, not again inside its step
+card. The payload comes last and closed; a failed run's newest output is named for the step that
+produced it, because a failed run has no result. Running a run again states its consequence first
+— same version, same input, real effects — and is offered only where the engine accepts it.
+
+The runs list carries the cause class of each failure in words (§3); a run that did not fail has an
+empty cause cell, not a dash that reads as "unknown". On the workflow list the health mark leads to
+that workflow's failed runs and the last-run time to its runs; the block column shows a name
+derived from the slug prefix, never the slug. A workflow page shows its health beside the title, the
+cause block when unhealthy, and its five latest runs with the way to all of them.
+
+Approval cards are headed by what a reader decides by — environment, validity end, run limit —
+with the state beside it. Versions read `v{n}` where the page knows the number; any other
+identifier is shortened with the whole value on its `title`. The visual sweep enforces this by
+shape: any UUID-shaped text outside a fenced block fails the frame, not only the one value the
+fixture happens to know.
+
 ### Conversation surface
 
 Chat does not take the shared page frame, and that is a recorded decision rather than an oversight:

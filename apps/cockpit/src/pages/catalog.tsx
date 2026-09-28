@@ -10,6 +10,7 @@ import {
   chatNewHref,
   connectorHref,
   recordHref,
+  runsHref,
   workflowHref,
   workflowsHref,
 } from "@/app/links";
@@ -44,6 +45,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
+  humanizeCategory,
   MIN_CATEGORY_SIZE,
   memberCountAfterMove,
   recategorizedSlug,
@@ -225,9 +227,10 @@ function stringList(row: CatalogRow, field: string): string[] {
  * (CUI-A11Y-5), and a `title=` or a hover-only tooltip is unreachable by
  * keyboard and invisible on touch (CUI-WORDS-2).
  */
-function HealthMark({ row }: { row: CatalogRow }) {
+function HealthMark({ row, index }: { row: CatalogRow; index: number }) {
   const { t } = useI18n();
   const state = stringField(row, "health_state");
+  const id = stringField(row, "id");
   if (!state || state === "ok") return null;
   const reason = stringField(row, "health_reason");
   const tone = state === "degraded" ? "bg-destructive" : "bg-warning";
@@ -238,11 +241,26 @@ function HealthMark({ row }: { row: CatalogRow }) {
   // own line behind a label that names its author. That way a reader who finds
   // a foreign sentence there knows why it is foreign, instead of reading a
   // half-translated line the cockpit appears to have written.
+  // The red mark leads to its cause: the failed runs of this workflow (§1,
+  // "kein Rot ohne Weg zur Ursache"). A mark that only says "failed" sends
+  // the reader to search the run log by name.
+  const sentence = t("workflows.health", { state: statusLabel(t, state) });
   return (
     <span className="flex items-start gap-1.5 text-xs text-muted-foreground">
       <span aria-hidden="true" className={`mt-1 size-2 shrink-0 rounded-full ${tone}`} />
       <span className="flex min-w-0 flex-col">
-        <span className="min-w-0">{t("workflows.health", { state: statusLabel(t, state) })}</span>
+        {id ? (
+          <a
+            href={absolute(runsHref({ workflowId: id, status: "failed" }))}
+            className="min-w-0 underline underline-offset-4"
+            data-testid={`workflow-health-link-${index}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {sentence}
+          </a>
+        ) : (
+          <span className="min-w-0">{sentence}</span>
+        )}
         {reason ? (
           <span className="min-w-0 truncate" data-testid="workflow-health-engine-wording">
             {t("common.engineWording", { text: reason })}
@@ -272,10 +290,10 @@ function catalogColumns(
         "name",
         (row) => row.name,
         t("common.name"),
-        (row) => (
+        (row, index) => (
           <span className="flex min-w-0 flex-col gap-1">
             <span className="min-w-0 font-medium">{stringField(row, "name") ?? MISSING}</span>
-            <HealthMark row={row} />
+            <HealthMark row={row} index={index} />
           </span>
         ),
         { sortable: true, width: "w-[21%]" },
@@ -302,7 +320,7 @@ function catalogColumns(
                 relations.onCategory(category);
               }}
             >
-              {category}
+              {categoryLabel(category, t)}
             </Button>
           );
         },
@@ -320,14 +338,41 @@ function catalogColumns(
       ),
       column.custom(
         "trigger",
-        (row) => row.trigger,
+        (row) => row.effective_trigger,
         t("catalog.trigger"),
-        (row) => t(triggerLabelKey(row.trigger as WorkflowListItem["trigger"] | null | undefined)),
+        (row) =>
+          t(
+            triggerLabelKey(
+              row.effective_trigger as WorkflowListItem["effective_trigger"] | null | undefined,
+            ),
+          ),
         { width: "w-[11%]" },
       ),
-      column.date("last_executed_at", (row) => row.last_executed_at, t("catalog.lastRun"), {
-        width: "w-[14%]",
-      }),
+      // The last run's time leads to the runs of this workflow — the date is
+      // the question "what happened then?", and the answer is one click away.
+      column.custom(
+        "last_executed_at",
+        (row) => row.last_executed_at,
+        t("catalog.lastRun"),
+        (row, index) => {
+          const at = stringField(row, "last_executed_at");
+          const id = stringField(row, "id");
+          if (!at) return MISSING;
+          return id ? (
+            <a
+              href={absolute(runsHref({ workflowId: id }))}
+              className="underline-offset-4 hover:underline"
+              data-testid={`workflow-last-run-${index}`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {dateTime(at)}
+            </a>
+          ) : (
+            dateTime(at)
+          );
+        },
+        { width: "w-[14%]" },
+      ),
       column.date("updated_at", (row) => row.updated_at, t("catalog.updated"), {
         sortable: true,
         width: "w-[14%]",
@@ -976,7 +1021,7 @@ function RecategorizeDialog({
 }
 
 function categoryLabel(category: string, t: ReturnType<typeof useI18n>["t"]): string {
-  return category === UNCATEGORIZED ? t("catalog.categoryOther") : category;
+  return humanizeCategory(category, t("catalog.categoryOther"));
 }
 
 export const CATALOG_RESOURCES = new Set<string>(Object.keys(CONFIG));

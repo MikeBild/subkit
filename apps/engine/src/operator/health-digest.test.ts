@@ -13,13 +13,18 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { loadExecutionOutcome } from "../execution/outcome.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import {
   noChangeDiff,
   reviewableDiff,
   seedPatchableWorkflow,
 } from "../test-helpers/patch-candidates.ts";
-import { buildOperatorHealthDigest, MAX_PENDING_PATCHES } from "./health-digest.ts";
+import {
+  buildOperatorHealthDigest,
+  collectFailureGroups,
+  MAX_PENDING_PATCHES,
+} from "./health-digest.ts";
 
 let testDb: TestDb;
 let tenant_id: string;
@@ -279,5 +284,52 @@ describe("buildOperatorHealthDigest", () => {
     expect(digest.headline).not.toContain(`${MAX_PENDING_PATCHES} fixes`);
     expect(digest.rendered).toContain(`${backlog} self-healing fixes awaiting review:`);
     expect(digest.rendered).toContain(`(+${backlog - MAX_PENDING_PATCHES} more)`);
+  });
+});
+
+describe("a failure no step carries", () => {
+  test("the digest and the execution outcome name the same validation failure", async () => {
+    const db = testDb.db;
+    const [wf] = await db
+      .insert(workflows)
+      .values({ tenant_id, slug: "validated-report", name: "Validated", lifecycle: "active" })
+      .returning();
+    if (!wf) throw new Error("workflow fixture missing");
+    const now = new Date(getTestNow());
+    const [exec] = await db
+      .insert(executions)
+      .values({
+        tenant_id,
+        workflow_id: wf.id,
+        status: "failed",
+        request_source: "scheduler",
+        execution_mode: "dev",
+        failure: {
+          step_id: null,
+          error_code: "validation_failed",
+          error_message: "validation_expression `ok` returned false",
+        },
+        created_at: now,
+        started_at: now,
+        finished_at: now,
+      })
+      .returning();
+    if (!exec) throw new Error("execution fixture missing");
+    await db.insert(executionSteps).values({
+      tenant_id,
+      execution_id: exec.id,
+      step_key: "out",
+      kind: "transform",
+      status: "succeeded",
+      started_at: now,
+    });
+
+    const outcome = await loadExecutionOutcome(tenant_id, exec, db);
+    const groups = await collectFailureGroups(db, tenant_id, 24 * 365 * 10, now);
+    const group = groups.find((g) => g.workflow_id === wf.id);
+    expect(outcome.failed_step).toBeNull();
+    expect(outcome.error_code).toBe("validation_failed");
+    expect(group?.error_code).toBe(outcome.error_code);
+    expect(group?.step_key).toBeNull();
   });
 });
