@@ -9,6 +9,7 @@ import { describe, expect, test } from "bun:test";
 import { openPeopleSection, readablePeopleSections } from "@/pages/admin-model";
 import { auditFilterFromUrl } from "@/pages/audit-model";
 import { connectorHealthFilterFromUrl } from "@/pages/connectors-model";
+import { usageWindowFromUrl } from "@/pages/operations-figures";
 import { filterFromUrl } from "@/pages/runs-model";
 import { settingsLeafFromUrl } from "@/pages/settings-model";
 import {
@@ -32,6 +33,7 @@ import {
   runHref,
   runsHref,
   settingsHref,
+  usageHref,
   workflowHref,
   workflowsHref,
 } from "./links";
@@ -53,6 +55,7 @@ describe("router-relative, and absolute only on request", () => {
       attentionHref(),
       attentionHref({ review: "skills" }),
       settingsHref(),
+      usageHref({ window: "7d" }),
       auditHref(),
       chatNewHref(),
       apiAccessHref(),
@@ -191,6 +194,17 @@ describe("settings", () => {
       "server.public_base_url",
     );
     expect(settingsLeafFromUrl(query(settingsHref()))).toBeNull();
+  });
+});
+
+describe("usage", () => {
+  test("the window a link opens is the window the page reads", () => {
+    for (const window of ["24h", "7d", "30d"] as const)
+      expect(usageWindowFromUrl(query(usageHref({ window })))).toBe(window);
+    // Thirty days is the page's default and is left out of the address.
+    expect(usageHref({ window: "30d" })).toBe("/usage");
+    expect(usageWindowFromUrl(query(usageHref()))).toBe("30d");
+    expect(usageWindowFromUrl("?window=1y")).toBe("30d");
   });
 });
 

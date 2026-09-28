@@ -58,13 +58,6 @@ export function formatDurationMs(value: number | null): string {
 export const CONSUMPTION_AXES = ["workflow", "flow", "user", "model"] as const;
 export type ConsumptionAxis = (typeof CONSUMPTION_AXES)[number];
 
-/** Token consumption over the same window, grouped along one axis. */
-export function llmStatsEndpoint(axis: ConsumptionAxis, now = new Date()): string {
-  const from = new Date(now);
-  from.setUTCDate(from.getUTCDate() - 30);
-  return `/v1/stats/llm?bucket=day&from=${encodeURIComponent(from.toISOString())}&group_by=${axis}`;
-}
-
 export interface ConsumptionRow {
   /** The workflow, purpose, user or model this row is about. Empty when none. */
   key: string;
@@ -80,7 +73,7 @@ export interface ConsumptionRow {
  * One row per group, largest first.
  *
  * `total` is the cache-weighted figure the budget is also measured in, so the
- * units reconcile. The WINDOWS do not: these rows cover the last thirty days
+ * units reconcile. The WINDOWS do not: these rows cover the chosen window
  * and the remaining-budget line covers the calendar month. Every surface that
  * shows both must name which is which — an earlier version of this comment
  * claimed they added up to the same number, which is false on any day but the
@@ -140,6 +133,8 @@ export interface BudgetSummary {
   remainingTokens: number | null;
   /** How much of the cap is spent, 0–1. `null` when there is no cap. */
   consumedShare: number | null;
+  /** The engine's own word for the month (`/v1/status` `monthly_budget_state`). */
+  state?: "ample" | "tightening" | "critical" | null;
 }
 
 /**
@@ -154,7 +149,11 @@ export function budgetSummary(status: unknown): BudgetSummary {
   const used = numberOrNull(s.tokens_month);
   const budget = numberOrNull(s.monthly_budget_tokens);
   const remaining = numberOrNull(s.remaining_monthly_budget_tokens);
+  const state = s.monthly_budget_state;
   return {
+    ...(state === "ample" || state === "tightening" || state === "critical" || state === null
+      ? { state }
+      : {}),
     usedTokens: used,
     budgetTokens: budget,
     remainingTokens: remaining,
@@ -171,12 +170,33 @@ export function budgetSummary(status: unknown): BudgetSummary {
  * cockpit keeps removing. `null` when nothing bounds the workspace — an
  * unbounded installation is not "healthy", it is unmeasured, and saying
  * otherwise is the zero that means "not measured".
+ *
+ * The engine decides: `/v1/status` sends `monthly_budget_state`, the same word
+ * the attention list, MCP `get_token_budget` and `sk health` use, measured on
+ * the exact share (75 %, 90 %). The cockpit computed its own on a rounded
+ * percentage, so 89.6 % was critical here and tightening everywhere else. The
+ * local rule remains only for an engine that does not send the field.
  */
 export function budgetPressure(summary: BudgetSummary): "ample" | "tightening" | "critical" | null {
-  if (summary.consumedShare === null) return null;
-  if (summary.consumedShare >= 0.9) return "critical";
-  if (summary.consumedShare >= 0.75) return "tightening";
+  if (summary.state !== undefined) return summary.state;
+  const { usedTokens, budgetTokens } = summary;
+  if (budgetTokens === null || budgetTokens <= 0 || usedTokens === null) return null;
+  const share = usedTokens / budgetTokens;
+  if (share >= 0.9) return "critical";
+  if (share >= 0.75) return "tightening";
   return "ample";
+}
+
+/**
+ * The month's spend as a whole percentage, rounded DOWN so the number never
+ * crosses a threshold the state has not: 89.6 % reads "89 %" beside "Wird
+ * knapp", not "90 %". `null` when nothing bounds the workspace. Not capped at
+ * 100: an overspent month says so.
+ */
+export function budgetPercent(summary: BudgetSummary): number | null {
+  const { usedTokens, budgetTokens } = summary;
+  if (budgetTokens === null || budgetTokens <= 0 || usedTokens === null) return null;
+  return Math.floor((usedTokens / budgetTokens) * 100);
 }
 
 export interface WindowCost {
