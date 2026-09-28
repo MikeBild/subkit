@@ -4,6 +4,7 @@ import {
   API_ACCESS_ORDER,
   type ApiKeyItem,
   type ConnectedClientItem,
+  calendarDaysUntil,
   deepLinkReady,
   defaultKeyScopes,
   groupApiKeys,
@@ -11,6 +12,7 @@ import {
   KEY_EXPIRING_DAYS,
   keyIdleDays,
   keyState,
+  keyStateSaysUse,
   keyStateText,
   readableSections,
   scopeCatalogue,
@@ -115,10 +117,31 @@ describe("a key's state, on its row", () => {
     };
     expect(text(daysAhead(3))).toBe("läuft ab in 3 Tagen");
     expect(text(daysAhead(KEY_EXPIRING_DAYS))).toBe(`läuft ab in ${KEY_EXPIRING_DAYS} Tagen`);
-    expect(text(new Date(NOW + 1.5 * 86_400_000).toISOString())).toBe("läuft morgen ab");
-    expect(text(new Date(NOW + 3_600_000).toISOString())).toBe("läuft heute ab");
     expect(text(daysAgo(2))).toBe("abgelaufen");
     expect(text(new Date(NOW).toISOString())).toBe("abgelaufen");
+  });
+
+  test("today and tomorrow are calendar days in the reader's zone, not 24-hour blocks", () => {
+    // Late in the evening, local time: a key lapsing two hours later lapses
+    // TOMORROW, one lapsing within the hour lapses today.
+    const evening = new Date(2026, 8, 1, 23, 0).getTime();
+    const chip = (expires: Date) => {
+      const state = keyState(key({ expires_at: expires.toISOString() }), evening);
+      return state ? keyStateText(state, t) : null;
+    };
+    expect(chip(new Date(2026, 8, 2, 1, 0))).toBe("läuft morgen ab");
+    expect(chip(new Date(2026, 8, 1, 23, 30))).toBe("läuft heute ab");
+    // Thirty hours away, but two dates on: in two days.
+    expect(chip(new Date(2026, 8, 3, 5, 0))).toBe("läuft ab in 2 Tagen");
+    expect(calendarDaysUntil(new Date(2026, 8, 2, 0, 1).getTime(), evening)).toBe(1);
+  });
+
+  test("a chip that says how the key was used replaces the use line's own words", () => {
+    expect(keyStateSaysUse({ kind: "idle", days: 120 })).toBe(true);
+    expect(keyStateSaysUse({ kind: "neverUsed", days: 95 })).toBe(true);
+    expect(keyStateSaysUse({ kind: "expiring", days: 3 })).toBe(false);
+    expect(keyStateSaysUse({ kind: "expired" })).toBe(false);
+    expect(keyStateSaysUse(null)).toBe(false);
   });
 
   test("a key idle past the threshold says since when, used or never", () => {

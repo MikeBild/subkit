@@ -22,9 +22,12 @@ import {
   DECIDED_REPAIR_ACTIONS,
   listTotal,
   llmStatsEndpoint,
+  type OperatingFigure,
   operatingFigures,
   repairStatsEndpoint,
   repairTotals,
+  usageBounds,
+  usageBucket,
   usageStatsEndpoint,
   windowCost,
   workflowNameLookup,
@@ -288,91 +291,118 @@ describe("a workflow id on the usage page", () => {
 
 describe("the operations figures", () => {
   const NOW = new Date("2026-08-10T12:00:00.000Z");
+  const WEEK = usageBounds("7d", NOW);
   const all = { runs: true, connectors: true, audit: true };
+  const answered = <T>(value: T) => ({ state: "answered" as const, value });
   const query = (href: string | null) => (href ? href.slice(href.indexOf("?")) : "");
+  const stats = (endpoint: string) => new URLSearchParams(endpoint.slice(endpoint.indexOf("?")));
+  const figuresOf = (overrides: Partial<Parameters<typeof operatingFigures>[0]> = {}) =>
+    operatingFigures({
+      bounds: WEEK,
+      totals: answered({ executions: 40, failedRuns: 2, successRatePercent: 95 }),
+      connectors: answered({ enabled: 8, notOk: 2 }),
+      repairs: answered({ decided: 4, applied: 3 }),
+      canOpen: all,
+      ...overrides,
+    });
+  const value = (figure: OperatingFigure | undefined) =>
+    figure?.state === "value" ? figure : undefined;
 
-  test("each window asks the engine in a bucket its caps allow, from the right start", () => {
-    expect(usageStatsEndpoint("24h", NOW)).toBe(
-      "/v1/stats/executions?bucket=hour&from=2026-08-09T12%3A00%3A00.000Z",
+  test("each window is two fixed instants, asked in a bucket the engine's caps allow", () => {
+    expect(usageBounds("24h", NOW)).toEqual({
+      window: "24h",
+      from: "2026-08-09T12:00:00.000Z",
+      to: "2026-08-10T12:00:00.000Z",
+    });
+    expect(usageStatsEndpoint(usageBounds("24h", NOW))).toBe(
+      "/v1/stats/executions?bucket=hour&from=2026-08-09T12%3A00%3A00.000Z&to=2026-08-10T12%3A00%3A00.000Z",
     );
-    expect(usageStatsEndpoint("7d", NOW)).toBe(
-      "/v1/stats/executions?bucket=day&from=2026-08-03T12%3A00%3A00.000Z",
-    );
-    expect(usageStatsEndpoint("30d", NOW)).toBe(
-      "/v1/stats/executions?bucket=day&from=2026-07-11T12%3A00%3A00.000Z",
-    );
-    // The repair rate is read over the same window as the runs.
-    expect(repairStatsEndpoint("24h", NOW)).toBe(
-      "/v1/stats/events?class=self_healing&group_by=action&bucket=hour&from=2026-08-09T12%3A00%3A00.000Z",
-    );
+    expect(stats(usageStatsEndpoint(WEEK)).get("bucket")).toBe("day");
+    expect(stats(usageStatsEndpoint(WEEK)).get("from")).toBe("2026-08-03T12:00:00.000Z");
+    expect(usageBucket("24h")).toBe("hour");
+    expect(usageBucket("30d")).toBe("day");
+    // The repair rate is read over the very same bounds as the runs.
+    const repairs = stats(repairStatsEndpoint(WEEK));
+    expect(repairs.get("class")).toBe("self_healing");
+    expect([repairs.get("from"), repairs.get("to")]).toEqual([WEEK.from, WEEK.to]);
   });
 
-  test("four figures, in reading order, each one link into the list it counts", () => {
-    const figures = operatingFigures({
-      totals: { executions: 40, successRatePercent: 95 },
-      connectors: { enabled: 8, notOk: 2 },
-      repairs: { decided: 4, applied: 3 },
-      canOpen: all,
-    });
-    expect(figures.map((figure) => [figure.id, figure.value])).toEqual([
+  test("every link opens the list the number counted: same window, same filter", () => {
+    const figures = figuresOf();
+    expect(figures.map((figure) => [figure.id, value(figure)?.value])).toEqual([
       ["runs", 40],
       ["successRate", 95],
       ["connectorHealth", 75],
       ["repairRate", 75],
     ]);
-    const [runs, rate, connectors, repairs] = figures;
-    expect(runs?.href).toBe("/runs");
-    // Each link is read back by the page it opens, and means what it says.
-    expect(filterFromUrl(query(rate?.href ?? null)).status).toBe("failed");
-    expect(connectors?.href?.startsWith("/connectors?")).toBe(true);
+    const [runs, rate, connectors, repairs] = figures.map(value);
+    // Runs: the runs that started in the window — the stats query's bounds.
+    const window = { startedFrom: WEEK.from, startedTo: WEEK.to };
+    expect(filterFromUrl(query(runs?.href ?? null))).toMatchObject({ status: "all", ...window });
+    const statsQuery = stats(usageStatsEndpoint(WEEK));
+    expect([statsQuery.get("from"), statsQuery.get("to")]).toEqual([
+      window.startedFrom,
+      window.startedTo,
+    ]);
+    // Success rate: the failed runs of that same window.
+    expect(filterFromUrl(query(rate?.href ?? null))).toMatchObject({ status: "failed", ...window });
+    // Connector health: the connectors unwell now.
     expect(connectorHealthFilterFromUrl(query(connectors?.href ?? null))).toBe("not_ok");
-    expect(repairs?.href?.startsWith("/audit?")).toBe(true);
+    // Repair rate: the decided repairs of the window, by exactly the counted verbs.
     const audit = auditFilterFromUrl(query(repairs?.href ?? null));
-    expect(audit.scope).toBe("all");
+    expect(audit).toMatchObject({ scope: "all", tsFrom: WEEK.from, tsTo: WEEK.to });
     expect(audit.actions).toEqual([...DECIDED_REPAIR_ACTIONS]);
-    // Only connector health is a state of now; the rest belong to the window.
     expect(figures.map((figure) => figure.current)).toEqual([false, false, true, false]);
+  });
+
+  test("a link that would open an empty list is no link", () => {
+    const [, rate, connectors] = figuresOf({
+      totals: answered({ executions: 12, failedRuns: 0, successRatePercent: 100 }),
+      connectors: answered({ enabled: 5, notOk: 0 }),
+    }).map(value);
+    expect(rate?.value).toBe(100);
+    expect(rate?.href).toBeNull();
+    expect(connectors?.value).toBe(100);
+    expect(connectors?.href).toBeNull();
   });
 
   test("a figure with nothing to say is absent — never a tile reading 0", () => {
     expect(
-      operatingFigures({
-        totals: { executions: 0, successRatePercent: null },
-        connectors: { enabled: 0, notOk: 0 },
-        repairs: { decided: 0, applied: 0 },
-        canOpen: all,
-      }),
-    ).toEqual([]);
-    expect(
-      operatingFigures({
-        totals: { executions: null, successRatePercent: null },
-        connectors: { enabled: null, notOk: null },
-        repairs: null,
-        canOpen: all,
+      figuresOf({
+        totals: answered({ executions: 0, failedRuns: 0, successRatePercent: null }),
+        connectors: answered({ enabled: 0, notOk: 0 }),
+        repairs: answered({ decided: 0, applied: 0 }),
       }),
     ).toEqual([]);
     // A rate of nought over real runs is a fact, and it stays.
     expect(
-      operatingFigures({
-        totals: { executions: 3, successRatePercent: 0 },
+      figuresOf({
+        totals: answered({ executions: 3, failedRuns: 3, successRatePercent: 0 }),
         connectors: null,
-        repairs: null,
-        canOpen: all,
-      }).map((figure) => [figure.id, figure.value]),
+        repairs: answered(null),
+      }).map((figure) => [figure.id, value(figure)?.value]),
     ).toEqual([
       ["runs", 3],
       ["successRate", 0],
     ]);
   });
 
-  test("a value the reader may not open is shown without a link", () => {
-    const figures = operatingFigures({
-      totals: { executions: 5, successRatePercent: 80 },
-      connectors: { enabled: 2, notOk: 0 },
-      repairs: { decided: 1, applied: 1 },
-      canOpen: { runs: false, connectors: false, audit: false },
+  test("a read that failed is said as unreadable, never as nothing to report", () => {
+    const figures = figuresOf({
+      totals: { state: "failed" },
+      connectors: { state: "failed" },
+      repairs: { state: "failed" },
     });
-    expect(figures.map((figure) => figure.href)).toEqual([null, null, null, null]);
+    expect(figures.map((figure) => [figure.id, figure.state])).toEqual([
+      ["runs", "unreadable"],
+      ["connectorHealth", "unreadable"],
+      ["repairRate", "unreadable"],
+    ]);
+  });
+
+  test("a value the reader may not open is shown without a link", () => {
+    const figures = figuresOf({ canOpen: { runs: false, connectors: false, audit: false } });
+    expect(figures.map((figure) => value(figure)?.href)).toEqual([null, null, null, null]);
   });
 
   test("the repair rate counts exactly the verbs its link opens", () => {

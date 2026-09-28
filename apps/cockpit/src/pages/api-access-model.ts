@@ -198,6 +198,19 @@ export type KeyState =
   | { kind: "neverUsed"; days: number }
   | { kind: "idle"; days: number };
 
+/**
+ * Calendar days from `nowMs` to `targetMs` in the reader's own time zone:
+ * 0 is later today, 1 is tomorrow. Counted by date, not by 24-hour blocks — a
+ * key lapsing at 01:00 tomorrow expires "morgen", though it is two hours away.
+ */
+export function calendarDaysUntil(targetMs: number, nowMs: number): number {
+  const day = (ms: number) => {
+    const date = new Date(ms);
+    return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  };
+  return Math.round((day(targetMs) - day(nowMs)) / 86_400_000);
+}
+
 export function keyState(
   key: Pick<ApiKeyItem, "revoked_at" | "expires_at" | "last_used_at" | "created_at">,
   nowMs: number,
@@ -205,13 +218,21 @@ export function keyState(
   if (key.revoked_at) return { kind: "revoked" };
   if (keyExpired(key, nowMs)) return { kind: "expired" };
   if (key.expires_at !== null) {
-    const left = Date.parse(key.expires_at) - nowMs;
-    if (left <= KEY_EXPIRING_DAYS * 86_400_000)
-      return { kind: "expiring", days: Math.floor(left / 86_400_000) };
+    const days = calendarDaysUntil(Date.parse(key.expires_at), nowMs);
+    if (days <= KEY_EXPIRING_DAYS) return { kind: "expiring", days };
   }
   const idle = keyIdleDays(key, nowMs);
   if (idle === null) return null;
   return key.last_used_at ? { kind: "idle", days: idle } : { kind: "neverUsed", days: idle };
+}
+
+/**
+ * Whether the chip already says how the key was used — "seit 120 Tagen
+ * ungenutzt", "seit 95 Tagen nie benutzt". The row's use line then leaves its
+ * own "Zuletzt benutzt …"/"Noch nie benutzt" out: one fact, said once.
+ */
+export function keyStateSaysUse(state: KeyState | null): boolean {
+  return state?.kind === "idle" || state?.kind === "neverUsed";
 }
 
 /** The chip's words: "läuft ab in 3 Tagen", "abgelaufen", "seit 120 Tagen ungenutzt". */

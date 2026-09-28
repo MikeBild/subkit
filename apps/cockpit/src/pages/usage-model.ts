@@ -13,7 +13,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * The windows the operations block can be read over. The engine takes any
- * `from` within its bucket caps (stats/bucket-window.ts): a day in hours, a
+ * window within its bucket caps (stats/bucket-window.ts): a day in hours, a
  * week and a month in days.
  */
 export const USAGE_WINDOWS = ["24h", "7d", "30d"] as const;
@@ -25,16 +25,40 @@ const WINDOW_SHAPE: Record<UsageWindow, { bucket: "hour" | "day"; hours: number 
   "30d": { bucket: "day", hours: 30 * 24 },
 };
 
-/** A window as the stats routes take it: its bucket and its start. */
-function windowQuery(window: UsageWindow, now: Date): string {
-  const shape = WINDOW_SHAPE[window];
-  const from = new Date(now.getTime() - shape.hours * 3_600_000);
-  return `bucket=${shape.bucket}&from=${encodeURIComponent(from.toISOString())}`;
+/** Whether the window's table has one row per hour or per day. */
+export function usageBucket(window: UsageWindow): "hour" | "day" {
+  return WINDOW_SHAPE[window].bucket;
+}
+
+/**
+ * One window as two fixed instants. Fixed, not "the last 7 days" re-read at
+ * every request: the figures and the lists they link to must count over the
+ * very same bounds, and a window that slid between the stats query and the
+ * click would count different runs.
+ */
+export interface UsageBounds {
+  window: UsageWindow;
+  from: string;
+  to: string;
+}
+
+export function usageBounds(window: UsageWindow, now = new Date()): UsageBounds {
+  const from = new Date(now.getTime() - WINDOW_SHAPE[window].hours * 3_600_000);
+  return { window, from: from.toISOString(), to: now.toISOString() };
+}
+
+/** A window as the stats routes take it: its bucket and both bounds. */
+function windowQuery(bounds: UsageBounds): string {
+  return [
+    `bucket=${WINDOW_SHAPE[bounds.window].bucket}`,
+    `from=${encodeURIComponent(bounds.from)}`,
+    `to=${encodeURIComponent(bounds.to)}`,
+  ].join("&");
 }
 
 /** The runs over one window. The engine rejects a call without a window. */
-export function usageStatsEndpoint(window: UsageWindow = "30d", now = new Date()): string {
-  return `/v1/stats/executions?${windowQuery(window, now)}`;
+export function usageStatsEndpoint(bounds: UsageBounds = usageBounds("30d")): string {
+  return `/v1/stats/executions?${windowQuery(bounds)}`;
 }
 
 /**
@@ -54,8 +78,8 @@ const APPLIED_REPAIR_ACTIONS = new Set<string>([
 ]);
 
 /** The repair decisions over one window, counted per verb by the engine. */
-export function repairStatsEndpoint(window: UsageWindow = "30d", now = new Date()): string {
-  return `/v1/stats/events?class=self_healing&group_by=action&${windowQuery(window, now)}`;
+export function repairStatsEndpoint(bounds: UsageBounds): string {
+  return `/v1/stats/events?class=self_healing&group_by=action&${windowQuery(bounds)}`;
 }
 
 export interface RepairTotals {
@@ -95,71 +119,117 @@ export function listTotal(envelope: unknown): number | null {
 
 export type OperatingFigureId = "runs" | "successRate" | "connectorHealth" | "repairRate";
 
-export interface OperatingFigure {
-  id: OperatingFigureId;
-  /** The raw figure: a count for runs, a whole percentage for the rates. */
-  value: number;
-  /** Where the value leads — a list narrowed to what it counts. Null where the reader may not open it. */
-  href: string | null;
-  /** True for a state measured now rather than over the window. */
-  current: boolean;
-}
+/** A read the figures depend on: its answer, or that it could not be read. */
+export type Read<T> = { state: "answered"; value: T } | { state: "failed" };
+
+export type OperatingFigure =
+  | {
+      id: OperatingFigureId;
+      state: "value";
+      /** The raw figure: a count for runs, a whole percentage for the rates. */
+      value: number;
+      /**
+       * The list the value counts, narrowed to the same window and filter.
+       * Null where the reader may not open it, or where it would be empty — a
+       * link to no failed runs beside "100 %" leads nowhere.
+       */
+      href: string | null;
+      /** True for a state measured now rather than over the window. */
+      current: boolean;
+    }
+  | {
+      id: OperatingFigureId;
+      /** The read behind it failed: said so, never shown as "nothing to report". */
+      state: "unreadable";
+      current: boolean;
+    };
 
 /**
  * The operations figures, in reading order, each with the one list it opens.
  *
+ * Every link carries the window the figure counted over, so the list it opens
+ * holds the rows the number counted: the runs that started in the window, the
+ * failed ones among them, the repairs decided in it. Connector health is a
+ * state of now and its list is the connectors unwell now.
+ *
  * A figure that has nothing to say is absent, not a nought: no runs in the
  * window means no run count and no success rate; no enabled connector means
- * no connector health; no decided repair means no repair rate. A tile reading
- * 0 beside nothing measured is the zero that means "not measured".
+ * no connector health; no decided repair means no repair rate. A read that
+ * FAILED is not "nothing to say" — the figure stays, as unreadable.
  *
  * Nothing here is a task — what needs someone is on Heute, and this block
  * repeats none of it.
  */
 export function operatingFigures(input: {
-  totals: Pick<UsageTotals, "executions" | "successRatePercent">;
-  connectors: { enabled: number | null; notOk: number | null } | null;
-  repairs: RepairTotals | null;
+  bounds: UsageBounds;
+  totals: Read<Pick<UsageTotals, "executions" | "failedRuns" | "successRatePercent">>;
+  /** Null where the reader may not read connectors at all. */
+  connectors: Read<{ enabled: number | null; notOk: number | null }> | null;
+  repairs: Read<RepairTotals | null>;
   canOpen: { runs: boolean; connectors: boolean; audit: boolean };
 }): OperatingFigure[] {
   const figures: OperatingFigure[] = [];
-  const { totals, connectors, repairs, canOpen } = input;
-  if (totals.executions !== null && totals.executions > 0) {
+  const { bounds, totals, connectors, repairs, canOpen } = input;
+  const window = { startedFrom: bounds.from, startedTo: bounds.to };
+  if (totals.state === "failed") {
+    figures.push({ id: "runs", state: "unreadable", current: false });
+  } else if (totals.value.executions !== null && totals.value.executions > 0) {
+    const { executions, failedRuns, successRatePercent } = totals.value;
     figures.push({
       id: "runs",
-      value: totals.executions,
-      href: canOpen.runs ? runsHref() : null,
+      state: "value",
+      value: executions,
+      href: canOpen.runs ? runsHref(window) : null,
       current: false,
     });
-    if (totals.successRatePercent !== null)
+    if (successRatePercent !== null)
       figures.push({
         id: "successRate",
-        value: totals.successRatePercent,
-        href: canOpen.runs ? runsHref({ status: "failed" }) : null,
+        state: "value",
+        value: successRatePercent,
+        href:
+          canOpen.runs && failedRuns !== null && failedRuns > 0
+            ? runsHref({ ...window, status: "failed" })
+            : null,
         current: false,
       });
   }
-  if (
+  if (connectors?.state === "failed") {
+    figures.push({ id: "connectorHealth", state: "unreadable", current: true });
+  } else if (
     connectors &&
-    connectors.enabled !== null &&
-    connectors.enabled > 0 &&
-    connectors.notOk !== null
+    connectors.value.enabled !== null &&
+    connectors.value.enabled > 0 &&
+    connectors.value.notOk !== null
   ) {
-    const healthy = Math.max(connectors.enabled - connectors.notOk, 0);
+    const { enabled, notOk } = connectors.value;
+    const healthy = Math.max(enabled - notOk, 0);
     figures.push({
       id: "connectorHealth",
-      value: Math.round((healthy / connectors.enabled) * 100),
-      href: canOpen.connectors ? connectorsHref({ health: "not_ok" }) : null,
+      state: "value",
+      value: Math.round((healthy / enabled) * 100),
+      href: canOpen.connectors && notOk > 0 ? connectorsHref({ health: "not_ok" }) : null,
       current: true,
     });
   }
-  if (repairs && repairs.decided > 0)
+  if (repairs.state === "failed") {
+    figures.push({ id: "repairRate", state: "unreadable", current: false });
+  } else if (repairs.value && repairs.value.decided > 0) {
     figures.push({
       id: "repairRate",
-      value: Math.round((repairs.applied / repairs.decided) * 100),
-      href: canOpen.audit ? auditHref({ scope: "all", actions: DECIDED_REPAIR_ACTIONS }) : null,
+      state: "value",
+      value: Math.round((repairs.value.applied / repairs.value.decided) * 100),
+      href: canOpen.audit
+        ? auditHref({
+            scope: "all",
+            actions: DECIDED_REPAIR_ACTIONS,
+            tsFrom: bounds.from,
+            tsTo: bounds.to,
+          })
+        : null,
       current: false,
     });
+  }
   return figures;
 }
 
@@ -197,6 +267,8 @@ export interface UsageTotals {
   averageDurationMs: number | null;
   p95DurationMs: number | null;
   successRatePercent: number | null;
+  /** Runs of the window that ended `failed` — what the success rate's link lists. */
+  failedRuns: number | null;
 }
 
 const SUCCESS_STATUSES = ["completed", "succeeded", "success"] as const;
@@ -222,6 +294,7 @@ export function usageTotals(envelope: unknown): UsageTotals {
       count !== null && count > 0 && succeeded !== null
         ? Math.round((succeeded / count) * 100)
         : null,
+    failedRuns: byStatus ? (numberOrNull(byStatus.failed) ?? 0) : null,
   };
 }
 

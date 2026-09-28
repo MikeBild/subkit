@@ -31,6 +31,7 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { windowFilterLabel } from "@/lib/window-filter";
 import {
   AUDIT_LINK_KEYS,
   type AuditEvidenceKind,
@@ -49,6 +50,7 @@ import {
   canReadDirectory,
   isAuditEntry,
   isAuditScope,
+  NO_AUDIT_LINK,
   shortIdentifier,
 } from "@/pages/audit-model";
 
@@ -349,7 +351,9 @@ export function AuditPage() {
     scope !== "decisions" ||
     linked.traceId !== null ||
     linked.resourceType !== null ||
-    linked.actions.length > 0;
+    linked.actions.length > 0 ||
+    linked.tsFrom !== null ||
+    linked.tsTo !== null;
   // A narrowing the reader lifted also leaves the address, or a reload brings
   // back exactly what they had taken away.
   const forgetInAddress = useCallback((keys: readonly string[]) => {
@@ -378,11 +382,12 @@ export function AuditPage() {
     // A narrowing that cannot be lifted is invisible state. This one arrives
     // from a link, so without a way out a reader would be stuck on one request
     // with no sign of why the log looks almost empty.
-    setLinked({ resourceType: null, resourceId: null, traceId: null, scope: null, actions: [] });
+    setLinked(NO_AUDIT_LINK);
     forgetInAddress([
       ...AUDIT_LINK_KEYS.resource,
       ...AUDIT_LINK_KEYS.trace,
       ...AUDIT_LINK_KEYS.actions,
+      ...AUDIT_LINK_KEYS.window,
       "scope",
     ]);
     setPage(0);
@@ -515,6 +520,16 @@ export function AuditPage() {
                 {linked.actions.length === 1
                   ? t("audit.actionFilterOne", { action: actionName(linked.actions[0] ?? "") })
                   : t("audit.actionFilter", { count: String(linked.actions.length) })}
+              </Button>
+            ) : null}
+            {linked.tsFrom || linked.tsTo ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="audit-window-filter"
+                onClick={() => lift({ tsFrom: null, tsTo: null }, AUDIT_LINK_KEYS.window)}
+              >
+                {windowFilterLabel(linked.tsFrom, linked.tsTo, t, dateTime)}
               </Button>
             ) : null}
             {hasActiveFilters && (

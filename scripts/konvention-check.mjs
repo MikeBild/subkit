@@ -1349,7 +1349,9 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
             rotating_out_at: null,
             revoked_at: null,
           },
-          // Lapses in three and a half days: its row counts them down.
+          // Lapses at noon three calendar days on (the chip counts dates in
+          // the reader's zone, and this process shares the browser's): its
+          // row counts them down.
           {
             id: "018f4b4a-6d33-7b3a-9c2d-123456789ac1",
             name: "Nachtlauf",
@@ -1357,7 +1359,12 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
             scopes: API_KEY_SCOPES[0],
             created_at: days(20),
             last_used_at: days(1),
-            expires_at: days(-3.5),
+            expires_at: new Date(
+              new Date(NOW).getFullYear(),
+              new Date(NOW).getMonth(),
+              new Date(NOW).getDate() + 3,
+              12,
+            ).toISOString(),
             rotating_out_at: null,
             revoked_at: null,
           },
@@ -2798,6 +2805,11 @@ async function checkRightsPage(page) {
         '[data-testid="api-access-attention"], [data-testid="attention-list"]',
       ).length,
       grants: text('[data-testid="api-access-section-grants"]'),
+      // Each lost grant's reason, as its row states it (the sentence, not
+      // the engine's wording below it).
+      reasons: [...document.querySelectorAll('[data-testid^="connection-why-"]')].map(
+        (why) => why.querySelector("p")?.textContent?.trim() ?? "",
+      ),
       expiredChip: chip("Altes Skript"),
       expiringChip: chip("Nachtlauf"),
       workingChip: chip("Reporting-Abruf"),
@@ -2808,13 +2820,19 @@ async function checkRightsPage(page) {
   if (shape.grants === null) {
     breach("§1", where, "no Kontoverbindungen section");
   } else {
+    // §2 — a reason is a sentence, never a dash: both expiry causes the
+    // fixture holds are named in full on their own rows. A grant that ended
+    // with no refresh token used to render its reason as "—".
     for (const expected of [
-      "kann sich nicht selbst erneuern",
-      "Die andere Seite hat die Erneuerung abgelehnt",
+      "Der Zugriff ist abgelaufen und kann sich nicht selbst erneuern. \u201eErneuern\u201c wiederholt die Freigabe.",
+      "Die andere Seite hat die Erneuerung abgelehnt. \u201eErneuern\u201c wiederholt die Freigabe.",
     ]) {
-      if (!shape.grants.includes(expected))
-        breach("§1", `${where} · Kontoverbindungen`, `a lost grant's row misses "${expected}"`);
+      if (!shape.reasons.includes(expected))
+        breach("§1", `${where} · Kontoverbindungen`, `no lost grant's row says "${expected}"`);
     }
+    for (const reason of shape.reasons)
+      if (!reason || /^[—–-]$/.test(reason))
+        breach("§2", `${where} · Kontoverbindungen`, `a reason is "${reason || "empty"}"`);
   }
   if (shape.expiredChip !== "● abgelaufen")
     breach("§11", `${where} · Altes Skript`, `the expired key says "${shape.expiredChip}"`);
