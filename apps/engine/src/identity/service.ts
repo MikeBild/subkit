@@ -3,9 +3,10 @@
 // row inside the same transaction so partial failures cannot orphan an
 // audit entry.
 
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { resolveEffectiveUserRole } from "../auth/user-role.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import {
@@ -20,6 +21,7 @@ import {
 import { log } from "../logging/logger.ts";
 import { now } from "../utils/clock.ts";
 import { generateKey, hashKey } from "./api-key.ts";
+import { assertAdminRemains } from "./last-admin.ts";
 import { generatePortalToken } from "./portal-token.ts";
 
 // GC6 — session TTL defaults. Sliding 8h / absolute 30d per
@@ -125,6 +127,26 @@ export async function updateUser(input: UpdateUserInput, exec?: Executor) {
       }
     }
     if (input.role_id !== undefined) patch.role_id = input.role_id;
+
+    // The role the person will hold afterwards, as admin-only routes read it.
+    const nextRoleId = patch.role_id !== undefined ? patch.role_id : before.role_id;
+    const [assigned] = nextRoleId
+      ? await tx
+          .select({ name: roles.name })
+          .from(roles)
+          .where(
+            and(
+              eq(roles.id, nextRoleId),
+              or(isNull(roles.tenant_id), eq(roles.tenant_id, input.tenant_id)),
+            ),
+          )
+          .limit(1)
+      : [];
+    await assertAdminRemains(tx, {
+      tenant_id: input.tenant_id,
+      user_id: input.id,
+      nextEffectiveRole: resolveEffectiveUserRole(patch.role ?? before.role, assigned?.name),
+    });
 
     const [row] = await tx
       .update(users)

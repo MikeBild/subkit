@@ -4,13 +4,21 @@ import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/comp
 import { useI18n } from "@/lib/i18n-context";
 import type { ChatReauth } from "./chat-reauth";
 
+/**
+ * Sign in again — to WHICH connector. The card used to say "reconnect your
+ * account" and nothing else; with two connectors on one provider the reader
+ * could not tell which one had lost its access.
+ */
 export function ChatReauthCard({
   action,
+  connectorName,
   busy,
   pending = false,
   onRenew,
 }: {
   action: ChatReauth;
+  /** The connector's name, where the conversation knows it. */
+  connectorName: string | null;
   busy: boolean;
   pending?: boolean;
   onRenew: (action: ChatReauth) => void;
@@ -25,7 +33,11 @@ export function ChatReauthCard({
   return (
     <Card size="sm" tone="question" data-testid="chat-reauth-card">
       <CardHeader>
-        <CardTitle>{t("chat.reauth.title")}</CardTitle>
+        <CardTitle data-testid="chat-reauth-title">
+          {connectorName
+            ? t("chat.reauth.titleNamed", { name: connectorName })
+            : t("chat.reauth.title")}
+        </CardTitle>
         <CardDescription>
           {t(
             pending

@@ -6268,16 +6268,24 @@ sk skills sync
 
 <!-- Source: docs/authors/connections.md -->
 
-# Anbindungen und Freigaben
+# Kontoverbindungen und Freigaben
 
 > Wie du SubKit mit einem anderen System verbindest, ohne einen Schlüssel einzutippen — und wie eine vorbereitete Änderung an dieser Installation auf deine Freigabe wartet.
 
-Beides findest du im Cockpit unter **Installation**: die Anbindungen auf der Seite
-**Anbindungen**, die vorbereiteten Änderungen oben auf **Einstellungen**.
+Beides findest du im Cockpit unter **Installation**: die Kontoverbindungen im Abschnitt
+**Kontoverbindungen** der Seite **Zugangsdaten**, die vorbereiteten Änderungen oben auf
+**Einstellungen**.
+
+**Zugangsdaten** ist die eine Seite für alles, was an dieser Installation Rechte hält oder
+vergibt: **API-Schlüssel** (womit Skripte und Programme SubKit aufrufen), **Verbundene
+Anwendungen** (Programme, denen jemand Zugriff auf diese Installation freigegeben hat) und
+**Kontoverbindungen** (Systeme, die SubKit in deinem Namen aufrufen darf). Was dort
+Aufmerksamkeit braucht — eine abgelaufene Kontoverbindung, ein abgelaufener oder seit
+Monaten unbenutzter Schlüssel — steht oben auf der Seite, mit Grund und Weg.
 
 ---
 
-## Ein System anbinden
+## Ein System verbinden
 
 Ein System, das selbst Zugriff freigeben kann, brauchst du nicht mit einem Schlüssel zu
 füttern. Der Weg hat drei Schritte, und der letzte passiert auf der anderen Seite.
@@ -6287,13 +6295,13 @@ füttern. Der Weg hat drei Schritte, und der letzte passiert auf der anderen Sei
    einen veröffentlicht, und welche Rechte es kennt. Steht dort, dass das System den
    Zugriff nicht auf diesem Weg freigibt, sagt die Seite das in einem Satz — dann gehört
    der Schlüssel auf die Konnektor-Seite (siehe unten).
-2. **Name und Rechte.** Die Anbindung bekommt einen kurzen Namen (vorgeschlagen aus dem
+2. **Name und Rechte.** Die Kontoverbindung bekommt einen kurzen Namen (vorgeschlagen aus dem
    Namen des Systems) und du wählst die Rechte, die SubKit dort haben soll. Nur was du
    hier wählst, wird auf der anderen Seite erbeten.
 3. **Freigabe.** **Weiter zur Freigabe** schickt dich zum anderen System. Dort siehst du,
    wer anfragt (SubKit, mit seiner Adresse) und wofür, und klickst auf **Freigeben** —
-   oder auf **Ablehnen**. Danach bist du wieder im Cockpit, und die Anbindung steht in der
-   Liste.
+   oder auf **Ablehnen**. Danach bist du wieder im Cockpit, und die Kontoverbindung steht in
+   der Liste.
 
 Was dabei im Hintergrund passiert, musst du nicht wissen; für die Neugierigen: SubKit
 meldet sich beim anderen System als öffentlicher Client an (Dynamic Client Registration),
@@ -6303,32 +6311,40 @@ verschlüsselt wie jedes andere Secret, und kein Schlüssel wurde je eingetippt.
 
 ## Was die Liste zeigt
 
-Jede Zeile nennt den Namen, die Adresse, die gewährten Rechte, wann die Anbindung zuletzt
-verwendet wurde, und ein Zustandswort:
+Jede Zeile nennt den Namen, die Adresse, die gewährten Rechte, wann die Kontoverbindung
+zuletzt verwendet wurde, welche Konnektoren sie nutzen (mit der Zahl ihrer Workflows) und ein
+Zustandswort:
 
 | Wort | Bedeutung | Was zu tun ist |
 |---|---|---|
 | **gültig** | Der Zugriff funktioniert und erneuert sich selbst. | Nichts. |
 | **läuft ab am …** | Der Zugriff funktioniert, kann sich aber nicht selbst erneuern und endet an diesem Tag. | Vor dem Datum **Erneuern**. |
-| **abgelaufen** | Die Erneuerung ist fehlgeschlagen oder der Zugriff ist zu Ende. Die Zeile nennt den Grund. | **Erneuern** — wiederholt die Freigabe. |
+| **abgelaufen** | Die andere Seite hat die Erneuerung abgelehnt, oder der Zugriff ist zu Ende und kann sich nicht selbst erneuern. Die Zeile nennt, welcher der beiden Gründe gilt. | **Erneuern** — wiederholt die Freigabe. |
 | **unlesbar** | Der gespeicherte Zugriff lässt sich mit dem Schlüssel dieser Installation nicht lesen. | **Erneuern**. |
 
-**Erneuern** wiederholt den Weg von oben für dieselbe Anbindung: gleicher Name, gleiche
-Rechte, neue Freigabe. **Trennen** (im ⋯-Menü, mit Rückfrage) widerruft den gespeicherten
-Zugriff und vergisst die Anbindung. Ein Konnektor, der sie benutzt hat, steht danach ohne
+**Erneuern** wiederholt den Weg von oben für dieselbe Kontoverbindung: gleicher Name,
+gleiche Rechte, neue Freigabe. **Trennen** (im ⋯-Menü, mit Rückfrage) widerruft den
+gespeicherten Zugriff und vergisst die Kontoverbindung. Ein Konnektor, der sie benutzt hat, steht danach ohne
 Zugangsdaten da und sagt das auf seiner Seite.
 
-## Eine Anbindung in einem Konnektor verwenden
+## Eine Kontoverbindung in einem Konnektor verwenden
 
-Auf der Seite eines Konnektors gibt es die Karte **Zugangsdaten**. Dort wählst du unter
-**Verbindung wählen** eine Anbindung und klickst auf **Übernehmen**. Der Konnektor sendet
-von da an den Zugriff der Anbindung — und weil sich der Zugriff selbst erneuert, ist damit
-auch dieses Thema erledigt.
+Auf der Seite eines Konnektors gibt es die Karte **Anmeldung**. Dort wählst du unter
+**Verbindung wählen** eine Kontoverbindung und klickst auf **Übernehmen**. Der Konnektor
+sendet von da an den Zugriff der Kontoverbindung — und weil sich der Zugriff selbst
+erneuert, ist damit auch dieses Thema erledigt.
+
+Die Karte zeigt, wie es um die Anmeldung steht, und verlinkt auf die Kontoverbindung. Ist
+die Anmeldung verloren — die Kontoverbindung abgelaufen, oder der Anbieter hat den Zugang
+abgelehnt —, bietet sie **Neu anmelden** an: bei einer Kontoverbindung führt das zu ihr
+(dort erneuert, gilt sie für jeden Konnektor, der sie nutzt), bei einem eigenen
+OAuth-Zugang startet es die Anmeldung beim Anbieter, bei einem Schlüssel öffnet es das
+Schlüsselfeld.
 
 **Stattdessen einen Schlüssel eingeben** gibt es weiterhin, aber nur für den Fall, für den
 es gemeint ist: einen externen Anbieter, der den Zugriff nicht selbst freigeben kann — ein
 Modell-Schlüssel etwa. Das Feld sagt das dazu. Ein System, das Freigaben kennt, verbindest
-du über Anbindungen.
+du über **Zugangsdaten → Kontoverbindungen**.
 
 ---
 

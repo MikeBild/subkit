@@ -183,8 +183,8 @@
     {
       "audience": "authors",
       "path": "docs/authors/connections.md",
-      "title": "Anbindungen und Freigaben",
-      "summary": "Beides findest du im Cockpit unter Installation: die Anbindungen auf der Seite Anbindungen, die vorbereiteten Änderungen oben auf Einstellungen."
+      "title": "Kontoverbindungen und Freigaben",
+      "summary": "Beides findest du im Cockpit unter Installation: die Kontoverbindungen im Abschnitt Kontoverbindungen der Seite Zugangsdaten, die vorbereiteten Änderungen oben auf Einstellungen."
     },
     {
       "audience": "authors",
