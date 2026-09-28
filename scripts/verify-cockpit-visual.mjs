@@ -3409,6 +3409,10 @@ for (const locale of variants) {
         console.error(`${locale.artifact}/${viewport.name}: ${message.text()}`);
     });
     await page.route("**/v1/**", mockApi);
+    // Where each page's title starts. Every page shares one frame, so the
+    // title sits at the same x on all of them — the start page once used a
+    // narrow centred column and moved its title away from every other page's.
+    const headingLeft = new Map();
     for (const route of routes) {
       // A bucket route writes its own frame: `decisions-bucket-failing`, not a
       // second file called `decisions` that silently overwrites the first.
@@ -3525,6 +3529,13 @@ for (const locale of variants) {
           }
         }
       }
+      if (route === "" || route === "runs" || route === "usage")
+        headingLeft.set(
+          route,
+          await page.evaluate(() =>
+            Math.round(document.querySelector("main h1")?.getBoundingClientRect().left ?? -1),
+          ),
+        );
       await shoot(page, `${locale.artifact}-${viewport.name}-${artifactRoute}`, {
         fullPage: false,
       });
@@ -3532,6 +3543,10 @@ for (const locale of variants) {
       if (route === "")
         await assertReviewCloseLeavesNoTrail(page, `${locale.artifact}/${viewport.name}/today`);
     }
+    if (new Set(headingLeft.values()).size !== 1)
+      throw new Error(
+        `${locale.artifact}/${viewport.name}: page titles start at different x — ${JSON.stringify(Object.fromEntries(headingLeft))}`,
+      );
     await verifyTodayCalm(page, `${locale.artifact}/${viewport.name}/today-calm`, locale.name, () =>
       shoot(page, `${locale.artifact}-${viewport.name}-today-calm`, { fullPage: false }),
     );
