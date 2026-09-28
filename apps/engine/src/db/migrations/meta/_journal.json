@@ -470,6 +470,13 @@
       "when": 1790537597881,
       "tag": "0066_safe_patch",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1790567160783,
+      "tag": "0067_retired_oauth_clients",
+      "breakpoints": true
     }
   ]
 }

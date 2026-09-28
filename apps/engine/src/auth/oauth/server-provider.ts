@@ -15,7 +15,7 @@
 // Import only type shapes from the MCP SDK — never runtime handlers.
 import { randomBytes } from "node:crypto";
 import type { OAuthClientInformationFull } from "@modelcontextprotocol/sdk/shared/auth.js";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../../audit/types.ts";
 import type { Config } from "../../config/schema.ts";
@@ -219,11 +219,21 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
 
   // ── getClient ───────────────────────────────────────────────────────────────
   async function getClient(clientId: string): Promise<OAuthClientInformationFull | null> {
+    // A retired registration is still a client: the housekeeping sweep hid it
+    // because nobody used it, and the person who comes back with it must be
+    // able to authorize again (issueAuthorizationCode reactivates it). Only an
+    // administrator's revocation — `disabled_at` without `retired_at` — makes
+    // it unknown here.
     // tenant-filter:exempt — client_id global lookup pre-tenant
     const rows = await db
       .select()
       .from(mcpOauthClients)
-      .where(and(eq(mcpOauthClients.client_id, clientId), isNull(mcpOauthClients.disabled_at)))
+      .where(
+        and(
+          eq(mcpOauthClients.client_id, clientId),
+          or(isNull(mcpOauthClients.disabled_at), isNotNull(mcpOauthClients.retired_at)),
+        ),
+      )
       .limit(1);
     const row = rows[0];
     if (!row) return null;
@@ -246,37 +256,67 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const expiresAt = new Date(Date.now() + cfg.authorization_code_ttl_seconds * 1000);
     const requestSource = input.requestSource ?? "api";
 
-    await db.insert(mcpOauthAuthorizationCodes).values({
-      tenant_id: input.tenantId,
-      client_id: input.clientId,
-      user_id: input.userId,
-      code_sha256: hash,
-      code_challenge: input.codeChallenge,
-      code_challenge_method: "S256",
-      redirect_uri: input.redirectUri,
-      scope: input.scope,
-      resource: input.resource ?? null,
-      state: input.state ?? null,
-      expires_at: expiresAt,
-    });
+    await db.transaction(async (tx) => {
+      // A person just approved this client: a registration the housekeeping
+      // sweep retired for disuse is in use again. Only a retirement is undone
+      // here — an administrator's revocation never reaches this point, because
+      // getClient does not know a revoked client.
+      // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
+      const reactivated = await tx
+        .update(mcpOauthClients)
+        .set({ disabled_at: null, retired_at: null })
+        .where(
+          and(eq(mcpOauthClients.client_id, input.clientId), isNotNull(mcpOauthClients.retired_at)),
+        )
+        .returning({ id: mcpOauthClients.id });
+      if (reactivated[0]) {
+        await auditAwait(
+          {
+            tenant_id: input.tenantId,
+            actor_type: "user",
+            actor_id: input.userId,
+            action: AuditAction.MCP_OAUTH_CLIENT_REACTIVATED,
+            resource_type: "mcp_oauth_client",
+            resource_id: input.clientId,
+            result: "success",
+            metadata: { request_source: requestSource, client_id: input.clientId },
+          },
+          tx,
+        );
+      }
 
-    await auditAwait(
-      {
+      await tx.insert(mcpOauthAuthorizationCodes).values({
         tenant_id: input.tenantId,
-        actor_type: "user",
-        actor_id: input.userId,
-        action: AuditAction.MCP_OAUTH_CODE_ISSUED,
-        resource_type: "mcp_oauth_code",
-        resource_id: hash.slice(0, 16),
-        result: "success",
-        metadata: {
-          request_source: requestSource,
-          client_id: input.clientId,
-          scope: input.scope,
+        client_id: input.clientId,
+        user_id: input.userId,
+        code_sha256: hash,
+        code_challenge: input.codeChallenge,
+        code_challenge_method: "S256",
+        redirect_uri: input.redirectUri,
+        scope: input.scope,
+        resource: input.resource ?? null,
+        state: input.state ?? null,
+        expires_at: expiresAt,
+      });
+
+      await auditAwait(
+        {
+          tenant_id: input.tenantId,
+          actor_type: "user",
+          actor_id: input.userId,
+          action: AuditAction.MCP_OAUTH_CODE_ISSUED,
+          resource_type: "mcp_oauth_code",
+          resource_id: hash.slice(0, 16),
+          result: "success",
+          metadata: {
+            request_source: requestSource,
+            client_id: input.clientId,
+            scope: input.scope,
+          },
         },
-      },
-      db,
-    );
+        tx,
+      );
+    });
 
     return plaintext;
   }

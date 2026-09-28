@@ -41,6 +41,11 @@ const OAuthClientSchema = z
     /** Live connections for this client, one per approving person. */
     live_connections: z.number().int().nonnegative(),
     disabled_at: z.string().nullable(),
+    /** Set with `disabled_at` when housekeeping retired a dynamic registration
+     *  nobody held a grant for or used in a week. Retired is hidden, not
+     *  revoked: the next authorization a person completes brings it back.
+     *  `disabled_at` without it is an administrator's revocation. */
+    retired_at: z.string().nullable(),
     created_at: z.string(),
   })
   .openapi("OAuthClient");
@@ -113,6 +118,7 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
         redirect_uris: mcpOauthClients.redirect_uris,
         registration_source: mcpOauthClients.registration_source,
         disabled_at: mcpOauthClients.disabled_at,
+        retired_at: mcpOauthClients.retired_at,
         created_at: mcpOauthClients.created_at,
       })
       .from(mcpOauthClients);
@@ -132,6 +138,7 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
         approved_by: approval?.approved_by ?? [],
         live_connections: approval?.live_connections ?? 0,
         disabled_at: r.disabled_at ? r.disabled_at.toISOString() : null,
+        retired_at: r.retired_at ? r.retired_at.toISOString() : null,
         created_at: r.created_at.toISOString(),
       };
     });
@@ -163,7 +170,11 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
 
     // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
     const rows = await db
-      .select({ id: mcpOauthClients.id, disabled_at: mcpOauthClients.disabled_at })
+      .select({
+        id: mcpOauthClients.id,
+        disabled_at: mcpOauthClients.disabled_at,
+        retired_at: mcpOauthClients.retired_at,
+      })
       .from(mcpOauthClients)
       .where(eq(mcpOauthClients.client_id, client_id))
       .limit(1);
@@ -171,11 +182,14 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!row) throw new NotFoundError("mcp_oauth_client");
 
     const now = new Date();
-    // Idempotent: if already disabled, return 204 without a second audit row.
-    if (!row.disabled_at) {
+    // Idempotent: if already revoked, return 204 without a second audit row.
+    // A RETIRED registration is disabled too, but only until someone
+    // authorizes it again — revoking it turns the retirement into a
+    // revocation, so no later authorization can bring it back.
+    if (!row.disabled_at || row.retired_at) {
       await db
         .update(mcpOauthClients)
-        .set({ disabled_at: now })
+        .set({ disabled_at: now, retired_at: null })
         .where(eq(mcpOauthClients.client_id, client_id));
 
       // Revoke all outstanding access and refresh tokens for this client.
