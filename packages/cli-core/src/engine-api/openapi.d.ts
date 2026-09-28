@@ -17180,16 +17180,26 @@ export interface components {
             service_description: string | null;
             scopes: string[];
             granted_scopes: string[] | null;
-            /** @enum {string} */
-            state: "valid" | "expiring" | "expired" | "unreadable";
+            state: components["schemas"]["ConnectionState"];
+            state_reason: components["schemas"]["ConnectionStateReason"];
             auto_renew: boolean;
             expires_at: string | null;
             last_used_at: string | null;
             last_refreshed_at: string | null;
             refresh_failed_at: string | null;
             last_error: string | null;
-            used_by_connectors: number;
+            used_by: components["schemas"]["ConnectionUser"][];
             created_at: string;
+        };
+        /** @enum {string} */
+        ConnectionState: "valid" | "expiring" | "expired" | "unreadable";
+        /** @enum {string|null} */
+        ConnectionStateReason: "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | null;
+        ConnectionUser: {
+            connector_id: string;
+            slug: string;
+            display_name: string;
+            workflow_count: number;
         };
         TenantListResponse: {
             items: components["schemas"]["Tenant"][];
@@ -19396,8 +19406,14 @@ export interface components {
             granted_scopes: string | null;
             /** Format: date-time */
             oauth2_expires_at: string | null;
+            connection: components["schemas"]["ConnectionSummary"];
             created_at: string;
         };
+        ConnectionSummary: {
+            id: string;
+            name: string;
+            state: components["schemas"]["ConnectionState"];
+        } | null;
         Connector: {
             id: string;
             tenant_id: string;
@@ -19554,10 +19570,7 @@ export interface components {
             mode: string;
             /** @enum {string} */
             environment: "dev" | "prod";
-            connection: {
-                id: string;
-                name: string;
-            } | null;
+            connection: components["schemas"]["ConnectionSummary"];
             updated_at: string;
         } | null;
         ConnectorMcpInspectResponse: {
