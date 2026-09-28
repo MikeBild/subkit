@@ -108,7 +108,7 @@ export function conversationHref(id: string): string {
 }
 
 /**
- * Heute — the one list of what needs the reader now — optionally with one
+ * Übersicht — the one list of what needs the reader now — optionally with one
  * entry's review sheet open.
  *
  * The id stays literal (`?review=workflow:<id>`): it is the engine's own item

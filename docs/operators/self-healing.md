@@ -64,7 +64,7 @@ flowchart LR
 
 ## Reviewing proposed repairs
 
-Proposed repairs appear on the Cockpit's start page, **Today** (German: **Heute**),
+Proposed repairs appear on the Cockpit's start page, the **Overview** (German: **Übersicht**),
 the one list of what needs a person. A failing workflow and the repairs waiting for
 it are one entry; its **Review** action opens a review sheet over the list, and the
 sheet's address (`?review=…`) can be shared or bookmarked. The same list is

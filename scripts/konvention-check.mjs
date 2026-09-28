@@ -43,7 +43,7 @@ import { IDENTITY_META, standAt } from "./lib/cockpit-identity.mjs";
  * as "Standard"). Label and assert stand side by side on purpose — one says what
  * was measured against, the other says whether that is still the family's yardstick.
  */
-const KONVENTION_VERSION = "2.0";
+const KONVENTION_VERSION = "2.1";
 
 /** The version the repository copy actually names — the label, never the assert. */
 let konventionVersionImRepo = null;
@@ -76,7 +76,7 @@ function concreteRoute(route) {
 // on, which is the whole claim a redirect makes.
 const MOUNT_MARKERS = {
   "": '[data-testid="attention-page"]',
-  // The decisions queue and the system page are redirects to Heute now; each
+  // The decisions queue and the system page are redirects to Übersicht now; each
   // is marked by where it must land.
   decisions: '[data-testid="attention-page"]',
   operations: '[data-testid="attention-page"]',
@@ -413,7 +413,7 @@ function healthDigest(gateOpen) {
 }
 
 /**
- * Heute's answer (`GET /v1/attention`, attention.v1).
+ * Übersicht's answer (`GET /v1/attention`, attention.v1).
  *
  * The gate-open list carries every class at once — stopped, failing, decide —
  * one entry per subject, in the order the engine sends: its order is the
@@ -780,7 +780,7 @@ function json(route, body, status = 200) {
 /**
  * One handler for every /v1 call the cockpit makes.
  *
- * `gateOpen` is the main switch: Heute makes two opposite claims about the
+ * `gateOpen` is the main switch: Übersicht makes two opposite claims about the
  * same page — entries to act on, or "Alles erledigt" — and each is only proven
  * when the fixture can also produce the state in which it must be absent.
  */
@@ -1458,7 +1458,7 @@ gap(
   "the ONE link and the naming of the four decision verbs in the log are measured; whether the log HOLDS every decision is not — that is the engine's write path, and this check never writes one",
 );
 gap(
-  "/ · which entries Heute holds",
+  "/ · which entries Übersicht holds",
   "the list is measured against the attention fixture — one entry per subject, one primary action, badge = entries; whether the ENGINE puts the right facts into the list is the engine's own tests (operator/attention*.test.ts), not this check",
 );
 
@@ -1719,7 +1719,7 @@ async function checkAdminGroupName(page) {
  * announced, what happened.
  *
  * "System" is not among them any more, and its absence is asserted: it was a
- * third place for the health state, which Heute now says once — a line when
+ * third place for the health state, which Übersicht now says once — a line when
  * nothing is open, an entry for every cause when something is.
  */
 const INSTALLATION_ENTRIES = [
@@ -1751,23 +1751,24 @@ async function checkInstallationEntries(page) {
 }
 
 /**
- * Heute is the start page: the first entry of the sidebar, ungrouped, and the
+ * Übersicht is the start page: the first entry of the sidebar, ungrouped, and the
  * one place a number of open tasks is shown — its badge.
  *
  * `nav-overview` is kept as the entry's id on purpose: the deploy verifier
  * clicks it, and a renamed anchor would turn a working deploy red.
  *
  * The entries that were a second and third place for the same facts must be
- * gone from the sidebar: a decisions entry beside Heute is two task lists.
+ * gone from the sidebar: a decisions entry beside Übersicht is two task lists.
  */
-async function checkTodayNavEntry(page) {
+async function checkOverviewNavEntry(page) {
   const entry = page.locator('[data-testid="nav-overview"]');
   if ((await entry.count()) === 0) {
-    breach("§6", "/ · Sidebar", 'no nav entry "Heute"');
+    breach("§6", "/ · Sidebar", 'no nav entry "Übersicht"');
     return null;
   }
   const label = (await entry.first().innerText()).trim().split("\n")[0]?.trim();
-  if (label !== "Heute") breach("§6", "/ · nav-overview", `reads "${label}" instead of "Heute"`);
+  if (label !== "Übersicht")
+    breach("§6", "/ · nav-overview", `reads "${label}" instead of "Übersicht"`);
   const placement = await page.evaluate(() => {
     const today = document.querySelector('[data-testid="nav-overview"]');
     if (!today) return null;
@@ -1789,15 +1790,19 @@ async function checkTodayNavEntry(page) {
   if (placement?.groupHeading)
     breach("§6", "/ · nav-overview", `sits under the heading "${placement.groupHeading}"`);
   if (placement && placement.first !== "nav-overview")
-    breach("§6", "/ · Sidebar", `the first entry is ${placement.first}, not Heute`);
+    breach("§6", "/ · Sidebar", `the first entry is ${placement.first}, not Übersicht`);
   for (const id of placement?.gone ?? [])
-    breach("§6, §12", "/ · Sidebar", `${id} is still an entry — a second home for Heute's facts`);
+    breach(
+      "§6, §12",
+      "/ · Sidebar",
+      `${id} is still an entry — a second home for Übersicht's facts`,
+    );
 
   const badge = page.locator('[data-testid="nav-overview-count"]');
   try {
     await badge.first().waitFor({ state: "visible", timeout: 10_000 });
   } catch {
-    breach("§8.1", "/ · nav-overview", "no counter badge on Heute although entries are open");
+    breach("§8.1", "/ · nav-overview", "no counter badge on Übersicht although entries are open");
     return null;
   }
   return {
@@ -1823,7 +1828,7 @@ async function checkNoUnknownState(page, where) {
 }
 
 /**
- * Heute with tasks open — the gate-open fixture's every class at once.
+ * Übersicht with tasks open — the gate-open fixture's every class at once.
  *
  * One entry per subject, in the engine's order, each ONE sentence with ONE
  * primary action and at most one secondary link. The badge is the number of
@@ -1831,8 +1836,10 @@ async function checkNoUnknownState(page, where) {
  * no count in a heading (the badge is the one place a number of tasks lives),
  * no engine wording on an entry (that is the review sheet's), and no health
  * word — with entries on the page the health word would only repeat them.
+ * The operations bar stands above the list, measured by its own check.
  */
-async function checkTodayGateOpen(page, badge) {
+async function checkOverviewGateOpen(page, badge) {
+  await checkOperationsBar(page, "/");
   try {
     await page
       .locator('[data-testid="attention-list"]')
@@ -1901,11 +1908,11 @@ async function checkTodayGateOpen(page, badge) {
 }
 
 /**
- * Heute with nothing open: "Alles erledigt." and ONE status line — the health
- * word and the next scheduled run — and nothing else. No tile, no zero, no
- * badge. A wall of zeros is what this replaced.
+ * Übersicht with nothing open: the operations bar stays (§8.6), and below it
+ * "Alles erledigt." and ONE status line — the health word and the next
+ * scheduled run — and nothing else. No zero, no badge.
  */
-async function checkTodayCalm(page) {
+async function checkOverviewCalm(page) {
   try {
     await page
       .locator('[data-testid="attention-calm"]')
@@ -1914,16 +1921,22 @@ async function checkTodayCalm(page) {
     breach("§1", "/ (calm)", 'nothing is open, and the page does not say "Alles erledigt."');
     return;
   }
+  await checkOperationsBar(page, "/ (calm)");
   const shape = await page.evaluate(() => {
     const content = document.querySelector(
       '[data-testid="attention-page"] [data-family-slot="content"]',
     );
+    // The operations bar stays in the calm state (§8.6) and is measured on
+    // its own; what is asserted here is everything BELOW it.
+    const rest = content instanceof HTMLElement ? content.cloneNode(true) : null;
+    rest?.querySelector('[data-testid="operations-bar"]')?.remove();
     return {
+      // Paragraphs, not innerText: a detached clone has no layout to break
+      // its text into lines.
       lines:
-        content instanceof HTMLElement
-          ? content.innerText
-              .split("\n")
-              .map((line) => line.trim())
+        rest instanceof HTMLElement
+          ? [...rest.querySelectorAll("p, li, h2, h3")]
+              .map((line) => (line.textContent ?? "").replace(/\s+/g, " ").trim())
               .filter(Boolean)
           : [],
       status: document.querySelectorAll('[data-testid="attention-status"]').length,
@@ -1936,11 +1949,11 @@ async function checkTodayCalm(page) {
   if (shape.status !== 1)
     breach("§1", "/ (calm)", `${shape.status} status lines instead of exactly one`);
   const [done, status, history, ...rest] = shape.lines;
-  if (done !== german("today.calm"))
-    breach("§5", "/ (calm)", `opens with "${done}" instead of "${german("today.calm")}"`);
-  if (!status?.startsWith(`${german("today.health.healthy")} · `))
+  if (done !== german("overview.calm"))
+    breach("§5", "/ (calm)", `opens with "${done}" instead of "${german("overview.calm")}"`);
+  if (!status?.startsWith(`${german("overview.health.healthy")} · `))
     breach("§1", "/ (calm)", `the status line reads "${status}"`);
-  if (history !== german("today.history.link"))
+  if (history !== german("overview.history.link"))
     breach("§8.5", "/ (calm)", `the way to the history reads "${history}"`);
   if (rest.length > 0)
     breach("§1", "/ (calm)", `more than "Alles erledigt" and one status line: ${rest.join(" / ")}`);
@@ -1952,11 +1965,11 @@ async function checkTodayCalm(page) {
 }
 
 /**
- * Heute when a source could not be read: never "Alles erledigt". The list may
+ * Übersicht when a source could not be read: never "Alles erledigt". The list may
  * be missing exactly the entry that matters, so the page names what it could
  * not read and offers to read again.
  */
-async function checkTodayFailedSource(page) {
+async function checkOverviewFailedSource(page) {
   try {
     await page
       .locator('[data-testid="attention-unread"]')
@@ -1965,14 +1978,15 @@ async function checkTodayFailedSource(page) {
     breach("§1, §12", "/ (failed source)", "a source failed and the page does not say which");
     return;
   }
+  await checkOperationsBar(page, "/ (failed source)");
   const shape = await page.evaluate(() => ({
     body: document.body.innerText,
     unread: document.querySelector('[data-testid="attention-unread"]')?.textContent ?? "",
     status: document.querySelectorAll('[data-testid="attention-status"]').length,
   }));
-  if (shape.body.includes(german("today.calm")))
+  if (shape.body.includes(german("overview.calm")))
     breach("§1, §12", "/ (failed source)", '"Alles erledigt" although a source could not be read');
-  if (!shape.unread.includes(german("today.source.connectors")))
+  if (!shape.unread.includes(german("overview.source.connectors")))
     breach("§1", "/ (failed source)", `the unread source is not named: "${shape.unread}"`);
   if (shape.status > 0)
     breach("§12", "/ (failed source)", "a health line stands over an incomplete answer");
@@ -1980,7 +1994,7 @@ async function checkTodayFailedSource(page) {
 
 /**
  * No zero-valued KPI tile, anywhere. A tile that counts nothing is a fact with
- * nothing to say — the wall of zeros Heute replaced.
+ * nothing to say — the wall of zeros the attention list replaced.
  */
 async function checkNoZeroKpiTile(page, where) {
   const zeros = await page.evaluate(
@@ -1990,6 +2004,101 @@ async function checkNoZeroKpiTile(page, where) {
       ).length,
   );
   if (zeros > 0) breach("§1", where, `${zeros} KPI tile(s) showing 0`);
+}
+
+/**
+ * §1, §10.1 — the operations bar on the Übersicht: exactly four figures in one
+ * row, ABOVE the attention list or the calm sentence, the window switch in the
+ * header with 24 hours chosen. Every figure link opens the list of the same
+ * window — runs and failed runs by `started_from`/`started_to`, the decided
+ * repairs by `ts_from`/`ts_to` — and connector health, a state of now, the
+ * unwell connectors. A figure without a number says why in words.
+ */
+async function checkOperationsBar(page, where) {
+  const bar = page.locator('[data-testid="operations-bar"] [data-figure-state]');
+  try {
+    await bar.first().waitFor({ state: "visible", timeout: 15_000 });
+  } catch {
+    breach("§1", where, "no operations bar on the Übersicht");
+    return;
+  }
+  const shape = await page.evaluate(() => {
+    const barElement = document.querySelector('[data-testid="operations-bar"]');
+    const figures = [...(barElement?.querySelectorAll("[data-figure-state]") ?? [])];
+    const below = document.querySelector(
+      '[data-testid="attention-list"], [data-testid="attention-calm"], [data-testid="attention-unread"]',
+    );
+    const switcher = document.querySelector(
+      '[data-family-slot="page-header"] [data-testid="operations-window"]',
+    );
+    return {
+      figures: figures.map((figure) => ({
+        id: figure.getAttribute("data-testid"),
+        state: figure.getAttribute("data-figure-state"),
+        text: (figure.textContent ?? "").replace(/\s+/g, " ").trim(),
+        href: figure.querySelector("a")?.getAttribute("href") ?? null,
+      })),
+      tops: [...new Set(figures.map((figure) => Math.round(figure.getBoundingClientRect().top)))],
+      first:
+        barElement && below
+          ? Boolean(barElement.compareDocumentPosition(below) & Node.DOCUMENT_POSITION_FOLLOWING)
+          : null,
+      options: switcher
+        ? [...switcher.querySelectorAll("button")].map((button) => ({
+            text: (button.textContent ?? "").trim(),
+            pressed: button.getAttribute("aria-pressed"),
+          }))
+        : null,
+    };
+  });
+  const expected = ["runs", "successRate", "connectorHealth", "repairRate"].map(
+    (id) => `operations-figure-${id}`,
+  );
+  if (shape.figures.map((figure) => figure.id).join("|") !== expected.join("|"))
+    breach("§1", where, `the bar holds ${shape.figures.map((figure) => figure.id).join(", ")}`);
+  if (shape.tops.length !== 1)
+    breach("§1", where, `the four figures stand in ${shape.tops.length} rows, not one`);
+  if (shape.first === false)
+    breach("§1", where, "the operations bar stands below the attention list");
+  if (!shape.options) breach("§1", where, "no window switch in the page header");
+  else {
+    const labels = shape.options.map((option) => option.text).join(" / ");
+    if (labels !== "24 Std / 7 Tage / 30 Tage")
+      breach("§1", `${where} · window`, `offers ${labels}`);
+    if (shape.options[0]?.pressed !== "true")
+      breach("§1", `${where} · window`, "24 hours is not the window chosen by default");
+  }
+  for (const figure of shape.figures) {
+    if (figure.state !== "value" && figure.href)
+      breach("§1", `${where} · ${figure.id}`, `"${figure.text}" carries a link to nothing counted`);
+    if (!figure.href) continue;
+    const query = new URL(figure.href, "http://stand").searchParams;
+    const windowed =
+      figure.id === "operations-figure-connectorHealth"
+        ? query.get("health") === "not_ok"
+        : figure.id === "operations-figure-repairRate"
+          ? Boolean(query.get("ts_from") && query.get("ts_to"))
+          : Boolean(query.get("started_from") && query.get("started_to"));
+    if (!windowed)
+      breach("§10.1", `${where} · ${figure.id}`, `links to ${figure.href} — not the same window`);
+    if (figure.id === "operations-figure-successRate" && query.get("status") !== "failed")
+      breach("§10.1", `${where} · ${figure.id}`, "the rate does not open the failed runs");
+  }
+}
+
+/**
+ * §0.1 — the operating figures have one place, the Übersicht. Nutzung keeps
+ * consumption and its own runtime table; a second copy of the figures there
+ * would be two numbers that drift apart.
+ */
+async function checkUsageMirrorsNoFigures(page) {
+  const shape = await page.evaluate(() => ({
+    kpis: document.querySelectorAll("[data-family-kpi-id]").length,
+    bar: document.querySelectorAll('[data-testid="operations-bar"], [data-testid="usage-summary"]')
+      .length,
+  }));
+  if (shape.kpis > 0 || shape.bar > 0)
+    breach("§0.1", "/usage", "Nutzung shows the operating figures a second time");
 }
 
 /**
@@ -2019,7 +2128,7 @@ async function checkLegacyRedirects(context) {
       if (url.searchParams.get("review") !== review)
         breach("§6", `/${from}`, `lands with review=${url.searchParams.get("review")}`);
       if (!review && url.search !== "")
-        breach("§6", `/${from}`, `carries ${url.search} onto Heute, where it means nothing`);
+        breach("§6", `/${from}`, `carries ${url.search} onto Übersicht, where it means nothing`);
       if (review)
         await page
           .locator('[data-testid="attention-review"]')
@@ -2034,7 +2143,7 @@ async function checkLegacyRedirects(context) {
 }
 
 /**
- * The review sheet: one entry's decisions over Heute, with the cards the
+ * The review sheet: one entry's decisions over Übersicht, with the cards the
  * decisions page always had — and the engine's own wording, marked as such,
  * here and nowhere else.
  */
@@ -2505,7 +2614,9 @@ async function checkHistoryLink(page) {
   const shape = await page.evaluate(() => {
     const links = [
       ...document.querySelectorAll('[data-testid="attention-page"] a[href*="/audit"]'),
-    ];
+      // A figure of the operations bar opening the repairs it counted is a
+      // §10.1 link to a list, not a second way to the history.
+    ].filter((link) => !link.closest('[data-testid="operations-bar"]'));
     const sentence = document.querySelector('[data-testid="attention-history"]');
     return {
       count: links.length,
@@ -2514,12 +2625,12 @@ async function checkHistoryLink(page) {
     };
   });
   if (shape.count === 0) {
-    breach("§8.5", "/", "no way from Heute to the recorded history");
+    breach("§8.5", "/", "no way from Übersicht to the recorded history");
     return;
   }
   if (shape.count !== 1)
     breach("§8.5", "/", `${shape.count} ways to the history instead of exactly one`);
-  const expected = german("today.history.link");
+  const expected = german("overview.history.link");
   if (shape.text !== expected)
     breach("§5", "/ · attention-history", `reads "${shape.text}" instead of "${expected}"`);
   if (!(shape.href ?? "").includes("scope=decisions"))
@@ -2759,7 +2870,7 @@ const RESUME_LINE =
  * state is a word on the key — never a dash.
  *
  * And there is no task list here. The page had one above its sections — a
- * second place for what Heute already lists (the expired Kontoverbindung is an
+ * second place for what Übersicht already lists (the expired Kontoverbindung is an
  * entry there). One fact, one home: a list reappearing here is a breach.
  */
 async function checkRightsPage(page) {
@@ -2816,7 +2927,7 @@ async function checkRightsPage(page) {
     };
   });
   if (shape.taskList > 0)
-    breach("§1", where, "a second task list stands on Zugangsdaten — tasks live on Heute");
+    breach("§1", where, "a second task list stands on Zugangsdaten — tasks live on Übersicht");
   if (shape.grants === null) {
     breach("§1", where, "no Kontoverbindungen section");
   } else {
@@ -2844,7 +2955,7 @@ async function checkRightsPage(page) {
 
 /**
  * The workflow list says a workflow is unwell and leads to its failed runs —
- * and says no more. The engine's own reason is the entry's reason on Heute and
+ * and says no more. The engine's own reason is the entry's reason on Übersicht and
  * stands in the review sheet and on the workflow's page; a copy on every list
  * row was a third home for one sentence. The fixture's unhealthy rows carry a
  * reason, so a line that comes back would be seen.
@@ -2866,7 +2977,7 @@ async function checkWorkflowListHealth(page) {
   });
   if (shape.marks === 0) breach("§1", where, "an unhealthy workflow has no link to its failures");
   if (shape.wording > 0 || shape.text.includes("Wortlaut der Engine"))
-    breach("§5", where, "a list row repeats the engine's wording — it lives on Heute");
+    breach("§5", where, "a list row repeats the engine's wording — it lives on Übersicht");
   if (shape.text.includes("Drei Läufe in Folge fehlgeschlagen"))
     breach("§5", where, "a list row repeats the engine's reason");
 }
@@ -3020,12 +3131,12 @@ async function checkStaleReview(context) {
     [
       "workflow:018f4b4a-6d33-7b3a-9c2d-00000000dead",
       "attention-review-empty",
-      "today.sheet.nothingOpen",
+      "overview.sheet.nothingOpen",
     ],
     [
       "connector:018f4b4a-6d33-7b3a-9c2d-00000000dead",
       "attention-review-nothing",
-      "today.sheet.nothingToReview",
+      "overview.sheet.nothingToReview",
     ],
   ]) {
     const where = `/?review=${id.split(":")[0]}:… (stale)`;
@@ -3090,7 +3201,7 @@ async function germanContext(browser, handler) {
  * The whole answer failing is a failure, never an empty list: without it the
  * page knows nothing, and "Alles erledigt" would be a claim nobody checked.
  */
-async function checkTodayUnreadable(browser) {
+async function checkOverviewUnreadable(browser) {
   const busy = apiMock(false);
   const context = await germanContext(browser, (route) =>
     new URL(route.request().url()).pathname === "/v1/attention"
@@ -3102,7 +3213,7 @@ async function checkTodayUnreadable(browser) {
     await page
       .locator('[data-testid="attention-error"]')
       .waitFor({ state: "visible", timeout: 15_000 });
-    if ((await page.locator("body").innerText()).includes(german("today.calm")))
+    if ((await page.locator("body").innerText()).includes(german("overview.calm")))
       breach("§1, §12", "/ (attention unreadable)", '"Alles erledigt" although nothing was read');
   } catch (error) {
     if (error instanceof NichtGemessen) throw error;
@@ -3118,7 +3229,7 @@ async function checkTodayUnreadable(browser) {
 }
 
 /**
- * A reader who sees Heute but may not read a workflow's fixes is told so in
+ * A reader who sees Übersicht but may not read a workflow's fixes is told so in
  * the review sheet — not left in front of a loading state that never ends.
  */
 async function checkReviewNotPermitted(browser) {
@@ -3141,7 +3252,7 @@ async function checkReviewNotPermitted(browser) {
       .locator('[data-testid="attention-review-not-permitted"]')
       .waitFor({ state: "visible", timeout: 15_000 });
     const text = await page.locator('[data-testid="attention-review"]').innerText();
-    if (!text.includes(german("today.sheet.notPermitted")))
+    if (!text.includes(german("overview.sheet.notPermitted")))
       breach("§5", where, "the refusal is not said in words");
   } catch (error) {
     if (error instanceof NichtGemessen) throw error;
@@ -3633,8 +3744,8 @@ try {
   await checkRoleLabel(today);
   await checkAdminGroupName(today);
   await checkInstallationEntries(today);
-  const badge = await checkTodayNavEntry(today);
-  await checkTodayGateOpen(today, badge);
+  const badge = await checkOverviewNavEntry(today);
+  await checkOverviewGateOpen(today, badge);
   await checkHistoryLink(today);
   await today.close();
 
@@ -3698,6 +3809,7 @@ try {
     await checkNoRawTimestamps(page, `/${route}`);
     await checkScreenReaderLanguage(page, `/${route}`);
     await checkNoZeroKpiTile(page, `/${route}`);
+    if (route === "usage") await checkUsageMirrorsNoFigures(page);
     await checkRowsOpenByTheirName(page, `/${route}`);
     await sweepDetailSurface(page, route);
     await page.close();
@@ -3707,7 +3819,7 @@ try {
 
   await checkCollectionDataStates(browser);
   await checkUnknownDecisionKind(browser);
-  await checkTodayUnreadable(browser);
+  await checkOverviewUnreadable(browser);
   await checkReviewNotPermitted(browser);
 
   // Second fixture variant: nothing open — "Alles erledigt" and one status
@@ -3724,8 +3836,8 @@ try {
     });
     await calm.route("**/v1/**", apiMock(false, { failedAttentionSource }));
     const calmToday = await openPage(calm, "");
-    if (failedAttentionSource) await checkTodayFailedSource(calmToday);
-    else await checkTodayCalm(calmToday);
+    if (failedAttentionSource) await checkOverviewFailedSource(calmToday);
+    else await checkOverviewCalm(calmToday);
     await checkNoZeroKpiTile(calmToday, "/ (calm)");
     await calmToday.close();
     await calm.close();

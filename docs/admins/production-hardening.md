@@ -231,7 +231,7 @@ The cockpit counts unpaused holds as blockers and shows critical operational
 health even when there are no finished executions from which to calculate a
 success ratio. “No runs (24 h)” is missing execution evidence, not a 100% score.
 
-Open the held workflow's entry on **Today** (the Cockpit start page), then
+Open the held workflow's entry on the **Overview** (the Cockpit start page), then
 **Execution authority**. For
 `execution_authority_unavailable`, review the exact active version, production
 or development environment, destinations, validity and finite run limit, then

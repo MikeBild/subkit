@@ -38,7 +38,7 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
   let cleared = false;
   const open = () => (cleared ? heldSchedules.slice(1) : heldSchedules);
   const schedules = (route) => route.fulfill({ json: { schedules: open(), total: open().length } });
-  // Heute's answer for the same installation: one stopped entry per held
+  // Übersicht's answer for the same installation: one stopped entry per held
   // workflow, and nothing else — so the badge has one number to agree with.
   const attention = (route) =>
     route.fulfill({
@@ -91,7 +91,7 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
     const entries = page.locator('[data-testid="attention-list"] > li');
     await entries.first().waitFor();
     if ((await entries.count()) !== 13)
-      throw new Error(`Heute lists ${await entries.count()} held workflows, not 13`);
+      throw new Error(`Übersicht lists ${await entries.count()} held workflows, not 13`);
     if (await page.getByTestId("attention-calm").count())
       throw new Error("Held schedules presented as all done");
     // The badge sits in the sidebar, which narrow widths render off-canvas and
@@ -99,7 +99,7 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
     const badgeLocator = page.getByTestId("nav-overview-count");
     if (await badgeLocator.count()) {
       const badge = (await badgeLocator.first().innerText()).trim();
-      if (badge !== "13") throw new Error(`Heute's badge reads ${badge}, the list holds 13`);
+      if (badge !== "13") throw new Error(`Übersicht's badge reads ${badge}, the list holds 13`);
       if ((await badgeLocator.first().getAttribute("data-attention-stopped")) !== "true")
         throw new Error("Stopped workflows and the badge is not red");
     }

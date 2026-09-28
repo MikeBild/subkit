@@ -13,7 +13,7 @@ Anwendungen** (Programme, denen jemand Zugriff auf diese Installation freigegebe
 dieser Reihenfolge, mit einem Verzeichnis der drei Abschnitte ganz oben. Jede Zeile
 zeigt ihren Zustand; **Erneuern** steht in der Zeile. Was dich braucht — etwa eine
 abgelaufene Kontoverbindung oder eine vorbereitete Änderung, die auf Freigabe wartet —
-steht nicht hier, sondern auf der Startseite **Heute**, der einen Liste dessen, was
+steht nicht hier, sondern auf der Startseite **Übersicht**, in der einen Liste dessen, was
 jetzt zu tun ist.
 
 Offen stehen nur die Schlüssel, die noch Rechte halten, und die Anwendungen, für die jemand

@@ -422,7 +422,7 @@ function KeysSection({ query }: { query: ListQuery<ApiKeyItem> }) {
             <div className="flex flex-wrap items-center gap-2">
               <p className="truncate font-medium">{key.name || t("apiKeys.unnamed")}</p>
               {/* The key's state, on the key — the tasks it may raise live
-                  on Heute, never in a second list on this page. */}
+                  on Übersicht, never in a second list on this page. */}
               {state ? (
                 <Badge
                   variant={state.kind === "expired" ? "destructive" : "outline"}
