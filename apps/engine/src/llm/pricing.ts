@@ -52,12 +52,29 @@ export function weightedTotalTokens(u: TokenUsageBreakdown): number {
 // answer carries the basis it used.
 // ---------------------------------------------------------------------------
 
+/**
+ * A model id without its provider prefix (`anthropic/claude-…`) or a trailing
+ * vendor date stamp (`-20251001`, `-2024-11-20`).
+ */
+export function bareModelId(modelId: string): string {
+  const noProvider = modelId.includes("/") ? (modelId.split("/").pop() ?? modelId) : modelId;
+  return noProvider.replace(/-\d{4}-\d{2}-\d{2}$/, "").replace(/-\d{8}$/, "");
+}
+
 export interface ModelPrice {
   model: string;
   input_per_mtok: number;
   output_per_mtok: number;
   cache_read_per_mtok: number;
   cache_write_per_mtok: number;
+}
+
+/** Where a rate came from: the built-in catalog, or the operator's `tokens.prices`. */
+export type PriceSource = "catalog" | "override";
+
+/** A rate plus where it came from. */
+export interface SourcedModelPrice extends ModelPrice {
+  price_source: PriceSource;
 }
 
 export interface PricedTokens extends TokenUsageBreakdown {
@@ -80,6 +97,11 @@ export interface CostResult {
   unpriced_models: string[];
   /** How many calls those models account for. */
   unpriced_calls: number;
+  /**
+   * Which rate priced each model met, so a reader can tell a built-in list
+   * price from one the operator set. Sorted by model.
+   */
+  price_sources: Array<{ model: string; price_source: PriceSource }>;
   /** What the figure was computed on, so nobody reads it as a historical invoice. */
   rates_basis: "current";
 }
@@ -91,25 +113,31 @@ export interface CostResult {
  * uncached remainder is what the input rate applies to — the same subtraction
  * `weightedTotalTokens` makes, for the same reason.
  *
+ * A rate is looked up by the recorded model id first, then by its bare id
+ * (provider prefix and vendor date suffix stripped), so `anthropic/claude-…`
+ * and a dated snapshot find the base model's price.
+ *
  * A model with no rate contributes to `unpriced_*` and NOT to `amount`. It
  * does not contribute zero: an amount that silently omits half the calls looks
  * complete, which makes it worse than no amount at all.
  */
 export function priceCalls(
   calls: readonly PricedTokens[],
-  prices: readonly ModelPrice[],
+  prices: readonly SourcedModelPrice[],
   currency: string,
 ): CostResult {
   const byModel = new Map(prices.map((p) => [p.model, p]));
   const unpriced = new Map<string, number>();
+  const sources = new Map<string, PriceSource>();
   let amount = 0;
 
   for (const call of calls) {
-    const rate = byModel.get(call.model);
+    const rate = byModel.get(call.model) ?? byModel.get(bareModelId(call.model));
     if (!rate) {
       unpriced.set(call.model, (unpriced.get(call.model) ?? 0) + (call.calls ?? 1));
       continue;
     }
+    sources.set(call.model, rate.price_source);
     const uncached = Math.max(
       0,
       call.prompt_tokens - call.cache_read_tokens - call.cache_creation_tokens,
@@ -128,6 +156,9 @@ export function priceCalls(
     currency,
     unpriced_models: [...unpriced.keys()].sort(),
     unpriced_calls: [...unpriced.values()].reduce((sum, n) => sum + n, 0),
+    price_sources: [...sources.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([model, price_source]) => ({ model, price_source })),
     rates_basis: "current",
   };
 }

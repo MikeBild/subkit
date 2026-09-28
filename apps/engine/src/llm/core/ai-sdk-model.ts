@@ -44,7 +44,7 @@ import {
 } from "./model-init.ts";
 import { normalizeSchema, unwrapResult } from "./schema-normalizer.ts";
 
-const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
+export const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
 
 // Per-call hard ceiling on a single provider round-trip. Nested LLM calls made
 // inside a tool execution (author_workflow pipeline, transform-repair,
@@ -77,6 +77,11 @@ const MODEL_CONTEXT_LENGTHS: Record<string, number> = {
   "o1-preview": 200_000,
   "o1-mini": 128_000,
 };
+
+/** Every model id with a known context window — models SubKit knows by name. */
+export function knownContextModelIds(): string[] {
+  return Object.keys(MODEL_CONTEXT_LENGTHS);
+}
 
 function contextLengthFor(modelId: string): number {
   const bare = modelId.includes("/") ? (modelId.split("/").pop() ?? modelId) : modelId;
