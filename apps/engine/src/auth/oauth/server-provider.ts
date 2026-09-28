@@ -559,7 +559,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       .limit(1);
     // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
     const clientRows = await db
-      .select({ disabled_at: mcpOauthClients.disabled_at })
+      .select({ disabled_at: mcpOauthClients.disabled_at, retired_at: mcpOauthClients.retired_at })
       .from(mcpOauthClients)
       .where(eq(mcpOauthClients.client_id, refreshRow.client_id))
       .limit(1);

@@ -260,7 +260,10 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
       // path refuse for the same set of reasons (tranche E, rule 3).
       // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
       const clientRows = await db
-        .select({ disabled_at: mcpOauthClients.disabled_at })
+        .select({
+          disabled_at: mcpOauthClients.disabled_at,
+          retired_at: mcpOauthClients.retired_at,
+        })
         .from(mcpOauthClients)
         .where(eq(mcpOauthClients.client_id, row.client_id))
         .limit(1);
