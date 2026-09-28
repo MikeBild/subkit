@@ -1,6 +1,6 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { NotFoundPage, RouteErrorPage } from "@/components/failure-state";
-import { NotificationsPage, PeopleAndAccessPage, SettingsPage } from "@/pages/admin";
+import { NotificationsPage, PeopleAndAccessPage } from "@/pages/admin";
 import { ApiAccessPage } from "@/pages/api-access";
 import { AuditPage } from "@/pages/audit";
 import { CatalogPage } from "@/pages/catalog";
@@ -8,6 +8,7 @@ import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
 import { OverviewPage } from "@/pages/overview";
 import { RunsPage } from "@/pages/runs";
+import { SettingsPage } from "@/pages/settings";
 import { UsagePage } from "@/pages/usage";
 import { absolute } from "./links";
 import {
