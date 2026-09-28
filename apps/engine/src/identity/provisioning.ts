@@ -17,6 +17,7 @@ import { logger } from "../logging/logger.ts";
 import { now } from "../utils/clock.ts";
 import { constantTimeHexEquals } from "./api-key.ts";
 import { generateInviteToken, parseInviteToken } from "./invite.ts";
+import { assertAdminRemains } from "./last-admin.ts";
 import { revokeConnectionsForUser } from "./oauth-connections.ts";
 import { type IssueApiKeyResult, issueApiKey, type UserRole, type UserStatus } from "./service.ts";
 
@@ -131,6 +132,11 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
   const db = exec ?? getDb();
   return db.transaction(async (tx) => {
     const nowTs = new Date(now());
+    await assertAdminRemains(tx, {
+      tenant_id: input.tenant_id,
+      user_id: input.user_id,
+      nextEffectiveRole: null,
+    });
     const [row] = await tx
       .update(users)
       .set({ deleted_at: nowTs, status: "disabled", updated_at: nowTs })
