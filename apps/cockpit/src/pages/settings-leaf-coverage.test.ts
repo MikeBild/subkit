@@ -8,7 +8,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { translate } from "@/lib/i18n";
-import { settingLabel, settingSectionOf } from "@/pages/admin-model";
+import { settingLabel, settingSectionOf } from "@/pages/settings-model";
 
 // A computed specifier: the cockpit's type-check does not follow it into the
 // engine's sources, and bun runs it as the engine does.
@@ -31,7 +31,7 @@ describe("the engine's settings", () => {
       expect(PATHS.filter((path) => settingLabel(path, t).machine)).toEqual([]);
     });
 
-    test(`no two settings on one tab share a ${locale} name`, () => {
+    test(`no two settings in one section share a ${locale} name`, () => {
       const seen = new Map<string, string>();
       for (const path of PATHS) {
         const id = `${settingSectionOf(path)} / ${settingLabel(path, t).text}`;

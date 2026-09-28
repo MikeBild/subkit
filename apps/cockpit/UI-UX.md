@@ -255,6 +255,19 @@ stays a row action.
 addressable as `?section=people|roles|groups|grants`. The entry shows for `identity:read` or
 `rbac:read`, and each section is behind its own read.
 
+**Einstellungen** (`/settings`, `src/pages/settings.tsx`) lists every section of the engine's
+configuration at once, grouped by what an operator comes to change (`SETTING_GROUPS` in
+`settings-model.ts`; a section the engine has and no group places fails `settings-model.test.ts`).
+There are no tabs and no counters, and nothing scrolls sideways: from 720px of content the list stands
+left of the open section, below that the list is the start view and a section opens in its place with
+"← Alle Bereiche". A search keeps the list whole, dims sections without a hit and shows the hits of all
+sections. A line above the sections appears only when something waits — a setting saved but waiting
+for a restart, a last change that did not activate — and nothing when all is well. A row is the
+setting's name, the control, "Wirkt nach Neustart" where that holds and the source only when it is not
+the installation's own value or the default; key, source, scope and the engine's English wording are in
+the collapsed "Technische Angaben". `?leaf=`, `?section=` and `?q=` address a setting, a section and a
+search.
+
 ### Error, cause, fix
 
 A failure never ends at a red word. Wherever the cockpit shows one — a run sheet, an unhealthy
