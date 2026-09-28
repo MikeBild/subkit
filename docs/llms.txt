@@ -43,7 +43,7 @@
 - [AI-Assisted Authoring](authors/authoring-workflows.md): Describe what should happen and have a reviewed, versioned workflow the same afternoon — instead of a build project that runs for weeks.
 - [Choosing your surface](authors/choosing-your-surface.md): Do the work where it actually goes faster.
 - [Use sk from a coding agent (Claude Code, Codex, …)](authors/coding-agents.md): Every new session starts already knowing your domain's rules, looks your runbooks up instead of inventing them, and remembers what you taught it last time — once you have reviewed and approved that lesson.
-- [Anbindungen und Freigaben](authors/connections.md): Beides findest du im Cockpit unter Installation: die Anbindungen auf der Seite Anbindungen, die vorbereiteten Änderungen oben auf Einstellungen.
+- [Kontoverbindungen und Freigaben](authors/connections.md): Beides findest du im Cockpit unter Installation: die Kontoverbindungen im Abschnitt Kontoverbindungen der Seite Zugangsdaten, die vorbereiteten Änderungen oben auf Einstellungen.
 - [Custom Skills](authors/custom-skills.md): Write down a convention once and stop repeating it.
 - [Knowledge Sources](authors/knowledge-sources.md): Workflows follow your runbooks and policies instead of generic knowledge.
 - [Model a Domain](authors/model-a-domain.md): Teach sk a whole field of work once, and every workflow in it arrives right the first time.

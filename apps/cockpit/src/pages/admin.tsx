@@ -7,7 +7,6 @@ import {
   Copy,
   Plus,
   RefreshCw,
-  RotateCw,
   ScanSearch,
   SlidersHorizontal,
   Trash2,
@@ -105,17 +104,6 @@ interface UserItem {
   oauth_connections?: number;
 }
 
-/** One program that was granted access to this installation. */
-interface ConnectedClientItem {
-  id: string;
-  client_id: string;
-  client_name: string | null;
-  approved_by: string[];
-  live_connections: number;
-  disabled_at: string | null;
-  created_at: string;
-}
-
 interface RoleItem {
   id: string;
   name: string;
@@ -153,30 +141,6 @@ interface PermissionItem {
   name: string;
   description: string;
   resource_type: string;
-}
-
-// RFC 8693 token exchange at the engine's own token endpoint — one line a
-// script can paste. The key never leaves the file it is read from.
-const TOKEN_EXCHANGE_CURL = [
-  "curl -sS -X POST $SUBKIT_URL/v1/oauth/token \\",
-  '  --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \\',
-  '  --data-urlencode "subject_token=$(cat /etc/subkit/api-key)" \\',
-  '  --data-urlencode "subject_token_type=urn:subkit:params:oauth:token-type:api-key"',
-].join("\n");
-
-interface ApiKeyItem {
-  id: string;
-  name: string | null;
-  prefix: string;
-  scopes: string[];
-  created_at: string;
-  last_used_at: string | null;
-  expires_at: string | null;
-  revoked_at: string | null;
-}
-
-interface IssuedApiKey extends ApiKeyItem {
-  plaintext_key: string;
 }
 
 interface SettingItem {
@@ -555,7 +519,8 @@ export function PeoplePage() {
   );
 }
 
-function SecretDialog({
+/** A value shown once — a new key, an invitation — with a copy button. */
+export function SecretDialog({
   secret,
   onClose,
   title,
@@ -593,277 +558,6 @@ function SecretDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/**
- * The programs that were approved for this installation, and who approved
- * each one. A connection belongs to the installation, not to a browser
- * session — so the page that lists them has to say whose decision keeps one
- * alive, or a withdrawal is a silent side effect.
- */
-function ConnectedClients() {
-  const { t, dateTime } = useI18n();
-  const session = useSession();
-  const canRead = session.permissions.includes("mcp_oauth_client:read");
-  const query = useQuery({
-    queryKey: ["admin", "oauth-clients"],
-    queryFn: () => apiRequest<{ items: ConnectedClientItem[] }>("/v1/oauth/clients"),
-    enabled: canRead,
-  });
-  if (!canRead) return null;
-  const items = query.data?.items ?? [];
-  const view = queryView(query, (data) => data.items.length === 0);
-  return (
-    <section className="flex flex-col gap-2" data-testid="connected-clients">
-      <div>
-        <h2 className="text-sm font-medium">{t("connectedClients.title")}</h2>
-        <p className="text-xs text-muted-foreground">{t("connectedClients.description")}</p>
-      </div>
-      {view === "loading" ? (
-        <LoadingCards testId="connected-clients-loading" />
-      ) : view === "error" ? (
-        <LoadFailed
-          title={t("resource.loadFailed", { resource: t("connectedClients.title") })}
-          onRetry={() => void query.refetch()}
-          testId="connected-clients-load-failed"
-        />
-      ) : view === "empty" ? (
-        <EmptyCard text={t("connectedClients.empty")} testId="connected-clients-empty" />
-      ) : (
-        <div className="grid gap-2" data-testid="connected-clients-list">
-          {items.map((item, index) => (
-            <Card key={item.id} size="sm" data-testid={`connected-client-${index}`}>
-              <CardContent className="flex flex-col gap-2 p-4">
-                <p className="truncate font-medium">
-                  {item.client_name || t("connectedClients.unnamed")}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {item.approved_by.length
-                    ? t("connectedClients.approvedBy", { people: item.approved_by.join(", ") })
-                    : t("connectedClients.noLiveApproval")}
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  <Badge variant="secondary">
-                    {t("connectedClients.live", { count: String(item.live_connections) })}
-                  </Badge>
-                  {item.disabled_at && (
-                    <Badge variant="destructive">{t("connectedClients.revoked")}</Badge>
-                  )}
-                  <Badge variant="outline">
-                    {t("apiKeys.created", { date: dateTime(item.created_at) })}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-export function ApiAccessPage() {
-  const { t, dateTime } = useI18n();
-  const session = useSession();
-  const client = useQueryClient();
-  const canWrite = session.permissions.includes("api_key:write");
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [scopes, setScopes] = useState("workflow:read,workflow:run");
-  const [secret, setSecret] = useState<string | null>(null);
-  const [revoke, setRevoke] = useState<ApiKeyItem | null>(null);
-  const query = useQuery({
-    queryKey: ["admin", "api-keys"],
-    queryFn: () => apiRequest<Envelope<ApiKeyItem>>("/v1/identity/api-keys"),
-  });
-  const refresh = () => client.invalidateQueries({ queryKey: ["admin", "api-keys"] });
-  const issue = useMutation({
-    mutationFn: () =>
-      apiRequest<IssuedApiKey>("/v1/identity/api-keys", {
-        method: "POST",
-        body: JSON.stringify({
-          owner_kind: "user",
-          owner_id: session.principal.id,
-          name: name.trim(),
-          scopes: scopes
-            .split(",")
-            .map((scope) => scope.trim())
-            .filter(Boolean),
-        }),
-      }),
-    onSuccess: async (result) => {
-      setOpen(false);
-      setSecret(result.plaintext_key);
-      await refresh();
-    },
-  });
-  const rotate = useMutation({
-    mutationFn: (id: string) =>
-      apiRequest<{ new: IssuedApiKey }>(`/v1/identity/api-keys/${encodeURIComponent(id)}/rotate`, {
-        method: "POST",
-        body: JSON.stringify({}),
-      }),
-    onSuccess: async (result) => {
-      setSecret(result.new.plaintext_key);
-      await refresh();
-    },
-  });
-  const remove = useMutation({
-    mutationFn: (id: string) =>
-      apiRequest<void>(`/v1/identity/api-keys/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      }),
-    onSuccess: async () => {
-      setRevoke(null);
-      await refresh();
-      toast.success(t("apiKeys.revoked"));
-    },
-  });
-  const view = queryView(query, (data) => data.items.length === 0);
-  return (
-    <AdminFrame
-      testId="admin-api-access"
-      titleKey="resource.apiAccess.title"
-      action={
-        canWrite ? (
-          <Button
-            className="w-full sm:w-auto"
-            onClick={() => setOpen(true)}
-            data-testid="api-key-create"
-          >
-            <Plus data-icon="inline-start" />
-            {t("apiKeys.create")}
-          </Button>
-        ) : undefined
-      }
-    >
-      <ConnectedClients />
-      <Card size="sm" data-testid="api-keys-token-exchange">
-        <CardContent className="flex flex-col gap-2 p-4">
-          <p className="text-sm text-muted-foreground">{t("apiKeys.exchangeHint")}</p>
-          <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
-            <code>{TOKEN_EXCHANGE_CURL}</code>
-          </pre>
-        </CardContent>
-      </Card>
-      {view === "loading" ? (
-        <LoadingCards testId="api-keys-loading" />
-      ) : view === "error" ? (
-        <LoadFailed
-          title={t("resource.loadFailed", { resource: t("resource.apiAccess.title") })}
-          onRetry={() => void query.refetch()}
-          testId="api-keys-load-failed"
-        />
-      ) : view === "empty" ? (
-        <EmptyCard text={t("resource.apiAccess.empty")} testId="api-keys-empty" />
-      ) : (
-        <div className="grid gap-2" data-testid="api-keys-list">
-          {(query.data?.items ?? []).map((key, index) => (
-            <Card key={key.id} size="sm" data-testid={`api-key-item-${index}`}>
-              <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{key.name || t("apiKeys.unnamed")}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {key.prefix} · {t("apiKeys.created", { date: dateTime(key.created_at) })}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {key.scopes.map((scope) => (
-                      <Badge key={scope} variant="secondary">
-                        {scope}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-                {!key.revoked_at && (
-                  <div className="flex gap-2">
-                    <IconButton
-                      label={t("apiKeys.rotate")}
-                      data-testid={`api-key-rotate-${index}`}
-                      onClick={() => rotate.mutate(key.id)}
-                    >
-                      <RotateCw />
-                    </IconButton>
-                    <IconButton
-                      label={t("apiKeys.revoke")}
-                      data-testid={`api-key-revoke-${index}`}
-                      onClick={() => setRevoke(key)}
-                    >
-                      <Trash2 />
-                    </IconButton>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent showCloseButton={false} data-testid="api-key-create-dialog">
-          <DialogHeader>
-            <DialogTitle>{t("apiKeys.create")}</DialogTitle>
-            <DialogDescription>{t("apiKeys.createDescription")}</DialogDescription>
-          </DialogHeader>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="api-key-name">{t("apiKeys.name")}</FieldLabel>
-              <Input
-                id="api-key-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                data-testid="api-key-create-name"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="api-key-scopes">{t("apiKeys.scopes")}</FieldLabel>
-              <Textarea
-                id="api-key-scopes"
-                value={scopes}
-                onChange={(event) => setScopes(event.target.value)}
-                data-testid="api-key-create-scopes"
-              />
-            </Field>
-          </FieldGroup>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setOpen(false)}
-              data-testid="api-key-create-cancel"
-            >
-              {t("common.cancel")}
-            </Button>
-            <Button
-              disabled={!name.trim() || issue.isPending}
-              onClick={() => issue.mutate()}
-              data-testid="api-key-create-submit"
-            >
-              {t("apiKeys.create")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <AlertDialog open={Boolean(revoke)} onOpenChange={(next) => !next && setRevoke(null)}>
-        <AlertDialogContent data-testid="api-key-revoke-dialog">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("apiKeys.revoke")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("apiKeys.revokeDescription")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="api-key-revoke-cancel">
-              {t("common.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => revoke && remove.mutate(revoke.id)}
-              data-testid="api-key-revoke-confirm"
-            >
-              {t("apiKeys.revoke")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <SecretDialog secret={secret} onClose={() => setSecret(null)} title={t("apiKeys.ready")} />
-    </AdminFrame>
   );
 }
 

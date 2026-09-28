@@ -7,7 +7,10 @@ import type { components } from "@/api/schema";
 import { absolute, chatNewHref, conversationHref } from "@/app/links";
 import { useRecordCrumb } from "@/app/record-crumb";
 import { AgentPanel } from "@/components/cockpit/agent-panel";
-import { ConnectorCredentials } from "@/components/cockpit/connector-credentials";
+import {
+  ConnectorCredentials,
+  useConnectorCredential,
+} from "@/components/cockpit/connector-credentials";
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { bytes, MISSING } from "@/components/cockpit/table-columns";
@@ -29,6 +32,13 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  authStateLabel,
+  type ConnectorAuthState,
+  connectorAuthState,
+  connectorHealthLabel,
+  needsRenewal,
+} from "@/lib/connector-auth-state";
 import { type DetailEntry, detailEntries, SCOPE_KEYS, SIDE_EFFECT_KEYS } from "@/lib/detail-fields";
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -161,14 +171,54 @@ function ConversationsAbout({
   );
 }
 
+/**
+ * A connector's own state, in place of a lifecycle it does not have: whether
+ * it signs in (§11), whether a person switched it off, and the engine's
+ * health verdict when that is not ok. The bar used to fall back to "Aktiv"
+ * here — a word about a lifecycle, said about a connector whose sign-in had
+ * expired.
+ */
+function ConnectorStateBadges({
+  record,
+  authState,
+}: {
+  record: RecordValue;
+  authState: ConnectorAuthState;
+}) {
+  const { t } = useI18n();
+  const lost = needsRenewal(authState);
+  const health = typeof record.health_state === "string" ? record.health_state : null;
+  const healthKey = health && health !== "ok" ? connectorHealthLabel(health) : null;
+  return (
+    <>
+      <Badge variant={lost ? "destructive" : "outline"} data-testid="detail-connector-auth-state">
+        <span aria-hidden="true">{lost ? "●" : "○"}</span> {t(authStateLabel(authState))}
+      </Badge>
+      {record.enabled === false ? (
+        <Badge variant="outline" data-testid="detail-connector-disabled">
+          {t("connectors.disabled")}
+        </Badge>
+      ) : null}
+      {healthKey && health !== "needs_reauth" ? (
+        <Badge variant="outline" data-testid="detail-connector-health">
+          {t(healthKey)}
+        </Badge>
+      ) : null}
+    </>
+  );
+}
+
 function GovernanceBar({
   record,
   canWrite,
   workflow = false,
+  connectorAuth = null,
 }: {
   record: RecordValue;
   canWrite: boolean;
   workflow?: boolean;
+  /** Set for a connector: its sign-in state replaces the lifecycle word. */
+  connectorAuth?: ConnectorAuthState | null;
 }) {
   const { t } = useI18n();
   const status =
@@ -185,9 +235,13 @@ function GovernanceBar({
     >
       <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
       <span className="font-medium">{t("detail.governance")}</span>
-      <Badge variant="outline">
-        {workflow && status === "active" ? t("authority.versionActive") : statusLabel(t, status)}
-      </Badge>
+      {connectorAuth ? (
+        <ConnectorStateBadges record={record} authState={connectorAuth} />
+      ) : (
+        <Badge variant="outline">
+          {workflow && status === "active" ? t("authority.versionActive") : statusLabel(t, status)}
+        </Badge>
+      )}
       {version !== undefined && <Badge variant="secondary">v{String(version)}</Badge>}
       <span className="text-muted-foreground">
         {t(canWrite ? "detail.canEdit" : "detail.readOnly")}
@@ -544,6 +598,28 @@ export function CatalogDetailPage({
       if (result.ok) toast.success(t("detail.testPassed"));
     },
   });
+  // The connector's sign-in, from its record, its credential read and — once
+  // run — the manual test. One verdict for the bar and the Anmeldung card.
+  const credential = useConnectorCredential(resource === "connectors" && canRead ? id : null);
+  const connectorAuth =
+    resource === "connectors" && record
+      ? connectorAuthState(
+          {
+            auth_type: typeof record.auth_type === "string" ? record.auth_type : null,
+            health_state: typeof record.health_state === "string" ? record.health_state : null,
+            needs_reauth: record.needs_reauth === true,
+            auth_failed_at:
+              typeof record.auth_failed_at === "string" ? record.auth_failed_at : null,
+          },
+          probe.data
+            ? {
+                ok: probe.data.ok,
+                ...(probe.data.error_code ? { error_code: probe.data.error_code } : {}),
+              }
+            : null,
+          credential.data,
+        )
+      : null;
 
   if (!canRead)
     return (
@@ -630,7 +706,12 @@ export function CatalogDetailPage({
           </Button>
         </div>
       </header>
-      <GovernanceBar record={record} canWrite={canWrite} workflow={resource === "workflows"} />
+      <GovernanceBar
+        record={record}
+        canWrite={canWrite}
+        workflow={resource === "workflows"}
+        connectorAuth={connectorAuth}
+      />
       {resource === "connectors" && probe.data && (
         <div className="border-b px-6 py-4" data-testid="connector-probe-result">
           <p
@@ -685,8 +766,13 @@ export function CatalogDetailPage({
         {resource === "knowledge" ? <KnowledgeBody id={id} canWrite={canWrite} /> : null}
         {resource === "files" ? <FileBody id={id} record={record} /> : null}
         {resource === "connectors" ? <Overview record={record} /> : null}
-        {resource === "connectors" ? (
-          <ConnectorCredentials connectorId={id} canWrite={canWrite} />
+        {resource === "connectors" && connectorAuth ? (
+          <ConnectorCredentials
+            connectorId={id}
+            authType={typeof record.auth_type === "string" ? record.auth_type : null}
+            state={connectorAuth}
+            canWrite={canWrite}
+          />
         ) : null}
         {(resource === "workflows" || resource === "connectors") &&
         permissions.includes("conversation:read") ? (
