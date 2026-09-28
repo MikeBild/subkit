@@ -31190,6 +31190,28 @@
           {
             "schema": {
               "type": "string",
+              "format": "date-time",
+              "description": "Only runs that started at or after this instant (ISO 8601). The same field and bounds `GET /v1/stats/executions` counts on."
+            },
+            "required": false,
+            "description": "Only runs that started at or after this instant (ISO 8601). The same field and bounds `GET /v1/stats/executions` counts on.",
+            "name": "started_from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Only runs that started before this instant (ISO 8601, exclusive)."
+            },
+            "required": false,
+            "description": "Only runs that started before this instant (ISO 8601, exclusive).",
+            "name": "started_to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
               "format": "uuid"
             },
             "required": false,
