@@ -247,53 +247,6 @@ async function hasResourceGrant(
   return rows.length > 0;
 }
 
-/**
- * Whether the principal holds `permission` on at least one resource of
- * `resource_type` through a live resource grant (its own or a group's).
- *
- * The question a list asks before it may say "nothing here": a reader without
- * the tenant-wide permission still reads the resources granted to it, so its
- * scoped view is an answer, not a refusal. Portal-token principals never
- * inherit grants (see `can`), so they never hold one here either.
- */
-export async function holdsAnyResourceGrant(
-  db: Db,
-  check: { tenant_id: string; principal: ResolvedPrincipal; permission: string },
-  resource_type: string,
-): Promise<boolean> {
-  if (check.principal.provider === "portal_token") return false;
-  const permissionId = await lookupPermissionId(db, check.permission);
-  if (!permissionId) return false;
-  const subjectClauses = [
-    and(
-      eq(resourceGrants.subject_type, check.principal.kind),
-      eq(resourceGrants.subject_id, check.principal.id),
-    ),
-  ];
-  if (check.principal.kind === "user") {
-    const groupIds = await userGroupIds(db, check.principal.id);
-    if (groupIds.length > 0) {
-      subjectClauses.push(
-        and(eq(resourceGrants.subject_type, "group"), inArray(resourceGrants.subject_id, groupIds)),
-      );
-    }
-  }
-  const rows = await db
-    .select({ id: resourceGrants.id })
-    .from(resourceGrants)
-    .where(
-      and(
-        eq(resourceGrants.tenant_id, check.tenant_id),
-        or(...subjectClauses),
-        eq(resourceGrants.resource_type, resource_type),
-        eq(resourceGrants.permission_id, permissionId),
-        or(isNull(resourceGrants.expires_at), gt(resourceGrants.expires_at, new Date(now()))),
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
-}
-
 function matchesPortalTokenAllowlist(check: PermissionCheck): boolean {
   // The `portal_token_user` built-in role plus the allowlist together
   // define what an end-user principal can do. The allowlist path has
@@ -514,6 +467,114 @@ export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
       cause: isPortalToken ? "workflow_not_in_allowlist" : "no_matching_grant",
     },
   };
+}
+
+/**
+ * `can()` for many resources of one type at once.
+ *
+ * A list that filters N items with N `can()` calls pays three or four queries
+ * per item for a non-admin reader. This evaluates the SAME rules in the SAME
+ * order — credential ceiling, admin, resource grant, group, role, portal-token
+ * allowlist — with two reads in total: the tenant-wide decision (which already
+ * covers the ceiling's scopes, the admin role, group and role grants) and the
+ * reader's live resource grants of that permission and type. `allows(id)` is
+ * then pure, and equals `(await can(db, {…, resource: {type, id}})).allow` for
+ * every id (pinned by `resource-access.test.ts`).
+ */
+export interface ResourceAccess {
+  /** The decision without a resource — the tenant-wide answer. */
+  tenantWide: Decision;
+  /** Whether the reader may act on this resource. */
+  allows(id: string): boolean;
+  /** Whether the reader reaches ANY resource of the type: tenant-wide, by grant, or by allowlist. */
+  any: boolean;
+}
+
+export async function resourceAccess(
+  db: Db,
+  check: {
+    tenant_id: string;
+    principal: ResolvedPrincipal;
+    permission: string;
+    resource_type: string;
+    quiet?: boolean;
+  },
+): Promise<ResourceAccess> {
+  const { principal, permission, resource_type } = check;
+  const tenantWide = await can(db, {
+    tenant_id: check.tenant_id,
+    principal,
+    permission,
+    ...(check.quiet ? { quiet: true } : {}),
+  });
+  // A scope ceiling does not depend on the resource: it refuses them all.
+  if (tenantWide.source === "credential_ceiling") {
+    return { tenantWide, allows: () => false, any: false };
+  }
+  const granted = new Set<string>();
+  const isPortalToken = principal.provider === "portal_token";
+  if (!isPortalToken) {
+    const permissionId = await lookupPermissionId(db, permission);
+    if (permissionId) {
+      const subjectClauses = [
+        and(
+          eq(resourceGrants.subject_type, principal.kind),
+          eq(resourceGrants.subject_id, principal.id),
+        ),
+      ];
+      if (principal.kind === "user") {
+        const groupIds = await userGroupIds(db, principal.id);
+        if (groupIds.length > 0) {
+          subjectClauses.push(
+            and(
+              eq(resourceGrants.subject_type, "group"),
+              inArray(resourceGrants.subject_id, groupIds),
+            ),
+          );
+        }
+      }
+      const rows = await db
+        .select({ id: resourceGrants.resource_id })
+        .from(resourceGrants)
+        .where(
+          and(
+            eq(resourceGrants.tenant_id, check.tenant_id),
+            or(...subjectClauses),
+            eq(resourceGrants.resource_type, resource_type),
+            eq(resourceGrants.permission_id, permissionId),
+            or(isNull(resourceGrants.expires_at), gt(resourceGrants.expires_at, new Date(now()))),
+          ),
+        );
+      for (const row of rows) granted.add(row.id);
+    }
+  }
+  const ceilingAllows = (id: string): boolean => {
+    const list =
+      resource_type === "workflow"
+        ? principal.allowed_workflows
+        : resource_type === "connector"
+          ? principal.allowed_connectors
+          : undefined;
+    return isPortalToken || !list || list === "all" || list.includes(id);
+  };
+  const allows = (id: string): boolean => {
+    if (!ceilingAllows(id)) return false;
+    if (tenantWide.allow) return true;
+    if (granted.has(id)) return true;
+    return matchesPortalTokenAllowlist({
+      tenant_id: check.tenant_id,
+      principal,
+      permission,
+      resource: { type: resource_type, id },
+    });
+  };
+  const allowlist = principal.allowed_workflows;
+  const portalReaches =
+    isPortalToken &&
+    (permission === "workflow:read" || permission === "workflow:run") &&
+    resource_type === "workflow" &&
+    (allowlist === "all" || (Array.isArray(allowlist) && allowlist.length > 0));
+  return { tenantWide, allows, any: tenantWide.allow || granted.size > 0 || portalReaches };
 }
 
 /**
