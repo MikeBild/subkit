@@ -14,6 +14,7 @@ import {
   DECISION_FAILURE_WINDOW_HOURS,
   failingScheduledGroups,
 } from "./health-digest.ts";
+import { registerTenantStateCache } from "./tenant-state.ts";
 
 export const OPERATIONAL_SCHEMA_VERSION = "operational-overview.v1" as const;
 /**
@@ -230,6 +231,7 @@ export function invalidateOperationalOverview(tenantId?: string): void {
   if (tenantId) cache.delete(tenantId);
   else cache.clear();
 }
+registerTenantStateCache(invalidateOperationalOverview);
 
 const numberOf = (value: string | number | null | undefined): number => Number(value ?? 0);
 

@@ -6,7 +6,6 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { invalidateOperationalOverview } from "../../operator/index.ts";
 import * as svc from "../../skill-candidates/index.ts";
 import {
   type ApproveSkillCandidateParams,
@@ -292,7 +291,6 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
         );
       throw new NotFoundError("skill_candidate");
     }
-    invalidateOperationalOverview(principal.tenant_id);
     return c.json(result, 200);
   });
 
@@ -311,7 +309,6 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
     if (!rejected) throw new NotFoundError("skill_candidate");
-    invalidateOperationalOverview(principal.tenant_id);
     return c.json({ rejected: true }, 200);
   });
 }

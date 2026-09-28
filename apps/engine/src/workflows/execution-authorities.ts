@@ -20,7 +20,7 @@ import {
   REQUEST_TIMEOUT_DEFAULT_MS,
 } from "../execution/steps/request.ts";
 import { WORKFLOW_TIMEOUT_DEFAULT_MS } from "../execution/timeouts.ts";
-import { invalidateOperationalOverview } from "../operator/index.ts";
+import { invalidateTenantState } from "../operator/index.ts";
 import { can } from "../rbac/evaluator.ts";
 import { activateReviewedDraft } from "./activate-reviewed-draft.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
@@ -265,7 +265,7 @@ export async function activateWorkflowDraft(
       true,
     );
   });
-  invalidateOperationalOverview(principal.tenant_id);
+  invalidateTenantState(principal.tenant_id);
   return {
     workflow_version_id: input.workflow_version_id,
     activated: true as const,
@@ -419,7 +419,7 @@ export async function grantWorkflowAuthority(
     );
     return authority;
   });
-  invalidateOperationalOverview(principal.tenant_id);
+  invalidateTenantState(principal.tenant_id);
   return result;
 }
 
