@@ -255,7 +255,6 @@
     "kpiTooltip": "data-family-kpi-tooltip",
     "visualization": "data-family-visualization",
     "contractVersion": "data-family-contract-version",
-    "decisionBucket": "data-family-decision-bucket",
     "decisionKind": "data-family-decision-kind",
     "decisionPriority": "data-family-decision-priority",
     "collectionId": "data-family-collection-id",
@@ -432,6 +431,8 @@
   },
   "release": {
     "mode": "atomic-family",
+    "suspendedUntil": "every-sibling-at-3.0",
+    "whileSuspended": "per-product; siblings on 2.3 keep serving operational-overview, SubKit on 3.0 keeps serving it too",
     "mismatchToleranceMinutes": 15,
     "mismatchMutationPolicy": "disabled",
     "rollback": "whole-family"
