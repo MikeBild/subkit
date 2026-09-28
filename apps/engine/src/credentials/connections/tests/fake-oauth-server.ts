@@ -20,7 +20,10 @@ export interface FakeOAuthServer {
   /** Every request as `METHOD /path`, in order. */
   requests: string[];
   /** Registered clients as the server stored them. */
-  clients: Map<string, { redirect_uris: string[]; client_name?: string; client_uri?: string }>;
+  clients: Map<
+    string,
+    { redirect_uris: string[]; client_name?: string; client_uri?: string; scope?: string }
+  >;
   /** What the consent step will do with the next authorization request. */
   decision: "approve" | "deny";
   /** Token lifetime the server answers with, in seconds. */
@@ -61,7 +64,16 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 }
 
 export async function startFakeOAuthServer(
-  options: { scopes?: string[]; name?: string } = {},
+  options: {
+    scopes?: string[];
+    name?: string;
+    /**
+     * Behave like an OpenID Connect server: issue a refresh token only when
+     * the authorization asked for `offline_access` (OIDC Core §11). List that
+     * scope in `scopes` to advertise it.
+     */
+    refreshRequiresOfflineAccess?: boolean;
+  } = {},
 ): Promise<FakeOAuthServer> {
   const scopes = options.scopes ?? ["read", "write", "admin"];
   const codes = new Map<string, IssuedCode>();
@@ -115,6 +127,7 @@ export async function startFakeOAuthServer(
         client_name?: string;
         client_uri?: string;
         token_endpoint_auth_method?: string;
+        scope?: string;
       };
       if (!Array.isArray(body.redirect_uris) || body.redirect_uris.length === 0) {
         return json(res, 400, { error: "invalid_redirect_uri" });
@@ -127,6 +140,7 @@ export async function startFakeOAuthServer(
         redirect_uris: body.redirect_uris,
         ...(body.client_name ? { client_name: body.client_name } : {}),
         ...(body.client_uri ? { client_uri: body.client_uri } : {}),
+        ...(body.scope !== undefined ? { scope: body.scope } : {}),
       });
       return json(res, 201, { client_id, redirect_uris: body.redirect_uris });
     }
@@ -194,7 +208,8 @@ export async function startFakeOAuthServer(
         expires_in: state.expiresIn,
         scope,
       };
-      if (state.issueRefreshToken) {
+      const offline = scope.split(/\s+/).includes("offline_access");
+      if (state.issueRefreshToken && (!options.refreshRequiresOfflineAccess || offline)) {
         const refresh_token = next("refresh");
         refreshTokens.set(refresh_token, { client_id, scope });
         body.refresh_token = refresh_token;
