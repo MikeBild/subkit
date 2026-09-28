@@ -54,7 +54,7 @@ export const METRIC_NAMES = {
   OPERATIONAL_TRIAL_FAILURES_24H: "subkit_operational_trial_failures_24h",
   OPERATIONAL_CONNECTORS_TOTAL: "subkit_operational_connectors_total",
   OPERATIONAL_CONNECTOR_HEALTH_RATIO: "subkit_operational_connector_health_ratio",
-  OPERATIONAL_PENDING_REPAIRS: "subkit_operational_pending_repairs",
+  OPERATIONAL_REPAIRS_APPLIED_RATIO: "subkit_operational_repairs_applied_ratio",
   OPERATIONAL_SKILLS_TOTAL: "subkit_operational_skills_total",
   OPERATIONAL_PENDING_SKILL_CANDIDATES: "subkit_operational_pending_skill_candidates",
   EXECUTION_TOTAL: "execution_total",
@@ -381,7 +381,7 @@ function buildRegistry(): MetricsRegistry {
     METRIC_NAMES.OPERATIONAL_TRIAL_FAILURES_24H,
     METRIC_NAMES.OPERATIONAL_CONNECTORS_TOTAL,
     METRIC_NAMES.OPERATIONAL_CONNECTOR_HEALTH_RATIO,
-    METRIC_NAMES.OPERATIONAL_PENDING_REPAIRS,
+    METRIC_NAMES.OPERATIONAL_REPAIRS_APPLIED_RATIO,
     METRIC_NAMES.OPERATIONAL_SKILLS_TOTAL,
     METRIC_NAMES.OPERATIONAL_PENDING_SKILL_CANDIDATES,
   ]) {
