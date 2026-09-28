@@ -16,7 +16,7 @@
 // that the lagging failure groups can never give you in time.
 
 import { totalmem } from "node:os";
-import { and, eq, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, like, notInArray, or, sql } from "drizzle-orm";
 import { getConfig } from "../config/loader.ts";
 import type { Config } from "../config/schema.ts";
 import type { Executor } from "../db/client.ts";
@@ -274,19 +274,34 @@ export function topRisk(signals: RiskSignal[]): RiskSignal | null {
   return signals.length > 0 ? (signals[0] as RiskSignal) : null;
 }
 
-// Cross-replica edge tracker for critical-risk auditing. The risk signals
-// describe shared host infrastructure (one Postgres pool, one set of DLQs,
-// one engine RSS), so a standing critical must be audited EXACTLY ONCE per
-// false→true edge — not on every digest read, not once per reading tenant,
-// and not once per replica. The builder runs on every MCP connect / resource
-// read / REPL start / status call, so auditing inside it would otherwise flood
-// `audit_log`. Edge state lives in the shared `risk_signal_edges` table keyed
-// by signal `kind`; every replica claims an edge through an atomic
-// INSERT…ON CONFLICT…WHERE CAS so exactly one wins. Recovery clears the row so
-// the next occurrence re-fires.
+// Cross-replica edge tracker for critical-risk auditing. A standing critical
+// must be audited EXACTLY ONCE per false→true edge — not once per reader and
+// not once per tick. Edge state lives in the shared `risk_signal_edges` table;
+// every caller claims an edge through an atomic INSERT…ON CONFLICT…WHERE CAS,
+// so exactly one wins it.
 //
-// (Previously a per-process Map — correct within one process, but an N-replica
-// deploy duplicated each edge audit up to N×.)
+// WHOSE edge it is depends on what the signal measures:
+//   * shared signals read state every process sees alike — the dead-letter
+//     queues live in Postgres, the month's allowance is a database sum. One
+//     edge row per kind for the whole deployment.
+//   * process-local signals read this process's own gauges — its connection
+//     pool, its RSS, its retries, its connector and model calls. Two processes
+//     can honestly disagree; one shared row would flip raise/clear on every
+//     tick as their passes alternate. Each process owns its own row
+//     (`<kind>@<instance>`) and only ever clears its own.
+
+/** Signals that read state every process shares; every other kind is process-local. */
+export const SHARED_RISK_KINDS: ReadonlySet<string> = new Set(["dlq_growth", "token_budget"]);
+
+/** The edge row a signal of `kind` is tracked under, for the process `instance`. */
+export function riskEdgeKey(kind: string, instance: string): string {
+  return SHARED_RISK_KINDS.has(kind) ? kind : `${kind}@${instance}`;
+}
+
+function kindOfEdgeKey(key: string): string {
+  const at = key.indexOf("@");
+  return at < 0 ? key : key.slice(0, at);
+}
 
 export interface RiskEdges {
   /** Signals that NEWLY crossed into `critical` since the last call. */
@@ -296,56 +311,64 @@ export interface RiskEdges {
 }
 
 /**
- * Claim and return the critical-state EDGES since the last call, transitioning
- * the shared `risk_signal_edges` table. The caller audits RISK_SIGNAL_RAISED on
- * each `raised` and RISK_SIGNAL_CLEARED on each `cleared` (under the system
- * tenant — host-scoped signals), so SIEM gets both edges for MTTR. The CAS
- * RETURNING clause guarantees exactly one replica observes each edge: a
- * persistent critical yields neither edge on subsequent reads (on any replica),
- * and a recovered-then-recurring one re-fires once.
+ * Claim and return the critical-state EDGES since the last call for the
+ * process `instance`, transitioning the shared `risk_signal_edges` table. The
+ * caller audits RISK_SIGNAL_RAISED on each `raised` and RISK_SIGNAL_CLEARED on
+ * each `cleared` IN THE SAME TRANSACTION, so an edge is never claimed without
+ * its audit row. A persistent critical yields no edge on later calls, and a
+ * recovered-then-recurring one re-fires once.
  */
-export async function takeRiskEdges(db: Executor, signals: RiskSignal[]): Promise<RiskEdges> {
-  const bySignal = new Map(signals.map((s) => [s.kind, s]));
-  const nowCriticalKinds = [
-    ...new Set(signals.filter((s) => s.severity === "critical").map((s) => s.kind)),
+export async function takeRiskEdges(
+  db: Executor,
+  signals: RiskSignal[],
+  instance: string,
+): Promise<RiskEdges> {
+  const byKey = new Map(signals.map((s) => [riskEdgeKey(s.kind, instance), s]));
+  const nowCriticalKeys = [
+    ...new Set(
+      signals.filter((s) => s.severity === "critical").map((s) => riskEdgeKey(s.kind, instance)),
+    ),
   ];
 
-  // Claim the false→true edge for every currently-critical kind. The
-  // conflicting set-where returns a kind only when THIS call inserted it fresh
-  // or flipped it false→true — a row already `active=true` fails the where and
-  // is not returned, so a standing critical never re-audits and exactly one
-  // replica wins the edge.
-  let raisedKinds: string[] = [];
-  if (nowCriticalKinds.length > 0) {
+  // Claim the false→true edge for every currently-critical key. A row already
+  // `active=true` fails the set-where and is not returned, so a standing
+  // critical never re-audits and exactly one caller wins the edge.
+  let raisedKeys: string[] = [];
+  if (nowCriticalKeys.length > 0) {
     const rows = await db
       .insert(riskSignalEdges)
-      .values(nowCriticalKinds.map((kind) => ({ kind, active: true })))
+      .values(nowCriticalKeys.map((kind) => ({ kind, active: true })))
       .onConflictDoUpdate({
         target: riskSignalEdges.kind,
         set: { active: true, updated_at: sql`now()` },
         setWhere: eq(riskSignalEdges.active, false),
       })
       .returning({ kind: riskSignalEdges.kind });
-    raisedKinds = rows.map((r) => r.kind);
+    raisedKeys = rows.map((r) => r.kind);
   }
 
-  // Clear every still-active kind that is no longer critical, RETURNING the
-  // kinds THIS call transitioned true→false (one replica wins each).
+  // Clear what THIS caller owns and is no longer critical: the shared kinds and
+  // its own process-local rows — never another process's.
+  const owned = or(
+    inArray(riskSignalEdges.kind, [...SHARED_RISK_KINDS]),
+    like(riskSignalEdges.kind, `%@${instance}`),
+  );
   const clearedRows = await db
     .update(riskSignalEdges)
     .set({ active: false, updated_at: sql`now()` })
     .where(
-      nowCriticalKinds.length > 0
-        ? and(eq(riskSignalEdges.active, true), notInArray(riskSignalEdges.kind, nowCriticalKinds))
-        : eq(riskSignalEdges.active, true),
+      and(
+        eq(riskSignalEdges.active, true),
+        owned,
+        nowCriticalKeys.length > 0 ? notInArray(riskSignalEdges.kind, nowCriticalKeys) : undefined,
+      ),
     )
     .returning({ kind: riskSignalEdges.kind });
-  const cleared = clearedRows.map((r) => r.kind);
 
-  const raised = raisedKinds
-    .map((k) => bySignal.get(k))
+  const raised = raisedKeys
+    .map((k) => byKey.get(k))
     .filter((s): s is RiskSignal => s !== undefined);
-  return { raised, cleared };
+  return { raised, cleared: clearedRows.map((r) => kindOfEdgeKey(r.kind)) };
 }
 
 /** Test-only: clear the shared risk-signal edge table between cases. */

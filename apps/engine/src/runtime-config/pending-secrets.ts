@@ -18,6 +18,7 @@
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { runtimeSecretVersions } from "../db/schema/index.ts";
+import { invalidateTenantState } from "../operator/index.ts";
 import { RuntimeConfigNotFoundError } from "./contracts.ts";
 import {
   activateRuntimeRevision,
@@ -102,6 +103,9 @@ export async function approvePendingSecretVersion(
       `no prepared secret version to approve: ${args.name}/${args.version}`,
     );
   }
+  // Installation-wide: a prepared version waits on every tenant's list, and it
+  // stops waiting the moment it is approved — before its bindings re-pin.
+  invalidateTenantState();
   const bindings: ApprovalOutcome["bindings"] = [];
   for (const path of approved.pending_bindings ?? []) {
     try {
@@ -153,5 +157,6 @@ export async function rejectPendingSecretVersion(
       `no prepared secret version to reject: ${args.name}/${args.version}`,
     );
   }
+  invalidateTenantState();
   return { name: args.name, version: args.version, revoked_at: rejected.revoked_at };
 }

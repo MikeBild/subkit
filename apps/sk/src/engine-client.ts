@@ -106,6 +106,8 @@ export type {
   UserInviteWire,
 } from "./engine-client/identity.ts";
 export type {
+  AttentionItem,
+  DigestAttention,
   DigestFailureGroup,
   DigestPatch,
   FailureOrigin,
@@ -113,7 +115,7 @@ export type {
   RiskSeverity,
   RiskSignal,
 } from "./engine-client/self-healing.ts";
-export { resolvedAtOf, scheduledRunsOf } from "./engine-client/self-healing.ts";
+export { attentionOf, resolvedAtOf, scheduledRunsOf } from "./engine-client/self-healing.ts";
 export type {
   SettingLeafEntry,
   SettingLeafMeta,

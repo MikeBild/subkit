@@ -3,7 +3,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { workflowsSchedules } from "../db/schema/index.ts";
-import { invalidateOperationalOverview } from "../operator/index.ts";
+import { invalidateTenantState } from "../operator/index.ts";
 import { inspectScheduleAutomation } from "./automation-status.ts";
 
 /** Preserve the last refused admission across restarts, without creating a
@@ -73,5 +73,5 @@ export async function recordScheduleAdmission(
       tx,
     );
   });
-  invalidateOperationalOverview(context.tenant_id);
+  invalidateTenantState(context.tenant_id);
 }

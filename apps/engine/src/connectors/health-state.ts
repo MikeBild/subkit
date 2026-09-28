@@ -33,6 +33,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { logger } from "../logging/logger.ts";
+import { invalidateTenantState } from "../operator/index.ts";
 import {
   type ConnectorHealthChangedPayload,
   ConnectorHealthChangedPayloadSchema,
@@ -98,7 +99,7 @@ export async function setConnectorHealth(
   connector: { id: string; tenant_id: string; slug: string },
   next: ConnectorHealthTransition,
 ): Promise<{ transitioned: boolean }> {
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const rows = await tx.execute<{ prev_state: string }>(sql`
       UPDATE connectors AS c
          SET health_state = ${next.state},
@@ -167,6 +168,10 @@ export async function setConnectorHealth(
     );
     return { transitioned: true };
   });
+  // After the commit: a connector needing sign-in, or no longer needing it, is
+  // an attention item appearing or leaving.
+  if (result.transitioned) invalidateTenantState(connector.tenant_id);
+  return result;
 }
 
 /**

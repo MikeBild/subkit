@@ -18,7 +18,6 @@ import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import type { Db } from "../../db/client.ts";
 import { patchCandidates, workflows } from "../../db/schema/index.ts";
-import { invalidateOperationalOverview } from "../../operator/index.ts";
 import {
   approvePatchCandidate,
   dryRunPatchCandidate,
@@ -573,7 +572,6 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
       throw error;
     }
     if (!versionId) throw new HttpError(409, "already_decided", "Candidate is no longer proposed");
-    invalidateOperationalOverview(principal.tenant_id);
     return c.json({ applied: true, workflow_version_id: versionId }, 200);
   });
 
@@ -608,7 +606,6 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
-    invalidateOperationalOverview(principal.tenant_id);
     return c.json({ rejected: ok }, 200);
   });
 }
