@@ -2,13 +2,13 @@
 
 A saved draft, successful held preview and one-off send do not authorize future
 scheduled deliveries. The chat reads schedule readiness from the server and keeps
-the blocked schedule in Decisions until a matching human execution authority is
+the blocked schedule on the Cockpit's start page, **Today**, until a matching human execution authority is
 persisted and its admission hold is resolved.
 
 The chat review prepares missing report evidence with writes held, then presents
 the fixed sender, recipient, next scheduled time and finite run/expiry bounds.
 Confirming may atomically activate the exact reviewed draft and grant its bounds.
-It does not send a report immediately. Completion refreshes the decision queue and
+It does not send a report immediately. Completion refreshes the Today list and
 server readiness; reload uses the same persisted state.
 
 The supported variable-content profile is deliberately narrow: Gmail HTTP POST

@@ -1584,6 +1584,8 @@ Collected so every reader has the same expansion at hand.
 
 ## Group 5: Governance
 
+**Attention list** — the one list of what needs a person now: waiting questions, held schedules, failing scheduled workflows with their proposed repairs, connectors and connections that need a sign-in, prepared secret versions, skill proposals, and a critical budget or risk signal. One entry per subject, each checked against the reader's permissions. It is the Cockpit's start page (**Today** / **Heute**), `GET /v1/attention`, the MCP tool `get_attention`, and the headline of the health digest. When nothing is open and every source answered, the start page says so with one status line; the Cockpit has no separate overview, decisions or system page.
+
 **Audit Log** — the append-only record of every state change in the platform. Every entry carries: what changed, who initiated it, from which surface (API, CLI, MCP, chat, scheduler, webhook), and when. sk exposes no path that modifies or deletes an audit entry — no route, no tool, no job, and `audit:read` is the only audit permission — so nothing reaching the platform through its own surfaces can rewrite history. That is an application-layer guarantee: it does not extend to a party with direct database access, and entries are not hash-chained, so it provides no tamper _evidence_ against one. It is the authoritative record for compliance, debugging, and incident review.
 
 **RBAC** — role-based access control enforced at every platform boundary. Every API route, MCP call, webhook trigger, and execution path checks the caller's role and permissions before proceeding. sk ships five built-in roles: the three user-facing roles (admin, member, enduser) plus the metrics_scraper and portal_token_user system roles. Custom roles and resource-level grants are supported for more granular control. RBAC decisions are recorded in the Audit Log.
@@ -5154,15 +5156,22 @@ flowchart LR
 - [Workflows](../concepts/workflows.md) — the execution model and the self-healing repair loop (Run → Drift → Patch Candidate → Skill Candidate) in full.
 
 
-## Reviewing the decision queue
+## Reviewing proposed repairs
+
+Proposed repairs appear on the Cockpit's start page, **Today** (German: **Heute**),
+the one list of what needs a person. A failing workflow and the repairs waiting for
+it are one entry; its **Review** action opens a review sheet over the list, and the
+sheet's address (`?review=…`) can be shared or bookmarked. The same list is
+available as `GET /v1/attention` and the MCP tool `get_attention`.
 
 The cockpit counts a repair only when it can change the current workflow. Missing
 step references, unsupported repairs and repairs that no longer change anything
-remain under Suggestions, with no approval button. Conversation questions have
-their own section. Knowledge approval uses **Adopt and activate** and requires
-permission to activate skills; previously created draft skills remain drafts.
+are not offered for approval. Waiting conversation questions are entries of their
+own, and only for the person they ask. Knowledge approval uses **Adopt and
+activate** and requires permission to activate skills; previously created draft
+skills remain drafts.
 
-Open a repair to review its before/after changes. Approval submits the preview's
+In the review sheet, open a repair to see its before/after changes. Approval submits the preview's
 `review_digest` as `expected_review_digest`; changed proposals or workflow versions
 require a fresh preview. The CLI exposes the preview through
 `sk patch-candidates preview <id>` and accepts the digest with
@@ -6283,9 +6292,11 @@ Beides findest du im Cockpit unter **Installation**: die Kontoverbindungen im Ab
 vergibt: **Kontoverbindungen** (Systeme, die SubKit in deinem Namen aufrufen darf),
 **API-Schlüssel** (womit Skripte und Programme SubKit aufrufen) und **Verbundene
 Anwendungen** (Programme, denen jemand Zugriff auf diese Installation freigegeben hat) — in
-dieser Reihenfolge, mit einem Verzeichnis der drei Abschnitte ganz oben. Was dort
-Aufmerksamkeit braucht — eine abgelaufene Kontoverbindung, ein abgelaufener oder seit
-Monaten unbenutzter Schlüssel — steht darüber, mit Grund und Weg.
+dieser Reihenfolge, mit einem Verzeichnis der drei Abschnitte ganz oben. Jede Zeile
+zeigt ihren Zustand; **Erneuern** steht in der Zeile. Was dich braucht — etwa eine
+abgelaufene Kontoverbindung oder eine vorbereitete Änderung, die auf Freigabe wartet —
+steht nicht hier, sondern auf der Startseite **Heute**, der einen Liste dessen, was
+jetzt zu tun ist.
 
 Offen stehen nur die Schlüssel, die noch Rechte halten, und die Anwendungen, für die jemand
 eine gültige Freigabe hält. Widerrufene Schlüssel und Anwendungen ohne gültige Freigabe sind
@@ -7490,7 +7501,7 @@ Subsystem map inside `apps/engine/src/` (48 directories + 5 loose root files):
 | Rule-based fan-out (Slack, webhook) | `notifications/` | `docs/developers/input-surfaces.md` |
 | Prometheus metrics + tracing | `observability/` | `docs/operators/observability.md` |
 | First-run bootstrap + demo seed | `onboarding/` | `docs/operators/observability.md` |
-| Operator health digest (drift/repair/queue summary) | `operator/` | `docs/operators/observability.md` |
+| Operator health digest and the attention list (`GET /v1/attention`, the Cockpit start page) | `operator/` | `docs/operators/observability.md`, `apps/cockpit/UI-UX.md` |
 | Bootstrap preflight + host-side vault commands | `preflight/` | `docs/admins/bootstrap-preflight.md` |
 | PG LISTEN/NOTIFY streaming | `pubsub/` | `docs/concepts/workflows.md` |
 | pg-boss handler dispatch | `queue/` | `docs/concepts/workflows.md` |
@@ -7663,13 +7674,13 @@ foreign revision rejection and the preview → human grant → scheduler sequenc
 
 A saved draft, successful held preview and one-off send do not authorize future
 scheduled deliveries. The chat reads schedule readiness from the server and keeps
-the blocked schedule in Decisions until a matching human execution authority is
+the blocked schedule on the Cockpit's start page, **Today**, until a matching human execution authority is
 persisted and its admission hold is resolved.
 
 The chat review prepares missing report evidence with writes held, then presents
 the fixed sender, recipient, next scheduled time and finite run/expiry bounds.
 Confirming may atomically activate the exact reviewed draft and grant its bounds.
-It does not send a report immediately. Completion refreshes the decision queue and
+It does not send a report immediately. Completion refreshes the Today list and
 server readiness; reload uses the same persisted state.
 
 The supported variable-content profile is deliberately narrow: Gmail HTTP POST
@@ -10609,7 +10620,7 @@ A refusal on the token endpoint names what happened
 active …"`); it never tells the client to paste an API key.
 
 The Cockpit shows both sides of this. **Credentials** lists the approved
-connections with the person whose approval keeps each one alive, and **People**
+connections with the person whose approval keeps each one alive, and **People & access**
 says how many connections a deactivation will end before it asks for the
 confirmation.
 
@@ -13846,7 +13857,8 @@ The cockpit counts unpaused holds as blockers and shows critical operational
 health even when there are no finished executions from which to calculate a
 success ratio. “No runs (24 h)” is missing execution evidence, not a 100% score.
 
-Open **Decisions → the held workflow → Execution authority**. For
+Open the held workflow's entry on **Today** (the Cockpit start page), then
+**Execution authority**. For
 `execution_authority_unavailable`, review the exact active version, production
 or development environment, destinations, validity and finite run limit, then
 issue an applicable human grant. The next due retry discovers it automatically.
