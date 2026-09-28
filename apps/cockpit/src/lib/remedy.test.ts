@@ -30,9 +30,14 @@ describe("remedyFor", () => {
       { kind: "reauth", href: connectorHref(CONNECTOR) },
     ],
     [
-      "a connected connector is not a sign-in problem",
+      "a rejected request on a connector that reports itself connected is checked, not re-signed",
       { ...base, authState: { connectorId: CONNECTOR, state: "connected" } },
-      { kind: "chat", href: chatNewHref({ workflowId: WF, executionId: RUN }) },
+      { kind: "check_auth", href: connectorHref(CONNECTOR) },
+    ],
+    [
+      "an unproven sign-in never claims expiry (a 403 may be a missing scope)",
+      { ...base, authState: { connectorId: CONNECTOR, state: "unproven" } },
+      { kind: "check_auth", href: connectorHref(CONNECTOR) },
     ],
     [
       "otherwise the chat, with workflow and run attached",

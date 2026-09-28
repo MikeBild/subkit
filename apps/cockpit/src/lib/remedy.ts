@@ -8,7 +8,7 @@ import type { TranslationKey } from "@/lib/i18n";
  * that renders it decides whether it needs `absolute()`.
  */
 export interface Remedy {
-  kind: "review_repair" | "reauth" | "chat";
+  kind: "review_repair" | "reauth" | "check_auth" | "chat";
   labelKey: TranslationKey;
   href: string;
 }
@@ -20,7 +20,11 @@ export interface RemedyInput {
   executionId?: string | null;
   /** An open repair proposal for this workflow — the engine already has a fix waiting. */
   patch?: { id: string } | null;
-  /** The connector whose sign-in stopped the run, and where its credential stands. */
+  /**
+   * The connector whose sign-in was rejected, and where its credential stands
+   * as the CONNECTOR reports it (`connectorAuthState`) — "unproven" when the
+   * page could not read it.
+   */
   authState?: { connectorId: string; state: "expired" | "credentials_missing" | string } | null;
   /**
    * Whether the reader may start runs. Rerunning is its own action beside the
@@ -55,13 +59,17 @@ export function remedyFor(input: RemedyInput): Remedy | null {
       href: decisionsHref({ workflowId: input.workflowId ?? null }),
     };
   }
-  if (
-    input.authState &&
-    (input.authState.state === "expired" || input.authState.state === "credentials_missing")
-  ) {
+  if (input.authState) {
+    // "Neu anmelden" only where the connector itself says its sign-in is gone.
+    // A rejected request is not proof of that: a 403 for a missing scope or
+    // permission looks the same from the run, and telling the reader to sign
+    // in again sends them round a loop that cannot fix it. Unproven, the
+    // remedy says what is known — check the sign-in — on the connector page.
+    const expired =
+      input.authState.state === "expired" || input.authState.state === "credentials_missing";
     return {
-      kind: "reauth",
-      labelKey: "remedy.reauth",
+      kind: expired ? "reauth" : "check_auth",
+      labelKey: expired ? "remedy.reauth" : "remedy.checkAuth",
       href: connectorHref(input.authState.connectorId),
     };
   }

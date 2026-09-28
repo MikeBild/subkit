@@ -157,9 +157,19 @@ export function patchTitle(input: { workflow: string | null; change: string | nu
   return { key: "decisions.fallbackTitle.patch", params: {} };
 }
 
+/** Whether the queue is unnarrowed — no kind chip, no tile focus, no workflow from a link. */
+export function isWholeQueue(view: {
+  kinds: number;
+  focus: string | null;
+  workflowFilter: string | null;
+}): boolean {
+  return view.kinds === 0 && view.focus === null && view.workflowFilter === null;
+}
+
 /** The workflow a decision acts on, where the decision knows it. */
 export function decisionWorkflowId(item: DecisionItem): string | null {
-  return item.detail.kind === "patch" ? item.detail.evidence.workflowId : null;
+  const detail = item.detail;
+  return detail.kind === "patch" || detail.kind === "skill" ? detail.evidence.workflowId : null;
 }
 
 export function patchDecision(candidate: PatchCandidate, title: string): DecisionItem {

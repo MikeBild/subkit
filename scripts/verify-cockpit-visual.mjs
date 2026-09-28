@@ -1055,6 +1055,22 @@ async function mockApi(route) {
       health_changed_at: "2026-08-10T08:00:00.000Z",
       updated_at: "2026-08-10T09:00:00.000Z",
     });
+  // The connector the run sheet's failed step called. It reports its own
+  // sign-in as gone, which is what earns "Neu anmelden" — the rejected request
+  // alone does not (a 403 may be a missing scope).
+  if (path === `/v1/connectors/${runConnectorId}`)
+    return json(route, {
+      id: runConnectorId,
+      display_name: "Berichtsablage",
+      slug: "berichtsablage",
+      driver: "http",
+      environment: "prod",
+      enabled: true,
+      auth_type: "oauth2",
+      health_state: "needs_reauth",
+      needs_reauth: true,
+      updated_at: "2026-08-10T09:00:00.000Z",
+    });
   if (path === `/v1/connectors/${uuid}`)
     return json(route, {
       id: uuid,

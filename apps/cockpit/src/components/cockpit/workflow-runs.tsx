@@ -7,13 +7,14 @@ import { LoadFailed, queryView } from "@/components/failure-state";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { causeClassLabel } from "@/lib/cause-class";
+import { type ConnectorAuthInput, connectorAuthState } from "@/lib/connector-auth-state";
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { remedyFor } from "@/lib/remedy";
 import { statusLabel } from "@/lib/status-label";
 import { cn } from "@/lib/utils";
-import { isExecutionRecord, stepConnectorId } from "@/pages/runs-model";
+import { isExecutionRecord, latestFailedRun, stepConnectorId } from "@/pages/runs-model";
 
 type ExecutionList = components["schemas"]["ExecutionListResponse"];
 type ExecutionStepList = components["schemas"]["ExecutionStepListResponse"];
@@ -69,12 +70,15 @@ export function WorkflowCause({
   const latestFailed = useQuery({
     queryKey: ["workflow-latest-failed-run", workflowId],
     enabled: unhealthy && canReadRuns,
+    // The list filters by ONE status, and the engine counts three as failed
+    // (failed, timed_out, aborted). Asking for `failed` alone skipped a
+    // workflow whose newest failure was a timeout and named an older cause.
     queryFn: () =>
       apiRequest<ExecutionList>(
-        `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&status=failed&limit=1`,
+        `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&limit=20`,
       ),
   });
-  const failedRun = runsOf(latestFailed.data)[0] ?? null;
+  const failedRun = latestFailedRun(runsOf(latestFailed.data));
   const failure = failedRun?.failure ?? null;
   // A rejected sign-in names no connector on the list row; the run's steps do.
   const failedSteps = useQuery({
@@ -93,11 +97,17 @@ export function WorkflowCause({
         `/v1/patch-candidates?status=proposed&workflow_id=${encodeURIComponent(workflowId)}&limit=1`,
       ),
   });
-  if (!unhealthy || !healthState) return null;
-
   const stoppingStep =
     failedSteps.data?.items?.find((step) => step.step_key === failure?.step_key) ?? null;
   const connectorId = stepConnectorId(stoppingStep);
+  // Where the sign-in really stands, as the connector reports it.
+  const connector = useQuery({
+    queryKey: ["connector", connectorId ?? ""],
+    enabled: connectorId !== null && permissions.includes("connector:read"),
+    queryFn: () =>
+      apiRequest<ConnectorAuthInput>(`/v1/connectors/${encodeURIComponent(connectorId ?? "")}`),
+  });
+  if (!unhealthy || !healthState) return null;
   const cause = failure?.cause_class && failure.cause_class !== "ok" ? failure.cause_class : null;
   const causeLabel = cause ? causeClassLabel(cause, t) : null;
   const SLOT = "\u0000";
@@ -111,7 +121,15 @@ export function WorkflowCause({
     workflowId,
     executionId: failedRun?.id ?? null,
     patch: patch.data?.items?.[0] ?? null,
-    authState: connectorId ? { connectorId, state: "expired" } : null,
+    authState: connectorId
+      ? {
+          connectorId,
+          state:
+            connector.data && typeof connector.data === "object"
+              ? connectorAuthState(connector.data)
+              : "unproven",
+        }
+      : null,
     canRun: permissions.includes("workflow:run"),
     canChat: permissions.includes("conversation:write"),
     prompt: t("remedy.chatPrompt"),
