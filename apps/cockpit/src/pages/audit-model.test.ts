@@ -17,6 +17,7 @@ import {
   auditResultLabel,
   auditScopeParams,
   auditTraceFromUrl,
+  canReadDirectory,
   isAuditEntry,
   isAuditScope,
   LINKED_RESOURCE_TYPES,
@@ -772,5 +773,17 @@ describe("why a row happened", () => {
     });
     expect(auditReasonLabel("  ", deText)).toBeNull();
     expect(auditReasonLabel(null, deText)).toBeNull();
+  });
+});
+
+describe("whether the audit page asks for the directory", () => {
+  test("only an administrator — anyone else's read is refused and itself audited", () => {
+    const reader = (role_name: string | null, permissions: string[]) => ({
+      permissions,
+      principal: { role_name },
+    });
+    expect(canReadDirectory(reader("admin", ["identity:read", "audit:read"]))).toBe(true);
+    expect(canReadDirectory(reader("Revision", ["identity:read", "audit:read"]))).toBe(false);
+    expect(canReadDirectory(reader("admin", ["audit:read"]))).toBe(false);
   });
 });

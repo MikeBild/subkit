@@ -1,4 +1,4 @@
-import type { TranslationKey } from "@/lib/i18n";
+import { CATALOGS, type TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
@@ -163,6 +163,49 @@ export function assignableRoles<T extends RoleLike>(roles: readonly T[]): T[] {
   return [...people, ...custom];
 }
 
+/**
+ * What a role change does beyond its permission list.
+ *
+ * People and role management are checked by the role NAME `admin`, not by a
+ * permission: a custom role holding every permission still cannot manage
+ * people. So leaving `admin` always takes that away, whatever the diff says —
+ * and "the rights stay the same" would be false. Changing one's own role is
+ * said as such, because the reader is the one who loses it.
+ */
+export type RoleChangeNote = "leavesAdmin" | "self" | "selfLeavesAdmin";
+
+export function roleChangeNotes(change: {
+  from: string;
+  to: string;
+  isSelf: boolean;
+}): RoleChangeNote[] {
+  const leavesAdmin = change.from === "admin" && change.to !== "admin";
+  if (change.isSelf && leavesAdmin) return ["selfLeavesAdmin"];
+  if (leavesAdmin) return ["leavesAdmin"];
+  return change.isSelf ? ["self"] : [];
+}
+
+const REFUSAL_KEYS: Readonly<Record<string, TranslationKey>> = {
+  last_admin: "people.refusal.lastAdmin",
+  forbidden: "people.refusal.forbidden",
+  not_found: "people.refusal.notFound",
+};
+
+/**
+ * Why the engine refused a change to a person, in words: the known codes
+ * translated, anything else the engine's own sentence, never a bare "failed".
+ */
+export function personRefusal(
+  error: { code?: string | null; message?: string } | null | undefined,
+  t: Translate,
+): string {
+  const key = error?.code ? REFUSAL_KEYS[error.code] : undefined;
+  if (key) return t(key);
+  return error?.message
+    ? t("people.refusal.engine", { reason: error.message })
+    : t("people.roleUpdateFailed");
+}
+
 /** What a person gains and loses when one role replaces another. */
 export function roleChange(
   from: readonly string[],
@@ -238,6 +281,21 @@ export function settingsViewFromUrl(search: string): SettingsView {
 }
 
 /**
+ * What a `?leaf=` address points at among the settings on screen: the setting
+ * itself, or — for a group such as `llm.providers.anthropic` — its first
+ * setting. `null` only when nothing lives under that path.
+ */
+export function settingLeafTarget(
+  paths: readonly string[],
+  leaf: string,
+): { index: number; kind: "leaf" | "group" } | null {
+  const exact = paths.indexOf(leaf);
+  if (exact >= 0) return { index: exact, kind: "leaf" };
+  const first = paths.findIndex((path) => path.startsWith(`${leaf}.`));
+  return first >= 0 ? { index: first, kind: "group" } : null;
+}
+
+/**
  * The tab a setting lives on: its first path segment. `tokens.monthly_budget`
  * opens on `tokens`.
  */
@@ -246,19 +304,22 @@ export function settingSectionOf(path: string): string {
 }
 
 /**
- * A setting's name, read off its own path.
+ * A setting's name in the reader's language, keyed by its whole dotted path.
  *
- * The engine names and describes each leaf; it does not label it. The page
- * used to guess a label from keywords in the path — every threshold became
- * "Schwellenwert", everything else "Konfigurationswert" — so a section read as
- * a column of identical words. The leaf's own name, spaced and capitalised, is
- * the one label that tells two settings apart; the engine's description stands
- * under it.
+ * The engine describes each leaf but does not label it. The page first guessed
+ * a label from keywords ("Schwellenwert", "Konfigurationswert"), then used the
+ * last path segment in English — nine settings read "Api key" on a German
+ * page. Every leaf the engine has is named in the catalogue
+ * (`settings.leaf.<path>`, held against the engine's own walk by
+ * settings-leaf-coverage.test.ts), with its parent where a tab holds several of
+ * a kind ("Anthropic · API-Schlüssel"). A path this build does not know is the
+ * path itself, marked as a machine value.
  */
-export function settingLeafLabel(path: string): string {
-  const leaf = path.split(".").at(-1) ?? path;
-  const words = leaf.replace(/_/g, " ").trim();
-  return words ? `${words.charAt(0).toUpperCase()}${words.slice(1)}` : path;
+export function settingLabel(path: string, t: Translate): CatalogLabel {
+  const key = `settings.leaf.${path}`;
+  return Object.hasOwn(CATALOGS.en, key)
+    ? { text: t(key as TranslationKey), machine: false }
+    : { text: path, machine: true };
 }
 
 const ACTIVATION_KEYS: Readonly<Record<string, TranslationKey>> = {
@@ -274,7 +335,8 @@ export function activationStatusLabel(
   status: string | null | undefined,
   t: Translate,
 ): CatalogLabel {
-  if (!status) return { text: t("settings.activation.active"), machine: false };
+  // Not reported is not active: a missing state must not read as the good one.
+  if (!status) return { text: t("settings.activation.unreported"), machine: false };
   return catalogLabel(status, ACTIVATION_KEYS[status], t);
 }
 

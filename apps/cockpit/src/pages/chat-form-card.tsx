@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/lib/i18n-context";
+import { LabelText } from "@/lib/machine-label";
 import { type ChatForm, formFieldLabel, formValues } from "./chat-form";
 
 export function ChatFormCard({
@@ -88,7 +89,7 @@ export function ChatFormCard({
         {form.fields.map((field, fieldIndex) => (
           <Field key={field.name}>
             <FieldLabel htmlFor={`${testId}-${field.name}`}>
-              {formFieldLabel(field, fieldLabels)}
+              <LabelText label={formFieldLabel(field, fieldLabels)} />
               {field.required ? " *" : ""}
             </FieldLabel>
             {field.type === "boolean" ? (
