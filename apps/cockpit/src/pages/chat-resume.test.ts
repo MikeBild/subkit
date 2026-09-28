@@ -102,19 +102,21 @@ describe("cockpit chat resume", () => {
     expect(labels).not.toContain(translate("de", "chat.context.ready"));
   });
 
-  test("distinguishes a text question from an execution approval", () => {
-    expect(
-      resumeSummaryLine(
-        { stage: "awaiting_approval", pending_approval: { tool_name: "ask_user_text" } },
+  test("a pending question is not said a second time under the title", () => {
+    // The header badge says "Wartet auf dich" and the card in the transcript
+    // is where the reader acts. The line names what the conversation is about.
+    for (const tool_name of ["ask_user_text", "ask_user_confirm", "ask_user_choice"]) {
+      const line = resumeSummaryLine(
+        {
+          stage: "awaiting_approval",
+          active_target: { kind: "connector", name: "Reporting API" },
+          pending_approval: { tool_name },
+        },
         de,
-      ),
-    ).toBe(translate("de", "chat.textQuestionSummary"));
-    expect(
-      resumeSummaryLine(
-        { stage: "awaiting_approval", pending_approval: { tool_name: "ask_user_confirm" } },
-        de,
-      ),
-    ).not.toBe(translate("de", "chat.textQuestionSummary"));
+      );
+      expect(line, tool_name).not.toMatch(/wartet|Antwort|Rückfrage|offen gelassen/i);
+      expect(line).toContain("Reporting API");
+    }
   });
 
   test("keeps the English catalog usable for an English reader", () => {
@@ -130,7 +132,6 @@ test("business choices are questions rather than authority requests in the chat 
       { stage: "awaiting_approval", pending_approval: { tool_name: "ask_user_choice" } },
       t,
     );
-    expect(line).toBe(t("chat.choice.title"));
     expect(line).not.toMatch(/Freigabe|approval/i);
   }
 });

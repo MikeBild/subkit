@@ -12,9 +12,9 @@ import { verifyChatChoices } from "./lib/cockpit-chat-choices.mjs";
 import { verifyChatOAuth } from "./lib/cockpit-chat-oauth.mjs";
 import { verifyChatReauth } from "./lib/cockpit-chat-reauth.mjs";
 import { verifyChatReplies } from "./lib/cockpit-chat-replies.mjs";
-import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
+import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
 import { verifyScheduleHolds } from "./lib/cockpit-schedule-holds.mjs";
 import { verifyWorkflowAuthorities } from "./lib/cockpit-workflow-authorities.mjs";
@@ -1963,7 +1963,13 @@ async function mockApi(route) {
       "00000000-0000-4000-8000-000000000005": ["workflow:run", "execution:read"],
     };
     return byId[id]
-      ? json(route, { id, name: id, description: null, is_builtin: id !== CUSTOM_ROLE_ID, permissions: byId[id] })
+      ? json(route, {
+          id,
+          name: id,
+          description: null,
+          is_builtin: id !== CUSTOM_ROLE_ID,
+          permissions: byId[id],
+        })
       : json(route, { error: { code: "not_found", message: "role" } }, 404);
   }
   if (path === "/v1/identity/system-accounts")
@@ -3179,10 +3185,17 @@ for (const locale of variants) {
       await page.locator('[data-testid="conversation-new"]').click();
       await page.locator('[data-testid="chat-empty"]').waitFor({ state: "visible" });
       const modePicker = page.locator('[data-testid="chat-permission-select"]');
-      const defaultMode = locale.name === "de" ? "Systemstandard" : "System default";
+      const defaultMode = locale.name === "de" ? "Systemstandard" : "system default";
       if (!(await modePicker.textContent())?.includes(defaultMode))
         throw new Error(`${locale.artifact}: new chat does not inherit the system mode`);
+      // §14: the mode in force shows which gates remain, and no two entries
+      // are one matrix under two names — "system default" is `auto`, once.
+      const gatesFor = async () => page.getByTestId("chat-mode-gates").innerText();
+      const autoGates = await gatesFor();
       await modePicker.click();
+      const optionCount = await page.getByRole("option").count();
+      if (optionCount !== 3)
+        throw new Error(`${locale.artifact}: the mode picker offers ${optionCount} modes, not 3`);
       await page
         .getByRole("option", {
           name: locale.name === "de" ? "Vor Änderungen fragen" : "Ask before changes",
@@ -3195,6 +3208,8 @@ for (const locale of variants) {
         )
       )
         throw new Error(`${locale.artifact}: explicit conservative mode is not selectable`);
+      if ((await gatesFor()) === autoGates)
+        throw new Error(`${locale.artifact}: "ask" reads the same gates as the default mode`);
       await page.locator('[data-testid="conversation-new"]').click();
       if (!(await modePicker.textContent())?.includes(defaultMode))
         throw new Error(`${locale.artifact}: new chat retains an unintended override`);

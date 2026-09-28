@@ -97,6 +97,16 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
             .count()
         )
           throw new Error("A text question displays binary approval actions");
+        // "Wartet auf dich" once, amber (§2), in the header badge — not red
+        // there and amber in the list, and not repeated under the title.
+        const status = page.getByTestId("chat-status");
+        if (
+          (await status.getAttribute("data-waiting")) !== "true" ||
+          (await status.getAttribute("class"))?.includes("destructive")
+        )
+          throw new Error("The waiting badge is not the amber waiting state");
+        if (/wartet|waiting/i.test(await page.getByTestId("chat-summary").innerText()))
+          throw new Error("The summary line repeats that the conversation is waiting");
         await capture("question");
       }
       await input.fill("Blau, bitte nur vorbereiten.");
