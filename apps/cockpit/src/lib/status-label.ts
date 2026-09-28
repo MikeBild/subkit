@@ -16,6 +16,8 @@ import type { TranslationKey } from "./i18n";
 const STATUS_KEYS: Partial<Record<string, TranslationKey>> = {
   // Conversations
   active: "status.active",
+  // People: created and invited, not signed in yet.
+  invited: "status.invited",
   awaiting_input: "status.awaitingInput",
   committed: "status.committed",
   abandoned: "status.abandoned",

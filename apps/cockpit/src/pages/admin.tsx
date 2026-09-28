@@ -365,11 +365,14 @@ function RoleChangeConsequence({
   email,
   from,
   to,
+  toName: targetName,
   roles,
 }: {
   email: string;
   from: RoleItem | null;
   to: RoleItem | null;
+  /** The picked role's name — known even where the role catalogue is not readable. */
+  toName: string;
   roles: readonly RoleItem[] | undefined;
 }) {
   const { t } = useI18n();
@@ -380,7 +383,7 @@ function RoleChangeConsequence({
   });
   const before = useQuery(detail(from));
   const after = useQuery(detail(to));
-  const toName = to ? roleName(to.name, roles, t).text : "";
+  const toName = roleName(targetName, roles, t).text;
   if (Array.isArray(before.data?.permissions) && Array.isArray(after.data?.permissions)) {
     const change = roleChange(before.data.permissions, after.data.permissions);
     return (
@@ -404,7 +407,7 @@ function RoleChangeConsequence({
       </>
     );
   }
-  const purpose = to ? builtinRoleDescription(to.name, to.description, t) : null;
+  const purpose = builtinRoleDescription(targetName, to?.description ?? null, t);
   return (
     <>
       <p>{t("people.change.intro", { email, role: toName })}</p>
@@ -733,6 +736,7 @@ export function PeoplePage() {
               email={pendingChange.user.email}
               from={roleByName(pendingChange.user.effective_role)}
               to={roleByName(pendingChange.to)}
+              toName={pendingChange.to}
               roles={roleItems}
             />
           ) : null
@@ -2859,10 +2863,15 @@ export function SettingsPage() {
       return;
     }
     requestAnimationFrame(() => {
-      const field = document.getElementById(`setting-${index}`);
-      if (!field) return;
-      field.scrollIntoView({ block: "center" });
-      field.focus();
+      // The field itself where it has one; a composite editor (the auth
+      // providers) has none, so its first control takes the cursor.
+      const item = document.querySelector<HTMLElement>(`[data-testid="setting-item-${index}"]`);
+      const field =
+        document.getElementById(`setting-${index}`) ??
+        item?.querySelector<HTMLElement>("input, button, select, textarea") ??
+        null;
+      (item ?? field)?.scrollIntoView({ block: "center" });
+      field?.focus();
     });
   }, [leaf, query.data, allItems]);
   const save = useMutation({
