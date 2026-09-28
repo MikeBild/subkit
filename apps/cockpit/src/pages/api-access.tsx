@@ -253,7 +253,10 @@ function SectionIndex({
             >
               {t(SECTION_TITLE_KEYS[section])}
               {counts[section] === undefined ? null : (
-                <span className="ml-1 tabular-nums text-muted-foreground">{counts[section]}</span>
+                <>
+                  {" "}
+                  <span className="tabular-nums text-muted-foreground">{counts[section]}</span>
+                </>
               )}
             </a>
           </li>

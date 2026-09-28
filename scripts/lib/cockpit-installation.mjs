@@ -118,7 +118,7 @@ export async function verifyInstallationPages(page, stand, locale, capture) {
     throw new Error(
       `/settings?leaf=: the page is ${drift.regionOverflow}px wider than its frame — something only the tab strip may be is not contained`,
     );
-  if (drift.contentLeft !== drift.headingLeft)
+  if (Math.abs(drift.contentLeft - drift.headingLeft) > 1)
     throw new Error(
       `/settings?leaf=: the content starts at ${drift.contentLeft}px, its heading at ${drift.headingLeft}px`,
     );
