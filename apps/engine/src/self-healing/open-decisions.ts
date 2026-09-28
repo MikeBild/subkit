@@ -2,9 +2,10 @@
 //
 // A patch candidate is an OPEN decision when it is `proposed` AND the current
 // workflow version lets a person actually decide it (readiness `reviewable`).
-// Every surface that says "N fixes awaiting review" — the health digest and its
-// headline, the MCP connect instructions, the operational overview, the
-// patch-candidates list's `reviewable_total`, the conversation tools — reads
+// Every surface that counts fixes awaiting review — the health digest, the
+// attention list (and through it the MCP connect instructions), the
+// operational overview, the patch-candidates list's `reviewable_total`, the
+// conversation tools — reads
 // that number from `readOpenPatchDecisions`. Three predicates used to answer the
 // question (every `proposed` row, a list capped at 50, and the readiness
 // filter), so one installation said 48, 50 and 0 about the same queue.

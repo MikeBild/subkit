@@ -67,6 +67,10 @@ const QUIET_TRUE = /quiet\s*:\s*true\b/;
 //     routine caller, not an incident; the actual knowledge routes stay loud)
 //   - the Cockpit bootstrap permission inventory (builds permission-aware
 //     navigation; a deny hides a surface and is therefore the expected result)
+//   - the attention list's per-source and per-item probes (`buildAttention`
+//     hides what a reader may not see; a deny there is the expected result
+//     for every item outside a reader's grants, and the source is reported
+//     `not_permitted` rather than silently dropped)
 //   - the evaluator's own type definition (the `quiet?: boolean` doc) and
 //     the `connectorAccessLevel` probe (read/write level introspection —
 //     a "no" on write is a routine level outcome, not an incident)
@@ -79,6 +83,7 @@ const ALLOWED = new Set<string>([
   "apps/engine/src/mcp/server.ts",
   "apps/engine/src/mcp/capabilities/resources.ts",
   "apps/engine/src/mcp/capabilities/completion.ts",
+  "apps/engine/src/operator/attention.ts",
   "apps/engine/src/rbac/evaluator.ts",
   "apps/engine/src/rbac/tests/evaluator.test.ts",
   "apps/engine/src/rbac/tests/quiet-flag-guard.test.ts",
