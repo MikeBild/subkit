@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   connectionFailureKey,
   connectionNeedsRenewal,
+  connectionReasonKey,
   connectionStateKey,
   parseTypedScopes,
   readCallbackOutcome,
   suggestConnectionName,
+  withoutCallbackParams,
 } from "./connections-model";
 
 describe("connections model", () => {
@@ -33,7 +35,7 @@ describe("connections model", () => {
     expect(suggestConnectionName("Probe Service", "https://x.example")).toBe("probe-service");
     expect(suggestConnectionName("Über Wiki", "https://x.example")).toBe("uber-wiki");
     expect(suggestConnectionName(null, "https://www.wiki.example.com/api")).toBe("wiki");
-    expect(suggestConnectionName("   ", "not a url")).toBe("anbindung");
+    expect(suggestConnectionName("   ", "not a url")).toBe("konto");
     expect(suggestConnectionName("---", "https://x.example")).toBe("x");
   });
 
@@ -54,6 +56,22 @@ describe("connections model", () => {
       name: "wiki",
     });
     expect(readCallbackOutcome("")).toBeNull();
+  });
+
+  test("every reason the engine records has its own sentence", () => {
+    expect(connectionReasonKey("refresh_refused")).toBe("connections.reason.refreshRefused");
+    expect(connectionReasonKey("refresh_failed")).toBe("connections.reason.refreshFailed");
+    expect(connectionReasonKey("expired_no_refresh")).toBe("connections.reason.expiredNoRefresh");
+    expect(connectionReasonKey("secret_unreadable")).toBe("connections.reason.secretUnreadable");
+  });
+
+  test("dropping the callback's words keeps the section the page is open at", () => {
+    // The old page cleared the whole query, which would now also drop
+    // `section=grants` and scroll a returning person to the top.
+    expect(withoutCallbackParams("?section=grants&connected=wiki&renewed=1")).toBe(
+      "?section=grants",
+    );
+    expect(withoutCallbackParams("?failed=denied&name=wiki")).toBe("");
   });
 
   test("typed scopes split on space or comma and de-duplicate", () => {

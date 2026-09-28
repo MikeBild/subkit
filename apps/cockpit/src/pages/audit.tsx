@@ -29,23 +29,26 @@ import {
 } from "@/components/ui/sheet";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { LabelText } from "@/lib/machine-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   AUDIT_LINK_KEYS,
   type AuditEvidenceKind,
   type AuditScope,
-  actorTypeKey,
   auditActionLabel,
+  auditActorName,
   auditDetailFacts,
   auditEvidenceBlocks,
   auditFilterFromUrl,
   auditLinkParams,
+  auditReasonLabel,
   auditResourceHref,
-  auditResultKey,
+  auditResourceLabel,
+  auditResultLabel,
   auditScopeParams,
+  canReadDirectory,
   isAuditEntry,
   isAuditScope,
-  resourceTypeKey,
   shortIdentifier,
 } from "@/pages/audit-model";
 
@@ -70,7 +73,13 @@ const EVIDENCE_KEYS: Record<AuditEvidenceKind, TranslationKey> = {
  * is said out loud below rather than swallowed: the page would otherwise pass
  * off a stale copy as the log's current word.
  */
-function AuditDetail({ entry }: { entry: AuditEntry }) {
+function AuditDetail({
+  entry,
+  directory,
+}: {
+  entry: AuditEntry;
+  directory: ReadonlyMap<string, string>;
+}) {
   const { t, dateTime } = useI18n();
   const detail = useQuery({
     queryKey: ["audit-entry", entry.id],
@@ -81,7 +90,7 @@ function AuditDetail({ entry }: { entry: AuditEntry }) {
     retry: false,
   });
   const current = isAuditEntry(detail.data) ? detail.data : entry;
-  const facts = auditDetailFacts(current, t, dateTime);
+  const facts = auditDetailFacts(current, t, dateTime, directory);
   const evidence = auditEvidenceBlocks(current);
 
   return (
@@ -176,6 +185,37 @@ export function AuditPage() {
   // change changed — reached the browser and were thrown away by the page.
   const [selected, setSelected] = useState<AuditEntry | null>(null);
   const debouncedSearch = useDebouncedValue(search);
+  // Who each actor id is. The column used to say only WHAT kind of principal
+  // acted ("Person"), which answers nothing an audit is read for. Names come
+  // from the directory the reader may already see; without that right the
+  // kind is still said, and an id is never printed.
+  const directoryReadable = canReadDirectory(session);
+  const people = useQuery({
+    queryKey: ["audit-directory", "people"],
+    enabled: allowed && directoryReadable,
+    queryFn: () =>
+      apiRequest<{ items?: Array<{ id: string; email?: string; name?: string }> }>(
+        "/v1/identity/users?limit=200",
+      ),
+  });
+  const accounts = useQuery({
+    queryKey: ["audit-directory", "system-accounts"],
+    enabled: allowed && directoryReadable,
+    queryFn: () =>
+      apiRequest<{ items?: Array<{ id: string; name?: string }> }>("/v1/identity/system-accounts"),
+  });
+  const directory = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const item of people.data?.items ?? []) {
+      const label = item.name?.trim() || item.email?.trim();
+      if (label) byId.set(item.id, label);
+    }
+    for (const item of accounts.data?.items ?? []) {
+      const label = item.name?.trim();
+      if (label) byId.set(item.id, label);
+    }
+    return byId;
+  }, [people.data, accounts.data]);
 
   const query = useQuery({
     queryKey: ["audit", result, scope, linked, page, cursors[page]],
@@ -231,12 +271,8 @@ export function AuditPage() {
       column.custom(
         "action",
         (entry) => entry.action,
-        t("resource.field.action"),
+        t("audit.column.operation"),
         (entry) => {
-          // A verb nobody has named yet shows the engine's own token, in a
-          // face that says so. Rendering it as prose — "Weiterer Vorgang" —
-          // told a reader the log had recorded something indistinct, when it
-          // had recorded precisely this.
           const label = auditActionLabel(entry.action);
           return label.kind === "named" ? (
             <span title={entry.action}>{t(label.key)}</span>
@@ -246,46 +282,60 @@ export function AuditPage() {
             </span>
           );
         },
-        { width: "w-[24%]" },
+        { width: "w-[22%]" },
+      ),
+      column.link(
+        "resource",
+        (entry): Relation | null => ({
+          href: auditResourceHref(entry.resource_type, entry.resource_id),
+          label: auditResourceLabel(entry.resource_type, t).text,
+        }),
+        t("audit.column.resource"),
+        { width: "w-[14%]" },
       ),
       column.custom(
         "result",
         (entry) => entry.result,
         t("audit.column.result"),
         (entry) => (
-          <Badge variant={entry.result === "success" ? "outline" : "destructive"}>
-            {t(auditResultKey(entry.result))}
+          <Badge
+            variant={
+              entry.result === "denied" || entry.result === "error" ? "destructive" : "outline"
+            }
+          >
+            <LabelText label={auditResultLabel(entry.result, t)} />
           </Badge>
         ),
         { width: "w-[11%]" },
       ),
-      // Actor and resource read as words. The ids behind them are routing keys
-      // and only ever travel inside an href.
       column.custom(
         "actor",
-        (entry) => entry.actor_type,
+        (entry) => entry.actor_id ?? entry.actor_type,
         t("audit.column.actor"),
-        (entry) => t(actorTypeKey(entry.actor_type)),
-        { width: "w-[13%]" },
-      ),
-      column.link(
-        "resource",
-        (entry): Relation | null => ({
-          href: auditResourceHref(entry.resource_type, entry.resource_id),
-          label: t(resourceTypeKey(entry.resource_type)),
-        }),
-        t("audit.column.resource"),
-        { width: "w-[14%]" },
+        (entry) => {
+          const actor = auditActorName(entry, directory, t);
+          return actor ? (
+            <span className="truncate" data-testid="audit-actor">
+              <LabelText label={actor} />
+            </span>
+          ) : (
+            MISSING
+          );
+        },
+        { width: "w-[15%]" },
       ),
       column.custom(
         "reason",
         (entry) => entry.reason,
         t("audit.column.reason"),
-        (entry) => entry.reason ?? MISSING,
+        (entry) => {
+          const reason = auditReasonLabel(entry.reason, t);
+          return reason ? <LabelText label={reason} /> : MISSING;
+        },
         { width: "w-[20%]" },
       ),
     ];
-  }, [t, dateTime]);
+  }, [t, dateTime, directory]);
 
   // What the open record is ABOUT, in the same two shapes the cell uses: a
   // named verb as prose, an unnamed one as the engine's token in a machine
@@ -422,7 +472,7 @@ export function AuditPage() {
                   </SelectItem>
                   {RESULTS.map((value) => (
                     <SelectItem key={value} value={value} data-testid={`audit-result-${value}`}>
-                      {t(auditResultKey(value))}
+                      {auditResultLabel(value, t).text}
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -439,7 +489,7 @@ export function AuditPage() {
                 }
               >
                 {t(linked.resourceId ? "audit.recordFilter" : "audit.resourceFilter", {
-                  resource: t(resourceTypeKey(linked.resourceType)),
+                  resource: auditResourceLabel(linked.resourceType, t).text,
                 })}
               </Button>
             ) : null}
@@ -567,7 +617,7 @@ export function AuditPage() {
             </SheetTitle>
             <SheetDescription>{t("audit.detail.description")}</SheetDescription>
           </SheetHeader>
-          {selected && <AuditDetail entry={selected} />}
+          {selected && <AuditDetail entry={selected} directory={directory} />}
         </SheetContent>
       </Sheet>
     </PageFrame>

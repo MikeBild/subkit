@@ -4,6 +4,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { ConnectionSummarySchema } from "../../../api/connection-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import * as credsvc from "../../../credentials/index.ts";
@@ -53,7 +54,7 @@ const CredentialSummary = z
   .object({
     mode: z.string(),
     environment: z.enum(["dev", "prod"]),
-    connection: z.object({ id: z.string(), name: z.string() }).nullable(),
+    connection: ConnectionSummarySchema.nullable(),
     updated_at: z.string(),
   })
   .nullable()

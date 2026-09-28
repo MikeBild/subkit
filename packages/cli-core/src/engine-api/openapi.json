@@ -2741,13 +2741,10 @@
             }
           },
           "state": {
-            "type": "string",
-            "enum": [
-              "valid",
-              "expiring",
-              "expired",
-              "unreadable"
-            ]
+            "$ref": "#/components/schemas/ConnectionState"
+          },
+          "state_reason": {
+            "$ref": "#/components/schemas/ConnectionStateReason"
           },
           "auto_renew": {
             "type": "boolean"
@@ -2782,8 +2779,11 @@
               "null"
             ]
           },
-          "used_by_connectors": {
-            "type": "integer"
+          "used_by": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectionUser"
+            }
           },
           "created_at": {
             "type": "string"
@@ -2799,14 +2799,61 @@
           "scopes",
           "granted_scopes",
           "state",
+          "state_reason",
           "auto_renew",
           "expires_at",
           "last_used_at",
           "last_refreshed_at",
           "refresh_failed_at",
           "last_error",
-          "used_by_connectors",
+          "used_by",
           "created_at"
+        ]
+      },
+      "ConnectionState": {
+        "type": "string",
+        "enum": [
+          "valid",
+          "expiring",
+          "expired",
+          "unreadable"
+        ]
+      },
+      "ConnectionStateReason": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "refresh_refused",
+          "refresh_failed",
+          "expired_no_refresh",
+          "secret_unreadable",
+          null
+        ]
+      },
+      "ConnectionUser": {
+        "type": "object",
+        "properties": {
+          "connector_id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "workflow_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "connector_id",
+          "slug",
+          "display_name",
+          "workflow_count"
         ]
       },
       "TenantListResponse": {
@@ -11597,6 +11644,9 @@
             ],
             "format": "date-time"
           },
+          "connection": {
+            "$ref": "#/components/schemas/ConnectionSummary"
+          },
           "created_at": {
             "type": "string"
           }
@@ -11608,7 +11658,30 @@
           "has_oauth_refresh",
           "granted_scopes",
           "oauth2_expires_at",
+          "connection",
           "created_at"
+        ]
+      },
+      "ConnectionSummary": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ConnectionState"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state"
         ]
       },
       "Connector": {
@@ -12238,22 +12311,7 @@
             ]
           },
           "connection": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "name"
-            ]
+            "$ref": "#/components/schemas/ConnectionSummary"
           },
           "updated_at": {
             "type": "string"
@@ -25708,10 +25766,9 @@
         "parameters": [
           {
             "schema": {
-              "type": "string",
-              "minLength": 1
+              "type": "string"
             },
-            "required": true,
+            "required": false,
             "name": "state",
             "in": "query"
           },
@@ -26421,6 +26478,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "last_admin — the change would leave the workspace without an administrator",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -26471,6 +26538,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "last_admin — the workspace's last administrator cannot be deactivated",
             "content": {
               "application/json": {
                 "schema": {
@@ -41303,6 +41380,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "last_admin — the change would leave the workspace without an administrator",
             "content": {
               "application/json": {
                 "schema": {

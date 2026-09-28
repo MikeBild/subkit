@@ -7,7 +7,7 @@ import { hasLegacyRoleDrift, policy, resolveEffectiveUserRole } from "../../../a
 import { roles } from "../../../db/schema/index.ts";
 import * as identity from "../../../identity/index.ts";
 import { now } from "../../../utils/clock.ts";
-import { ConflictError, NotFoundError } from "../../errors.ts";
+import { ConflictError, LastAdminConflictError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { enforce } from "../../middleware/policy.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -91,6 +91,10 @@ const updateRoute = createRoute({
     401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: {
+      description: "last_admin — the change would leave the workspace without an administrator",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -106,8 +110,18 @@ const deactivateRoute = createRoute({
     401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: {
+      description: "last_admin — the workspace's last administrator cannot be deactivated",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
+
+/** The domain's last-admin refusal as the 409 a client can name. */
+function lastAdminAsConflict(err: unknown): never {
+  if (err instanceof identity.LastAdminError) throw new LastAdminConflictError(err.message);
+  throw err;
+}
 
 function serialize(
   u: NonNullable<Awaited<ReturnType<typeof identity.getUser>>>,
@@ -257,10 +271,12 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
       { resource_type: "user", action: "update", resource_id: id },
       db,
     );
-    const u = await identity.updateUser(
-      { tenant_id: principal.tenant_id, id, role: body.role, actor_id: principal.id },
-      db,
-    );
+    const u = await identity
+      .updateUser(
+        { tenant_id: principal.tenant_id, id, role: body.role, actor_id: principal.id },
+        db,
+      )
+      .catch(lastAdminAsConflict);
     if (!u) throw new NotFoundError("user");
     return c.json(serialize(u, body.role), 200);
   });
@@ -270,10 +286,9 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     enforce(principal, policy.adminOnly(principal), { resource_type: "user", resource_id: id }, db);
-    const u = await identity.deactivateUser(
-      { tenant_id: principal.tenant_id, user_id: id, actor_id: principal.id },
-      db,
-    );
+    const u = await identity
+      .deactivateUser({ tenant_id: principal.tenant_id, user_id: id, actor_id: principal.id }, db)
+      .catch(lastAdminAsConflict);
     if (!u) throw new NotFoundError("user");
     return c.body(null, 204);
   });

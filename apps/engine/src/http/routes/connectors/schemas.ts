@@ -2,6 +2,7 @@
 // per-sub-resource module imports from here.
 
 import { z } from "@hono/zod-openapi";
+import { ConnectionSummarySchema } from "../../../api/connection-schemas.ts";
 import {
   ConnectorTemplateSourceEnum,
   type ConnectorView,
@@ -21,6 +22,8 @@ export const CredentialSummarySchema = z
     has_oauth_refresh: z.boolean(),
     granted_scopes: z.string().nullable(),
     oauth2_expires_at: z.string().datetime().nullable(),
+    /** The Kontoverbindung this credential sends, with its state; null for a stored key. */
+    connection: ConnectionSummarySchema.nullable(),
     created_at: z.string(),
   })
   .openapi("CredentialSummary");

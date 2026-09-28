@@ -1,36 +1,15 @@
+import type { components } from "@/api/schema";
 import type { TranslationKey } from "@/lib/i18n";
 
-/** What the engine says about one outbound connection. */
-export interface ConnectionItem {
-  id: string;
-  name: string;
-  base_url: string;
-  issuer: string;
-  service_name: string | null;
-  service_description: string | null;
-  scopes: string[];
-  granted_scopes: string[] | null;
-  state: "valid" | "expiring" | "expired" | "unreadable";
-  auto_renew: boolean;
-  expires_at: string | null;
-  last_used_at: string | null;
-  last_refreshed_at: string | null;
-  refresh_failed_at: string | null;
-  last_error: string | null;
-  used_by_connectors: number;
-  created_at: string;
-}
+/**
+ * What the engine says about one Kontoverbindung (outbound connection) —
+ * the generated contract, so a renamed field breaks the build, not the page.
+ */
+export type ConnectionItem = components["schemas"]["Connection"];
+export type ConnectionState = ConnectionItem["state"];
+export type ConnectionStateReason = NonNullable<ConnectionItem["state_reason"]>;
 
-export interface DiscoveryItem {
-  base_url: string;
-  connectable: boolean;
-  reason: string | null;
-  service_name: string | null;
-  service_description: string | null;
-  service_version: string | null;
-  issuer: string | null;
-  scopes_supported: string[];
-}
+export type DiscoveryItem = components["schemas"]["ConnectionDiscoverResponse"];
 
 /** The state word, one per §2/§11 vocabulary; the date rides beside "läuft ab". */
 export function connectionStateKey(state: ConnectionItem["state"]): TranslationKey {
@@ -43,6 +22,24 @@ export function connectionStateKey(state: ConnectionItem["state"]): TranslationK
       return "connections.state.expired";
     case "unreadable":
       return "connections.state.unreadable";
+  }
+}
+
+/**
+ * Why a grant is unusable, as a sentence that ends in the way back (§1: no red
+ * without a way to the cause). The engine records a reason for every state
+ * that is not ok, so there is never a dash beside "abgelaufen".
+ */
+export function connectionReasonKey(reason: ConnectionStateReason): TranslationKey {
+  switch (reason) {
+    case "refresh_refused":
+      return "connections.reason.refreshRefused";
+    case "refresh_failed":
+      return "connections.reason.refreshFailed";
+    case "expired_no_refresh":
+      return "connections.reason.expiredNoRefresh";
+    case "secret_unreadable":
+      return "connections.reason.secretUnreadable";
   }
 }
 
@@ -86,7 +83,7 @@ export function connectionFailureKey(code: string | null): TranslationKey {
  * one, otherwise the host, both reduced to what a secret name allows.
  */
 export function suggestConnectionName(serviceName: string | null, baseUrl: string): string {
-  return slugOf(serviceName ?? "") || slugOf(hostOf(baseUrl)) || "anbindung";
+  return slugOf(serviceName ?? "") || slugOf(hostOf(baseUrl)) || "konto";
 }
 
 function slugOf(source: string): string {
@@ -105,6 +102,20 @@ function hostOf(baseUrl: string): string {
   } catch {
     return "";
   }
+}
+
+/** The callback's own words in the address; the page drops these and keeps the rest. */
+export const CALLBACK_PARAMS = ["connected", "renewed", "failed", "name"] as const;
+
+/**
+ * The address without the callback's words, so a reload does not repeat the
+ * sentence — and without losing `section=grants`, which the page is open at.
+ */
+export function withoutCallbackParams(search: string): string {
+  const params = new URLSearchParams(search);
+  for (const key of CALLBACK_PARAMS) params.delete(key);
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }
 
 /** What the other side sent us back with, read off the page's own query string. */
