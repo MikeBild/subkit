@@ -20,6 +20,7 @@ export const DEFAULT_AUTHORING_MODE: AuthoringMode = "auto";
 export type GateRow =
   | "readAndCheck"
   | "preparation"
+  | "proposals"
   | "otherChanges"
   | "dangerous"
   | "inlineCredential"
@@ -31,6 +32,8 @@ export type GateRow =
  * - Reading and checking never asks.
  * - Preparation — saving a workflow draft, adding a knowledge source — runs
  *   without asking in `auto` only (`AUTO_PREPARATION_WRITES`).
+ * - Proposals a person approves later (a learning, a skill candidate) are
+ *   pinned never-gate: the approval is the confirmation.
  * - Every other change to the workspace asks in all three modes: `auto` gates
  *   unclassified tenant writes, `ask`/`plan` gate every tenant write.
  * - Dangerous calls (deleting, writing to an outside system) and a credential
@@ -41,6 +44,9 @@ export type GateRow =
 const MATRIX: Readonly<Record<GateRow, Readonly<Record<AuthoringMode, boolean>>>> = {
   readAndCheck: { auto: false, ask: false, plan: false },
   preparation: { auto: false, ask: true, plan: true },
+  // Pinned `neverGate` (save_learning, create_skill): an inert proposal whose
+  // approval IS the confirmation, so no mode asks before filing it.
+  proposals: { auto: false, ask: false, plan: false },
   otherChanges: { auto: true, ask: true, plan: true },
   dangerous: { auto: true, ask: true, plan: true },
   inlineCredential: { auto: true, ask: true, plan: true },
@@ -50,6 +56,7 @@ const MATRIX: Readonly<Record<GateRow, Readonly<Record<AuthoringMode, boolean>>>
 const ROW_KEYS: Readonly<Record<GateRow, TranslationKey>> = {
   readAndCheck: "chat.mode.gate.readAndCheck",
   preparation: "chat.mode.gate.preparation",
+  proposals: "chat.mode.gate.proposals",
   otherChanges: "chat.mode.gate.otherChanges",
   dangerous: "chat.mode.gate.dangerous",
   inlineCredential: "chat.mode.gate.inlineCredential",

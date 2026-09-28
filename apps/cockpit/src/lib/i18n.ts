@@ -641,11 +641,9 @@ const EN = {
   "people.deactivateDescription": "Deactivate {email} and revoke their active access?",
   "people.deactivateConnections":
     "This also ends {count} program access(es) {email} approved — those programs stop working at once.",
-  "people.connections": "{count} connection(s)",
   "people.created": "Person added",
   "people.roleUpdated": "Role updated",
   "people.deactivated": "Person deactivated",
-  "people.roleDrift": "Role needs repair",
   "secret.once": "This value is shown once. Copy it now and store it securely.",
   "apiKeys.create": "Create API key",
   "apiKeys.createDescription": "Create a named key for your account with the required scopes.",
@@ -1677,7 +1675,7 @@ const EN = {
   "chat.stop": "Stop",
   "chat.toggleContext": "Toggle working context",
   "chat.failed": "Action failed",
-  "chat.replyHint": "Answer the question below to continue.",
+  "chat.replyHint": "Your answer to the question …",
   "chat.pendingQuestionRequired": "Answer the open question using its controls to continue.",
   "chat.failedDescription": "The request could not be completed. Your input has been kept.",
   "chat.empty.title": "What should SubKit accomplish?",
@@ -1904,6 +1902,7 @@ const EN = {
   "tool.stale.description":
     "This action never finished. The connection was most likely interrupted.",
   "status.active": "Active",
+  "status.invited": "Invited",
   "status.awaitingInput": "Awaiting input",
   "status.committed": "Committed",
   "status.abandoned": "Abandoned",
@@ -2078,6 +2077,7 @@ const EN = {
   "chat.mode.free": "Without asking:",
   "chat.mode.gate.readAndCheck": "reading and checking",
   "chat.mode.gate.preparation": "saving drafts and adding knowledge sources",
+  "chat.mode.gate.proposals": "filing proposals you approve later (skills, learnings)",
   "chat.mode.gate.otherChanges": "other changes to the workspace",
   "chat.mode.gate.dangerous": "deleting, overwriting and writing to outside systems",
   "chat.mode.gate.inlineCredential": "storing credentials pasted into the chat",
@@ -2740,11 +2740,9 @@ const DE: Record<TranslationKey, string> = {
   "people.deactivateDescription": "{email} deaktivieren und aktive Zugriffe widerrufen?",
   "people.deactivateConnections":
     "Damit enden auch {count} Programmzugänge, die {email} freigegeben hat — diese Programme funktionieren sofort nicht mehr.",
-  "people.connections": "{count} Anbindung(en)",
   "people.created": "Person angelegt",
   "people.roleUpdated": "Rolle aktualisiert",
   "people.deactivated": "Person deaktiviert",
-  "people.roleDrift": "Rolle muss repariert werden",
   "secret.once": "Dieser Wert wird nur einmal angezeigt. Kopieren und sicher speichern.",
   "apiKeys.create": "API-Schlüssel anlegen",
   "apiKeys.createDescription":
@@ -3806,7 +3804,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.stop": "Stoppen",
   "chat.toggleContext": "Arbeitskontext ein- oder ausblenden",
   "chat.failed": "Aktion fehlgeschlagen",
-  "chat.replyHint": "Beantworte die Rückfrage unten, um fortzufahren.",
+  "chat.replyHint": "Deine Antwort auf die Rückfrage …",
   "chat.pendingQuestionRequired":
     "Beantworte die offene Rückfrage über ihre Auswahl, um fortzufahren.",
   "chat.failedDescription":
@@ -4040,6 +4038,7 @@ const DE: Record<TranslationKey, string> = {
   "tool.stale.description":
     "Diese Aktion wurde nie abgeschlossen. Vermutlich ist die Verbindung abgerissen.",
   "status.active": "Aktiv",
+  "status.invited": "Eingeladen",
   "status.awaitingInput": "Wartet auf Eingabe",
   "status.committed": "Gespeichert",
   "status.abandoned": "Verworfen",
@@ -4214,6 +4213,8 @@ const DE: Record<TranslationKey, string> = {
   "chat.mode.free": "Ohne Rückfrage:",
   "chat.mode.gate.readAndCheck": "lesen und prüfen",
   "chat.mode.gate.preparation": "Entwürfe speichern und Wissensquellen anlegen",
+  "chat.mode.gate.proposals":
+    "Vorschläge einreichen, die du später freigibst (Skills, Lernnotizen)",
   "chat.mode.gate.otherChanges": "andere Änderungen am Arbeitsbereich",
   "chat.mode.gate.dangerous": "löschen, überschreiben und nach draußen schreiben",
   "chat.mode.gate.inlineCredential": "eingefügte Zugangsdaten speichern",
