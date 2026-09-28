@@ -12,7 +12,13 @@
 // client might render as the word "undefined", or skip.
 
 import { getConfig, getDiagnostics } from "../config/loader.ts";
-import { type ConfigLeaf, dottedPath, findLeafByPath, listConfigLeaves } from "../config/walk.ts";
+import {
+  type ConfigLeaf,
+  dottedPath,
+  findLeafByPath,
+  leafSchemaMeta,
+  listConfigLeaves,
+} from "../config/walk.ts";
 import type { Executor } from "../db/client.ts";
 import { getRuntimeConfigState, RuntimeConfigNotFoundError } from "./service.ts";
 
@@ -29,6 +35,10 @@ export interface SettingEntry {
     requiresRestart: boolean;
     description?: string;
     kind: string;
+    /** The schema default; a secret's default reads `***`. Absent when there is none. */
+    default?: unknown;
+    /** The allowed values of an enum setting. */
+    enum_values?: string[];
   };
 }
 
@@ -90,6 +100,7 @@ function entryFor(
       requiresRestart: !!leaf.meta.requiresRestart,
       ...(leaf.description ? { description: leaf.description } : {}),
       kind: leaf.kind,
+      ...leafSchemaMeta(leaf),
     },
   };
 }

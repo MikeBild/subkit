@@ -2502,6 +2502,13 @@
           },
           "kind": {
             "type": "string"
+          },
+          "default": {},
+          "enum_values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [

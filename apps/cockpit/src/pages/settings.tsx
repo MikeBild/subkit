@@ -33,9 +33,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useI18n } from "@/lib/i18n-context";
 import { EngineWording, LabelText } from "@/lib/machine-label";
 import { cn } from "@/lib/utils";
@@ -44,18 +53,31 @@ import {
   type SettingItem,
   type SettingNavGroup,
   type SettingsAttention,
+  type SettingsFilter,
   type SettingsResponse,
+  settingDiffersFromDefault,
+  settingDraftError,
   settingFieldValue,
+  settingHelpKey,
+  settingIsChanged,
   settingLabel,
   settingLeafTarget,
   settingMatches,
   settingMetaLabel,
   settingNavigation,
+  settingResetDraft,
+  settingSecretName,
+  settingSecretStored,
   settingSectionLabel,
   settingSectionOf,
   settingSourceIsNotable,
+  settingsActivationPath,
   settingsAttention,
+  settingsPatch,
+  settingsSaveFailure,
   settingsViewFromUrl,
+  settingUnit,
+  settingValueText,
 } from "@/pages/settings-model";
 
 type AuthProviderSetting =
@@ -73,13 +95,6 @@ type AuthProviderSetting =
       scopes: string;
       tenant_slug: string;
     };
-
-function parseSettingValue(raw: string, original: unknown): unknown {
-  if (typeof original === "boolean") return raw === "true";
-  if (typeof original === "number") return Number(raw);
-  if (Array.isArray(original) || (original && typeof original === "object")) return JSON.parse(raw);
-  return raw;
-}
 
 function authProvidersFrom(value: unknown): AuthProviderSetting[] {
   if (!Array.isArray(value)) return [];
@@ -489,6 +504,302 @@ export function SettingTechnical({ item, index }: { item: SettingItem; index: nu
 }
 
 /**
+ * "Geändert · Standard: X · Zurücksetzen" — only while the value on screen is
+ * not the default. Zurücksetzen drafts the default like any other edit; the
+ * save bar takes it from there. The provider list has no reset: its default
+ * would drop every sign-in but the API key without the removal's confirm.
+ */
+export function SettingDefaultLine({
+  item,
+  index,
+  draft,
+  disabled,
+  onReset,
+}: {
+  item: SettingItem;
+  index: number;
+  draft: string | undefined;
+  disabled: boolean;
+  onReset?: (draft: string) => void;
+}) {
+  const { t } = useI18n();
+  if (!settingDiffersFromDefault(item, draft)) return null;
+  const reset = item.path === "auth.providers" ? null : settingResetDraft(item);
+  return (
+    <p
+      className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground"
+      data-testid={`setting-changed-${index}`}
+    >
+      <span className="font-medium text-foreground">{t("settings.changed")}</span>
+      <span aria-hidden="true">·</span>
+      <span className="break-all" data-testid={`setting-default-${index}`}>
+        {t("settings.defaultIs", { value: settingValueText(item.meta.default, t) })}
+      </span>
+      {reset !== null && onReset ? (
+        <>
+          <span aria-hidden="true">·</span>
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs"
+            disabled={disabled}
+            onClick={() => onReset(reset)}
+            data-testid={`setting-reset-${index}`}
+          >
+            {t("settings.reset")}
+          </Button>
+        </>
+      ) : null}
+    </p>
+  );
+}
+
+/**
+ * A secret says whether one is stored, never what it is: "Hinterlegt ·
+ * Ersetzen" or "Nicht hinterlegt · Hinterlegen". The field appears only after
+ * the click, and "Abbrechen" takes it away with whatever was typed.
+ */
+export function SettingSecretControl({
+  item,
+  index,
+  draft,
+  disabled,
+  onDraft,
+  onCancel,
+}: {
+  item: SettingItem;
+  index: number;
+  draft: string | undefined;
+  disabled: boolean;
+  onDraft: (value: string) => void;
+  onCancel: () => void;
+}) {
+  const { t } = useI18n();
+  const stored = settingSecretStored(item);
+  if (draft === undefined)
+    return (
+      <p
+        className="flex min-h-9 flex-wrap items-center gap-x-1.5 text-sm"
+        data-testid={`setting-secret-${index}`}
+        data-stored={stored || undefined}
+      >
+        <span className={cn(!stored && "text-muted-foreground")}>
+          {t(stored ? "settings.secret.stored" : "settings.secret.notStored")}
+        </span>
+        <span aria-hidden="true" className="text-muted-foreground">
+          ·
+        </span>
+        <Button
+          id={`setting-${index}`}
+          type="button"
+          variant="link"
+          size="sm"
+          className="h-auto p-0"
+          disabled={disabled}
+          onClick={() => onDraft("")}
+          data-testid={`setting-secret-edit-${index}`}
+        >
+          {t(stored ? "settings.secret.replace" : "settings.secret.store")}
+        </Button>
+      </p>
+    );
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        id={`setting-${index}`}
+        type="password"
+        autoComplete="new-password"
+        value={draft}
+        placeholder={t("settings.secretPlaceholder")}
+        onChange={(event) => onDraft(event.target.value)}
+        disabled={disabled}
+        data-testid={`setting-input-${index}`}
+      />
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={disabled}
+        onClick={onCancel}
+        data-testid={`setting-secret-cancel-${index}`}
+      >
+        {t("common.cancel")}
+      </Button>
+    </div>
+  );
+}
+
+const UNSET_OPTION = "__unset__";
+
+/** An enum is a choice among the engine's values, with "Nicht gesetzt" where null is allowed. */
+export function SettingEnumSelect({
+  item,
+  index,
+  value,
+  disabled,
+  onDraft,
+}: {
+  item: SettingItem;
+  index: number;
+  value: string;
+  disabled: boolean;
+  onDraft: (value: string) => void;
+}) {
+  const { t } = useI18n();
+  const nullable = item.meta.default === null || item.value === null;
+  return (
+    <Select
+      value={value === "" ? UNSET_OPTION : value}
+      onValueChange={(next) => onDraft(next === UNSET_OPTION ? "" : next)}
+      disabled={disabled}
+    >
+      <SelectTrigger
+        id={`setting-${index}`}
+        className="w-full"
+        aria-label={settingLabel(item.path, t).text}
+        data-testid={`setting-input-${index}`}
+        data-kind="enum"
+      >
+        <SelectValue placeholder={t("settings.unset")} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {nullable ? (
+            <SelectItem value={UNSET_OPTION} data-testid={`setting-option-${index}-unset`}>
+              {t("settings.unset")}
+            </SelectItem>
+          ) : null}
+          {(item.meta.enum_values ?? []).map((option) => (
+            <SelectItem
+              key={option}
+              value={option}
+              data-testid={`setting-option-${index}-${option}`}
+            >
+              {option}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** A number is a numeric field, with its unit beside it where the setting's name says one. */
+export function SettingNumberInput({
+  item,
+  index,
+  value,
+  disabled,
+  onDraft,
+}: {
+  item: SettingItem;
+  index: number;
+  value: string;
+  disabled: boolean;
+  onDraft: (value: string) => void;
+}) {
+  const { t } = useI18n();
+  const unit = settingUnit(item.path);
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        id={`setting-${index}`}
+        type="number"
+        inputMode="decimal"
+        value={value}
+        placeholder={isUnset(item) ? t("settings.unset") : undefined}
+        onChange={(event) => onDraft(event.target.value)}
+        disabled={disabled}
+        data-testid={`setting-input-${index}`}
+      />
+      {unit ? (
+        <span
+          className="shrink-0 text-sm text-muted-foreground"
+          data-testid={`setting-unit-${index}`}
+        >
+          {t(unit)}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** The one filter beside the search: every setting, or only those not at their default. */
+export function SettingsFilterToggle({
+  filter,
+  onChange,
+}: {
+  filter: SettingsFilter;
+  onChange: (filter: SettingsFilter) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      value={filter}
+      onValueChange={(next) => {
+        if (next === "all" || next === "changed") onChange(next);
+      }}
+      aria-label={t("settings.filter.label")}
+      data-testid="settings-filter"
+    >
+      <ToggleGroupItem value="all" data-testid="settings-filter-all">
+        {t("settings.filter.all")}
+      </ToggleGroupItem>
+      <ToggleGroupItem value="changed" data-testid="settings-filter-changed">
+        {t("settings.filter.changed")}
+      </ToggleGroupItem>
+    </ToggleGroup>
+  );
+}
+
+/** Shown once above the list to someone without settings:write; every control is disabled. */
+export function SettingsReadOnlyNotice({ canWrite }: { canWrite: boolean }) {
+  const { t } = useI18n();
+  if (canWrite) return null;
+  return (
+    <p
+      role="status"
+      className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
+      data-testid="settings-read-only"
+    >
+      {t("settings.readOnly")}
+    </p>
+  );
+}
+
+/**
+ * A section's heading, and — once, not on every secret row — the note on what
+ * belongs in a secret field here.
+ */
+export function SettingsSectionHeading({
+  section,
+  items,
+}: {
+  section: string;
+  items: readonly SettingItem[];
+}) {
+  const { t } = useI18n();
+  return (
+    <>
+      <h2 className="text-base font-semibold">
+        <LabelText label={settingSectionLabel(section, t)} />
+      </h2>
+      {items.some((item) => item.meta.sensitive) ? (
+        <p
+          className="mt-1 text-xs text-muted-foreground"
+          data-testid={`settings-secret-hint-${section}`}
+        >
+          {t("settings.secretExternalOnly")}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+/**
  * One setting: its name, what to know before changing it, the control on the
  * right. The key, the source and the engine's wording are in the collapsed
  * technical details, not on the row.
@@ -497,11 +808,17 @@ export function SettingRow({
   item,
   index,
   highlighted,
+  draft,
+  disabled = false,
+  onReset,
   children,
 }: {
   item: SettingItem;
   index: number;
   highlighted: boolean;
+  draft?: string;
+  disabled?: boolean;
+  onReset?: (draft: string) => void;
   children: ReactNode;
 }) {
   const { t } = useI18n();
@@ -509,6 +826,8 @@ export function SettingRow({
   const label = wide
     ? { text: t("settings.auth.providers"), machine: false }
     : settingLabel(item.path, t);
+  const help = settingHelpKey(item.path);
+  const invalid = settingDraftError(item, draft);
   return (
     <div
       className={cn(
@@ -527,14 +846,18 @@ export function SettingRow({
             <LabelText label={label} />
           </label>
         )}
-        {item.meta.sensitive ? (
-          <p
-            className="mt-0.5 text-xs text-muted-foreground"
-            data-testid={`setting-secret-hint-${index}`}
-          >
-            {t("settings.secretExternalOnly")}
+        {help ? (
+          <p className="mt-0.5 text-xs text-muted-foreground" data-testid={`setting-help-${index}`}>
+            {t(help)}
           </p>
         ) : null}
+        <SettingDefaultLine
+          item={item}
+          index={index}
+          draft={draft}
+          disabled={disabled}
+          onReset={onReset}
+        />
         {item.meta.requiresRestart || settingSourceIsNotable(item.meta.source) ? (
           <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             {item.meta.requiresRestart ? (
@@ -549,7 +872,18 @@ export function SettingRow({
         ) : null}
         <SettingTechnical item={item} index={index} />
       </div>
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0">
+        {children}
+        {invalid ? (
+          <p
+            role="alert"
+            className="mt-1 text-xs text-destructive"
+            data-testid={`setting-invalid-${index}`}
+          >
+            {t(invalid)}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -560,12 +894,19 @@ export function SettingsPage() {
   const client = useQueryClient();
   const canWrite = session.permissions.includes("settings:write");
   // The view lives in the address: a reload, a shared link and the J5 link
-  // from the usage page all land on the same section, search and field.
+  // from the usage page all land on the same section, search, filter and field.
   const [linked] = useState(() => settingsViewFromUrl(window.location.search));
   const [leaf, setLeaf] = useState(linked.leaf);
   const [search, setSearch] = useState(linked.leaf ? "" : linked.q);
+  const [filter, setFilter] = useState<SettingsFilter>(linked.leaf ? "all" : linked.filter);
+  // Drafts belong to the page, not to a section: switching sections, searching
+  // or filtering keeps them until they are saved or discarded. Nothing saves
+  // on its own.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [restartSetting, setRestartSetting] = useState<SettingItem | null>(null);
+  const [restartOpen, setRestartOpen] = useState(false);
+  // Somebody saved a newer revision since the page was read: the save bar says
+  // so and asks for a reload; the drafts stay.
+  const [conflict, setConflict] = useState(false);
   const [activeSection, setActiveSection] = useState(
     linked.leaf ? settingSectionOf(linked.leaf) : (linked.section ?? ""),
   );
@@ -587,28 +928,47 @@ export function SettingsPage() {
       ? publicBaseUrlItem.value
       : (globalThis.location?.origin ?? ""));
   const needle = search.trim();
+  const listMode = needle !== "" || filter === "changed";
   const nav = useMemo(
     () => settingNavigation([...new Set(allItems.map((item) => settingSectionOf(item.path)))]),
     [allItems],
   );
   const orderedSections = useMemo(() => nav.flatMap((group) => group.sections), [nav]);
   const hits = useMemo(
-    () => (needle ? allItems.filter((item) => settingMatches(item, needle, t)) : []),
-    [allItems, needle, t],
+    () =>
+      listMode
+        ? allItems.filter(
+            (item) =>
+              (!needle || settingMatches(item, needle, t)) &&
+              (filter !== "changed" || settingIsChanged(item)),
+          )
+        : [],
+    [allItems, listMode, needle, filter, t],
   );
   const hitSections = useMemo(
-    () => (needle ? new Set(hits.map((item) => settingSectionOf(item.path))) : null),
-    [hits, needle],
+    () => (listMode ? new Set(hits.map((item) => settingSectionOf(item.path))) : null),
+    [hits, listMode],
   );
-  const draftSections = useMemo(() => new Set(Object.keys(drafts).map(settingSectionOf)), [drafts]);
+  // An opened secret field with nothing typed is not a change yet.
+  const pendingDrafts = useMemo(() => {
+    const secret = new Set(allItems.filter((item) => item.meta.sensitive).map((item) => item.path));
+    return Object.fromEntries(
+      Object.entries(drafts).filter(([path, value]) => !(secret.has(path) && value === "")),
+    );
+  }, [allItems, drafts]);
+  const draftSections = useMemo(
+    () => new Set(Object.keys(pendingDrafts).map(settingSectionOf)),
+    [pendingDrafts],
+  );
   const changedItems = useMemo(
-    () => allItems.filter((item) => Object.hasOwn(drafts, item.path)),
-    [allItems, drafts],
+    () => allItems.filter((item) => Object.hasOwn(pendingDrafts, item.path)),
+    [allItems, pendingDrafts],
   );
+  const invalidDrafts = changedItems.some((item) => settingDraftError(item, drafts[item.path]));
   const selectedSection = orderedSections.includes(activeSection)
     ? activeSection
     : (orderedSections[0] ?? "");
-  const showPanel = sectionOpen || needle !== "";
+  const showPanel = sectionOpen || listMode;
   const attention = settingsAttention(query.data);
   const restartItems = changedItems.filter((item) => item.meta.requiresRestart);
   useEffect(() => {
@@ -616,11 +976,12 @@ export function SettingsPage() {
       settingsHref(leaf, {
         section: leaf ? null : activeSection || null,
         q: leaf ? null : search.trim() || null,
+        filter: leaf || filter === "all" ? null : filter,
       }),
     );
     if (`${window.location.pathname}${window.location.search}` !== href)
       window.history.replaceState(window.history.state, "", href);
-  }, [leaf, activeSection, search]);
+  }, [leaf, activeSection, search, filter]);
   // Once the list is on screen: open the linked leaf's section, scroll to its
   // row, mark it and put the cursor in it. Once — a later refetch must not pull
   // focus back.
@@ -653,38 +1014,47 @@ export function SettingsPage() {
       field?.focus({ preventScroll: true });
     });
   }, [leaf, query.data, allItems]);
+  // One save is one request: every draft of the page in a single PATCH
+  // against the revision the page was read at. A secret is stored as a new
+  // secret version first and travels as its reference. The saved revision is
+  // then activated; one that needs a restart stays saved and says so.
   const save = useMutation({
-    mutationFn: async ({
-      items: pending,
-      force = false,
-    }: {
-      items: SettingItem[];
-      force?: boolean;
-    }) => {
-      for (const item of pending) {
-        await apiRequest(`/v1/settings/${encodeURIComponent(item.path)}`, {
-          method: "PUT",
-          headers: { "x-subkit-audit-source": "ui" },
-          body: JSON.stringify({
-            value: parseSettingValue(drafts[item.path] ?? String(item.value ?? ""), item.value),
-            force: force && item.meta.requiresRestart,
-          }),
-        });
+    mutationFn: async () => {
+      if (!query.data) throw new Error("settings are not loaded");
+      const secretReferences: Record<string, string> = {};
+      for (const item of changedItems.filter((candidate) => candidate.meta.sensitive)) {
+        const created = await apiRequest<{ reference: string }>(
+          `/v1/secrets/${encodeURIComponent(settingSecretName(item.path))}/versions`,
+          { method: "POST", body: JSON.stringify({ value: pendingDrafts[item.path] }) },
+        );
+        secretReferences[item.path] = created.reference;
       }
+      const patch = settingsPatch(query.data, pendingDrafts, secretReferences);
+      const saved = await apiRequest<Parameters<typeof settingsActivationPath>[0]>("/v1/settings", {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
+      await apiRequest(settingsActivationPath(saved), { method: "POST" });
     },
     onSuccess: async () => {
       setDrafts({});
-      setRestartSetting(null);
+      setConflict(false);
+      setRestartOpen(false);
       await client.invalidateQueries({ queryKey: ["admin", "settings"] });
       toast.success(t("settings.saved"));
     },
-    onError: () => toast.error(t("settings.saveFailed")),
+    onError: (error) => {
+      setRestartOpen(false);
+      if (settingsSaveFailure(error) === "conflict") setConflict(true);
+      else toast.error(t("settings.saveFailed"));
+    },
   });
   const settingsView = queryView(query, () => false);
 
   function openSection(section: string) {
     setLeaf(null);
     setSearch("");
+    setFilter("all");
     setHighlighted(null);
     setLeafMissing(false);
     setActiveSection(section);
@@ -694,24 +1064,39 @@ export function SettingsPage() {
   function openLeaf(path: string) {
     focused.current = false;
     setSearch("");
+    setFilter("all");
     setLeafMissing(false);
     setActiveSection(settingSectionOf(path));
     setSectionOpen(true);
     setLeaf(path);
   }
 
+  function reload() {
+    void query.refetch().then((result) => {
+      if (!result.isError) setConflict(false);
+    });
+  }
+
   function renderRow(item: SettingItem) {
     const index = allItems.indexOf(item);
     const disabled = !canWrite || save.isPending;
     const draft = (next: string) => setDrafts((current) => ({ ...current, [item.path]: next }));
+    const dropDraft = () =>
+      setDrafts((current) => {
+        const { [item.path]: _dropped, ...rest } = current;
+        return rest;
+      });
+    const rowProps = {
+      item,
+      index,
+      highlighted: highlighted === item.path,
+      draft: drafts[item.path],
+      disabled,
+      onReset: draft,
+    };
     if (item.path === "auth.providers")
       return (
-        <SettingRow
-          key={item.path}
-          item={item}
-          index={index}
-          highlighted={highlighted === item.path}
-        >
+        <SettingRow key={item.path} {...rowProps}>
           <AuthProvidersEditor
             value={authProvidersFromDraft(drafts[item.path], item.value)}
             publicBaseUrl={publicBaseUrl}
@@ -720,10 +1105,23 @@ export function SettingsPage() {
           />
         </SettingRow>
       );
+    if (item.meta.sensitive)
+      return (
+        <SettingRow key={item.path} {...rowProps}>
+          <SettingSecretControl
+            item={item}
+            index={index}
+            draft={drafts[item.path]}
+            disabled={disabled}
+            onDraft={draft}
+            onCancel={dropDraft}
+          />
+        </SettingRow>
+      );
     const value = settingFieldValue(item, drafts[item.path]);
     return (
-      <SettingRow key={item.path} item={item} index={index} highlighted={highlighted === item.path}>
-        {typeof item.value === "boolean" ? (
+      <SettingRow key={item.path} {...rowProps}>
+        {item.meta.kind === "boolean" || typeof item.value === "boolean" ? (
           <Switch
             id={`setting-${index}`}
             checked={value === "true"}
@@ -732,18 +1130,28 @@ export function SettingsPage() {
             aria-label={settingLabel(item.path, t).text}
             data-testid={`setting-input-${index}`}
           />
+        ) : item.meta.kind === "enum" && item.meta.enum_values?.length ? (
+          <SettingEnumSelect
+            item={item}
+            index={index}
+            value={value}
+            disabled={disabled}
+            onDraft={draft}
+          />
+        ) : item.meta.kind === "number" ? (
+          <SettingNumberInput
+            item={item}
+            index={index}
+            value={value}
+            disabled={disabled}
+            onDraft={draft}
+          />
         ) : (
           <Input
             id={`setting-${index}`}
-            type={item.meta.sensitive ? "password" : "text"}
+            type="text"
             value={value}
-            placeholder={
-              item.meta.sensitive
-                ? t("settings.secretPlaceholder")
-                : isUnset(item)
-                  ? t("settings.unset")
-                  : undefined
-            }
+            placeholder={isUnset(item) ? t("settings.unset") : undefined}
             onChange={(event) => draft(event.target.value)}
             disabled={disabled}
             data-testid={`setting-input-${index}`}
@@ -771,14 +1179,24 @@ export function SettingsPage() {
           placeholder={t("settings.search")}
           data-testid="settings-search"
         />
-        <IconButton
-          variant="outline"
-          label={t("common.refresh")}
-          data-testid="settings-refresh"
-          onClick={() => query.refetch()}
-        >
-          <RefreshCw />
-        </IconButton>
+        <div className="flex items-center gap-2">
+          <SettingsFilterToggle
+            filter={filter}
+            onChange={(next) => {
+              setLeaf(null);
+              setHighlighted(null);
+              setFilter(next);
+            }}
+          />
+          <IconButton
+            variant="outline"
+            label={t("common.refresh")}
+            data-testid="settings-refresh"
+            onClick={() => query.refetch()}
+          >
+            <RefreshCw />
+          </IconButton>
+        </div>
       </div>
       {settingsView === "loading" ? (
         <div className="grid gap-3" data-testid="settings-loading">
@@ -796,6 +1214,7 @@ export function SettingsPage() {
         />
       ) : (
         <div className="@container/settings grid gap-5 pb-20" data-testid="settings-list">
+          <SettingsReadOnlyNotice canWrite={canWrite} />
           <SettingsAttentionLine attention={attention} onOpenLeaf={openLeaf} />
           {leafMissing && leaf ? (
             <p className="text-sm text-muted-foreground" data-testid="settings-leaf-missing">
@@ -816,7 +1235,7 @@ export function SettingsPage() {
             >
               <SettingsSectionNav
                 nav={nav}
-                current={needle ? null : selectedSection}
+                current={listMode ? null : selectedSection}
                 hits={hitSections}
                 drafts={draftSections}
                 onOpen={openSection}
@@ -837,6 +1256,7 @@ export function SettingsPage() {
                 onClick={() => {
                   setSectionOpen(false);
                   setSearch("");
+                  setFilter("all");
                   setLeaf(null);
                   setHighlighted(null);
                 }}
@@ -844,36 +1264,43 @@ export function SettingsPage() {
                 <ArrowLeft data-icon="inline-start" />
                 {t("settings.allSections")}
               </Button>
-              {needle ? (
+              {listMode ? (
                 hits.length === 0 ? (
-                  <Empty className="min-h-52 border" data-testid="settings-no-matches">
+                  <Empty
+                    className="min-h-52 border"
+                    data-testid={needle ? "settings-no-matches" : "settings-all-default"}
+                  >
                     <EmptyHeader>
-                      <EmptyTitle>{t("settings.noMatches")}</EmptyTitle>
+                      <EmptyTitle>
+                        {needle ? t("settings.noMatches") : t("settings.allDefault")}
+                      </EmptyTitle>
                     </EmptyHeader>
                   </Empty>
                 ) : (
                   <div className="grid gap-6" data-testid="settings-hits">
                     {orderedSections
                       .filter((section) => hitSections?.has(section))
-                      .map((section) => (
-                        <section key={section} data-testid={`settings-hits-${section}`}>
-                          <h2 className="text-base font-semibold">
-                            <LabelText label={settingSectionLabel(section, t)} />
-                          </h2>
-                          <div className="mt-2">
-                            {hits
-                              .filter((item) => settingSectionOf(item.path) === section)
-                              .map(renderRow)}
-                          </div>
-                        </section>
-                      ))}
+                      .map((section) => {
+                        const sectionHits = hits.filter(
+                          (item) => settingSectionOf(item.path) === section,
+                        );
+                        return (
+                          <section key={section} data-testid={`settings-hits-${section}`}>
+                            <SettingsSectionHeading section={section} items={sectionHits} />
+                            <div className="mt-2">{sectionHits.map(renderRow)}</div>
+                          </section>
+                        );
+                      })}
                   </div>
                 )
               ) : (
                 <section data-testid={`settings-section-${selectedSection}`}>
-                  <h2 className="text-base font-semibold">
-                    <LabelText label={settingSectionLabel(selectedSection, t)} />
-                  </h2>
+                  <SettingsSectionHeading
+                    section={selectedSection}
+                    items={allItems.filter(
+                      (item) => settingSectionOf(item.path) === selectedSection,
+                    )}
+                  />
                   <div className="mt-2">
                     {allItems
                       .filter((item) => settingSectionOf(item.path) === selectedSection)
@@ -885,50 +1312,21 @@ export function SettingsPage() {
           </div>
         </div>
       )}
-      {canWrite && changedItems.length > 0 && (
-        <div
-          className="sticky bottom-3 z-10 -mx-1 mt-4 flex flex-col gap-3 rounded-xl bg-background/95 p-3 shadow-lg ring-1 ring-foreground/10 backdrop-blur sm:flex-row sm:items-center sm:justify-between"
-          role="status"
-          data-testid="settings-change-bar"
-        >
-          <div className="flex items-start gap-2">
-            <CheckCircle2 className="mt-0.5 size-4 text-foreground/70" aria-hidden="true" />
-            <div>
-              <p className="text-sm font-medium">
-                {t("settings.unsavedCount", { count: changedItems.length })}
-              </p>
-              <p className="text-xs text-muted-foreground">{t("settings.unsavedHint")}</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              className="flex-1 sm:flex-none"
-              variant="outline"
-              disabled={save.isPending}
-              onClick={() => setDrafts({})}
-              data-testid="settings-discard"
-            >
-              {t("common.discard")}
-            </Button>
-            <Button
-              className="flex-1 sm:flex-none"
-              disabled={save.isPending}
-              onClick={() => {
-                const restart = changedItems.find((item) => item.meta.requiresRestart);
-                restart ? setRestartSetting(restart) : save.mutate({ items: changedItems });
-              }}
-              data-testid="settings-save"
-            >
-              {save.isPending && <Spinner data-icon="inline-start" />}
-              {t("common.saveChanges")}
-            </Button>
-          </div>
-        </div>
+      {canWrite && (changedItems.length > 0 || conflict) && (
+        <SettingsSaveBar
+          count={changedItems.length}
+          conflict={conflict}
+          pending={save.isPending}
+          invalid={invalidDrafts}
+          onDiscard={() => {
+            setDrafts({});
+            setConflict(false);
+          }}
+          onReload={reload}
+          onSave={() => (restartItems.length > 0 ? setRestartOpen(true) : save.mutate())}
+        />
       )}
-      <AlertDialog
-        open={Boolean(restartSetting)}
-        onOpenChange={(open) => !open && setRestartSetting(null)}
-      >
+      <AlertDialog open={restartOpen} onOpenChange={(open) => !open && setRestartOpen(false)}>
         <AlertDialogContent data-testid="settings-restart-dialog">
           <AlertDialogHeader>
             <AlertDialogTitle>{t("settings.restartTitle")}</AlertDialogTitle>
@@ -951,17 +1349,88 @@ export function SettingsPage() {
             <AlertDialogCancel data-testid="settings-restart-cancel">
               {t("common.cancel")}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (restartSetting) save.mutate({ items: changedItems, force: true });
-              }}
-              data-testid="settings-restart-confirm"
-            >
+            <AlertDialogAction onClick={() => save.mutate()} data-testid="settings-restart-confirm">
               {t("settings.saveAndRestart")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </PageFrame>
+  );
+}
+
+/**
+ * The one save bar of the page, for every section's drafts at once: "N
+ * ungespeicherte Änderungen · Verwerfen · Speichern". After a conflict it says
+ * somebody saved in the meantime and offers the reload; the drafts stay.
+ */
+export function SettingsSaveBar({
+  count,
+  conflict,
+  pending,
+  invalid,
+  onDiscard,
+  onReload,
+  onSave,
+}: {
+  count: number;
+  conflict: boolean;
+  pending: boolean;
+  invalid: boolean;
+  onDiscard: () => void;
+  onReload: () => void;
+  onSave: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div
+      className="sticky bottom-3 z-10 -mx-1 mt-4 flex flex-col gap-3 rounded-xl bg-background/95 p-3 shadow-lg ring-1 ring-foreground/10 backdrop-blur sm:flex-row sm:items-center sm:justify-between"
+      role="status"
+      data-testid="settings-change-bar"
+    >
+      <div className="flex items-start gap-2">
+        <CheckCircle2 className="mt-0.5 size-4 text-foreground/70" aria-hidden="true" />
+        <div>
+          <p className="text-sm font-medium">{t("settings.unsavedCount", { count })}</p>
+          {conflict ? (
+            <p role="alert" className="text-xs text-destructive" data-testid="settings-conflict">
+              {t("settings.conflict")}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">{t("settings.unsavedHint")}</p>
+          )}
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          className="flex-1 sm:flex-none"
+          variant="outline"
+          disabled={pending}
+          onClick={onDiscard}
+          data-testid="settings-discard"
+        >
+          {t("common.discard")}
+        </Button>
+        {conflict ? (
+          <Button
+            className="flex-1 sm:flex-none"
+            onClick={onReload}
+            data-testid="settings-conflict-reload"
+          >
+            {t("settings.reload")}
+          </Button>
+        ) : (
+          <Button
+            className="flex-1 sm:flex-none"
+            disabled={pending || invalid || count === 0}
+            onClick={onSave}
+            data-testid="settings-save"
+          >
+            {pending && <Spinner data-icon="inline-start" />}
+            {t("common.save")}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
