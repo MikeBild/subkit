@@ -131,8 +131,8 @@ describe("attention on Zugangsdaten", () => {
             name: "lager",
             service_name: null,
             state: "expired",
-            state_reason: "refresh_failed",
-            last_error: "invalid_grant",
+            state_reason: "refresh_refused",
+            last_error: "token endpoint refused: invalid_grant",
           }),
           grant({ id: "c3", state: "unreadable", state_reason: "secret_unreadable" }),
         ],
@@ -146,8 +146,8 @@ describe("attention on Zugangsdaten", () => {
     expect(items[0]?.text).toBe(
       `Die Kontoverbindung Postfach ist abgelaufen. ${DE["connections.reason.expiredNoRefresh"]}`,
     );
-    expect(items[1]?.text).toContain(DE["connections.reason.refreshFailed"]);
-    expect(items[1]?.engineWording).toBe("invalid_grant");
+    expect(items[1]?.text).toContain(DE["connections.reason.refreshRefused"]);
+    expect(items[1]?.engineWording).toBe("token endpoint refused: invalid_grant");
     expect(items[2]?.text).toContain("nicht lesbar");
     for (const item of items) {
       expect(item.text).not.toContain("—");

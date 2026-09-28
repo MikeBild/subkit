@@ -399,8 +399,10 @@ const EN = {
   "connections.usedByLabel": "Used by",
   "connections.usedByWorkflows": "{count} workflow(s)",
   "connections.notUsed": "Not used by any connector",
-  "connections.reason.refreshFailed":
+  "connections.reason.refreshRefused":
     "The other side refused to renew the access. Renew repeats the approval.",
+  "connections.reason.refreshFailed":
+    "Renewing the access failed and is not retried on its own. Renew repeats the approval.",
   "connections.reason.expiredNoRefresh":
     "The access has ended and cannot renew itself. Renew repeats the approval.",
   "connections.reason.secretUnreadable":
@@ -2422,8 +2424,10 @@ const DE: Record<TranslationKey, string> = {
   "connections.usedByLabel": "Genutzt von",
   "connections.usedByWorkflows": "{count} Workflow(s)",
   "connections.notUsed": "Von keinem Konnektor genutzt",
-  "connections.reason.refreshFailed":
+  "connections.reason.refreshRefused":
     "Die andere Seite hat die Erneuerung abgelehnt. „Erneuern“ wiederholt die Freigabe.",
+  "connections.reason.refreshFailed":
+    "Die Erneuerung ist fehlgeschlagen und wird nicht von selbst wiederholt. „Erneuern“ wiederholt die Freigabe.",
   "connections.reason.expiredNoRefresh":
     "Der Zugriff ist abgelaufen und kann sich nicht selbst erneuern. „Erneuern“ wiederholt die Freigabe.",
   "connections.reason.secretUnreadable":

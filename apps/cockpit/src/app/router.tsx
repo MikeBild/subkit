@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { NotFoundPage, RouteErrorPage } from "@/components/failure-state";
 import {
   AccessPage,
@@ -86,20 +86,24 @@ const dedicatedRoutes = PAGE_ROUTES.map((path) =>
 );
 
 // A moved page keeps its old address as a redirect, query included: an OAuth
-// callback issued before the move still lands with its result. `href` rather
-// than `to` + `search`, because the router's default search serialiser would
-// quote a value that looks like JSON (`renewed=1` → `renewed=%221%22`), and
-// the page reads its query as plain text. The href carries the base; the
-// router's basepath rewrite strips it on the way in.
+// callback issued before the move still lands with its result.
+//
+// The query is read from `window.location.search` and the browser is sent on
+// with `location.replace`, never through the router. Both of the router's own
+// paths run the query through its JSON search serialiser: `location.searchStr`
+// is `stringify(parse(raw))`, and a `redirect({ href })` is parsed again on
+// commit — so `connected=1e5` arrived as `100000`, a long all-digit name lost
+// precision, and `to` + `search` would quote `renewed=1`. A moved address is
+// rare enough that a full load is the honest price for its query arriving
+// exactly as it was sent.
 const redirectRoutes = (Object.keys(REDIRECT_ROUTES) as RedirectRoute[]).map((path) =>
   createRoute({
     getParentRoute: () => rootRoute,
     path,
-    beforeLoad: ({ location }) => {
-      throw redirect({
-        href: absolute(redirectTarget(REDIRECT_ROUTES[path], location.searchStr)),
-        replace: true,
-      });
+    beforeLoad: () => {
+      window.location.replace(
+        absolute(redirectTarget(REDIRECT_ROUTES[path], window.location.search)),
+      );
     },
   }),
 );

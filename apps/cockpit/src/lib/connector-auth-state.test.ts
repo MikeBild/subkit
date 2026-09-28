@@ -53,10 +53,29 @@ describe("connector auth state", () => {
     );
     // Not read at all (the catalogue list): no claim either way.
     expect(connectorAuthState({ auth_type: "bearer", health_state: "degraded" })).toBe("unproven");
-    // Healthy and never rejected is proof enough, wherever the login is kept.
-    expect(connectorAuthState({ auth_type: "bearer", health_state: "ok" }, null, null)).toBe(
-      "connected",
-    );
+    // health_state defaults to "ok" on a new connector and survives a deleted
+    // credential: it proves nothing about a sign-in the table does not hold.
+    for (const auth_type of ["bearer", "header", "query", "basic", "oauth2", "aws_sigv4"]) {
+      expect(connectorAuthState({ auth_type, health_state: "ok" }, null, null)).toBe(
+        "credentials_missing",
+      );
+    }
+    // A login kept outside the credential read — a DSN, an MCP client identity —
+    // is judged by health alone.
+    expect(
+      connectorAuthState(
+        { auth_type: "basic", driver: "postgres", health_state: "ok" },
+        null,
+        null,
+      ),
+    ).toBe("connected");
+    expect(
+      connectorAuthState(
+        { auth_type: "oauth2_client", driver: "mcp", health_state: "ok" },
+        null,
+        null,
+      ),
+    ).toBe("connected");
     // A connector that needs none has nothing to miss.
     expect(connectorAuthState({ auth_type: "none", health_state: "ok" }, null, null)).toBe(
       "not_required",
