@@ -20,11 +20,12 @@
 // audit as every other runtime secret.
 
 import { createHash, randomBytes } from "node:crypto";
-import { and, count, eq, gt, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import {
+  connectors,
   credentials,
   outboundConnectionStarts,
   outboundConnections,
@@ -35,6 +36,7 @@ import {
   readSecretVersion,
   revokeSecretVersion,
 } from "../../runtime-config/service.ts";
+import { listConnectorRefs } from "../../workflows/connector-refs.ts";
 import type { ConnectionAuthorityIdentity } from "../authority-metadata.ts";
 import { sameAuthorityScopes } from "../authority-scopes.ts";
 import { discoverService, requireConnectable } from "./discovery.ts";
@@ -42,6 +44,9 @@ import {
   type AuthorizationServerMetadata,
   ConnectionError,
   type ConnectionState,
+  type ConnectionStateReason,
+  type ConnectionSummary,
+  type ConnectionUser,
   type ConnectionView,
   type DiscoveryResult,
   RegistrationResponseSchema,
@@ -529,23 +534,33 @@ async function currentAccessToken(db: Db, row: ConnectionRow): Promise<string | 
   }
 }
 
-function stateOf(row: ConnectionRow, readable: boolean, nowMs: number): ConnectionState {
-  if (!readable) return "unreadable";
-  if (row.refresh_failed_at) return "expired";
+/**
+ * The state word and, for every state that is not ok, the recorded cause —
+ * decided together so a state can never go out without its reason.
+ */
+export function connectionStateOf(
+  row: Pick<ConnectionRow, "refresh_failed_at" | "expires_at" | "refresh_token_version">,
+  readable: boolean,
+  nowMs: number,
+): { state: ConnectionState; state_reason: ConnectionStateReason | null } {
+  if (!readable) return { state: "unreadable", state_reason: "secret_unreadable" };
+  if (row.refresh_failed_at) return { state: "expired", state_reason: "refresh_failed" };
   const expiresMs = row.expires_at?.getTime() ?? null;
   if (row.refresh_token_version === null) {
-    if (expiresMs !== null && expiresMs <= nowMs) return "expired";
-    if (expiresMs !== null) return "expiring";
+    if (expiresMs !== null && expiresMs <= nowMs)
+      return { state: "expired", state_reason: "expired_no_refresh" };
+    if (expiresMs !== null) return { state: "expiring", state_reason: null };
   }
-  return "valid";
+  return { state: "valid", state_reason: null };
 }
 
 function toView(
   row: ConnectionRow,
   readable: boolean,
-  usedBy: number,
+  usedBy: ConnectionUser[],
   nowMs: number,
 ): ConnectionView {
+  const { state, state_reason } = connectionStateOf(row, readable, nowMs);
   return {
     id: row.id,
     name: row.name,
@@ -555,16 +570,71 @@ function toView(
     service_description: row.service_description,
     scopes: row.scopes,
     granted_scopes: row.granted_scopes ?? null,
-    state: stateOf(row, readable, nowMs),
+    state,
+    state_reason,
     auto_renew: row.refresh_token_version !== null,
     expires_at: row.expires_at?.toISOString() ?? null,
     last_used_at: row.last_used_at?.toISOString() ?? null,
     last_refreshed_at: row.last_refreshed_at?.toISOString() ?? null,
     refresh_failed_at: row.refresh_failed_at?.toISOString() ?? null,
     last_error: row.last_error,
-    used_by_connectors: usedBy,
+    used_by: usedBy,
     created_at: row.created_at.toISOString(),
   };
+}
+
+/**
+ * The live connectors whose credential points at each connection, with the
+ * number of live workflows using each connector. One grouped query for the
+ * connectors and one tenant-wide pass for the workflow references
+ * (`listConnectorRefs`, the same answer the workflow list gives) — never a
+ * query per row.
+ */
+async function usersOfConnections(
+  db: Db,
+  tenantId: string,
+  connectionIds: readonly string[],
+): Promise<Map<string, ConnectionUser[]>> {
+  const out = new Map<string, ConnectionUser[]>();
+  if (connectionIds.length === 0) return out;
+  const rows = await db
+    .selectDistinct({
+      connection_id: credentials.connection_id,
+      connector_id: connectors.id,
+      slug: connectors.slug,
+      display_name: connectors.display_name,
+    })
+    .from(credentials)
+    .innerJoin(
+      connectors,
+      and(eq(connectors.id, credentials.connector_id), eq(connectors.tenant_id, tenantId)),
+    )
+    .where(
+      and(
+        eq(credentials.tenant_id, tenantId),
+        inArray(credentials.connection_id, [...connectionIds]),
+        isNull(credentials.deleted_at),
+        isNull(connectors.deleted_at),
+      ),
+    )
+    .orderBy(asc(connectors.display_name), asc(connectors.slug));
+  if (rows.length === 0) return out;
+  const workflowsBySlug = new Map<string, number>();
+  for (const slugs of (await listConnectorRefs(tenantId, db)).values()) {
+    for (const slug of slugs) workflowsBySlug.set(slug, (workflowsBySlug.get(slug) ?? 0) + 1);
+  }
+  for (const row of rows) {
+    if (!row.connection_id) continue;
+    const list = out.get(row.connection_id) ?? [];
+    list.push({
+      connector_id: row.connector_id,
+      slug: row.slug,
+      display_name: row.display_name,
+      workflow_count: workflowsBySlug.get(row.slug) ?? 0,
+    });
+    out.set(row.connection_id, list);
+  }
+  return out;
 }
 
 export async function listConnections(db: Db, tenantId: string): Promise<ConnectionView[]> {
@@ -573,17 +643,16 @@ export async function listConnections(db: Db, tenantId: string): Promise<Connect
     .from(outboundConnections)
     .where(eq(outboundConnections.tenant_id, tenantId))
     .orderBy(outboundConnections.name);
-  const usage = await db
-    .select({ connection_id: credentials.connection_id, n: count() })
-    .from(credentials)
-    .where(and(eq(credentials.tenant_id, tenantId), sql`${credentials.connection_id} is not null`))
-    .groupBy(credentials.connection_id);
-  const usedBy = new Map(usage.map((u) => [u.connection_id, Number(u.n)]));
+  const usedBy = await usersOfConnections(
+    db,
+    tenantId,
+    rows.map((row) => row.id),
+  );
   const nowMs = Date.now();
   const views: ConnectionView[] = [];
   for (const row of rows) {
     const readable = (await currentAccessToken(db, row)) !== null;
-    views.push(toView(row, readable, usedBy.get(row.id) ?? 0, nowMs));
+    views.push(toView(row, readable, usedBy.get(row.id) ?? [], nowMs));
   }
   return views;
 }
@@ -591,11 +660,39 @@ export async function listConnections(db: Db, tenantId: string): Promise<Connect
 export async function getConnection(db: Db, tenantId: string, id: string): Promise<ConnectionView> {
   const row = await requireConnection(db, tenantId, id);
   const readable = (await currentAccessToken(db, row)) !== null;
-  const [usage] = await db
-    .select({ n: count() })
-    .from(credentials)
-    .where(and(eq(credentials.tenant_id, tenantId), eq(credentials.connection_id, id)));
-  return toView(row, readable, Number(usage?.n ?? 0), Date.now());
+  const usedBy = await usersOfConnections(db, tenantId, [row.id]);
+  return toView(row, readable, usedBy.get(row.id) ?? [], Date.now());
+}
+
+/**
+ * Name and state of the given connections, keyed by id — what a connector's
+ * credential shows about the grant it points at. State needs the token to
+ * decrypt, so it is decided here and nowhere else.
+ */
+export async function summarizeConnections(
+  db: Db,
+  tenantId: string,
+  ids: readonly string[],
+): Promise<Map<string, ConnectionSummary>> {
+  const out = new Map<string, ConnectionSummary>();
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return out;
+  const rows = await db
+    .select()
+    .from(outboundConnections)
+    .where(
+      and(eq(outboundConnections.tenant_id, tenantId), inArray(outboundConnections.id, unique)),
+    );
+  const nowMs = Date.now();
+  for (const row of rows) {
+    const readable = (await currentAccessToken(db, row)) !== null;
+    out.set(row.id, {
+      id: row.id,
+      name: row.name,
+      state: connectionStateOf(row, readable, nowMs).state,
+    });
+  }
+  return out;
 }
 
 // ── Refresh ─────────────────────────────────────────────────────────────────
