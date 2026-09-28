@@ -30,14 +30,14 @@ export interface NavigationItem {
 
 export interface NavigationGroup {
   id: "home" | "work" | "build" | "knowledge" | "admin";
-  /** Absent where there must be no heading: Heute stands ungrouped, and a
+  /** Absent where there must be no heading: Übersicht stands ungrouped, and a
    *  heading above it is a group whatever the table calls it. */
   labelKey?: TranslationKey;
   items: readonly NavigationItem[];
 }
 
 /**
- * What a reader of Heute may see: any one of the attention sources' read
+ * What a reader of Übersicht may see: any one of the attention sources' read
  * permissions (operator/attention.ts, SOURCE_GATES). A person holding only a
  * grant on one workflow reads that workflow's entry, so the entry shows for
  * `workflow:read` as much as for `stats:read`.
@@ -54,12 +54,12 @@ export const ATTENTION_READ_PERMISSIONS = [
 
 export const NAVIGATION: readonly NavigationGroup[] = [
   {
-    // Heute stands alone, without a heading: it is the one place a task
+    // Übersicht stands alone, without a heading: it is the one place a task
     // lives, and a group around it would make it one list among several.
     id: "home",
     items: [
       {
-        labelKey: "nav.today",
+        labelKey: "nav.overview",
         path: "/",
         permission: "stats:read",
         anyPermissions: ATTENTION_READ_PERMISSIONS,
@@ -147,7 +147,7 @@ export const NAVIGATION: readonly NavigationGroup[] = [
   {
     // "Installation": how it runs and what it costs, how it is configured, who
     // may do what, what is announced, and what happened. There is no System
-    // entry any more — the health state is one line on Heute when nothing is
+    // entry any more — the health state is one line on Übersicht when nothing is
     // open, and every cause of an unwell installation is an entry there.
     id: "admin",
     labelKey: "nav.group.admin",

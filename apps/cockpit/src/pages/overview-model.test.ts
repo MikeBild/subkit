@@ -9,6 +9,8 @@ import {
   attentionSentence,
   entryActions,
   entrySnapshot,
+  overviewSections,
+  overviewView,
   type ReviewHistory,
   reviewAccess,
   reviewNavigation,
@@ -17,8 +19,7 @@ import {
   settleHidden,
   sinceLabel,
   statusLine,
-  todayView,
-} from "./today-model";
+} from "./overview-model";
 
 const de = (key: TranslationKey, values?: Record<string, string | number>) =>
   translate("de", key, values);
@@ -275,7 +276,7 @@ describe("the list", () => {
 
 describe("the page state", () => {
   test("calm only when nothing is open and every readable source answered", () => {
-    const view = todayView(attention());
+    const view = overviewView(attention());
     expect(view.kind).toBe("calm");
     if (view.kind === "calm")
       expect(statusLine(view.status, de, () => "28.09.2026, 13:00")).toBe(
@@ -284,12 +285,12 @@ describe("the page state", () => {
   });
 
   test("a failed source is never an empty answer", () => {
-    const view = todayView(attention({ sources: { ...ANSWERED, connectors: "failed" } }));
+    const view = overviewView(attention({ sources: { ...ANSWERED, connectors: "failed" } }));
     expect(view).toEqual({ kind: "unread", unread: ["connectors"] });
   });
 
   test("a source the reader may not read is simply absent", () => {
-    const view = todayView(
+    const view = overviewView(
       attention({
         sources: { ...ANSWERED, secret_approvals: "not_permitted", risk: "not_permitted" },
       }),
@@ -298,7 +299,7 @@ describe("the page state", () => {
   });
 
   test("with entries, a failed source is still named beside them", () => {
-    const view = todayView(
+    const view = overviewView(
       attention({ sources: { ...ANSWERED, skills: "failed" }, items: [item()] }),
     );
     expect(view.kind).toBe("items");
@@ -309,7 +310,7 @@ describe("the page state", () => {
     const sources = Object.fromEntries(
       Object.keys(ANSWERED).map((key) => [key, "not_permitted"]),
     ) as Attention["sources"];
-    expect(todayView(attention({ sources, status: null })).kind).toBe("nothing_readable");
+    expect(overviewView(attention({ sources, status: null })).kind).toBe("nothing_readable");
   });
 
   test("no status line for a reader the engine sends no status", () => {
@@ -321,7 +322,7 @@ describe("the page state", () => {
 
   test("an entry decided in this tab stays away while the engine still lists it", () => {
     const decided = item();
-    const view = todayView(
+    const view = overviewView(
       attention({ items: [decided] }),
       new Map([[decided.id, entrySnapshot(decided)]]),
     );
@@ -351,7 +352,7 @@ describe("the badge", () => {
     const listed = attention({
       items: [item(), item({ id: `workflow:${W}#dup` }), item({ id: "skills", subject: null })],
     });
-    const view = todayView(listed);
+    const view = overviewView(listed);
     expect(attentionBadge(listed)?.count).toBe(view.kind === "items" ? view.items.length : -1);
     const skills = listed.items[2] as AttentionItem;
     expect(attentionBadge(listed, new Map([["skills", entrySnapshot(skills)]]))?.count).toBe(1);
@@ -392,13 +393,13 @@ describe("an entry decided in this tab", () => {
   const hidden = new Map([[withFix.id, entrySnapshot(withFix)]]);
 
   test("stays hidden while the engine still lists it unchanged", () => {
-    expect(todayView(attention({ items: [withFix] }), hidden).kind).toBe("calm");
+    expect(overviewView(attention({ items: [withFix] }), hidden).kind).toBe("calm");
     expect(settleHidden(hidden, [withFix])).toBe(hidden);
   });
 
   test("is back at once when the engine lists the same subject as a different task", () => {
     // Deciding the last fix of a failing workflow does not end the task.
-    const view = todayView(attention({ items: [stillFailing] }), hidden);
+    const view = overviewView(attention({ items: [stillFailing] }), hidden);
     expect(view.kind).toBe("items");
     if (view.kind === "items") expect(view.items[0]?.actions[0]?.verb).toBe("chat");
     expect(attentionBadge(attention({ items: [stillFailing] }), hidden)?.count).toBe(1);
@@ -472,5 +473,40 @@ describe("the review sheet and Back", () => {
     reviewNavigation(history, href).close();
     expect(history.url()).toBe("/cockpit");
     expect(history.entries).toHaveLength(1);
+  });
+});
+
+describe("what the Übersicht holds", () => {
+  const all = { operations: true, history: true };
+
+  test("the operations bar stands first when nothing is open — it is not a task, it stays", () => {
+    expect(overviewSections(overviewView(attention()), all)).toEqual([
+      "operations",
+      "calm",
+      "history",
+    ]);
+  });
+
+  test("the operations bar stands first over the attention list", () => {
+    expect(overviewSections(overviewView(attention({ items: [item()] })), all)).toEqual([
+      "operations",
+      "attention",
+      "history",
+    ]);
+    const unread = overviewView(
+      attention({ items: [item()], sources: { ...ANSWERED, connectors: "failed" } }),
+    );
+    expect(overviewSections(unread, all)).toEqual(["operations", "attention", "unread", "history"]);
+  });
+
+  test("a failed source is named, never 'all done', and the bar still stands", () => {
+    const view = overviewView(attention({ sources: { ...ANSWERED, connectors: "failed" } }));
+    expect(overviewSections(view, all)).toEqual(["operations", "unread", "history"]);
+  });
+
+  test("no bar for a reader who may not read the figures, no history link without audit", () => {
+    expect(
+      overviewSections(overviewView(attention()), { operations: false, history: false }),
+    ).toEqual(["calm"]);
   });
 });

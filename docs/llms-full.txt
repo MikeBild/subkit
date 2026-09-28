@@ -1584,7 +1584,7 @@ Collected so every reader has the same expansion at hand.
 
 ## Group 5: Governance
 
-**Attention list** — the one list of what needs a person now: waiting questions, held schedules, failing scheduled workflows with their proposed repairs, connectors and connections that need a sign-in, prepared secret versions, skill proposals, and a critical budget or risk signal. One entry per subject, each checked against the reader's permissions. It is the Cockpit's start page (**Today** / **Heute**), `GET /v1/attention`, the MCP tool `get_attention`, and the headline of the health digest. When nothing is open and every source answered, the start page says so with one status line; the Cockpit has no separate overview, decisions or system page.
+**Attention list** — the one list of what needs a person now: waiting questions, held schedules, failing scheduled workflows with their proposed repairs, connectors and connections that need a sign-in, prepared secret versions, skill proposals, and a critical budget or risk signal. One entry per subject, each checked against the reader's permissions. It is the heart of the Cockpit's start page (**Overview** / **Übersicht**), below the operations bar of four figures (runs, success rate, healthy connectors, repairs applied — each linking to the list of the same window), and it is `GET /v1/attention`, the MCP tool `get_attention`, and the headline of the health digest. When nothing is open and every source answered, the start page says so with one status line under the operations bar; the Cockpit has no separate decisions or system page.
 
 **Audit Log** — the append-only record of every state change in the platform. Every entry carries: what changed, who initiated it, from which surface (API, CLI, MCP, chat, scheduler, webhook), and when. sk exposes no path that modifies or deletes an audit entry — no route, no tool, no job, and `audit:read` is the only audit permission — so nothing reaching the platform through its own surfaces can rewrite history. That is an application-layer guarantee: it does not extend to a party with direct database access, and entries are not hash-chained, so it provides no tamper _evidence_ against one. It is the authoritative record for compliance, debugging, and incident review.
 
@@ -5158,7 +5158,7 @@ flowchart LR
 
 ## Reviewing proposed repairs
 
-Proposed repairs appear on the Cockpit's start page, **Today** (German: **Heute**),
+Proposed repairs appear on the Cockpit's start page, the **Overview** (German: **Übersicht**),
 the one list of what needs a person. A failing workflow and the repairs waiting for
 it are one entry; its **Review** action opens a review sheet over the list, and the
 sheet's address (`?review=…`) can be shared or bookmarked. The same list is
@@ -6295,7 +6295,7 @@ Anwendungen** (Programme, denen jemand Zugriff auf diese Installation freigegebe
 dieser Reihenfolge, mit einem Verzeichnis der drei Abschnitte ganz oben. Jede Zeile
 zeigt ihren Zustand; **Erneuern** steht in der Zeile. Was dich braucht — etwa eine
 abgelaufene Kontoverbindung oder eine vorbereitete Änderung, die auf Freigabe wartet —
-steht nicht hier, sondern auf der Startseite **Heute**, der einen Liste dessen, was
+steht nicht hier, sondern auf der Startseite **Übersicht**, in der einen Liste dessen, was
 jetzt zu tun ist.
 
 Offen stehen nur die Schlüssel, die noch Rechte halten, und die Anwendungen, für die jemand
@@ -7674,13 +7674,13 @@ foreign revision rejection and the preview → human grant → scheduler sequenc
 
 A saved draft, successful held preview and one-off send do not authorize future
 scheduled deliveries. The chat reads schedule readiness from the server and keeps
-the blocked schedule on the Cockpit's start page, **Today**, until a matching human execution authority is
+the blocked schedule on the Cockpit's start page, the **Overview**, until a matching human execution authority is
 persisted and its admission hold is resolved.
 
 The chat review prepares missing report evidence with writes held, then presents
 the fixed sender, recipient, next scheduled time and finite run/expiry bounds.
 Confirming may atomically activate the exact reviewed draft and grant its bounds.
-It does not send a report immediately. Completion refreshes the Today list and
+It does not send a report immediately. Completion refreshes the Overview's attention list and
 server readiness; reload uses the same persisted state.
 
 The supported variable-content profile is deliberately narrow: Gmail HTTP POST
@@ -13857,7 +13857,7 @@ The cockpit counts unpaused holds as blockers and shows critical operational
 health even when there are no finished executions from which to calculate a
 success ratio. “No runs (24 h)” is missing execution evidence, not a 100% score.
 
-Open the held workflow's entry on **Today** (the Cockpit start page), then
+Open the held workflow's entry on the **Overview** (the Cockpit start page), then
 **Execution authority**. For
 `execution_authority_unavailable`, review the exact active version, production
 or development environment, destinations, validity and finite run limit, then
