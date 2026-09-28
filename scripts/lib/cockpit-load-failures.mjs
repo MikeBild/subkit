@@ -89,4 +89,44 @@ export async function verifyLoadFailures(page, stand, conversation, capture) {
   } finally {
     await page.unroute(detail, refuse);
   }
+
+  // Unknown or not the reader's: said as that, with the list and a new
+  // conversation — and no retry, which used to be offered with "reload the
+  // page or try again in a moment", advice that could never work.
+  const missing = (route) =>
+    route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ error: { code: "not_found", message: "conversation not found" } }),
+    });
+  await page.route(detail, missing);
+  try {
+    await stand.visit(page, `chat/${conversation.id}`);
+    const failed = page.getByTestId("chat-load-failed");
+    await failed.waitFor({ state: "visible", timeout: 10_000 });
+    const text = await failed.innerText();
+    if (
+      !/gibt es nicht oder du hast keinen Zugriff|does not exist or you have no access/.test(text)
+    )
+      throw new Error(
+        `/chat/<unknown>: the failure does not say the conversation is missing — "${text}"`,
+      );
+    if (/Lad die Seite neu|Refresh the page/.test(text))
+      throw new Error(
+        "/chat/<unknown>: tells the reader to reload for a conversation that is not there",
+      );
+    if (
+      await page
+        .getByTestId("chat-load-failed-retry")
+        .isVisible()
+        .catch(() => false)
+    )
+      throw new Error("/chat/<unknown>: offers a retry that cannot help");
+    for (const way of ["chat-load-failed-list", "chat-load-failed-new"])
+      if (!(await page.getByTestId(way).isVisible()))
+        throw new Error(`/chat/<unknown>: the way on "${way}" is missing`);
+    await capture("chat-missing");
+  } finally {
+    await page.unroute(detail, missing);
+  }
 }
