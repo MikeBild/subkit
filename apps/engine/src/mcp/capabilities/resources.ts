@@ -634,7 +634,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         err.code = -32001;
         throw err;
       }
-      const digest = await buildOperatorHealthDigest(db, principal.tenant_id);
+      const digest = await buildOperatorHealthDigest(db, principal);
       return {
         contents: [
           {

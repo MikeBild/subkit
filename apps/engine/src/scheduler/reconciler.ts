@@ -52,6 +52,7 @@ import { runFilesCleanup } from "./files-cleanup-runner.ts";
 import { runMcpOAuthCleanup } from "./mcp-oauth-cleanup-runner.ts";
 import { runNotificationInboxRetention } from "./notification-inbox-retention-runner.ts";
 import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts";
+import { runRiskSignalEdges } from "./risk-signal-edges-runner.ts";
 import { recordScheduleAdmission } from "./schedule-admission-state.ts";
 import { logScheduleFireFailure } from "./schedule-fire-failure.ts";
 import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner.ts";
@@ -122,6 +123,11 @@ const TOOL_APPROVALS_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
  *  writes ride CAS predicates (`status = 'pending'`,
  *  `status = 'awaiting_input'`), so a second instance loses every race. */
 const ELICITATION_EXPIRY_CADENCE_MS = 5 * 60 * 1000;
+
+/** Cadence for the risk-signal edge audits. One minute — the reconciler's own
+ *  tick — so a critical host condition is on the record within a minute of
+ *  crossing its threshold, whether or not anybody reads the digest. */
+const RISK_SIGNAL_EDGE_CADENCE_MS = 60 * 1000;
 
 /** Cadence for the embedding backfill sweep — populates chunk + conversation
  *  topic embeddings out-of-band (ingest stays fast). Five minutes so new
@@ -249,6 +255,9 @@ export class SchedulerReconciler {
 
   /** Last instant the approval-backed elicitation expiry sweep ran. */
   private lastElicitationExpiryAt: Date | null = null;
+
+  /** Last instant the risk-signal edge pass ran. */
+  private lastRiskSignalEdgesAt: Date | null = null;
 
   /** Last instant the embedding backfill sweep ran. In-process throttle to
    *  EMBEDDING_BACKFILL_CADENCE_MS; the sweep is idempotent so overlap is safe. */
@@ -530,6 +539,18 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "elicitation_expiry_failed",
         msg: "scheduler elicitation expiry pass failed",
+        ...errorFields(err),
+      });
+    });
+    // Risk-signal edge audits. Owned by the tick, not by a read of the health
+    // digest, so the trail keeps recording while nobody polls.
+    await retryTransient(() => this.reconcileRiskSignalEdges(), {
+      label: "risk_signal_edges",
+    }).catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "risk_signal_edges_failed",
+        msg: "scheduler risk-signal edge pass failed",
         ...errorFields(err),
       });
     });
@@ -1069,6 +1090,20 @@ export class SchedulerReconciler {
    * `reconcileFilesCleanup` — the sweeps are filtered by
    * `now() - interval ...` so a concurrent instance is a no-op.
    */
+  /**
+   * Record RISK_SIGNAL_RAISED / CLEARED edges. Throttled to one pass per
+   * `RISK_SIGNAL_EDGE_CADENCE_MS`; overlap between instances is safe — the
+   * shared edge table lets exactly one replica claim each transition.
+   */
+  async reconcileRiskSignalEdges(now: Date = new Date()): Promise<void> {
+    if (this.lastRiskSignalEdgesAt !== null) {
+      const elapsed = now.getTime() - this.lastRiskSignalEdgesAt.getTime();
+      if (elapsed < RISK_SIGNAL_EDGE_CADENCE_MS) return;
+    }
+    this.lastRiskSignalEdgesAt = now;
+    await runRiskSignalEdges(this.opts.db);
+  }
+
   async reconcileMcpOAuthCleanup(now: Date = new Date()): Promise<void> {
     if (this.lastMcpOAuthCleanupAt !== null) {
       const elapsed = now.getTime() - this.lastMcpOAuthCleanupAt.getTime();

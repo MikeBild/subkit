@@ -13282,6 +13282,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What needs the caller's attention now
+         * @description One list of everything a person has to act on — own waiting conversations, held schedules, failing scheduled workflows with their open fixes, connectors and connections needing sign-in, prepared secret versions, skill proposals, a critical budget or risk signal — filtered per item by the caller's permissions.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description attention.v1 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AttentionV1"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/operational-overview": {
         parameters: {
             query?: never;
@@ -21053,6 +21092,7 @@ export interface components {
                 items: components["schemas"]["OperatorDigestPatch"][];
             };
             risk: components["schemas"]["OperatorRiskSignal"][];
+            attention: components["schemas"]["AttentionV1"];
             rendered: string;
             all_clear: boolean;
         };
@@ -21067,6 +21107,9 @@ export interface components {
             count: number;
             scheduled_count: number;
             last_seen: string;
+            first_seen: string;
+            latest_execution_id: string;
+            connector_id: string | null;
             resolved_at: string | null;
             cause: string;
             cause_class: components["schemas"]["FailureCauseClass"];
@@ -21093,6 +21136,79 @@ export interface components {
             metric: string;
             value: number;
             threshold: number;
+        };
+        AttentionV1: {
+            /** @enum {string} */
+            schema_version: "attention.v1";
+            generated_at: string;
+            sources: {
+                /** @enum {string} */
+                conversations: "answered" | "failed" | "not_permitted";
+                /** @enum {string} */
+                schedules: "answered" | "failed" | "not_permitted";
+                /** @enum {string} */
+                freshness: "answered" | "failed" | "not_permitted";
+                /** @enum {string} */
+                failures: "answered" | "failed" | "not_permitted";
+                /** @enum {string} */
+                patches: "answered" | "failed" | "not_permitted";
+                /** @enum {string} */
+                connectors: "answered" | "failed" | "not_permitted";
+                /** @enum {string} */
+                connections: "answered" | "failed" | "not_permitted";
+                /** @enum {string} */
+                secret_approvals: "answered" | "failed" | "not_permitted";
+                /** @enum {string} */
+                skills: "answered" | "failed" | "not_permitted";
+                /** @enum {string} */
+                budget: "answered" | "failed" | "not_permitted";
+                /** @enum {string} */
+                risk: "answered" | "failed" | "not_permitted";
+            };
+            status: {
+                /** @enum {string} */
+                health_state: "healthy" | "limited" | "critical" | "unknown";
+                next_run_at: string | null;
+            } | null;
+            items: components["schemas"]["AttentionItem"][];
+        };
+        AttentionItem: {
+            /** @description Stable id: workflow:<id>, conversation:<id>, connector:<id>, connection:<id>, secret-approval:<name>@<version>, skills, budget, freshness:<source>, risk:<kind>. */
+            id: string;
+            /** @enum {string} */
+            class: "stopped" | "failing" | "decide";
+            /** @enum {string} */
+            severity: "critical" | "urgent";
+            kind: string;
+            subject: {
+                /** @enum {string} */
+                kind: "workflow" | "conversation" | "connector" | "connection" | "secret";
+                id: string;
+                name: string | null;
+            } | null;
+            /** @enum {string} */
+            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "budget_critical" | "risk_critical";
+            /** @enum {string|null} */
+            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown" | null;
+            counts: {
+                patches?: number;
+                failures?: number;
+                skills?: number;
+            };
+            since: string | null;
+            deadline: string | null;
+            /** @description Residual engine wording, or null. Show it as the engine's wording. */
+            detail: string | null;
+            actions: components["schemas"]["AttentionAction"][];
+        };
+        AttentionAction: {
+            /** @enum {string} */
+            verb: "review" | "answer" | "reauth" | "renew" | "open_runs" | "chat" | "open";
+            /** @description Router path under /cockpit where this is acted on. */
+            href: string;
+            primary: boolean;
+            /** @description The permission acting here needs. */
+            permission: string;
         };
         OperationalOverviewV1: {
             /** @enum {string} */

@@ -233,7 +233,8 @@ Authorization model: roles, permissions, grants, groups. (These routes are regis
 
 # Operator
 
-- `GET /v1/operator/health-digest` — operator health digest (seeds the sk REPL startup view; aggregates drift, failures, and pending candidates).
+- `GET /v1/attention` — what needs the caller now: one item per thing to act on (own waiting conversations, held schedules, failing scheduled workflows with their open fixes, connectors and connections needing sign-in, prepared secret versions, skill proposals, a critical budget or risk signal), filtered per item by the caller's permissions. Read-only. The MCP tool `get_attention` returns the same list.
+- `GET /v1/operator/health-digest` — operator health digest (seeds the sk REPL startup view; aggregates failures, pending candidates and risk signals; its headline and `all_clear` come from the attention list).
 - Diagnostics: `GET /v1/diagnostics/errors`, `/v1/diagnostics/drift`, `/v1/diagnostics/integrations`, `/v1/diagnostics/llm`, `/v1/diagnostics/logs`, `/v1/diagnostics/runtime`, `/v1/diagnostics/setup`, `/v1/diagnostics/version`.
 - Self-healing: `GET /v1/self-healing/scans`, `GET /v1/self-healing/scans/{id}`.
 - Patch candidates: `GET/… /v1/patch-candidates`, with `{id}/approve`, `{id}/reject`, `{id}/preview`, `{id}/dry-run`.

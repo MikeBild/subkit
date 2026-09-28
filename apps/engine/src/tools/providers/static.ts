@@ -44,6 +44,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
+import { attentionMcpTool, handleAttention } from "../../mcp/tools/attention.ts";
 import {
   AUTHENTICATE_TOOL_NAME,
   authenticateTool,
@@ -170,6 +171,20 @@ const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
     rbac: { permission: "stats:read" },
     async invoke(ctx) {
       const result = await handleOperationalOverview({ db: ctx.db, principal: ctx.principal });
+      return envelopeForOk(result.data);
+    },
+  },
+  {
+    tool: attentionMcpTool,
+    visibleInMcpModes: null,
+    visibleOnChat: false,
+    // tenant_read, and no descriptor-level permission: like GET /v1/attention,
+    // every item is checked with `can()` on its subject inside buildAttention,
+    // and a source the caller may not read comes back `not_permitted`. A
+    // tenant-wide gate here would refuse the reader holding one resource grant.
+    category: "tenant_read",
+    async invoke(ctx) {
+      const result = await handleAttention({ db: ctx.db, principal: ctx.principal });
       return envelopeForOk(result.data);
     },
   },
