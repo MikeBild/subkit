@@ -17,6 +17,7 @@ import {
   recordLoopSkillCandidatePromoted,
 } from "../observability/instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
+import { invalidateTenantState } from "../operator/index.ts";
 import { createSkill } from "../skills/service.ts";
 import { now } from "../utils/clock.ts";
 import { skillReviewDigest, toView } from "./candidate-view.ts";
@@ -912,6 +913,7 @@ export async function approveSkillCandidate(
   });
 
   if (!out) return null;
+  invalidateTenantState(p.tenant_id);
 
   recordLoopSkillCandidatePromoted({
     tenant_id: p.tenant_id,
@@ -932,7 +934,7 @@ export async function rejectSkillCandidate(
 ): Promise<boolean> {
   const db = exec ?? (getDb() as Db);
 
-  return await db.transaction(async (tx) => {
+  const rejected = await db.transaction(async (tx) => {
     const rows = await tx
       .select()
       .from(skillCandidates)
@@ -974,4 +976,7 @@ export async function rejectSkillCandidate(
 
     return true;
   });
+  // After the commit: a read in between would re-cache the undecided state.
+  if (rejected) invalidateTenantState(p.tenant_id);
+  return rejected;
 }

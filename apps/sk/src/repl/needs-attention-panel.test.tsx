@@ -483,6 +483,76 @@ describe("NeedsAttentionPanel — empty digest", () => {
   });
 });
 
+function attentionItem(
+  id: string,
+  klass: "stopped" | "failing" | "decide",
+  subject: { kind: string; id: string; name: string | null } | null,
+  reason: string,
+  verb: string,
+  href: string,
+): NonNullable<OperatorHealthDigest["attention"]>["items"][number] {
+  return {
+    id,
+    class: klass,
+    severity: "urgent",
+    kind: subject?.kind ?? "skill_candidates",
+    subject,
+    reason,
+    counts: {},
+    since: null,
+    deadline: null,
+    detail: null,
+    actions: [{ verb, href, primary: true, permission: "x" }],
+  };
+}
+
+describe("NeedsAttentionPanel — the attention list", () => {
+  test("lists every item, whatever its kind, with its reason and where to act", () => {
+    const digest = makeDigest({
+      attention: {
+        schema_version: "attention.v1",
+        sources: { connections: "failed" },
+        items: [
+          attentionItem(
+            "connector:c1",
+            "failing",
+            { kind: "connector", id: "c1", name: "CRM" },
+            "needs_reauth",
+            "reauth",
+            "/cockpit/connectors/c1",
+          ),
+          attentionItem(
+            "conversation:k1",
+            "stopped",
+            { kind: "conversation", id: "k1", name: "Mine" },
+            "awaiting_answer",
+            "answer",
+            "/cockpit/chat/k1",
+          ),
+          attentionItem(
+            "skills",
+            "decide",
+            null,
+            "skills_proposed",
+            "review",
+            "/cockpit?review=skills",
+          ),
+        ],
+      },
+    });
+    const ui = render(<NeedsAttentionPanel digest={digest} />);
+    const frame = snapshot(ui).replace(/\s+/g, " ");
+    expect(frame).toContain("3 items");
+    expect(frame).toContain("connector CRM: needs reauth");
+    expect(frame).toContain("/cockpit/connectors/c1");
+    expect(frame).toContain("conversation Mine: awaiting answer");
+    expect(frame).toContain("/cockpit/chat/k1");
+    expect(frame).toContain("skills proposed");
+    expect(frame).toContain("could not be read: connections");
+    ui.unmount();
+  });
+});
+
 describe("NeedsAttentionPanel — count matches the starter-action label", () => {
   // The header count and the injected "Fix N failures" label both come from
   // totalFailureCount(digest). Lock in that they never drift.

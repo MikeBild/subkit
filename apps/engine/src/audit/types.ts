@@ -1162,6 +1162,8 @@ export const RiskSignalRaisedMetadataSchema = z.object({
    *  re-raise of a standing critical vs. a live transition (see call site). */
   uptime_s: z.number().optional(),
   request_source: RequestSourceSchema.optional(),
+  /** The engine process whose own gauges raised it; absent for a shared signal. */
+  instance: z.string().optional(),
 });
 export type RiskSignalRaisedMetadata = z.infer<typeof RiskSignalRaisedMetadataSchema>;
 
@@ -1171,6 +1173,8 @@ export type RiskSignalRaisedMetadata = z.infer<typeof RiskSignalRaisedMetadataSc
 export const RiskSignalClearedMetadataSchema = z.object({
   kind: z.string(),
   request_source: RequestSourceSchema.optional(),
+  /** The engine process whose own gauges recovered; absent for a shared signal. */
+  instance: z.string().optional(),
 });
 export type RiskSignalClearedMetadata = z.infer<typeof RiskSignalClearedMetadataSchema>;
 

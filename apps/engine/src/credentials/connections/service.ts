@@ -31,6 +31,7 @@ import {
   outboundConnections,
 } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
+import { invalidateTenantState } from "../../operator/index.ts";
 import {
   createSecretVersion,
   readSecretVersion,
@@ -514,6 +515,7 @@ export async function completeConnection(
 
     return connectionId;
   });
+  invalidateTenantState(start.tenant_id);
 
   return {
     ok: true,
@@ -744,7 +746,7 @@ async function refreshRow(
       row.granted_scopes?.join(" ") ?? null,
       nextScopes?.join(" ") ?? null,
     );
-    return await db.transaction(async (tx) => {
+    const refreshed = await db.transaction(async (tx) => {
       // Network work stays outside the transaction. Recheck its source under
       // the row lock BEFORE creating or retiring any local secret version.
       const [current] = await tx
@@ -811,6 +813,8 @@ async function refreshRow(
       );
       return updated;
     });
+    invalidateTenantState(row.tenant_id);
+    return refreshed;
   } catch (error) {
     const message = messageOf(error);
     await db
@@ -824,6 +828,7 @@ async function refreshRow(
           eq(outboundConnections.access_token_version, row.access_token_version),
         ),
       );
+    invalidateTenantState(row.tenant_id);
     await auditAwait(
       {
         tenant_id: row.tenant_id,
@@ -960,6 +965,7 @@ export async function disconnectConnection(
     .where(
       and(eq(outboundConnections.id, row.id), eq(outboundConnections.tenant_id, args.tenant_id)),
     );
+  invalidateTenantState(args.tenant_id);
   await auditAwait(
     {
       tenant_id: args.tenant_id,

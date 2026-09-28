@@ -32,6 +32,7 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { currentMonthBucket } from "../llm/accounting/budget.ts";
 import { resetMetricsRegistryForTests } from "../observability/metrics.ts";
 import { grantResource } from "../rbac/grants.ts";
+import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { reviewableDiff, seedPatchableWorkflow } from "../test-helpers/patch-candidates.ts";
 import { adminPrincipal } from "../test-helpers/principals.ts";
@@ -42,6 +43,11 @@ import {
   compareAttentionItems,
   invalidateAttention,
 } from "./attention.ts";
+import {
+  collectFailureGroups,
+  DECISION_FAILURE_WINDOW_HOURS,
+  failingScheduledGroups,
+} from "./health-digest.ts";
 import { getOperationalOverview, invalidateOperationalOverview } from "./operational-overview.ts";
 
 const HOUR = 3600_000;
@@ -429,6 +435,81 @@ describe("per reader", () => {
   });
 });
 
+describe("permission cost", () => {
+  test("a non-admin's filter costs the same for one granted item as for ten", async () => {
+    // Counts every query the reader's part issues. The tenant facts are warmed
+    // first: this measures the per-reader permission filter, which runs on the
+    // MCP connect path against a 400 ms budget.
+    let queries = 0;
+    const counted = new Set(["select", "selectDistinct", "execute", "$count"]);
+    const countingDb = new Proxy(testDb.db, {
+      get(target, prop) {
+        const value = Reflect.get(target, prop, target) as unknown;
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          if (typeof prop === "string" && counted.has(prop)) queries += 1;
+          return (value as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+
+    const [t] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "t-attention-cost", display_name: "Cost" })
+      .returning();
+    const costTenant = t!.id;
+    const [u] = await testDb.db
+      .insert(users)
+      .values({ tenant_id: costTenant, email: "cost@a", role: "enduser", role_id: null })
+      .returning({ id: users.id });
+    const reader: ResolvedPrincipal = {
+      provider: "api_key",
+      kind: "user",
+      id: u!.id,
+      tenant_id: costTenant,
+      roles: [],
+    };
+    const ids: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const { workflow_id } = await seedPatchableWorkflow(testDb.db, costTenant, `cost-${i}`);
+      ids.push(workflow_id);
+      await testDb.db.insert(patchCandidates).values({
+        tenant_id: costTenant,
+        workflow_id,
+        classification: "safe",
+        status: "proposed",
+        diff: reviewableDiff(`fix ${i}`),
+      });
+    }
+    const grant = (workflowId: string) =>
+      grantResource(testDb.db, {
+        tenant_id: costTenant,
+        subject_type: "user",
+        subject_id: reader.id,
+        resource_type: "workflow",
+        resource_id: workflowId,
+        permission: "workflow:read",
+      });
+
+    await buildAttention(testDb.db, adminPrincipal(costTenant)); // warm the tenant cache
+    await grant(ids[0] as string);
+    queries = 0;
+    const one = await buildAttention(countingDb, reader);
+    const forOne = queries;
+    expect(one.items).toHaveLength(1);
+
+    for (const id of ids.slice(1)) await grant(id);
+    queries = 0;
+    const ten = await buildAttention(countingDb, reader);
+    const forTen = queries;
+    expect(ten.items).toHaveLength(10);
+    expect(forTen).toBe(forOne);
+    // Seven distinct gates at a few catalog reads each, plus the reader's own
+    // conversations — bounded, and independent of how many items there are.
+    expect(forTen).toBeLessThanOrEqual(30);
+  });
+});
+
 describe("a source that fails", () => {
   test("is reported failed, and the list is not all clear even with nothing in it", async () => {
     const [empty] = await testDb.db
@@ -503,6 +584,42 @@ describe("parity with the operational overview's decision buckets", () => {
           (i.class === "decide" || i.class === "failing"),
       ),
     ).toBe(true);
+  });
+
+  test("each old bucket names the same workflows the attention list does", async () => {
+    const overview = await getOperationalOverview(testDb.db, tenant_id);
+    const { items } = await buildAttention(testDb.db, owner);
+    const workflowItems = items.filter((i) => i.subject?.kind === "workflow");
+    const ids = (list: AttentionItem[]) => new Set(list.map((i) => i.subject?.id));
+
+    // blocked: the overview's held-schedule causes ↔ stopped workflow items.
+    const held = new Set(
+      overview.core.health.causes.filter((c) => c.kind === "held_schedule").map((c) => c.id),
+    );
+    const stopped = workflowItems.filter((i) => i.class === "stopped");
+    expect(ids(stopped)).toEqual(held);
+    expect(stopped.length).toBe(overview.core.blocked.value ?? -1);
+
+    // failing: the overview's own failing groups ↔ items carrying failures.
+    const failingGroups = failingScheduledGroups(
+      await collectFailureGroups(testDb.db, tenant_id, DECISION_FAILURE_WINDOW_HOURS),
+    );
+    const failingWorkflows = new Set(failingGroups.map((g) => g.workflow_id ?? undefined));
+    expect(ids(workflowItems.filter((i) => (i.counts.failures ?? 0) > 0))).toEqual(
+      failingWorkflows,
+    );
+    expect(failingWorkflows.size).toBe(overview.core.failing.value ?? -1);
+
+    // overdue + other: the open fixes behind both tiles ↔ items carrying fixes,
+    // and the skill proposals ↔ the one skills item.
+    const open = await readOpenPatchDecisions(testDb.db, tenant_id);
+    const withPatches = workflowItems.filter((i) => (i.counts.patches ?? 0) > 0);
+    expect(ids(withPatches)).toEqual(new Set(open.items.map((d) => d.row.workflow_id)));
+    const patchCount = withPatches.reduce((n, i) => n + (i.counts.patches ?? 0), 0);
+    const skillCount = items.find((i) => i.id === "skills")?.counts.skills ?? 0;
+    expect(patchCount + skillCount).toBe(
+      (overview.core.overdue.value ?? 0) + (overview.core.other_decisions.value ?? 0),
+    );
   });
 
   test("the overview's decision drilldowns open the attention list", async () => {
