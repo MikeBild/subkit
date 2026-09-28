@@ -252,3 +252,22 @@ export function settingsAttention(
   const notActivated = data.activation_status === "failed";
   return restart.length > 0 || notActivated ? { restart, notActivated } : null;
 }
+
+/** A setting nobody set: the engine sends null, which is not a value to show. */
+export function isUnset(item: Pick<SettingItem, "value">): boolean {
+  return item.value === null || item.value === undefined;
+}
+
+/**
+ * What a text field shows: the unsaved draft, else the stored value. A secret
+ * never shows, and an unset setting reads as an empty field with a
+ * "nicht gesetzt" placeholder — never as the word "null".
+ */
+export function settingFieldValue(
+  item: Pick<SettingItem, "value" | "meta">,
+  draft: string | undefined,
+): string {
+  if (draft !== undefined) return draft;
+  if (item.meta.sensitive || isUnset(item)) return "";
+  return typeof item.value === "string" ? item.value : JSON.stringify(item.value);
+}

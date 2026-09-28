@@ -1005,6 +1005,7 @@ const EN = {
   "settings.restartDescription":
     "The new value is stored now and becomes active after the engine restarts.",
   "settings.saveAndRestart": "Save change",
+  "settings.unset": "Not set",
   "settings.secretPlaceholder": "Enter a new secret",
   "resource.permission.title": "Permission required",
   "resource.permission.description": "Your current role does not include access to this area.",
@@ -3599,6 +3600,7 @@ const DE: Record<TranslationKey, string> = {
   "settings.restartDescription":
     "Der neue Wert wird jetzt gespeichert und nach dem Neustart der Engine aktiv.",
   "settings.saveAndRestart": "Änderung speichern",
+  "settings.unset": "Nicht gesetzt",
   "settings.secretPlaceholder": "Neues Secret eingeben",
   "resource.permission.title": "Berechtigung erforderlich",
   "resource.permission.description": "Deine aktuelle Rolle hat keinen Zugriff auf diesen Bereich.",

@@ -40,10 +40,12 @@ import { useI18n } from "@/lib/i18n-context";
 import { EngineWording, LabelText } from "@/lib/machine-label";
 import { cn } from "@/lib/utils";
 import {
+  isUnset,
   type SettingItem,
   type SettingNavGroup,
   type SettingsAttention,
   type SettingsResponse,
+  settingFieldValue,
   settingLabel,
   settingLeafTarget,
   settingMatches,
@@ -718,13 +720,7 @@ export function SettingsPage() {
           />
         </SettingRow>
       );
-    const value =
-      drafts[item.path] ??
-      (item.meta.sensitive
-        ? ""
-        : typeof item.value === "string"
-          ? item.value
-          : JSON.stringify(item.value));
+    const value = settingFieldValue(item, drafts[item.path]);
     return (
       <SettingRow key={item.path} item={item} index={index} highlighted={highlighted === item.path}>
         {typeof item.value === "boolean" ? (
@@ -741,7 +737,13 @@ export function SettingsPage() {
             id={`setting-${index}`}
             type={item.meta.sensitive ? "password" : "text"}
             value={value}
-            placeholder={item.meta.sensitive ? t("settings.secretPlaceholder") : undefined}
+            placeholder={
+              item.meta.sensitive
+                ? t("settings.secretPlaceholder")
+                : isUnset(item)
+                  ? t("settings.unset")
+                  : undefined
+            }
             onChange={(event) => draft(event.target.value)}
             disabled={disabled}
             data-testid={`setting-input-${index}`}

@@ -429,7 +429,6 @@ function KeysSection({ query }: { query: ListQuery<ApiKeyItem> }) {
                   data-testid={`api-key-${state.kind}-${testKey}`}
                   data-key-state={state.kind}
                 >
-                  <span aria-hidden="true">{state.kind === "revoked" ? "○" : "●"}</span>{" "}
                   {keyStateText(state, t)}
                 </Badge>
               ) : null}
@@ -1074,7 +1073,7 @@ function ConnectionRow({
               }
               data-testid={`connection-state-${index}`}
             >
-              <span aria-hidden="true">{needsRenewal ? "●" : "○"}</span> {stateWord}
+              {stateWord}
             </Badge>
           </div>
           <p className="mt-1 truncate text-xs text-muted-foreground">

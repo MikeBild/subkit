@@ -2945,9 +2945,9 @@ async function checkRightsPage(page) {
       if (!reason || /^[—–-]$/.test(reason))
         breach("§2", `${where} · Kontoverbindungen`, `a reason is "${reason || "empty"}"`);
   }
-  if (shape.expiredChip !== "● abgelaufen")
+  if (shape.expiredChip !== "abgelaufen")
     breach("§11", `${where} · Altes Skript`, `the expired key says "${shape.expiredChip}"`);
-  if (shape.expiringChip !== "● läuft ab in 3 Tagen")
+  if (shape.expiringChip !== "läuft ab in 3 Tagen")
     breach("§11", `${where} · Nachtlauf`, `the key about to lapse says "${shape.expiringChip}"`);
   if (shape.workingChip !== null)
     breach("§11", `${where} · Reporting-Abruf`, `a working key carries "${shape.workingChip}"`);
