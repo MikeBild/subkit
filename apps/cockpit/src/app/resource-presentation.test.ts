@@ -1,9 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { formatDurationMs, usageRows, usageStatsEndpoint, usageTotals } from "@/pages/usage-model";
+import {
+  formatDurationMs,
+  usageBounds,
+  usageRows,
+  usageStatsEndpoint,
+  usageTotals,
+} from "@/pages/usage-model";
 
 describe("cockpit usage presentation", () => {
   test("supplies the required usage window", () => {
-    const endpoint = usageStatsEndpoint("30d", new Date("2026-08-10T12:00:00.000Z"));
+    const endpoint = usageStatsEndpoint(usageBounds("30d", new Date("2026-08-10T12:00:00.000Z")));
     expect(endpoint).toContain("bucket=day");
     expect(endpoint).toContain("from=2026-07-11T12%3A00%3A00.000Z");
   });
@@ -59,6 +65,7 @@ describe("cockpit usage presentation", () => {
       averageDurationMs: 1110,
       p95DurationMs: 2300,
       successRatePercent: 90,
+      failedRuns: 4,
     });
   });
 
@@ -68,6 +75,7 @@ describe("cockpit usage presentation", () => {
       averageDurationMs: null,
       p95DurationMs: null,
       successRatePercent: null,
+      failedRuns: 0,
     });
   });
 });

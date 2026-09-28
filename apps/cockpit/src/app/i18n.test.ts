@@ -179,4 +179,20 @@ describe("cockpit i18n", () => {
     const fake = environment("klingon", ["de"]);
     expect(createLocaleStore(fake.env).snapshot()).toEqual({ preference: "auto", locale: "de" });
   });
+
+  test("grants on single records are Freigaben everywhere, and named where they live", () => {
+    // The section was renamed; a dialog, a toast or a note still saying
+    // "Zuweisung" names a thing the page no longer has.
+    const german = Object.entries(CATALOGS.de).filter(([, text]) => /Zuweisung/.test(text));
+    expect(german.map(([key]) => key)).toEqual([]);
+    const note = Object.entries(CATALOGS.en).filter(([, text]) => /Access → Grants/.test(text));
+    expect(note.map(([key]) => key)).toEqual([]);
+    expect(CATALOGS.de["people.sheet.grantsLink"]).toBe("Personen & Rechte → Freigaben");
+    expect(CATALOGS.de["access.grants"]).toBe("Freigaben");
+  });
+
+  test("the operations block says per hour over a day and per day over longer windows", () => {
+    expect(CATALOGS.de["resource.usage.runtimeDescriptionHourly"]).toContain("je Stunde");
+    expect(CATALOGS.de["resource.usage.runtimeDescription"]).toContain("je Tag");
+  });
 });

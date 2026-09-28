@@ -37,6 +37,7 @@ import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { remedyFor } from "@/lib/remedy";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { windowFilterLabel } from "@/lib/window-filter";
 import {
   executionsQuery,
   filterFromUrl,
@@ -430,6 +431,12 @@ export function RunsPage() {
   // decision or a workflow page and is never typed, so it has no control of
   // its own — only the chip below that says so and lifts it.
   const [workflowFilter, setWorkflowFilter] = useState<string | null>(initial.workflowId);
+  // The window a usage figure counted over. Like the workflow, it arrives with
+  // a link and is lifted by its chip.
+  const [startedWindow, setStartedWindow] = useState<{ from: string | null; to: string | null }>({
+    from: initial.startedFrom,
+    to: initial.startedTo,
+  });
   const [page, setPage] = useState(0);
   // The run the address names. It was a `useState<Execution | null>` holding
   // the row itself, which is why nothing outside this component could ever
@@ -444,11 +451,18 @@ export function RunsPage() {
   const query = useQuery({
     // The needle is part of the key: it is a filter the engine applies, so a
     // changed needle is a different question and gets its own answer.
-    queryKey: ["runs", statusFilter, sourceFilter, workflowFilter, needle, page],
+    queryKey: ["runs", statusFilter, sourceFilter, workflowFilter, startedWindow, needle, page],
     enabled: allowed,
     queryFn: () => {
       const params = executionsQuery(
-        { status: statusFilter, source: sourceFilter, workflowId: workflowFilter, q: needle },
+        {
+          status: statusFilter,
+          source: sourceFilter,
+          workflowId: workflowFilter,
+          q: needle,
+          startedFrom: startedWindow.from,
+          startedTo: startedWindow.to,
+        },
         { limit: PAGE_SIZE, offset: page * PAGE_SIZE },
       );
       return apiRequest<ExecutionList>(`/v1/executions?${params}`);
@@ -604,14 +618,17 @@ export function RunsPage() {
     Boolean(debouncedSearch.trim()) ||
     statusFilter !== "all" ||
     sourceFilter !== "all" ||
-    workflowFilter !== null;
+    workflowFilter !== null ||
+    startedWindow.from !== null ||
+    startedWindow.to !== null;
   const resetFilters = useCallback(() => {
     setSearch("");
     setStatusFilter("all");
     setSourceFilter("all");
     setWorkflowFilter(null);
+    setStartedWindow({ from: null, to: null });
     setPage(0);
-    forgetInAddress(["workflow_id", "status", "source", "q"]);
+    forgetInAddress(["workflow_id", "status", "source", "q", "started_from", "started_to"]);
   }, [forgetInAddress]);
 
   if (!allowed)
@@ -720,6 +737,20 @@ export function RunsPage() {
                 }}
               >
                 {t("runs.workflowFilter")}
+              </Button>
+            ) : null}
+            {startedWindow.from || startedWindow.to ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="runs-window-filter"
+                onClick={() => {
+                  setStartedWindow({ from: null, to: null });
+                  setPage(0);
+                  forgetInAddress(["started_from", "started_to"]);
+                }}
+              >
+                {windowFilterLabel(startedWindow.from, startedWindow.to, t, dateTime)}
               </Button>
             ) : null}
             {hasActiveFilters && (
