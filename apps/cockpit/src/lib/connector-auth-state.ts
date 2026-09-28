@@ -21,6 +21,18 @@ export interface ConnectorAuthInput {
   auth_failed_at?: string | null;
 }
 
+/**
+ * What the connector's own credential read says (`GET /v1/connectors/{id}/credential`):
+ * `null` once loaded means nothing is stored; `undefined` means not read (the
+ * list has no such column). A credential that sends a Kontoverbindung carries
+ * that connection's state, so an expired grant reads as an expired sign-in
+ * before any request fails.
+ */
+export type CredentialEvidence = {
+  mode: string;
+  connection: { state: "valid" | "expiring" | "expired" | "unreadable" } | null;
+} | null;
+
 /** Probe outcome, used to refine the state once the connection was tested. */
 export interface ProbeOutcome {
   ok: boolean;
@@ -46,6 +58,7 @@ const HINTS: Record<ConnectorAuthState, TranslationKey> = {
 export function connectorAuthState(
   connector: ConnectorAuthInput,
   probe?: ProbeOutcome | null,
+  credential?: CredentialEvidence,
 ): ConnectorAuthState {
   if (probe) {
     if (probe.ok) return connector.auth_type === "none" ? "not_required" : "connected";
@@ -55,7 +68,11 @@ export function connectorAuthState(
   }
   if (connector.needs_reauth === true || connector.health_state === "needs_reauth")
     return "expired";
+  const grant = credential?.connection?.state;
+  if (grant === "expired" || grant === "unreadable") return "expired";
   if (connector.auth_type === "none") return "not_required";
+  // Read and empty: nothing is stored, which is not "not proven yet".
+  if (credential === null) return "credentials_missing";
   // A credential that was accepted at least once and never rejected since.
   if (connector.health_state === "ok" && !connector.auth_failed_at) return "connected";
   return "unproven";

@@ -35,6 +35,30 @@ describe("connector auth state", () => {
     );
   });
 
+  test("an expired or unreadable Kontoverbindung is an expired sign-in before any request fails", () => {
+    const connector = { auth_type: "oauth2", health_state: "ok" };
+    for (const state of ["expired", "unreadable"] as const) {
+      expect(
+        connectorAuthState(connector, null, { mode: "connection", connection: { state } }),
+      ).toBe("expired");
+    }
+    expect(
+      connectorAuthState(connector, null, { mode: "connection", connection: { state: "valid" } }),
+    ).toBe("connected");
+  });
+
+  test("a credential read that found nothing says credentials are missing, not unproven", () => {
+    expect(connectorAuthState({ auth_type: "bearer", health_state: "degraded" }, null, null)).toBe(
+      "credentials_missing",
+    );
+    // Not read at all (the catalogue list): no claim either way.
+    expect(connectorAuthState({ auth_type: "bearer", health_state: "degraded" })).toBe("unproven");
+    // A connector that needs none has nothing to miss.
+    expect(connectorAuthState({ auth_type: "none", health_state: "ok" }, null, null)).toBe(
+      "not_required",
+    );
+  });
+
   test("a probe resolves what the list could not prove", () => {
     expect(
       connectorAuthState({ auth_type: "bearer", health_state: "degraded" }, { ok: true }),

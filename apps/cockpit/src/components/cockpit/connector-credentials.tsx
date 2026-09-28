@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
-import { absolute } from "@/app/links";
+import type { components } from "@/api/schema";
+import { absolute, apiAccessHref } from "@/app/links";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,26 +16,51 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  authStateHint,
+  authStateLabel,
+  type ConnectorAuthState,
+  needsRenewal,
+} from "@/lib/connector-auth-state";
 import { useI18n } from "@/lib/i18n-context";
-import type { ConnectionItem } from "@/pages/connections-model";
+import { type ConnectionItem, connectionStateKey } from "@/pages/connections-model";
 
-interface CredentialSummary {
-  mode: string;
-  environment: "dev" | "prod";
-  connection: { id: string; name: string } | null;
-  updated_at: string;
+export type ConnectorCredentialSummary = NonNullable<
+  components["schemas"]["ConnectorCredentialSummary"]
+>;
+
+/**
+ * The connector's credential as the engine describes it — mode, and the
+ * Kontoverbindung it sends with that connection's state. One query key, read
+ * by the governance bar and by the Anmeldung card alike, so the two can never
+ * disagree about where the sign-in stands.
+ */
+export function useConnectorCredential(connectorId: string | null) {
+  return useQuery({
+    queryKey: ["connector-credential", connectorId],
+    queryFn: () =>
+      apiRequest<ConnectorCredentialSummary | null>(
+        `/v1/connectors/${encodeURIComponent(connectorId ?? "")}/credential`,
+      ),
+    enabled: Boolean(connectorId),
+  });
 }
 
 /**
- * How a connector authenticates, decided on its own page: pick a connection
- * ("Verbindung wählen") — or, only for a provider that cannot grant access
- * itself, paste a key, and the card says so.
+ * "Anmeldung": how a connector signs in, decided on its own page — pick a
+ * Kontoverbindung ("Verbindung wählen") or, only for a provider that cannot
+ * grant access itself, paste a key. The card shows the real sign-in state and
+ * offers "Neu anmelden" whenever it is lost, not only after a failed test.
  */
 export function ConnectorCredentials({
   connectorId,
+  authType,
+  state,
   canWrite,
 }: {
   connectorId: string;
+  authType: string | null;
+  state: ConnectorAuthState;
   canWrite: boolean;
 }) {
   const { t, dateTime } = useI18n();
@@ -43,13 +69,7 @@ export function ConnectorCredentials({
   const [token, setToken] = useState("");
   const [showKey, setShowKey] = useState(false);
 
-  const summary = useQuery({
-    queryKey: ["connector-credential", connectorId],
-    queryFn: () =>
-      apiRequest<CredentialSummary | null>(
-        `/v1/connectors/${encodeURIComponent(connectorId)}/credential`,
-      ),
-  });
+  const summary = useConnectorCredential(connectorId);
   const connections = useQuery({
     queryKey: ["admin", "connections"],
     queryFn: () => apiRequest<{ items: ConnectionItem[] }>("/v1/connections"),
@@ -70,14 +90,35 @@ export function ConnectorCredentials({
     },
     onError: () => toast.error(t("connectorCredentials.saveFailed")),
   });
+  // The connector's own OAuth sign-in: the engine mints the authorization URL
+  // and the provider brings the browser back to its callback.
+  const oauthStart = useMutation({
+    mutationFn: () =>
+      apiRequest<{ authorization_url: string }>(
+        `/v1/connectors/${encodeURIComponent(connectorId)}/oauth/start`,
+        { method: "POST" },
+      ),
+    onSuccess: (result) => window.location.assign(result.authorization_url),
+    onError: () => toast.error(t("connectorCredentials.renewFailed")),
+  });
 
   const current = summary.data ?? null;
   const items = connections.data?.items ?? [];
+  const lost = needsRenewal(state);
+  const grantsHref = absolute(apiAccessHref("grants"));
 
   return (
     <Card data-testid="connector-credentials">
       <CardHeader>
-        <CardTitle>{t("connectorCredentials.title")}</CardTitle>
+        <CardTitle className="flex flex-wrap items-center gap-2">
+          {t("connectorCredentials.title")}
+          <Badge
+            variant={lost ? "destructive" : state === "connected" ? "secondary" : "outline"}
+            data-testid="connector-auth-state"
+          >
+            <span aria-hidden="true">{lost ? "●" : "○"}</span> {t(authStateLabel(state))}
+          </Badge>
+        </CardTitle>
         <CardDescription>
           {current?.connection
             ? t("connectorCredentials.viaConnection", { name: current.connection.name })
@@ -86,11 +127,69 @@ export function ConnectorCredentials({
                   mode: current.mode,
                   date: dateTime(current.updated_at),
                 })
-              : t("connectorCredentials.none")}
+              : t("connectorCredentials.none")}{" "}
+          {t(authStateHint(state))}
         </CardDescription>
+        {current?.connection ? (
+          <p className="text-sm" data-testid="connector-connection">
+            <span className="text-muted-foreground">
+              {t("connectorCredentials.connectionState", {
+                state: t(connectionStateKey(current.connection.state)),
+              })}
+            </span>{" "}
+            <a
+              href={grantsHref}
+              className="font-medium underline underline-offset-4"
+              data-testid="connector-connection-link"
+            >
+              {t("connectorCredentials.openConnection")}
+            </a>
+          </p>
+        ) : null}
       </CardHeader>
       {canWrite && (
         <CardContent className="grid gap-4">
+          {lost ? (
+            <div
+              className="flex flex-col gap-2 rounded-lg border border-destructive/40 p-3"
+              data-testid="connector-renew-panel"
+            >
+              {current?.connection ? (
+                <>
+                  <p className="text-sm">
+                    {t("connectorCredentials.renewViaConnection", {
+                      name: current.connection.name,
+                    })}
+                  </p>
+                  <Button asChild className="w-fit">
+                    <a href={grantsHref} data-testid="connector-renew-signin">
+                      {t("connectorCredentials.renew")}
+                    </a>
+                  </Button>
+                </>
+              ) : authType === "oauth2" ? (
+                <Button
+                  className="w-fit"
+                  disabled={oauthStart.isPending}
+                  onClick={() => oauthStart.mutate()}
+                  data-testid="connector-renew-signin"
+                >
+                  {t("connectorCredentials.renew")}
+                </Button>
+              ) : (
+                <>
+                  <p className="text-sm">{t("connectorCredentials.renewKey")}</p>
+                  <Button
+                    className="w-fit"
+                    onClick={() => setShowKey(true)}
+                    data-testid="connector-renew-signin"
+                  >
+                    {t("connectorCredentials.renew")}
+                  </Button>
+                </>
+              )}
+            </div>
+          ) : null}
           <Field>
             <FieldLabel htmlFor="connector-connection">
               {t("connectorCredentials.choose")}
@@ -120,6 +219,7 @@ export function ConnectorCredentials({
                 </SelectContent>
               </Select>
               <Button
+                variant="outline"
                 disabled={!chosen || attach.isPending}
                 onClick={() => attach.mutate({ mode: "connection", connection_id: chosen })}
                 data-testid="connector-connection-apply"
@@ -131,11 +231,7 @@ export function ConnectorCredentials({
               {items.length === 0
                 ? t("connectorCredentials.noConnections")
                 : t("connectorCredentials.chooseHint")}{" "}
-              <a
-                href={absolute("/connections")}
-                className="underline"
-                data-testid="connector-connections-link"
-              >
+              <a href={grantsHref} className="underline" data-testid="connector-connections-link">
                 {t("connectorCredentials.openConnections")}
               </a>
             </FieldDescription>

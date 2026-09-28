@@ -1,28 +1,31 @@
-import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import { NotFoundPage, RouteErrorPage } from "@/components/failure-state";
 import {
   AccessPage,
-  ApiAccessPage,
   NotificationsPage,
   OperationsPage,
   PeoplePage,
   SettingsPage,
 } from "@/pages/admin";
+import { ApiAccessPage } from "@/pages/api-access";
 import { AuditPage } from "@/pages/audit";
 import { CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
-import { ConnectionsPage } from "@/pages/connections";
 import { DecisionsPage } from "@/pages/decisions";
 import { OverviewPage } from "@/pages/overview";
 import { RunsPage } from "@/pages/runs";
 import { UsagePage } from "@/pages/usage";
+import { absolute } from "./links";
 import {
   CATALOG_RESOURCES,
   CHAT_ROUTES,
   PAGE_ROUTES,
   type PageRoute,
+  REDIRECT_ROUTES,
+  type RedirectRoute,
   RUN_ROUTES,
+  redirectTarget,
 } from "./route-table";
 import { useSession } from "./session";
 import { AppShell } from "./shell";
@@ -73,7 +76,6 @@ const PAGE_COMPONENTS: Record<PageRoute, () => React.ReactElement> = {
   "/people": PeoplePage,
   "/access": AccessPage,
   "/api-access": ApiAccessPage,
-  "/connections": ConnectionsPage,
   "/notifications": NotificationsPage,
   "/operations": OperationsPage,
   "/settings": SettingsPage,
@@ -81,6 +83,25 @@ const PAGE_COMPONENTS: Record<PageRoute, () => React.ReactElement> = {
 
 const dedicatedRoutes = PAGE_ROUTES.map((path) =>
   createRoute({ getParentRoute: () => rootRoute, path, component: PAGE_COMPONENTS[path] }),
+);
+
+// A moved page keeps its old address as a redirect, query included: an OAuth
+// callback issued before the move still lands with its result. `href` rather
+// than `to` + `search`, because the router's default search serialiser would
+// quote a value that looks like JSON (`renewed=1` → `renewed=%221%22`), and
+// the page reads its query as plain text. The href carries the base; the
+// router's basepath rewrite strips it on the way in.
+const redirectRoutes = (Object.keys(REDIRECT_ROUTES) as RedirectRoute[]).map((path) =>
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path,
+    beforeLoad: ({ location }) => {
+      throw redirect({
+        href: absolute(redirectTarget(REDIRECT_ROUTES[path], location.searchStr)),
+        replace: true,
+      });
+    },
+  }),
 );
 
 const catalogRoutes = CATALOG_RESOURCES.flatMap((resource) => [
@@ -113,6 +134,7 @@ const routeTree = rootRoute.addChildren([
   ...chatRoutes,
   ...runRoutes,
   ...dedicatedRoutes,
+  ...redirectRoutes,
   ...catalogRoutes,
 ]);
 

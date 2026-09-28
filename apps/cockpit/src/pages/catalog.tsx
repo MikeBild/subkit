@@ -91,7 +91,7 @@ interface CatalogConfig {
   titleKey: TranslationKey;
   /**
    * Only where the title does not say what the list is for. "Konnektoren"
-   * next to "Anbindungen" needs the sentence that tells them apart, and
+   * next to "Kontoverbindungen" needs the sentence that tells them apart, and
    * "Skills" says nothing on its own; "Workflows", "Wissen" and "Dateien" do.
    */
   descriptionKey?: TranslationKey;
