@@ -43,6 +43,14 @@ export const mcpOauthClients = pgTable(
       .default("dcr")
       .$type<"dcr" | "manual">(),
     disabled_at: timestamp("disabled_at", { withTimezone: true }),
+    /**
+     * Set together with `disabled_at` when the housekeeping sweep retired a
+     * dynamic registration nobody holds a grant for or has used in a week.
+     * A retired registration is hidden, not revoked: the next authorization a
+     * person completes for it clears both columns. `disabled_at` without it is
+     * an administrator's revocation, which no authorization undoes.
+     */
+    retired_at: timestamp("retired_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [
