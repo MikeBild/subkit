@@ -16,16 +16,38 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
-import { type OperatorHealthDigest, resolvedAtOf, scheduledRunsOf } from "../engine-client.ts";
-import { FAILURE_ORIGIN_LABEL, totalFailureCount } from "../lib/operator-digest.ts";
+import {
+  type AttentionItem,
+  attentionOf,
+  type OperatorHealthDigest,
+  resolvedAtOf,
+  scheduledRunsOf,
+} from "../engine-client.ts";
+import {
+  attentionItemLine,
+  FAILURE_ORIGIN_LABEL,
+  totalFailureCount,
+  unreadAttentionSources,
+} from "../lib/operator-digest.ts";
 
 interface NeedsAttentionPanelProps {
   digest: OperatorHealthDigest;
 }
 
+const CLASS_COLOR: Record<AttentionItem["class"], string> = {
+  stopped: "red",
+  failing: "red",
+  decide: "cyan",
+};
+
 const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest }) => {
   const failCount = totalFailureCount(digest);
   const open = digest.patch_candidates.open;
+  // The attention list is what the headline counts: every item gets a line,
+  // whatever its kind — a connector needing sign-in, a held schedule, the
+  // reader's own waiting conversation — not only the kinds the digest details.
+  const items = attentionOf(digest).items;
+  const unread = unreadAttentionSources(digest);
 
   return (
     <Box flexDirection="column" marginBottom={1}>
@@ -33,9 +55,20 @@ const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest })
         <Text>needs attention</Text>
         <Text dimColor>
           {" "}
-          · {failCount} failure{failCount === 1 ? "" : "s"} (last {digest.window_hours}h)
+          · {items.length} item{items.length === 1 ? "" : "s"} · {failCount} failure
+          {failCount === 1 ? "" : "s"} (last {digest.window_hours}h)
         </Text>
       </Box>
+
+      {items.map((item) => (
+        <Box key={item.id}>
+          <Text color={CLASS_COLOR[item.class]}>● </Text>
+          <Text>{attentionItemLine(item)}</Text>
+        </Box>
+      ))}
+      {unread.length > 0 ? (
+        <Text color="yellow">could not be read: {unread.join(", ")}</Text>
+      ) : null}
 
       {digest.failure_groups.map((g) => {
         // Whether the scheduler ever started one of these runs, not whether it

@@ -1,1 +1,1 @@
-export { invalidateOperationalOverview } from "./operational-overview.ts";
+export { invalidateTenantState } from "./tenant-state.ts";
