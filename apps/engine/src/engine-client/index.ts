@@ -30,7 +30,7 @@ import {
   patchCandidates as patchCandidatesTable,
   workflows as workflowsTable,
 } from "../db/schema/index.ts";
-import { listExecutions } from "../execution/list.ts";
+import { type ListExecutionsOptions, listExecutions } from "../execution/list.ts";
 import { loadExecutionOutcome } from "../execution/outcome.ts";
 import * as identitySvc from "../identity/service.ts";
 import { listKnowledgeChunks } from "../knowledge/bundle-service.ts";
@@ -38,8 +38,10 @@ import * as knowledgeSvc from "../knowledge/service.ts";
 import type { CreateKnowledgeSourceInput, UpdateKnowledgeSourceInput } from "../knowledge/types.ts";
 import {
   currentMonthBucket,
+  monthlyBudgetFigures,
   monthlyUsage,
   monthlyUsageForUser,
+  readTenantMonthlyBudget,
   resolveMonthlyBudget,
   resolveUserMonthlyBudget,
 } from "../llm/accounting/index.ts";
@@ -50,6 +52,7 @@ import * as selfHealingSvc from "../self-healing/index.ts";
 import * as skillCandidatesSvc from "../skill-candidates/service.ts";
 import * as skillsSvc from "../skills/service.ts";
 import type { CreateSkillInput, UpdateSkillInput } from "../skills/types.ts";
+import { readLlmWindowCost, statsBucketFor } from "../stats/llm-cost.ts";
 import * as inboundSvc from "../webhooks/inbound/service.ts";
 import * as subscriptionsSvc from "../webhooks/outbound/service.ts";
 import { loadCategoryIndex } from "../workflows/catalog-view.ts";
@@ -193,8 +196,7 @@ export class EngineClient {
   };
 
   executions = {
-    list: (opts?: { limit?: number; offset?: number; workflow_id?: string }) =>
-      listExecutions(this.tenant_id, opts ?? {}, this.db),
+    list: (opts?: ListExecutionsOptions) => listExecutions(this.tenant_id, opts ?? {}, this.db),
     get: async (id: string) => {
       const rows = await this.db
         .select()
@@ -363,6 +365,24 @@ export class EngineClient {
     // here offered it the value.
     tenantTokenBudget: () => resolveMonthlyBudget(this.tenant_id),
     currentMonthBucket: () => currentMonthBucket(),
+    /** The workspace's month — used, cap, remaining, state — as `/v1/status` reads it. */
+    tenantMonthlyBudget: () => readTenantMonthlyBudget(this.tenant_id, this.db),
+    /** One cap's figures from a used/cap pair, with the shared state. */
+    monthlyBudgetFigures: (used: number, budget: number | null) =>
+      monthlyBudgetFigures(used, budget),
+    /**
+     * Priced spend over a window, as `GET /v1/stats/llm` prices it: the same
+     * by-model rollup, the same catalog-plus-override rates.
+     */
+    llmWindowCost: (window: { from: Date; to: Date; userId?: string | null }) =>
+      readLlmWindowCost(this.db, {
+        tenantId: this.tenant_id,
+        bucket: statsBucketFor(window.from, window.to),
+        from: window.from,
+        to: window.to,
+        tz: "UTC",
+        userId: window.userId ?? undefined,
+      }),
     llmUsageRecent: async (limit = 50) =>
       await this.db
         .select()

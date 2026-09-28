@@ -16,7 +16,7 @@ import {
   setConfigKey,
   ValidationError,
 } from "../../config/loader.ts";
-import { dottedPath, findLeafByPath, listConfigLeaves } from "../../config/walk.ts";
+import { findLeafByPath } from "../../config/walk.ts";
 import type { Db } from "../../db/client.ts";
 import {
   activateRuntimeRevision,
@@ -28,6 +28,12 @@ import {
   RuntimeConfigValidationError,
   saveRuntimeConfigPatch,
 } from "../../runtime-config/service.ts";
+import {
+  maskedSettingValue,
+  readSettingEntry,
+  readSettingsList,
+  type SettingsList,
+} from "../../runtime-config/settings-read.ts";
 
 export const SUBKIT_SETTINGS_TOOL_NAME = "subkit_settings";
 export const SUBKIT_UPDATE_SETTING_TOOL_NAME = "subkit_update_setting";
@@ -100,21 +106,6 @@ export const subkitUpdateSettingMcpTool: Tool = {
   },
 };
 
-type SettingSource = "override" | "tenant" | "global" | "default";
-
-interface SettingEntry {
-  path: string;
-  value: unknown;
-  meta: {
-    source: SettingSource;
-    scope: "global" | "tenant";
-    sensitive: boolean;
-    requires_restart: boolean;
-    description?: string;
-    kind: string;
-  };
-}
-
 function canManageOtherTenants(principal: ResolvedPrincipal): boolean {
   if (principal.tenant_id === SYSTEM_TENANT_ID && principal.roles.includes("admin")) return true;
   return principal.scopes?.includes("settings:write:global") ?? false;
@@ -127,43 +118,6 @@ function readDeep(source: unknown, path: readonly string[]): unknown {
     cursor = (cursor as Record<string, unknown>)[segment];
   }
   return cursor;
-}
-
-function maskedValue(secret: boolean, value: unknown): unknown {
-  if (!secret || value === undefined || value === null || value === "") return value;
-  return "***";
-}
-
-function sourceForLeaf(
-  path: readonly string[],
-  tenantId: string | undefined,
-  globalSources: Record<string, SettingSource>,
-): SettingSource {
-  const dotted = path.join(".");
-  if (!tenantId) return globalSources[dotted] ?? "default";
-  const tenantOverlay = getConfig().tenants?.[tenantId];
-  return readDeep(tenantOverlay, path) !== undefined
-    ? "tenant"
-    : (globalSources[dotted] ?? "default");
-}
-
-function settingEntry(path: string, tenantId?: string): SettingEntry | null {
-  const leaf = findLeafByPath(path);
-  if (!leaf) return null;
-  const diagnostics = getDiagnostics();
-  const dotted = dottedPath(leaf);
-  return {
-    path: dotted,
-    value: maskedValue(!!leaf.meta.secret, readDeep(getConfig(tenantId), leaf.path)),
-    meta: {
-      source: sourceForLeaf(leaf.path, tenantId, diagnostics.source_map),
-      scope: leaf.meta.scope ?? "global",
-      sensitive: !!leaf.meta.secret,
-      requires_restart: !!leaf.meta.requiresRestart,
-      ...(leaf.description ? { description: leaf.description } : {}),
-      kind: leaf.kind,
-    },
-  };
 }
 
 function invalidArguments(error: z.ZodError): {
@@ -183,17 +137,10 @@ function invalidArguments(error: z.ZodError): {
 }
 
 export async function handleSubkitSettings(
-  ctx: { principal: ResolvedPrincipal },
+  ctx: { db: Db; principal: ResolvedPrincipal },
   rawArgs: Record<string, unknown>,
 ): Promise<
-  | {
-      ok: true;
-      data: {
-        items: SettingEntry[];
-        diagnostics: ReturnType<typeof getDiagnostics>;
-      };
-    }
-  | { ok: false; data: { error_code: string; message: string } }
+  { ok: true; data: SettingsList } | { ok: false; data: { error_code: string; message: string } }
 > {
   const parsed = ReadSettingsArgsSchema.safeParse(rawArgs);
   if (!parsed.success) return invalidArguments(parsed.error);
@@ -208,8 +155,10 @@ export async function handleSubkitSettings(
     };
   }
 
+  // The reader GET /v1/settings answers from: the same entries (unset reads
+  // null, `meta.requiresRestart`), the same revision state and diagnostics.
   if (path) {
-    const item = settingEntry(path, tenant_id);
+    const item = readSettingEntry(path, tenant_id);
     if (!item) {
       return {
         ok: false,
@@ -219,13 +168,9 @@ export async function handleSubkitSettings(
         },
       };
     }
-    return { ok: true, data: { items: [item], diagnostics: getDiagnostics() } };
+    return { ok: true, data: await readSettingsList(ctx.db, tenant_id, [item]) };
   }
-
-  const items = listConfigLeaves()
-    .map((leaf) => settingEntry(dottedPath(leaf), tenant_id))
-    .filter((item): item is SettingEntry => item !== null);
-  return { ok: true, data: { items, diagnostics: getDiagnostics() } };
+  return { ok: true, data: await readSettingsList(ctx.db, tenant_id) };
 }
 
 export async function handleSubkitUpdateSetting(
@@ -417,8 +362,8 @@ export async function handleSubkitUpdateSetting(
         action: AuditAction.SETTINGS_CHANGED,
         resource_type: "setting",
         resource_id: result.leafPath,
-        before: maskedValue(!!leaf.meta.secret, result.before),
-        after: maskedValue(!!leaf.meta.secret, result.after),
+        before: maskedSettingValue(!!leaf.meta.secret, result.before),
+        after: maskedSettingValue(!!leaf.meta.secret, result.after),
         metadata: {
           scope: result.scope,
           requires_restart: result.requiresRestart,
@@ -434,7 +379,7 @@ export async function handleSubkitUpdateSetting(
       ok: true,
       data: {
         path: result.leafPath,
-        value: maskedValue(!!leaf.meta.secret, result.after),
+        value: maskedSettingValue(!!leaf.meta.secret, result.after),
         activation: requiresRestart ? "restart_required" : "active",
         applied_immediately: !requiresRestart,
         requires_restart: requiresRestart,

@@ -37,18 +37,12 @@ import {
 } from "../../audit/index.ts";
 import {
   getConfig,
-  getDiagnostics,
   RestartRequiredError,
   ScopeViolationError,
   setConfigKey,
   ValidationError,
 } from "../../config/loader.ts";
-import {
-  type ConfigLeaf,
-  dottedPath,
-  findLeafByPath,
-  listConfigLeaves,
-} from "../../config/walk.ts";
+import { type ConfigLeaf, findLeafByPath } from "../../config/walk.ts";
 import { logger } from "../../logging/index.ts";
 import {
   activateRuntimeRevision,
@@ -60,6 +54,11 @@ import {
   RuntimeConfigValidationError,
   saveRuntimeConfigPatch,
 } from "../../runtime-config/service.ts";
+import {
+  maskedSettingValue,
+  readSettingEntry,
+  readSettingsList,
+} from "../../runtime-config/settings-read.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -180,14 +179,8 @@ const PutSuccessSchema = z
 
 // -------- helpers --------
 
-function leafKindLabel(leaf: ConfigLeaf): string {
-  return leaf.kind;
-}
-
 function maskedValue(leaf: ConfigLeaf, value: unknown): unknown {
-  if (!leaf.meta.secret) return value;
-  if (value === undefined || value === null || value === "") return value;
-  return "***";
+  return maskedSettingValue(!!leaf.meta.secret, value);
 }
 
 function readDeep(source: unknown, leafPath: string[]): unknown {
@@ -197,43 +190,6 @@ function readDeep(source: unknown, leafPath: string[]): unknown {
     cursor = (cursor as Record<string, unknown>)[seg];
   }
   return cursor;
-}
-
-function sourceForLeaf(
-  leaf: ConfigLeaf,
-  tenantId: string | undefined,
-  globalSourceMap: Record<string, "override" | "tenant" | "global" | "default">,
-): "override" | "tenant" | "global" | "default" {
-  const dotted = dottedPath(leaf);
-  if (!tenantId) return globalSourceMap[dotted] ?? "default";
-  const tenantOverlay = getConfig().tenants?.[tenantId];
-  return readDeep(tenantOverlay, leaf.path) !== undefined
-    ? "tenant"
-    : (globalSourceMap[dotted] ?? "default");
-}
-
-function buildLeafEntries(tenantId: string | undefined): Array<z.infer<typeof LeafEntrySchema>> {
-  const cfg = getConfig(tenantId);
-  const sourceMap = getDiagnostics().source_map;
-  const items: Array<z.infer<typeof LeafEntrySchema>> = [];
-
-  for (const leaf of listConfigLeaves()) {
-    const dotted = dottedPath(leaf);
-    const liveValue = readDeep(cfg, leaf.path);
-    items.push({
-      path: dotted,
-      value: maskedValue(leaf, liveValue),
-      meta: {
-        source: sourceForLeaf(leaf, tenantId, sourceMap),
-        scope: leaf.meta.scope ?? "global",
-        sensitive: !!leaf.meta.secret,
-        requiresRestart: !!leaf.meta.requiresRestart,
-        ...(leaf.description ? { description: leaf.description } : {}),
-        kind: leafKindLabel(leaf),
-      },
-    });
-  }
-  return items;
 }
 
 // -------- routes --------
@@ -349,29 +305,8 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
         403,
       );
     }
-    const items = buildLeafEntries(targetTenant);
-    const diagnostics = getDiagnostics();
-    let runtimeState: Awaited<ReturnType<typeof getRuntimeConfigState>> | null = null;
-    try {
-      runtimeState = await getRuntimeConfigState(c.get("db"));
-    } catch (error) {
-      if (!(error instanceof RuntimeConfigNotFoundError)) throw error;
-    }
-    return c.json(
-      {
-        saved_revision: runtimeState?.saved_revision ?? null,
-        active_revision: runtimeState?.active_revision ?? null,
-        activation_status: runtimeState?.activation_status ?? null,
-        pending_restart_fields:
-          runtimeState?.pending_restart_fields ?? diagnostics.pending_restart_keys,
-        items,
-        diagnostics: {
-          pending_restart_keys: diagnostics.pending_restart_keys,
-          override_keys: diagnostics.override_keys,
-        },
-      },
-      200,
-    );
+    // The reader `subkit_settings` answers from: same entries, same state.
+    return c.json(await readSettingsList(c.get("db"), targetTenant), 200);
   });
 
   app.openapi(getRoute, async (c) => {
@@ -387,28 +322,11 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
         403,
       );
     }
-    const leaf = findLeafByPath(path);
-    if (!leaf) {
+    const entry = readSettingEntry(path, tenant);
+    if (!entry) {
       return c.json({ code: "not_found", message: `unknown setting path: ${path}` }, 404);
     }
-    const cfg = getConfig(tenant);
-    const sourceMap = getDiagnostics().source_map;
-    const dotted = dottedPath(leaf);
-    return c.json(
-      {
-        path: dotted,
-        value: maskedValue(leaf, readDeep(cfg, leaf.path)),
-        meta: {
-          source: sourceForLeaf(leaf, tenant, sourceMap),
-          scope: leaf.meta.scope ?? "global",
-          sensitive: !!leaf.meta.secret,
-          requiresRestart: !!leaf.meta.requiresRestart,
-          ...(leaf.description ? { description: leaf.description } : {}),
-          kind: leafKindLabel(leaf),
-        },
-      },
-      200,
-    );
+    return c.json(entry, 200);
   });
 
   app.openapi(putRoute, async (c) => {

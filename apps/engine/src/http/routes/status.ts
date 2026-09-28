@@ -4,9 +4,8 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { connectors, llmUsage, skills, tenants } from "../../db/schema/index.ts";
 import {
-  monthlyUsage,
   monthlyUsageForUser,
-  resolveMonthlyBudget,
+  readTenantMonthlyBudget,
   resolveUserMonthlyBudget,
   validateProviderSetup,
 } from "../../llm/index.ts";
@@ -41,6 +40,12 @@ const StatusSchema = z
     monthly_budget_tokens: z.number().int().nonnegative().nullable(),
     /** Remaining monthly budget tokens (null = unlimited). */
     remaining_monthly_budget_tokens: z.number().int().nullable(),
+    /**
+     * How close the month is to its cap: ample, tightening (75 % spent) or
+     * critical (90 %). Null when nothing bounds the month. The same state
+     * `get_token_budget` reports and the attention list's budget item reads.
+     */
+    monthly_budget_state: z.enum(["ample", "tightening", "critical"]).nullable(),
     /**
      * The CALLER's own usage figures (null for system_account principals,
      * which have no per-user attribution). Powers the `/cost` self-view
@@ -99,7 +104,7 @@ export function registerStatusRoute(app: OpenAPIHono<AppEnv>): void {
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
     );
 
-    const [connectorRow, skillsRow, todayRow, tenantRow, monthTokens, budget] = await Promise.all([
+    const [connectorRow, skillsRow, todayRow, tenantRow, month] = await Promise.all([
       db
         .select({ n: sql<number>`count(*)::int` })
         .from(connectors)
@@ -113,13 +118,10 @@ export function registerStatusRoute(app: OpenAPIHono<AppEnv>): void {
         .from(llmUsage)
         .where(and(eq(llmUsage.tenant_id, tenantId), sql`${llmUsage.created_at} >= ${startOfDay}`)),
       db.select({ slug: tenants.slug }).from(tenants).where(eq(tenants.id, tenantId)).limit(1),
-      monthlyUsage(tenantId, db),
-      // Reads the runtime config, not the database — kept inside the
-      // Promise.all so the destructuring below stays positional.
-      Promise.resolve(resolveMonthlyBudget(tenantId)),
+      // The workspace's month — used, cap, remaining and state — read once,
+      // through the reader `get_token_budget` uses too.
+      readTenantMonthlyBudget(tenantId, db),
     ]);
-
-    const remaining = budget == null ? null : Math.max(budget - monthTokens, 0);
 
     // Caller's own figures — only when the principal is an end-user.
     // system_account principals have no per-user attribution → null.
@@ -163,9 +165,10 @@ export function registerStatusRoute(app: OpenAPIHono<AppEnv>): void {
         connectors_count: Number(connectorRow[0]?.n ?? 0),
         skills_count: Number(skillsRow[0]?.n ?? 0),
         tokens_today: Number(todayRow[0]?.total ?? 0),
-        tokens_month: Number(monthTokens),
-        monthly_budget_tokens: budget,
-        remaining_monthly_budget_tokens: remaining,
+        tokens_month: month.used_tokens,
+        monthly_budget_tokens: month.budget_tokens,
+        remaining_monthly_budget_tokens: month.remaining_tokens,
+        monthly_budget_state: month.state,
         tokens_today_user: userTokensToday,
         tokens_month_user: userTokensMonth,
         user_monthly_budget_tokens: userBudget,

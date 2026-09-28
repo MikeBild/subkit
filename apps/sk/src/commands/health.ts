@@ -78,11 +78,20 @@ function renderTokenBudget(status: StatusSummary): void {
     monthly_budget_tokens != null && monthly_budget_tokens > 0
       ? Math.min(100, Math.round((tokens_month / monthly_budget_tokens) * 100))
       : null;
+  // The engine's state, not a threshold of our own: the attention list, the
+  // usage page and `get_token_budget` all read the month the same way.
+  const state = status.monthly_budget_state ?? null;
   const colorize =
-    pct == null ? pc.dim : pct >= 90 ? pc.red : pct >= 60 ? pc.yellow : (s: string) => s;
+    state === "critical"
+      ? pc.red
+      : state === "tightening"
+        ? pc.yellow
+        : state === "ample"
+          ? (s: string) => s
+          : pc.dim;
   process.stdout.write(
     `  month ${colorize(monthLine)}${pct != null ? colorize(` (${pct}%)`) : ""}` +
-      ` · today ${formatTokens(tokens_today)}\n`,
+      `${state ? ` ${colorize(state)}` : ""} · today ${formatTokens(tokens_today)}\n`,
   );
 }
 

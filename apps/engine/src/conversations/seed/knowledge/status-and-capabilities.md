@@ -116,20 +116,33 @@ Waiting conversations are the caller's own only. A workflow that is held, failin
 Reports current-month token usage against the configured budget. Defaults to the caller's own usage + per-user budget. Pass `user_id` to scope to another user — that requires `stats:read:all` (denied otherwise with `{ error: "permission_denied", permission: "stats:read:all" }`). Category `tenant_read`.
 
 Response data:
-- Self/per-user case: `{ user_id, used_tokens, budget_tokens (nullable), remaining_tokens (nullable), month_bucket }`. `remaining_tokens = max(budget - used, 0)`, or `null` when there is no per-user budget.
-- Tenant-wide fallback (system flow with no resolvable caller): `{ user_id: null, used_tokens, budget_tokens: null, month_bucket }`.
+- Self/per-user case: `{ user_id, month_bucket, used_tokens, budget_tokens, remaining_tokens, state, binding_scope, user, tenant }`. The headline figures describe whichever cap refuses the next call first (`binding_scope`: `user` or `tenant`); `user` and `tenant` carry both caps, each with its own `state`.
+- Tenant-wide (system flow with no resolvable caller): `{ user_id: null, used_tokens, budget_tokens, remaining_tokens, state, month_bucket }` — the same figures `GET /v1/status` reports as `tokens_month`, `monthly_budget_tokens`, `remaining_monthly_budget_tokens` and `monthly_budget_state`.
 
-How to read: answers "how close am I to my monthly cap?" `budget_tokens: null` means no cap configured.
+How to read: answers "how close am I to my monthly cap?" `state` is `ample`, `tightening` (75 % spent) or `critical` (90 % spent — the attention list then carries a budget item); `budget_tokens: null` and `state: null` mean no cap configured.
 
 ## get_llm_usage (MCP)
 
-Returns this month's total LLM token usage plus the N most recent `llm_usage` rows. Defaults to the caller's own usage; pass `user_id` to scope to another user (requires `stats:read:all`). Optional `limit` (1–200, default 20). Category `tenant_read`.
+Returns this month's total LLM token usage, the priced spend over a window, and the N most recent `llm_usage` rows. Defaults to the caller's own usage; pass `user_id` to scope to another user (requires `stats:read:all`). Optional `limit` (1–200, default 20), `from` / `to` (ISO 8601; default: this UTC month up to now). Category `tenant_read`.
 
 Response data:
-- `month_bucket`, `user_id`, `monthly_total_tokens`.
+- `month_bucket`, `user_id`, `monthly_total_tokens`, `window` (`from`, `to`).
+- `cost` — the same object `GET /v1/stats/llm` returns as `cost` for the same window and user: `amount`, `currency`, `price_sources[]` (`model`, `price_source`: `catalog` for SubKit's built-in list price, `override` for the operator's `tokens.prices`), `unpriced_models[]`, `unpriced_calls`, `rates_basis`. `null` with `cost_withheld` when the caller lacks `stats:read`.
 - `recent[]` — each row: `flow`, `model`, `prompt_tokens`, `completion_tokens`, `latency_ms`, `result`, `created_at`.
 
-How to read: `monthly_total_tokens` is the rollup; `recent[]` is the per-call ledger for attributing spend to a `flow`/`model` and spotting failures (`result`) or latency spikes (`latency_ms`).
+How to read: `monthly_total_tokens` is the rollup; `cost.amount` is money for the priced models only — SubKit ships list prices, so prices are configured unless a model is named in `unpriced_models`; `recent[]` is the per-call ledger for attributing spend to a `flow`/`model` and spotting failures (`result`) or latency spikes (`latency_ms`).
+
+## get_operating_figures (MCP) · GET /v1/stats/operating-figures
+
+The Übersicht's operations figures over one window (needs `stats:read`). Input: `window` (`24h` default, `7d`, `30d`) or `from` / `to`. Both surfaces answer from one reader.
+
+Response (`schema_version: "operating-figures.v1"`): `window` (`from`, `to`); `runs` (`total` started in the window, `succeeded`, `failed`, `success_rate_percent`); `connectors` (`enabled`, `not_ok`, `healthy_percent` — a state of now, not of the window); `repairs` (`decided` and `applied` in the window, `applied_percent`). Each figure carries the cockpit list it counts (`href`); a `null` percent means nothing to count, never 0.
+
+How to read: pass `window.from` / `window.to` to `list_executions` as `started_from` / `started_to` (or `GET /v1/executions?started_from=…&started_to=…`) to list exactly the runs counted. These are not the operational overview's ratios, which count runs finished in the last 24 hours and repairs by their stored status.
+
+## list_connections (MCP) · GET /v1/connections
+
+The tenant's outbound connections — OAuth grants SubKit holds at other services (needs `connection:read`). Both surfaces return the same views: `state` and `state_reason`, `auto_renew` (true: a refresh token is stored and the grant renews itself; false with `expires_at`: it ends then unless a person renews it), `expires_at`, `scopes` (permission scopes only — protocol scopes such as `offline_access` are requested by the engine and not listed), `used_by[]` (the connectors whose credential points at the grant). An expired connection no connector uses is not an attention item.
 
 ## GET /v1/diagnostics/version — version, update, drift
 
@@ -151,8 +164,11 @@ How to read: use to confirm "is this deploy current and is its schema in sync?" 
 - How many connectors/skills, total token spend? → `/v1/status` or `get_engine_status`.
 - Who am I, what tenant, what role, raw scopes? → `/v1/identity/whoami` or `whoami`.
 - May I read/write connector X (enforced)? → `GET /v1/identity/permissions?resource_type=connector&resource_id=...`.
-- Am I near my token cap? → `get_token_budget`.
+- Am I near my token cap? → `get_token_budget` (or `/v1/status.monthly_budget_state`).
+- What did the models cost this month? → `get_llm_usage.cost` or `GET /v1/stats/llm` → `cost`.
 - Where did my tokens go (per-call)? → `get_llm_usage`.
+- Runs, success rate, healthy connectors, applied repairs over a window? → `get_operating_figures` or `GET /v1/stats/operating-figures`.
+- Which outbound grants renew themselves, and who uses them? → `list_connections` or `GET /v1/connections`.
 - What needs me now? → `GET /v1/attention` (MCP: `get_attention`).
 - What's failing and what fixes are pending? → `GET /v1/operator/health-digest` (needs `stats:read`).
 - Is an update available / is the schema drifting? → `GET /v1/diagnostics/version` (needs `audit:read`).

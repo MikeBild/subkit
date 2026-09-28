@@ -79,6 +79,11 @@ export interface StatusSummary {
   tokens_month: number;
   monthly_budget_tokens: number | null;
   remaining_monthly_budget_tokens: number | null;
+  /**
+   * The month against its cap, as the engine reads it (75 % tightening, 90 %
+   * critical). Absent from an engine that predates it; null when uncapped.
+   */
+  monthly_budget_state?: "ample" | "tightening" | "critical" | null;
   /** The caller's own figures (null for system_account principals). */
   tokens_today_user: number | null;
   tokens_month_user: number | null;

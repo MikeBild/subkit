@@ -577,6 +577,18 @@
               "null"
             ]
           },
+          "monthly_budget_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "ample",
+              "tightening",
+              "critical",
+              null
+            ]
+          },
           "tokens_today_user": {
             "type": [
               "integer",
@@ -620,6 +632,7 @@
           "tokens_month",
           "monthly_budget_tokens",
           "remaining_monthly_budget_tokens",
+          "monthly_budget_state",
           "tokens_today_user",
           "tokens_month_user",
           "user_monthly_budget_tokens",
@@ -1490,6 +1503,131 @@
           "unpriced_calls",
           "price_sources",
           "rates_basis"
+        ]
+      },
+      "OperatingFigures": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "enum": [
+              "operating-figures.v1"
+            ]
+          },
+          "window": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ]
+          },
+          "runs": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "succeeded": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              },
+              "success_rate_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "href": {
+                "type": "string"
+              },
+              "failed_href": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "total",
+              "succeeded",
+              "failed",
+              "success_rate_percent",
+              "href",
+              "failed_href"
+            ]
+          },
+          "connectors": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "integer"
+              },
+              "not_ok": {
+                "type": "integer"
+              },
+              "healthy_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "href": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "enabled",
+              "not_ok",
+              "healthy_percent",
+              "href"
+            ]
+          },
+          "repairs": {
+            "type": "object",
+            "properties": {
+              "decided": {
+                "type": "integer"
+              },
+              "applied": {
+                "type": "integer"
+              },
+              "applied_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "href": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "decided",
+              "applied",
+              "applied_percent",
+              "href"
+            ]
+          }
+        },
+        "required": [
+          "schema_version",
+          "window",
+          "runs",
+          "connectors",
+          "repairs"
         ]
       },
       "StatsQualityResponse": {
@@ -23974,6 +24112,81 @@
           },
           "403": {
             "description": "Cross-user usage requires stats:read:all",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/stats/operating-figures": {
+      "get": {
+        "tags": [
+          "Stats"
+        ],
+        "summary": "The Übersicht's operations figures over one window",
+        "description": "Runs that started in the window and their success rate, the enabled connectors healthy now, and the share of repairs decided in the window that were applied — the four figures of the cockpit's operations bar, each with the cockpit list it counts.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "description": "A window ending now: 24h (default), 7d or 30d. Ignored when `from` is given."
+            },
+            "required": false,
+            "description": "A window ending now: 24h (default), 7d or 30d. Ignored when `from` is given.",
+            "name": "window",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Start of the window (ISO 8601, inclusive)."
+            },
+            "required": false,
+            "description": "Start of the window (ISO 8601, inclusive).",
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "End of the window (ISO 8601, exclusive). Default: now."
+            },
+            "required": false,
+            "description": "End of the window (ISO 8601, exclusive). Default: now.",
+            "name": "to",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatingFigures"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid window",
             "content": {
               "application/json": {
                 "schema": {
