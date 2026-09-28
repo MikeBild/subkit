@@ -16,6 +16,10 @@
 // the CURRENT shape so we can prove what was preserved.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { workflowsSchedules } from "../../db/schema/index.ts";
+import { invalidateAttention } from "../../operator/attention.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { seedPatchableWorkflow } from "../../test-helpers/patch-candidates.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
@@ -107,12 +111,28 @@ describe("mcp tools — call envelope characterization", () => {
   });
 
   test("get_attention returns the same list as GET /v1/attention", async () => {
+    // Something to list: a held schedule. An empty list would match anything.
+    const wf = await seedPatchableWorkflow(suite.http.db, suite.http.tenantId, "attn-held");
+    await suite.http.db.insert(workflowsSchedules).values({
+      tenant_id: suite.http.tenantId,
+      workflow_id: wf.workflow_id,
+      cron: "0 * * * *",
+      admission_hold: {
+        reason_code: "execution_authority_required",
+        observed_at: new Date(getTestNow()).toISOString(),
+      },
+    });
+
+    // Each read builds fresh — neither may be served the other's cached facts.
+    invalidateAttention();
     const rest = await fetch(`${suite.http.baseUrl}/v1/attention`, {
       headers: { authorization: `Bearer ${suite.http.apiKey}` },
     });
     expect(rest.status).toBe(200);
-    const expected = (await rest.json()) as { generated_at: string };
+    const expected = (await rest.json()) as { generated_at: string; items: unknown[] };
+    expect(expected.items.length).toBeGreaterThan(0);
 
+    invalidateAttention();
     const client = await suite.connect();
     const result = await client.callTool({ name: "get_attention", arguments: {} });
     expect(result.isError).not.toBe(true);
