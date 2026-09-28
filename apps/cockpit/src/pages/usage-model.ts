@@ -1,3 +1,5 @@
+import { auditHref, connectorsHref, runsHref } from "@/app/links";
+
 export interface UsageRow {
   date: string;
   executions: number;
@@ -9,11 +11,156 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-/** The 30-day window the usage page reads. The engine rejects a call without it. */
-export function usageStatsEndpoint(now = new Date()): string {
-  const from = new Date(now);
-  from.setUTCDate(from.getUTCDate() - 30);
-  return `/v1/stats/executions?bucket=day&from=${encodeURIComponent(from.toISOString())}`;
+/**
+ * The windows the operations block can be read over. The engine takes any
+ * `from` within its bucket caps (stats/bucket-window.ts): a day in hours, a
+ * week and a month in days.
+ */
+export const USAGE_WINDOWS = ["24h", "7d", "30d"] as const;
+export type UsageWindow = (typeof USAGE_WINDOWS)[number];
+
+const WINDOW_SHAPE: Record<UsageWindow, { bucket: "hour" | "day"; hours: number }> = {
+  "24h": { bucket: "hour", hours: 24 },
+  "7d": { bucket: "day", hours: 7 * 24 },
+  "30d": { bucket: "day", hours: 30 * 24 },
+};
+
+/** A window as the stats routes take it: its bucket and its start. */
+function windowQuery(window: UsageWindow, now: Date): string {
+  const shape = WINDOW_SHAPE[window];
+  const from = new Date(now.getTime() - shape.hours * 3_600_000);
+  return `bucket=${shape.bucket}&from=${encodeURIComponent(from.toISOString())}`;
+}
+
+/** The runs over one window. The engine rejects a call without a window. */
+export function usageStatsEndpoint(window: UsageWindow = "30d", now = new Date()): string {
+  return `/v1/stats/executions?${windowQuery(window, now)}`;
+}
+
+/**
+ * The audit verbs a decided repair leaves: approved by a person, applied on
+ * its own, or rejected. The repair rate is computed over exactly these, and
+ * its link opens exactly these — the number and the list it leads to are the
+ * same rows (operator/operational-overview.ts, DECIDED_REPAIRS_PATH).
+ */
+export const DECIDED_REPAIR_ACTIONS = [
+  "patch_candidate.approved",
+  "patch_candidate.auto_applied",
+  "patch_candidate.rejected",
+] as const;
+const APPLIED_REPAIR_ACTIONS = new Set<string>([
+  "patch_candidate.approved",
+  "patch_candidate.auto_applied",
+]);
+
+/** The repair decisions over one window, counted per verb by the engine. */
+export function repairStatsEndpoint(window: UsageWindow = "30d", now = new Date()): string {
+  return `/v1/stats/events?class=self_healing&group_by=action&${windowQuery(window, now)}`;
+}
+
+export interface RepairTotals {
+  decided: number;
+  applied: number;
+}
+
+/** The decided and the applied repairs of the window, from the per-verb groups. */
+export function repairTotals(envelope: unknown): RepairTotals | null {
+  if (!isRecord(envelope) || !Array.isArray(envelope.groups)) return null;
+  let decided = 0;
+  let applied = 0;
+  for (const group of envelope.groups) {
+    if (!isRecord(group) || !isRecord(group.key) || !isRecord(group.totals)) continue;
+    const action = group.key.action;
+    if (typeof action !== "string") continue;
+    if (!(DECIDED_REPAIR_ACTIONS as readonly string[]).includes(action)) continue;
+    const calls = isRecord(group.totals.calls) ? numberOrNull(group.totals.calls.total) : null;
+    decided += calls ?? 0;
+    if (APPLIED_REPAIR_ACTIONS.has(action)) applied += calls ?? 0;
+  }
+  return { decided, applied };
+}
+
+/**
+ * The connector counts the health figure is made of. Both are the engine's
+ * own totals: the enabled connectors, and the ones among them that count
+ * against health (`GET /v1/connectors?health=not_ok`) — the list the figure
+ * links to, so the number and the list cannot disagree.
+ */
+export const CONNECTORS_ENABLED_ENDPOINT = "/v1/connectors?enabled=true&limit=1";
+export const CONNECTORS_NOT_OK_ENDPOINT = "/v1/connectors?health=not_ok&limit=1";
+
+export function listTotal(envelope: unknown): number | null {
+  return isRecord(envelope) ? numberOrNull(envelope.total) : null;
+}
+
+export type OperatingFigureId = "runs" | "successRate" | "connectorHealth" | "repairRate";
+
+export interface OperatingFigure {
+  id: OperatingFigureId;
+  /** The raw figure: a count for runs, a whole percentage for the rates. */
+  value: number;
+  /** Where the value leads — a list narrowed to what it counts. Null where the reader may not open it. */
+  href: string | null;
+  /** True for a state measured now rather than over the window. */
+  current: boolean;
+}
+
+/**
+ * The operations figures, in reading order, each with the one list it opens.
+ *
+ * A figure that has nothing to say is absent, not a nought: no runs in the
+ * window means no run count and no success rate; no enabled connector means
+ * no connector health; no decided repair means no repair rate. A tile reading
+ * 0 beside nothing measured is the zero that means "not measured".
+ *
+ * Nothing here is a task — what needs someone is on Heute, and this block
+ * repeats none of it.
+ */
+export function operatingFigures(input: {
+  totals: Pick<UsageTotals, "executions" | "successRatePercent">;
+  connectors: { enabled: number | null; notOk: number | null } | null;
+  repairs: RepairTotals | null;
+  canOpen: { runs: boolean; connectors: boolean; audit: boolean };
+}): OperatingFigure[] {
+  const figures: OperatingFigure[] = [];
+  const { totals, connectors, repairs, canOpen } = input;
+  if (totals.executions !== null && totals.executions > 0) {
+    figures.push({
+      id: "runs",
+      value: totals.executions,
+      href: canOpen.runs ? runsHref() : null,
+      current: false,
+    });
+    if (totals.successRatePercent !== null)
+      figures.push({
+        id: "successRate",
+        value: totals.successRatePercent,
+        href: canOpen.runs ? runsHref({ status: "failed" }) : null,
+        current: false,
+      });
+  }
+  if (
+    connectors &&
+    connectors.enabled !== null &&
+    connectors.enabled > 0 &&
+    connectors.notOk !== null
+  ) {
+    const healthy = Math.max(connectors.enabled - connectors.notOk, 0);
+    figures.push({
+      id: "connectorHealth",
+      value: Math.round((healthy / connectors.enabled) * 100),
+      href: canOpen.connectors ? connectorsHref({ health: "not_ok" }) : null,
+      current: true,
+    });
+  }
+  if (repairs && repairs.decided > 0)
+    figures.push({
+      id: "repairRate",
+      value: Math.round((repairs.applied / repairs.decided) * 100),
+      href: canOpen.audit ? auditHref({ scope: "all", actions: DECIDED_REPAIR_ACTIONS }) : null,
+      current: false,
+    });
+  return figures;
 }
 
 function numberOrNull(value: unknown): number | null {
