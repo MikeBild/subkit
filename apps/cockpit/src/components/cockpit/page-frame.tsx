@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { FAMILY_UI_VERSION } from "@/components/family-ui";
 import { cn } from "@/lib/utils";
 
 /**
@@ -76,7 +77,7 @@ export function PageFrame({
       className="flex min-h-0 flex-1 flex-col"
       data-testid={testId}
       data-family-surface={surface}
-      data-family-contract-version="2.1"
+      data-family-contract-version={FAMILY_UI_VERSION}
     >
       {/* Header and body carry the SAME horizontal padding at every breakpoint.
           They used to differ between `sm` and `lg` — 32px against 24px — which

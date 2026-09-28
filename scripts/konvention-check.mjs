@@ -43,7 +43,7 @@ import { IDENTITY_META, standAt } from "./lib/cockpit-identity.mjs";
  * as "Standard"). Label and assert stand side by side on purpose — one says what
  * was measured against, the other says whether that is still the family's yardstick.
  */
-const KONVENTION_VERSION = "1.7";
+const KONVENTION_VERSION = "2.0";
 
 /** The version the repository copy actually names — the label, never the assert. */
 let konventionVersionImRepo = null;
