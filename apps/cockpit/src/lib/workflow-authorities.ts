@@ -139,14 +139,25 @@ export function authorityHeadline(
   authority: Pick<WorkflowAuthority, "execution_environment" | "valid_until" | "max_runs">,
   t: Translate,
   locale: Locale,
+  now: number = Date.now(),
+  timeZone?: string,
 ): string {
   const until = Date.parse(authority.valid_until);
+  // The year only when it is not this one, and always the zone: "bis 18:00"
+  // read by someone in another zone, or next year, is a different moment.
+  const sameYear =
+    Number.isFinite(until) &&
+    new Intl.DateTimeFormat("en", { year: "numeric", timeZone }).format(until) ===
+      new Intl.DateTimeFormat("en", { year: "numeric", timeZone }).format(now);
   const when = Number.isFinite(until)
     ? new Intl.DateTimeFormat(LOCALE_TAGS[locale], {
         day: "2-digit",
         month: "2-digit",
+        ...(sameYear ? {} : { year: "numeric" as const }),
         hour: "2-digit",
         minute: "2-digit",
+        timeZoneName: "short",
+        ...(timeZone ? { timeZone } : {}),
       }).format(until)
     : null;
   return [

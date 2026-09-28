@@ -10,17 +10,34 @@ const tr =
 const UUID_SHAPE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 describe("authority headline", () => {
-  // 18:00 local time, whatever the machine's zone: the headline is local.
-  const until = new Date(2026, 8, 28, 18, 0).toISOString();
+  // 16:00 UTC is 18:00 in Berlin; the zone is pinned so the test reads the same everywhere.
+  const until = new Date(Date.UTC(2026, 8, 28, 16, 0)).toISOString();
+  const now = Date.UTC(2026, 8, 20, 9, 0);
+  const zone = "Europe/Berlin";
 
-  test("says where, until when and how often — in German", () => {
+  test("says where, until when (with its zone) and how often — in German", () => {
     expect(
       authorityHeadline(
         { execution_environment: "prod", valid_until: until, max_runs: 24 },
         tr("de"),
         "de",
+        now,
+        zone,
       ),
-    ).toBe("Produktion · gültig bis 28.09., 18:00 · bis zu 24 Läufe");
+    ).toBe("Produktion · gültig bis 28.09., 18:00 MESZ · bis zu 24 Läufe");
+  });
+
+  test("names the year when the end is not this year", () => {
+    const nextYear = new Date(Date.UTC(2027, 0, 5, 11, 0)).toISOString();
+    expect(
+      authorityHeadline(
+        { execution_environment: "prod", valid_until: nextYear, max_runs: 2 },
+        tr("de"),
+        "de",
+        now,
+        zone,
+      ),
+    ).toBe("Produktion · gültig bis 05.01.2027, 12:00 MEZ · bis zu 2 Läufe");
   });
 
   test("one run is singular", () => {
@@ -29,13 +46,17 @@ describe("authority headline", () => {
         { execution_environment: "dev", valid_until: until, max_runs: 1 },
         tr("de"),
         "de",
+        now,
+        zone,
       ),
-    ).toBe("Entwicklung · gültig bis 28.09., 18:00 · bis zu 1 Lauf");
+    ).toBe("Entwicklung · gültig bis 28.09., 18:00 MESZ · bis zu 1 Lauf");
     expect(
       authorityHeadline(
         { execution_environment: "dev", valid_until: until, max_runs: 1 },
         tr("en"),
         "en",
+        now,
+        zone,
       ),
     ).toMatch(/^Development · valid until .+ · up to 1 run$/);
   });
@@ -46,6 +67,8 @@ describe("authority headline", () => {
         { execution_environment: "prod", valid_until: "not-a-date", max_runs: 3 },
         tr("de"),
         "de",
+        now,
+        zone,
       ),
     ).toBe("Produktion · bis zu 3 Läufe");
   });
