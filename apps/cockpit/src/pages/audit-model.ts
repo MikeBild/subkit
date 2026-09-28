@@ -1,5 +1,12 @@
 import type { components } from "@/api/schema";
-import { absolute, conversationHref, identifierParam, recordHref, runHref } from "@/app/links";
+import {
+  absolute,
+  conversationHref,
+  identifierParam,
+  instantParam,
+  recordHref,
+  runHref,
+} from "@/app/links";
 import type { CatalogResource } from "@/app/route-table";
 import type { TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
@@ -532,6 +539,12 @@ export interface AuditLinkFilter {
    * decided repairs this way. Empty when the link named none.
    */
   actions: string[];
+  /**
+   * A window on when the entries were written — the bounds a windowed figure
+   * counted over (the usage page's repair rate). Null where the link named none.
+   */
+  tsFrom: string | null;
+  tsTo: string | null;
 }
 
 /** At most this many verbs from one address; the engine's own lists are shorter. */
@@ -564,6 +577,8 @@ export function auditFilterFromUrl(search: string): AuditLinkFilter {
     traceId: auditTraceFromUrl(search),
     scope: isAuditScope(scope) ? scope : null,
     actions: auditActionsFromUrl(search),
+    tsFrom: instantParam(params, "ts_from"),
+    tsTo: instantParam(params, "ts_to"),
   };
 }
 
@@ -579,6 +594,8 @@ export function auditLinkParams(filter: AuditLinkFilter): Record<string, string>
   if (filter.resourceId) params.resource_id = filter.resourceId;
   if (filter.traceId) params.trace_id = filter.traceId;
   if (filter.actions.length > 0) params.action = filter.actions.join(",");
+  if (filter.tsFrom) params.ts_from = filter.tsFrom;
+  if (filter.tsTo) params.ts_to = filter.tsTo;
   return params;
 }
 
@@ -587,7 +604,19 @@ export const AUDIT_LINK_KEYS = {
   resource: ["resource_type", "resource_id"],
   trace: ["trace_id"],
   actions: ["action"],
+  window: ["ts_from", "ts_to"],
 } as const;
+
+/** No narrowing from a link at all. */
+export const NO_AUDIT_LINK: AuditLinkFilter = {
+  resourceType: null,
+  resourceId: null,
+  traceId: null,
+  scope: null,
+  actions: [],
+  tsFrom: null,
+  tsTo: null,
+};
 
 /**
  * Is this an audit record, or something else that arrived with a 200?

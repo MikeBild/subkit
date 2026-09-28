@@ -58,6 +58,7 @@ import {
   groupApiKeys,
   groupConnectedClients,
   keyState,
+  keyStateSaysUse,
   keyStateText,
   ROTATE_OVERLAP_MINUTES,
   readableSections,
@@ -440,12 +441,18 @@ function KeysSection({ query }: { query: ListQuery<ApiKeyItem> }) {
               className="mt-1 text-xs text-muted-foreground"
               data-testid={`api-key-use-${testKey}`}
             >
-              {key.last_used_at
-                ? t("apiKeys.lastUsed", {
-                    when: formatRelativeTime(locale, key.last_used_at),
-                  })
-                : t("apiKeys.neverUsed")}
-              {" · "}
+              {/* When the chip already says how long the key went unused,
+                  the use line does not say it a second time. */}
+              {keyStateSaysUse(state) ? null : (
+                <>
+                  {key.last_used_at
+                    ? t("apiKeys.lastUsed", {
+                        when: formatRelativeTime(locale, key.last_used_at),
+                      })
+                    : t("apiKeys.neverUsed")}
+                  {" · "}
+                </>
+              )}
               {key.revoked_at
                 ? t("apiKeys.revokedAt", { date: dateTime(key.revoked_at) })
                 : key.expires_at

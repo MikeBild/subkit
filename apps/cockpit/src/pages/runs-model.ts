@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { components } from "@/api/schema";
-import { auditHref, uuidParam } from "@/app/links";
+import { auditHref, instantParam, uuidParam } from "@/app/links";
 import { causeClassLabel } from "@/lib/cause-class";
 import { LOCALE_TAGS, type Locale, type TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
@@ -81,6 +81,13 @@ export interface RunsFilter {
   q: string;
   source: string;
   workflowId: string | null;
+  /**
+   * A window on when the runs started. The usage page's figures count over a
+   * window, and a figure that linked to the whole log was a number and a list
+   * that disagreed. The engine takes the stats route's own bounds.
+   */
+  startedFrom: string | null;
+  startedTo: string | null;
 }
 
 export function filterFromUrl(search: string): RunsFilter {
@@ -92,6 +99,8 @@ export function filterFromUrl(search: string): RunsFilter {
     q: (params.get("q") ?? "").slice(0, 200),
     source: isKnownRequestSource(source) ? source : "all",
     workflowId: uuidParam(params, "workflow_id"),
+    startedFrom: instantParam(params, "started_from"),
+    startedTo: instantParam(params, "started_to"),
   };
 }
 
@@ -104,6 +113,8 @@ export function executionsQuery(
   if (filter.status !== "all") params.set("status", filter.status);
   if (filter.source !== "all") params.set("request_source", filter.source);
   if (filter.workflowId) params.set("workflow_id", filter.workflowId);
+  if (filter.startedFrom) params.set("started_from", filter.startedFrom);
+  if (filter.startedTo) params.set("started_to", filter.startedTo);
   // The engine searches the whole log by the workflow's name. The list used
   // to narrow the page it had already fetched, which reads as search and is
   // not: a run outside the newest fifty could not be found by name at all.

@@ -98,6 +98,8 @@ test("the runs page can read back every filter this href sends", () => {
     q: "Product analytics hourly",
     source: "scheduler",
     workflowId: null,
+    startedFrom: null,
+    startedTo: null,
   });
 });
 

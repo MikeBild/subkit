@@ -29,11 +29,15 @@ import {
   llmStatsEndpoint,
   type OperatingFigureId,
   operatingFigures,
+  type Read,
   repairStatsEndpoint,
   repairTotals,
   USAGE_WINDOWS,
+  type UsageBounds,
   type UsageRow,
   type UsageWindow,
+  usageBounds,
+  usageBucket,
   usageRows,
   usageStatsEndpoint,
   usageTotals,
@@ -56,6 +60,12 @@ const WINDOW_OPTION: Record<UsageWindow, TranslationKey> = {
   "24h": "resource.usage.windowOption.24h",
   "7d": "resource.usage.windowOption.7d",
   "30d": "resource.usage.windowOption.30d",
+};
+
+/** The table's rows are hours over a day and days over longer windows; the sentence says which. */
+const RUNTIME_DESCRIPTION: Record<"hour" | "day", TranslationKey> = {
+  hour: "resource.usage.runtimeDescriptionHourly",
+  day: "resource.usage.runtimeDescription",
 };
 
 const WINDOW_HEADING: Record<UsageWindow, TranslationKey> = {
@@ -93,21 +103,24 @@ export function UsagePage() {
   const allowed = session.permissions.includes("stats:read");
   const title = t("resource.usage.title");
   const [axis, setAxis] = useState<ConsumptionAxis>("workflow");
-  const [span, setSpan] = useState<UsageWindow>("30d");
+  // The window as two fixed instants, set when it is chosen: the figures and
+  // the lists they link to count over the very same bounds.
+  const [bounds, setBounds] = useState<UsageBounds>(() => usageBounds("30d"));
+  const span = bounds.window;
   const can = (permission: string) => session.permissions.includes(permission);
   const canConnectors = can("connector:read");
 
   const runtime = useQuery({
-    queryKey: ["usage", span],
+    queryKey: ["usage", bounds],
     enabled: allowed,
-    queryFn: () => apiRequest<unknown>(usageStatsEndpoint(span)),
+    queryFn: () => apiRequest<unknown>(usageStatsEndpoint(bounds)),
   });
   // The repair decisions of the same window, per verb — the rows the repair
   // rate's link opens.
   const repairs = useQuery({
-    queryKey: ["usage-repairs", span],
+    queryKey: ["usage-repairs", bounds],
     enabled: allowed,
-    queryFn: () => apiRequest<unknown>(repairStatsEndpoint(span)),
+    queryFn: () => apiRequest<unknown>(repairStatsEndpoint(bounds)),
   });
   // Connector health is a state, not a trend: two totals the engine counts,
   // read only by someone who may read connectors at all.
@@ -344,25 +357,47 @@ export function UsagePage() {
       </main>
     );
 
-  // Four figures, each one link into the list it counts: all runs behind the
-  // count, the failures behind the rate, the unwell connectors behind their
-  // health, the decided repairs behind the repair rate. How long runs took is
-  // in the table below, per day.
+  // Four figures, each one link into the list it counts over the same window:
+  // the runs that started in it, the failed ones among them, the connectors
+  // unwell now, the repairs decided in it. How long runs took is in the table
+  // below. A read that failed is said as such, with a way to ask again — never
+  // an absent tile that reads like "nothing to report".
+  const read = <T,>(query: { isError: boolean }, value: T): Read<T> =>
+    query.isError ? { state: "failed" } : { state: "answered", value };
   const figures = operatingFigures({
-    totals,
+    bounds,
+    totals: read(runtime, totals),
     connectors: canConnectors
-      ? {
-          enabled: listTotal(connectorsEnabled.data),
-          notOk: listTotal(connectorsNotOk.data),
-        }
+      ? connectorsEnabled.isError || connectorsNotOk.isError
+        ? { state: "failed" }
+        : {
+            state: "answered",
+            value: {
+              enabled: listTotal(connectorsEnabled.data),
+              notOk: listTotal(connectorsNotOk.data),
+            },
+          }
       : null,
-    repairs: repairTotals(repairs.data),
+    repairs: read(repairs, repairTotals(repairs.data)),
     canOpen: {
       runs: can("execution:read"),
       connectors: canConnectors,
       audit: can("audit:read"),
     },
   });
+  // Every read a figure depends on has answered — or failed — before any
+  // figure is shown: a tile that appears late moves the ones beside it.
+  const figuresPending =
+    runtime.isPending ||
+    repairs.isPending ||
+    (canConnectors && (connectorsEnabled.isPending || connectorsNotOk.isPending));
+  const retryFigure = (id: OperatingFigureId) => {
+    if (id === "connectorHealth") {
+      void connectorsEnabled.refetch();
+      void connectorsNotOk.refetch();
+    } else if (id === "repairRate") void repairs.refetch();
+    else void runtime.refetch();
+  };
   const figureText = (id: OperatingFigureId, value: number) =>
     id === "runs" ? number.format(value) : `${value} %`;
 
@@ -592,7 +627,7 @@ export function UsagePage() {
                 </span>
               </h2>
               <p className="text-muted-foreground text-sm">
-                {t("resource.usage.runtimeDescription")}
+                {t(RUNTIME_DESCRIPTION[usageBucket(span)])}
               </p>
             </div>
             <fieldset
@@ -606,7 +641,7 @@ export function UsagePage() {
                   size="sm"
                   variant={candidate === span ? "default" : "outline"}
                   aria-pressed={candidate === span}
-                  onClick={() => setSpan(candidate)}
+                  onClick={() => setBounds(usageBounds(candidate))}
                   data-testid={`usage-window-${candidate}`}
                 >
                   {t(WINDOW_OPTION[candidate])}
@@ -614,13 +649,35 @@ export function UsagePage() {
               ))}
             </fieldset>
           </header>
-          <p className="text-muted-foreground text-xs" data-testid="usage-runs-link-note">
-            {t("resource.usage.runsLinkNote")}
-          </p>
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" data-testid="usage-summary">
-            {runtime.isPending
+            {figuresPending
               ? [0, 1, 2, 3].map((index) => <Skeleton key={index} className="h-28 w-full" />)
               : figures.map((figure) => {
+                  if (figure.state === "unreadable")
+                    return (
+                      <Card
+                        key={figure.id}
+                        size="sm"
+                        data-testid={`usage-figure-${figure.id}`}
+                        data-figure-state="unreadable"
+                      >
+                        <CardHeader>
+                          <CardDescription>{t(FIGURE_LABEL[figure.id])}</CardDescription>
+                          <p className="text-sm text-muted-foreground">
+                            {t("resource.usage.figureUnreadable")}
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-fit"
+                            onClick={() => retryFigure(figure.id)}
+                            data-testid={`usage-figure-${figure.id}-retry`}
+                          >
+                            {t("session.retry")}
+                          </Button>
+                        </CardHeader>
+                      </Card>
+                    );
                   const display = figureText(figure.id, figure.value);
                   return (
                     <Card
