@@ -53,6 +53,25 @@ export interface RiskSignal {
   value: number;
   threshold: number;
 }
+/** One thing that needs the reader now — mirrors `AttentionItem` (attention.v1). */
+export interface AttentionItem {
+  id: string;
+  class: "stopped" | "failing" | "decide";
+  severity: "critical" | "urgent";
+  kind: string;
+  subject: { kind: string; id: string; name: string | null } | null;
+  reason: string;
+  counts: { patches?: number; failures?: number; skills?: number };
+  since: string | null;
+  deadline: string | null;
+  detail: string | null;
+  actions: Array<{ verb: string; href: string; primary: boolean; permission: string }>;
+}
+export interface DigestAttention {
+  schema_version: "attention.v1";
+  sources: Record<string, "answered" | "failed" | "not_permitted">;
+  items: AttentionItem[];
+}
 export interface OperatorHealthDigest {
   generated_at: string;
   window_hours: number;
@@ -61,8 +80,19 @@ export interface OperatorHealthDigest {
   /** `open`: exact count of proposed AND reviewable candidates; `items` is capped. */
   patch_candidates: { open: number; items: DigestPatch[] };
   risk: RiskSignal[];
+  /**
+   * What needs the reader now; `headline` and `all_clear` are rendered from it.
+   * Optional because an engine older than the attention list omits it — read
+   * it through `attentionOf`.
+   */
+  attention?: DigestAttention;
   rendered: string;
   all_clear: boolean;
+}
+
+/** The digest's attention list, or an empty answered one from an engine that has none. */
+export function attentionOf(digest: OperatorHealthDigest): DigestAttention {
+  return digest.attention ?? { schema_version: "attention.v1", sources: {}, items: [] };
 }
 
 export const selfHealingMethods = {

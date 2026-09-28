@@ -9,11 +9,13 @@
 // Best-effort: any failure here must never block the REPL.
 
 import pc from "picocolors";
-import type {
-  EngineClient,
-  FailureOrigin,
-  OperatorHealthDigest,
-  RiskSeverity,
+import {
+  type AttentionItem,
+  attentionOf,
+  type EngineClient,
+  type FailureOrigin,
+  type OperatorHealthDigest,
+  type RiskSeverity,
 } from "../engine-client.ts";
 
 /** Friendly label per failure origin. Shared by the needs-attention panel so
@@ -32,12 +34,16 @@ export function totalFailureCount(digest: OperatorHealthDigest): number {
   return digest.failure_groups.reduce((acc, g) => acc + g.count, 0);
 }
 
-export async function fetchOperatorDigest(
+/**
+ * The digest, normalized — or null only when the engine could not be read.
+ * `all_clear` answers "does anything need a person now"; it does not mean
+ * the digest is empty (a warning trend is still in `risk`).
+ */
+export async function readOperatorDigest(
   client: EngineClient,
 ): Promise<OperatorHealthDigest | null> {
   try {
     const digest = await client.getOperatorHealthDigest();
-    if (digest.all_clear) return null;
     // Normalize at the chokepoint: an engine older than the risk[] field (a
     // rolling-deploy version skew) omits `risk`, and every caller reads
     // `digest.risk.length` outside a guard. Default to [] here so the chrome
@@ -46,6 +52,49 @@ export async function fetchOperatorDigest(
   } catch {
     return null;
   }
+}
+
+/** The digest the REPL shows at startup: null when nothing needs attention. */
+export async function fetchOperatorDigest(
+  client: EngineClient,
+): Promise<OperatorHealthDigest | null> {
+  const digest = await readOperatorDigest(client);
+  return digest && !digest.all_clear ? digest : null;
+}
+
+/**
+ * One attention item as a line: what, why, and where it is acted on — the
+ * engine's machine reason, with the counts behind it and the primary action's
+ * address.
+ */
+export function attentionItemLine(item: AttentionItem): string {
+  const subject = item.subject
+    ? `${item.subject.kind} ${item.subject.name ?? item.subject.id}`
+    : item.kind.replace(/_/g, " ");
+  const counts = [
+    item.counts.failures
+      ? `${item.counts.failures} failure${item.counts.failures === 1 ? "" : "s"}`
+      : null,
+    item.counts.patches
+      ? `${item.counts.patches} fix${item.counts.patches === 1 ? "" : "es"}`
+      : null,
+    item.counts.skills
+      ? `${item.counts.skills} skill proposal${item.counts.skills === 1 ? "" : "s"}`
+      : null,
+  ].filter((part): part is string => part !== null);
+  const primary = item.actions.find((action) => action.primary);
+  return [
+    `[${item.class}] ${subject}: ${item.reason.replace(/_/g, " ")}`,
+    counts.length > 0 ? ` (${counts.join(", ")})` : "",
+    primary ? ` → ${primary.verb.replace(/_/g, " ")} at ${primary.href}` : "",
+  ].join("");
+}
+
+/** The attention sources the engine could not read — never to be taken as empty. */
+export function unreadAttentionSources(digest: OperatorHealthDigest): string[] {
+  return Object.entries(attentionOf(digest).sources)
+    .filter(([, state]) => state === "failed")
+    .map(([source]) => source);
 }
 
 /** Severity → terminal color. Critical leads in red (same weight as a
@@ -60,9 +109,10 @@ const RISK_COLOR: Record<RiskSeverity, (s: string) => string> = {
  *  any others, or null when there's nothing to flag / the engine is
  *  unreachable. Never throws — login must never block on this. */
 export async function riskSummaryLine(client: EngineClient): Promise<string | null> {
-  // Reuse the normalized fetch (risk ?? [], null on all-clear/unreachable) so a
-  // version-skewed engine without `risk` can't reach a raw `.length`.
-  const digest = await fetchOperatorDigest(client);
+  // The normalized read (risk ?? [], null only when unreachable) — NOT the
+  // REPL's startup fetch: a warning trend is worth this line even when nothing
+  // needs acting on, which is exactly when `all_clear` is true.
+  const digest = await readOperatorDigest(client);
   if (!digest || digest.risk.length === 0) return null;
   const top = digest.risk[0]!;
   const color = RISK_COLOR[top.severity];
@@ -80,6 +130,19 @@ export function digestAsContext(digest: OperatorHealthDigest): string {
     digest.headline,
     "",
   ];
+  const attention = attentionOf(digest);
+  if (attention.items.length > 0) {
+    parts.push("Needs attention now (one line per item; act at the address named):");
+    for (const item of attention.items) parts.push(`- ${attentionItemLine(item)}`);
+    parts.push("");
+  }
+  const unread = unreadAttentionSources(digest);
+  if (unread.length > 0) {
+    parts.push(
+      `Could not be read: ${unread.join(", ")}. Do not tell the operator these are clear.`,
+      "",
+    );
+  }
   if (digest.failure_groups.length > 0) {
     parts.push("Failing runs (grouped by root cause):");
     for (const g of digest.failure_groups) {
@@ -108,7 +171,7 @@ export function digestAsContext(digest: OperatorHealthDigest): string {
     parts.push("");
   }
   parts.push(
-    "If the operator asks to fix or review these, use the execution/patch-candidate tools to diagnose and act. Do not invent issues beyond this digest.",
+    "If the operator asks to fix or review these, use the execution/patch-candidate tools to diagnose and act, or point at the address an item names. Do not invent issues beyond this digest.",
   );
   return parts.join("\n");
 }
