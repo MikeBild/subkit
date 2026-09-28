@@ -57,6 +57,9 @@ export function runsHref(
     status?: string | null;
     source?: string | null;
     q?: string | null;
+    /** A window on when the runs started — the bounds a windowed figure counted over. */
+    startedFrom?: string | null;
+    startedTo?: string | null;
   } = {},
 ): string {
   return withQuery("/runs", {
@@ -64,6 +67,8 @@ export function runsHref(
     status: filter.status === "all" ? null : filter.status,
     source: filter.source === "all" ? null : filter.source,
     q: filter.q,
+    started_from: filter.startedFrom,
+    started_to: filter.startedTo,
   });
 }
 
@@ -141,6 +146,9 @@ export function auditHref(
     scope?: "all" | "decisions" | "operations" | null;
     /** The engine's verbs, sent as its own comma list. */
     actions?: readonly string[] | null;
+    /** A window on when the entries were written (ISO 8601, UTC). */
+    tsFrom?: string | null;
+    tsTo?: string | null;
   } = {},
 ): string {
   return withQuery("/audit", {
@@ -149,6 +157,8 @@ export function auditHref(
     trace_id: filter.traceId,
     scope: filter.scope,
     action: filter.actions && filter.actions.length > 0 ? filter.actions.join(",") : null,
+    ts_from: filter.tsFrom,
+    ts_to: filter.tsTo,
   });
 }
 
@@ -240,6 +250,19 @@ export function identifierParam(params: URLSearchParams, key: string): string | 
   const raw = params.get(key)?.trim() ?? "";
   if (!raw || raw.length > 128 || !/^[\w.:-]+$/.test(raw)) return null;
   return raw;
+}
+
+/**
+ * An instant from the address, as the engine takes it (ISO 8601 with its
+ * offset), or nothing. A value that is not one is dropped: forwarded, the
+ * engine would refuse the whole list for it.
+ */
+export function instantParam(params: URLSearchParams, key: string): string | null {
+  const raw = params.get(key)?.trim() ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/.test(raw))
+    return null;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
 /** A record id from the address, where the engine only takes a UUID. */
