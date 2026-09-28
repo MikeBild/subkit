@@ -399,11 +399,13 @@ function backgroundLabel(t: Translate, toolName: string, running: boolean): stri
 function ChatComposer({
   disabled,
   status,
+  placeholder,
   onSend,
   onStop,
 }: {
   disabled: boolean;
   status: React.ComponentProps<typeof PromptInputSubmit>["status"];
+  placeholder: string;
   onSend: (message: string, references: ConversationReference[]) => Promise<unknown>;
   /** Sending and stopping are one affordance: the button swaps its glyph. */
   onStop: () => void;
@@ -449,7 +451,7 @@ function ChatComposer({
             ref={textareaRef}
             name="message"
             className="min-h-[46px] px-4 py-[11px] leading-6"
-            placeholder={t("chat.composer.placeholder")}
+            placeholder={placeholder}
             disabled={disabled}
             onKeyDown={(event) => {
               mentions.onKeyDown(event);
@@ -1665,16 +1667,6 @@ export function ChatPage() {
           hidden={conversationFailed}
         >
           <div className={COLUMN}>
-            {(pendingChoice || pendingForm) && (
-              <p className="mb-2 text-sm text-muted-foreground" data-testid="chat-choice-hint">
-                {t("chat.choice.hint")}
-              </p>
-            )}
-            {resume?.pending_approval?.tool_name === "ask_user_text" && !send.isPending && (
-              <p className="mb-2 text-sm text-muted-foreground" data-testid="chat-reply-hint">
-                {t("chat.replyHint")}
-              </p>
-            )}
             {(send.isPending || decide.isPending) && (
               <div
                 role="status"
@@ -1703,6 +1695,16 @@ export function ChatPage() {
                   send.isPending || decide.isPending || Boolean(pendingChoice || pendingForm)
                 }
                 status={status}
+                // Where to answer is said where the answer goes: in the field.
+                // A separate line above it repeated what the header badge and
+                // the card in the transcript already said.
+                placeholder={
+                  pendingChoice || pendingForm
+                    ? t("chat.choice.hint")
+                    : resume?.pending_approval?.tool_name === "ask_user_text"
+                      ? t("chat.replyHint")
+                      : t("chat.composer.placeholder")
+                }
                 onStop={() => cancel.mutate()}
                 onSend={(message, references) => send.mutateAsync({ message, references })}
               />

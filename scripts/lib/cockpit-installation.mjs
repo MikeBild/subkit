@@ -34,7 +34,6 @@ export async function verifyInstallationPages(page, stand, locale, capture) {
   for (const { route, marker, tabs } of PAGES) {
     await stand.visit(page, route);
     await page.getByTestId(marker).waitFor({ state: "visible" });
-    await page.waitForLoadState("networkidle");
     assertNoRawValues(await mainText(page, marker), `/${route}`, locale);
     for (const tab of tabs ?? []) {
       await page.getByTestId(`access-tab-${tab}`).click();
@@ -74,8 +73,11 @@ export async function verifyInstallationPages(page, stand, locale, capture) {
   await stand.visit(page, "usage");
   const pressure = page.getByTestId("usage-pressure-critical");
   await pressure.waitFor({ state: "visible" });
-  await pressure.click();
-  await page.waitForURL(/\/settings\?leaf=tokens\.monthly_budget/);
+  const href = await pressure.getAttribute("href");
+  if (href !== "/cockpit/settings?leaf=tokens.monthly_budget")
+    throw new Error(`/usage: the budget badge leads to ${href}, not the budget setting`);
+  // Visited through the stand, so the frame below is of a page that named itself.
+  await stand.visit(page, "settings?leaf=tokens.monthly_budget");
   await page.getByTestId("settings-list").waitFor({ state: "visible" });
   await page.waitForFunction(() => {
     const active = document.activeElement;

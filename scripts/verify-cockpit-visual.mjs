@@ -2062,7 +2062,8 @@ async function mockApi(route) {
           default_severity: "error",
           rate_limit_per_minute: 20,
           circuit_state: "open",
-          circuit_open_until: new Date(SWEEP_NOW + 4 * 60_000).toISOString(),
+          // Stamped at the request: the sweep outlives a fixed four minutes.
+          circuit_open_until: new Date(Date.now() + 4 * 60_000).toISOString(),
           consecutive_failures: 10,
           active: true,
         },
