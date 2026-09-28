@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import type { components } from "@/api/schema";
 import { ALL_ROUTE_PATHS } from "@/app/route-table";
 import { type Locale, type TranslationKey, translate } from "@/lib/i18n";
@@ -234,6 +236,11 @@ describe("the decision trail is named", () => {
     // Written by the engine, as the system, for every repair it proves it
     // cannot make — one row per closure, so on a live tenant it is common.
     "patch_candidate.closed_inapplicable",
+    // The housekeeping sweep hides OAuth registrations nobody uses; the row
+    // is the reason behind the Cockpit's "N stillgelegt" and must say so.
+    "mcp_oauth.client_retired",
+    "mcp_oauth.client_reactivated",
+    "mcp_oauth.client_disabled",
   ];
 
   test("every verb a person answers for has a name", () => {
@@ -786,4 +793,84 @@ describe("whether the audit page asks for the directory", () => {
     expect(canReadDirectory(reader("Revision", ["identity:read", "audit:read"]))).toBe(false);
     expect(canReadDirectory(reader("admin", ["audit:read"]))).toBe(false);
   });
+});
+
+// Every resource type the engine writes to the log, named — read from the
+// engine's own recorders, so a type added there without a name here fails
+// this file. The engine has no enum for `resource_type`; the recorders are
+// the catalogue. `runtime_secret` reached the "Art" column raw in production.
+const ENGINE_SRC = resolve(import.meta.dir, "../../../engine/src");
+
+function engineSources(dir: string): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      // Tests invent resource types; the schema declares the column itself.
+      if (["tests", "test", "test-helpers", "schema"].includes(entry.name)) continue;
+      files.push(...engineSources(path));
+    } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+/**
+ * Written through a variable rather than a literal at the recorder: the
+ * approval surface (`resourceTypeOf`), the object-storage bridge
+ * (`args.resourceType`) and the fallbacks in `audit.ts`, `dispatcher.ts` and
+ * `require-permission.ts`.
+ */
+const WRITTEN_THROUGH_A_VARIABLE = [
+  "mcp_tool_call",
+  "conversation_tool_call",
+  "file",
+  "execution_offload",
+  "system",
+  "tool",
+  "policy",
+];
+
+function engineResourceTypes(): string[] {
+  const types = new Set(WRITTEN_THROUGH_A_VARIABLE);
+  for (const file of engineSources(ENGINE_SRC)) {
+    const source = readFileSync(file, "utf8");
+    for (const match of source.matchAll(/(?<![a-z_])resource_type:\s*([^,\n}]+)/g)) {
+      // `surface === "mcp" ? "mcp_tool_call" : …` — the operand of a
+      // comparison is not a value the recorder writes.
+      const written = (match[1] ?? "").replace(/[!=]==?\s*"[^"]*"/g, "");
+      for (const literal of written.matchAll(/"([a-z][a-z0-9_]*)"/g))
+        if (literal[1]) types.add(literal[1]);
+    }
+  }
+  return [...types].sort();
+}
+
+const ENGINE_RESOURCE_TYPES = engineResourceTypes();
+
+describe("the engine's audited resource types", () => {
+  test("are read (a moved directory must not turn this into a vacuous pass)", () => {
+    expect(ENGINE_RESOURCE_TYPES.length).toBeGreaterThan(50);
+    expect(ENGINE_RESOURCE_TYPES).toContain("runtime_secret");
+    expect(ENGINE_RESOURCE_TYPES).toContain("mcp_oauth_client");
+  });
+
+  for (const locale of ["de", "en"] as const) {
+    const t = (key: TranslationKey, values?: Record<string, string | number>) =>
+      translate(locale, key, values);
+
+    test(`every resource type has a ${locale} name`, () => {
+      const unnamed = ENGINE_RESOURCE_TYPES.filter((type) => auditResourceLabel(type, t).machine);
+      expect(unnamed).toEqual([]);
+    });
+
+    test(`no ${locale} resource name is a word for unknown`, () => {
+      for (const type of ENGINE_RESOURCE_TYPES) {
+        const text = auditResourceLabel(type, t).text;
+        expect(text).not.toContain(t("common.unknown"));
+        expect(text).not.toBe(t("audit.resource.other"));
+      }
+    });
+  }
 });
