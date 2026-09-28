@@ -18,7 +18,9 @@ Offen stehen nur die Schlüssel, die noch Rechte halten, und die Anwendungen, f�
 eine gültige Freigabe hält. Widerrufene Schlüssel und Anwendungen ohne gültige Freigabe sind
 zugeklappt, mit ihrer Anzahl. Eine Anwendungs-Registrierung, die seit 7 Tagen niemand
 freigegeben oder benutzt hat, legt SubKit still; sie kommt zurück, sobald jemand sie wieder
-freigibt. Eine widerrufene Registrierung kommt nicht zurück.
+freigibt. Eine widerrufene Registrierung kommt nicht zurück. Registrierungen ohne verbliebene
+Tokens entfernt SubKit 30 Tage nach der Registrierung ganz — stillgelegt oder nicht; danach
+muss sich die Anwendung neu registrieren.
 
 ---
 
