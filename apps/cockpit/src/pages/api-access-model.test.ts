@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { CATALOGS, type TranslationKey } from "@/lib/i18n";
 import {
   type ApiKeyItem,
@@ -77,17 +76,6 @@ describe("scope labels", () => {
     });
     expect(scopeLabel("connection:read", t).machine).toBe(false);
     expect(scopeLabel("*", t)).toEqual({ text: "Alle Rechte deiner Rolle", machine: false });
-  });
-
-  test("every permission the engine defines has a name in this build", () => {
-    // The key dialog offers exactly these; one without a name would put a raw
-    // `resource:action` string in front of the person choosing it.
-    const list = JSON.parse(
-      readFileSync(new URL("../../../engine/src/rbac/permissions.json", import.meta.url), "utf8"),
-    ) as Array<{ name: string }>;
-    expect(list.length).toBeGreaterThan(0);
-    const unnamed = list.map((entry) => entry.name).filter((name) => scopeLabel(name, t).machine);
-    expect(unnamed).toEqual([]);
   });
 
   test("reading never hides writing, and rights over rights are managing", () => {

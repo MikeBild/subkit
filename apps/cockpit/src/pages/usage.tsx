@@ -1,7 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
-import { apiRequest } from "@/api/client";
+import { ApiError, apiRequest } from "@/api/client";
+import { absolute, runsHref, settingsHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { type CockpitColumn, DataTable } from "@/components/cockpit/data-table";
 import { PageFrame } from "@/components/cockpit/page-frame";
@@ -13,6 +14,7 @@ import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/comp
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { canReadDirectory } from "@/pages/audit-model";
 import {
   budgetPressure,
   budgetSummary,
@@ -26,7 +28,9 @@ import {
   usageRows,
   usageStatsEndpoint,
   usageTotals,
+  type WorkflowNameLookup,
   windowCost,
+  workflowNameLookup,
 } from "@/pages/usage-model";
 
 const AXIS_LABEL: Record<ConsumptionAxis, TranslationKey> = {
@@ -35,6 +39,9 @@ const AXIS_LABEL: Record<ConsumptionAxis, TranslationKey> = {
   user: "resource.usage.axis.user",
   model: "resource.usage.axis.model",
 };
+
+/** The setting the cap is, and where every "set / raise the cap" on this page leads. */
+const BUDGET_LEAF = "tokens.monthly_budget";
 
 const PRESSURE_LABEL = {
   ample: "resource.usage.pressure.ample",
@@ -90,7 +97,8 @@ export function UsagePage() {
   // person at all. Fetched only when that axis is open.
   const people = useQuery({
     queryKey: ["usage-people"],
-    enabled: allowed && axis === "user",
+    // Only asked when the engine would answer: a refused read is an audit row.
+    enabled: allowed && axis === "user" && canReadDirectory(session),
     queryFn: () =>
       apiRequest<{ items?: Array<{ id: string; email?: string; name?: string }> }>(
         "/v1/identity/users?limit=200",
@@ -104,6 +112,37 @@ export function UsagePage() {
     }
     return byId;
   }, [people.data]);
+  // Names for the workflow axis. `llm_usage` is attributed through the run,
+  // so the key is the workflow's id. Each id on screen is looked up by itself:
+  // a list capped at 200 called every workflow past the cap "no longer
+  // kept". Only a 404 says a workflow is gone; any other failure is a name
+  // this page could not read.
+  const workflowIds = useMemo(
+    () =>
+      axis === "workflow" ? spend.filter((row) => !row.unattributed).map((row) => row.key) : [],
+    [axis, spend],
+  );
+  const workflowLookups = useQueries({
+    queries: workflowIds.map((id) => ({
+      queryKey: ["usage-workflow", id],
+      enabled: allowed,
+      retry: false,
+      queryFn: () =>
+        apiRequest<{ name?: string | null; slug?: string | null }>(
+          `/v1/workflows/${encodeURIComponent(id)}`,
+        ),
+    })),
+  });
+  const workflowName = useMemo(() => {
+    const byId = new Map<string, WorkflowNameLookup>();
+    workflowIds.forEach((id, index) => {
+      const lookup = workflowLookups[index];
+      const status =
+        lookup?.error instanceof ApiError ? lookup.error.status : lookup?.error ? 0 : null;
+      byId.set(id, workflowNameLookup(lookup?.data, status));
+    });
+    return byId;
+  }, [workflowIds, workflowLookups]);
   const pressure = budgetPressure(budget);
 
   const number = useMemo(
@@ -159,6 +198,30 @@ export function UsagePage() {
               </span>
             );
           }
+          if (axis === "workflow") {
+            const lookup = workflowName.get(row.key);
+            const name = lookup?.kind === "named" ? lookup.name : null;
+            if (name)
+              return (
+                <a
+                  className="truncate underline-offset-2 hover:underline"
+                  href={absolute(workflowHref(row.key))}
+                  data-testid="usage-workflow-link"
+                >
+                  {name}
+                </a>
+              );
+            if (!lookup || lookup.kind === "pending") return MISSING;
+            return (
+              <span className="truncate text-muted-foreground">
+                {t(
+                  lookup.kind === "gone"
+                    ? "resource.usage.unknownWorkflow"
+                    : "resource.usage.workflowUnreadable",
+                )}
+              </span>
+            );
+          }
           return <span className="truncate">{row.key}</span>;
         },
         { width: "w-[46%]" },
@@ -191,7 +254,7 @@ export function UsagePage() {
         { width: "w-[17%]" },
       ),
     ];
-  }, [t, dateTime, axis, number, percent, personName, people.error]);
+  }, [t, dateTime, axis, number, percent, personName, people.error, workflowName]);
 
   const columns = useMemo<CockpitColumn<UsageRow>[]>(() => {
     const column = tableColumns<UsageRow>({ t, dateTime });
@@ -231,13 +294,20 @@ export function UsagePage() {
       </main>
     );
 
-  const runtimeCards: Array<[TranslationKey, string]> = [
-    ["resource.usage.executions", totals.executions === null ? MISSING : String(totals.executions)],
-    ["resource.usage.averageDuration", formatDurationMs(totals.averageDurationMs)],
-    ["resource.usage.p95Duration", formatDurationMs(totals.p95DurationMs)],
+  // The count and the rate are about runs, and the run log is where a reader
+  // checks them: all runs behind the count, the failures behind the rate.
+  const runtimeCards: Array<[TranslationKey, string, string | null]> = [
+    [
+      "resource.usage.executions",
+      totals.executions === null ? MISSING : String(totals.executions),
+      runsHref(),
+    ],
+    ["resource.usage.averageDuration", formatDurationMs(totals.averageDurationMs), null],
+    ["resource.usage.p95Duration", formatDurationMs(totals.p95DurationMs), null],
     [
       "resource.usage.successRate",
       totals.successRatePercent === null ? MISSING : `${totals.successRatePercent}%`,
+      runsHref({ status: "failed" }),
     ],
   ];
 
@@ -317,7 +387,16 @@ export function UsagePage() {
                     {t("resource.usage.budgetUnreadable")}
                   </span>
                 ) : budget.budgetTokens === null ? (
-                  <span data-testid="usage-budget-uncapped">{t("resource.usage.noCapHint")}</span>
+                  <span data-testid="usage-budget-uncapped">
+                    {t("resource.usage.noCapHint")}{" "}
+                    <a
+                      className="font-medium text-foreground underline underline-offset-2"
+                      href={absolute(settingsHref(BUDGET_LEAF))}
+                      data-testid="usage-set-cap"
+                    >
+                      {t("resource.usage.setCap")}
+                    </a>
+                  </span>
                 ) : (
                   <>
                     {/* Only when the title is an AMOUNT. With no rates the
@@ -337,16 +416,29 @@ export function UsagePage() {
                       {t("resource.usage.remaining")}: {tokens(budget.remainingTokens)}
                     </span>
                     {pressure ? (
-                      <Badge
-                        variant={pressure === "critical" ? "destructive" : "secondary"}
+                      // Red with its way to the cause (§1): the cap is a
+                      // setting, and the badge opens it.
+                      <a
+                        href={absolute(settingsHref(BUDGET_LEAF))}
                         data-testid={`usage-pressure-${pressure}`}
+                        aria-label={`${t(PRESSURE_LABEL[pressure])} — ${t("resource.usage.raiseCap")}`}
                       >
-                        {t(PRESSURE_LABEL[pressure])}
-                      </Badge>
+                        <Badge variant={pressure === "critical" ? "destructive" : "secondary"}>
+                          {t(PRESSURE_LABEL[pressure])}
+                        </Badge>
+                      </a>
                     ) : null}
                   </>
                 )}
               </CardFooter>
+              {!status.error && budget.budgetTokens !== null ? (
+                <p
+                  className="px-4 pb-3 text-muted-foreground text-xs"
+                  data-testid="usage-cap-consequence"
+                >
+                  {t("resource.usage.capReached")}
+                </p>
+              ) : null}
             </Card>
           )}
 
@@ -448,14 +540,29 @@ export function UsagePage() {
               {t("resource.usage.runtimeDescription")}
             </p>
           </header>
+          <p className="text-muted-foreground text-xs" data-testid="usage-runs-link-note">
+            {t("resource.usage.runsLinkNote")}
+          </p>
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" data-testid="usage-summary">
             {runtime.isPending
               ? [0, 1, 2, 3].map((index) => <Skeleton key={index} className="h-28 w-full" />)
-              : runtimeCards.map(([label, display], index) => (
+              : runtimeCards.map(([label, display, href], index) => (
                   <Card key={label} size="sm" data-testid={`usage-summary-${index}`}>
                     <CardHeader>
                       <CardDescription>{t(label)}</CardDescription>
-                      <CardTitle className="text-2xl tabular-nums">{display}</CardTitle>
+                      <CardTitle className="text-2xl tabular-nums">
+                        {href ? (
+                          <a
+                            className="underline-offset-4 hover:underline"
+                            href={absolute(href)}
+                            data-testid={`usage-summary-${index}-link`}
+                          >
+                            {display}
+                          </a>
+                        ) : (
+                          display
+                        )}
+                      </CardTitle>
                     </CardHeader>
                   </Card>
                 ))}
