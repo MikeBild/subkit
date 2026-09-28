@@ -35,3 +35,21 @@ export function memberCountAfterMove(
   const existing = counts.get(category) ?? 0;
   return currentCategory === category ? existing : existing + 1;
 }
+
+/**
+ * A block's name as a reader sees it.
+ *
+ * A category IS a slug prefix (§10: categories come from the data), so the
+ * column printed `mission-control` — a machine word where a name belongs
+ * (§5). The name is derived from the slug, never from a table of known
+ * blocks: a block created tomorrow reads as well as one that exists today.
+ * The uncategorised family has its own word, handed in by the caller.
+ */
+export function humanizeCategory(category: string, uncategorized: string): string {
+  if (!category.trim() || category === UNCATEGORIZED) return uncategorized;
+  return category
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join(" ");
+}

@@ -19,6 +19,7 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
+import { loadExecutionOutcome } from "./outcome.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./recovery.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./tests/setup.ts";
 
@@ -65,6 +66,29 @@ async function insertRunningExecution(
 }
 
 describe("recoverCrashedExecutions", () => {
+  test("a run that crashed between steps still records why it stopped", async () => {
+    const { workflow_id, version_id } = await createWorkflowRow(ctx, {
+      name: "crash-recovery-between-steps",
+      slug: "crash-recovery-between-steps",
+      timeout_ms: 1_000,
+      steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+    });
+    // No running step row: the worker died after one step finished and
+    // before the next one started.
+    const stuckId = await insertRunningExecution(workflow_id, version_id, 5_000);
+    await recoverCrashedExecutions(ctx.testDb.db, { now: new Date(TEST_NOW_MS) });
+    const row = (
+      await ctx.testDb.db.select().from(executions).where(eq(executions.id, stuckId))
+    )[0];
+    if (!row) throw new Error("execution row missing");
+    expect(row.status).toBe("timed_out");
+    expect(row.failure?.error_code).toBe("engine_crash_recovery");
+    const outcome = await loadExecutionOutcome(ctx.tenantId, row, ctx.testDb.db);
+    expect(outcome.kind).toBe("failed");
+    expect(outcome.cause_class).toBe("timeout");
+    expect(outcome.error_code).toBe("engine_crash_recovery");
+  });
+
   test("uses the immutable workflow version bound to the execution", async () => {
     const { workflow_id, version_id } = await createWorkflowRow(ctx, {
       name: "crash-recovery-version-binding",

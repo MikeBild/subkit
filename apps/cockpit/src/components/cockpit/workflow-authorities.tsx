@@ -23,18 +23,40 @@ import { reviewTarget } from "@/lib/review-target";
 import {
   AUTHORITY_EFFECT_KEYS,
   AUTHORITY_STATE_KEYS,
+  authorityHeadline,
+  authorityVersionLabel,
   observedAuthorityState,
   type WorkflowAuthority,
   type WorkflowAuthorityList,
 } from "@/lib/workflow-authorities";
+import { shortIdentifier } from "@/pages/audit-model";
 
-function AuthorityBoundary({ authority }: { authority: WorkflowAuthority }) {
+/**
+ * An identifier where a reader looks: shortened, whole in the `title`. Never
+ * the raw 36 characters — the card headings once printed 52 of them on one
+ * production workflow page.
+ */
+function ShortId({ value }: { value: string }) {
+  const shown = shortIdentifier(value);
+  return <span title={shown === value ? undefined : value}>{shown}</span>;
+}
+
+function AuthorityBoundary({
+  authority,
+  versions,
+}: {
+  authority: WorkflowAuthority;
+  versions: ReadonlyMap<string, number>;
+}) {
   const { t, locale } = useI18n();
+  const version = authorityVersionLabel(authority.workflow_version_id, versions);
   return (
     <dl className="grid min-w-0 gap-3 text-sm sm:grid-cols-2">
       <div>
         <dt className="text-muted-foreground">{t("authority.version")}</dt>
-        <dd className="break-all font-mono text-xs">{authority.workflow_version_id}</dd>
+        <dd data-testid="authority-version" title={version.full ?? undefined}>
+          {version.text}
+        </dd>
       </div>
       <div>
         <dt className="text-muted-foreground">{t("authority.environment")}</dt>
@@ -86,7 +108,11 @@ function AuthorityBoundary({ authority }: { authority: WorkflowAuthority }) {
                   <div className="break-all text-muted-foreground">
                     {t("authority.connector")}
                     {": "}
-                    {effect.connector_id ?? t("authority.directRequest")}
+                    {effect.connector_id ? (
+                      <ShortId value={effect.connector_id} />
+                    ) : (
+                      t("authority.directRequest")
+                    )}
                   </div>
                   <div className="break-all text-muted-foreground">
                     {effect.target ?? t("authority.unboundTarget")}
@@ -99,14 +125,24 @@ function AuthorityBoundary({ authority }: { authority: WorkflowAuthority }) {
       </div>
       <div className="min-w-0 sm:col-span-2">
         <dt className="text-muted-foreground">{t("authority.digest")}</dt>
-        <dd className="break-all font-mono text-xs">{authority.effect_manifest_digest}</dd>
+        {/* A hash is evidence, not reading matter: its head identifies it, the
+            whole stays on the title for anyone comparing it. */}
+        <dd className="font-mono text-xs" title={authority.effect_manifest_digest}>
+          {`${authority.effect_manifest_digest.slice(0, 12)}…`}
+        </dd>
       </div>
     </dl>
   );
 }
 
-function RevokeAuthority({ authority }: { authority: WorkflowAuthority }) {
-  const { t } = useI18n();
+function RevokeAuthority({
+  authority,
+  versions,
+}: {
+  authority: WorkflowAuthority;
+  versions: ReadonlyMap<string, number>;
+}) {
+  const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
   const client = useQueryClient();
   const revoke = useMutation({
@@ -140,8 +176,16 @@ function RevokeAuthority({ authority }: { authority: WorkflowAuthority }) {
           <DialogTitle>{t("authority.revokeTitle")}</DialogTitle>
           <DialogDescription>{t("authority.revokeDescription")}</DialogDescription>
         </DialogHeader>
-        <p className="break-all font-mono text-xs">{authority.id}</p>
-        <AuthorityBoundary authority={authority} />
+        {/* The exact approval this revokes, named by what it permits; its id
+            stays on the title for anyone who needs to quote it. */}
+        <p
+          className="text-sm font-medium"
+          title={authority.id}
+          data-testid="authority-revoke-target"
+        >
+          {authorityHeadline(authority, t, locale)}
+        </p>
+        <AuthorityBoundary authority={authority} versions={versions} />
         {revoke.error && (
           <Alert variant="destructive">
             <AlertTitle>{t("authority.revokeFailed")}</AlertTitle>
@@ -186,7 +230,7 @@ export function WorkflowAuthorities({
   };
   canWrite: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
@@ -223,6 +267,13 @@ export function WorkflowAuthorities({
       ),
   });
   const target = reviewTarget(workflow, draft.data);
+  // The versions this page can name by number: the running one and the
+  // prepared one. Any other version id is shortened, never printed whole.
+  const versions = new Map<string, number>();
+  if (workflow.current_version_id && typeof workflow.current_version === "number")
+    versions.set(workflow.current_version_id, workflow.current_version);
+  if (draft.data?.version_id && typeof draft.data.version === "number")
+    versions.set(draft.data.version_id, draft.data.version);
   const versionLabel = target
     ? t(target.kind === "prepared" ? "authority.versionPrepared" : "authority.versionRunning", {
         version: target.version == null ? "—" : `v${target.version}`,
@@ -305,13 +356,21 @@ export function WorkflowAuthorities({
           return (
             <Card key={authority.id} data-testid={`authority-${authority.id}`}>
               <CardHeader>
-                <CardTitle>
-                  <h3 className="break-all font-mono text-xs">{authority.id}</h3>
-                </CardTitle>
-                <CardDescription className="flex flex-wrap items-center gap-2">
+                <CardTitle className="flex flex-wrap items-center gap-2">
+                  {/* Headed by what the reader decides by; the id is on the
+                      title, for quoting, and nowhere on the page. */}
+                  <h3
+                    className="text-sm font-semibold"
+                    title={authority.id}
+                    data-testid="authority-headline"
+                  >
+                    {authorityHeadline(authority, t, locale)}
+                  </h3>
                   <Badge variant={state === "approved" ? "secondary" : "outline"}>
                     {t(AUTHORITY_STATE_KEYS[state])}
                   </Badge>
+                </CardTitle>
+                <CardDescription className="flex flex-wrap items-center gap-2">
                   <span>
                     {t(
                       !authority.active_version
@@ -324,10 +383,10 @@ export function WorkflowAuthorities({
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
-                <AuthorityBoundary authority={authority} />
+                <AuthorityBoundary authority={authority} versions={versions} />
                 {canWrite && !authority.revoked_at && (
                   <div>
-                    <RevokeAuthority authority={authority} />
+                    <RevokeAuthority authority={authority} versions={versions} />
                   </div>
                 )}
               </CardContent>

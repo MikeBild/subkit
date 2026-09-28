@@ -11,7 +11,7 @@ import {
   rejectPatchCandidate,
   rejectSkillCandidate,
 } from "@/api/decisions";
-import { workflowHref } from "@/app/links";
+import { uuidParam, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { useDecisionQueue } from "@/app/use-decisions";
 import { DecisionCard } from "@/components/cockpit/decision-card";
@@ -31,8 +31,10 @@ import {
   type DecidableItem,
   type DecidableKind,
   type DecisionItem,
+  decisionWorkflowId,
   filterByKinds,
   isDecidable,
+  isWholeQueue,
   partitionByUrgency,
   QUEUE_KINDS,
   type QueueKind,
@@ -120,6 +122,14 @@ export function DecisionsPage() {
   const [focus, setFocus] = useState<DecisionFocus | null>(() =>
     typeof window === "undefined" ? null : readFocus(window.location.search),
   );
+  // One workflow, when a link asked for it: "Reparatur prüfen" on a failed
+  // run leads here with its workflow, and a queue that ignored it made the
+  // reader search the whole list for the one card the link was about.
+  const [workflowFilter, setWorkflowFilter] = useState<string | null>(() =>
+    typeof window === "undefined"
+      ? null
+      : uuidParam(new URLSearchParams(window.location.search), "workflow_id"),
+  );
   const [section, setSection] = useState<"decisions" | "suggestions" | "questions">("decisions");
   const [visibleCount, setVisibleCount] = useState(25);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -140,12 +150,17 @@ export function DecisionsPage() {
   function showWholeQueue(): void {
     const view = resetView();
     setFocus(view.focus);
-    if (typeof window !== "undefined")
+    setWorkflowFilter(null);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(searchWithoutBucket(window.location.search));
+      params.delete("workflow_id");
+      const query = params.toString();
       window.history.replaceState(
         window.history.state,
         "",
-        `${window.location.pathname}${searchWithoutBucket(window.location.search)}`,
+        `${window.location.pathname}${query ? `?${query}` : ""}`,
       );
+    }
     persist({ ...preferences, kinds: view.kinds });
   }
 
@@ -196,7 +211,7 @@ export function DecisionsPage() {
   // `overdue` and `other` split the SAME proposals by age, at the same 72 hours
   // the tile counts with (AGED_AFTER_DAYS). Arriving from either tile and
   // seeing both halves is how a number stops meaning anything.
-  const filtered =
+  const allForFocus =
     focus === "blocked" || focus === "failing"
       ? []
       : focus === null
@@ -210,10 +225,20 @@ export function DecisionsPage() {
   // counted. Used to be done by SETTING the chip to "schedule" — one kind that
   // covers two sections, so Blocked listed the failing workflows as well, and
   // Failing was never read at all and narrowed nothing.
-  const held = focus === "blocked" || (focus === null && byKind) ? queue.heldSchedules : [];
+  const filtered = workflowFilter
+    ? allForFocus.filter((item) => decisionWorkflowId(item) === workflowFilter)
+    : allForFocus;
+  const heldForFocus = focus === "blocked" || (focus === null && byKind) ? queue.heldSchedules : [];
+  const held = workflowFilter
+    ? heldForFocus.filter((schedule) => schedule.workflow_id === workflowFilter)
+    : heldForFocus;
   // The opposite of a held schedule, and it shares the chip: both are "a
   // scheduled workflow needs you". It is its own tile, though.
-  const failing = focus === "failing" || (focus === null && byKind) ? queue.failingWorkflows : [];
+  const failingForFocus =
+    focus === "failing" || (focus === null && byKind) ? queue.failingWorkflows : [];
+  const failing = workflowFilter
+    ? failingForFocus.filter((group) => group.workflow_id === workflowFilter)
+    : failingForFocus;
   const initial = filtered.slice(0, visibleCount);
   const urgency = partitionByUrgency(initial, Date.now());
   const { current, aged } = urgency.deferred;
@@ -223,12 +248,19 @@ export function DecisionsPage() {
     preferences.kinds.length > 0 &&
     open.length + queue.heldSchedules.length + queue.failingWorkflows.length >
       filtered.length + held.length + failing.length;
+  // "Alle" is pressed only while nothing narrows the queue — a link's
+  // workflow narrows it as much as a chip or a tile does.
+  const wholeQueueShown = isWholeQueue({
+    kinds: preferences.kinds.length,
+    focus,
+    workflowFilter,
+  });
   const display = queueDisplayState({
     shown: filtered.length,
     held: held.length,
     failing: failing.length,
     total: open.length + queue.heldSchedules.length + queue.failingWorkflows.length,
-    narrowed: isFiltered || focus !== null,
+    narrowed: isFiltered || focus !== null || workflowFilter !== null,
   });
   // The breakdown comes from the same count as the badge, not from the rows the
   // page happens to hold: the two disagreed the moment a source hit its cap.
@@ -410,10 +442,10 @@ export function DecisionsPage() {
                 data-family-slot="kind-filters"
               >
                 <Button
-                  variant={preferences.kinds.length === 0 && focus === null ? "default" : "outline"}
+                  variant={wholeQueueShown ? "default" : "outline"}
                   size="sm"
                   data-testid="decisions-chip-all"
-                  aria-pressed={preferences.kinds.length === 0 && focus === null}
+                  aria-pressed={wholeQueueShown}
                   onClick={showWholeQueue}
                 >
                   {t("decisions.chip.all")}
@@ -422,6 +454,27 @@ export function DecisionsPage() {
                   <Badge variant="secondary" data-testid="decisions-focus">
                     {t(FOCUS_LABEL[focus])}
                   </Badge>
+                )}
+                {/* The narrowing a link brought, said out loud and removable. */}
+                {workflowFilter !== null && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    data-testid="decisions-workflow-filter"
+                    onClick={() => {
+                      setWorkflowFilter(null);
+                      const params = new URLSearchParams(window.location.search);
+                      params.delete("workflow_id");
+                      const query = params.toString();
+                      window.history.replaceState(
+                        window.history.state,
+                        "",
+                        `${window.location.pathname}${query ? `?${query}` : ""}`,
+                      );
+                    }}
+                  >
+                    {t("decisions.workflowFilter")}
+                  </Button>
                 )}
                 {/* Art-Chips only. §8.5 forbids a chip that puts the queue into a past
               STATE — decided, discarded, deferred — and there is none: this list

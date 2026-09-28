@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { memberCountAfterMove, recategorizedSlug } from "./workflow-category";
+import { humanizeCategory, memberCountAfterMove, recategorizedSlug } from "./workflow-category";
 
 describe("recategorized slug", () => {
   test("swaps the current family prefix for the target one", () => {
@@ -44,5 +44,24 @@ describe("member count after a move", () => {
 
   test("treats an unknown target as its first member", () => {
     expect(memberCountAfterMove(counts, "radar", "fresh")).toBe(1);
+  });
+});
+
+describe("humanizeCategory", () => {
+  const cases: Array<[string, string]> = [
+    ["mission-control", "Mission Control"],
+    ["radar", "Radar"],
+    ["mikebild-dev", "Mikebild Dev"],
+    ["company_reporting", "Company Reporting"],
+    ["other", "Ohne Block"],
+    ["", "Ohne Block"],
+  ];
+  for (const [slug, expected] of cases)
+    test(`${JSON.stringify(slug)} reads "${expected}"`, () => {
+      expect(humanizeCategory(slug, "Ohne Block")).toBe(expected);
+    });
+
+  test("never prints a hyphenated slug", () => {
+    for (const [slug] of cases) expect(humanizeCategory(slug, "Ohne Block")).not.toContain("-");
   });
 });

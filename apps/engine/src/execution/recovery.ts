@@ -151,6 +151,17 @@ export async function recoverCrashedExecutions(
           .set({
             status: terminalStatus,
             finished_at: now,
+            // The run's own failure record, as the engine's finalize writes
+            // it. A crash between steps leaves no step row to carry a cause;
+            // without this the run reads failed-without-a-cause forever.
+            failure: {
+              step_id: null,
+              error_code: recoveryReason,
+              error_message: abortRequested
+                ? "execution abort recovered after worker restart"
+                : "execution timeout recovered after worker restart",
+            },
+            output_contract: "none",
           })
           // status='running' is repeated in the WHERE so a competing
           // engine instance that already promoted this row loses the
