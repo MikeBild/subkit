@@ -905,7 +905,7 @@ export async function refreshDueConnections(
 export async function disconnectConnection(
   db: Db,
   args: { tenant_id: string; id: string; actor_id: string | null },
-): Promise<{ name: string; used_by_connectors: number }> {
+): Promise<{ name: string }> {
   const row = await requireConnection(db, args.tenant_id, args.id);
   const names = secretNames(row.tenant_id, row.name);
   for (const [name, version] of [
@@ -948,7 +948,7 @@ export async function disconnectConnection(
     },
     db,
   );
-  return { name: row.name, used_by_connectors: Number(usage?.n ?? 0) };
+  return { name: row.name };
 }
 
 export type { DiscoveryResult };

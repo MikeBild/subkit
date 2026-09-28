@@ -71,10 +71,12 @@ export function connectorAuthState(
   const grant = credential?.connection?.state;
   if (grant === "expired" || grant === "unreadable") return "expired";
   if (connector.auth_type === "none") return "not_required";
-  // Read and empty: nothing is stored, which is not "not proven yet".
-  if (credential === null) return "credentials_missing";
   // A credential that was accepted at least once and never rejected since.
   if (connector.health_state === "ok" && !connector.auth_failed_at) return "connected";
+  // Read and empty, and nothing proves the connector works: nothing is stored.
+  // Only here — a connector whose login lives outside the credential table
+  // (a DSN, an MCP sign-in) and is healthy stays "connected".
+  if (credential === null) return "credentials_missing";
   return "unproven";
 }
 
