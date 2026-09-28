@@ -616,15 +616,13 @@ const EN = {
   "familyFailure.notFound.title": "Page not found",
   "familyFailure.notFound.description": "This address is not part of the current cockpit.",
   "familyFailure.fatal.title": "This page could not be shown",
-  "familyFailure.fatal.description":
-    "The view could not be loaded. Try again or return to the overview.",
+  "familyFailure.fatal.description": "The view could not be loaded. Try again or return to Today.",
   "familyFailure.bootstrap.description": "The cockpit could not be loaded. Try again.",
   "familyFailure.retry": "Try again",
-  "familyFailure.overview": "Back to the overview",
+  "familyFailure.today": "Back to Today",
   "error.title": "This page could not be shown",
   "error.description":
-    "Something in this view failed while rendering. Nothing was changed \u2014 try again, or go back to the overview.",
-  "error.backToOverview": "Back to the overview",
+    "Something in this view failed while rendering. Nothing was changed \u2014 try again, or go back to Today.",
   "error.detail": "Technical detail",
   "resource.inbox.title": "Inbox",
   "resource.inbox.description": "Pending notifications and work that needs attention.",
@@ -3193,15 +3191,14 @@ const DE: Record<TranslationKey, string> = {
   "familyFailure.notFound.description": "Diese Adresse gehört nicht zum aktuellen Cockpit.",
   "familyFailure.fatal.title": "Diese Seite konnte nicht angezeigt werden",
   "familyFailure.fatal.description":
-    "Die Ansicht konnte nicht geladen werden. Versuche es erneut oder kehre zur Übersicht zurück.",
+    "Die Ansicht konnte nicht geladen werden. Versuche es erneut oder kehre zu Heute zurück.",
   "familyFailure.bootstrap.description":
     "Das Cockpit konnte nicht geladen werden. Versuche es erneut.",
   "familyFailure.retry": "Erneut versuchen",
-  "familyFailure.overview": "Zurück zur Übersicht",
+  "familyFailure.today": "Zurück zu Heute",
   "error.title": "Diese Seite ließ sich nicht anzeigen",
   "error.description":
-    "Beim Aufbau dieser Ansicht ist etwas schiefgegangen. Geändert wurde nichts \u2014 versuch es erneut oder geh zurück zur Übersicht.",
-  "error.backToOverview": "Zurück zur Übersicht",
+    "Beim Aufbau dieser Ansicht ist etwas schiefgegangen. Geändert wurde nichts \u2014 versuch es erneut oder geh zurück zu Heute.",
   "error.detail": "Technische Einzelheit",
   "resource.inbox.title": "Eingang",
   "resource.inbox.description":
