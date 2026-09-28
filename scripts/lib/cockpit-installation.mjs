@@ -9,9 +9,10 @@
 // focused budget field, and that a confirmation stands between the click and
 // a role change or a revoked grant.
 
+// Personen & Rechte is one page; its sections are tabs whose content is the
+// section's own list.
 const PAGES = [
-  { route: "people", marker: "admin-people" },
-  { route: "access", marker: "admin-access", tabs: ["roles", "groups", "grants", "permissions"] },
+  { route: "people", marker: "admin-people", tabs: ["people", "roles", "groups", "grants"] },
   { route: "notifications", marker: "admin-notifications" },
   { route: "settings", marker: "admin-settings" },
   { route: "usage", marker: "resource-usage" },
@@ -36,7 +37,7 @@ export async function verifyInstallationPages(page, stand, locale, capture) {
     await page.getByTestId(marker).waitFor({ state: "visible" });
     assertNoRawValues(await mainText(page, marker), `/${route}`, locale);
     for (const tab of tabs ?? []) {
-      await page.getByTestId(`access-tab-${tab}`).click();
+      await page.getByTestId(`people-tab-${tab}`).click();
       await page.getByTestId(`${tab}-list`).waitFor({ state: "visible" });
       assertNoRawValues(await mainText(page, marker), `/${route} · ${tab}`, locale);
     }
@@ -58,8 +59,7 @@ export async function verifyInstallationPages(page, stand, locale, capture) {
   await roleConfirm.waitFor({ state: "hidden" });
 
   // A grant is revoked only after its consequence was read.
-  await stand.visit(page, "access");
-  await page.getByTestId("access-tab-grants").click();
+  await stand.visit(page, "people?section=grants");
   await page.getByTestId("grants-list").waitFor({ state: "visible" });
   await page.getByTestId("grant-revoke-0").click();
   const revokeConfirm = page.getByTestId("grant-revoke-confirm");

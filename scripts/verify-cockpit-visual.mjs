@@ -153,7 +153,12 @@ const routes = [
   // The repair rate's drilldown: the decided repairs, by the engine's verbs.
   "audit?scope=all&action=patch_candidate.approved,patch_candidate.auto_applied,patch_candidate.rejected",
   "usage",
+  // Personen & Rechte, at each of its sections, and the old Zugriff address,
+  // which must land on the roles.
   "people",
+  "people?section=roles",
+  "people?section=groups",
+  "people?section=grants",
   "access",
   "api-access",
   // The old Kontoverbindungen address, with a callback result in its query:
@@ -2553,8 +2558,10 @@ function markerFor(route) {
   if (path === "connections") return '[data-testid="connection-failed"]';
   // Installation surfaces name their frame after the section, not the record
   // type.
-  if (["people", "access", "api-access", "settings"].includes(path))
-    return `[data-testid="admin-${path}"]`;
+  if (path === "access") return '[data-testid="roles-section"]';
+  if (path === "people" && query.startsWith("section="))
+    return `[data-testid="${query.slice("section=".length)}-section"]`;
+  if (["people", "api-access", "settings"].includes(path)) return `[data-testid="admin-${path}"]`;
   // Connectors render through the shared catalog table like every other list.
   if (["workflows", "connectors", "knowledge", "skills", "files"].includes(path))
     return `[data-testid="catalog-${path}"]`;
@@ -3446,6 +3453,11 @@ for (const locale of variants) {
       if (route === "settings")
         await assertAuthProviderSettings(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "access") {
+        const landed = new URL(page.url());
+        if (landed.pathname !== "/cockpit/people" || landed.searchParams.get("section") !== "roles")
+          throw new Error(
+            `${locale.artifact}/${viewport.name}/access lands on ${landed.pathname}${landed.search}, not the roles of /people`,
+          );
         const localizedRoles =
           locale.name === "de"
             ? ["Metrik-Abruf", "Portalnutzer", "Kann Prometheus-Metriken", "Portal-Zugriffstoken"]
