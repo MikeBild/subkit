@@ -53,6 +53,10 @@ describe("connector auth state", () => {
     );
     // Not read at all (the catalogue list): no claim either way.
     expect(connectorAuthState({ auth_type: "bearer", health_state: "degraded" })).toBe("unproven");
+    // Healthy and never rejected is proof enough, wherever the login is kept.
+    expect(connectorAuthState({ auth_type: "bearer", health_state: "ok" }, null, null)).toBe(
+      "connected",
+    );
     // A connector that needs none has nothing to miss.
     expect(connectorAuthState({ auth_type: "none", health_state: "ok" }, null, null)).toBe(
       "not_required",
