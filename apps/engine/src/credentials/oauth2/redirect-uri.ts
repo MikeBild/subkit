@@ -53,7 +53,7 @@ export function buildOAuthRedirectUri(hints?: OAuthOriginHints): string | null {
   return `${origin}${OAUTH_CALLBACK_PATH}`;
 }
 
-/** Callback for outbound connections (Cockpit "Anbindungen"); same precedence as above. */
+/** Callback for outbound connections (Cockpit "Kontoverbindungen"); same precedence as above. */
 export const CONNECTION_CALLBACK_PATH = "/v1/connections/callback";
 
 export function buildConnectionCallbackUri(hints?: OAuthOriginHints): string | null {

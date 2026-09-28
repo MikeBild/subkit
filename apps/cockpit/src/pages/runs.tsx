@@ -152,7 +152,6 @@ function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string)
       consequence={t("runs.rerun.consequence", { workflow: runName(run, t) })}
       confirmLabel={t("runs.rerun.confirm")}
       onConfirm={() => rerun.mutateAsync()}
-      pending={rerun.isPending}
       error={
         rerun.error
           ? rerunFailureText(rerun.error instanceof ApiError ? rerun.error : null, t)

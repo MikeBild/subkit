@@ -49,6 +49,18 @@ describe("cockpit navigation contract", () => {
     ]);
   });
 
+  test("Zugangsdaten is the one rights entry, shown for any of its three sections", () => {
+    const labels = (permissions: string[]) =>
+      visibleNavigation(permissions)
+        .flatMap((group) => group.items)
+        .map((item) => item.path);
+    for (const permission of ["api_key:read", "mcp_oauth_client:read", "connection:read"]) {
+      expect(labels([permission])).toEqual(["/api-access"]);
+    }
+    const paths = NAVIGATION.flatMap((group) => group.items).map((item) => item.path);
+    expect(paths).not.toContain("/connections");
+  });
+
   test("uses the same read permissions as the engine routes", () => {
     expect(navigationItem("/usage")?.permission).toBe("stats:read");
     expect(navigationItem("/operations")?.permission).toBe("stats:read");

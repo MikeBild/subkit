@@ -12,8 +12,10 @@ import { connectorHealthFilterFromUrl } from "@/pages/connectors-model";
 import { readFocus } from "@/pages/decisions";
 import { filterFromUrl } from "@/pages/runs-model";
 import {
+  API_ACCESS_SECTIONS,
   absolute,
   apiAccessHref,
+  apiAccessSectionFromUrl,
   auditHref,
   chatNewHref,
   chatSeedFromUrl,
@@ -173,5 +175,14 @@ describe("the remaining addresses", () => {
   test("list filters and sections are carried as query parameters", () => {
     expect(workflowsHref({ connector: "crm api" })).toBe("/workflows?connector=crm+api");
     expect(apiAccessHref("keys")).toBe("/api-access?section=keys");
+  });
+
+  test("a Zugangsdaten section survives the round trip, and nothing else is a section", () => {
+    for (const section of API_ACCESS_SECTIONS) {
+      const href = apiAccessHref(section);
+      expect(apiAccessSectionFromUrl(href.slice(href.indexOf("?")))).toBe(section);
+    }
+    expect(apiAccessSectionFromUrl("?section=connections")).toBeNull();
+    expect(apiAccessSectionFromUrl("")).toBeNull();
   });
 });

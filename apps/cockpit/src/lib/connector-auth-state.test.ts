@@ -35,6 +35,53 @@ describe("connector auth state", () => {
     );
   });
 
+  test("an expired or unreadable Kontoverbindung is an expired sign-in before any request fails", () => {
+    const connector = { auth_type: "oauth2", health_state: "ok" };
+    for (const state of ["expired", "unreadable"] as const) {
+      expect(
+        connectorAuthState(connector, null, { mode: "connection", connection: { state } }),
+      ).toBe("expired");
+    }
+    expect(
+      connectorAuthState(connector, null, { mode: "connection", connection: { state: "valid" } }),
+    ).toBe("connected");
+  });
+
+  test("a credential read that found nothing says credentials are missing, not unproven", () => {
+    expect(connectorAuthState({ auth_type: "bearer", health_state: "degraded" }, null, null)).toBe(
+      "credentials_missing",
+    );
+    // Not read at all (the catalogue list): no claim either way.
+    expect(connectorAuthState({ auth_type: "bearer", health_state: "degraded" })).toBe("unproven");
+    // health_state defaults to "ok" on a new connector and survives a deleted
+    // credential: it proves nothing about a sign-in the table does not hold.
+    for (const auth_type of ["bearer", "header", "query", "basic", "oauth2", "aws_sigv4"]) {
+      expect(connectorAuthState({ auth_type, health_state: "ok" }, null, null)).toBe(
+        "credentials_missing",
+      );
+    }
+    // A login kept outside the credential read — a DSN, an MCP client identity —
+    // is judged by health alone.
+    expect(
+      connectorAuthState(
+        { auth_type: "basic", driver: "postgres", health_state: "ok" },
+        null,
+        null,
+      ),
+    ).toBe("connected");
+    expect(
+      connectorAuthState(
+        { auth_type: "oauth2_client", driver: "mcp", health_state: "ok" },
+        null,
+        null,
+      ),
+    ).toBe("connected");
+    // A connector that needs none has nothing to miss.
+    expect(connectorAuthState({ auth_type: "none", health_state: "ok" }, null, null)).toBe(
+      "not_required",
+    );
+  });
+
   test("a probe resolves what the list could not prove", () => {
     expect(
       connectorAuthState({ auth_type: "bearer", health_state: "degraded" }, { ok: true }),
