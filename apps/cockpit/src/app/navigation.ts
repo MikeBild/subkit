@@ -12,7 +12,6 @@ import {
   type LucideIcon,
   MessageSquare,
   Settings,
-  ShieldCheck,
   Sparkles,
   Users,
   Workflow,
@@ -179,18 +178,15 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         api: ["GET /v1/identity/api-keys", "GET /v1/oauth/clients", "GET /v1/connections"],
       },
       {
+        // Personen & Rechte: the people, their roles, groups and grants on one
+        // page — each section behind its own read, so the entry shows for
+        // either.
         labelKey: "nav.people",
         path: "/people",
         permission: "identity:read",
+        anyPermissions: ["identity:read", "rbac:read"],
         icon: Users,
-        api: ["GET /v1/identity/users"],
-      },
-      {
-        labelKey: "nav.access",
-        path: "/access",
-        permission: "rbac:read",
-        icon: ShieldCheck,
-        api: ["GET /v1/rbac/roles"],
+        api: ["GET /v1/identity/users", "GET /v1/rbac/roles"],
       },
       {
         labelKey: "nav.notifications",

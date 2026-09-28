@@ -3,7 +3,7 @@ import { formatDurationMs, usageRows, usageStatsEndpoint, usageTotals } from "@/
 
 describe("cockpit usage presentation", () => {
   test("supplies the required usage window", () => {
-    const endpoint = usageStatsEndpoint(new Date("2026-08-10T12:00:00.000Z"));
+    const endpoint = usageStatsEndpoint("30d", new Date("2026-08-10T12:00:00.000Z"));
     expect(endpoint).toContain("bucket=day");
     expect(endpoint).toContain("from=2026-07-11T12%3A00%3A00.000Z");
   });

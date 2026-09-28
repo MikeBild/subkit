@@ -10,9 +10,11 @@ Beides findest du im Cockpit unter **Installation**: die Kontoverbindungen im Ab
 vergibt: **Kontoverbindungen** (Systeme, die SubKit in deinem Namen aufrufen darf),
 **API-Schlüssel** (womit Skripte und Programme SubKit aufrufen) und **Verbundene
 Anwendungen** (Programme, denen jemand Zugriff auf diese Installation freigegeben hat) — in
-dieser Reihenfolge, mit einem Verzeichnis der drei Abschnitte ganz oben. Was dort
-Aufmerksamkeit braucht — eine abgelaufene Kontoverbindung, ein abgelaufener oder seit
-Monaten unbenutzter Schlüssel — steht darüber, mit Grund und Weg.
+dieser Reihenfolge, mit einem Verzeichnis der drei Abschnitte ganz oben. Jede Zeile
+zeigt ihren Zustand; **Erneuern** steht in der Zeile. Was dich braucht — etwa eine
+abgelaufene Kontoverbindung oder eine vorbereitete Änderung, die auf Freigabe wartet —
+steht nicht hier, sondern auf der Startseite **Heute**, der einen Liste dessen, was
+jetzt zu tun ist.
 
 Offen stehen nur die Schlüssel, die noch Rechte halten, und die Anwendungen, für die jemand
 eine gültige Freigabe hält. Widerrufene Schlüssel und Anwendungen ohne gültige Freigabe sind

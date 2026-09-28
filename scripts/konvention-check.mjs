@@ -84,7 +84,8 @@ const MOUNT_MARKERS = {
   "chat/new": '[data-testid="chat-workspace"]',
   "chat/$conversationId": '[data-testid="chat-workspace"]',
   people: '[data-testid="admin-people"]',
-  access: '[data-testid="admin-access"]',
+  // The old Zugriff address: a redirect to the roles of Personen & Rechte.
+  access: '[data-testid="admin-people"]',
   "api-access": '[data-testid="admin-api-access"]',
   // The old Kontoverbindungen address: a redirect, marked by where it lands.
   connections: '[data-testid="admin-api-access"]',
@@ -902,12 +903,21 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
       // `health=not_ok` is the engine's narrowing now (enabled and not ok), so
       // the mock answers it the way the engine does rather than handing the
       // page every row to filter.
-      const items = catalogRows(path).filter(
-        (row) =>
-          path !== "/v1/connectors" ||
-          url.searchParams.get("health") !== "not_ok" ||
-          (row.enabled === true && row.health_state !== "ok"),
-      );
+      const items = catalogRows(path)
+        .filter(
+          (row) =>
+            path !== "/v1/connectors" ||
+            url.searchParams.get("health") !== "not_ok" ||
+            (row.enabled === true && row.health_state !== "ok"),
+        )
+        // `enabled=true` narrows as the engine does: the usage page counts the
+        // enabled connectors for its health figure.
+        .filter(
+          (row) =>
+            path !== "/v1/connectors" ||
+            url.searchParams.get("enabled") !== "true" ||
+            row.enabled === true,
+        );
       const categories =
         path === "/v1/workflows" || path === "/v1/connectors"
           ? [
@@ -1021,6 +1031,40 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
         unread_count: 4,
         actionable_unread_count: 3,
       });
+
+    // The repair decisions of a window, per verb — what the usage page's
+    // repair rate is computed from. Two applied of three decided.
+    if (path === "/v1/stats/events") {
+      if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
+        return json(route, { code: "validation", message: "request validation failed" }, 400);
+      const group = (action, total) => ({
+        key: { action },
+        buckets: [],
+        totals: {
+          calls: { total, by_outcome: { success: total, denied: 0, error: 0 } },
+          latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+        },
+      });
+      return json(route, {
+        bucket: url.searchParams.get("bucket"),
+        tz: "UTC",
+        from: url.searchParams.get("from"),
+        to: new Date().toISOString(),
+        groups:
+          url.searchParams.get("class") === "self_healing"
+            ? [
+                group("patch_candidate.proposed", 5),
+                group("patch_candidate.approved", 1),
+                group("patch_candidate.auto_applied", 1),
+                group("patch_candidate.rejected", 1),
+              ]
+            : [],
+        totals: {
+          calls: { total: 0, by_outcome: { success: 0, denied: 0, error: 0 }, by_status_class: {} },
+          latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+        },
+      });
+    }
 
     if (path === "/v1/stats/executions") {
       if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
@@ -1293,7 +1337,7 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
             rotating_out_at: null,
             revoked_at: null,
           },
-          // Past its expiry and never revoked: the attention list must say so.
+          // Past its expiry and never revoked: its own row must say so.
           {
             id: "018f4b4a-6d33-7b3a-9c2d-123456789ac0",
             name: "Altes Skript",
@@ -1302,6 +1346,18 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
             created_at: days(200),
             last_used_at: days(120),
             expires_at: days(5),
+            rotating_out_at: null,
+            revoked_at: null,
+          },
+          // Lapses in three and a half days: its row counts them down.
+          {
+            id: "018f4b4a-6d33-7b3a-9c2d-123456789ac1",
+            name: "Nachtlauf",
+            prefix: "sk_live_nl01",
+            scopes: API_KEY_SCOPES[0],
+            created_at: days(20),
+            last_used_at: days(1),
+            expires_at: days(-3.5),
             rotating_out_at: null,
             revoked_at: null,
           },
@@ -1663,8 +1719,7 @@ const INSTALLATION_ENTRIES = [
   "Nutzung",
   "Einstellungen",
   "Zugangsdaten",
-  "Personen",
-  "Zugriff",
+  "Personen & Rechte",
   "Benachrichtigungen",
   "Audit",
 ];
@@ -1684,6 +1739,8 @@ async function checkInstallationEntries(page) {
     );
   if (labels.includes("System"))
     breach("§6", "/ · nav-group-admin", 'the "System" entry is back — a third home for health');
+  if (labels.includes("Zugriff"))
+    breach("§6", "/ · nav-group-admin", 'a "Zugriff" entry beside Personen & Rechte — one page');
 }
 
 /**
@@ -2691,11 +2748,26 @@ const RESUME_LINE =
  *
  * The word "Anbindung" meant three things (outbound grants, inbound clients, a
  * deleted connector) and is gone; a key's rights are words with a risk, never
- * `resource:action`; and every lost grant and expired key stands in the
- * attention list with its cause — never a dash.
+ * `resource:action`; a lost grant says its cause on its own row, and a key's
+ * state is a word on the key — never a dash.
+ *
+ * And there is no task list here. The page had one above its sections — a
+ * second place for what Heute already lists (the expired Kontoverbindung is an
+ * entry there). One fact, one home: a list reappearing here is a breach.
  */
 async function checkRightsPage(page) {
   const where = "/api-access";
+  // Every section loaded before anything is read; a list that never arrives
+  // shows below as the rows it lacks.
+  await page
+    .locator('[data-testid="api-keys-list"]')
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .catch(() => {});
+  await page
+    .locator('[data-testid^="connection-renew-"]')
+    .first()
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .catch(() => {});
   const text = await page.evaluate(() => document.body.innerText);
   if (/Anbindung/i.test(text)) breach("§5", where, 'the word "Anbindung" is on the page');
   const scopeText = await page.evaluate(() =>
@@ -2710,24 +2782,107 @@ async function checkRightsPage(page) {
   }
   if (!/verwaltet/.test(scopeText))
     breach("§11", where, 'a managing right is not marked "verwaltet"');
-  const attention = await page.evaluate(() => {
-    const list = document.querySelector('[data-testid="api-access-attention"]');
-    return list instanceof HTMLElement ? list.innerText : null;
+  const shape = await page.evaluate(() => {
+    const text = (selector) => {
+      const element = document.querySelector(selector);
+      return element instanceof HTMLElement ? element.innerText : null;
+    };
+    const keyRow = (name) =>
+      [...document.querySelectorAll('[data-testid^="api-key-item-"]')].find(
+        (row) => row instanceof HTMLElement && row.innerText.includes(name),
+      );
+    const chip = (name) =>
+      keyRow(name)?.querySelector("[data-key-state]")?.textContent?.trim() ?? null;
+    return {
+      taskList: document.querySelectorAll(
+        '[data-testid="api-access-attention"], [data-testid="attention-list"]',
+      ).length,
+      grants: text('[data-testid="api-access-section-grants"]'),
+      expiredChip: chip("Altes Skript"),
+      expiringChip: chip("Nachtlauf"),
+      workingChip: chip("Reporting-Abruf"),
+    };
   });
-  if (attention === null) {
-    breach("§1", where, "an expired grant and an expired key raise no attention list");
-    return;
+  if (shape.taskList > 0)
+    breach("§1", where, "a second task list stands on Zugangsdaten — tasks live on Heute");
+  if (shape.grants === null) {
+    breach("§1", where, "no Kontoverbindungen section");
+  } else {
+    for (const expected of [
+      "kann sich nicht selbst erneuern",
+      "Die andere Seite hat die Erneuerung abgelehnt",
+    ]) {
+      if (!shape.grants.includes(expected))
+        breach("§1", `${where} · Kontoverbindungen`, `a lost grant's row misses "${expected}"`);
+    }
   }
-  for (const expected of [
-    "Die Kontoverbindung Ablage ist abgelaufen",
-    "kann sich nicht selbst erneuern",
-    "Die andere Seite hat die Erneuerung abgelehnt",
-    "Der API-Schlüssel Altes Skript ist am",
-  ]) {
-    if (!attention.includes(expected))
-      breach("§1", `${where} · attention`, `missing "${expected}"`);
+  if (shape.expiredChip !== "● abgelaufen")
+    breach("§11", `${where} · Altes Skript`, `the expired key says "${shape.expiredChip}"`);
+  if (shape.expiringChip !== "● läuft ab in 3 Tagen")
+    breach("§11", `${where} · Nachtlauf`, `the key about to lapse says "${shape.expiringChip}"`);
+  if (shape.workingChip !== null)
+    breach("§11", `${where} · Reporting-Abruf`, `a working key carries "${shape.workingChip}"`);
+}
+
+/**
+ * The workflow list says a workflow is unwell and leads to its failed runs —
+ * and says no more. The engine's own reason is the entry's reason on Heute and
+ * stands in the review sheet and on the workflow's page; a copy on every list
+ * row was a third home for one sentence. The fixture's unhealthy rows carry a
+ * reason, so a line that comes back would be seen.
+ */
+async function checkWorkflowListHealth(page) {
+  const where = "/workflows";
+  await page
+    .locator('[data-testid^="workflow-health-link-"]')
+    .first()
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .catch(() => {});
+  const shape = await page.evaluate(() => {
+    const list = document.querySelector('[data-testid="catalog-workflows"]');
+    return {
+      marks: document.querySelectorAll('[data-testid^="workflow-health-link-"]').length,
+      wording: document.querySelectorAll('[data-testid="workflow-health-engine-wording"]').length,
+      text: list instanceof HTMLElement ? list.innerText : "",
+    };
+  });
+  if (shape.marks === 0) breach("§1", where, "an unhealthy workflow has no link to its failures");
+  if (shape.wording > 0 || shape.text.includes("Wortlaut der Engine"))
+    breach("§5", where, "a list row repeats the engine's wording — it lives on Heute");
+  if (shape.text.includes("Drei Läufe in Folge fehlgeschlagen"))
+    breach("§5", where, "a list row repeats the engine's reason");
+}
+
+/**
+ * The old Zugriff address lands on the roles of Personen & Rechte: the page it
+ * was is a section now, and the section is in the address. Its tabs said
+ * "Zuweisungen"; the section is "Freigaben".
+ */
+async function checkAccessRedirect(context) {
+  const page = await context.newPage();
+  try {
+    await stand.visit(page, "access");
+    await page
+      .locator('[data-testid="roles-section"]')
+      .waitFor({ state: "visible", timeout: 15_000 });
+    const url = new URL(page.url());
+    if (url.pathname !== "/cockpit/people")
+      breach("§6", "/access", `lands on ${url.pathname} instead of /cockpit/people`);
+    if (url.searchParams.get("section") !== "roles")
+      breach("§6", "/access", `lands on section=${url.searchParams.get("section")}, not roles`);
+    const tabs = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid^="people-tab-"][role="tab"]')].map(
+        (tab) => tab.textContent?.trim() ?? "",
+      ),
+    );
+    if (tabs.join("|") !== "Personen|Rollen|Gruppen|Freigaben")
+      breach("§6", "/people", `sections are ${tabs.join(", ")}`);
+  } catch (error) {
+    if (error instanceof NichtGemessen) throw error;
+    breach("§6", "/access", `the old address does not land: ${error.message}`);
+  } finally {
+    await page.close();
   }
-  if (attention.includes("—")) breach("§2", `${where} · attention`, "a reason is a dash");
 }
 
 /**
@@ -3487,7 +3642,11 @@ try {
   const rights = await openPage(context, "api-access");
   await checkRightsPage(rights);
   await rights.close();
+  const workflowList = await openPage(context, "workflows");
+  await checkWorkflowListHealth(workflowList);
+  await workflowList.close();
   await checkConnectionsRedirect(context);
+  await checkAccessRedirect(context);
 
   const connector = await openPage(context, "connectors/$resourceId");
   await checkConnectorSignIn(connector);

@@ -223,25 +223,22 @@ function stringList(row: CatalogRow, field: string): string[] {
  * Workflow health rides on the name rather than taking an eighth column.
  *
  * A healthy workflow says nothing — the row is already the good news. An
- * unhealthy one carries a dot AND the engine's own word plus its reason,
- * because a colour on its own tells a person who cannot see it nothing
- * (CUI-A11Y-5), and a `title=` or a hover-only tooltip is unreachable by
- * keyboard and invisible on touch (CUI-WORDS-2).
+ * unhealthy one carries a dot AND the state as a word, because a colour on its
+ * own tells a person who cannot see it nothing (CUI-A11Y-5), and a `title=` or
+ * a hover-only tooltip is unreachable by keyboard and invisible on touch
+ * (CUI-WORDS-2).
+ *
+ * The engine's own reason is not repeated here. It is the entry's reason on
+ * Heute and stands, marked as the engine's, in Heute's review sheet and in the
+ * cause block of the workflow's own page — one fact, one home. A third copy on
+ * every list row was the same sentence in a place nobody acts on it.
  */
 function HealthMark({ row, index }: { row: CatalogRow; index: number }) {
   const { t } = useI18n();
   const state = stringField(row, "health_state");
   const id = stringField(row, "id");
   if (!state || state === "ok") return null;
-  const reason = stringField(row, "health_reason");
   const tone = state === "degraded" ? "bg-destructive" : "bg-warning";
-  // The reason is FREE TEXT the engine wrote, in whatever language the engine
-  // happened to use (LOCAL-SK-ENGINE-FREITEXT-SPRACHE). The cockpit cannot
-  // translate it, but it can stop pretending the sentence is its own: the
-  // translated state word stands alone, and the engine's sentence sits on its
-  // own line behind a label that names its author. That way a reader who finds
-  // a foreign sentence there knows why it is foreign, instead of reading a
-  // half-translated line the cockpit appears to have written.
   // The red mark leads to its cause: the failed runs of this workflow (§1,
   // "kein Rot ohne Weg zur Ursache"). A mark that only says "failed" sends
   // the reader to search the run log by name.
@@ -262,11 +259,6 @@ function HealthMark({ row, index }: { row: CatalogRow; index: number }) {
         ) : (
           <span className="min-w-0">{sentence}</span>
         )}
-        {reason ? (
-          <span className="min-w-0 truncate" data-testid="workflow-health-engine-wording">
-            {t("common.engineWording", { text: reason })}
-          </span>
-        ) : null}
       </span>
     </span>
   );

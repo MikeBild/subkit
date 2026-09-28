@@ -202,7 +202,7 @@ Subsystem map inside `apps/engine/src/` (48 directories + 5 loose root files):
 | Rule-based fan-out (Slack, webhook) | `notifications/` | `docs/developers/input-surfaces.md` |
 | Prometheus metrics + tracing | `observability/` | `docs/operators/observability.md` |
 | First-run bootstrap + demo seed | `onboarding/` | `docs/operators/observability.md` |
-| Operator health digest (drift/repair/queue summary) | `operator/` | `docs/operators/observability.md` |
+| Operator health digest and the attention list (`GET /v1/attention`, the Cockpit start page) | `operator/` | `docs/operators/observability.md`, `apps/cockpit/UI-UX.md` |
 | Bootstrap preflight + host-side vault commands | `preflight/` | `docs/admins/bootstrap-preflight.md` |
 | PG LISTEN/NOTIFY streaming | `pubsub/` | `docs/concepts/workflows.md` |
 | pg-boss handler dispatch | `queue/` | `docs/concepts/workflows.md` |
