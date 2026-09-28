@@ -120,6 +120,7 @@ import { ConversationList } from "./chat-conversation-list";
 import { type ChatForm, chatForm } from "./chat-form";
 import { ChatFormCard } from "./chat-form-card";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
+import { conversationFailureKind, retryConversationRead } from "./chat-load-failure";
 import { CHAT_MARKDOWN_COMPONENTS } from "./chat-message-link";
 import { AUTHORING_MODES, DEFAULT_AUTHORING_MODE, modeGates, modeLabelKey } from "./chat-mode";
 import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
@@ -881,6 +882,7 @@ export function ChatPage() {
     queryKey: ["conversation", activeId],
     queryFn: () => getConversation(activeId ?? ""),
     enabled: Boolean(activeId),
+    retry: retryConversationRead,
   });
   const onTurnEvent = (event: { type: string; [key: string]: unknown }) => {
     if (event.type === "text_delta" && typeof event.text === "string") {
@@ -1175,10 +1177,10 @@ export function ChatPage() {
   // there would have gone to the conversation that had just failed.
   const conversationFailed = Boolean(activeId) && queryView(detail, () => false) === "error";
   // Unknown or not the reader's: retrying cannot help, the way on is the list.
+  // Read from `failureReason` too — `error` stays empty while a read retries.
   const conversationMissing =
     conversationFailed &&
-    detail.error instanceof ApiError &&
-    (detail.error.status === 404 || detail.error.status === 403);
+    conversationFailureKind(detail.error ?? detail.failureReason) === "missing";
   const listFailed = queryView(conversations, () => false) === "error";
   const storedMode = detail.data ? storedAuthoringMode(detail.data.draft) : "loading";
   const composerHint =
@@ -1401,7 +1403,8 @@ export function ChatPage() {
                 {conversationFailed ? (
                   <LoadFailed
                     title={t(conversationMissing ? "chat.notFound" : "chat.loadFailed")}
-                    onRetry={() => void detail.refetch()}
+                    description={conversationMissing ? t("chat.notFoundDescription") : undefined}
+                    onRetry={conversationMissing ? undefined : () => void detail.refetch()}
                     testId="chat-load-failed"
                   >
                     <Button
