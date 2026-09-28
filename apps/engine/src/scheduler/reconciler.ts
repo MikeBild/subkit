@@ -1093,15 +1093,19 @@ export class SchedulerReconciler {
   /**
    * Record RISK_SIGNAL_RAISED / CLEARED edges. Throttled to one pass per
    * `RISK_SIGNAL_EDGE_CADENCE_MS`; overlap between instances is safe — the
-   * shared edge table lets exactly one replica claim each transition.
+   * shared edge table lets exactly one caller claim each transition, and a
+   * process's own gauges are its own edges (see `riskEdgeKey`).
    */
   async reconcileRiskSignalEdges(now: Date = new Date()): Promise<void> {
     if (this.lastRiskSignalEdgesAt !== null) {
       const elapsed = now.getTime() - this.lastRiskSignalEdgesAt.getTime();
       if (elapsed < RISK_SIGNAL_EDGE_CADENCE_MS) return;
     }
-    this.lastRiskSignalEdgesAt = now;
+    // Stamped only once the pass committed: a failed pass (its claims rolled
+    // back with its audit rows) must be retried by the next attempt, not
+    // skipped for a cadence.
     await runRiskSignalEdges(this.opts.db);
+    this.lastRiskSignalEdgesAt = now;
   }
 
   async reconcileMcpOAuthCleanup(now: Date = new Date()): Promise<void> {
