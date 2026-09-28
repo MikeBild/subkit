@@ -172,7 +172,7 @@ export type SettingGroupId =
  * Twenty sections side by side were a tab strip twice as wide as the page,
  * scrolled sideways to find "Token-Budget". Grouped and stacked, every section
  * is on screen at once. Every section the engine has is placed here —
- * settings-groups.test.ts walks the engine's configuration and fails on one
+ * settings-model.test.ts walks the engine's configuration and fails on one
  * that is not.
  */
 export const SETTING_GROUPS: readonly {
