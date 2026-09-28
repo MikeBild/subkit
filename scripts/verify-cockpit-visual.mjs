@@ -2567,20 +2567,32 @@ async function assertViewport(page, label) {
  * screenshot of it is only evidence if something reads the frame.
  */
 /**
- * Enter on a row's "Öffnen" opens the record ONCE.
+ * A run row opens by its name — a real link — and Enter on it opens the
+ * record ONCE.
  *
- * The key bubbled from the button to the row, which opened the record, and
- * the browser then turned the same Enter into the button's click, which
- * opened it again: two history entries for one intent, and Back had to be
- * pressed twice to leave the sheet. It only shows through the keyboard, so
- * no screenshot and no model test could see it.
+ * Rows used to carry an "Öffnen" button beside the row click. Enter on it
+ * bubbled to the row, which opened the record, and the browser then turned
+ * the same Enter into the button's click, which opened it again: two history
+ * entries for one intent. The button is gone; the name cell is the link, with
+ * the run's own address, and the row is no tab stop. It only shows through
+ * the keyboard, so no screenshot and no model test could see it.
  *
- * Restores what it changed — Back closes the sheet and the list is checked
- * again — because a scenario that leaves a dialog open poisons a later stand.
+ * Restores what it changed — Back closes the sheet — because a scenario that
+ * leaves a dialog open poisons a later stand.
  */
 async function assertOpenOnce(page, label) {
-  const open = page.locator('[data-testid="data-table-open-0"]');
-  if (!(await open.isVisible().catch(() => false))) return;
+  if (await page.locator('[data-testid^="data-table-open-"]').count())
+    throw new Error(`${label}: a row still carries an "Öffnen" button`);
+  if (await page.locator('[data-family-collection-row="true"][tabindex="0"]').count())
+    throw new Error(`${label}: a row is a tab stop beside its own link`);
+  let open = page.locator('[data-testid="data-table-row-link-0"]');
+  if (!(await open.isVisible().catch(() => false)))
+    open = page.locator('[data-testid="data-table-mobile-row-link-0"]');
+  if (!(await open.isVisible().catch(() => false)))
+    throw new Error(`${label}: the first run names itself with no link`);
+  const href = await open.getAttribute("href");
+  if (!href || !/^\/cockpit\/runs\/[^/?]+$/.test(href))
+    throw new Error(`${label}: the run link leads to ${href}, not to the run's own address`);
   const before = await page.evaluate(() => window.history.length);
   await open.focus();
   await page.keyboard.press("Enter");
@@ -2588,7 +2600,7 @@ async function assertOpenOnce(page, label) {
   const after = await page.evaluate(() => window.history.length);
   if (after - before !== 1)
     throw new Error(
-      `${label}: Enter on "Öffnen" added ${after - before} history entries — the record opened more than once`,
+      `${label}: Enter on the run's link added ${after - before} history entries — the record opened more than once`,
     );
   await page.goBack();
   await page.locator('[role="dialog"]').waitFor({ state: "hidden" });

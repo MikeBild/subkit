@@ -14,7 +14,7 @@ import {
   workflowHref,
   workflowsHref,
 } from "@/app/links";
-import { type CockpitColumn, DataTable } from "@/components/cockpit/data-table";
+import { type CockpitColumn, DataTable, RowName } from "@/components/cockpit/data-table";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
@@ -292,11 +292,15 @@ function catalogColumns(
         t("common.name"),
         (row, index) => (
           <span className="flex min-w-0 flex-col gap-1">
-            <span className="min-w-0 font-medium">{stringField(row, "name") ?? MISSING}</span>
+            {/* The name is the row's link; the health line below links to the
+                failed runs, and a link inside a link is none. */}
+            <span className="min-w-0 font-medium">
+              <RowName>{stringField(row, "name") ?? MISSING}</RowName>
+            </span>
             <HealthMark row={row} index={index} />
           </span>
         ),
-        { sortable: true, width: "w-[21%]" },
+        { sortable: true, width: "w-[21%]", ownsRowLink: true },
       ),
       column.status("lifecycle", (row) => row.lifecycle, t("catalog.lifecycle"), {
         sortable: true,
@@ -870,6 +874,7 @@ export function CatalogPage({
           const id = row.id;
           if (typeof id === "string") window.location.assign(absolute(recordHref(resource, id)));
         }}
+        rowHref={(row) => (typeof row.id === "string" ? recordHref(resource, row.id) : null)}
         {...(canRecategorize
           ? {
               rowActions: (row: CatalogRow, index: number) => (
@@ -898,7 +903,6 @@ export function CatalogPage({
         recordsLabel={t("catalog.records")}
         loadedLabel={t("catalog.loaded", { count: rows.length })}
         actionsLabel={t("common.actions")}
-        openLabel={t("common.open")}
       />
       {recategorize && (
         <RecategorizeDialog

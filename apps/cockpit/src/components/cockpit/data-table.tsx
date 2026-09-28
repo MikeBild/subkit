@@ -18,7 +18,16 @@ import {
   RefreshCw,
   Search,
 } from "lucide-react";
-import { type ReactNode, useId, useMemo, useState } from "react";
+import {
+  createContext,
+  type MouseEvent,
+  type ReactNode,
+  useContext,
+  useId,
+  useMemo,
+  useState,
+} from "react";
+import { absolute } from "@/app/links";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +54,8 @@ import { cn } from "@/lib/utils";
 /** A column states its own width; that is what keeps the table `table-fixed`. */
 export interface CockpitColumnMeta {
   width?: string;
+  /** The cell renders `<RowName>` itself instead of being wrapped whole in the row's link. */
+  ownsRowLink?: boolean;
 }
 
 export const cockpitTableFeatures = tableFeatures({
@@ -81,12 +92,118 @@ export interface TableEmptyState {
 
 const SKELETON_ROWS = 8;
 
+/** The naming cell: wrapped whole in the row's link, or handing the link to its `<RowName>`. */
+function LinkedCell({
+  owns,
+  target,
+  children,
+}: {
+  owns: boolean;
+  target: RowLinkTarget;
+  children: ReactNode;
+}) {
+  return owns ? (
+    <RowLinkContext.Provider value={target}>{children}</RowLinkContext.Provider>
+  ) : (
+    <RowLink {...target}>{children}</RowLink>
+  );
+}
+
+/**
+ * Whether a click on a row was meant for something inside it. The whole row
+ * opens its record as a convenience; a click on a link, a button or a field in
+ * one of its cells belongs to that control, and opening the record on top of
+ * it would do two things at once.
+ */
+const INTERACTIVE =
+  'a, button, input, select, textarea, label, summary, [role="menuitem"], [role="checkbox"], [role="combobox"]';
+
+function fromInteractive(event: MouseEvent<HTMLElement>): boolean {
+  const target = event.target;
+  if (!(target instanceof Element)) return false;
+  const control = target.closest(INTERACTIVE);
+  return control !== null && event.currentTarget.contains(control);
+}
+
+/** A plain left click stays in the page; a modified or middle click is the browser's. */
+function isPlainClick(event: MouseEvent): boolean {
+  return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+}
+
+interface RowLinkTarget {
+  href: string | null;
+  onOpen: () => void;
+  testId: string;
+}
+
+const RowLinkContext = createContext<RowLinkTarget | null>(null);
+
+/**
+ * The row's name as its link, for a cell that holds more than the name (a
+ * workflow's name above its health line, which links to its failed runs). A
+ * link inside a link is not a link a browser can follow, so such a cell says
+ * which part names the row. Outside a row that opens anything it is the name.
+ */
+export function RowName({ children }: { children: ReactNode }) {
+  const target = useContext(RowLinkContext);
+  return target ? <RowLink {...target}>{children}</RowLink> : children;
+}
+
+/**
+ * The one way into a row's record: its name, as a real link.
+ *
+ * A link, not a button, and not a named "Öffnen" beside the row: the name is
+ * what a reader looks for, a link is what the keyboard, a screen reader and
+ * "open in new tab" already understand, and a second control beside it that
+ * leads to the same place is the duplicate this replaces. A plain click stays
+ * in the single-page app (`onOpen`); anything else is the browser's.
+ *
+ * A record without an address of its own (an audit entry opens in place)
+ * keeps the same place and the same keyboard reach, as a button.
+ */
+function RowLink({
+  href,
+  onOpen,
+  testId,
+  children,
+}: {
+  href: string | null;
+  onOpen: () => void;
+  testId: string;
+  children: ReactNode;
+}) {
+  const className =
+    "min-w-0 rounded-sm text-left font-medium underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  if (href)
+    return (
+      <a
+        href={absolute(href)}
+        className={className}
+        data-testid={testId}
+        onClick={(event) => {
+          if (!isPlainClick(event)) return;
+          event.preventDefault();
+          onOpen();
+        }}
+      >
+        {children}
+      </a>
+    );
+  return (
+    <button type="button" className={className} data-testid={testId} onClick={onOpen}>
+      {children}
+    </button>
+  );
+}
+
 export function DataTable<TData extends RowData>({
   columns,
   data,
   sorting,
   onSortingChange,
   onOpen,
+  rowHref,
+  linkColumn,
   toolbar,
   onRefresh,
   refreshing,
@@ -107,7 +224,6 @@ export function DataTable<TData extends RowData>({
   recordsLabel,
   loadedLabel,
   actionsLabel,
-  openLabel,
   rowActions,
   collectionId = "data-table",
   collectionTier = "primary",
@@ -119,15 +235,23 @@ export function DataTable<TData extends RowData>({
   data: TData[];
   sorting: SortingState;
   onSortingChange(value: SortingState): void;
-  /** Omitted where a row has nowhere to go: no cursor, no key handler, no open button. */
+  /** Omitted where a row has nowhere to go: no link, no cursor, no row click. */
   onOpen?(row: TData): void;
+  /**
+   * The row's own address (router-relative, from a `links.ts` builder), which
+   * makes its name cell a real link. Null or absent where the record opens in
+   * place and has no address; the name is then a button.
+   */
+  rowHref?(row: TData): string | null;
+  /** The column whose cell names the row and carries its link. Defaults to the first. */
+  linkColumn?: string;
   /** Search, filters and the column picker in one strip above the table. */
   toolbar?: ReactNode;
   /** Refreshing is an action on the rows, so it lives in the row-action column. */
   onRefresh?(): void;
   refreshing?: boolean;
   refreshLabel?: string;
-  /** Row-level actions rendered next to the open button, e.g. an inline picker. */
+  /** Row-level actions — further acts on the row, never a second way into it. */
   rowActions?: (row: TData, index: number) => ReactNode;
   pending?: boolean;
   error?: TableErrorState | null;
@@ -149,7 +273,6 @@ export function DataTable<TData extends RowData>({
   recordsLabel: string;
   loadedLabel: string;
   actionsLabel: string;
-  openLabel: string;
   collectionId?: string;
   collectionTier?: "primary" | "embedded";
   searchLabel?: string;
@@ -179,7 +302,15 @@ export function DataTable<TData extends RowData>({
     }),
   );
   const visibleColumns = table.getAllLeafColumns().filter((column) => column.getIsVisible());
-  const bodySpan = visibleColumns.length + 1;
+  // The action column exists only for something to put in it: row actions, or
+  // the refresh in its head. A column that held a lone "Öffnen" per row is gone.
+  const hasActionColumn = Boolean(rowActions) || Boolean(onRefresh && refreshLabel);
+  const bodySpan = visibleColumns.length + (hasActionColumn ? 1 : 0);
+  // A reader can hide the naming column; the link then moves to the first
+  // column still shown rather than leaving the row without one.
+  const linkColumnId = visibleColumns.some((column) => column.id === linkColumn)
+    ? linkColumn
+    : visibleColumns[0]?.id;
   const rows = table.getRowModel().rows;
   const offsetTotal = queryText.trim() ? filteredData.length : (total ?? data.length);
   const firstRecord = offsetTotal === 0 ? 0 : page * pageSize + 1;
@@ -342,22 +473,24 @@ export function DataTable<TData extends RowData>({
                     </TableHead>
                   );
                 })}
-                <TableHead className={rowActions ? "w-32" : "w-24"}>
-                  <span className="flex items-center justify-end">
-                    <span className="sr-only">{actionsLabel}</span>
-                    {onRefresh && refreshLabel && (
-                      <IconButton
-                        variant="ghost"
-                        size="icon-sm"
-                        label={refreshLabel}
-                        data-testid={`${collectionId}-refresh`}
-                        onClick={onRefresh}
-                      >
-                        <RefreshCw className={refreshing ? "animate-spin" : undefined} />
-                      </IconButton>
-                    )}
-                  </span>
-                </TableHead>
+                {hasActionColumn ? (
+                  <TableHead className={rowActions ? "w-32" : "w-16"}>
+                    <span className="flex items-center justify-end">
+                      <span className="sr-only">{actionsLabel}</span>
+                      {onRefresh && refreshLabel && (
+                        <IconButton
+                          variant="ghost"
+                          size="icon-sm"
+                          label={refreshLabel}
+                          data-testid={`${collectionId}-refresh`}
+                          onClick={onRefresh}
+                        >
+                          <RefreshCw className={refreshing ? "animate-spin" : undefined} />
+                        </IconButton>
+                      )}
+                    </span>
+                  </TableHead>
+                ) : null}
               </TableRow>
             ))}
           </TableHeader>
@@ -374,9 +507,11 @@ export function DataTable<TData extends RowData>({
                       <Skeleton className="h-4 w-full" />
                     </TableCell>
                   ))}
-                  <TableCell>
-                    <Skeleton className="h-4 w-full" />
-                  </TableCell>
+                  {hasActionColumn ? (
+                    <TableCell>
+                      <Skeleton className="h-4 w-full" />
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))
             ) : error || empty ? (
@@ -384,62 +519,55 @@ export function DataTable<TData extends RowData>({
                 <TableCell colSpan={bodySpan}>{stateBlock}</TableCell>
               </TableRow>
             ) : (
-              rows.map((row, index) => (
-                <TableRow
-                  key={row.id}
-                  data-family-slot="list-row"
-                  data-family-collection-row="true"
-                  className={onOpen ? "cursor-pointer" : undefined}
-                  tabIndex={onOpen ? 0 : undefined}
-                  data-testid={`${collectionId}-row-${index}`}
-                  onClick={onOpen ? () => onOpen(row.original) : undefined}
-                  onKeyDown={
-                    onOpen
-                      ? (event) => {
-                          // Only the row's own focus opens it. A key pressed
-                          // on a button INSIDE the row bubbles here too, and
-                          // the browser then turns that same Enter into the
-                          // button's click — the record opened twice, and
-                          // Back had to be pressed twice to leave it.
-                          if (event.target !== event.currentTarget) return;
-                          if (event.key !== "Enter" && event.key !== " ") return;
-                          // Space would also scroll the page under the reader.
-                          event.preventDefault();
-                          onOpen(row.original);
-                        }
-                      : undefined
-                  }
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      <table.FlexRender cell={cell} />
-                    </TableCell>
-                  ))}
-                  <TableCell>
-                    <span className="flex items-center justify-end gap-1">
-                      {rowActions?.(row.original, index)}
-                      {/* One named way in, beside the row click. It was a "⋯"
-                          icon labelled "Öffnen": the glyph every other list
-                          uses for a menu of further actions, opening no menu.
-                          A row that says what its button does needs no
-                          hover to find out. */}
-                      {onOpen && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          data-testid={`${collectionId}-open-${index}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onOpen(row.original);
-                          }}
-                        >
-                          {openLabel}
-                        </Button>
-                      )}
-                    </span>
-                  </TableCell>
-                </TableRow>
-              ))
+              rows.map((row, index) => {
+                const open = onOpen ? () => onOpen(row.original) : null;
+                return (
+                  <TableRow
+                    key={row.id}
+                    data-family-slot="list-row"
+                    data-family-collection-row="true"
+                    className={open ? "cursor-pointer" : undefined}
+                    data-testid={`${collectionId}-row-${index}`}
+                    // The whole row is a convenience for the pointer. The
+                    // keyboard and the screen reader reach the record through
+                    // the link in its name cell, so the row is no tab stop.
+                    onClick={
+                      open
+                        ? (event) => {
+                            if (fromInteractive(event)) return;
+                            open();
+                          }
+                        : undefined
+                    }
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        {open && cell.column.id === linkColumnId ? (
+                          <LinkedCell
+                            owns={Boolean(cell.column.columnDef.meta?.ownsRowLink)}
+                            target={{
+                              href: rowHref?.(row.original) ?? null,
+                              onOpen: open,
+                              testId: `${collectionId}-row-link-${index}`,
+                            }}
+                          >
+                            <table.FlexRender cell={cell} />
+                          </LinkedCell>
+                        ) : (
+                          <table.FlexRender cell={cell} />
+                        )}
+                      </TableCell>
+                    ))}
+                    {hasActionColumn ? (
+                      <TableCell>
+                        <span className="flex items-center justify-end gap-1">
+                          {rowActions?.(row.original, index)}
+                        </span>
+                      </TableCell>
+                    ) : null}
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -465,8 +593,16 @@ export function DataTable<TData extends RowData>({
         ) : (
           <div className="grid divide-y">
             {rows.map((row, index) => {
+              const open = onOpen ? () => onOpen(row.original) : null;
               // Three facts fit a 390px card; a seven-column table does not.
-              const cells = row.getVisibleCells().slice(0, 3);
+              // The naming cell leads the card and carries its link; the card
+              // itself is not a button, because it holds links of its own.
+              const all = row.getVisibleCells();
+              const named = open ? all.find((cell) => cell.column.id === linkColumnId) : undefined;
+              const cells = (named ? [named, ...all.filter((cell) => cell !== named)] : all).slice(
+                0,
+                3,
+              );
               const card = cells.map((cell, cellIndex) => (
                 <span key={cell.id} className="flex min-w-0 items-start justify-between gap-4">
                   <span className="shrink-0 text-xs text-muted-foreground">
@@ -484,34 +620,51 @@ export function DataTable<TData extends RowData>({
                       cellIndex === 0 ? "font-medium" : "text-sm",
                     )}
                   >
-                    <table.FlexRender cell={cell} />
+                    {open && cell === named ? (
+                      <LinkedCell
+                        owns={Boolean(cell.column.columnDef.meta?.ownsRowLink)}
+                        target={{
+                          href: rowHref?.(row.original) ?? null,
+                          onOpen: open,
+                          testId: `${collectionId}-mobile-row-link-${index}`,
+                        }}
+                      >
+                        <table.FlexRender cell={cell} />
+                      </LinkedCell>
+                    ) : (
+                      <table.FlexRender cell={cell} />
+                    )}
                   </span>
                 </span>
               ));
-              // A row with nowhere to go is read, not pressed.
-              return onOpen ? (
-                <button
-                  key={row.id}
-                  type="button"
-                  className="flex min-w-0 flex-col gap-3 p-4 text-left"
-                  onClick={() => onOpen(row.original)}
-                  data-testid={`${collectionId}-mobile-row-${index}`}
-                  data-family-slot="list-row"
-                  data-family-collection-row="true"
-                  data-family-collection-mobile-card="true"
-                >
-                  {card}
-                </button>
-              ) : (
+              const actions = rowActions?.(row.original, index);
+              return (
+                // The keyboard and the screen reader reach the record through
+                // the link in the card's title; the click on the rest of the
+                // card is a pointer convenience, as on the desktop row.
+                // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard access is the title link
+                // biome-ignore lint/a11y/noStaticElementInteractions: the card holds links of its own and must not be a button
                 <div
                   key={row.id}
-                  className="flex min-w-0 flex-col gap-3 p-4 text-left"
+                  className={cn(
+                    "flex min-w-0 flex-col gap-3 p-4 text-left",
+                    open && "cursor-pointer",
+                  )}
+                  onClick={
+                    open
+                      ? (event) => {
+                          if (fromInteractive(event)) return;
+                          open();
+                        }
+                      : undefined
+                  }
                   data-testid={`${collectionId}-mobile-row-${index}`}
                   data-family-slot="list-row"
                   data-family-collection-row="true"
                   data-family-collection-mobile-card="true"
                 >
                   {card}
+                  {actions ? <span className="flex justify-end gap-1">{actions}</span> : null}
                 </div>
               );
             })}
