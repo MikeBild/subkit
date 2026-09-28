@@ -257,6 +257,7 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
   test("used_by counts the live workflows of each connector, by id and by placeholder", async () => {
     for (const [slug, step] of [
       ["probe-by-id", { connector_id: connectorId, path: "/whoami" }],
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: the workflow's own placeholder syntax
       ["probe-by-placeholder", { url: "${connector.probe-api.base_url}/whoami" }],
     ] as const) {
       const created = await createWorkflow(
