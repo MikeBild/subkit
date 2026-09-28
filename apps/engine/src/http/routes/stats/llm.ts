@@ -3,10 +3,9 @@
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { getConfig } from "../../../config/loader.ts";
-import { effectiveModelPrices, priceCalls } from "../../../llm/index.ts";
 import { can } from "../../../rbac/index.ts";
 import { aggregateLlm, type LlmGroupDim } from "../../../stats/aggregate-llm.ts";
+import { readLlmWindowCost } from "../../../stats/llm-cost.ts";
 import { BadRequestError, ForbiddenError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -108,14 +107,10 @@ export function registerStatsLlmRoute(app: OpenAPIHono<AppEnv>): void {
       groupBy,
     });
 
-    // Money for the window, priced per model.
-    //
-    // Asked as its own by-model rollup rather than derived from `result`,
-    // because the caller chose the grouping and it is usually not by model —
-    // and a price applied to a flow or a user rollup would multiply tokens by
-    // whichever model happened to be named first. The endpoint is not on a hot
-    // path; a second aggregate is cheaper than a wrong number.
-    const byModel = await aggregateLlm(db, {
+    // Money for the window, priced per model — through the reader
+    // `get_llm_usage` prices with, so both answer with the same amount,
+    // price sources and unpriced models for the same window.
+    const cost = await readLlmWindowCost(db, {
       tenantId: principal.tenant_id,
       bucket: win.bucket,
       from: win.from,
@@ -124,21 +119,7 @@ export function registerStatsLlmRoute(app: OpenAPIHono<AppEnv>): void {
       model: q.model,
       flow: q.flow,
       userId: q.user_id,
-      groupBy: ["model"],
     });
-    const tokenPrices = getConfig(principal.tenant_id).tokens;
-    const cost = priceCalls(
-      byModel.groups.map((group) => ({
-        model: group.key.model ?? "",
-        calls: group.totals.calls,
-        prompt_tokens: group.totals.tokens.prompt,
-        completion_tokens: group.totals.tokens.completion,
-        cache_read_tokens: group.totals.tokens.cache_read,
-        cache_creation_tokens: group.totals.tokens.cache_creation,
-      })),
-      effectiveModelPrices(tokenPrices ?? {}),
-      tokenPrices?.currency ?? "USD",
-    );
 
     return c.json(
       {

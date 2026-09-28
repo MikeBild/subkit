@@ -124,10 +124,12 @@ export type {
   SettingsListResponse,
 } from "./engine-client/settings.ts";
 export type {
+  OperatingFigures,
   StatsAuditResponse,
   StatsDurationAgg,
   StatsExecutionsResponse,
   StatsLatencyAgg,
+  StatsLlmCost,
   StatsLlmResponse,
   StatsQualityResponse,
   StatsQuery,

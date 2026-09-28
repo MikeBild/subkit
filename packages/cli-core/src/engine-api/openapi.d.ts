@@ -784,6 +784,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/stats/operating-figures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Übersicht's operations figures over one window
+         * @description Runs that started in the window and their success rate, the enabled connectors healthy now, and the share of repairs decided in the window that were applied — the four figures of the cockpit's operations bar, each with the cockpit list it counts.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description A window ending now: 24h (default), 7d or 30d. Ignored when `from` is given. */
+                    window?: "24h" | "7d" | "30d";
+                    /** @description Start of the window (ISO 8601, inclusive). */
+                    from?: string;
+                    /** @description End of the window (ISO 8601, exclusive). Default: now. */
+                    to?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OperatingFigures"];
+                    };
+                };
+                /** @description Invalid window */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/stats/quality": {
         parameters: {
             query?: never;
@@ -16734,6 +16789,8 @@ export interface components {
             tokens_month: number;
             monthly_budget_tokens: number | null;
             remaining_monthly_budget_tokens: number | null;
+            /** @enum {string|null} */
+            monthly_budget_state: "ample" | "tightening" | "critical" | null;
             tokens_today_user: number | null;
             tokens_month_user: number | null;
             user_monthly_budget_tokens: number | null;
@@ -16959,6 +17016,34 @@ export interface components {
             }[];
             /** @enum {string} */
             rates_basis: "current";
+        };
+        OperatingFigures: {
+            /** @enum {string} */
+            schema_version: "operating-figures.v1";
+            window: {
+                from: string;
+                to: string;
+            };
+            runs: {
+                total: number;
+                succeeded: number;
+                failed: number;
+                success_rate_percent: number | null;
+                href: string;
+                failed_href: string | null;
+            };
+            connectors: {
+                enabled: number;
+                not_ok: number;
+                healthy_percent: number | null;
+                href: string | null;
+            };
+            repairs: {
+                decided: number;
+                applied: number;
+                applied_percent: number | null;
+                href: string;
+            };
         };
         StatsQualityResponse: {
             /** @enum {string} */

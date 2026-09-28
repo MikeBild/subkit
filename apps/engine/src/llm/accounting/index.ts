@@ -21,12 +21,19 @@ export {
 } from "./accountant.ts";
 export { type ActorFields, actorFields } from "./actor.ts";
 export {
+  BUDGET_CRITICAL_SHARE,
+  BUDGET_TIGHTENING_SHARE,
+  type BudgetState,
+  budgetState,
   type CheckAndDecrementResult,
   checkAndDecrement,
   checkBudget,
   currentMonthBucket,
+  type MonthlyBudgetFigures,
+  monthlyBudgetFigures,
   monthlyUsage,
   monthlyUsageForUser,
+  readTenantMonthlyBudget,
   recordUsage,
   resolveMonthlyBudget,
   resolveUserMonthlyBudget,

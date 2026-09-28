@@ -10,6 +10,10 @@ import type { EngineClient } from "../engine-client.ts";
 // stays authoritative.
 export type StatsQualityResponse = components["schemas"]["StatsQualityResponse"];
 export type StatsUsageResponse = components["schemas"]["StatsUsageResponse"];
+/** Priced spend of a window: catalog or override rate per model, unpriced models named. */
+export type StatsLlmCost = components["schemas"]["StatsLlmCost"];
+/** The Übersicht's four operations figures over one window. */
+export type OperatingFigures = components["schemas"]["OperatingFigures"];
 
 // ---------- Stats wire types ----------
 // Mirror apps/engine/src/http/routes/stats/schemas.ts. Kept structural
@@ -125,6 +129,8 @@ export interface StatsLlmResponse extends StatsEnvelope {
     tokens: StatsTokenAgg;
     latency_ms: StatsLatencyAgg;
   };
+  /** Absent from an engine that predates priced usage. */
+  cost?: StatsLlmCost;
 }
 
 export const statsMethods = {
@@ -144,6 +150,17 @@ export const statsMethods = {
   },
   statsLlm(this: EngineClient, query: StatsQuery): Promise<StatsLlmResponse> {
     return this.request("GET", "/v1/stats/llm", undefined, query);
+  },
+  /**
+   * The Übersicht's operations figures — runs, success rate, healthy
+   * connectors, applied repairs — over one window. Backed by
+   * `/v1/stats/operating-figures`, the reader MCP `get_operating_figures` uses.
+   */
+  statsOperatingFigures(
+    this: EngineClient,
+    query: { window?: "24h" | "7d" | "30d"; from?: string; to?: string },
+  ): Promise<OperatingFigures> {
+    return this.request("GET", "/v1/stats/operating-figures", undefined, query);
   },
   statsHttp(this: EngineClient, query: StatsQuery): Promise<StatsUsageResponse> {
     return this.request("GET", "/v1/stats/http", undefined, query);

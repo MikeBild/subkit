@@ -63,7 +63,7 @@ every API call.
 | `sk show` | — | Show cached metadata for a session by id or alias | — |
 | `sk skill-candidates` | `skill:read` | Manage skill candidates | `approve`, `get`, `list`, `reject` |
 | `sk skills` | `skill:read` | Manage skills | `activate`, `archive`, `create`, `delete`, `edit`, `get`, `history`, `list`, `patch`, `restore`, `sync` |
-| `sk stats` | `stats:read` | Tenant-scoped runtime statistics (needs stats:read) | `chat`, `connectors`, `conversations`, `events`, `executions`, `http`, `llm`, `mcp` |
+| `sk stats` | `stats:read` | Tenant-scoped runtime statistics (needs stats:read) | `chat`, `connectors`, `conversations`, `events`, `executions`, `http`, `llm`, `mcp`, `operations` |
 | `sk status` | — | Print the active profile + engine reachability | — |
 | `sk subscriptions` | `subscription:read` | Manage event subscriptions | `create`, `delete`, `deliveries`, `get`, `list`, `patch`, `replay` |
 | `sk system-accounts` | `identity:read` | Manage system accounts | `create`, `delete`, `list` |
@@ -607,6 +607,8 @@ List executions
 - `--status` (string) — Filter by status
 - `--source` (string) — Filter by request source (e.g. scheduler, cli, api, mcp, chat)
 - `--parent` (string) — Lineage filter: list the reruns spawned from this execution id
+- `--from` (string) — Only runs that started at or after this instant (ISO-8601 or now-24h, now-7d, startOfMonth)
+- `--to` (string) — Only runs that started before this instant (exclusive; default: open)
 - `--json` (default: false) — JSON output
 
 #### `sk executions rerun`
@@ -1623,6 +1625,15 @@ MCP JSON-RPC, sessions, capacity, tasks, and SSE
 - `--request-source` (string) — Filter request source(s)
 - `--platform` (string) — Filter platform(s)
 - `--response-mode` (string) — json|sse|sync|async|none
+
+#### `sk stats operations`
+
+The Übersicht's operations figures: runs, success rate, healthy connectors (now), applied repairs. Example: sk stats operations --window 7d
+
+- `--window` (string) — 24h (default), 7d or 30d
+- `--from` (string) — Window start (ISO-8601 or now-24h, startOfMonth)
+- `--to` (string) — Window end (default: now)
+- `--json` — Emit the raw engine response
 
 
 ### `sk status`

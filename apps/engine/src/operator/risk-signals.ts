@@ -21,6 +21,11 @@ import { getConfig } from "../config/loader.ts";
 import type { Config } from "../config/schema.ts";
 import type { Executor } from "../db/client.ts";
 import { riskSignalEdges } from "../db/schema/index.ts";
+import {
+  BUDGET_CRITICAL_SHARE,
+  BUDGET_TIGHTENING_SHARE,
+  budgetState,
+} from "../llm/accounting/index.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 
 // Only "warn" and "critical" are produced today — a signal either trends
@@ -106,10 +111,19 @@ export function computeRiskSignals(inputs: RiskInputs = {}): RiskSignal[] {
   // hitting a limit; it is simply unmeasured, and warning about a ceiling
   // that does not exist would be the zero that means "not measured".
   const { monthTokens, monthBudget } = inputs;
-  if (typeof monthTokens === "number" && typeof monthBudget === "number" && monthBudget > 0) {
-    const usedPct = Math.round((monthTokens / monthBudget) * 100);
-    if (usedPct >= 75) {
-      const critical = usedPct >= 90;
+  // The state is the shared one (`budgetState`), from the exact share: a
+  // percentage rounded before the comparison called 89.6 % critical here while
+  // the usage page, `/v1/status` and `get_token_budget` called it tightening.
+  // The shown percentage is floored for the same reason — it never reads a
+  // threshold the month has not reached.
+  const state =
+    typeof monthTokens === "number" && typeof monthBudget === "number"
+      ? budgetState(monthTokens, monthBudget)
+      : null;
+  if (typeof monthTokens === "number" && typeof monthBudget === "number" && state) {
+    const usedPct = Math.floor((monthTokens / monthBudget) * 100);
+    if (state !== "ample") {
+      const critical = state === "critical";
       signals.push({
         kind: "token_budget",
         severity: critical ? "critical" : "warn",
@@ -121,7 +135,7 @@ export function computeRiskSignals(inputs: RiskInputs = {}): RiskSignal[] {
           : "Consumption is past three quarters of the monthly cap with the month still running. Worth deciding now whether to raise it.",
         metric: METRIC_NAMES.LLM_TOKENS_TOTAL,
         value: usedPct,
-        threshold: critical ? 90 : 75,
+        threshold: (critical ? BUDGET_CRITICAL_SHARE : BUDGET_TIGHTENING_SHARE) * 100,
       });
     }
   }

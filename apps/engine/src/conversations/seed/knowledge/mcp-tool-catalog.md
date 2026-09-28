@@ -265,7 +265,12 @@ Health, cost, and audit.
 
 - `get_engine_status` **[product]** — engine/version/health snapshot.
 - `get_token_budget` **[product]** — LLM token budget accounting.
-- `get_llm_usage` **[product]** — LLM usage/cost rollup.
+- `get_llm_usage` **[product]** — LLM usage rollup with the priced spend of a
+  window (catalog or override price per model, unpriced models named).
+- `get_operating_figures` **[product]** — the Übersicht's operations figures
+  over a window: runs, success rate, healthy connectors, applied repairs.
+- `list_connections` **[product]** — outbound connections: state, whether the
+  grant renews itself (`auto_renew`), and the connectors using it.
 - `list_audit` / `get_audit_entry` **[product]** — the audit log (every governed
   action; approval lifecycle rows read `approval.requested`, `approval.granted`,
   `approval.declined`, `approval.approved`).
