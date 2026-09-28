@@ -56,6 +56,25 @@ export interface CockpitColumnMeta {
   width?: string;
   /** The cell renders `<RowName>` itself instead of being wrapped whole in the row's link. */
   ownsRowLink?: boolean;
+  /** The cell holds links or controls of its own (relations, chips). */
+  interactive?: boolean;
+}
+
+/**
+ * Which visible column names the row and carries its link.
+ *
+ * The preferred column while it is shown. A reader can hide it; the link then
+ * moves only to a column that holds no link of its own — wrapping a relation
+ * chip in the row's link would nest one link in another, which no browser can
+ * follow. With no such column the row has no link, and still opens on click.
+ */
+export function rowLinkColumn(
+  visible: readonly { id: string; interactive?: boolean; ownsRowLink?: boolean }[],
+  preferred?: string,
+): string | undefined {
+  const chosen = visible.find((column) => column.id === (preferred ?? visible[0]?.id));
+  if (chosen && (!chosen.interactive || chosen.ownsRowLink)) return chosen.id;
+  return visible.find((column) => !column.interactive)?.id;
 }
 
 export const cockpitTableFeatures = tableFeatures({
@@ -134,6 +153,8 @@ interface RowLinkTarget {
   href: string | null;
   onOpen: () => void;
   testId: string;
+  /** The accessible name, where the cell's text alone does not say which record. */
+  label?: string;
 }
 
 const RowLinkContext = createContext<RowLinkTarget | null>(null);
@@ -165,11 +186,13 @@ function RowLink({
   href,
   onOpen,
   testId,
+  label,
   children,
 }: {
   href: string | null;
   onOpen: () => void;
   testId: string;
+  label?: string;
   children: ReactNode;
 }) {
   const className =
@@ -180,6 +203,7 @@ function RowLink({
         href={absolute(href)}
         className={className}
         data-testid={testId}
+        aria-label={label}
         onClick={(event) => {
           if (!isPlainClick(event)) return;
           event.preventDefault();
@@ -190,7 +214,13 @@ function RowLink({
       </a>
     );
   return (
-    <button type="button" className={className} data-testid={testId} onClick={onOpen}>
+    <button
+      type="button"
+      className={className}
+      data-testid={testId}
+      aria-label={label}
+      onClick={onOpen}
+    >
       {children}
     </button>
   );
@@ -203,6 +233,7 @@ export function DataTable<TData extends RowData>({
   onSortingChange,
   onOpen,
   rowHref,
+  rowLabel,
   linkColumn,
   toolbar,
   onRefresh,
@@ -243,6 +274,11 @@ export function DataTable<TData extends RowData>({
    * place and has no address; the name is then a button.
    */
   rowHref?(row: TData): string | null;
+  /**
+   * The link's accessible name, where the naming cell alone does not say which
+   * record it is — an audit entry's cell is its time.
+   */
+  rowLabel?(row: TData): string;
   /** The column whose cell names the row and carries its link. Defaults to the first. */
   linkColumn?: string;
   /** Search, filters and the column picker in one strip above the table. */
@@ -308,9 +344,14 @@ export function DataTable<TData extends RowData>({
   const bodySpan = visibleColumns.length + (hasActionColumn ? 1 : 0);
   // A reader can hide the naming column; the link then moves to the first
   // column still shown rather than leaving the row without one.
-  const linkColumnId = visibleColumns.some((column) => column.id === linkColumn)
-    ? linkColumn
-    : visibleColumns[0]?.id;
+  const linkColumnId = rowLinkColumn(
+    visibleColumns.map((column) => ({
+      id: column.id,
+      interactive: column.columnDef.meta?.interactive,
+      ownsRowLink: column.columnDef.meta?.ownsRowLink,
+    })),
+    linkColumn ?? visibleColumns[0]?.id,
+  );
   const rows = table.getRowModel().rows;
   const offsetTotal = queryText.trim() ? filteredData.length : (total ?? data.length);
   const firstRecord = offsetTotal === 0 ? 0 : page * pageSize + 1;
@@ -549,6 +590,7 @@ export function DataTable<TData extends RowData>({
                               href: rowHref?.(row.original) ?? null,
                               onOpen: open,
                               testId: `${collectionId}-row-link-${index}`,
+                              label: rowLabel?.(row.original),
                             }}
                           >
                             <table.FlexRender cell={cell} />
@@ -627,6 +669,7 @@ export function DataTable<TData extends RowData>({
                           href: rowHref?.(row.original) ?? null,
                           onOpen: open,
                           testId: `${collectionId}-mobile-row-link-${index}`,
+                          label: rowLabel?.(row.original),
                         }}
                       >
                         <table.FlexRender cell={cell} />

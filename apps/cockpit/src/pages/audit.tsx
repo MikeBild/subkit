@@ -558,6 +558,13 @@ export function AuditPage() {
         sorting={[] as SortingState}
         onSortingChange={() => {}}
         onOpen={(entry) => setSelected(entry)}
+        rowLabel={(entry) =>
+          t("audit.openEntry", {
+            action: actionName(entry.action),
+            resource: auditResourceLabel(entry.resource_type, t).text,
+            time: dateTime(entry.ts),
+          })
+        }
         mode="cursor"
         page={page}
         pageSize={PAGE_SIZE}
