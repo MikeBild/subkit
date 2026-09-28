@@ -8,7 +8,7 @@ import {
   PAGE_ROUTES,
   REDIRECT_ROUTES,
 } from "@/app/route-table";
-import { apiAccessSectionFromUrl, reviewFromUrl } from "./links";
+import { apiAccessSectionFromUrl, peopleSectionFromUrl, reviewFromUrl } from "./links";
 
 /**
  * The router cannot be imported here — it reaches `window` while it loads — so
@@ -118,6 +118,21 @@ describe("cockpit route table", () => {
     );
   });
 
+  test("sends the old Zugriff address to the roles of Personen & Rechte", () => {
+    // `/access` became three sections of `/people`. A bookmark lands on the
+    // roles — what the old page opened with — and its own `section` wins over
+    // one the old address carried (its tabs included a permissions list that
+    // is no section any more).
+    expect(REDIRECT_ROUTES).toContain("/access");
+    expect(PAGE_ROUTES as readonly string[]).not.toContain("/access");
+    expect(ALL_ROUTE_PATHS).toContain("/access");
+    const landed = legacyTarget("/access", "");
+    expect(landed).toBe("/people?section=roles");
+    expect(peopleSectionFromUrl(landed.slice(landed.indexOf("?")))).toBe("roles");
+    expect(legacyTarget("/access", "?section=permissions")).toBe("/people?section=roles");
+    expect(legacyTarget("/access", "?q=admin")).toBe("/people?section=roles&q=admin");
+  });
+
   test("sends the decisions queue and the system page to Heute", () => {
     const W = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
     for (const path of ["/decisions", "/operations"] as const) {
@@ -155,6 +170,7 @@ describe("cockpit route table", () => {
     expect(source).not.toContain("ConnectionsPage");
     expect(source).not.toContain("DecisionsPage");
     expect(source).not.toContain("OperationsPage");
+    expect(source).not.toMatch(/\bAccessPage\b/);
   });
 
   test("keeps every parameterised path out of the mapped page list", () => {

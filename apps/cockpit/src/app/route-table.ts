@@ -14,14 +14,13 @@
  * an entry does not compile, and a check that reads this file reads exactly
  * what the router reads.
  */
-import { apiAccessHref, attentionHref, uuidParam } from "./links";
+import { apiAccessHref, attentionHref, peopleHref, uuidParam } from "./links";
 
 export const PAGE_ROUTES = [
   "/",
   "/audit",
   "/usage",
   "/people",
-  "/access",
   "/api-access",
   "/notifications",
   "/settings",
@@ -45,22 +44,28 @@ export type PageRoute = (typeof PAGE_ROUTES)[number];
  * Both were a second and third place for what Heute now says once: what needs
  * the reader, and why the installation is not well. Their addresses land on
  * Heute — a link that named one workflow opens that workflow's review sheet.
+ *
+ * `/access` was the roles, groups and grants page. It is a section of
+ * Personen & Rechte now, and its address lands on the roles — what it opened
+ * with.
  */
-export const REDIRECT_ROUTES = ["/connections", "/decisions", "/operations"] as const;
+export const REDIRECT_ROUTES = ["/connections", "/decisions", "/operations", "/access"] as const;
 
 export type RedirectRoute = (typeof REDIRECT_ROUTES)[number];
 
 /**
  * Where an old address lands, from its path and its RAW query.
  *
- * Only `/connections` carries its query along: the page it lands on reads the
- * OAuth callback's result out of it. The decisions queue's `bucket` narrowed a
+ * `/connections` carries its query along: the page it lands on reads the
+ * OAuth callback's result out of it. `/access` does too, under the section it
+ * lands on — its own `section` wins, whatever the old address said. The decisions queue's `bucket` narrowed a
  * page that no longer exists — carried along, it would only sit in Heute's
  * address meaning nothing. `workflow_id` is the one thing an old decisions
  * link said that still has a place, and it has to be a UUID to get there.
  */
 export function legacyTarget(path: RedirectRoute, search: string): string {
   if (path === "/connections") return redirectTarget(apiAccessHref("grants"), search);
+  if (path === "/access") return redirectTarget(peopleHref("roles"), search);
   if (path === "/decisions") {
     const workflowId = uuidParam(new URLSearchParams(search), "workflow_id");
     return workflowId ? attentionHref({ review: `workflow:${workflowId}` }) : attentionHref();
