@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
+import { absolute, runsHref, settingsHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { type CockpitColumn, DataTable } from "@/components/cockpit/data-table";
 import { PageFrame } from "@/components/cockpit/page-frame";
@@ -35,6 +36,9 @@ const AXIS_LABEL: Record<ConsumptionAxis, TranslationKey> = {
   user: "resource.usage.axis.user",
   model: "resource.usage.axis.model",
 };
+
+/** The setting the cap is, and where every "set / raise the cap" on this page leads. */
+const BUDGET_LEAF = "tokens.monthly_budget";
 
 const PRESSURE_LABEL = {
   ample: "resource.usage.pressure.ample",
@@ -104,6 +108,24 @@ export function UsagePage() {
     }
     return byId;
   }, [people.data]);
+  // Names for the workflow axis. `llm_usage` is attributed through the run,
+  // so the key is the workflow's id — printed raw, the axis named nothing.
+  const workflowList = useQuery({
+    queryKey: ["usage-workflows"],
+    enabled: allowed && axis === "workflow",
+    queryFn: () =>
+      apiRequest<{ items?: Array<{ id: string; name?: string | null; slug?: string | null }> }>(
+        "/v1/workflows?limit=200",
+      ),
+  });
+  const workflowName = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const item of workflowList.data?.items ?? []) {
+      const label = item.name?.trim() || item.slug?.trim();
+      if (label) byId.set(item.id, label);
+    }
+    return byId;
+  }, [workflowList.data]);
   const pressure = budgetPressure(budget);
 
   const number = useMemo(
@@ -159,6 +181,29 @@ export function UsagePage() {
               </span>
             );
           }
+          if (axis === "workflow") {
+            const name = workflowName.get(row.key);
+            if (name)
+              return (
+                <a
+                  className="truncate underline-offset-2 hover:underline"
+                  href={absolute(workflowHref(row.key))}
+                  data-testid="usage-workflow-link"
+                >
+                  {name}
+                </a>
+              );
+            const unreadable = Boolean(workflowList.error) || workflowName.size === 0;
+            return (
+              <span className="truncate text-muted-foreground">
+                {t(
+                  unreadable
+                    ? "resource.usage.workflowUnreadable"
+                    : "resource.usage.unknownWorkflow",
+                )}
+              </span>
+            );
+          }
           return <span className="truncate">{row.key}</span>;
         },
         { width: "w-[46%]" },
@@ -191,7 +236,17 @@ export function UsagePage() {
         { width: "w-[17%]" },
       ),
     ];
-  }, [t, dateTime, axis, number, percent, personName, people.error]);
+  }, [
+    t,
+    dateTime,
+    axis,
+    number,
+    percent,
+    personName,
+    people.error,
+    workflowName,
+    workflowList.error,
+  ]);
 
   const columns = useMemo<CockpitColumn<UsageRow>[]>(() => {
     const column = tableColumns<UsageRow>({ t, dateTime });
@@ -231,13 +286,20 @@ export function UsagePage() {
       </main>
     );
 
-  const runtimeCards: Array<[TranslationKey, string]> = [
-    ["resource.usage.executions", totals.executions === null ? MISSING : String(totals.executions)],
-    ["resource.usage.averageDuration", formatDurationMs(totals.averageDurationMs)],
-    ["resource.usage.p95Duration", formatDurationMs(totals.p95DurationMs)],
+  // The count and the rate are about runs, and the run log is where a reader
+  // checks them: all runs behind the count, the failures behind the rate.
+  const runtimeCards: Array<[TranslationKey, string, string | null]> = [
+    [
+      "resource.usage.executions",
+      totals.executions === null ? MISSING : String(totals.executions),
+      runsHref(),
+    ],
+    ["resource.usage.averageDuration", formatDurationMs(totals.averageDurationMs), null],
+    ["resource.usage.p95Duration", formatDurationMs(totals.p95DurationMs), null],
     [
       "resource.usage.successRate",
       totals.successRatePercent === null ? MISSING : `${totals.successRatePercent}%`,
+      runsHref({ status: "failed" }),
     ],
   ];
 
@@ -317,7 +379,16 @@ export function UsagePage() {
                     {t("resource.usage.budgetUnreadable")}
                   </span>
                 ) : budget.budgetTokens === null ? (
-                  <span data-testid="usage-budget-uncapped">{t("resource.usage.noCapHint")}</span>
+                  <span data-testid="usage-budget-uncapped">
+                    {t("resource.usage.noCapHint")}{" "}
+                    <a
+                      className="font-medium text-foreground underline underline-offset-2"
+                      href={absolute(settingsHref(BUDGET_LEAF))}
+                      data-testid="usage-set-cap"
+                    >
+                      {t("resource.usage.setCap")}
+                    </a>
+                  </span>
                 ) : (
                   <>
                     {/* Only when the title is an AMOUNT. With no rates the
@@ -337,16 +408,29 @@ export function UsagePage() {
                       {t("resource.usage.remaining")}: {tokens(budget.remainingTokens)}
                     </span>
                     {pressure ? (
-                      <Badge
-                        variant={pressure === "critical" ? "destructive" : "secondary"}
+                      // Red with its way to the cause (§1): the cap is a
+                      // setting, and the badge opens it.
+                      <a
+                        href={absolute(settingsHref(BUDGET_LEAF))}
                         data-testid={`usage-pressure-${pressure}`}
+                        aria-label={`${t(PRESSURE_LABEL[pressure])} — ${t("resource.usage.raiseCap")}`}
                       >
-                        {t(PRESSURE_LABEL[pressure])}
-                      </Badge>
+                        <Badge variant={pressure === "critical" ? "destructive" : "secondary"}>
+                          {t(PRESSURE_LABEL[pressure])}
+                        </Badge>
+                      </a>
                     ) : null}
                   </>
                 )}
               </CardFooter>
+              {!status.error && budget.budgetTokens !== null ? (
+                <p
+                  className="px-4 pb-3 text-muted-foreground text-xs"
+                  data-testid="usage-cap-consequence"
+                >
+                  {t("resource.usage.capReached")}
+                </p>
+              ) : null}
             </Card>
           )}
 
@@ -451,11 +535,23 @@ export function UsagePage() {
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" data-testid="usage-summary">
             {runtime.isPending
               ? [0, 1, 2, 3].map((index) => <Skeleton key={index} className="h-28 w-full" />)
-              : runtimeCards.map(([label, display], index) => (
+              : runtimeCards.map(([label, display, href], index) => (
                   <Card key={label} size="sm" data-testid={`usage-summary-${index}`}>
                     <CardHeader>
                       <CardDescription>{t(label)}</CardDescription>
-                      <CardTitle className="text-2xl tabular-nums">{display}</CardTitle>
+                      <CardTitle className="text-2xl tabular-nums">
+                        {href ? (
+                          <a
+                            className="underline-offset-4 hover:underline"
+                            href={absolute(href)}
+                            data-testid={`usage-summary-${index}-link`}
+                          >
+                            {display}
+                          </a>
+                        ) : (
+                          display
+                        )}
+                      </CardTitle>
                     </CardHeader>
                   </Card>
                 ))}
