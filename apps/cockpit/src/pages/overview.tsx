@@ -29,6 +29,8 @@ import { useI18n } from "@/lib/i18n-context";
 import { EngineWording } from "@/lib/machine-label";
 import { cn } from "@/lib/utils";
 import type { DecisionItem } from "./decisions-model";
+import { OperationsBar, useOperationsFigures, WindowSwitch } from "./operations-bar";
+import { type WindowBounds, windowBounds } from "./operations-figures";
 import {
   type AttentionAction,
   type AttentionItem,
@@ -36,12 +38,13 @@ import {
   actionLabelKey,
   attentionSentence,
   entryActions,
+  overviewSections,
+  overviewView,
   reviewNavigation,
   reviewTarget,
   sourceLabel,
   statusLine,
-  todayView,
-} from "./today-model";
+} from "./overview-model";
 
 /** A plain left click stays in the page; anything else is the browser's. */
 function isPlainClick(event: MouseEvent): boolean {
@@ -55,19 +58,25 @@ const CLASS_WEIGHT: Record<AttentionItem["class"], string> = {
 };
 
 /**
- * Heute: what needs the reader now, one entry per subject, each with one way
- * to act on it. Tasks live here and nowhere else — the object pages show their
- * state and at most link here.
+ * Übersicht: the installation's four operating figures over one window, then
+ * what needs the reader now, one entry per subject, each with one way to act
+ * on it. Tasks live here and nowhere else — the object pages show their state
+ * and at most link here. The figures stay in the calm state too: they are
+ * numbers to read, never tasks, and each opens the list it counts.
  */
-export function TodayPage() {
+export function OverviewPage() {
   const { t, dateTime } = useI18n();
   const session = useSession();
   const attention = useAttention(session.permissions);
+  // The window as two fixed instants, set when it is chosen: the figures and
+  // the lists they link to count over the very same bounds.
+  const [bounds, setBounds] = useState<WindowBounds>(() => windowBounds("24h"));
+  const operations = useOperationsFigures(bounds, session.permissions);
   const href = useRouterState({ select: (state) => state.location.href });
   const [review, setReview] = useState<string | null>(() => reviewFromUrl(window.location.search));
 
   // The sheet follows the address: Back closes it, a link opens it, and a
-  // router navigation to Heute (the sidebar entry) lands without it.
+  // router navigation to the Übersicht (the sidebar entry) lands without it.
   useEffect(() => {
     void href;
     setReview(reviewFromUrl(window.location.search));
@@ -95,7 +104,7 @@ export function TodayPage() {
     setReview(null);
   }, [navigation]);
 
-  // Nobody reads Heute who may read none of its sources: they land on the
+  // Nobody reads the Übersicht who may read none of its sources: they land on the
   // first page they can see, not on a page that can only ever be empty.
   const fallback = attention.enabled
     ? null
@@ -106,7 +115,7 @@ export function TodayPage() {
     if (fallback) window.location.replace(absolute(fallback));
   }, [fallback]);
 
-  const title = t("today.title");
+  const title = t("overview.title");
   if (!attention.enabled) {
     return fallback ? (
       <main className="p-6" aria-busy="true" data-testid="attention-redirect" />
@@ -121,72 +130,130 @@ export function TodayPage() {
   }
 
   const data = attention.query.data;
-  const view = data ? todayView(data, attention.hidden) : null;
+  const view = data ? overviewView(data, attention.hidden) : null;
   const now = Date.now();
   const reviewed = review ? (data?.items.find((item) => item.id === review) ?? null) : null;
+  const canHistory = session.permissions.includes("audit:read");
+  const sections = view
+    ? overviewSections(view, { operations: operations.allowed, history: canHistory })
+    : null;
+
+  const bar = (
+    <OperationsBar
+      figures={operations.figures}
+      pending={operations.pending}
+      onRetry={operations.retry}
+    />
+  );
+  const history = (
+    <p className="text-sm text-muted-foreground" data-testid="attention-history">
+      <Link
+        to={auditHref({ scope: "decisions" })}
+        className="underline underline-offset-2"
+        data-testid="attention-history-link"
+      >
+        {t("overview.history.link")}
+      </Link>
+    </p>
+  );
 
   return (
-    <PageFrame surface="overview" testId="attention-page" title={title} scroll="page">
+    <PageFrame
+      surface="overview"
+      testId="attention-page"
+      title={title}
+      scroll="page"
+      action={
+        operations.allowed ? (
+          <WindowSwitch value={bounds.window} onChange={(next) => setBounds(windowBounds(next))} />
+        ) : undefined
+      }
+    >
       <div className="grid gap-6">
         {attention.query.isPending ? (
-          <div
-            className="grid gap-2"
-            role="status"
-            aria-label={t("common.loading")}
-            aria-busy="true"
-            data-family-slot="data-state"
-            data-family-state="loading"
-          >
-            <Skeleton className="h-14 w-full" />
-            <Skeleton className="h-14 w-full" />
-          </div>
-        ) : attention.query.isError || !view ? (
-          <LoadFailed
-            title={t("today.loadFailed")}
-            onRetry={() => void attention.query.refetch()}
-            testId="attention-error"
-          />
-        ) : view.kind === "calm" ? (
-          <CalmState line={statusLine(view.status, t, dateTime)} />
-        ) : view.kind === "nothing_readable" ? (
-          <Alert data-testid="resource-permission-alert">
-            <AlertTitle>{t("resource.permission.title")}</AlertTitle>
-            <AlertDescription>{t("resource.permission.description")}</AlertDescription>
-          </Alert>
-        ) : (
           <>
-            {view.kind === "items" ? (
-              <ol
-                className="grid gap-2"
-                data-testid="attention-list"
-                data-family-slot="attention-list"
-              >
-                {view.items.map((item, index) => (
-                  <AttentionEntry
-                    key={item.id}
-                    item={item}
-                    index={index}
-                    sentence={attentionSentence(item, t, now)}
-                    permissions={session.permissions}
-                    onReview={openReview}
-                  />
-                ))}
-              </ol>
-            ) : null}
-            <UnreadSources sources={view.unread} onRetry={() => void attention.query.refetch()} />
-          </>
-        )}
-        {session.permissions.includes("audit:read") ? (
-          <p className="text-sm text-muted-foreground" data-testid="attention-history">
-            <Link
-              to={auditHref({ scope: "decisions" })}
-              className="underline underline-offset-2"
-              data-testid="attention-history-link"
+            {operations.allowed ? bar : null}
+            <div
+              className="grid gap-2"
+              role="status"
+              aria-label={t("common.loading")}
+              aria-busy="true"
+              data-family-slot="data-state"
+              data-family-state="loading"
             >
-              {t("today.history.link")}
-            </Link>
-          </p>
-        ) : null}
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+            {canHistory ? history : null}
+          </>
+        ) : attention.query.isError || !view || !sections ? (
+          <>
+            {operations.allowed ? bar : null}
+            <LoadFailed
+              title={t("overview.loadFailed")}
+              onRetry={() => void attention.query.refetch()}
+              testId="attention-error"
+            />
+            {canHistory ? history : null}
+          </>
+        ) : view.kind === "nothing_readable" ? (
+          <>
+            {operations.allowed ? bar : null}
+            <Alert data-testid="resource-permission-alert">
+              <AlertTitle>{t("resource.permission.title")}</AlertTitle>
+              <AlertDescription>{t("resource.permission.description")}</AlertDescription>
+            </Alert>
+            {canHistory ? history : null}
+          </>
+        ) : (
+          sections.map((section) => {
+            if (section === "operations") return <div key={section}>{bar}</div>;
+            if (section === "history") return <div key={section}>{history}</div>;
+            if (section === "calm")
+              return (
+                <CalmState
+                  key={section}
+                  line={view.kind === "calm" ? statusLine(view.status, t, dateTime) : null}
+                />
+              );
+            if (section === "unread")
+              return (
+                <UnreadSources
+                  key={section}
+                  sources={view.kind === "items" || view.kind === "unread" ? view.unread : []}
+                  onRetry={() => void attention.query.refetch()}
+                />
+              );
+            return view.kind === "items" ? (
+              <section
+                key={section}
+                className="grid gap-2"
+                aria-labelledby="attention-heading"
+                data-testid="attention-section"
+              >
+                <h2 id="attention-heading" className="text-sm font-medium">
+                  {t("overview.attention.title")}
+                </h2>
+                <ol
+                  className="grid gap-2"
+                  data-testid="attention-list"
+                  data-family-slot="attention-list"
+                >
+                  {view.items.map((item, index) => (
+                    <AttentionEntry
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      sentence={attentionSentence(item, t, now)}
+                      permissions={session.permissions}
+                      onReview={openReview}
+                    />
+                  ))}
+                </ol>
+              </section>
+            ) : null;
+          })
+        )}
       </div>
       <ReviewSheet id={review} item={reviewed} now={now} onClose={closeReview} />
     </PageFrame>
@@ -204,7 +271,7 @@ function CalmState({ line }: { line: string | null }) {
     >
       <p className="flex items-center gap-2 text-base font-medium">
         <CircleCheck aria-hidden="true" className="size-5 text-emerald-600 dark:text-emerald-400" />
-        {t("today.calm")}
+        {t("overview.calm")}
       </p>
       {line ? (
         <p
@@ -230,8 +297,8 @@ function UnreadSources({
   if (sources.length === 0) return null;
   return (
     <LoadFailed
-      title={t("today.unread.title")}
-      description={t("today.unread.description", {
+      title={t("overview.unread.title")}
+      description={t("overview.unread.description", {
         sources: sources.map((source) => sourceLabel(source, t)).join(", "),
       })}
       onRetry={onRetry}
@@ -348,7 +415,7 @@ function ActionLink({
         size="sm"
         variant={variant === "primary" ? "default" : "link"}
         disabled
-        title={t("today.notPermitted")}
+        title={t("overview.notPermitted")}
         data-testid={testId}
         data-attention-verb={action.verb}
       >
@@ -404,7 +471,7 @@ function decisionFailureKey(error: unknown): TranslationKey {
 }
 
 /**
- * One entry's decisions, in a sheet over Heute.
+ * One entry's decisions, in a sheet over the Übersicht.
  *
  * The cards are the ones the decisions queue always used — the same diff, dry
  * run, approve and reject — narrowed to this entry's subject: a workflow's
@@ -439,7 +506,7 @@ function ReviewSheet({
             {item ? (
               <SentenceText sentence={attentionSentence(item, t, now)} />
             ) : (
-              t("today.sheet.title")
+              t("overview.sheet.title")
             )}
           </SheetTitle>
           {item?.detail ? (
@@ -513,7 +580,7 @@ function ReviewBody({
             className="underline underline-offset-2"
             data-testid="attention-decided-audit"
           >
-            {t("today.decided.audit")}
+            {t("overview.decided.audit")}
           </a>
         ),
       });
@@ -539,7 +606,7 @@ function ReviewBody({
       onClick={onClose}
       data-testid="attention-review-back"
     >
-      {t("today.sheet.close")}
+      {t("overview.sheet.close")}
     </Button>
   );
   // Where the entry is acted on, when not in this sheet.
@@ -565,8 +632,8 @@ function ReviewBody({
         >
           {t(
             review.access === "not_permitted"
-              ? "today.sheet.notPermitted"
-              : "today.sheet.nothingToReview",
+              ? "overview.sheet.notPermitted"
+              : "overview.sheet.nothingToReview",
           )}
         </p>
         {elsewhere}
@@ -589,7 +656,7 @@ function ReviewBody({
     return (
       <div className="px-4">
         <LoadFailed
-          title={t("today.loadFailed")}
+          title={t("overview.loadFailed")}
           onRetry={() => review.refetch()}
           testId="attention-review-error"
         />
@@ -625,7 +692,7 @@ function ReviewBody({
       {decisions.length === 0 && held.length === 0 ? (
         <div className="grid gap-3" data-testid="attention-review-empty">
           {elsewhere ?? (
-            <p className="text-sm text-muted-foreground">{t("today.sheet.nothingOpen")}</p>
+            <p className="text-sm text-muted-foreground">{t("overview.sheet.nothingOpen")}</p>
           )}
           {back}
         </div>

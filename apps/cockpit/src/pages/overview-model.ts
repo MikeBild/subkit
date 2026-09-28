@@ -1,4 +1,5 @@
-// Heute — the one list of what needs the reader now — as pure functions.
+// The Übersicht — the operations bar over the one list of what needs the
+// reader now — as pure functions.
 //
 // The engine answers the question once (`GET /v1/attention`, attention.v1) and
 // hands over facts, never sentences: a subject, a machine reason, counts, since
@@ -102,7 +103,7 @@ export function attentionEntries(
 // --------------------------------------------------------------------------
 // What the page says.
 
-export type TodayView =
+export type OverviewView =
   /** Entries to act on. `unread` names the sources that could not be read. */
   | { kind: "items"; items: AttentionItem[]; unread: AttentionSource[] }
   /** Nothing open, and every readable source answered. */
@@ -126,7 +127,10 @@ export function failedSources(attention: Attention): AttentionSource[] {
  * without it the list could be missing exactly the entry that matters, and
  * "Alles erledigt" would be a claim nobody checked.
  */
-export function todayView(attention: Attention, hidden: HiddenEntries = NO_HIDDEN): TodayView {
+export function overviewView(
+  attention: Attention,
+  hidden: HiddenEntries = NO_HIDDEN,
+): OverviewView {
   const items = attentionEntries(attention.items, hidden);
   const unread = failedSources(attention);
   if (items.length > 0) return { kind: "items", items, unread };
@@ -134,6 +138,28 @@ export function todayView(attention: Attention, hidden: HiddenEntries = NO_HIDDE
   const readable = Object.values(attention.sources).some((state) => state !== "not_permitted");
   if (!readable) return { kind: "nothing_readable" };
   return { kind: "calm", status: attention.status };
+}
+
+/**
+ * What the page holds, top to bottom. The operations bar stands first in every
+ * state — calm included, where it is the one place the installation's numbers
+ * are read — and only for a reader who may read them. Below it: the list, the
+ * calm sentence, or what could not be read; the one way to the history last.
+ */
+export type OverviewSection = "operations" | "attention" | "calm" | "unread" | "history";
+
+export function overviewSections(
+  view: OverviewView,
+  can: { operations: boolean; history: boolean },
+): OverviewSection[] {
+  const sections: OverviewSection[] = can.operations ? ["operations"] : [];
+  if (view.kind === "items") {
+    sections.push("attention");
+    if (view.unread.length > 0) sections.push("unread");
+  } else if (view.kind === "calm") sections.push("calm");
+  else if (view.kind === "unread") sections.push("unread");
+  if (can.history) sections.push("history");
+  return sections;
 }
 
 /**
@@ -155,32 +181,32 @@ export function attentionBadge(
 // The sentence.
 
 const REASON_KEYS = {
-  awaiting_answer: "today.reason.awaiting_answer",
-  execution_authority_required: "today.reason.execution_authority_required",
-  execution_authority_unavailable: "today.reason.execution_authority_unavailable",
-  scheduler_stale: "today.reason.scheduler_stale",
-  failing: "today.reason.failing",
-  patch_proposed: "today.reason.patch_proposed",
-  needs_reauth: "today.reason.needs_reauth",
-  needs_update: "today.reason.needs_update",
-  degraded: "today.reason.degraded",
-  unhealthy: "today.reason.unhealthy",
-  refresh_refused: "today.reason.refresh_refused",
-  refresh_failed: "today.reason.refresh_failed",
-  expired_no_refresh: "today.reason.expired_no_refresh",
-  secret_unreadable: "today.reason.secret_unreadable",
-  secret_prepared: "today.reason.secret_prepared",
-  skills_proposed: "today.reason.skills_proposed",
-  budget_critical: "today.reason.budget_critical",
-  risk_critical: "today.reason.risk_critical",
+  awaiting_answer: "overview.reason.awaiting_answer",
+  execution_authority_required: "overview.reason.execution_authority_required",
+  execution_authority_unavailable: "overview.reason.execution_authority_unavailable",
+  scheduler_stale: "overview.reason.scheduler_stale",
+  failing: "overview.reason.failing",
+  patch_proposed: "overview.reason.patch_proposed",
+  needs_reauth: "overview.reason.needs_reauth",
+  needs_update: "overview.reason.needs_update",
+  degraded: "overview.reason.degraded",
+  unhealthy: "overview.reason.unhealthy",
+  refresh_refused: "overview.reason.refresh_refused",
+  refresh_failed: "overview.reason.refresh_failed",
+  expired_no_refresh: "overview.reason.expired_no_refresh",
+  secret_unreadable: "overview.reason.secret_unreadable",
+  secret_prepared: "overview.reason.secret_prepared",
+  skills_proposed: "overview.reason.skills_proposed",
+  budget_critical: "overview.reason.budget_critical",
+  risk_critical: "overview.reason.risk_critical",
 } as const satisfies Record<AttentionItem["reason"], TranslationKey>;
 
 const SUBJECT_KEYS = {
-  workflow: "today.subject.workflow",
-  conversation: "today.subject.conversation",
-  connector: "today.subject.connector",
-  connection: "today.subject.connection",
-  secret: "today.subject.secret",
+  workflow: "overview.subject.workflow",
+  conversation: "overview.subject.conversation",
+  connector: "overview.subject.connector",
+  connection: "overview.subject.connection",
+  secret: "overview.subject.secret",
 } as const satisfies Record<NonNullable<AttentionItem["subject"]>["kind"], TranslationKey>;
 
 const CAUSE_KEYS: Record<string, TranslationKey> = {
@@ -199,19 +225,19 @@ const CAUSE_KEYS: Record<string, TranslationKey> = {
 
 /** The heartbeats the scheduler writes (operator/operational-overview.ts). */
 const HEARTBEAT_KEYS: Record<string, TranslationKey> = {
-  "self_healing.drift_scan": "today.heartbeat.drift_scan",
-  "connectors.reauth_scan": "today.heartbeat.reauth_scan",
+  "self_healing.drift_scan": "overview.heartbeat.drift_scan",
+  "connectors.reauth_scan": "overview.heartbeat.reauth_scan",
 };
 
 /** The critical signals the engine raises (operator/risk-signals.ts). */
 const SIGNAL_KEYS: Record<string, TranslationKey> = {
-  pool_saturation: "today.signal.pool_saturation",
-  dlq_growth: "today.signal.dlq_growth",
-  transient_retry: "today.signal.transient_retry",
-  connector_unhealthy: "today.signal.connector_unhealthy",
-  llm_fallback: "today.signal.llm_fallback",
-  memory_high_water: "today.signal.memory_high_water",
-  token_budget: "today.signal.token_budget",
+  pool_saturation: "overview.signal.pool_saturation",
+  dlq_growth: "overview.signal.dlq_growth",
+  transient_retry: "overview.signal.transient_retry",
+  connector_unhealthy: "overview.signal.connector_unhealthy",
+  llm_fallback: "overview.signal.llm_fallback",
+  memory_high_water: "overview.signal.memory_high_water",
+  token_budget: "overview.signal.token_budget",
 };
 
 export interface AttentionSentence {
@@ -226,8 +252,8 @@ export interface AttentionSentence {
 function subjectPhrase(item: AttentionItem, t: Translate): string {
   if (!item.subject) return "";
   const name = item.subject.name?.trim();
-  return t(SUBJECT_KEYS[item.subject.kind] ?? "today.subject.other", {
-    name: name ? t("today.quoted", { name }) : t("today.unnamed"),
+  return t(SUBJECT_KEYS[item.subject.kind] ?? "overview.subject.other", {
+    name: name ? t("overview.quoted", { name }) : t("overview.unnamed"),
   });
 }
 
@@ -246,15 +272,15 @@ export function sinceLabel(since: string | null, now: number, t: Translate): str
   const at = Date.parse(since);
   if (Number.isNaN(at)) return null;
   const minutes = Math.max(0, Math.floor((now - at) / 60_000));
-  if (minutes < 1) return t("today.since.now");
-  if (minutes < 60) return counted(minutes, "today.since.minute", "today.since.minutes", t);
+  if (minutes < 1) return t("overview.since.now");
+  if (minutes < 60) return counted(minutes, "overview.since.minute", "overview.since.minutes", t);
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return counted(hours, "today.since.hour", "today.since.hours", t);
+  if (hours < 24) return counted(hours, "overview.since.hour", "overview.since.hours", t);
   const days = Math.floor(hours / 24);
-  if (days < 14) return counted(days, "today.since.day", "today.since.days", t);
+  if (days < 14) return counted(days, "overview.since.day", "overview.since.days", t);
   const weeks = Math.floor(days / 7);
-  if (days < 60) return counted(weeks, "today.since.week", "today.since.weeks", t);
-  return counted(Math.floor(days / 30), "today.since.month", "today.since.months", t);
+  if (days < 60) return counted(weeks, "overview.since.week", "overview.since.weeks", t);
+  return counted(Math.floor(days / 30), "overview.since.month", "overview.since.months", t);
 }
 
 /**
@@ -274,7 +300,9 @@ export function attentionSentence(
   const reasonKey = (REASON_KEYS as Record<string, TranslationKey>)[item.reason];
   if (!reasonKey) {
     return {
-      lead: subject ? t("today.reason.other", { subject }) : t("today.reason.otherWithoutSubject"),
+      lead: subject
+        ? t("overview.reason.other", { subject })
+        : t("overview.reason.otherWithoutSubject"),
       machine: item.reason,
       since,
     };
@@ -284,14 +312,16 @@ export function attentionSentence(
     case "failing": {
       const cause = item.cause_class ? CAUSE_KEYS[item.cause_class] : undefined;
       let lead = t(
-        (item.counts.failures ?? 0) > 1 ? "today.reason.failingCount" : "today.reason.failing",
+        (item.counts.failures ?? 0) > 1
+          ? "overview.reason.failingCount"
+          : "overview.reason.failing",
         { subject, count: item.counts.failures ?? 1 },
       );
-      if (cause) lead = t("today.withCause", { sentence: lead, cause: t(cause) });
+      if (cause) lead = t("overview.withCause", { sentence: lead, cause: t(cause) });
       if (item.counts.patches)
-        lead = t("today.withPatches", {
+        lead = t("overview.withPatches", {
           sentence: lead,
-          patches: counted(item.counts.patches, "today.patches.one", "today.patches.many", t),
+          patches: counted(item.counts.patches, "overview.patches.one", "overview.patches.many", t),
         });
       // A cause class the build has no word for is the engine's value, marked.
       const machine = item.cause_class && !cause ? item.cause_class : null;
@@ -299,18 +329,24 @@ export function attentionSentence(
     }
     case "patch_proposed":
       return {
-        lead: t((item.counts.patches ?? 1) > 1 ? "today.reason.patch_proposedCount" : reasonKey, {
-          subject,
-          count: item.counts.patches ?? 1,
-        }),
+        lead: t(
+          (item.counts.patches ?? 1) > 1 ? "overview.reason.patch_proposedCount" : reasonKey,
+          {
+            subject,
+            count: item.counts.patches ?? 1,
+          },
+        ),
         machine: null,
         since,
       };
     case "skills_proposed":
       return {
-        lead: t((item.counts.skills ?? 1) > 1 ? "today.reason.skills_proposedCount" : reasonKey, {
-          count: item.counts.skills ?? 1,
-        }),
+        lead: t(
+          (item.counts.skills ?? 1) > 1 ? "overview.reason.skills_proposedCount" : reasonKey,
+          {
+            count: item.counts.skills ?? 1,
+          },
+        ),
         machine: null,
         since,
       };
@@ -318,13 +354,13 @@ export function attentionSentence(
       const heartbeat = HEARTBEAT_KEYS[item.kind];
       return heartbeat
         ? { lead: t(reasonKey, { heartbeat: t(heartbeat) }), machine: null, since }
-        : { lead: t("today.reason.scheduler_staleOther"), machine: item.kind, since };
+        : { lead: t("overview.reason.scheduler_staleOther"), machine: item.kind, since };
     }
     case "risk_critical": {
       const signal = SIGNAL_KEYS[item.kind];
       return signal
         ? { lead: t(reasonKey, { signal: t(signal) }), machine: null, since }
-        : { lead: t("today.reason.risk_criticalOther"), machine: item.kind, since };
+        : { lead: t("overview.reason.risk_criticalOther"), machine: item.kind, since };
     }
     default:
       return { lead: t(reasonKey, { subject }), machine: null, since };
@@ -354,37 +390,37 @@ export function entryActions(item: AttentionItem): {
 export function actionLabelKey(action: AttentionAction, item: AttentionItem): TranslationKey {
   switch (action.verb) {
     case "review":
-      return "today.action.review";
+      return "overview.action.review";
     case "answer":
-      return "today.action.answer";
+      return "overview.action.answer";
     case "reauth":
-      return "today.action.reauth";
+      return "overview.action.reauth";
     case "renew":
-      return "today.action.renew";
+      return "overview.action.renew";
     case "open_runs":
-      return "today.action.openRuns";
+      return "overview.action.openRuns";
     case "chat":
-      return "today.action.chat";
+      return "overview.action.chat";
     default:
-      if (item.reason === "secret_prepared") return "today.action.openSettings";
-      if (item.reason === "budget_critical") return "today.action.openUsage";
-      if (item.subject?.kind === "connector") return "today.action.openConnector";
-      return "today.action.openOperations";
+      if (item.reason === "secret_prepared") return "overview.action.openSettings";
+      if (item.reason === "budget_critical") return "overview.action.openUsage";
+      if (item.subject?.kind === "connector") return "overview.action.openConnector";
+      return "overview.action.openOperations";
   }
 }
 
 const SOURCE_KEYS = {
-  conversations: "today.source.conversations",
-  schedules: "today.source.schedules",
-  freshness: "today.source.freshness",
-  failures: "today.source.failures",
-  patches: "today.source.patches",
-  connectors: "today.source.connectors",
-  connections: "today.source.connections",
-  secret_approvals: "today.source.secret_approvals",
-  skills: "today.source.skills",
-  budget: "today.source.budget",
-  risk: "today.source.risk",
+  conversations: "overview.source.conversations",
+  schedules: "overview.source.schedules",
+  freshness: "overview.source.freshness",
+  failures: "overview.source.failures",
+  patches: "overview.source.patches",
+  connectors: "overview.source.connectors",
+  connections: "overview.source.connections",
+  secret_approvals: "overview.source.secret_approvals",
+  skills: "overview.source.skills",
+  budget: "overview.source.budget",
+  risk: "overview.source.risk",
 } as const satisfies Record<AttentionSource, TranslationKey>;
 
 export function sourceLabel(source: AttentionSource, t: Translate): string {
@@ -392,10 +428,10 @@ export function sourceLabel(source: AttentionSource, t: Translate): string {
 }
 
 const HEALTH_KEYS = {
-  healthy: "today.health.healthy",
-  limited: "today.health.limited",
-  critical: "today.health.critical",
-  unknown: "today.health.unknown",
+  healthy: "overview.health.healthy",
+  limited: "overview.health.limited",
+  critical: "overview.health.critical",
+  unknown: "overview.health.unknown",
 } as const satisfies Record<HealthState, TranslationKey>;
 
 /**
@@ -408,10 +444,10 @@ export function statusLine(
   dateTime: (value: string) => string,
 ): string | null {
   if (!status) return null;
-  const health = t(HEALTH_KEYS[status.health_state] ?? "today.health.unknown");
+  const health = t(HEALTH_KEYS[status.health_state] ?? "overview.health.unknown");
   const next = status.next_run_at
-    ? t("today.status.nextRun", { when: dateTime(status.next_run_at) })
-    : t("today.status.noRun");
+    ? t("overview.status.nextRun", { when: dateTime(status.next_run_at) })
+    : t("overview.status.noRun");
   return `${health} · ${next}`;
 }
 

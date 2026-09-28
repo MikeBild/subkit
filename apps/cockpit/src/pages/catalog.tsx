@@ -229,7 +229,7 @@ function stringList(row: CatalogRow, field: string): string[] {
  * (CUI-WORDS-2).
  *
  * The engine's own reason is not repeated here. It is the entry's reason on
- * Heute and stands, marked as the engine's, in Heute's review sheet and in the
+ * Übersicht and stands, marked as the engine's, in Übersicht's review sheet and in the
  * cause block of the workflow's own page — one fact, one home. A third copy on
  * every list row was the same sentence in a place nobody acts on it.
  */

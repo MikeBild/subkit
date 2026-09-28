@@ -106,7 +106,7 @@ test("every address a link builder produces resolves to one of the cockpit's pag
   for (const href of Object.values(built)) expect(links.absolute(href)).toBe(`/cockpit${href}`);
 });
 
-test("Heute and its review sheet resolve to the start page, spelled as the engine spells them", () => {
+test("Übersicht and its review sheet resolve to the start page, spelled as the engine spells them", () => {
   const id = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
   const review = links.attentionHref({ review: `workflow:${id}` });
   expect(resolves(review)).toBe(true);

@@ -6,8 +6,8 @@ import { AuditPage } from "@/pages/audit";
 import { CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
+import { OverviewPage } from "@/pages/overview";
 import { RunsPage } from "@/pages/runs";
-import { TodayPage } from "@/pages/today";
 import { UsagePage } from "@/pages/usage";
 import { absolute } from "./links";
 import {
@@ -61,7 +61,7 @@ const runRoutes = [
 // here — invisible to the navigation and to the conformity sweep — cannot be
 // added: it has to be in the table first, and then it is swept.
 const PAGE_COMPONENTS: Record<PageRoute, () => React.ReactElement> = {
-  "/": TodayPage,
+  "/": OverviewPage,
   "/audit": AuditPage,
   "/usage": UsagePage,
   "/people": PeopleAndAccessPage,

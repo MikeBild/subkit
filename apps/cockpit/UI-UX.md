@@ -10,7 +10,7 @@ An answered question, a checked repair, a saved version and permission to run ar
 The engine supplies current schedule permission to the chat. A held-write preview cannot prove live
 readiness. After preparation, the same bounded execution review opens inside the chat and working
 context. Only a currently valid grant for the exact active version and environment resolves its
-schedule hold; the transition is audited and Heute's attention list is refreshed. An inactive version,
+schedule hold; the transition is audited and the Übersicht's attention list is refreshed. An inactive version,
 missing input or a changed, expired, revoked or exhausted boundary never fabricates completion.
 Questions and human-review cards use a subtle accent-blue surface, with visible options and effects.
 Raw runtime messages stay in collapsed technical details.
@@ -25,15 +25,15 @@ AI Elements render messages, tool calls, approval cards, suggestions and the pro
 
 Navigation follows the work instead of the engine's directory tree:
 
-- *(ungrouped)* — Heute (Today), with the number of open entries as its badge
+- *(ungrouped)* — Übersicht (Overview), with the number of open entries as its badge
 - **Arbeit** (Work) — Chat
 - **Automatisierung** (Automation) — Workflows, Runs and Connectors
 - **Wissen** (Knowledge) — Knowledge, Skills and Files
 - **Installation** — Usage, Settings, Credentials, People & access, Notifications, Audit
 
 The first block carries no heading and the last one carries the family's name for it. The
-convention (v2.0, §1 and §6) names both: Heute stands ungrouped at the top, and the administration
-block is called "Installation". There is no Overview, Decisions, System or Access entry any more:
+convention (v2.1, §1 and §6) names both: Übersicht stands ungrouped at the top, and the
+administration block is called "Installation". There is no Decisions, System or Access entry any more:
 their facts each have one home (see "One fact, one home" below), and their old addresses redirect.
 
 `src/app/navigation.ts` is the one declaration of that table and the source of
@@ -109,9 +109,10 @@ actions are shown on the card as well. The "⋯" glyph is reserved for a real me
 actions; a single further act is a named button. The breadcrumb stands only on a record's page, as
 "List › Record", and its list crumb is the way back.
 
-Tasks live on one page only: Heute, the start page. It lists what needs the reader — one sentence
-per subject with one primary action and at most one secondary link — and says "Alles erledigt."
-with one status line when nothing is open and every source it may read has answered. Object pages
+Tasks live on one page only: the Übersicht, the start page. Under its operations bar it lists what
+needs the reader — one sentence per subject with one primary action and at most one secondary link —
+and says "Alles erledigt." with one status line when nothing is open and every source it may read
+has answered. Object pages
 show their state and at most link to the entry; every fact has exactly one home.
 
 Every read has four states — loading, error, empty, ready — decided once by `queryView` in
@@ -120,12 +121,29 @@ do, retry), never the empty state it would otherwise fall through to. Addresses 
 builders in `src/app/links.ts`, router-relative, with `absolute()` only for a raw `href`; each builder
 is tested against the parser its page reads it back with.
 
-### Heute — the attention list
+### Übersicht — operations bar and attention list
 
-Heute (`/`, English "Today") is the start page and the only place a task lives. It reads one engine
-list, `GET /v1/attention`, which the digest, the MCP connect line and the MCP tool `get_attention`
-render too; the page never assembles its own list from several reads. Every entry is checked against
-the reader's permissions on its subject, and waiting questions are always the reader's own.
+The Übersicht (`/`, English "Overview") is the start page and the only place a task lives. Top to
+bottom: the page header with the title and the window switch (24 Std · 7 Tage · 30 Tage, 24 hours by
+default); the operations bar; "Braucht dich", the attention list; a notice naming the sources that
+could not be read, only when one failed; and one link into the audit trail, "Was bereits entschieden
+wurde".
+
+The operations bar holds exactly four figures in one row (two by two on a phone), each about 72px
+tall so the attention list stays on the first screen: Ausführungen, Erfolgsquote and Übernommene
+Reparaturen over the chosen window, and Gesunde Konnektoren, marked "Stand jetzt" because it is a
+state of now. Every figure links to the list that counts the same rows over the same bounds — the
+runs by `started_from`/`started_to`, the failed runs of that window, the decided repairs by
+`ts_from`/`ts_to`, the connectors unwell now. A figure with nothing to count says so in words and
+has no link; there is no link beside "100 %" when nothing failed or every connector is healthy. A
+figure whose read failed says "nicht lesbar" with its own retry. The bar is shown to readers with
+`stats:read`; connector health reads connectors only with `connector:read`. The figures and their
+reads live in `src/pages/operations-figures.ts` and `src/pages/operations-bar.tsx`.
+
+The attention list reads one engine list, `GET /v1/attention`, which the digest, the MCP connect line
+and the MCP tool `get_attention` render too; the page never assembles its own list from several
+reads. Every entry is checked against the reader's permissions on its subject, and waiting questions
+are always the reader's own.
 
 One entry per subject: a failing scheduled workflow and the fixes waiting for it are one entry, not one
 per run and one per fix, and all skill proposals are one entry. Entries are ordered by class —
@@ -136,22 +154,21 @@ sign-in leads to the connector, anything else opens the chat with the subject at
 permission to act the entry says so instead of offering a link. The engine's own wording is not on the
 entry.
 
-The navigation badge is the number of entries. List headers carry no count, and there are no tiles:
-a count that can be zero is not on this page.
+The navigation badge is the number of entries. List headers carry no count, and no figure reads a
+bare zero.
 
-When nothing is open and every source the reader may read has answered, the page says "Alles
-erledigt." and one status line — the health state and the next scheduled run. When a source did not
-answer, the page names it and offers to read again; it never says "all clear" over a gap. A source the
-reader may not read does not count as missing. A reader who may read no source at all lands on the
-first navigation entry they can see. Heute carries exactly one link into the audit trail, "Was bereits
-entschieden wurde".
+When nothing is open and every source the reader may read has answered, the operations bar stays and
+the list gives way to "Alles erledigt." and one status line — the health state and the next scheduled
+run. When a source did not answer, the page names it and offers to read again; it never says "all
+clear" over a gap. A source the reader may not read does not count as missing. A reader who may read
+no source at all lands on the first navigation entry they can see.
 
 Warnings, test and authoring failures and unused keys are not entries: they are the state of an
 object and stay on that object's page.
 
 The old addresses redirect through `legacyTarget()` in `src/app/route-table.ts`: `/decisions` and
-`/operations` land on Heute, `/decisions?workflow_id=<id>` opens that workflow's review sheet, and
-`/access` lands on the roles section of Personen & Rechte.
+`/operations` land on the Übersicht, `/decisions?workflow_id=<id>` opens that workflow's review
+sheet, and `/access` lands on the roles section of Personen & Rechte.
 
 ### Review sheet
 
@@ -214,17 +231,17 @@ never starts a run. Names and version labels replace internal identifiers in the
 
 ### One fact, one home
 
-There is no overview page with tiles, no decisions page and no system page. Each fact they showed has
-one home now:
+There is no decisions page and no system page. Each fact they showed has one home now:
 
-- The health state is Heute's status line, shown only when nothing is open; every cause of an unwell
+- The health state is the Übersicht's status line, shown only when nothing is open; every cause of an unwell
   installation is an entry. Health components and the score are available through the API, MCP and
   Prometheus only.
-- Executions, success rate, connector health and repair rate are in the "Betrieb" block of Nutzung
-  (`/usage`). Every figure links to a list that counts the same thing — the same window, the same
-  filter. A count of zero has nothing to open and gets no link; a ratio, a score or a duration at
+- Executions, success rate, connector health and repair rate are the Übersicht's operations bar.
+  Nutzung (`/usage`) shows consumption, the cap and its breakdown, and a "Laufzeit" table with its
+  own window — never these figures a second time. Every figure links to a list that counts the same
+  thing — the same window, the same filter. A count of zero has nothing to open and gets no link; a ratio, a score or a duration at
   zero is the worst state its figure can be in and keeps its way to the cause.
-- Stale data is an entry on Heute, and only when it is stale.
+- Stale data is an entry on the Übersicht, and only when it is stale.
 - There is no drift-scan button: the scheduler scans, and the CLI and MCP keep the manual scan.
 
 ### Installation pages
@@ -366,7 +383,7 @@ authenticated bilingual route sweep after SSO and publishes its screenshots as a
 
 A pending `ask_user_confirm` is one interactive card, available both in the transcript and at the top of Working Context. Match its explicit `tool_call_id`; submit the elicitation ID to the canonical response endpoint. Show the question, short effect and explicit approve/reject buttons. Saving a workflow draft says “Save inactive version” and explains that it does not start the workflow. Technical parameters stay out of the default view. Both surfaces share processing, error and expiry states; prevent duplicate submissions. On completion refresh the canonical state and continue streamed activity. A completed request must not remain “Waiting” after reload.
 
-A pending `ask_user_choice` uses an explicit selection card in both places. Show every option and its one-line effect directly, including a grounded recommendation; do not hide the decision behind a dropdown. Selection has a visible checkmark and requires a separate submit action. Keep the answer bound to the original option value and request ID; choosing an option does not submit it. Disable the text composer with an actionable hint while a selection is required. After the server accepts the selection, show its readable label as the user response and the tool as “Answered”, including after reload. Refresh the conversation and Heute's attention list after each completed response. A held workflow schedule stays open until its admission requirement is resolved; answering a question or saving an inactive draft is not a run authority. Show this remaining task with a link to the affected workflow in Working Context.
+A pending `ask_user_choice` uses an explicit selection card in both places. Show every option and its one-line effect directly, including a grounded recommendation; do not hide the decision behind a dropdown. Selection has a visible checkmark and requires a separate submit action. Keep the answer bound to the original option value and request ID; choosing an option does not submit it. Disable the text composer with an actionable hint while a selection is required. After the server accepts the selection, show its readable label as the user response and the tool as “Answered”, including after reload. Refresh the conversation and the Übersicht's attention list after each completed response. A held workflow schedule stays open until its admission requirement is resolved; answering a question or saving an inactive draft is not a run authority. Show this remaining task with a link to the affected workflow in Working Context.
 
 Editing a saved workflow invalidates its whole-workflow check and saved status. Do not label an edited version “saved” using evidence from its previous version. An interrupted preparation offers “Check change” through the normal chat turn; run authorization is the next task only after preparation is complete. Historical text remains historical; the header and action card reflect current server state.
 
@@ -375,13 +392,13 @@ Workflow preparation includes inspection, validation and the supported preview w
 
 ## Attention grammar
 
-What follows is a verbatim German copy of §8 of Cockpit Convention v2.0 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). Heute and its review sheet are measured against it. SubKit offers no "remind me later" in the sheet because the engine has no deferred state, which §8.4 allows; the reason is recorded above under "Review sheet". The copy below is never adjusted to this product, or it would no longer be a copy.
+What follows is a verbatim German copy of §8 of Cockpit Convention v2.1 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). The Übersicht's attention list and its review sheet are measured against it. SubKit offers no "remind me later" in the sheet because the engine has no deferred state, which §8.4 allows; the reason is recorded above under "Review sheet". The copy below is never adjusted to this product, or it would no longer be a copy.
 
 ### 8. Anliegen-Grammatik
 
-Jedes Produkt, das menschliche Aufmerksamkeit braucht (Freigaben, Reviews, Budget-Gates, Proposals, Rückfragen, gestörte Anmeldungen, scheiternde Automatik), zeigt sie an **einem** Ort: der Anliegen-Liste auf „Heute" (§1). Eine eigene Entscheidungs-Seite, Übersichts-Kacheln und eine System-Seite gibt es daneben nicht. Die Liste beantwortet die drei Fragen in dieser Reihenfolge: Was passiert? Braucht es mich? Was tue ich dann? Jedes Produkt baut das Muster in eigenen Komponenten nach (kein Import).
+Jedes Produkt, das menschliche Aufmerksamkeit braucht (Freigaben, Reviews, Budget-Gates, Proposals, Rückfragen, gestörte Anmeldungen, scheiternde Automatik), zeigt sie an **einem** Ort: der Anliegen-Liste auf der „Übersicht" (§1). Eine eigene Entscheidungs-Seite und eine System-Seite gibt es daneben nicht; die Betriebsleiste über der Liste zeigt Zahlen, keine Aufgaben. Die Liste beantwortet die drei Fragen in dieser Reihenfolge: Was passiert? Braucht es mich? Was tue ich dann? Jedes Produkt baut das Muster in eigenen Komponenten nach (kein Import).
 
-**8.1 Eine Quelle.** Die Liste kommt von der Engine, nicht aus dem Browser: `GET /v1/attention` (`attention.v1`) liefert die Einträge, je Eintrag gegen die Rechte der lesenden Person geprüft, und je Quelle ihren Stand (`answered` · `failed` · `not_permitted`). Digest, MCP-Verbindungszeile und das MCP-Werkzeug `get_attention` rendern dieselbe Liste. Rückfragen sind immer die eigenen der lesenden Person. Der Navigationseintrag „Heute" trägt als Abzeichen die Zahl der Einträge.
+**8.1 Eine Quelle.** Die Liste kommt von der Engine, nicht aus dem Browser: `GET /v1/attention` (`attention.v1`) liefert die Einträge, je Eintrag gegen die Rechte der lesenden Person geprüft, und je Quelle ihren Stand (`answered` · `failed` · `not_permitted`). Digest, MCP-Verbindungszeile und das MCP-Werkzeug `get_attention` rendern dieselbe Liste. Rückfragen sind immer die eigenen der lesenden Person. Der Navigationseintrag „Übersicht" trägt als Abzeichen die Zahl der Einträge.
 
 **8.2 Ein Eintrag je Gegenstand, drei Klassen.** Was denselben Gegenstand betrifft, ist **ein** Eintrag: ein scheiternder Workflow samt seinen offenen Korrekturen ist ein Eintrag, nicht einer je Lauf und einer je Korrektur; mehrere Skill-Vorschläge sind ein Eintrag. Die Klassen und ihre feste Reihenfolge: **gestoppt** (etwas steht, bis jemand handelt — gehaltener Zeitplan, wartende Rückfrage, abgelaufene Anmeldung) → **scheitert** (etwas läuft und schlägt fehl) → **entscheiden** (ein Vorschlag wartet, nichts ist blockiert). Innerhalb einer Klasse: nächste Frist zuerst, dann älteste. Es gibt keine Art-Chips, keine Rubriken, keinen Gruppieren-Umschalter und keine Zahl im Listenkopf. Nicht aufgenommen werden Warnungen, Test- und Autoren-Fehlschläge und ungenutzte Schlüssel — sie sind Zustand eines Objekts, keine Aufgabe.
 
@@ -391,7 +408,7 @@ Jedes Produkt, das menschliche Aufmerksamkeit braucht (Freigaben, Reviews, Budge
 
 **Drei Arten von Nein.** Wo das Produkt sie kennt, unterscheidet das Seitenblatt: Ablehnung **mit** Begründung (schickt zurück ans Nacharbeiten) · Ablehnung **ohne** Begründung (beendet) · **Verwerfen** (folgenlos — als „folgenlos" beschriftet). Eine unbeantwortete Frist verfällt sichtbar als „verfallen (nicht entschieden)", nie stillschweigend. Ein wiederholter identischer Vorschlag zeigt die frühere Ablehnung samt Begründung — die Oberfläche bohrt nicht nach, bis der Mensch ja sagt. Wo Auftraggeber und Freigeber getrennte Rollen sind, zeigt das Seitenblatt, wer entscheiden darf; die eigene Beauftragung ist markiert.
 
-**8.5 Zustand und Geschichte sind getrennte Flächen.** Heute zeigt ausschließlich, was auf den Menschen wartet. Zurückgestellt, Verworfen und Entschieden sind Vergangenheit: Erledigtes verlässt die Liste — es wird nicht gedimmt, nicht durchgestrichen, nicht in eigene Sektionen unter der Liste gestellt und nicht über Zustands-Filter wieder hereingeholt. Die vollständige Geschichte wohnt im Audit-/Aktivitätsprotokoll (append, nie gekürzt) und ist von Heute über **genau einen** Verweis erreichbar — „Was bereits entschieden wurde", ein Satz mit Link, keine Zähler-Kacheln.
+**8.5 Zustand und Geschichte sind getrennte Flächen.** Die Anliegen-Liste zeigt ausschließlich, was auf den Menschen wartet. Zurückgestellt, Verworfen und Entschieden sind Vergangenheit: Erledigtes verlässt die Liste — es wird nicht gedimmt, nicht durchgestrichen, nicht in eigene Sektionen unter der Liste gestellt und nicht über Zustands-Filter wieder hereingeholt. Die vollständige Geschichte wohnt im Audit-/Aktivitätsprotokoll (append, nie gekürzt) und ist von der Übersicht über **genau einen** Verweis erreichbar — „Was bereits entschieden wurde", ein Satz mit Link, keine Zähler-Kacheln. Ein Wert der Betriebsleiste, der auf die gefilterten Audit-Einträge seines Zeitfensters führt (§10.1), ist kein zweiter Verweis auf die Geschichte, sondern der Beleg seiner Zahl.
 
 **8.5b Die Zahl selbst ist eine Design-Frage.** Eine Liste, die einem Menschen
 Hunderte Positionen vorlegt, hat ihre Aufgabe verfehlt, egal wie gut sie gegliedert ist.
@@ -417,7 +434,7 @@ Gegenstand") ist die Antwort darauf.
 > durch einen Markdown-Renderer geschickt hat statt sie zu lesen. **Auch eine Korrektur kann
 > beschädigen, was sie korrigiert.**
 
-**8.6 Leere.** Nichts offen und jede lesbare Quelle hat geantwortet: „Alles erledigt." und eine Statuszeile (Gesundheitszustand · nächste geplante Ausführung) — nichts sonst, keine Kachel mit 0. Eine Quelle hat nicht geantwortet: kein „Alles erledigt", sondern ein Hinweis, welche Quelle nicht lesbar war, mit „Erneut lesen"; die Einträge der übrigen Quellen stehen trotzdem da. Eine Quelle, die die Person nicht lesen darf, zählt nicht als fehlend. Die Statuszeile erscheint nur im leeren Zustand; ist etwas offen, sind die Ursachen eines schlechten Zustands selbst Einträge. Alle Fälle sind getrennt testbar (§4 gilt).
+**8.6 Leere.** Nichts offen und jede lesbare Quelle hat geantwortet: „Alles erledigt." und eine Statuszeile (Gesundheitszustand · nächste geplante Ausführung); darüber bleibt die Betriebsleiste (§1) stehen — nichts sonst, keine Kachel mit 0. Eine Quelle hat nicht geantwortet: kein „Alles erledigt", sondern ein Hinweis, welche Quelle nicht lesbar war, mit „Erneut lesen"; die Einträge der übrigen Quellen stehen trotzdem da. Eine Quelle, die die Person nicht lesen darf, zählt nicht als fehlend. Die Statuszeile erscheint nur im leeren Zustand; ist etwas offen, sind die Ursachen eines schlechten Zustands selbst Einträge. Alle Fälle sind getrennt testbar (§4 gilt).
 
 **8.7 Kein Incident-Banner.** Ein offenes Budget- oder Health-Gate und eine gerissene Frist sind Einträge der Klasse „gestoppt" oder „scheitert" und stehen damit oben in der Liste. Ein zusätzliches Banner wäre ein zweiter Ort für denselben Fakt (§0.1). Eine Startseite, die bei offenen Gates „Alles erledigt" meldet, bleibt ein Konventionsbruch.
 

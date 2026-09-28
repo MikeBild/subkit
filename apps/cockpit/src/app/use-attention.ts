@@ -9,7 +9,7 @@ import {
   type HiddenEntries,
   NO_HIDDEN,
   settleHidden,
-} from "@/pages/today-model";
+} from "@/pages/overview-model";
 import { ATTENTION_READ_PERMISSIONS } from "./navigation";
 
 // Entries decided in this tab, hidden as what they were when decided.
@@ -58,7 +58,7 @@ export function canReadAttention(permissions: readonly string[]): boolean {
 }
 
 /**
- * One query behind Heute and the navigation badge, so the badge can never
+ * One query behind Übersicht and the navigation badge, so the badge can never
  * disagree with the list it links to.
  */
 export function useAttention(permissions: readonly string[]) {
