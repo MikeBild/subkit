@@ -84,6 +84,46 @@ export async function verifyInstallationPages(page, stand, locale, capture) {
     const field = active?.closest('[data-testid^="setting-item-"]');
     return Boolean(field?.textContent?.includes("tokens.monthly_budget"));
   });
+  // Opening the leaf moved the whole page sideways: the settings column was as
+  // wide as the tab strip's every tab side by side, the page's scroll region
+  // clipped it, and scrolling to the field shifted the region left — the
+  // first tab and the first status icon cut off with no way back. The page
+  // scrolls vertically only; the strip scrolls inside itself.
+  const drift = await page.evaluate(() => {
+    const main = document.querySelector('[data-testid="admin-settings"]');
+    const region = main?.querySelector('[data-family-slot="scroll-region"]');
+    const content = main?.querySelector('[data-family-slot="content"]');
+    const heading = main?.querySelector("h1");
+    const strip = main?.querySelector('[data-testid="settings-categories"]');
+    const tab = strip?.querySelector('[role="tab"][data-state="active"]');
+    if (!region || !content || !heading || !strip || !tab) return { missing: true };
+    const stripBox = strip.getBoundingClientRect();
+    const tabBox = tab.getBoundingClientRect();
+    return {
+      missing: false,
+      documentScrollLeft: document.documentElement.scrollLeft,
+      regionScrollLeft: region.scrollLeft,
+      regionOverflow: region.scrollWidth - region.clientWidth,
+      contentLeft: Math.round(content.getBoundingClientRect().left),
+      headingLeft: Math.round(heading.getBoundingClientRect().left),
+      tabInStrip: tabBox.left >= stripBox.left - 1 && tabBox.right <= stripBox.right + 1,
+    };
+  });
+  if (drift.missing) throw new Error("/settings: the leaf deep link's page parts are missing");
+  if (drift.documentScrollLeft !== 0 || drift.regionScrollLeft !== 0)
+    throw new Error(
+      `/settings?leaf=: the page is scrolled sideways (document ${drift.documentScrollLeft}px, region ${drift.regionScrollLeft}px)`,
+    );
+  if (drift.regionOverflow > 0)
+    throw new Error(
+      `/settings?leaf=: the page is ${drift.regionOverflow}px wider than its frame — something only the tab strip may be is not contained`,
+    );
+  if (drift.contentLeft !== drift.headingLeft)
+    throw new Error(
+      `/settings?leaf=: the content starts at ${drift.contentLeft}px, its heading at ${drift.headingLeft}px`,
+    );
+  if (!drift.tabInStrip)
+    throw new Error("/settings?leaf=: the setting's tab is outside the visible part of its strip");
   if (!(await page.getByTestId("settings-pending-restart").isVisible()))
     throw new Error("/settings: a pending restart does not say which settings wait for it");
   await capture("settings-budget-leaf");
