@@ -2949,6 +2949,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description last_admin — the workspace's last administrator cannot be deactivated */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         options?: never;
@@ -2998,6 +3007,15 @@ export interface paths {
                 };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description last_admin — the change would leave the workspace without an administrator */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -15377,6 +15395,15 @@ export interface paths {
                 };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description last_admin — the change would leave the workspace without an administrator */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
