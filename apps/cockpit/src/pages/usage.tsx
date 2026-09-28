@@ -33,6 +33,7 @@ import {
   formatDurationMs,
   llmStatsEndpoint,
   type UsageRow,
+  unpricedModels,
   usageRows,
   type WorkflowNameLookup,
   windowCost,
@@ -119,6 +120,7 @@ export function UsagePage() {
   const spend = useMemo(() => consumptionRows(consumption.data, axis), [consumption.data, axis]);
   const budget = useMemo(() => budgetSummary(status.data), [status.data]);
   const money = useMemo(() => windowCost(consumption.data), [consumption.data]);
+  const missingPrices = useMemo(() => unpricedModels(consumption.data), [consumption.data]);
   // Names for the person axis. `llm_usage` stores a user id and nothing else,
   // so without this the page prints raw UUIDs at a reader — which UI-UX.md
   // forbids outright and which nobody can act on: an operator cannot tell
@@ -340,9 +342,11 @@ export function UsagePage() {
             <Card size="sm" data-testid="usage-budget">
               <CardHeader>
                 {/* Money leads when it can be computed; tokens stay as the
-                    evidence beside it. With no rate configured the amount is
-                    absent rather than zero — a nought here would tell an
-                    operator the month was free. */}
+                    evidence beside it. When no model used had a price the
+                    amount is absent rather than zero — a nought here would
+                    tell an operator the month was free — and the unpriced
+                    models are named, since SubKit ships list prices and the
+                    gap is those models, not pricing as a whole. */}
                 <CardDescription>
                   {money ? t("resource.usage.spend") : t("resource.usage.monthTokens")}
                 </CardDescription>
@@ -371,7 +375,9 @@ export function UsagePage() {
                   </p>
                 ) : (
                   <p className="text-muted-foreground text-xs" data-testid="usage-no-prices">
-                    {t("resource.usage.noPrices")}
+                    {missingPrices.length > 0
+                      ? t("resource.usage.noPrices", { models: missingPrices.join(", ") })
+                      : t("resource.usage.noPricesUnnamed")}
                   </p>
                 )}
                 {/* What the amount does NOT cover, said out loud. An amount

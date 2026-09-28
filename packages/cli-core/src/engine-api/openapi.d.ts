@@ -16952,6 +16952,11 @@ export interface components {
             currency: string;
             unpriced_models: string[];
             unpriced_calls: number;
+            price_sources: {
+                model: string;
+                /** @enum {string} */
+                price_source: "catalog" | "override";
+            }[];
             /** @enum {string} */
             rates_basis: "current";
         };
@@ -18976,6 +18981,11 @@ export interface components {
             currency: string;
             unpriced_models: string[];
             unpriced_calls: number;
+            price_sources: {
+                model: string;
+                /** @enum {string} */
+                price_source: "catalog" | "override";
+            }[];
             /** @enum {string} */
             rates_basis: "current";
         };
