@@ -12,14 +12,15 @@
 // leaves calls out looks complete, and a model nobody priced is not free.
 
 import { describe, expect, test } from "bun:test";
-import { type ModelPrice, type PricedTokens, priceCalls } from "../pricing.ts";
+import { type PricedTokens, priceCalls, type SourcedModelPrice } from "../pricing.ts";
 
-const SONNET: ModelPrice = {
+const SONNET: SourcedModelPrice = {
   model: "claude-sonnet-4-6",
   input_per_mtok: 3,
   output_per_mtok: 15,
   cache_read_per_mtok: 0.3,
   cache_write_per_mtok: 3.75,
+  price_source: "override",
 };
 
 const call = (over: Partial<PricedTokens> = {}): PricedTokens => ({

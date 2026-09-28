@@ -33,10 +33,18 @@ export { getMockProvider, resetMockProvider } from "./mock-provider.ts";
 // without breaking every caller, and a route that imports an internal is the
 // first step to a route that imports three.
 export {
+  type CatalogModelPrice,
+  effectiveModelPrices,
+  MODEL_PRICE_CATALOG,
+  MODEL_PRICE_CATALOG_CURRENCY,
+} from "./model-price-catalog.ts";
+export {
   type CostResult,
   type ModelPrice,
   type PricedTokens,
+  type PriceSource,
   priceCalls,
+  type SourcedModelPrice,
 } from "./pricing.ts";
 export * from "./provider-errors.ts";
 export * from "./runtime-context.ts";

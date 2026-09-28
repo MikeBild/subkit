@@ -482,6 +482,9 @@ function resolveVertex(
   };
 }
 
+/** The model `initializeModel` resolves when neither caller nor environment names one. */
+export const DEFAULT_INIT_MODEL = "claude-sonnet-4-6";
+
 /**
  * Resolve a model ready for `generateText`.
  *
@@ -493,7 +496,7 @@ function resolveVertex(
  */
 export async function initializeModel(options?: ModelInitOptions): Promise<ResolvedModel> {
   const providerEnvVar = options?.providerEnvVar ?? "LLM_PROVIDER";
-  const defaultModel = options?.defaultModel ?? "claude-sonnet-4-6";
+  const defaultModel = options?.defaultModel ?? DEFAULT_INIT_MODEL;
   const modelOverride = options?.modelOverride;
   const tenantId = options?.tenantId;
 
