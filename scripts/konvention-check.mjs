@@ -43,7 +43,7 @@ import { IDENTITY_META, standAt } from "./lib/cockpit-identity.mjs";
  * as "Standard"). Label and assert stand side by side on purpose — one says what
  * was measured against, the other says whether that is still the family's yardstick.
  */
-const KONVENTION_VERSION = "2.1.1";
+const KONVENTION_VERSION = "2.2";
 
 /** The version the repository copy actually names — the label, never the assert. */
 let konventionVersionImRepo = null;
@@ -1032,6 +1032,41 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
         actionable_unread_count: 3,
       });
 
+    // The window's model calls and money — what the Kosten figure reads. PARTLY
+    // priced on purpose: the figure must say "mind." and how many calls the
+    // amount leaves out, never show a partial sum as a whole one.
+    if (path === "/v1/stats/llm") {
+      if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
+        return json(route, { code: "validation", message: "request validation failed" }, 400);
+      const tokens = { prompt: 0, completion: 0, cache_read: 0, cache_creation: 0, total: 0 };
+      const latency = { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 };
+      return json(route, {
+        bucket: url.searchParams.get("bucket"),
+        tz: "UTC",
+        from: url.searchParams.get("from"),
+        to: new Date().toISOString(),
+        groups: [],
+        totals: { calls: { total: 320, by_result: {} }, tokens, latency_ms: latency },
+        cost: {
+          amount: 87.22,
+          currency: "USD",
+          unpriced_models: ["some-new-model"],
+          unpriced_calls: 12,
+          price_sources: [{ model: "claude-sonnet-4-6", price_source: "catalog" }],
+          rates_basis: "current",
+        },
+      });
+    }
+
+    // The calendar month against the cap — what the Kontingent figure reads.
+    if (path === "/v1/status")
+      return json(route, {
+        tokens_today: 1_240_000,
+        tokens_month: 40_500_000,
+        monthly_budget_tokens: 150_000_000,
+        remaining_monthly_budget_tokens: 109_500_000,
+      });
+
     // The repair decisions of a window, per verb — what the usage page's
     // repair rate is computed from. Two applied of three decided.
     if (path === "/v1/stats/events") {
@@ -2007,12 +2042,16 @@ async function checkNoZeroKpiTile(page, where) {
 }
 
 /**
- * §1, §10.1 — the operations bar on the Übersicht: exactly four figures in one
- * row, ABOVE the attention list or the calm sentence, the window switch in the
- * header with 24 hours chosen. Every figure link opens the list of the same
- * window — runs and failed runs by `started_from`/`started_to`, the decided
- * repairs by `ts_from`/`ts_to` — and connector health, a state of now, the
- * unwell connectors. A figure without a number says why in words.
+ * §1, §10.1 — the operations bar on the Übersicht: exactly six figures in one
+ * row or three by two, never scrolling sideways, ABOVE the attention list or
+ * the calm sentence, the window switch in the header with 24 hours chosen.
+ * Every figure link opens the list of the same window — runs and failed runs
+ * by `started_from`/`started_to`, the decided repairs by `ts_from`/`ts_to`,
+ * the cost Nutzung over the chosen window — and connector health, a state of
+ * now, the unwell connectors; the budget, the month's, Nutzung. Kosten reads
+ * the fixture's partly priced amount as a floor with its unpriced calls,
+ * Kontingent the month's share of the cap with remainder and state. A figure
+ * without a number says why in words.
  */
 async function checkOperationsBar(page, where) {
   const bar = page.locator('[data-testid="operations-bar"] [data-figure-state]');
@@ -2036,9 +2075,12 @@ async function checkOperationsBar(page, where) {
         id: figure.getAttribute("data-testid"),
         state: figure.getAttribute("data-figure-state"),
         text: (figure.textContent ?? "").replace(/\s+/g, " ").trim(),
+        label: (figure.querySelector("p")?.textContent ?? "").trim(),
+        pressure: figure.getAttribute("data-budget-pressure"),
         href: figure.querySelector("a")?.getAttribute("href") ?? null,
       })),
       tops: [...new Set(figures.map((figure) => Math.round(figure.getBoundingClientRect().top)))],
+      overflow: barElement ? barElement.scrollWidth > barElement.clientWidth + 1 : false,
       first:
         barElement && below
           ? Boolean(barElement.compareDocumentPosition(below) & Node.DOCUMENT_POSITION_FOLLOWING)
@@ -2051,13 +2093,36 @@ async function checkOperationsBar(page, where) {
         : null,
     };
   });
-  const expected = ["runs", "successRate", "connectorHealth", "repairRate"].map(
+  const expected = ["runs", "successRate", "connectorHealth", "repairRate", "cost", "budget"].map(
     (id) => `operations-figure-${id}`,
   );
   if (shape.figures.map((figure) => figure.id).join("|") !== expected.join("|"))
     breach("§1", where, `the bar holds ${shape.figures.map((figure) => figure.id).join(", ")}`);
-  if (shape.tops.length !== 1)
-    breach("§1", where, `the four figures stand in ${shape.tops.length} rows, not one`);
+  // Six in a row or three by two on a desktop — never a third row, never a
+  // bar that scrolls sideways.
+  if (shape.tops.length !== 1 && shape.tops.length !== 2)
+    breach("§1", where, `the six figures stand in ${shape.tops.length} rows, not one or two`);
+  if (shape.overflow) breach("§1", where, "the operations bar scrolls sideways");
+  const byId = Object.fromEntries(shape.figures.map((figure) => [figure.id, figure]));
+  // Kosten — the window's money in short form. The fixture is partly priced,
+  // so the amount is a floor and says what it leaves out.
+  const cost = byId["operations-figure-cost"];
+  if (cost?.state === "value") {
+    if (!/mind\.\s*87,22\s*\$/.test(cost.text))
+      breach("§1", `${where} · cost`, `"${cost.text}" is not the window's amount as a floor`);
+    if (!/Aufrufe ohne Preis: 12/.test(cost.text))
+      breach("§1", `${where} · cost`, `"${cost.text}" does not name the unpriced calls`);
+  } else if (cost) breach("§1", `${where} · cost`, `reads "${cost.text}" (${cost.state})`);
+  // Kontingent — the month's share of the cap, with what is left and its state.
+  const budget = byId["operations-figure-budget"];
+  if (budget?.state === "value") {
+    if (!/Monat/.test(budget.label))
+      breach("§1", `${where} · budget`, `"${budget.label}" is not marked as the month's`);
+    if (!/27\s*%/.test(budget.text) || !/150 Mio\. Token/.test(budget.text))
+      breach("§1", `${where} · budget`, `"${budget.text}" is not the month's share of the cap`);
+    if (!/109,5 Mio\. übrig/.test(budget.text) || budget.pressure !== "ample")
+      breach("§1", `${where} · budget`, `"${budget.text}" lacks the remainder or its state`);
+  } else if (budget) breach("§1", `${where} · budget`, `reads "${budget.text}" (${budget.state})`);
   if (shape.first === false)
     breach("§1", where, "the operations bar stands below the attention list");
   if (!shape.options) breach("§1", where, "no window switch in the page header");
@@ -2068,17 +2133,33 @@ async function checkOperationsBar(page, where) {
     if (shape.options[0]?.pressed !== "true")
       breach("§1", `${where} · window`, "24 hours is not the window chosen by default");
   }
+  const chosen = shape.options?.findIndex((option) => option.pressed === "true") ?? -1;
+  const chosenWindow = ["24h", "7d", "30d"][chosen] ?? null;
   for (const figure of shape.figures) {
-    if (figure.state !== "value" && figure.href)
+    // Two word-answers keep a way onward: calls without a price lead to
+    // Nutzung, which names the models; no cap leads to the setting.
+    const onward =
+      (figure.state === "unpriced" && figure.id === "operations-figure-cost") ||
+      (figure.state === "uncapped" && figure.id === "operations-figure-budget");
+    if (figure.state !== "value" && !onward && figure.href)
       breach("§1", `${where} · ${figure.id}`, `"${figure.text}" carries a link to nothing counted`);
     if (!figure.href) continue;
-    const query = new URL(figure.href, "http://stand").searchParams;
+    const target = new URL(figure.href, "http://stand");
+    const query = target.searchParams;
     const windowed =
       figure.id === "operations-figure-connectorHealth"
         ? query.get("health") === "not_ok"
         : figure.id === "operations-figure-repairRate"
           ? Boolean(query.get("ts_from") && query.get("ts_to"))
-          : Boolean(query.get("started_from") && query.get("started_to"));
+          : figure.id === "operations-figure-cost"
+            ? // Nutzung over the window the amount was read over; thirty days
+              // is Nutzung's default and is left out of the address.
+              target.pathname.endsWith("/usage") && (query.get("window") ?? "30d") === chosenWindow
+            : figure.id === "operations-figure-budget"
+              ? figure.state === "uncapped"
+                ? query.get("leaf") === "tokens.monthly_budget"
+                : target.pathname.endsWith("/usage")
+              : Boolean(query.get("started_from") && query.get("started_to"));
     if (!windowed)
       breach("§10.1", `${where} · ${figure.id}`, `links to ${figure.href} — not the same window`);
     if (figure.id === "operations-figure-successRate" && query.get("status") !== "failed")

@@ -16,9 +16,13 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { canReadDirectory } from "@/pages/audit-model";
 import {
+  BUDGET_SETTING,
   executionStatsEndpoint,
+  llmStatsEndpoint,
   STATS_WINDOWS,
+  STATUS_ENDPOINT,
   type StatsWindow,
+  usageWindowFromUrl,
   type WindowBounds,
   windowBounds,
   windowBucket,
@@ -31,7 +35,6 @@ import {
   type ConsumptionRow,
   consumptionRows,
   formatDurationMs,
-  llmStatsEndpoint,
   type UsageRow,
   unpricedModels,
   usageRows,
@@ -48,7 +51,7 @@ const AXIS_LABEL: Record<ConsumptionAxis, TranslationKey> = {
 };
 
 /** The setting the cap is, and where every "set / raise the cap" on this page leads. */
-const BUDGET_LEAF = "tokens.monthly_budget";
+const BUDGET_LEAF = BUDGET_SETTING;
 
 const WINDOW_OPTION: Record<StatsWindow, TranslationKey> = {
   "24h": "resource.usage.windowOption.24h",
@@ -93,9 +96,25 @@ export function UsagePage() {
   const allowed = session.permissions.includes("stats:read");
   const title = t("resource.usage.title");
   const [axis, setAxis] = useState<ConsumptionAxis>("workflow");
-  // The runtime table's own window.
-  const [bounds, setBounds] = useState<WindowBounds>(() => windowBounds("30d"));
+  // One window for the page — the spend, its breakdown and the runtime table.
+  // It comes from the address (`?window=24h`), so the Übersicht's cost figure
+  // opens this page over the very window it counted (§10.1).
+  const [bounds, setBounds] = useState<WindowBounds>(() =>
+    windowBounds(usageWindowFromUrl(window.location.search)),
+  );
   const span = bounds.window;
+  const chooseWindow = (next: StatsWindow) => {
+    setBounds(windowBounds(next));
+    const params = new URLSearchParams(window.location.search);
+    if (next === "30d") params.delete("window");
+    else params.set("window", next);
+    const query = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}`,
+    );
+  };
 
   const runtime = useQuery({
     queryKey: ["usage", bounds],
@@ -103,17 +122,17 @@ export function UsagePage() {
     queryFn: () => apiRequest<unknown>(executionStatsEndpoint(bounds)),
   });
   const consumption = useQuery({
-    queryKey: ["usage-llm", axis],
+    queryKey: ["usage-llm", axis, bounds],
     enabled: allowed,
-    queryFn: () => apiRequest<unknown>(llmStatsEndpoint(axis)),
+    queryFn: () => apiRequest<unknown>(llmStatsEndpoint(bounds, axis)),
   });
   // The cap and the remainder. Its own request because it answers about the
-  // calendar month while everything else on this page answers about the last
-  // thirty days — two windows that must not be silently merged.
+  // calendar month while everything else on this page answers about the
+  // chosen window — two periods that must not be silently merged.
   const status = useQuery({
     queryKey: ["usage-status"],
     enabled: allowed,
-    queryFn: () => apiRequest<unknown>("/v1/status"),
+    queryFn: () => apiRequest<unknown>(STATUS_ENDPOINT),
   });
 
   const rows = useMemo(() => usageRows(runtime.data), [runtime.data]);
@@ -326,7 +345,33 @@ export function UsagePage() {
     );
 
   return (
-    <PageFrame surface="collection" testId="resource-usage" title={title} scroll="page">
+    <PageFrame
+      surface="collection"
+      testId="resource-usage"
+      title={title}
+      scroll="page"
+      action={
+        // One window for the whole page, in its header like the Übersicht's.
+        <fieldset
+          className="flex flex-wrap gap-2"
+          aria-label={t("resource.usage.windowPicker")}
+          data-testid="usage-window"
+        >
+          {STATS_WINDOWS.map((candidate) => (
+            <Button
+              key={candidate}
+              size="sm"
+              variant={candidate === span ? "default" : "outline"}
+              aria-pressed={candidate === span}
+              onClick={() => chooseWindow(candidate)}
+              data-testid={`usage-window-${candidate}`}
+            >
+              {t(WINDOW_OPTION[candidate])}
+            </Button>
+          ))}
+        </fieldset>
+      }
+    >
       <div className="grid gap-8">
         <section className="grid gap-3" data-testid="usage-consumption">
           <header className="grid gap-1">
@@ -359,7 +404,7 @@ export function UsagePage() {
                     : tokens(budget.usedTokens)}
                 </CardTitle>
                 {money ? (
-                  // The amount covers the last thirty days; `usedTokens` is
+                  // The amount covers the chosen window; `usedTokens` is
                   // the CALENDAR month, from a different endpoint. Printing
                   // them on one line joined by a dot stated two measurements
                   // over two windows as one — on the first of a month it read
@@ -367,7 +412,7 @@ export function UsagePage() {
                   // status query says these must not be silently merged, and
                   // this line was the merge. The window is now named.
                   <p className="text-muted-foreground text-xs" data-testid="usage-spend-basis">
-                    {t("resource.usage.window")} · {t("resource.usage.spendBasis")}
+                    {t(WINDOW_HEADING[span])} · {t("resource.usage.spendBasis")}
                   </p>
                 ) : consumption.error ? (
                   <p className="text-muted-foreground text-xs" data-testid="usage-spend-unreadable">
@@ -484,10 +529,10 @@ export function UsagePage() {
               screen saying so. A reader takes the table for a decomposition of
               the number above it and finds it does not add up. Naming the
               window is cheaper than making the two agree, and truer: the
-              calendar month is what a cap is spent against, thirty days is
+              calendar month is what a cap is spent against, the window is
               what a trend is read from. */}
           <p className="text-muted-foreground text-xs" data-testid="usage-breakdown-window">
-            {t("resource.usage.breakdownWindow")}
+            {t("resource.usage.breakdownWindow", { window: t(WINDOW_HEADING[span]) })}
           </p>
 
           <div className="overflow-hidden rounded-xl border">
@@ -544,37 +589,15 @@ export function UsagePage() {
         </section>
 
         <section className="grid gap-3" data-testid="usage-runtime">
-          <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div className="grid gap-1">
-              {/* The window, said once for the whole block. */}
-              <h2 className="font-medium text-base" data-testid="usage-runtime-heading">
-                {t("resource.usage.runtime")}{" "}
-                <span className="font-normal text-muted-foreground">
-                  · {t(WINDOW_HEADING[span])}
-                </span>
-              </h2>
-              <p className="text-muted-foreground text-sm">
-                {t(RUNTIME_DESCRIPTION[windowBucket(span)])}
-              </p>
-            </div>
-            <fieldset
-              className="flex flex-wrap gap-2"
-              aria-label={t("resource.usage.windowPicker")}
-              data-testid="usage-window"
-            >
-              {STATS_WINDOWS.map((candidate) => (
-                <Button
-                  key={candidate}
-                  size="sm"
-                  variant={candidate === span ? "default" : "outline"}
-                  aria-pressed={candidate === span}
-                  onClick={() => setBounds(windowBounds(candidate))}
-                  data-testid={`usage-window-${candidate}`}
-                >
-                  {t(WINDOW_OPTION[candidate])}
-                </Button>
-              ))}
-            </fieldset>
+          <header className="grid gap-1">
+            {/* The window, said once for the whole block. */}
+            <h2 className="font-medium text-base" data-testid="usage-runtime-heading">
+              {t("resource.usage.runtime")}{" "}
+              <span className="font-normal text-muted-foreground">· {t(WINDOW_HEADING[span])}</span>
+            </h2>
+            <p className="text-muted-foreground text-sm">
+              {t(RUNTIME_DESCRIPTION[windowBucket(span)])}
+            </p>
           </header>
           <div className="overflow-hidden rounded-xl border">
             <DataTable

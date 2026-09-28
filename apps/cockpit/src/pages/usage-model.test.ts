@@ -10,11 +10,12 @@
 // zero, because that is the distinction this data keeps losing.
 
 import { describe, expect, test } from "bun:test";
+import { llmStatsEndpoint, windowBounds } from "@/pages/operations-figures";
 import {
+  budgetPercent,
   budgetPressure,
   budgetSummary,
   consumptionRows,
-  llmStatsEndpoint,
   unpricedModels,
   windowCost,
   workflowNameLookup,
@@ -72,10 +73,11 @@ describe("the consumption breakdown", () => {
 
   test("asks for the axis it was given, over the same window as the rest of the page", () => {
     const at = new Date("2026-09-27T08:00:00.000Z");
-    const url = llmStatsEndpoint("workflow", at);
+    const url = llmStatsEndpoint(windowBounds("30d", at), "workflow");
     expect(url).toContain("group_by=workflow");
     expect(url).toContain("bucket=day");
     expect(url).toContain(encodeURIComponent("2026-08-28T08:00:00.000Z"));
+    expect(llmStatsEndpoint(windowBounds("24h", at), "model")).toContain("bucket=hour");
   });
 });
 
@@ -113,8 +115,26 @@ describe("the month against its cap", () => {
     expect(at(74)).toBe("ample");
     expect(at(75)).toBe("tightening");
     expect(at(89)).toBe("tightening");
+    // On the exact share, like the engine: 89.6 % is still tightening.
+    expect(at(89.6)).toBe("tightening");
     expect(at(90)).toBe("critical");
     expect(at(200)).toBe("critical");
+  });
+
+  test("the engine's word wins over the local rule", () => {
+    const s = budgetSummary({
+      tokens_month: 10,
+      monthly_budget_tokens: 100,
+      monthly_budget_state: "critical",
+    });
+    expect(budgetPressure(s)).toBe("critical");
+    expect(budgetPercent(s)).toBe(10);
+  });
+
+  test("the percentage is rounded down, so it never crosses a threshold the state has not", () => {
+    expect(budgetPercent(budgetSummary({ tokens_month: 89.6, monthly_budget_tokens: 100 }))).toBe(
+      89,
+    );
   });
 
   test("an overspent month does not report more than all of it spent", () => {
