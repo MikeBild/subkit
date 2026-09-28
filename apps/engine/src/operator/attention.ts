@@ -58,6 +58,7 @@ import {
 } from "./health-digest.ts";
 import { getOperationalOverview, type HealthState } from "./operational-overview.ts";
 import { computeRiskSignals, type RiskSignal } from "./risk-signals.ts";
+import { registerTenantStateCache } from "./tenant-state.ts";
 
 export const ATTENTION_SCHEMA_VERSION = "attention.v1" as const;
 
@@ -779,6 +780,7 @@ export function invalidateAttention(tenantId?: string): void {
   if (tenantId) cache.delete(tenantId);
   else cache.clear();
 }
+registerTenantStateCache(invalidateAttention);
 
 function tenantFacts(db: Db, tenantId: string, now: Date): Promise<TenantFacts> {
   const at = Date.now();

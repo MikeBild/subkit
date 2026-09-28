@@ -16,6 +16,7 @@ import { patchCandidates } from "../db/schema/index.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
 import { log } from "../logging/logger.ts";
 import { recordPatchCandidate } from "../observability/instrumentation.ts";
+import { invalidateTenantState } from "../operator/index.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { autoApplyPatch, logPatchNotApplied } from "./auto-apply.ts";
 import { readPatchReadiness } from "./candidate-readiness.ts";
@@ -169,6 +170,9 @@ export async function approvePatchCandidate(
     });
     return outcome.version_id;
   });
+  // After the commit, whatever the outcome: an applied fix and a refusal that
+  // closed the candidate both change what waits for a person.
+  if (result !== null) invalidateTenantState(params.tenant_id);
   if (result && typeof result === "object") throw new PatchDecisionError(result.failure);
   return result;
 }
@@ -183,7 +187,7 @@ export async function rejectPatchCandidate(
   exec?: Db,
 ): Promise<boolean> {
   const db = exec ?? getDb();
-  return db.transaction(async (tx) => {
+  const rejected = await db.transaction(async (tx) => {
     const rows = await tx
       .update(patchCandidates)
       .set({ status: "rejected", updated_at: new Date() })
@@ -217,4 +221,6 @@ export async function rejectPatchCandidate(
     });
     return true;
   });
+  if (rejected) invalidateTenantState(params.tenant_id);
+  return rejected;
 }
