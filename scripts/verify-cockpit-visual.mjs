@@ -3387,6 +3387,17 @@ for (const locale of variants) {
       },
       { language: locale.name, theme: locale.theme },
     );
+    // Scrollbars that take space, on every machine. A Mac draws them over the
+    // content, so a gutter reserved on one side of the page and not the other
+    // measured 0px here and 15px on CI's Linux — the phone start page passed
+    // locally and failed only in CI.
+    await context.addInitScript(() => {
+      document.addEventListener("DOMContentLoaded", () => {
+        const style = document.createElement("style");
+        style.textContent = "::-webkit-scrollbar{width:15px;height:15px}";
+        document.head.append(style);
+      });
+    });
     const page = await context.newPage();
     page.on("pageerror", (error) => {
       const message = `${locale.artifact}/${viewport.name}: ${error.message}`;
