@@ -58,13 +58,6 @@ export function formatDurationMs(value: number | null): string {
 export const CONSUMPTION_AXES = ["workflow", "flow", "user", "model"] as const;
 export type ConsumptionAxis = (typeof CONSUMPTION_AXES)[number];
 
-/** Token consumption over the same window, grouped along one axis. */
-export function llmStatsEndpoint(axis: ConsumptionAxis, now = new Date()): string {
-  const from = new Date(now);
-  from.setUTCDate(from.getUTCDate() - 30);
-  return `/v1/stats/llm?bucket=day&from=${encodeURIComponent(from.toISOString())}&group_by=${axis}`;
-}
-
 export interface ConsumptionRow {
   /** The workflow, purpose, user or model this row is about. Empty when none. */
   key: string;
@@ -80,7 +73,7 @@ export interface ConsumptionRow {
  * One row per group, largest first.
  *
  * `total` is the cache-weighted figure the budget is also measured in, so the
- * units reconcile. The WINDOWS do not: these rows cover the last thirty days
+ * units reconcile. The WINDOWS do not: these rows cover the chosen window
  * and the remaining-budget line covers the calendar month. Every surface that
  * shows both must name which is which — an earlier version of this comment
  * claimed they added up to the same number, which is false on any day but the
@@ -171,12 +164,30 @@ export function budgetSummary(status: unknown): BudgetSummary {
  * cockpit keeps removing. `null` when nothing bounds the workspace — an
  * unbounded installation is not "healthy", it is unmeasured, and saying
  * otherwise is the zero that means "not measured".
+ *
+ * Measured on the ROUNDED percentage, at the engine's thresholds (75, 90):
+ * on the raw share, 89.6 % read "90 %" in the operations bar and "Wird knapp"
+ * beside it, while the attention list on the same page already raised the
+ * budget as critical.
  */
 export function budgetPressure(summary: BudgetSummary): "ample" | "tightening" | "critical" | null {
-  if (summary.consumedShare === null) return null;
-  if (summary.consumedShare >= 0.9) return "critical";
-  if (summary.consumedShare >= 0.75) return "tightening";
+  const percent = budgetPercent(summary);
+  if (percent === null) return null;
+  if (percent >= 90) return "critical";
+  if (percent >= 75) return "tightening";
   return "ample";
+}
+
+/**
+ * The month's spend as the whole percentage every surface shows: the bar on
+ * the Übersicht, the attention entry and the engine's risk signal all round
+ * the same way (`operator/risk-signals.ts`, `Math.round`). `null` when nothing
+ * bounds the workspace. Not capped at 100: an overspent month says so.
+ */
+export function budgetPercent(summary: BudgetSummary): number | null {
+  const { usedTokens, budgetTokens } = summary;
+  if (budgetTokens === null || budgetTokens <= 0 || usedTokens === null) return null;
+  return Math.round((usedTokens / budgetTokens) * 100);
 }
 
 export interface WindowCost {

@@ -10,11 +10,11 @@
 // zero, because that is the distinction this data keeps losing.
 
 import { describe, expect, test } from "bun:test";
+import { llmStatsEndpoint, windowBounds } from "@/pages/operations-figures";
 import {
   budgetPressure,
   budgetSummary,
   consumptionRows,
-  llmStatsEndpoint,
   unpricedModels,
   windowCost,
   workflowNameLookup,
@@ -72,10 +72,11 @@ describe("the consumption breakdown", () => {
 
   test("asks for the axis it was given, over the same window as the rest of the page", () => {
     const at = new Date("2026-09-27T08:00:00.000Z");
-    const url = llmStatsEndpoint("workflow", at);
+    const url = llmStatsEndpoint(windowBounds("30d", at), "workflow");
     expect(url).toContain("group_by=workflow");
     expect(url).toContain("bucket=day");
     expect(url).toContain(encodeURIComponent("2026-08-28T08:00:00.000Z"));
+    expect(llmStatsEndpoint(windowBounds("24h", at), "model")).toContain("bucket=hour");
   });
 });
 
@@ -113,6 +114,10 @@ describe("the month against its cap", () => {
     expect(at(74)).toBe("ample");
     expect(at(75)).toBe("tightening");
     expect(at(89)).toBe("tightening");
+    // On the rounded percentage the bar shows and the engine raises: 89.6 %
+    // reads "90 %" and is critical, never "90 %" beside "Wird knapp".
+    expect(at(89.4)).toBe("tightening");
+    expect(at(89.6)).toBe("critical");
     expect(at(90)).toBe("critical");
     expect(at(200)).toBe("critical");
   });
