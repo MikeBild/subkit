@@ -1,4 +1,4 @@
-// Outbound connections — the Cockpit's "Anbindungen".
+// Outbound connections — the Cockpit's "Kontoverbindungen" (a section of Zugangsdaten).
 //
 //   POST   /v1/connections/discover      what is at this address? (name, scopes, connectable?)
 //   POST   /v1/connections/start         register there, mint PKCE, return the authorization URL
@@ -10,10 +10,12 @@
 //   DELETE /v1/connections/{id}          "Trennen"
 //
 // The callback never renders a page of its own: success and failure both
-// land on /cockpit/connections with a query the page turns into a sentence.
+// land on the grants section of /cockpit/api-access with a query the page
+// turns into a sentence.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { ConnectionStateEnum, ConnectionStateReasonEnum } from "../../../api/connection-schemas.ts";
 import {
   buildConnectionCallbackUri,
   ConnectionError,
@@ -31,6 +33,16 @@ import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 
+const ConnectionUserSchema = z
+  .object({
+    connector_id: z.string(),
+    slug: z.string(),
+    display_name: z.string(),
+    /** Live workflows that use this connector (`workflows/connector-refs.ts`). */
+    workflow_count: z.number().int().nonnegative(),
+  })
+  .openapi("ConnectionUser");
+
 const ConnectionSchema = z
   .object({
     id: z.string(),
@@ -41,14 +53,15 @@ const ConnectionSchema = z
     service_description: z.string().nullable(),
     scopes: z.array(z.string()),
     granted_scopes: z.array(z.string()).nullable(),
-    state: z.enum(["valid", "expiring", "expired", "unreadable"]),
+    state: ConnectionStateEnum,
+    state_reason: ConnectionStateReasonEnum.nullable(),
     auto_renew: z.boolean(),
     expires_at: z.string().nullable(),
     last_used_at: z.string().nullable(),
     last_refreshed_at: z.string().nullable(),
     refresh_failed_at: z.string().nullable(),
     last_error: z.string().nullable(),
-    used_by_connectors: z.number().int(),
+    used_by: z.array(ConnectionUserSchema),
     created_at: z.string(),
   })
   .openapi("Connection");
@@ -195,8 +208,10 @@ function rethrow(error: unknown): never {
   throw error;
 }
 
+/** Kontoverbindungen are a section of Zugangsdaten; the callback lands on it. */
 function cockpitReturn(origin: string, params: Record<string, string | null>): Response {
-  const url = new URL("/cockpit/connections", origin);
+  const url = new URL("/cockpit/api-access", origin);
+  url.searchParams.set("section", "grants");
   for (const [key, value] of Object.entries(params)) if (value) url.searchParams.set(key, value);
   return new Response(null, {
     status: 302,

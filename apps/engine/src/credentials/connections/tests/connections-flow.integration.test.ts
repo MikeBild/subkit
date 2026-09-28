@@ -20,6 +20,7 @@ import {
 } from "../../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../http/tests/setup.ts";
 import { listSecretVersions } from "../../../runtime-config/service.ts";
+import { createWorkflow } from "../../../workflows/service.ts";
 import { getCredentialForConnector } from "../../service.ts";
 import { readAccessToken, refreshDueConnections, secretNames } from "../service.ts";
 import type { ConnectionView } from "../types.ts";
@@ -69,7 +70,7 @@ async function listConnections(): Promise<ConnectionView[]> {
   return ((await res.json()) as { items: ConnectionView[] }).items;
 }
 
-describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
+describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
   let connectionId = "";
   let connectorId = "";
 
@@ -150,7 +151,9 @@ describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
     ]);
 
     const landed = await approveInBrowser(body.authorization_url);
-    expect(landed.pathname).toBe("/cockpit/connections");
+    // Kontoverbindungen are a section of Zugangsdaten; the callback lands on it.
+    expect(landed.pathname).toBe("/cockpit/api-access");
+    expect(landed.searchParams.get("section")).toBe("grants");
     expect(landed.searchParams.get("connected")).toBe("probe");
     expect(landed.searchParams.get("renewed")).toBeNull();
   });
@@ -165,8 +168,9 @@ describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
       scopes: ["read", "write"],
       granted_scopes: ["read", "write"],
       state: "valid",
+      state_reason: null,
       auto_renew: true,
-      used_by_connectors: 0,
+      used_by: [],
       refresh_failed_at: null,
     });
     expect(item?.expires_at).not.toBeNull();
@@ -218,7 +222,7 @@ describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
     expect(await summary.json()).toMatchObject({
       mode: "connection",
       environment: "dev",
-      connection: { id: connectionId, name: "probe" },
+      connection: { id: connectionId, name: "probe", state: "valid" },
     });
 
     const resolved = await getCredentialForConnector(
@@ -239,8 +243,43 @@ describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
     expect(probe.status).toBe(200);
 
     const [item] = await listConnections();
-    expect(item?.used_by_connectors).toBe(1);
+    expect(item?.used_by).toEqual([
+      {
+        connector_id: connectorId,
+        slug: "probe-api",
+        display_name: "Probe API",
+        workflow_count: 0,
+      },
+    ]);
     expect(item?.last_used_at).not.toBeNull();
+  });
+
+  test("used_by counts the live workflows of each connector, by id and by placeholder", async () => {
+    for (const [slug, step] of [
+      ["probe-by-id", { connector_id: connectorId, path: "/whoami" }],
+      ["probe-by-placeholder", { url: "${connector.probe-api.base_url}/whoami" }],
+    ] as const) {
+      const created = await createWorkflow(
+        {
+          tenant_id: server.tenantId,
+          actor_id: null,
+          def: { name: slug, slug, steps: [{ id: "s1", kind: "request", method: "GET", ...step }] },
+        },
+        server.db,
+      );
+      expect(created.workflow).toBeTruthy();
+    }
+    const [item] = await listConnections();
+    expect(item?.used_by).toEqual([
+      {
+        connector_id: connectorId,
+        slug: "probe-api",
+        display_name: "Probe API",
+        workflow_count: 2,
+      },
+    ]);
+    const one = await api(`/v1/connections/${connectionId}`);
+    expect(((await one.json()) as ConnectionView).used_by).toEqual(item?.used_by ?? []);
   });
 
   test("the sweep refreshes a grant before it expires and retires the old version", async () => {
@@ -303,8 +342,20 @@ describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
       const [item] = await listConnections();
       expect(item).toMatchObject({
         state: "expired",
+        state_reason: "refresh_failed",
         last_error: expect.stringContaining("invalid_grant"),
       });
+      // The connector that sends this grant says so on its own page, on both reads.
+      const summary = await api(`/v1/connectors/${connectorId}/credential`);
+      expect(await summary.json()).toMatchObject({
+        connection: { id: connectionId, name: "probe", state: "expired" },
+      });
+      const connector = (await (await api(`/v1/connectors/${connectorId}`)).json()) as {
+        credentials: Array<{ connection: unknown }>;
+      };
+      expect(connector.credentials.map((c) => c.connection)).toEqual([
+        { id: connectionId, name: "probe", state: "expired" },
+      ]);
       expect(item?.refresh_failed_at).not.toBeNull();
       // A failed grant is not retried on every request; it waits for "Erneuern".
       expect(await readAccessToken(server.db, server.tenantId, connectionId)).toMatchObject({
@@ -343,8 +394,9 @@ describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
       state: "valid",
       refresh_failed_at: null,
       last_error: null,
-      used_by_connectors: 1,
+      state_reason: null,
     });
+    expect(items[0]?.used_by.map((u) => u.connector_id)).toEqual([connectorId]);
     const resolved = await getCredentialForConnector(
       server.tenantId,
       connectorId,
@@ -455,6 +507,39 @@ describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
     await approveInBrowser(((await res.json()) as { authorization_url: string }).authorization_url);
   });
 
+  test("a grant that ended without a refresh token reads expired, with that as its reason", async () => {
+    const [before] = await server.db
+      .select({
+        refresh: outboundConnections.refresh_token_version,
+        expires_at: outboundConnections.expires_at,
+      })
+      .from(outboundConnections)
+      .where(eq(outboundConnections.id, connectionId));
+    await server.db
+      .update(outboundConnections)
+      .set({
+        refresh_token_version: null,
+        expires_at: new Date(Date.now() - 1_000), // allow-wall-clock: already past
+      })
+      .where(eq(outboundConnections.id, connectionId));
+    try {
+      const [item] = await listConnections();
+      expect(item).toMatchObject({
+        state: "expired",
+        state_reason: "expired_no_refresh",
+        refresh_failed_at: null,
+        last_error: null,
+        auto_renew: false,
+      });
+    } finally {
+      await server.db
+        .update(outboundConnections)
+        .set({ refresh_token_version: before?.refresh ?? null, expires_at: before?.expires_at })
+        .where(eq(outboundConnections.id, connectionId));
+    }
+    expect((await listConnections())[0]).toMatchObject({ state: "valid", state_reason: null });
+  });
+
   test("a denial on the other side lands in the Cockpit as failed=denied, and a state is spent once", async () => {
     fake.decision = "deny";
     try {
@@ -468,6 +553,8 @@ describe("Anbindungen → Verbinden against a foreign OAuth 2.1 server", () => {
       expect(new URL(callback).searchParams.get("error")).toBe("access_denied");
       const landed = await fetch(callback, { redirect: "manual" });
       const where = new URL(landed.headers.get("location") ?? "");
+      expect(where.pathname).toBe("/cockpit/api-access");
+      expect(where.searchParams.get("section")).toBe("grants");
       expect(where.searchParams.get("failed")).toBe("denied");
       expect(where.searchParams.get("name")).toBe("refused");
       // Replaying the same callback cannot do anything: the state is gone.
