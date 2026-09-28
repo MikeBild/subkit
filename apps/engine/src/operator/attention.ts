@@ -45,7 +45,7 @@ import {
 } from "../db/schema/index.ts";
 import type { PreviewClassification } from "../execution/classify.ts";
 import { monthlyUsage, resolveMonthlyBudget } from "../llm/accounting/index.ts";
-import { can, holdsAnyResourceGrant } from "../rbac/evaluator.ts";
+import { can, resourceAccess } from "../rbac/evaluator.ts";
 import { listPendingSecretVersions } from "../runtime-config/pending-secrets.ts";
 import { nextScheduleFire } from "../scheduler/next-fire.ts";
 import { scheduleBindingState } from "../scheduler/trigger-bindings.ts";
@@ -922,48 +922,56 @@ export async function buildAttention(
 ): Promise<AttentionV1> {
   const now = opts.now ?? new Date();
   const tenantId = principal.tenant_id;
-  const decide = (permission: string, resource?: { type: string; id: string }) =>
-    can(db, {
-      tenant_id: tenantId,
-      principal,
-      permission,
-      ...(resource ? { resource } : {}),
-      // Hiding what a reader may not see is the expected outcome, not an
-      // incident: a WARN per filtered item would drown real denials.
-      quiet: true,
-    });
-  const probe = (permission: string, resource?: { type: string; id: string }) =>
-    decide(permission, resource).then((decision) => decision.allow);
 
-  // Which sources this reader may read at all: tenant-wide, or through a
-  // resource grant on the source's resource type. A credential whose ceiling
-  // excludes the permission reads nothing of the source, grants or not — every
-  // per-item check would be refused by the same ceiling, and counting the
-  // source as answered would turn that refusal into a false "all clear".
-  const permitted = new Map<AttentionSource, boolean>();
-  await Promise.all(
-    ATTENTION_SOURCES.map(async (source) => {
-      const gate = SOURCE_GATES[source];
-      const tenantWide = await decide(gate.permission);
-      let allowed = tenantWide.allow;
-      if (!allowed && gate.resource_type && tenantWide.source !== "credential_ceiling") {
-        allowed = await holdsAnyResourceGrant(
-          db,
-          { tenant_id: tenantId, principal, permission: gate.permission },
-          gate.resource_type,
-        );
-      }
-      permitted.set(source, allowed);
-    }),
-  );
+  // One permission read per distinct gate, not per source and never per item.
+  // Hiding what a reader may not see is the expected outcome, not an incident:
+  // every probe is quiet, or each filtered item would log a WARN.
+  //   * a resource-typed gate (workflows, connectors) reads the reader's
+  //     tenant-wide decision and its grants once (`resourceAccess`); the
+  //     source is readable when that reaches ANY resource, and each item is
+  //     then checked in memory. A key whose scopes exclude the permission
+  //     reaches nothing, grants or not — counting it as answered would turn
+  //     that refusal into a false "all clear".
+  //   * a tenant-level gate is one `can()`.
+  const gates = new Map<string, Promise<{ any: boolean; allows: (id: string) => boolean }>>();
+  const gateFor = (gate: SourceGate) => {
+    const key = `${gate.permission}|${gate.resource_type ?? ""}`;
+    let pending = gates.get(key);
+    if (!pending) {
+      pending = gate.resource_type
+        ? resourceAccess(db, {
+            tenant_id: tenantId,
+            principal,
+            permission: gate.permission,
+            resource_type: gate.resource_type,
+            quiet: true,
+          })
+        : can(db, {
+            tenant_id: tenantId,
+            principal,
+            permission: gate.permission,
+            quiet: true,
+          }).then((decision) => ({ any: decision.allow, allows: () => decision.allow }));
+      gates.set(key, pending);
+    }
+    return pending;
+  };
 
-  const facts = opts.readers
-    ? await buildTenantFacts(db, tenantId, now, opts.readers)
-    : await tenantFacts(db, tenantId, now);
+  const [access, facts] = await Promise.all([
+    Promise.all(
+      ATTENTION_SOURCES.map(
+        async (source) => [source, await gateFor(SOURCE_GATES[source])] as const,
+      ),
+    ).then((entries) => new Map(entries)),
+    opts.readers
+      ? buildTenantFacts(db, tenantId, now, opts.readers)
+      : tenantFacts(db, tenantId, now),
+  ]);
+  const permitted = (source: AttentionSource) => access.get(source)?.any === true;
 
   let conversationsState: "answered" | "failed" = "answered";
   let own: Candidate[] = [];
-  if (permitted.get("conversations")) {
+  if (permitted("conversations")) {
     try {
       own = await readOwnConversations(db, principal);
     } catch {
@@ -973,7 +981,7 @@ export async function buildAttention(
 
   const sources = {} as Record<AttentionSource, AttentionSourceState>;
   for (const source of ATTENTION_SOURCES) {
-    if (!permitted.get(source)) sources[source] = "not_permitted";
+    if (!permitted(source)) sources[source] = "not_permitted";
     else if (source === "conversations") sources[source] = conversationsState;
     else sources[source] = facts.sources[source] ?? "failed";
   }
@@ -981,12 +989,12 @@ export async function buildAttention(
   // Conversations are the reader's own: the owner filter is the gate.
   const items: AttentionItem[] = own.map((candidate) => candidate.item);
   for (const candidate of facts.candidates) {
-    if (!permitted.get(candidate.source)) continue;
-    const gate = SOURCE_GATES[candidate.source];
+    const gate = access.get(candidate.source);
+    if (!gate?.any) continue;
     // A merged workflow item is read through its workflow, whichever of its
     // facts named it — every workflow source shares the same gate.
-    if (candidate.resource && gate.resource_type) {
-      if (!(await probe(gate.permission, candidate.resource))) continue;
+    if (candidate.resource && SOURCE_GATES[candidate.source].resource_type) {
+      if (!gate.allows(candidate.resource.id)) continue;
     }
     items.push(candidate.item);
   }
@@ -996,7 +1004,7 @@ export async function buildAttention(
     schema_version: ATTENTION_SCHEMA_VERSION,
     generated_at: now.toISOString(),
     sources,
-    status: (await probe("stats:read")) ? facts.status : null,
+    status: (await gateFor({ permission: "stats:read" })).any ? facts.status : null,
     items,
   };
 }
