@@ -16,7 +16,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { getConfig } from "../../../config/loader.ts";
 import { executions, externalCallMetering, llmUsage } from "../../../db/schema/index.ts";
-import { priceCalls } from "../../../llm/index.ts";
+import { effectiveModelPrices, priceCalls } from "../../../llm/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -51,6 +51,11 @@ const ExecutionCost = z
           currency: z.string(),
           unpriced_models: z.array(z.string()),
           unpriced_calls: z.number().int(),
+          // Which rate priced each model: SubKit's built-in catalog, or the
+          // operator's own `tokens.prices` entry, which wins per model.
+          price_sources: z.array(
+            z.object({ model: z.string(), price_source: z.enum(["catalog", "override"]) }),
+          ),
           rates_basis: z.literal("current"),
         })
         .openapi("ExecutionCostMoney"),
@@ -140,7 +145,7 @@ export function registerCostRoute(app: OpenAPIHono<AppEnv>): void {
         cache_read_tokens: Number(r.cache_read_tokens),
         cache_creation_tokens: Number(r.cache_creation_tokens),
       })),
-      tokenPrices?.prices ?? [],
+      effectiveModelPrices(tokenPrices ?? {}),
       tokenPrices?.currency ?? "USD",
     );
 

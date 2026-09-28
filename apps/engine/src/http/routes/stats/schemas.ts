@@ -230,8 +230,8 @@ export const LlmStatsResponse = z
       tokens: TokenAggSchema,
       latency_ms: LatencyAggSchema,
     }),
-    // Money for the window, priced per model from the configured rates at
-    // read time. `unpriced_*` names what the rates did not cover, so an
+    // Money for the window, priced per model at read time from the built-in
+    // catalog and the operator's overrides. `unpriced_*` names what the rates did not cover, so an
     // amount is never mistaken for a complete one.
     cost: z
       .object({
@@ -239,6 +239,11 @@ export const LlmStatsResponse = z
         currency: z.string(),
         unpriced_models: z.array(z.string()),
         unpriced_calls: z.number().int(),
+        // Which rate priced each model: SubKit's built-in catalog, or the
+        // operator's own `tokens.prices` entry, which wins per model.
+        price_sources: z.array(
+          z.object({ model: z.string(), price_source: z.enum(["catalog", "override"]) }),
+        ),
         rates_basis: z.literal("current"),
       })
       .openapi("StatsLlmCost"),
