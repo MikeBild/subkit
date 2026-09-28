@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { CircleCheck } from "lucide-react";
 import type { MouseEvent } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/api/client";
 import {
@@ -15,7 +15,7 @@ import { absolute, attentionHref, auditHref, reviewFromUrl, routerPath } from "@
 import { visibleNavigation } from "@/app/navigation";
 import { useSession } from "@/app/session";
 import { hideAttentionEntry, restoreAttentionEntry, useAttention } from "@/app/use-attention";
-import { useDecisionQueue } from "@/app/use-decisions";
+import { useReviewDecisions } from "@/app/use-decisions";
 import { DecisionCard } from "@/components/cockpit/decision-card";
 import { PageFrame } from "@/components/cockpit/page-frame";
 import { ScheduleReviewCard } from "@/components/cockpit/schedule-review-card";
@@ -28,12 +28,7 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { EngineWording } from "@/lib/machine-label";
 import { cn } from "@/lib/utils";
-import {
-  type DecidableItem,
-  type DecisionItem,
-  decisionWorkflowId,
-  isDecidable,
-} from "./decisions-model";
+import type { DecisionItem } from "./decisions-model";
 import {
   type AttentionAction,
   type AttentionItem,
@@ -41,6 +36,7 @@ import {
   actionLabelKey,
   attentionSentence,
   entryActions,
+  reviewNavigation,
   reviewTarget,
   sourceLabel,
   statusLine,
@@ -81,10 +77,23 @@ export function TodayPage() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
-  const openReview = useCallback((id: string | null) => {
-    window.history.pushState({}, "", absolute(attentionHref({ review: id })));
-    setReview(id);
-  }, []);
+  const navigation = useMemo(
+    () => reviewNavigation(window.history, (id) => absolute(attentionHref({ review: id }))),
+    [],
+  );
+  const openReview = useCallback(
+    (id: string) => {
+      navigation.open(id);
+      setReview(id);
+    },
+    [navigation],
+  );
+  // Closing leaves no history entry behind: Back after a closed sheet goes
+  // where the reader was before it opened, never into the sheet again.
+  const closeReview = useCallback(() => {
+    navigation.close();
+    setReview(null);
+  }, [navigation]);
 
   // Nobody reads Heute who may read none of its sources: they land on the
   // first page they can see, not on a page that can only ever be empty.
@@ -181,7 +190,7 @@ export function TodayPage() {
           </p>
         ) : null}
       </div>
-      <ReviewSheet id={review} item={reviewed} now={now} onClose={() => openReview(null)} />
+      <ReviewSheet id={review} item={reviewed} now={now} onClose={closeReview} />
     </PageFrame>
   );
 }
@@ -452,26 +461,13 @@ function ReviewBody({
   const { t } = useI18n();
   const session = useSession();
   const queryClient = useQueryClient();
-  const queue = useDecisionQueue(session.permissions);
-  const [busyId, setBusyId] = useState<string | null>(null);
   const target = reviewTarget(id);
+  const review = useReviewDecisions(target, session.permissions);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const canDecidePatches = session.permissions.includes("workflow:write");
   const canDecideSkills =
     session.permissions.includes("skill:write") && session.permissions.includes("skill:activate");
-
-  const decidable = queue.items.filter(isDecidable) as DecidableItem[];
-  const decisions =
-    target.kind === "workflow"
-      ? decidable.filter(
-          (entry) => entry.kind === "patch" && decisionWorkflowId(entry) === target.workflowId,
-        )
-      : target.kind === "skills"
-        ? decidable.filter((entry) => entry.kind === "skill")
-        : [];
-  const held =
-    target.kind === "workflow"
-      ? queue.heldSchedules.filter((schedule) => schedule.workflow_id === target.workflowId)
-      : [];
+  const { decisions, held } = review;
 
   const decide = useMutation({
     mutationFn: async (input: {
@@ -497,7 +493,7 @@ function ReviewBody({
       // on the card it is about.
       const remaining = decisions.filter((entry) => entry.id !== input.item.id).length;
       const settles = remaining === 0 && held.length === 0;
-      if (settles) hideAttentionEntry(id);
+      if (settles && item) hideAttentionEntry(item);
       return { settles };
     },
     onSuccess: async (_result, input, context) => {
@@ -532,7 +528,49 @@ function ReviewBody({
     onSettled: () => setBusyId(null),
   });
 
-  if (queue.isPending && !queue.failed)
+  const { primary } = item ? entryActions(item) : { primary: null };
+  const back = (
+    <Button
+      variant="outline"
+      className="justify-self-start"
+      onClick={onClose}
+      data-testid="attention-review-back"
+    >
+      {t("today.sheet.close")}
+    </Button>
+  );
+  // Where the entry is acted on, when not in this sheet.
+  const elsewhere =
+    item && primary && primary.verb !== "review" ? (
+      <Button asChild className="justify-self-start">
+        <Link to={routerPath(primary.href)} data-testid="attention-review-action">
+          {t(actionLabelKey(primary, item))}
+        </Link>
+      </Button>
+    ) : null;
+
+  if (review.access !== "readable")
+    return (
+      <div className="grid gap-3 px-4 pb-6" data-testid="attention-review-body">
+        <p
+          className="text-sm text-muted-foreground"
+          data-testid={
+            review.access === "not_permitted"
+              ? "attention-review-not-permitted"
+              : "attention-review-nothing"
+          }
+        >
+          {t(
+            review.access === "not_permitted"
+              ? "today.sheet.notPermitted"
+              : "today.sheet.nothingToReview",
+          )}
+        </p>
+        {elsewhere}
+        {back}
+      </div>
+    );
+  if (review.isPending && !review.failed)
     return (
       <div
         className="grid gap-2 px-4"
@@ -544,18 +582,17 @@ function ReviewBody({
         <Skeleton className="h-24 w-full" />
       </div>
     );
-  if (queue.failed)
+  if (review.failed)
     return (
       <div className="px-4">
         <LoadFailed
           title={t("today.loadFailed")}
-          onRetry={() => queue.refetch()}
+          onRetry={() => review.refetch()}
           testId="attention-review-error"
         />
       </div>
     );
 
-  const { primary } = item ? entryActions(item) : { primary: null };
   return (
     <div
       className="grid gap-4 px-4 pb-6"
@@ -571,8 +608,8 @@ function ReviewBody({
           item={entry}
           index={index}
           testIdPrefix="review-decision"
-          names={queue.names}
-          canReadRuns={queue.canReadRuns}
+          names={review.names}
+          canReadRuns={review.canReadRuns}
           priority={item?.class === "decide" ? "normal" : "urgent"}
           busy={busyId === entry.id}
           canDecide={entry.kind === "patch" ? canDecidePatches : canDecideSkills}
@@ -584,23 +621,10 @@ function ReviewBody({
       ))}
       {decisions.length === 0 && held.length === 0 ? (
         <div className="grid gap-3" data-testid="attention-review-empty">
-          {item && primary && primary.verb !== "review" ? (
-            <Button asChild className="justify-self-start">
-              <Link to={routerPath(primary.href)} data-testid="attention-review-action">
-                {t(actionLabelKey(primary, item))}
-              </Link>
-            </Button>
-          ) : (
+          {elsewhere ?? (
             <p className="text-sm text-muted-foreground">{t("today.sheet.nothingOpen")}</p>
           )}
-          <Button
-            variant="outline"
-            className="justify-self-start"
-            onClick={onClose}
-            data-testid="attention-review-back"
-          >
-            {t("today.sheet.close")}
-          </Button>
+          {back}
         </div>
       ) : null}
     </div>

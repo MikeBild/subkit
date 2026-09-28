@@ -800,7 +800,11 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
     // the banner all read them now, so the calm variant has to be able to say
     // "nothing is open" through the same endpoints the busy one uses.
     if (path === "/v1/patch-candidates") {
-      const items = gateOpen && status === "proposed" ? PATCH_ROWS : [];
+      // One workflow's fixes when asked for one — the review sheet asks so.
+      const scope = url.searchParams.get("workflow_id");
+      const items = (gateOpen && status === "proposed" ? PATCH_ROWS : []).filter(
+        (candidate) => !scope || candidate.workflow_id === scope,
+      );
       const presented = unknownDecisionKind
         ? items.map((candidate, index) =>
             index === 0
@@ -2835,6 +2839,147 @@ async function checkFailureState(page, where) {
 }
 
 /**
+ * A review address whose entry is gone — decided elsewhere, or never there —
+ * says so. It must neither spin nor show another entry's decisions.
+ */
+async function checkStaleReview(context) {
+  for (const [id, testId, words] of [
+    [
+      "workflow:018f4b4a-6d33-7b3a-9c2d-00000000dead",
+      "attention-review-empty",
+      "today.sheet.nothingOpen",
+    ],
+    [
+      "connector:018f4b4a-6d33-7b3a-9c2d-00000000dead",
+      "attention-review-nothing",
+      "today.sheet.nothingToReview",
+    ],
+  ]) {
+    const where = `/?review=${id.split(":")[0]}:… (stale)`;
+    const page = await context.newPage();
+    try {
+      await stand.visit(page, `?review=${id}`);
+      await page
+        .locator(`[data-testid="${testId}"]`)
+        .waitFor({ state: "visible", timeout: 15_000 });
+      const text = await page.locator('[data-testid="attention-review"]').innerText();
+      if (!text.includes(german(words)))
+        breach("§1, §12", where, `the sheet does not say "${german(words)}"`);
+      if (await page.locator('[data-testid="attention-review"] article[data-decision-key]').count())
+        breach("§12", where, "a stale review shows another entry's decisions");
+    } catch (error) {
+      if (error instanceof NichtGemessen) throw error;
+      breach("§1, §12", where, `the stale review never says it is empty: ${error.message}`);
+    } finally {
+      await page.close();
+    }
+  }
+}
+
+/**
+ * A catalogue row opens its record inside the running cockpit. A full page
+ * load threw the app away — state, caches, the sidebar — to show one record.
+ */
+async function checkCatalogOpensInApp(context) {
+  const page = await openPage(context, "workflows");
+  try {
+    const link = page.locator('[data-testid="data-table-row-link-0"]');
+    await link.waitFor({ state: "visible", timeout: 15_000 });
+    await page.evaluate(() => {
+      window.__skSameDocument = true;
+    });
+    await link.click();
+    await page
+      .locator('[data-testid="detail-workflows"]')
+      .waitFor({ state: "visible", timeout: 15_000 });
+    if (!(await page.evaluate(() => window.__skSameDocument === true)))
+      breach("§12", "/workflows · row link", "opening a record reloads the whole cockpit");
+  } finally {
+    await page.close();
+  }
+}
+
+/** A fresh context in German, with one mock over the whole API. */
+async function germanContext(browser, handler) {
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    locale: "de-DE",
+  });
+  await context.addInitScript(() => {
+    localStorage.setItem("sk-cockpit-locale", "de");
+    localStorage.setItem("sk-cockpit-theme", "light");
+  });
+  await context.route("**/v1/**", handler);
+  return context;
+}
+
+/**
+ * The whole answer failing is a failure, never an empty list: without it the
+ * page knows nothing, and "Alles erledigt" would be a claim nobody checked.
+ */
+async function checkTodayUnreadable(browser) {
+  const busy = apiMock(false);
+  const context = await germanContext(browser, (route) =>
+    new URL(route.request().url()).pathname === "/v1/attention"
+      ? json(route, { code: "unavailable", message: "fixture refuses" }, 503)
+      : busy(route),
+  );
+  const page = await openPage(context, "");
+  try {
+    await page
+      .locator('[data-testid="attention-error"]')
+      .waitFor({ state: "visible", timeout: 15_000 });
+    if ((await page.locator("body").innerText()).includes(german("today.calm")))
+      breach("§1, §12", "/ (attention unreadable)", '"Alles erledigt" although nothing was read');
+  } catch (error) {
+    if (error instanceof NichtGemessen) throw error;
+    breach(
+      "§1, §4",
+      "/ (attention unreadable)",
+      `the failed read is not shown as one: ${error.message}`,
+    );
+  } finally {
+    await page.close();
+    await context.close();
+  }
+}
+
+/**
+ * A reader who sees Heute but may not read a workflow's fixes is told so in
+ * the review sheet — not left in front of a loading state that never ends.
+ */
+async function checkReviewNotPermitted(browser) {
+  const busy = apiMock(true);
+  const context = await germanContext(browser, (route) =>
+    new URL(route.request().url()).pathname === "/v1/cockpit/bootstrap"
+      ? json(route, {
+          ...BOOTSTRAP,
+          permissions: BOOTSTRAP.permissions.filter(
+            (permission) => !["workflow:read", "skill:read"].includes(permission),
+          ),
+        })
+      : busy(route),
+  );
+  const page = await context.newPage();
+  const where = "/?review=workflow:… (no workflow:read)";
+  try {
+    await stand.visit(page, `?review=workflow:${ID}`);
+    await page
+      .locator('[data-testid="attention-review-not-permitted"]')
+      .waitFor({ state: "visible", timeout: 15_000 });
+    const text = await page.locator('[data-testid="attention-review"]').innerText();
+    if (!text.includes(german("today.sheet.notPermitted")))
+      breach("§5", where, "the refusal is not said in words");
+  } catch (error) {
+    if (error instanceof NichtGemessen) throw error;
+    breach("§1, §4", where, `the sheet never says the reader may not see it: ${error.message}`);
+  } finally {
+    await page.close();
+    await context.close();
+  }
+}
+
+/**
  * A row opens by its name, and by nothing named "Öffnen".
  *
  * Every row carried an "Öffnen" button beside a row click that did the same —
@@ -2862,6 +3007,14 @@ async function checkRowsOpenByTheirName(page, where) {
       buttonCards: rows.filter((row) => row.tagName === "BUTTON" && row.querySelector("a, button"))
         .length,
       clickable: rows.filter((row) => row.classList.contains("cursor-pointer")).length,
+      // A record without an address opens through a button in its first cell;
+      // that cell is its time, and "10:42" is no name for a record.
+      unnamedButtons: [...document.querySelectorAll('button[data-testid*="row-link-"]')].filter(
+        (button) => {
+          const label = button.getAttribute("aria-label")?.trim() ?? "";
+          return label.length === 0 || label === button.textContent?.trim();
+        },
+      ).length,
       named: document.querySelectorAll(
         '[data-testid$="-row-link-0"], [data-testid$="-mobile-row-link-0"]',
       ).length,
@@ -2873,6 +3026,8 @@ async function checkRowsOpenByTheirName(page, where) {
     breach("§12", where, `${shape.tabStops} rows are tab stops — the name link is the way in`);
   if (shape.buttonCards > 0)
     breach("§12", where, `${shape.buttonCards} mobile cards are buttons wrapping controls`);
+  if (shape.unnamedButtons > 0)
+    breach("§5", where, `${shape.unnamedButtons} row buttons are named only by their cell text`);
   if (shape.clickable > 0 && shape.named === 0)
     breach("§12", where, "rows open on click, but no row names itself with a link");
 }
@@ -3312,6 +3467,8 @@ try {
 
   await checkReviewSheet(context);
   await checkLegacyRedirects(context);
+  await checkStaleReview(context);
+  await checkCatalogOpensInApp(context);
 
   // The other end of the one link §8.5 allows. Opened with the scope the link
   // carries, because an unfiltered log proves nothing about findability.
@@ -3373,6 +3530,8 @@ try {
 
   await checkCollectionDataStates(browser);
   await checkUnknownDecisionKind(browser);
+  await checkTodayUnreadable(browser);
+  await checkReviewNotPermitted(browser);
 
   // Second fixture variant: nothing open — "Alles erledigt" and one status
   // line. Then the same calm installation with one source that failed: the

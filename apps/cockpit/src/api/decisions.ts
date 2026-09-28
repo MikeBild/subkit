@@ -1,4 +1,3 @@
-import type { DigestFailureGroup } from "@/lib/failing-workflows";
 import { ApiError, apiRequest } from "./client";
 import type { components } from "./schema";
 
@@ -9,7 +8,6 @@ export type PatchCandidateDryRun = components["schemas"]["PatchCandidateDryRunRe
 export type SkillCandidate = components["schemas"]["SkillCandidate"];
 export type SkillCandidateList = components["schemas"]["SkillCandidateListResponse"];
 export type SkillCandidateEvidence = components["schemas"]["SkillCandidateEvidence"];
-export type ConversationList = components["schemas"]["ConversationListResponse"];
 
 const QUEUE_LIMIT = 200;
 
@@ -32,8 +30,10 @@ async function allDecisionPages<T>(
   return { ...first, items };
 }
 
-export function listProposedPatchCandidates(): Promise<PatchCandidateList> {
-  return allDecisionPages<PatchCandidate>("/v1/patch-candidates?status=proposed&order=asc");
+/** Proposed fixes, oldest first — all of them, or one workflow's. */
+export function listProposedPatchCandidates(workflowId?: string): Promise<PatchCandidateList> {
+  const scope = workflowId ? `&workflow_id=${encodeURIComponent(workflowId)}` : "";
+  return allDecisionPages<PatchCandidate>(`/v1/patch-candidates?status=proposed&order=asc${scope}`);
 }
 
 export function listPatchCandidatesByStatus(
@@ -50,12 +50,6 @@ export function listSkillCandidatesByStatus(
   status: "approved" | "rejected",
 ): Promise<SkillCandidateList> {
   return apiRequest(`/v1/skill-candidates?status=${status}&limit=25`);
-}
-
-export function listAwaitingConversations(): Promise<ConversationList> {
-  return apiRequest(
-    `/v1/conversations?status=awaiting_input&sort=updated_at&order=asc&limit=${QUEUE_LIMIT}`,
-  );
 }
 
 export function getPatchCandidatePreview(id: string): Promise<PatchCandidatePreview> {
@@ -123,20 +117,6 @@ export function listSkillCandidateEvidence(
  * incidents: 0" beside a badge counting two of them, and nothing on either
  * screen explained the difference. `decision-window.test.ts` holds them equal.
  */
-export const FAILURE_WINDOW_HOURS = 168;
-
-/**
- * The workflows that run on an approval and keep failing. The engine already
- * groups these for the operator health digest; the decisions page is where a
- * person can act on them.
- */
-export async function listFailingWorkflows(): Promise<DigestFailureGroup[]> {
-  const digest = await apiRequest<{ failure_groups?: DigestFailureGroup[] }>(
-    `/v1/operator/health-digest?window_hours=${FAILURE_WINDOW_HOURS}`,
-  );
-  return Array.isArray(digest?.failure_groups) ? digest.failure_groups : [];
-}
-
 export type HeldSchedule = components["schemas"]["ScheduleEntry"];
 export async function listHeldSchedules(): Promise<HeldSchedule[]> {
   const result = await apiRequest<{ schedules: HeldSchedule[] }>("/v1/schedules");

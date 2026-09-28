@@ -22,6 +22,52 @@ export type HealthState = NonNullable<Attention["status"]>["health_state"];
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
 // --------------------------------------------------------------------------
+// Entries decided in this tab.
+//
+// Deciding takes an entry off the list at once. But deciding the last fix of
+// a FAILING workflow does not end the entry: the workflow still fails, and the
+// engine lists it again — the same id, now with a chat as its way forward. So
+// an entry is hidden as the thing it WAS (reason, class, counts, primary
+// action), and it is back the moment the engine lists it as anything else.
+
+/** Hidden entry id → what the entry was when it was hidden. */
+export type HiddenEntries = ReadonlyMap<string, string>;
+export const NO_HIDDEN: HiddenEntries = new Map();
+
+/** What an entry asks of the reader — the part a decision changes. */
+export function entrySnapshot(item: AttentionItem): string {
+  return JSON.stringify([
+    item.reason,
+    item.class,
+    item.counts,
+    item.actions.find((action) => action.primary)?.verb ?? null,
+  ]);
+}
+
+export function isHidden(item: AttentionItem, hidden: HiddenEntries): boolean {
+  return hidden.get(item.id) === entrySnapshot(item);
+}
+
+/**
+ * Keep only what the engine still lists unchanged. An entry that went away,
+ * or came back as something else, is no longer ours to hide. Returns the same
+ * map when nothing changed.
+ */
+export function settleHidden(
+  hidden: HiddenEntries,
+  items: readonly AttentionItem[],
+): HiddenEntries {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const next = new Map(
+    [...hidden].filter(([id, snapshot]) => {
+      const item = byId.get(id);
+      return item !== undefined && entrySnapshot(item) === snapshot;
+    }),
+  );
+  return next.size === hidden.size ? hidden : next;
+}
+
+// --------------------------------------------------------------------------
 // One entry per subject.
 
 /** The thing an entry is about — its subject, or the entry itself where it has none. */
@@ -39,12 +85,12 @@ export function subjectKey(item: AttentionItem): string {
  */
 export function attentionEntries(
   items: readonly AttentionItem[],
-  hidden: ReadonlySet<string> = new Set(),
+  hidden: HiddenEntries = NO_HIDDEN,
 ): AttentionItem[] {
   const seen = new Set<string>();
   const entries: AttentionItem[] = [];
   for (const item of items) {
-    if (hidden.has(item.id)) continue;
+    if (isHidden(item, hidden)) continue;
     const key = subjectKey(item);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -80,10 +126,7 @@ export function failedSources(attention: Attention): AttentionSource[] {
  * without it the list could be missing exactly the entry that matters, and
  * "Alles erledigt" would be a claim nobody checked.
  */
-export function todayView(
-  attention: Attention,
-  hidden: ReadonlySet<string> = new Set(),
-): TodayView {
+export function todayView(attention: Attention, hidden: HiddenEntries = NO_HIDDEN): TodayView {
   const items = attentionEntries(attention.items, hidden);
   const unread = failedSources(attention);
   if (items.length > 0) return { kind: "items", items, unread };
@@ -100,7 +143,7 @@ export function todayView(
  */
 export function attentionBadge(
   attention: Attention | undefined,
-  hidden: ReadonlySet<string> = new Set(),
+  hidden: HiddenEntries = NO_HIDDEN,
 ): { count: number; stopped: boolean } | null {
   if (!attention) return null;
   const items = attentionEntries(attention.items, hidden);
@@ -383,4 +426,51 @@ export function reviewTarget(id: string): ReviewTarget {
   const match = /^workflow:([0-9a-f-]{36})$/i.exec(id);
   if (match?.[1]) return { kind: "workflow", workflowId: match[1] };
   return { kind: "other" };
+}
+
+/**
+ * Whether this reader can see what a review sheet holds: a workflow's fixes
+ * and held schedule need `workflow:read`, the skill proposals `skill:read`.
+ * Any other entry has nothing to review in the sheet — it is acted on where
+ * its primary action leads.
+ */
+export type ReviewAccess = "readable" | "not_permitted" | "nothing";
+
+export function reviewAccess(target: ReviewTarget, permissions: readonly string[]): ReviewAccess {
+  if (target.kind === "workflow")
+    return permissions.includes("workflow:read") ? "readable" : "not_permitted";
+  if (target.kind === "skills")
+    return permissions.includes("skill:read") ? "readable" : "not_permitted";
+  return "nothing";
+}
+
+/** The part of `window.history` the review sheet uses. */
+export interface ReviewHistory {
+  readonly state: unknown;
+  pushState(state: unknown, unused: string, url: string): void;
+  replaceState(state: unknown, unused: string, url: string): void;
+  back(): void;
+}
+
+const OPENED_HERE = "sk-attention-review";
+
+/**
+ * The sheet's address, kept honest with Back.
+ *
+ * Opening from the list pushes an entry marked as ours; closing that sheet
+ * goes BACK, so the history is what it was before it opened and Back never
+ * reopens a closed sheet (or a decided one, now empty). A sheet that arrived
+ * by link has no entry of ours to leave: closing it replaces the address.
+ */
+export function reviewNavigation(history: ReviewHistory, href: (review: string | null) => string) {
+  return {
+    open(review: string): void {
+      history.pushState({ [OPENED_HERE]: true }, "", href(review));
+    },
+    close(): void {
+      const state = history.state as Record<string, unknown> | null;
+      if (state?.[OPENED_HERE]) history.back();
+      else history.replaceState(history.state, "", href(null));
+    },
+  };
 }
