@@ -1,4 +1,5 @@
 import type { TranslationKey } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n-context";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
@@ -22,6 +23,29 @@ export function catalogLabel(
   t: Translate,
 ): CatalogLabel {
   return key ? { text: t(key), machine: false } : { text: value, machine: true };
+}
+
+/**
+ * Prose the engine wrote, shown as the engine's words.
+ *
+ * A setting's description is the engine's English `meta.description`. On a
+ * German screen it read as the Cockpit's own sentence in the wrong language.
+ * It is not translated — a machine translation would put words in the
+ * engine's mouth — but marked: "Wortlaut der Engine", and `lang="en"` so a
+ * screen reader pronounces it as English.
+ */
+export function EngineWording({ text, testId }: { text: string; testId?: string }) {
+  const { t, locale } = useI18n();
+  return (
+    <span
+      className="mt-1 block text-xs font-normal text-muted-foreground"
+      data-engine-wording="true"
+      data-testid={testId}
+    >
+      {locale === "en" ? null : <span>{t("common.engineWordingLabel")}: </span>}
+      <span lang="en">{text}</span>
+    </span>
+  );
 }
 
 /** A label in its face: prose for a word, monospace for a machine value. */
