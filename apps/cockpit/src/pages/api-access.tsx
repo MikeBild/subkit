@@ -11,7 +11,6 @@ import {
   connectorHref,
 } from "@/app/links";
 import { useSession } from "@/app/session";
-import { AttentionList } from "@/components/cockpit/attention-list";
 import { ConfirmAction } from "@/components/cockpit/confirm-action";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
@@ -53,13 +52,13 @@ import { cn } from "@/lib/utils";
 import { SecretDialog } from "@/pages/admin";
 import {
   type ApiKeyItem,
-  apiAccessAttention,
   type ConnectedClientItem,
   deepLinkReady,
   defaultKeyScopes,
   groupApiKeys,
   groupConnectedClients,
-  keyExpired,
+  keyState,
+  keyStateText,
   ROTATE_OVERLAP_MINUTES,
   readableSections,
   scopeCatalogue,
@@ -103,7 +102,7 @@ const TOKEN_EXCHANGE_CURL = [
  * is absent rather than a failed load.
  */
 export function ApiAccessPage() {
-  const { t, dateTime } = useI18n();
+  const { t } = useI18n();
   const session = useSession();
   const can = (permission: string) => session.permissions.includes(permission);
   const canKeys = can("api_key:read");
@@ -126,20 +125,6 @@ export function ApiAccessPage() {
     enabled: canGrants,
   });
 
-  const attention = useMemo(
-    () =>
-      apiAccessAttention(
-        {
-          connections: connections.data?.items ?? [],
-          keys: keys.data?.items ?? [],
-          nowMs: Date.now(),
-        },
-        t,
-        dateTime,
-      ),
-    [connections.data, keys.data, t, dateTime],
-  );
-
   const sections = readableSections({ grants: canGrants, keys: canKeys, clients: canClients });
   const views = {
     grants: queryView(connections, (data) => data.items.length === 0),
@@ -149,7 +134,7 @@ export function ApiAccessPage() {
   const ready = deepLinkReady(sections.map((section) => views[section]));
 
   // An address that names a section opens the page there — the OAuth callback
-  // lands on `section=grants`, the attention list links to its section. Only
+  // lands on `section=grants`, the section index links to each one. Only
   // once every list has arrived: the scroll used to run on mount, while the
   // lists were skeletons, and the content that loaded above the heading then
   // pushed it out of view. Once — a refetch must not pull the page back.
@@ -165,7 +150,6 @@ export function ApiAccessPage() {
     <PageFrame
       testId="admin-api-access"
       title={t("resource.apiAccess.title")}
-      description={t("resource.apiAccess.description")}
       scroll="page"
       surface="installation"
     >
@@ -182,11 +166,6 @@ export function ApiAccessPage() {
             }}
           />
         ) : null}
-        <AttentionList
-          items={attention}
-          title={t("apiAccess.attention.title")}
-          testId="api-access-attention"
-        />
         {sections.map((section) =>
           section === "grants" ? (
             <GrantsSection key={section} query={connections} />
@@ -432,7 +411,8 @@ function KeysSection({ query }: { query: ListQuery<ApiKeyItem> }) {
   const view = queryView(query, (data) => data.items.length === 0);
   const nowMs = Date.now();
   const renderKey = (key: ApiKeyItem, testKey: string) => {
-    const expired = keyExpired(key, nowMs);
+    const state = keyState(key, nowMs);
+    const expired = state?.kind === "expired";
     const live = !key.revoked_at;
     return (
       <Card key={key.id} size="sm" data-testid={`api-key-item-${testKey}`}>
@@ -440,13 +420,16 @@ function KeysSection({ query }: { query: ListQuery<ApiKeyItem> }) {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="truncate font-medium">{key.name || t("apiKeys.unnamed")}</p>
-              {key.revoked_at ? (
-                <Badge variant="outline" data-testid={`api-key-revoked-${testKey}`}>
-                  <span aria-hidden="true">○</span> {t("apiKeys.revokedBadge")}
-                </Badge>
-              ) : expired ? (
-                <Badge variant="destructive" data-testid={`api-key-expired-${testKey}`}>
-                  <span aria-hidden="true">●</span> {t("apiKeys.expiredBadge")}
+              {/* The key's state, on the key — the tasks it may raise live
+                  on Heute, never in a second list on this page. */}
+              {state ? (
+                <Badge
+                  variant={state.kind === "expired" ? "destructive" : "outline"}
+                  data-testid={`api-key-${state.kind}-${testKey}`}
+                  data-key-state={state.kind}
+                >
+                  <span aria-hidden="true">{state.kind === "revoked" ? "○" : "●"}</span>{" "}
+                  {keyStateText(state, t)}
                 </Badge>
               ) : null}
             </div>
