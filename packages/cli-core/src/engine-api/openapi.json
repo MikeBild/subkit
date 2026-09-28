@@ -7322,6 +7322,123 @@
           }
         ]
       },
+      "WorkflowScheduleBinding": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "cron": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
+          "admission_hold": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "reason_code": {
+                "type": "string",
+                "enum": [
+                  "execution_authority_required",
+                  "execution_authority_unavailable"
+                ]
+              },
+              "observed_at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason_code",
+              "observed_at"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "held",
+              "activation_required"
+            ]
+          },
+          "next_fire_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_enqueued_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "cron",
+          "timezone",
+          "paused",
+          "execution_mode",
+          "admission_hold",
+          "state",
+          "next_fire_at",
+          "last_enqueued_at"
+        ]
+      },
+      "EffectiveTrigger": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "webhook",
+              "request"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "binding",
+              "definition",
+              "default"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "held",
+              "activation_required",
+              "declared_unbound"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "source",
+          "state"
+        ]
+      },
       "Workflow": {
         "type": "object",
         "properties": {
@@ -7454,6 +7571,16 @@
           },
           "trigger": {
             "$ref": "#/components/schemas/WorkflowTrigger"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/WorkflowScheduleBinding"
+          },
+          "webhooks_active": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "effective_trigger": {
+            "$ref": "#/components/schemas/EffectiveTrigger"
           }
         },
         "required": [
@@ -7482,7 +7609,10 @@
           "validation_function",
           "timeout_ms",
           "max_llm_tokens_per_run",
-          "trigger"
+          "trigger",
+          "schedule",
+          "webhooks_active",
+          "effective_trigger"
         ]
       },
       "ScheduleListResponse": {
@@ -8772,7 +8902,7 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Execution"
+              "$ref": "#/components/schemas/ExecutionListItem"
             }
           },
           "total": {
@@ -8789,6 +8919,59 @@
         "required": [
           "items",
           "total"
+        ]
+      },
+      "ExecutionListItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Execution"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "failure": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "step_key": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "cause_class": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "ok",
+                      "auth_failed",
+                      "placeholder_unresolved",
+                      "schema_mismatch",
+                      "timeout",
+                      "aborted",
+                      "connector_missing",
+                      "budget_exhausted",
+                      "driver_error",
+                      "preview_unsupported",
+                      "unknown",
+                      null
+                    ]
+                  }
+                },
+                "required": [
+                  "step_key",
+                  "cause_class"
+                ]
+              }
+            },
+            "required": [
+              "failure"
+            ]
+          }
         ]
       },
       "Execution": {
@@ -8883,6 +9066,131 @@
           "started_at",
           "finished_at",
           "created_at"
+        ]
+      },
+      "ExecutionDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Execution"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "outcome": {
+                "$ref": "#/components/schemas/ExecutionOutcome"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          }
+        ]
+      },
+      "ExecutionOutcome": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "succeeded",
+              "failed",
+              "held",
+              "partial",
+              "running"
+            ]
+          },
+          "failed_step": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "step_key": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "step_key",
+              "kind"
+            ]
+          },
+          "cause_class": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "ok",
+              "auth_failed",
+              "placeholder_unresolved",
+              "schema_mismatch",
+              "timeout",
+              "aborted",
+              "connector_missing",
+              "budget_exhausted",
+              "driver_error",
+              "preview_unsupported",
+              "unknown",
+              null
+            ]
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "steps": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "succeeded": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "held": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "skipped": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "total",
+              "succeeded",
+              "failed",
+              "held",
+              "skipped"
+            ]
+          },
+          "output_contract": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "violated",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "failed_step",
+          "cause_class",
+          "error_code",
+          "steps",
+          "output_contract"
         ]
       },
       "ExecutionStepListResponse": {
@@ -29739,6 +30047,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Workflow is archived",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -30600,7 +30918,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Execution"
+                  "$ref": "#/components/schemas/ExecutionDetail"
                 }
               }
             }

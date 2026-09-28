@@ -8,6 +8,7 @@ import {
   type RunExecutionBody,
   type RunExecutionResponse,
 } from "../engine-client.ts";
+import { effectiveTriggerLabel, type TriggerFields } from "../lib/effective-trigger.ts";
 import { pickId } from "../lib/pick.ts";
 import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
 import { computeStepBottlenecks, humanMs } from "../render/format.ts";
@@ -310,7 +311,14 @@ const listCommand = defineCommand({
         ...(args.connector ? { connector: args.connector } : {}),
       });
       const columns = WORKFLOW_LIST_COLUMNS;
-      const rows = items as Record<string, unknown>[];
+      // JSON stays the engine's item verbatim; the table gets the synthesised
+      // `runs_on` column (see list-columns.ts).
+      const rows = args.json
+        ? items
+        : items.map((item) => ({
+            ...item,
+            runs_on: effectiveTriggerLabel(item as TriggerFields),
+          }));
       // Grouping is the default because a flat 60-row catalog is what made
       // this unreadable; `--flat` restores the old view.
       if (args.flat || !categories?.length) {
@@ -351,31 +359,14 @@ const getCommand = defineCommand({
       });
       const workflow = await client.getWorkflow(id);
       printJson(workflow);
-      // First-class summary of the workflow-level trigger so operators
-      // don't have to grep the JSON. Always print a line so absence
-      // (which would be the bug signature if the trigger field stops
-      // round-tripping through commit) is *visible*, not silent.
-      const definition = (workflow as { definition?: Record<string, unknown> }).definition ?? {};
-      const trigger = (definition as { trigger?: Record<string, unknown> }).trigger;
-      const kindRaw =
-        trigger && typeof trigger === "object" && typeof trigger.kind === "string"
-          ? trigger.kind
-          : "request";
-      if (kindRaw === "schedule" && trigger) {
-        const cron = typeof trigger.cron === "string" ? trigger.cron : "?";
-        const tz = typeof trigger.tz === "string" ? trigger.tz : "UTC";
-        process.stderr.write(
-          `\n${pc.dim("trigger:")} ${pc.cyan("schedule")}  cron=${cron}  tz=${tz}\n`,
-        );
-      } else if (kindRaw === "webhook" && trigger) {
-        const source = typeof trigger.source === "string" ? trigger.source : "?";
-        const events = Array.isArray(trigger.events) ? trigger.events.join(",") : "?";
-        process.stderr.write(
-          `\n${pc.dim("trigger:")} ${pc.cyan("webhook")}  source=${source}  events=${events}\n`,
-        );
-      } else {
-        process.stderr.write(`\n${pc.dim("trigger:")} request\n`);
-      }
+      // First-class summary of what really starts the workflow. Read from the
+      // engine's `effective_trigger` (bound schedule / webhook rows beat the
+      // definition), never from the declared `trigger` alone — that reported
+      // schedules created with `sk schedules create` as "request". Always
+      // print a line so an absent field is visible, not silent.
+      process.stderr.write(
+        `\n${pc.dim("trigger:")} ${effectiveTriggerLabel(workflow as TriggerFields)}\n`,
+      );
     } catch (err) {
       reportCommandError(err);
     }

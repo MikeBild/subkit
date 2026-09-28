@@ -1,6 +1,7 @@
 // Workflow read tools — list_workflows, get_workflow, get_workflow_by_slug.
 
 import { z } from "@hono/zod-openapi";
+import { bindingFor, workflowTriggerView } from "../../../scheduler/trigger-bindings.ts";
 import { UNCATEGORIZED } from "../../../workflows/categorize.ts";
 import type { ConversationTool } from "../index.ts";
 
@@ -40,7 +41,7 @@ const GetInput = z
 export const listWorkflowsTool: ConversationTool = {
   name: "list_workflows",
   description:
-    "List the tenant's workflows — returns the COMPLETE set by default (workflows are a bounded catalog). Each item carries a `category` (the catalog block it belongs to) and the `connectors` it uses, and both are filterable. `total` is the exact tenant count under the given filters; `has_more` is true only when an explicit limit/offset page was requested.",
+    "List the tenant's workflows — returns the COMPLETE set by default (workflows are a bounded catalog). Each item carries a `category` (the catalog block it belongs to) and the `connectors` it uses, and both are filterable. `effective_trigger` says what really starts the workflow (a bound schedule or webhook beats the definition's declared trigger; `declared_unbound` means declared but nothing fires it); `schedule` is the bound schedule, if any. `total` is the exact tenant count under the given filters; `has_more` is true only when an explicit limit/offset page was requested.",
   inputSchema: ListInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof ListInput>) {
@@ -54,9 +55,10 @@ export const listWorkflowsTool: ConversationTool = {
     });
     // Derived over the whole catalog, not the returned page, so an item
     // reports the same block whether or not the caller filtered.
-    const [categories, connectorRefs] = await Promise.all([
+    const [categories, connectorRefs, bindings] = await Promise.all([
       ctx.engineClient.workflows.categories(),
       ctx.engineClient.workflows.connectorRefs(),
+      ctx.engineClient.workflows.triggerBindings(rows.map((w) => w.id)),
     ]);
     return {
       ok: true,
@@ -68,6 +70,7 @@ export const listWorkflowsTool: ConversationTool = {
           lifecycle: w.lifecycle,
           category: categories.get(w.slug) ?? UNCATEGORIZED,
           connectors: connectorRefs.get(w.id) ?? [],
+          ...workflowTriggerView(w.definition.trigger, bindingFor(bindings, w.id)),
           created_at: w.created_at,
           updated_at: w.updated_at,
         })),
@@ -82,7 +85,8 @@ export const listWorkflowsTool: ConversationTool = {
 
 export const getWorkflowTool: ConversationTool = {
   name: "get_workflow",
-  description: "Fetch a single workflow by id or slug.",
+  description:
+    "Fetch a single workflow by id or slug. `effective_trigger` says what really starts it (a bound schedule or webhook beats the definition's declared `trigger`); `schedule` is the bound schedule, if any.",
   inputSchema: GetInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof GetInput>) {
@@ -93,7 +97,16 @@ export const getWorkflowTool: ConversationTool = {
       wf = await ctx.engineClient.workflows.getBySlug(args.slug);
     }
     if (!wf) return { ok: false, data: { error: "workflow_not_found" } };
-    return { ok: true, data: { workflow: wf } };
+    const bindings = await ctx.engineClient.workflows.triggerBindings([wf.id]);
+    return {
+      ok: true,
+      data: {
+        workflow: {
+          ...wf,
+          ...workflowTriggerView(wf.definition.trigger, bindingFor(bindings, wf.id)),
+        },
+      },
+    };
   },
 };
 

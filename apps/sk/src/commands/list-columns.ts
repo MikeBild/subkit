@@ -10,7 +10,21 @@
 // them against the committed OpenAPI schema without pulling the command
 // modules — and with them the CLI's config/engine-client — into the test.
 
-export const WORKFLOW_LIST_COLUMNS = ["id", "name", "lifecycle", "connectors", "updated_at"];
+export const WORKFLOW_LIST_COLUMNS = [
+  "id",
+  "name",
+  "lifecycle",
+  "connectors",
+  "runs_on",
+  "updated_at",
+];
+
+/**
+ * `runs_on` is synthesised from `effective_trigger` + `schedule`. It is
+ * deliberately NOT called `trigger`: the item's `trigger` is only what the
+ * definition declares, and reading it reported bound schedules as "request".
+ */
+export const WORKFLOW_SYNTHESISED_COLUMNS = ["runs_on"];
 
 /**
  * `name` is the one deliberate exception to the "must exist on the item" rule:

@@ -6,7 +6,7 @@
 import { z } from "@hono/zod-openapi";
 import { paginatedResponse } from "../../../api/common-schemas.ts";
 import type { executionSteps, executions } from "../../../db/schema/index.ts";
-import { RequestMetaSchema } from "../../../execution/index.ts";
+import { PREVIEW_CLASSIFICATIONS, RequestMetaSchema } from "../../../execution/index.ts";
 import { ResponseFilterSchema, StepSchema, WorkflowDefSchema } from "../../../workflows/index.ts";
 
 export const ExecSchema = z
@@ -32,12 +32,51 @@ export const ExecSchema = z
   })
   .openapi("Execution");
 
+const CauseClassSchema = z.enum(PREVIEW_CLASSIFICATIONS);
+
+// What happened in a run, as structure. `status` alone cannot say it: a
+// hold-writes preview finalizes `succeeded` with nothing written (`held`), an
+// `on_error:"continue"` failure leaves the run `succeeded` (`partial`). Clients
+// compose their own wording from these fields; the engine sends no prose.
+export const ExecutionOutcomeSchema = z
+  .object({
+    kind: z.enum(["succeeded", "failed", "held", "partial", "running"]),
+    /** The step that stopped a failed run (or the tolerated failure of a partial one). */
+    failed_step: z.object({ step_key: z.string(), kind: z.string() }).nullable(),
+    cause_class: CauseClassSchema.nullable(),
+    error_code: z.string().nullable(),
+    steps: z.object({
+      total: z.number().int().nonnegative(),
+      succeeded: z.number().int().nonnegative(),
+      failed: z.number().int().nonnegative(),
+      held: z.number().int().nonnegative(),
+      skipped: z.number().int().nonnegative(),
+    }),
+    /** `none`: no output_schema, or it was not evaluated (failed run, held preview, older run). */
+    output_contract: z.enum(["passed", "violated", "none"]),
+  })
+  .openapi("ExecutionOutcome");
+
+export const ExecDetailSchema = ExecSchema.extend({
+  outcome: ExecutionOutcomeSchema,
+}).openapi("ExecutionDetail");
+
+export const ExecListItemSchema = ExecSchema.extend({
+  /**
+   * Failed runs only: the step that stopped the run (null for a
+   * workflow-level failure such as `validation_failed`) and its cause class.
+   */
+  failure: z
+    .object({ step_key: z.string().nullable(), cause_class: CauseClassSchema.nullable() })
+    .nullable(),
+}).openapi("ExecutionListItem");
+
 // The execution list carries the exact filtered `total` alongside the
 // page so consumers render "showing latest N of T" instead of
 // presenting a page as the universe (ground-truth cardinality).
 export const ExecListResponse = z
   .object({
-    items: z.array(ExecSchema),
+    items: z.array(ExecListItemSchema),
     /** Exact tenant-scoped count under the same filters (ignores limit/offset). */
     total: z.number().int().nonnegative(),
     next_cursor: z.string().nullable().optional(),

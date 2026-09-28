@@ -13,6 +13,7 @@ import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { bytes, MISSING } from "@/components/cockpit/table-columns";
 import { WorkflowAuthorities } from "@/components/cockpit/workflow-authorities";
 import { WorkflowGallery } from "@/components/cockpit/workflow-gallery";
+import { RecentRuns, WorkflowCause, WorkflowHealthBadge } from "@/components/cockpit/workflow-runs";
 import { LoadFailed, queryView } from "@/components/failure-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -587,7 +588,16 @@ export function CatalogDetailPage({
         className="flex flex-wrap items-center justify-between gap-4 border-b p-6"
       >
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold tracking-tight">{recordTitle(record)}</h1>
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <h1 className="truncate text-2xl font-semibold tracking-tight">
+              {recordTitle(record)}
+            </h1>
+            {resource === "workflows" ? (
+              <WorkflowHealthBadge
+                state={typeof record.health_state === "string" ? record.health_state : null}
+              />
+            ) : null}
+          </div>
           {/* The record's OWN description when it has one — what this thing is
               for, in the words of whoever built it. Where it has none the line
               is absent: the fallback was the catalogue's sentence, the same on
@@ -662,6 +672,20 @@ export function CatalogDetailPage({
         </div>
       )}
       <div data-family-slot="detail-main" className="flex min-h-0 flex-1 flex-col gap-5 p-6">
+        {resource === "workflows" ? (
+          <WorkflowCause
+            workflowId={id}
+            healthState={typeof record.health_state === "string" ? record.health_state : null}
+            healthReason={typeof record.health_reason === "string" ? record.health_reason : null}
+            healthChangedAt={
+              typeof record.health_changed_at === "string" ? record.health_changed_at : null
+            }
+            permissions={permissions}
+          />
+        ) : null}
+        {resource === "workflows" && permissions.includes("execution:read") ? (
+          <RecentRuns workflowId={id} />
+        ) : null}
         {resource === "workflows" ? (
           <WorkflowAuthorities
             workflowId={id}

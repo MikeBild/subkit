@@ -7,7 +7,7 @@ import {
   workflows,
   workflowsSchedules,
 } from "../../db/schema/index.ts";
-import { nextScheduleTime, workflowAutomationView } from "../../scheduler/index.ts";
+import { nextScheduleFire, workflowAutomationView } from "../../scheduler/index.ts";
 import {
   ActivateWorkflowDraftSchema,
   AuthorityExecutionShapeSchema,
@@ -591,6 +591,8 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
           cron: workflowsSchedules.cron,
           timezone: workflowsSchedules.timezone,
           input: workflowsSchedules.input,
+          last_enqueued_at: workflowsSchedules.last_enqueued_at,
+          created_at: workflowsSchedules.created_at,
         })
         .from(workflowsSchedules)
         .where(
@@ -612,7 +614,7 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
           schedules: schedules.map((schedule) => ({
             cron: schedule.cron,
             timezone: schedule.timezone,
-            next_run_at: nextScheduleTime(schedule.cron, schedule.timezone, new Date(now)),
+            next_run_at: nextScheduleFire(schedule, new Date(now)),
           })),
           suggested_bounds: suggestAuthorityBounds(new Date(now), schedules),
         },

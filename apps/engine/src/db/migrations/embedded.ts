@@ -83,6 +83,7 @@ import sql0062DustyYoungAvengers from "./0062_dusty_young_avengers.sql" with { t
 import sql0063NaivePreak from "./0063_naive_preak.sql" with { type: "text" };
 import sql0064NebulousIronFist from "./0064_nebulous_iron_fist.sql" with { type: "text" };
 import sql0065LushMadrox from "./0065_lush_madrox.sql" with { type: "text" };
+import sql0066SafePatch from "./0066_safe_patch.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -173,6 +174,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0063_naive_preak": sql0063NaivePreak,
   "0064_nebulous_iron_fist": sql0064NebulousIronFist,
   "0065_lush_madrox": sql0065LushMadrox,
+  "0066_safe_patch": sql0066SafePatch,
 };
 
 const journal = journalMeta as unknown as Journal;

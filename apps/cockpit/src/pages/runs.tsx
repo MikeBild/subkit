@@ -1,19 +1,23 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { Search } from "lucide-react";
+import { ChevronRight, RotateCcw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiRequest } from "@/api/client";
+import { toast } from "sonner";
+import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, runHref, runsHref, workflowHref, workflowsHref } from "@/app/links";
 import { useRecordCrumb } from "@/app/record-crumb";
 import { useSession } from "@/app/session";
+import { CauseFix } from "@/components/cockpit/cause-fix";
+import { ConfirmAction } from "@/components/cockpit/confirm-action";
 import { type CockpitColumn, DataTable } from "@/components/cockpit/data-table";
 import { PageFrame } from "@/components/cockpit/page-frame";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import {
   Select,
@@ -25,9 +29,12 @@ import {
 } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { causeClassLabel } from "@/lib/cause-class";
+import { type ConnectorAuthInput, connectorAuthState } from "@/lib/connector-auth-state";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
+import { remedyFor } from "@/lib/remedy";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
@@ -35,17 +42,27 @@ import {
   filterFromUrl,
   formatRunDuration,
   isExecutionRecord,
+  type OutcomeSentence,
+  payloadEvidence,
   previewText,
   REQUEST_SOURCES,
   RUN_STATUSES,
   type RunFact,
   requestSourceLabel,
+  rerunFailureText,
   runAuthorityFacts,
+  runCauseLinks,
   runCostFacts,
   runDurationMs,
   runIdFromPath,
   runName,
+  runOutcomeSentence,
+  runStatusSentence,
+  runVerdict,
   SOURCE_KIND_KEYS,
+  stepConnectorId,
+  stepGuidance,
+  stoppingStep,
 } from "@/pages/runs-model";
 
 // Re-exported so callers that already know these names keep working; the
@@ -53,6 +70,8 @@ import {
 export { formatRunDuration, RUN_STATUSES, requestSourceLabel, runDurationMs, runName };
 
 type Execution = components["schemas"]["Execution"];
+type ExecutionDetail = components["schemas"]["ExecutionDetail"];
+type ExecutionListItem = components["schemas"]["ExecutionListItem"];
 type ExecutionList = components["schemas"]["ExecutionListResponse"];
 type ExecutionStep = components["schemas"]["ExecutionStep"];
 type ExecutionStepList = components["schemas"]["ExecutionStepListResponse"];
@@ -86,11 +105,70 @@ function EvidenceBlock({
   );
 }
 
-function RunDetail({ run }: { run: Execution }) {
+/**
+ * The words of an outcome, with an unmapped cause set as a machine value.
+ */
+function OutcomeText({ sentence }: { sentence: OutcomeSentence }) {
+  return (
+    <>
+      {sentence.lead}
+      {sentence.cause ? <LabelText label={sentence.cause} /> : null}
+      {sentence.tail}
+    </>
+  );
+}
+
+/**
+ * Run the same thing again — same version, same input, real effects.
+ *
+ * Offered only where the engine accepts it: a saved workflow's run that still
+ * names its version. The dialog states the consequence before anything runs,
+ * and the new run opens in this sheet once it exists.
+ */
+function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string): void }) {
+  const { t } = useI18n();
+  const queryClient = useQueryClient();
+  const rerun = useMutation({
+    mutationFn: () =>
+      apiRequest<{ execution_id: string }>(`/v1/executions/${encodeURIComponent(run.id)}/rerun`, {
+        method: "POST",
+        body: JSON.stringify({ async: true }),
+      }),
+    onSuccess: async (result) => {
+      toast.success(t("runs.rerun.started"));
+      await queryClient.invalidateQueries({ queryKey: ["runs"] });
+      onStarted(result.execution_id);
+    },
+  });
+  return (
+    <ConfirmAction
+      triggerLabel={
+        <>
+          <RotateCcw data-icon="inline-start" />
+          {t("runs.rerun.open")}
+        </>
+      }
+      title={t("runs.rerun.title")}
+      consequence={t("runs.rerun.consequence", { workflow: runName(run, t) })}
+      confirmLabel={t("runs.rerun.confirm")}
+      onConfirm={() => rerun.mutateAsync()}
+      pending={rerun.isPending}
+      error={
+        rerun.error
+          ? rerunFailureText(rerun.error instanceof ApiError ? rerun.error : null, t)
+          : null
+      }
+      testId="run-rerun"
+    />
+  );
+}
+
+function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): void }) {
   const { t, dateTime, locale } = useI18n();
+  const session = useSession();
   const detail = useQuery({
     queryKey: ["run", run.id],
-    queryFn: () => apiRequest<Execution>(`/v1/executions/${encodeURIComponent(run.id)}`),
+    queryFn: () => apiRequest<ExecutionDetail>(`/v1/executions/${encodeURIComponent(run.id)}`),
   });
   const steps = useQuery({
     queryKey: ["run-steps", run.id],
@@ -107,18 +185,81 @@ function RunDetail({ run }: { run: Execution }) {
   // The list row is the floor: a refresh that did not return an execution
   // leaves the record the reader already had, instead of replacing it with
   // whatever answered 200.
-  const current = isExecutionRecord(detail.data) ? detail.data : run;
+  const current: Execution = isExecutionRecord(detail.data) ? detail.data : run;
+  const outcome =
+    isExecutionRecord(detail.data) && (detail.data as ExecutionDetail).outcome
+      ? (detail.data as ExecutionDetail).outcome
+      : null;
   const stepItems: ExecutionStep[] = steps.data?.items ?? [];
-  const failedStep = stepItems.find((step) => previewText(step.error) !== null);
-  const errorEvidence = failedStep ? previewText(failedStep.error) : null;
-  const resultStep = [...stepItems]
-    .reverse()
-    .find((step) => previewText(step.output_preview ?? step.result_preview) !== null);
-  const resultEvidence = resultStep
-    ? previewText(resultStep.output_preview ?? resultStep.result_preview)
+  const failing = stoppingStep(stepItems, outcome);
+  const errorEvidence = failing ? previewText(failing.error) : null;
+  const payload = payloadEvidence(stepItems, current.status, outcome);
+  const statusWord = (status: string) => statusLabel(t, status);
+  const verdict = runVerdict(current.status, outcome, t, statusWord);
+  const failed = verdict.tone !== null;
+  // Without the engine's outcome a failed run still gets its block: what is
+  // known is how it ended, and the way to the fix does not depend on more.
+  const sentence = outcome
+    ? runOutcomeSentence(outcome, t)
+    : failed
+      ? runStatusSentence(statusWord(current.status), t)
+      : null;
+
+  const canReadWorkflows = session.permissions.includes("workflow:read");
+  // An open repair proposal for this workflow is the first remedy: the engine
+  // already has a fix waiting, and a chat about it would rediscover it.
+  const patch = useQuery({
+    queryKey: ["run-open-repair", current.workflow_id],
+    enabled: failed && canReadWorkflows && Boolean(current.workflow_id),
+    queryFn: () =>
+      apiRequest<{ items: { id: string }[] }>(
+        `/v1/patch-candidates?status=proposed&workflow_id=${encodeURIComponent(current.workflow_id ?? "")}&limit=1`,
+      ),
+  });
+  const connectorId = outcome?.cause_class === "auth_failed" ? stepConnectorId(failing) : null;
+  // Where the connector's sign-in really stands — read from the connector,
+  // not assumed from the run: a rejected request may be a missing scope.
+  const connector = useQuery({
+    queryKey: ["connector", connectorId ?? ""],
+    enabled: connectorId !== null && session.permissions.includes("connector:read"),
+    queryFn: () =>
+      apiRequest<ConnectorAuthInput>(`/v1/connectors/${encodeURIComponent(connectorId ?? "")}`),
+  });
+  const authState = connectorId
+    ? {
+        connectorId,
+        state:
+          connector.data && typeof connector.data === "object"
+            ? connectorAuthState(connector.data)
+            : "unproven",
+      }
     : null;
+  const remedy = failed
+    ? remedyFor({
+        workflowId: current.workflow_id,
+        executionId: current.id,
+        patch: patch.data?.items?.[0] ?? null,
+        authState,
+        canRun: session.permissions.includes("workflow:run"),
+        canChat: session.permissions.includes("conversation:write"),
+        prompt: t("remedy.chatPrompt"),
+      })
+    : null;
+  const payloadLabel = payload?.preview
+    ? t("runs.detail.preview")
+    : payload?.stepKey
+      ? t("runs.detail.outputOfStep", { step: payload.stepKey })
+      : t("tool.result");
+  // Offered for a partly failed run as well as a failed one: the dialog says
+  // the rerun repeats every step with real effects, including the ones that
+  // already ran — the reader decides with that sentence in front of them.
+  const canRerun =
+    session.permissions.includes("workflow:run") &&
+    current.source_kind === "saved" &&
+    Boolean(current.workflow_id) &&
+    Boolean(current.workflow_version_id);
+
   const facts: RunFact[] = [
-    [t("resource.field.status"), statusLabel(t, current.status)],
     [t("runs.column.started"), current.started_at ? dateTime(current.started_at) : MISSING],
     [t("runs.detail.finished"), current.finished_at ? dateTime(current.finished_at) : MISSING],
     [
@@ -149,6 +290,30 @@ function RunDetail({ run }: { run: Execution }) {
         ))}
       </dl>
 
+      {/* What happened, in one sentence — and for a failure, why and what to
+          do about it, in the same block. */}
+      {sentence && failed ? (
+        <CauseFix
+          testId="run-detail-cause"
+          status={{ tone: verdict.tone ?? "critical", label: verdict.label }}
+          cause={
+            <span data-testid="run-detail-outcome">
+              <OutcomeText sentence={sentence} />
+            </span>
+          }
+          guidance={stepGuidance(failing)}
+          remedy={remedy ? { label: t(remedy.labelKey), href: remedy.href } : null}
+          more={runCauseLinks(current.id, session.permissions, t)}
+          actions={
+            canRerun ? <RerunAction run={current} onStarted={(id) => onShowRun(id)} /> : null
+          }
+        />
+      ) : sentence ? (
+        <p className="text-sm" data-testid="run-detail-outcome">
+          <OutcomeText sentence={sentence} />
+        </p>
+      ) : null}
+
       {detail.error || steps.error ? (
         <Alert variant="destructive" data-testid="run-detail-error-state">
           <AlertTitle>{t("runs.detail.loadFailed")}</AlertTitle>
@@ -173,20 +338,15 @@ function RunDetail({ run }: { run: Execution }) {
         </div>
       ) : (
         <>
-          {errorEvidence && (
+          {/* The run's error, ONCE. It used to stand here and again inside the
+              step card below, so the reader read the same stack twice and
+              wondered whether two things had gone wrong. */}
+          {errorEvidence && failing && (
             <EvidenceBlock
-              title={t("tool.error")}
+              title={t("runs.detail.errorOfStep", { step: failing.step_key })}
               text={errorEvidence}
               tone="error"
               testId="run-detail-error"
-            />
-          )}
-          {resultEvidence && (
-            <EvidenceBlock
-              title={t("tool.result")}
-              text={resultEvidence}
-              tone="result"
-              testId="run-detail-result"
             />
           )}
           <section className="grid gap-2" data-testid="run-detail-steps">
@@ -197,7 +357,9 @@ function RunDetail({ run }: { run: Execution }) {
               </p>
             ) : (
               stepItems.map((step, index) => {
-                const stepError = previewText(step.error);
+                // The stopping step's error is the block above; any other
+                // step's error (one that continued) is its own and stays here.
+                const stepError = step === failing ? null : previewText(step.error);
                 return (
                   <div
                     key={`${step.step_key}-${index}`}
@@ -223,6 +385,31 @@ function RunDetail({ run }: { run: Execution }) {
               })
             )}
           </section>
+          {/* The payload last, closed: it is the evidence, not the headline.
+              A failed run's newest output belongs to a step, and says which. */}
+          {payload && (
+            <Collapsible data-testid="run-detail-payload">
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-2 w-fit"
+                  data-testid="run-detail-payload-toggle"
+                >
+                  <ChevronRight data-icon="inline-start" />
+                  {payloadLabel}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <EvidenceBlock
+                  title={payloadLabel}
+                  text={payload.text}
+                  tone="result"
+                  testId="run-detail-result"
+                />
+              </CollapsibleContent>
+            </Collapsible>
+          )}
         </>
       )}
     </div>
@@ -274,19 +461,25 @@ export function RunsPage() {
   const rowForId = selectedId ? (rows.find((run) => run.id === selectedId) ?? null) : null;
   // A run reached by its address need not be among the rows on screen: a
   // different filter, a later page, or simply older than the newest
-  // twenty-five. Everywhere else on this page the row IS the record, so when
-  // there is no row the sheet asks the engine for one — under the very key
-  // `RunDetail` reads, so arriving by address costs no second request.
-  const addressedId = rowForId ? null : selectedId;
+  // twenty-five. The sheet asks the engine for the record under the very key
+  // `RunDetail` reads, so the two share one request.
+  //
+  // Asked even when a row is on screen: the row is the list's snapshot, and
+  // the sheet's title and status badge must say what the record says NOW —
+  // a title reading "succeeded" above an outcome saying "failed" is two
+  // answers to one question.
   const addressed = useQuery({
-    queryKey: ["run", addressedId ?? ""],
-    enabled: allowed && addressedId !== null,
-    queryFn: () => apiRequest<Execution>(`/v1/executions/${encodeURIComponent(addressedId ?? "")}`),
+    queryKey: ["run", selectedId ?? ""],
+    enabled: allowed && selectedId !== null,
+    queryFn: () => apiRequest<Execution>(`/v1/executions/${encodeURIComponent(selectedId ?? "")}`),
   });
   // Never the answer to a question that is no longer being asked: the key
   // changes with the id, and a stale record under the previous one would title
-  // the sheet after a run the reader had already closed.
-  const selected = rowForId ?? (addressed.data?.id === selectedId ? addressed.data : null);
+  // the sheet after a run the reader had already closed. The row is the floor
+  // while the record is on its way, and whenever the answer is not a record.
+  const fresh =
+    isExecutionRecord(addressed.data) && addressed.data.id === selectedId ? addressed.data : null;
+  const selected = fresh ?? rowForId;
   useRecordCrumb(selected ? runName(selected, t) : null);
 
   /**
@@ -328,14 +521,14 @@ export function RunsPage() {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  const columns = useMemo<CockpitColumn<Execution>[]>(() => {
-    const column = tableColumns<Execution>({ t, dateTime });
+  const columns = useMemo<CockpitColumn<ExecutionListItem>[]>(() => {
+    const column = tableColumns<ExecutionListItem>({ t, dateTime });
     // `/v1/executions` accepts no `sort`, and `manualSorting` means a sort
     // click that the engine cannot honour would silently do nothing. So the
     // runs table declares no sortable column at all.
     return [
       column.status("status", (run) => run.status, t("resource.field.status"), {
-        width: "w-[13%]",
+        width: "w-[12%]",
       }),
       column.link(
         "workflow",
@@ -344,11 +537,28 @@ export function RunsPage() {
           label: runName(run, t),
         }),
         t("runs.column.workflow"),
-        { width: "w-[26%]" },
+        { width: "w-[22%]" },
       ),
       column.date("started_at", (run) => run.started_at, t("runs.column.started"), {
-        width: "w-[19%]",
+        width: "w-[15%]",
       }),
+      // The cause group a failure belongs to (§3), in words. A run that did not
+      // fail has no cause, and its cell is EMPTY — a dash there would read as
+      // "cause unknown" about a run that has none.
+      column.custom(
+        "cause",
+        (run) => run.failure?.cause_class ?? null,
+        t("runs.column.cause"),
+        (run) => {
+          const cause = run.failure?.cause_class;
+          return cause && cause !== "ok" ? (
+            <span data-testid="runs-cause">
+              <LabelText label={causeClassLabel(cause, t)} />
+            </span>
+          ) : null;
+        },
+        { width: "w-[14%]" },
+      ),
       column.custom(
         "duration",
         (run) => runDurationMs(run),
@@ -361,14 +571,14 @@ export function RunsPage() {
             </span>
           );
         },
-        { width: "w-[12%]" },
+        { width: "w-[9%]" },
       ),
       column.custom(
         "request_source",
         (run) => run.request_source,
         t("runs.column.source"),
         (run) => <LabelText label={requestSourceLabel(run.request_source, t)} />,
-        { width: "w-[15%]" },
+        { width: "w-[13%]" },
       ),
       column.custom(
         "kind",
@@ -584,8 +794,38 @@ export function RunsPage() {
           aria-describedby={undefined}
         >
           <SheetHeader>
-            <SheetTitle data-testid="run-detail-title">
-              {selected ? runName(selected, t) : title}
+            {/* The title is the workflow, and leads there: the run is one
+                answer about it, and the way to change it starts at the
+                workflow. Status beside it, so the sheet opens on the verdict. */}
+            <SheetTitle
+              data-testid="run-detail-title"
+              className="flex flex-wrap items-center gap-2 pr-8"
+            >
+              {selected?.workflow_id ? (
+                <a
+                  href={absolute(workflowHref(selected.workflow_id))}
+                  className="min-w-0 underline-offset-4 hover:underline"
+                  data-testid="run-detail-workflow-link"
+                >
+                  {runName(selected, t)}
+                </a>
+              ) : selected ? (
+                runName(selected, t)
+              ) : (
+                title
+              )}
+              {selected ? (
+                <Badge variant="outline" data-testid="run-detail-status">
+                  {
+                    runVerdict(
+                      selected.status,
+                      (selected as ExecutionDetail).outcome ?? null,
+                      t,
+                      (status) => statusLabel(t, status),
+                    ).label
+                  }
+                </Badge>
+              ) : null}
             </SheetTitle>
           </SheetHeader>
           {/* Three different facts, told apart. The record is here; it is on
@@ -593,7 +833,7 @@ export function RunsPage() {
               blank sheet reads as a rendering fault and an empty fact list
               reads as a run that recorded nothing — neither is what happened. */}
           {selected ? (
-            <RunDetail run={selected} />
+            <RunDetail run={selected} onShowRun={showRun} />
           ) : addressed.error ? (
             <Alert variant="destructive" className="m-4 w-auto" data-testid="run-detail-missing">
               <AlertTitle>{t("runs.detail.loadFailed")}</AlertTitle>

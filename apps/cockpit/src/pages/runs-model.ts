@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { components } from "@/api/schema";
-import { uuidParam } from "@/app/links";
+import { auditHref, uuidParam } from "@/app/links";
+import { causeClassLabel } from "@/lib/cause-class";
 import { LOCALE_TAGS, type Locale, type TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 import { shortIdentifier } from "@/pages/audit-model";
@@ -333,4 +334,277 @@ export function runCostFacts(cost: unknown, t: Translate, locale: Locale): Array
     ]);
   }
   return out;
+}
+
+export type ExecutionOutcome = components["schemas"]["ExecutionOutcome"];
+
+/**
+ * A run's outcome as one sentence — with the cause kept apart so the page can
+ * set an unmapped class as a machine value instead of prose.
+ *
+ * `lead + cause.text + tail` is the whole sentence; `plain` is that string,
+ * for tests and for places that only print text.
+ */
+export interface OutcomeSentence {
+  lead: string;
+  cause: CatalogLabel | null;
+  tail: string;
+  plain: string;
+}
+
+const CAUSE_SLOT = "\u0000cause\u0000";
+
+function splitAtCause(sentence: string, cause: CatalogLabel | null): OutcomeSentence {
+  const at = sentence.indexOf(CAUSE_SLOT);
+  if (at < 0 || !cause) return { lead: sentence, cause: null, tail: "", plain: sentence };
+  const lead = sentence.slice(0, at);
+  const tail = sentence.slice(at + CAUSE_SLOT.length);
+  return { lead, cause, tail, plain: `${lead}${cause.text}${tail}` };
+}
+
+/**
+ * What happened to a run, composed from the engine's structured outcome — never
+ * from its English error text.
+ *
+ * The step count is "n of m step(s)", singular only when there is exactly one
+ * step: "1 von 1 Schritt", "2 von 3 Schritten".
+ *
+ * A failure names the step that STOPPED the run (`failed_step`, the engine's
+ * `pickStoppingStep`), not the first step that happened to report an error —
+ * an earlier `on_error: "continue"` failure stopped nothing.
+ */
+export function runOutcomeSentence(outcome: ExecutionOutcome, t: Translate): OutcomeSentence {
+  const { steps } = outcome;
+  const progress = (done: number) =>
+    t(steps.total === 1 ? "runs.outcome.progress.one" : "runs.outcome.progress.other", {
+      done,
+      total: steps.total,
+    });
+  const cause =
+    outcome.cause_class && outcome.cause_class !== "ok"
+      ? causeClassLabel(outcome.cause_class, t)
+      : null;
+  switch (outcome.kind) {
+    case "succeeded":
+      return splitAtCause(
+        t(
+          outcome.output_contract === "violated"
+            ? "runs.outcome.succeededContractViolated"
+            : "runs.outcome.succeeded",
+          { progress: progress(steps.succeeded) },
+        ),
+        null,
+      );
+    case "running":
+      return splitAtCause(t("runs.outcome.running", { progress: progress(steps.succeeded) }), null);
+    case "held":
+      return splitAtCause(
+        t("runs.outcome.held", { progress: progress(steps.succeeded), held: steps.held }),
+        null,
+      );
+    case "partial":
+      return splitAtCause(
+        t(cause ? "runs.outcome.partialWithCause" : "runs.outcome.partial", {
+          progress: progress(steps.succeeded),
+          failed: steps.failed,
+          cause: CAUSE_SLOT,
+        }),
+        cause,
+      );
+    default: {
+      const step = outcome.failed_step?.step_key ?? null;
+      const key: TranslationKey = step
+        ? cause
+          ? "runs.outcome.failedAtWithCause"
+          : "runs.outcome.failedAt"
+        : cause
+          ? "runs.outcome.failedWithCause"
+          : "runs.outcome.failed";
+      return splitAtCause(
+        t(key, { step: step ?? "", cause: CAUSE_SLOT, progress: progress(steps.succeeded) }),
+        cause,
+      );
+    }
+  }
+}
+
+type StepLike = {
+  step_key: string;
+  error?: unknown;
+  output_preview?: unknown;
+  result_preview: string | null;
+  request_meta?: unknown;
+};
+
+/**
+ * The step whose error is THE run's error, shown once.
+ *
+ * The engine names it (`outcome.failed_step`). Only without an outcome — an
+ * older engine — does the sheet fall back to the first step that carries an
+ * error, which is what it always did.
+ */
+export function stoppingStep<T extends StepLike>(
+  steps: readonly T[],
+  outcome: ExecutionOutcome | null | undefined,
+): T | null {
+  const key = outcome?.failed_step?.step_key;
+  if (key) {
+    const named = steps.find((step) => step.step_key === key);
+    if (named) return named;
+  }
+  if (outcome && outcome.kind !== "failed" && outcome.kind !== "partial") return null;
+  return steps.find((step) => previewText(step.error) !== null) ?? null;
+}
+
+/**
+ * The payload the sheet offers in its drawer, and what it is called.
+ *
+ * A SUCCEEDED run's last output is the run's result. A run that did not
+ * succeed has no result: the newest output it holds is what one earlier step
+ * produced, and labelling that "Ergebnis" told the reader a failed run had
+ * delivered something. It carries its step instead.
+ */
+export function payloadEvidence<T extends StepLike>(
+  steps: readonly T[],
+  runStatus: string,
+  outcome: ExecutionOutcome | null = null,
+): { text: string; stepKey: string | null; preview: boolean } | null {
+  const last = [...steps]
+    .reverse()
+    .find((step) => previewText(step.output_preview ?? step.result_preview) !== null);
+  if (!last) return null;
+  const text = previewText(last.output_preview ?? last.result_preview);
+  if (!text) return null;
+  // A held run wrote nothing: what it carries is the preview of a write that
+  // was held back, and calling that "Ergebnis" presents a held publication as
+  // executed. The engine reports such a run as `succeeded` with an outcome of
+  // `held`, so the status alone cannot tell.
+  if (outcome?.kind === "held") return { text, stepKey: null, preview: true };
+  const succeeded = outcome ? outcome.kind === "succeeded" : runStatus === "succeeded";
+  return { text, stepKey: succeeded ? null : last.step_key, preview: false };
+}
+
+/** The run statuses the engine counts as failed (`execution/outcome.ts`). */
+export const FAILED_RUN_STATUSES: ReadonlySet<string> = new Set(["failed", "timed_out", "aborted"]);
+
+/**
+ * What the sheet says a run IS — its badge, and whether it gets a cause block.
+ *
+ * Read from the engine's outcome where there is one, because the status alone
+ * lies twice: a held run and a partly failed run are both `succeeded`. The
+ * first badge read "Erfolgreich" above "Vorbereitet, Schreibzugriffe
+ * zurückgehalten", the second put "Erfolgreich" on a red cause block.
+ *
+ * Without an outcome (an older engine, a detail fetch that failed) the status
+ * decides, and every status the engine counts as failed is one.
+ */
+export interface RunVerdict {
+  label: string;
+  /** The cause block's tone; null when there is nothing to explain. */
+  tone: "critical" | "warning" | null;
+}
+
+export function runVerdict(
+  status: string,
+  outcome: ExecutionOutcome | null,
+  t: Translate,
+  statusWord: (status: string) => string,
+): RunVerdict {
+  if (outcome) {
+    switch (outcome.kind) {
+      case "held":
+        return { label: t("runs.state.held"), tone: null };
+      case "partial":
+        return { label: t("runs.state.partial"), tone: "warning" };
+      case "failed":
+        return {
+          label: statusWord(FAILED_RUN_STATUSES.has(status) ? status : "failed"),
+          tone: "critical",
+        };
+      default:
+        return { label: statusWord(status), tone: null };
+    }
+  }
+  return {
+    label: statusWord(status),
+    tone: FAILED_RUN_STATUSES.has(status) ? "critical" : null,
+  };
+}
+
+/**
+ * The sentence for a failed run the engine gave no outcome for. A red badge
+ * with no line under it is a red with no way to its cause (§1); this line
+ * says what is known — how it ended — and the block still offers the fix.
+ */
+export function runStatusSentence(statusWord: string, t: Translate): OutcomeSentence {
+  const plain = t("runs.outcome.statusOnly", { status: statusWord });
+  return { lead: plain, cause: null, tail: "", plain };
+}
+
+/**
+ * Why a rerun was refused, in words. The engine's known refusals get the
+ * cockpit's sentence; anything else is the engine's own message, marked as
+ * such — never a blanket "nothing was run" that hides the reason.
+ */
+const RERUN_REFUSALS: Partial<Record<string, TranslationKey>> = {
+  workflow_version_unavailable: "runs.rerun.refused.versionUnavailable",
+  workflow_archived: "runs.rerun.refused.archived",
+  conflict: "runs.rerun.refused.notSaved",
+  input_schema_violation: "runs.rerun.refused.input",
+};
+
+export function rerunFailureText(
+  error: { code?: string | null; message?: string } | null | undefined,
+  t: Translate,
+): string {
+  const code = error?.code ?? null;
+  const known = code ? RERUN_REFUSALS[code] : undefined;
+  if (known) return t(known);
+  if (code?.startsWith("execution_authority")) return t("runs.rerun.refused.authority");
+  const message = error?.message?.trim();
+  return message
+    ? `${t("runs.rerun.failed")} ${t("common.engineWording", { text: message })}`
+    : t("runs.rerun.failed");
+}
+
+/** The newest run that failed in any of the ways the engine counts, from a newest-first list. */
+export function latestFailedRun<T extends { status: string }>(runs: readonly T[]): T | null {
+  return runs.find((run) => FAILED_RUN_STATUSES.has(run.status)) ?? null;
+}
+
+/** The connector a step called, as the engine recorded it — for the sign-in remedy. */
+export function stepConnectorId(step: StepLike | null): string | null {
+  const meta = step?.request_meta;
+  if (!meta || typeof meta !== "object") return null;
+  const connector = (meta as { connector?: unknown }).connector;
+  if (!connector || typeof connector !== "object") return null;
+  const id = (connector as { connector_id?: unknown }).connector_id;
+  return typeof id === "string" && id ? id : null;
+}
+
+/** Guidance an author or driver stored on the step's error, if any. */
+export function stepGuidance(step: StepLike | null): string | null {
+  const error = step?.error;
+  if (!error || typeof error !== "object") return null;
+  const guidance = (error as { guidance?: unknown }).guidance;
+  return typeof guidance === "string" && guidance.trim() ? guidance : null;
+}
+
+/**
+ * The quieter ways further from a run's cause block. The audit trail only for
+ * a reader who may open it — a link that answers 403 is worse than none.
+ */
+export function runCauseLinks(
+  runId: string,
+  permissions: readonly string[],
+  t: Translate,
+): { label: string; href: string }[] {
+  return permissions.includes("audit:read")
+    ? [
+        {
+          label: t("runs.detail.audit"),
+          href: auditHref({ resourceType: "execution", resourceId: runId }),
+        },
+      ]
+    : [];
 }
