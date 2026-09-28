@@ -1,10 +1,12 @@
 # Cockpit-Konvention
 
-Version 1.7 · 23.08.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
+Version 2.0 · 28.09.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
 
 **Modell: Konvention statt Bibliothek.** Jedes Produkt bleibt eigenständig — eigenes Repo, eigene shadcn-Komponenten (vendored, wie shadcn gedacht ist), eigene Releases, kein shared Package. Geteilt wird nur dieses Dokument. Eine Kopie liegt in jedem Repo; Abweichungen sind erlaubt, wo das Produkt es begründet — die Konvention ist der Default, nicht das Gesetz.
 
-Referenz-Implementierung: der Zielbild-Prototyp (Artefakt „kit-cockpit-zielbilder"). Er zeigt jede Regel gerendert; bei Unklarheit gilt der Prototyp. Für §8 ist WorkKit die Referenz-Implementierung (Übergabe „workkit-entscheidungen-uebergabe"), für §9–§11 SubKit (Übergabe „subkit-referenzarchitektur-uebergabe").
+**v2.0 ist SubKit-first — eine gewollte Abweichung von der Familie, bis die Geschwister folgen.** SubKit setzt v2.0 und `FAMILY-UI.json` 3.0 zuerst um. ContentKit, WorkKit, WikiKit, CodeKit und WatchKit arbeiten nach v1.7 und `FAMILY-UI.json` 2.3, bis ihre eigenen Umsetzungs-Schnitte folgen; bis dahin gilt in ihren Repos die v1.7-Kopie. Was ein Geschwister umsetzen muss, steht in `FAMILY-UI.json` unter `migration`. Die v2.3-Schnittstelle `GET /v1/operational-overview` bleibt in SubKit erhalten, damit Geschwister und Prometheus weiterlesen können.
+
+Referenz-Implementierung: für v2.0 ist SubKit die Referenz (Startseite „Heute", Prüf-Seitenblatt, Zeilen, „Personen & Rechte"). Die Karten-Anatomie einer Entscheidung (§8.4) stammt aus WorkKit (Übergabe „workkit-entscheidungen-uebergabe"), §9–§11 aus SubKit (Übergabe „subkit-referenzarchitektur-uebergabe").
 
 Änderungen v1.1: neuer §8 Entscheidungs-Grammatik (hebt das Muster aus der WorkKit-Übergabe auf Familienebene); §1 Zone A verweist auf §8.
 Änderungen v1.2: neue §9 Diff-Freigabe, §10 Sammlungs-Listen, §11 Verbindungs-Status (heben die Muster aus der SubKit-Übergabe auf Familienebene); §4 um „Leere führt zur Handlung" ergänzt.
@@ -14,6 +16,7 @@ Referenz-Implementierung: der Zielbild-Prototyp (Artefakt „kit-cockpit-zielbil
 Änderungen v1.6: neuer §0 „Wofür das Cockpit da ist" (gilt vor allen anderen Paragrafen); §1 Zone C wird ein Verweis statt eines Ereignisstroms; neue §8.5a Zähler-Kacheln und §8.5b zur Zahl der Entscheidungen.
 Änderungen v1.6 (Fortsetzung): §8.5 neu gefasst — die Regale unter der Queue entfallen ersatzlos. Die Entscheidungs-Seite zeigt nur noch, was wartet; Zurückgestellt, Verworfen und Entschieden sind Vergangenheit und wohnen allein im Audit-Protokoll, erreichbar über genau einen Verweis. §8.8 nennt entsprechend die Trennung von Zustand und Geschichte statt der Regale.
 Änderungen v1.7: §8.2 auf genau ein Ordnungswerkzeug reduziert. Art-Chips mit Zählern bleiben; der redundante Gruppieren-Umschalter entfällt. Die Sortierung ist fest: ablaufend zuerst, dann älteste.
+Änderungen v2.0: Übersicht, Entscheidungs-Seite und System-Seite verschmelzen zu **einer** Startseite „Heute" mit einer Anliegen-Liste. Neu §0.1 „Ein Fakt, ein Ort" mit Matrix; §1 neu gefasst (Heute statt drei Zonen, keine Null-Kacheln, „Alles erledigt" nur, wenn jede lesbare Quelle geantwortet hat); §6 Installation ohne System, mit „Personen & Rechte"; §8 neu gefasst als Anliegen-Grammatik mit Prüf-Seitenblatt — die Karten-Anatomie aus v1.7 wandert ins Seitenblatt, Art-Chips, Rubriken, Zähler-Kacheln und Incident-Banner entfallen; §9.2 und §12 verweisen auf Heute; §10 Zeilen öffnen über den Namen als echten Link und per Klick, ohne „Öffnen"-Knopf, „⋯" nur für echte Menüs; neu §10.1 „Zahlen führen auf Listen, die dasselbe zählen".
 
 ---
 
@@ -21,7 +24,7 @@ Referenz-Implementierung: der Zielbild-Prototyp (Artefakt „kit-cockpit-zielbil
 
 **Entscheidung Mike, 21.08.2026 — gilt vor allen anderen Paragrafen.**
 
-Das Cockpit zeigt die **Gegenwart**: Nutzer und Workflow, Übersicht, Reporte, aktuelle Daten,
+Das Cockpit zeigt die **Gegenwart**: Nutzer und Workflow, Reporte, aktuelle Daten,
 und **Entscheidungen, die zu treffen sind**.
 
 **Die Vergangenheit gehört in den Audit-Trail.** Jedes Produkt hat dafür einen eigenen
@@ -38,17 +41,54 @@ zweitverwertet werden.
 Wer eine Fläche baut, beantwortet zuerst: **muss ein Mensch hier etwas tun oder etwas
 Aktuelles sehen?** Wenn nein, gehört sie nicht ins Cockpit, sondern in den Audit-Trail.
 
+**Leitregel (v2.0): Aufgaben leben nur auf „Heute".** Objektseiten zeigen ihren Zustand und
+verlinken höchstens zur Aufgabe. Jeder Fakt hat genau einen Ort.
+
+### 0.1 Ein Fakt, ein Ort
+
+| Fakt | Ort | Sonst |
+|---|---|---|
+| Aufgaben (Entscheidungen, Scheitern, Anmeldung, Kontingent, Rückfragen, Geheimnis-Freigaben) | Heute | Objektseiten: Zustand + Link |
+| Gesundheitszustand | Statuszeile auf Heute, **nur im leeren Zustand**; Ursachen sind Einträge | nirgends |
+| Komponenten/Score | nur API, MCP, Prometheus | — |
+| Zahl offener Anliegen | Abzeichen am Navigationseintrag = Zahl der Einträge | Listenköpfe ohne Zahl |
+| Ausführungen, Erfolgsquote, Konnektor-Gesundheit, Reparaturquote | Nutzung, Abschnitt „Betrieb" (je Wert ein Link in eine gefilterte Liste, §10.1) | — |
+| Datenstand | Eintrag auf Heute, nur wenn veraltet | — |
+| Drift-Scan | kein Knopf im Cockpit (der Scheduler scannt; CLI/MCP behalten ihn) | — |
+| Titel wiederholende Beschreibungen | entfallen | — |
+| „Öffnen" in Zeilen | entfällt; der Name ist ein echter Link, die Zeile klickbar (§10) | — |
+| Aufmerksamkeitsliste auf Objektseiten (z. B. Zugangsdaten) | **entfällt** — eine zweite Aufgabenliste; Zeilen tragen Zustands-Chips, Zeilenaktionen (z. B. „Erneuern") bleiben | — |
+| Wortlaut der Engine | nur im Prüf-Seitenblatt (§8.4), nicht an Einträgen oder Listen-Markierungen | — |
+
+Wer einen Fakt an einer zweiten Stelle zeigen will, verlinkt auf seinen Ort, statt ihn zu
+wiederholen. Zwei Stellen mit derselben Zahl sind zwei Stellen, die auseinanderlaufen.
+
 ## 1. Startscreen-Vertrag
 
-Der erste Screen jedes Cockpits hat drei Zonen, in dieser Reihenfolge:
+Der erste Screen jedes Cockpits ist **„Heute"** (`/`, englisch „Today"): eine Liste der
+Anliegen, die diese Person jetzt braucht. Er ersetzt Übersichts-Kacheln, Entscheidungs-Seite
+und System-Seite aus v1.7; deren alte Adressen leiten auf Heute um (ein Link, der einen
+Gegenstand nannte, öffnet dessen Prüf-Seitenblatt).
 
-**Zone A — Wartet auf dich.** Alle menschlichen Gates des Produkts in einer Karte: Anzahl im Kopf, Alter der ältesten Position, eine Aktion pro Zeile. Amber ab 1. Der Zähler steht zusätzlich am Übersichts-Eintrag der Sidebar. Zone A ist die Kurzform der Entscheidungs-Seite (§8): sie zeigt die Top-Positionen derselben Queue und verlinkt dorthin; entschieden wird auf der Entscheidungs-Seite.
+**Aufbau.** Seitenkopf → Anliegen-Liste (§8) → genau ein Verweis „Was bereits entschieden
+wurde" auf den Audit-Trail. Kein Ereignisstrom, keine Liste letzter Läufe, keine Kachel.
 
-**Zone B — Kernobjekt-Hero.** Pro Produkt verschieden und dessen Identität: Release-Kette (ContentKit), Fehlergruppen (SubKit), Freigabe-Triage + Budgetampel (WorkKit), Fragen-Karten (WikiKit), Aufgaben je Projekt (CodeKit), ehrliches Banner + Streifen (WatchKit).
+**Keine Null-Kacheln.** Heute zeigt keine Zahl, die 0 sein kann. Eine Kachel „Blockiert: 0"
+beantwortet eine Frage, die niemand gestellt hat, und eine Wand aus Nullen lehrt, die Seite zu
+überlesen.
 
-**Zone C — der Weg zur Vergangenheit, nicht die Vergangenheit selbst.** Eine Zeile am Ende: „Was zuletzt geschah → **Audit-Trail**". Kein Ereignisstrom auf der Startseite, keine Liste letzter Läufe. *(Entscheidung Mike, 21.08.2026.)*
+**Leer.** Ist nichts offen, steht dort „Alles erledigt." und **eine** Statuszeile
+(Gesundheitszustand · nächste geplante Ausführung). Das gilt **nur**, wenn jede Quelle, die
+diese Person lesen darf, geantwortet hat. Hat eine Quelle nicht geantwortet, nennt die Seite,
+was fehlt — ein falsches „Alles erledigt" ist schlimmer als keines. Wer keine Quelle lesen
+darf, landet auf dem ersten sichtbaren Navigationseintrag.
 
-Regeln: Kein Zähler ohne Link. Kein Rot ohne Weg zur Ursache. Betriebsmetriken (HTTP, p95, Calls) wohnen unter Installation → System, nie auf dem Startscreen. Nur WatchKit darf „nichts zu tun" als Erfolg inszenieren.
+**Abzeichen.** Der Navigationseintrag „Heute" trägt die Zahl der Einträge der Liste — dieselbe
+Zahl, nicht eine zweite Zählung.
+
+Regeln: Kein Zähler ohne Link. Kein Rot ohne Weg zur Ursache. Betriebsmetriken wohnen unter
+Installation → Nutzung (Abschnitt „Betrieb") bzw. in API, MCP und Prometheus, nie auf dem
+Startscreen. „Nichts zu tun" ist ein ruhiger Zustand, kein inszenierter Erfolg.
 
 ## 2. Zustandsvokabular
 
@@ -77,15 +117,15 @@ Gemessene Null („0 · zuletzt geprüft vor 2 min") ≠ nicht erfasst (Hohlzell
 
 ## 5. Sprache & Benennung
 
-Deutsch auf oberster Ebene; Fachbegriffe (SRE, API-Namen) erst in der Detailtiefe. Rollen-Label einheitlich „Administrator". Destruktive Aktionen (Löschen, Verwerfen, Widerrufen) nie als rote Primärfläche in Listenzeilen — ins ⋯-Menü mit Bestätigung. Titel sind Zusammenfassungen, nie rohe Prompts oder UUIDs; Auto-Titel aus dem ersten Auftrag, wo kein Titel existiert.
+Deutsch auf oberster Ebene; Fachbegriffe (SRE, API-Namen) erst in der Detailtiefe. Rollen-Label einheitlich „Administrator". Destruktive Aktionen (Löschen, Verwerfen, Widerrufen) nie als rote Primärfläche in Listenzeilen — ins ⋯-Menü, wo die Zeile ein echtes Menü hat, sonst als benannter Nebenknopf (§10); immer mit Bestätigung. Titel sind Zusammenfassungen, nie rohe Prompts oder UUIDs; Auto-Titel aus dem ersten Auftrag, wo kein Titel existiert.
 
 **Zusammenfassungszeile.** Jedes benannte Objekt trägt eine 1–2-Satz-Zusammenfassung, und Listen zeigen sie unter dem Titel — einmal geschrieben (beim Anlegen, notfalls generiert), hundertmal gelesen. Der Lesepfad ist dreistufig: Landkarte (Bereichs-Start) → Zusammenfassungszeile → Volltext; Volltextsuche ist Fallback, nicht Haupteingang.
 
 ## 6. Struktur-Konstanten
 
-Sidebar links: Wortmarke, gruppierte Navigation, Account unten (Avatar · E-Mail · Rolle · Menü: Profil/Sprache/Darstellung/Abmelden). Installation-Sektion enthält mindestens: System · Einstellungen · Zugangsdaten · Benachrichtigungen · Audit. Deep-Links funktionieren; unbekannte Routen zeigen eine gestaltete Seite mit Rückweg. Mandanten-Switcher trennt Prod/Test, Test ausblendbar.
+Sidebar links: Wortmarke, gruppierte Navigation, Account unten (Avatar · E-Mail · Rolle · Menü: Profil/Sprache/Darstellung/Abmelden). Ganz oben, ungruppiert und ohne Überschrift: **Heute** mit Abzeichen (§1). Installation-Sektion enthält mindestens: Nutzung · Einstellungen · Zugangsdaten · Personen & Rechte · Benachrichtigungen · Audit. Eine System-Seite gibt es nicht mehr: der Gesundheitszustand ist die Statuszeile auf Heute, seine Ursachen sind Einträge dort, Komponenten und Score liefern API, MCP und Prometheus (§0.1). **Personen & Rechte** ist die eine Seite für Personen, Rollen, Gruppen und Freigaben, je Abschnitt eine Adresse (`?section=…`); **Zugangsdaten** ist die eine Seite für API-Schlüssel, verbundene Anwendungen und Kontoverbindungen. Deep-Links funktionieren; abgelöste Adressen leiten auf ihren neuen Ort um, statt „nicht gefunden" zu zeigen; unbekannte Routen zeigen eine gestaltete Seite mit Rückweg. Mandanten-Switcher trennt Prod/Test, Test ausblendbar.
 
-**Kanonische Gruppennamen.** Geteilte Konzepte heißen in allen sechs Produkten gleich: die Admin-Gruppe heißt **„Installation"** (nie „Administration"), der Entscheidungs-Eintrag ist **ungruppiert** unter der Übersicht (§8.1), die Rolle heißt **„Administrator"** (eine Schreibweise, keine Versalien-Varianten). Produktspezifische Gruppen (Wiki, Überwachung, …) bleiben frei benannt — aber deutsch und in Normalschreibung.
+**Kanonische Gruppennamen.** Geteilte Konzepte heißen in allen sechs Produkten gleich: die Admin-Gruppe heißt **„Installation"** (nie „Administration"), der Startseiten-Eintrag heißt **„Heute"** und steht **ungruppiert** ganz oben (§1), die Rolle heißt **„Administrator"** (eine Schreibweise, keine Versalien-Varianten). Produktspezifische Gruppen (Wiki, Überwachung, …) bleiben frei benannt — aber deutsch und in Normalschreibung.
 
 **Wortmarke und App-Icon.** Die Seitenleiste trägt oben die Wortmarke: **Produkt-Icon plus
 Produktname in kanonischer Schreibweise** — WorkKit · SubKit · WikiKit · ContentKit · CodeKit ·
@@ -101,29 +141,25 @@ uneinheitlich, an der es zuerst gelesen wird.
 
 ## 7. Drift-Kontrolle ohne Shared Code
 
-Die Konvention wird nicht technisch erzwungen. Zwei leichte Mechanismen statt dessen: (1) Diese Datei liegt versioniert in jedem Repo; eine Änderung an der Konvention ist ein PR in sechs Repos — bewusst teuer, damit sie selten ist. (2) Optional prüft WatchKit einzelne Regeln als Vertragsaussagen gegen die laufenden Cockpits (z. B. „kein ‚Unbekannt'-Status im DOM der Übersicht"), so wie es heute schon API-Zusagen gegen Verhalten prüft.
+Die Konvention wird nicht technisch erzwungen. Zwei leichte Mechanismen statt dessen: (1) Diese Datei liegt versioniert in jedem Repo; eine Änderung an der Konvention ist ein PR in sechs Repos — bewusst teuer, damit sie selten ist. (2) Optional prüft WatchKit einzelne Regeln als Vertragsaussagen gegen die laufenden Cockpits (z. B. „kein ‚Unbekannt'-Status im DOM der Startseite"), so wie es heute schon API-Zusagen gegen Verhalten prüft.
 
-## 8. Entscheidungs-Grammatik
+## 8. Anliegen-Grammatik
 
-Jedes Produkt, das menschliche Entscheidungen sammelt (Freigaben, Reviews, Budget-Gates, Proposals), hat **eine** Entscheidungs-Seite. Sie beantwortet die drei Fragen in dieser Reihenfolge: Was passiert? Braucht es mich? Was tue ich dann? WorkKit ist die Referenz-Implementierung; jedes Produkt kopiert das Muster in eigene Komponenten (kein Import).
+Jedes Produkt, das menschliche Aufmerksamkeit braucht (Freigaben, Reviews, Budget-Gates, Proposals, Rückfragen, gestörte Anmeldungen, scheiternde Automatik), zeigt sie an **einem** Ort: der Anliegen-Liste auf „Heute" (§1). Eine eigene Entscheidungs-Seite, Übersichts-Kacheln und eine System-Seite gibt es daneben nicht. Die Liste beantwortet die drei Fragen in dieser Reihenfolge: Was passiert? Braucht es mich? Was tue ich dann? Jedes Produkt baut das Muster in eigenen Komponenten nach (kein Import).
 
-**8.1 Navigation.** Der Eintrag steht ungruppiert direkt unter der Übersicht und trägt einen Live-Zähler (offene Positionen, dedupliziert). Der Zähler kippt auf rot, sobald eine Position abgelaufen ist oder ein Health-Problem enthalten ist. Produktname des Eintrags einheitlich: „Entscheidungen".
+**8.1 Eine Quelle.** Die Liste kommt von der Engine, nicht aus dem Browser: `GET /v1/attention` (`attention.v1`) liefert die Einträge, je Eintrag gegen die Rechte der lesenden Person geprüft, und je Quelle ihren Stand (`answered` · `failed` · `not_permitted`). Digest, MCP-Verbindungszeile und das MCP-Werkzeug `get_attention` rendern dieselbe Liste. Rückfragen sind immer die eigenen der lesenden Person. Der Navigationseintrag „Heute" trägt als Abzeichen die Zahl der Einträge.
 
-**8.2 Queue.** Eine Spalte, max-w ~780 px. Die Sortierung ist fest: ablaufend zuerst, dann älteste. Positionen älter als 3 Tage stehen in einer eigenen Rubrik „Liegt schon länger". Art-Chips mit Zählern sind das einzige Ordnungswerkzeug; der gewählte Chip bleibt lokal erhalten. Ein zusätzlicher Gruppieren-Umschalter ist Überfluss und damit ein Konventionsbruch.
+**8.2 Ein Eintrag je Gegenstand, drei Klassen.** Was denselben Gegenstand betrifft, ist **ein** Eintrag: ein scheiternder Workflow samt seinen offenen Korrekturen ist ein Eintrag, nicht einer je Lauf und einer je Korrektur; mehrere Skill-Vorschläge sind ein Eintrag. Die Klassen und ihre feste Reihenfolge: **gestoppt** (etwas steht, bis jemand handelt — gehaltener Zeitplan, wartende Rückfrage, abgelaufene Anmeldung) → **scheitert** (etwas läuft und schlägt fehl) → **entscheiden** (ein Vorschlag wartet, nichts ist blockiert). Innerhalb einer Klasse: nächste Frist zuerst, dann älteste. Es gibt keine Art-Chips, keine Rubriken, keinen Gruppieren-Umschalter und keine Zahl im Listenkopf. Nicht aufgenommen werden Warnungen, Test- und Autoren-Fehlschläge und ungenutzte Schlüssel — sie sind Zustand eines Objekts, keine Aufgabe.
 
-**8.3 Zeile.** Meta-Zeile (Status-Glyph + Art-Badge · Quell-Referenz als Link · Frist „Entscheiden bis …" wo vorhanden, mit Herkunft) → Titel (line-clamp-2, nie UUID) → Wirkung in einer Zeile → Quellzeile. Aktionen rechts unten: Buttons benennen die Handlung („Freigeben", „Ablehnen", „Änderung anfordern" — nie „OK"). Ablehnung klappt ein Notizfeld in der Zeile auf. Entscheidung verlässt die Seite nie; Optimistic-Hide + Toast, Fehler bringt die Zeile zurück. ⋯-Menü: Später erinnern (Presets + eigener Zeitpunkt) · Dauerhaft verwerfen (mit Bestätigung; wenn endgültig, sagt die UI das) · Quelle öffnen.
+**8.3 Eintrag.** Ein Satz: Gegenstand (beim Namen, nie UUID) + Grund + „seit …", wo vorhanden mit Frist „Entscheiden bis …" samt Herkunft. Dazu **eine** Hauptaktion und **höchstens ein** Nebenlink. Die Hauptaktion benennt die Handlung („Prüfen", „Anmelden", „Antworten" — nie „OK", nie „Öffnen"); ihre Reihenfolge folgt der Ursache (eine bereitliegende Korrektur wird zuerst geprüft, eine abgelehnte Anmeldung führt zum Konnektor, alles andere in den Chat mit dem Gegenstand im Kontext). Wer die Handlung nicht darf, sieht den Grund statt eines Links. Der Wortlaut der Engine steht nicht am Eintrag.
 
-**Drei Arten von Nein.** Wo das Produkt sie kennt, unterscheidet die Zeile: Ablehnung **mit** Begründung (schickt zurück ans Nacharbeiten) · Ablehnung **ohne** Begründung (beendet) · **Verwerfen** (folgenlos — als „folgenlos" beschriftet). Eine unbeantwortete Frist verfällt sichtbar als „verfallen (nicht entschieden)", nie stillschweigend. Ein wiederholter identischer Vorschlag zeigt die frühere Ablehnung samt Begründung — die Oberfläche bohrt nicht nach, bis der Mensch ja sagt. Wo Auftraggeber und Freigeber getrennte Rollen sind, zeigt die Zeile, wer entscheiden darf; die eigene Beauftragung ist markiert.
+**8.4 Prüf-Seitenblatt.** Entschieden wird im Seitenblatt, das sich über der Liste öffnet und eine eigene Adresse hat (`?review=<id>`), damit Mail, Audit-Zeile und Lesezeichen direkt darauf zeigen können. Das Seitenblatt trägt die Karten-Anatomie: Meta-Zeile (Status-Glyph + Art-Badge · Quell-Referenz als Link · Frist mit Herkunft) → Titel (line-clamp-2, nie UUID) → Wirkung in einer Zeile → Quellzeile → Aktionen, die die Handlung benennen („Freigeben", „Ablehnen", „Änderung anfordern"). Ablehnung klappt ein Notizfeld auf. Mehr Kontext steht hinter einem benannten Toggle („Mehr anzeigen"), nie hinter einem nackten Chevron: volle Begründung, Rohdaten der Quelle, der Wortlaut der Engine, ggf. ein Formular für strukturierte Rückfragen. Technische Details sind zugeklappt. Nach der Entscheidung verschwindet der Eintrag sofort (Optimistic-Hide), ein Toast verlinkt den Audit-Trail; ein Fehler bringt den Eintrag zurück. Wo das Produkt einen zurückgestellten Zustand kennt, bietet das Seitenblatt „Später erinnern" (Presets + eigener Zeitpunkt); wo nicht, fehlt die Aktion, statt einen Zustand vorzutäuschen, den die Engine nicht führt. „Dauerhaft verwerfen" nur mit Bestätigung; wenn endgültig, sagt die UI das.
 
-**8.4 Aufklappen.** Zeilen mit mehr Kontext tragen unten links einen benannten Toggle („Mehr anzeigen"), nie einen nackten Chevron. Aufgeklappt: volle Begründung, Rohdaten der Quelle, ggf. Formular für strukturierte Rückfragen. Die Entscheidungs-Buttons wandern ins Panel (kollabiert Kompakt-Form, expandiert Voll-Form).
+**Drei Arten von Nein.** Wo das Produkt sie kennt, unterscheidet das Seitenblatt: Ablehnung **mit** Begründung (schickt zurück ans Nacharbeiten) · Ablehnung **ohne** Begründung (beendet) · **Verwerfen** (folgenlos — als „folgenlos" beschriftet). Eine unbeantwortete Frist verfällt sichtbar als „verfallen (nicht entschieden)", nie stillschweigend. Ein wiederholter identischer Vorschlag zeigt die frühere Ablehnung samt Begründung — die Oberfläche bohrt nicht nach, bis der Mensch ja sagt. Wo Auftraggeber und Freigeber getrennte Rollen sind, zeigt das Seitenblatt, wer entscheiden darf; die eigene Beauftragung ist markiert.
 
-**8.5 Zustand und Geschichte sind getrennte Flächen.** Die Entscheidungs-Seite zeigt ausschließlich, was auf den Menschen wartet. Zurückgestellt, Verworfen und Entschieden sind Vergangenheit: Erledigtes verlässt die Queue — es wird nicht gedimmt, nicht durchgestrichen, nicht in eigene Sektionen unter der Queue gestellt und nicht über Zustands-Chips wieder hereingeholt. Ein Umschalter, der die Queue auf einen vergangenen Zustand stellt, ist ein Konventionsbruch; Filter auf der Queue filtern die **Art**, nie den Zustand. Die vollständige Geschichte wohnt im Audit-/Aktivitätsprotokoll (append, nie gekürzt) und ist von der Entscheidungs-Seite über **genau einen** Verweis erreichbar — ein Satz mit Link, keine Zähler-Kacheln. Wo die Vergangenheit dort nur als Maschinenwert ankommt, gehören Benennung und Filter ins Protokoll, nicht die Sektionen zurück in die Queue.
+**8.5 Zustand und Geschichte sind getrennte Flächen.** Heute zeigt ausschließlich, was auf den Menschen wartet. Zurückgestellt, Verworfen und Entschieden sind Vergangenheit: Erledigtes verlässt die Liste — es wird nicht gedimmt, nicht durchgestrichen, nicht in eigene Sektionen unter der Liste gestellt und nicht über Zustands-Filter wieder hereingeholt. Die vollständige Geschichte wohnt im Audit-/Aktivitätsprotokoll (append, nie gekürzt) und ist von Heute über **genau einen** Verweis erreichbar — „Was bereits entschieden wurde", ein Satz mit Link, keine Zähler-Kacheln.
 
-**8.5a Zähler-Kacheln.** Für **Offenes** erwünscht — wenn sie Entscheidungen nach **Kategorie**
-aufschlüsseln und dadurch Übersicht schaffen, statt eine Summe zu wiederholen. Jede Kachel führt
-auf die gefilterte Liste. Für **Erledigtes** gibt es keine. *(Mike, 21.08.2026.)*
-
-**8.5b Die Zahl selbst ist eine Design-Frage.** Eine Entscheidungs-Seite, die einem Menschen
+**8.5b Die Zahl selbst ist eine Design-Frage.** Eine Liste, die einem Menschen
 Hunderte Positionen vorlegt, hat ihre Aufgabe verfehlt, egal wie gut sie gegliedert ist.
 Gemessen am 21.08.2026: WatchKit legt **359 Positionen** vor, weil Doku- und Drift-Befunde als
 Entscheidungen zählen; WorkKit zeigt **15 gleichartige Budget-Sperren einzeln**; SubKit lässt
@@ -132,7 +168,8 @@ Unterhaltungen **weder Freigeben noch Ablehnen** — folgenlose Positionen in ei
 Entscheidungs-Queue.
 
 Das ist kein Darstellungs-, sondern ein Zuschnittsproblem: **was gleichartig ist, wird zu
-einer Entscheidung zusammengefasst; was folgenlos ist, ist keine.**
+einer Entscheidung zusammengefasst; was folgenlos ist, ist keine.** §8.2 („ein Eintrag je
+Gegenstand") ist die Antwort darauf.
 
 > **Korrektur, 21.08. 18:40.** Oben stand „bei SubKit sind 32 von 35 Positionen wartende
 > Unterhaltungen". Die 32 stammen aus dem **Prüfstand-Mock**, der den Statusfilter ignorierte;
@@ -146,25 +183,31 @@ einer Entscheidung zusammengefasst; was folgenlos ist, ist keine.**
 > durch einen Markdown-Renderer geschickt hat statt sie zu lesen. **Auch eine Korrektur kann
 > beschädigen, was sie korrigiert.**
 
-**8.6 Leere.** Nie etwas offen: grüner Check, „Alles erledigt" + „Gerade wartet keine Entscheidung auf dich." Nur weggefiltert: eigene, kompaktere Meldung mit Hinweis auf die Filter. Beide getrennt testbar (§4 gilt).
+**8.6 Leere.** Nichts offen und jede lesbare Quelle hat geantwortet: „Alles erledigt." und eine Statuszeile (Gesundheitszustand · nächste geplante Ausführung) — nichts sonst, keine Kachel mit 0. Eine Quelle hat nicht geantwortet: kein „Alles erledigt", sondern ein Hinweis, welche Quelle nicht lesbar war, mit „Erneut lesen"; die Einträge der übrigen Quellen stehen trotzdem da. Eine Quelle, die die Person nicht lesen darf, zählt nicht als fehlend. Die Statuszeile erscheint nur im leeren Zustand; ist etwas offen, sind die Ursachen eines schlechten Zustands selbst Einträge. Alle Fälle sind getrennt testbar (§4 gilt).
 
-**8.7 Incident-Banner.** Die Übersicht zeigt oberhalb aller Kacheln einen nicht schließbaren roten Banner, sobald ein Budget-/Health-Gate offen oder eine Frist gerissen ist — mit konkreten Zahlen und Link auf die Entscheidungs-Seite. Ein Dashboard, das bei offenen Gates Ruhe meldet, ist ein Konventionsbruch.
+**8.7 Kein Incident-Banner.** Ein offenes Budget- oder Health-Gate und eine gerissene Frist sind Einträge der Klasse „gestoppt" oder „scheitert" und stehen damit oben in der Liste. Ein zusätzliches Banner wäre ein zweiter Ort für denselben Fakt (§0.1). Eine Startseite, die bei offenen Gates „Alles erledigt" meldet, bleibt ein Konventionsbruch.
 
-**8.8 Produkt-Spezifisch bleibt:** die Arten (Kinds) und ihre Badges, die Resolver-Formulare, die Quell-Referenzen. Familienweit sind Struktur, Sprache, Sortierung, die Trennung von Zustand und Geschichte, Leere-Zustände und der Banner-Vertrag.
+**8.8 Produkt-Spezifisch bleibt:** die Quellen und Arten (Kinds) und ihre Badges, die Resolver-Formulare im Seitenblatt, die Quell-Referenzen. Familienweit sind die eine Engine-Quelle, die drei Klassen und ihre Reihenfolge, die Eintrags-Anatomie, das Seitenblatt, die Sprache, die Trennung von Zustand und Geschichte und die Leere-Regel.
 
 ## 9. Diff-Freigabe
 
 Schlägt ein Agent oder Automat eine Änderung an einem verwalteten Objekt vor (Patch-Kandidat, Proposal, Revision, Preview-Promotion), gilt: **Die Entscheidung passiert, wo der Vorschlag entstand.**
 
-**9.1 Diff-Karte.** Der Vorschlag erscheint als Karte in der Konversation bzw. auf der Quellseite: Ziel-Label (Objekt · Version, nie UUID) → Zeilen-Diff (alt/neu) → wo vorhanden das Prüf-Ergebnis daneben (Dry-Run, Preview, Lint) → Aktionen nach §8.3 („Freigeben", „Ablehnen", Notizfeld klappt auf). Kein Seitenwechsel für die Entscheidung.
+**9.1 Diff-Karte.** Der Vorschlag erscheint als Karte in der Konversation bzw. auf der Quellseite: Ziel-Label (Objekt · Version, nie UUID) → Zeilen-Diff (alt/neu) → wo vorhanden das Prüf-Ergebnis daneben (Dry-Run, Preview, Lint) → Aktionen nach §8.4 („Freigeben", „Ablehnen", Notizfeld klappt auf). Kein Seitenwechsel für die Entscheidung.
 
-**9.2 Doppelte Sichtbarkeit.** Jeder offene Vorschlag steht zusätzlich in der Entscheidungs-Queue (§8) — die Karte ist der schnelle Weg, die Queue das Sicherheitsnetz gegen Vergessen. Beide führen auf dieselbe API-Entscheidung, mit Audit-Spur.
+**9.2 Doppelte Sichtbarkeit.** Jeder offene Vorschlag steht zusätzlich als Eintrag auf Heute (§8), und sein Prüf-Seitenblatt zeigt dieselbe Karte — die Karte am Entstehungsort ist der schnelle Weg, Heute das Sicherheitsnetz gegen Vergessen. Beide führen auf dieselbe API-Entscheidung, mit Audit-Spur. Das ist keine Doppelung im Sinne von §0.1: die Aufgabe wohnt auf Heute, die Karte am Entstehungsort ist ihr Kontext.
 
 **9.3 Produkt-Spezifisch bleibt:** der Diff-Renderer (Text, JSON, Code, Markdown), die Prüf-Semantik (Dry-Run vs. Preview vs. Build) und das Zielobjekt-Vokabular.
 
 ## 10. Sammlungs-Listen
 
-Jede Sammlung gleichrangiger Objekte (Workflows, Skills, Quellen, Checks, Spaces) folgt einer Grammatik: Suche + Sortier-Header + **Kategorie-/Ordner-Chips** oberhalb der Liste („Alle" ist der einzige feste Chip; Kategorien kommen aus den Daten, nie hartkodiert). Umkategorisieren inline in der Zeile (Picker im ⋯-Bereich), nicht über eine Detailseite. Gefilterte Leere nennt den Filter und bietet den Rückweg („Alle anzeigen") — §4 gilt.
+Jede Sammlung gleichrangiger Objekte (Workflows, Skills, Quellen, Checks, Spaces) folgt einer Grammatik: Suche + Sortier-Header + **Kategorie-/Ordner-Chips** oberhalb der Liste („Alle" ist der einzige feste Chip; Kategorien kommen aus den Daten, nie hartkodiert). Umkategorisieren inline in der Zeile, nicht über eine Detailseite. Gefilterte Leere nennt den Filter und bietet den Rückweg („Alle anzeigen") — §4 gilt.
+
+**Zeilen öffnen über den Namen.** Die Namens-Zelle ist ein echter Link (`<a href>`) auf die eigene Adresse des Objekts — Tastatur, Screenreader und „in neuem Tab öffnen" erreichen ihn. Die ganze Zeile bleibt als Komfort klickbar und ignoriert Klicks auf Bedienelemente in ihr; die Zeile selbst ist kein Tab-Stopp. Einen „Öffnen"-Knopf in der Zeile gibt es nicht. Das „⋯" steht nur für ein **echtes Menü** mehrerer weiterer Aktionen; eine einzelne weitere Aktion ist ein benannter Knopf. Die mobile Karte ist kein Knopf: ihr Titel ist der Link, sie enthält keine verschachtelten Links, und die Zeilenaktionen stehen auch mobil auf der Karte.
+
+**Zustand statt Aufgabe.** Eine Objektliste zeigt den Zustand ihrer Zeilen (Chips nach §2/§11) und höchstens einen Link zum Eintrag auf Heute; eine eigene Aufmerksamkeitsliste über der Tabelle ist eine zweite Aufgabenliste und damit ein Konventionsbruch (§0.1). Listenköpfe tragen keine Zahl offener Anliegen.
+
+**10.1 Zahlen führen auf Listen, die dasselbe zählen.** Jede Zahl mit Link (Kennzahl, Chip, Zähler) führt auf eine Liste, die **dasselbe** zählt: gleiches Zeitfenster, gleicher Filter, gleicher Gegenstand. „Ausführungen (30 Tage): 412" öffnet die Ausführungsliste der letzten 30 Tage, nicht alle; „Erfolgsquote" öffnet die gescheiterten Läufe desselben Fensters. Eine gezählte Null hat nichts zu öffnen und trägt keinen Link; ein Verhältnis, ein Score oder eine Dauer bei 0 ist der schlechteste Zustand und behält seinen Weg zur Ursache. Eine Zahl, deren Link auf eine anders zählende Liste führt, ist ein Konventionsbruch — der Mensch vergleicht beide und glaubt keiner.
 
 ## 11. Verbindungs-Status
 
@@ -174,7 +217,7 @@ Alles, was eine Fremdsystem-Verbindung repräsentiert (Connector, Binding, Quell
 
 ## 12. Berichts-Grammatik
 
-Jeder automatisch erzeugte Bericht oder Digest endet mit einem Block „**Was du entscheiden musst**" — dessen Positionen sind dieselben wie in der Entscheidungs-Queue (§8) und verlinken dorthin. Ein Bericht ohne Befund ist kein leerer Lauf, sondern der Beleg, dass geprüft wurde: „0 Befunde · geprüft vor 2 min" (§4). Die **Reihe** der Berichte ist sichtbar — Lücken (ausgefallene Läufe) erscheinen als Lücke, nicht als Stille. Drei Nicht-Zustände bleiben unterscheidbar: geprüft-nichts-gefunden · nie hingeschaut · kein Zugang. Erfolgs-Aussagen verlinken ihren Beleg — eine Messung mit Herkunft, nie die Behauptung des Agenten; Assistenten-Antworten zitieren ihre Quellobjekte als Links.
+Jeder automatisch erzeugte Bericht oder Digest endet mit einem Block „**Was du entscheiden musst**" — dessen Positionen sind dieselben wie die Einträge auf Heute (§8, aus derselben Engine-Quelle) und verlinken auf ihr Prüf-Seitenblatt. Ein Bericht ohne Befund ist kein leerer Lauf, sondern der Beleg, dass geprüft wurde: „0 Befunde · geprüft vor 2 min" (§4). Die **Reihe** der Berichte ist sichtbar — Lücken (ausgefallene Läufe) erscheinen als Lücke, nicht als Stille. Drei Nicht-Zustände bleiben unterscheidbar: geprüft-nichts-gefunden · nie hingeschaut · kein Zugang. Erfolgs-Aussagen verlinken ihren Beleg — eine Messung mit Herkunft, nie die Behauptung des Agenten; Assistenten-Antworten zitieren ihre Quellobjekte als Links.
 
 ## 13. Prüfen vor Reparieren
 
