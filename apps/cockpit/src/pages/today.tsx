@@ -162,7 +162,11 @@ export function TodayPage() {
         ) : (
           <>
             {view.kind === "items" ? (
-              <ol className="grid gap-2" data-testid="attention-list" data-family-slot="queue">
+              <ol
+                className="grid gap-2"
+                data-testid="attention-list"
+                data-family-slot="attention-list"
+              >
                 {view.items.map((item, index) => (
                   <AttentionEntry
                     key={item.id}
@@ -209,7 +213,11 @@ function CalmState({ line }: { line: string | null }) {
         {t("today.calm")}
       </p>
       {line ? (
-        <p className="text-sm text-muted-foreground" data-testid="attention-status">
+        <p
+          className="text-sm text-muted-foreground"
+          data-testid="attention-status"
+          data-family-slot="status-line"
+        >
           {line}
         </p>
       ) : null}
@@ -429,6 +437,7 @@ function ReviewSheet({
         closeLabel={t("common.close")}
         closeTestId="attention-review-close"
         data-testid="attention-review"
+        data-family-slot="review-sheet"
         aria-describedby={undefined}
       >
         <SheetHeader>
