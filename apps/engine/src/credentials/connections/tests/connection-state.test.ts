@@ -5,7 +5,8 @@
 // out with nothing to say why.
 
 import { describe, expect, test } from "bun:test";
-import { connectionStateOf, refreshWasRefused } from "../service.ts";
+import { refreshWasRefused } from "../oauth-client.ts";
+import { connectionStateOf } from "../service.ts";
 
 const NOW = Date.parse("2026-09-01T12:00:00.000Z");
 const past = new Date(NOW - 60_000);

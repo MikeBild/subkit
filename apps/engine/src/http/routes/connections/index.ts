@@ -24,6 +24,7 @@ import {
   discoverService,
   getConnection,
   listConnections,
+  permissionScopes,
   resolvePublicOrigin,
   startConnection,
 } from "../../../credentials/index.ts";
@@ -55,6 +56,11 @@ const ConnectionSchema = z
     granted_scopes: z.array(z.string()).nullable(),
     state: ConnectionStateEnum,
     state_reason: ConnectionStateReasonEnum.nullable(),
+    /**
+     * True when a refresh token is stored and the engine renews before expiry.
+     * False with an `expires_at`: the other side issued no refresh token, and
+     * the grant ends then unless a person renews it.
+     */
     auto_renew: z.boolean(),
     expires_at: z.string().nullable(),
     last_used_at: z.string().nullable(),
@@ -84,6 +90,10 @@ const DiscoverResponse = z
     service_description: z.string().nullable(),
     service_version: z.string().nullable(),
     issuer: z.string().nullable(),
+    /**
+     * The permissions a person can pick. Protocol scopes the server lists
+     * (`offline_access`) are left out: the engine requests them itself.
+     */
     scopes_supported: z.array(z.string()),
   })
   .openapi("ConnectionDiscoverResponse");
@@ -261,7 +271,7 @@ export function registerConnectionRoutes(app: OpenAPIHono<AppEnv>): void {
           service_description: result.descriptor?.description ?? null,
           service_version: result.descriptor?.version ?? null,
           issuer: metadata?.issuer ?? null,
-          scopes_supported: metadata?.scopes_supported ?? [],
+          scopes_supported: permissionScopes(metadata?.scopes_supported ?? []),
         },
         200,
       );
@@ -353,6 +363,8 @@ export function registerConnectionRoutes(app: OpenAPIHono<AppEnv>): void {
         user_id: principal.id,
         name: current.name,
         base_url: current.base_url,
+        // The person's permissions only; startConnection re-derives the
+        // protocol scopes from the server's metadata on this round.
         scopes: current.scopes,
         redirect_uri,
         client_uri: resolvePublicOrigin({ req: c.req.raw }),
