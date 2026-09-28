@@ -41,7 +41,7 @@ describe("cockpit navigation contract", () => {
       ["/chat"],
       ["/workflows", "/runs", "/connectors"],
       ["/knowledge", "/skills", "/files"],
-      ["/usage", "/settings", "/api-access", "/people", "/access", "/notifications", "/audit"],
+      ["/usage", "/settings", "/api-access", "/people", "/notifications", "/audit"],
     ]);
     expect(NAVIGATION.map((group) => group.labelKey)).toEqual([
       undefined,
@@ -54,7 +54,7 @@ describe("cockpit navigation contract", () => {
 
   test("no entry for a page that was a second place for the same facts", () => {
     const all = NAVIGATION.flatMap((group) => group.items).map((item) => item.path);
-    for (const gone of ["/decisions", "/operations", "/connections"])
+    for (const gone of ["/decisions", "/operations", "/connections", "/access"])
       expect(all).not.toContain(gone);
   });
 
@@ -69,6 +69,13 @@ describe("cockpit navigation contract", () => {
     for (const permission of ["api_key:read", "mcp_oauth_client:read", "connection:read"]) {
       expect(paths([permission])).toContain("/api-access");
     }
+  });
+
+  test("Personen & Rechte is one entry, shown for the directory or the rights alone", () => {
+    expect(paths(["identity:read"])).toContain("/people");
+    expect(paths(["rbac:read"])).toContain("/people");
+    expect(paths(["api_key:read"])).not.toContain("/people");
+    expect(navigationItem("/people")?.labelKey).toBe("nav.people");
   });
 
   test("uses the same read permissions as the engine routes", () => {

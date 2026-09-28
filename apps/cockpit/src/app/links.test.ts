@@ -6,7 +6,11 @@
 // page reads what the address says.
 
 import { describe, expect, test } from "bun:test";
-import { settingsLeafFromUrl } from "@/pages/admin-model";
+import {
+  openPeopleSection,
+  readablePeopleSections,
+  settingsLeafFromUrl,
+} from "@/pages/admin-model";
 import { auditFilterFromUrl } from "@/pages/audit-model";
 import { connectorHealthFilterFromUrl } from "@/pages/connectors-model";
 import { filterFromUrl } from "@/pages/runs-model";
@@ -22,6 +26,9 @@ import {
   connectorHref,
   connectorsHref,
   conversationHref,
+  PEOPLE_SECTIONS,
+  peopleHref,
+  peopleSectionFromUrl,
   recordHref,
   reviewFromUrl,
   routerPath,
@@ -203,5 +210,45 @@ describe("the remaining addresses", () => {
     }
     expect(apiAccessSectionFromUrl("?section=connections")).toBeNull();
     expect(apiAccessSectionFromUrl("")).toBeNull();
+  });
+});
+
+describe("Personen & Rechte", () => {
+  test("every section survives the round trip; the people list is the bare address", () => {
+    for (const section of PEOPLE_SECTIONS) {
+      const href = peopleHref(section);
+      expect(href.startsWith("/people")).toBe(true);
+      const read = peopleSectionFromUrl(query(href));
+      // The default needs no parameter: the bare address reads back as none
+      // and opens at the people list.
+      expect(read ?? "people").toBe(section);
+    }
+    expect(peopleHref("roles")).toBe("/people?section=roles");
+    expect(peopleHref("people")).toBe("/people");
+    expect(peopleHref()).toBe("/people");
+  });
+
+  test("anything that is not a section is dropped, including the old permissions tab", () => {
+    expect(peopleSectionFromUrl("?section=permissions")).toBeNull();
+    expect(peopleSectionFromUrl("?section=keys")).toBeNull();
+    expect(peopleSectionFromUrl("?section=")).toBeNull();
+    expect(peopleSectionFromUrl("")).toBeNull();
+  });
+
+  test("the page opens at the named section only where the reader may read it", () => {
+    const both = readablePeopleSections({ identity: true, rbac: true });
+    expect(both).toEqual(["people", "roles", "groups", "grants"]);
+    expect(openPeopleSection(null, both)).toBe("people");
+    expect(openPeopleSection("grants", both)).toBe("grants");
+    // Rights only: no people list, and the default is the first readable one.
+    const rbacOnly = readablePeopleSections({ identity: false, rbac: true });
+    expect(rbacOnly).toEqual(["roles", "groups", "grants"]);
+    expect(openPeopleSection(null, rbacOnly)).toBe("roles");
+    expect(openPeopleSection("people", rbacOnly)).toBe("roles");
+    // The directory only: roles and grants are absent, not failed loads.
+    const identityOnly = readablePeopleSections({ identity: true, rbac: false });
+    expect(identityOnly).toEqual(["people"]);
+    expect(openPeopleSection("roles", identityOnly)).toBe("people");
+    expect(openPeopleSection("roles", [])).toBeNull();
   });
 });

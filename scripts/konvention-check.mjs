@@ -84,7 +84,8 @@ const MOUNT_MARKERS = {
   "chat/new": '[data-testid="chat-workspace"]',
   "chat/$conversationId": '[data-testid="chat-workspace"]',
   people: '[data-testid="admin-people"]',
-  access: '[data-testid="admin-access"]',
+  // The old Zugriff address: a redirect to the roles of Personen & Rechte.
+  access: '[data-testid="admin-people"]',
   "api-access": '[data-testid="admin-api-access"]',
   // The old Kontoverbindungen address: a redirect, marked by where it lands.
   connections: '[data-testid="admin-api-access"]',
@@ -1714,8 +1715,7 @@ const INSTALLATION_ENTRIES = [
   "Nutzung",
   "Einstellungen",
   "Zugangsdaten",
-  "Personen",
-  "Zugriff",
+  "Personen & Rechte",
   "Benachrichtigungen",
   "Audit",
 ];
@@ -1735,6 +1735,8 @@ async function checkInstallationEntries(page) {
     );
   if (labels.includes("System"))
     breach("§6", "/ · nav-group-admin", 'the "System" entry is back — a third home for health');
+  if (labels.includes("Zugriff"))
+    breach("§6", "/ · nav-group-admin", 'a "Zugriff" entry beside Personen & Rechte — one page');
 }
 
 /**
@@ -2848,6 +2850,38 @@ async function checkWorkflowListHealth(page) {
 }
 
 /**
+ * The old Zugriff address lands on the roles of Personen & Rechte: the page it
+ * was is a section now, and the section is in the address. Its tabs said
+ * "Zuweisungen"; the section is "Freigaben".
+ */
+async function checkAccessRedirect(context) {
+  const page = await context.newPage();
+  try {
+    await stand.visit(page, "access");
+    await page
+      .locator('[data-testid="roles-section"]')
+      .waitFor({ state: "visible", timeout: 15_000 });
+    const url = new URL(page.url());
+    if (url.pathname !== "/cockpit/people")
+      breach("§6", "/access", `lands on ${url.pathname} instead of /cockpit/people`);
+    if (url.searchParams.get("section") !== "roles")
+      breach("§6", "/access", `lands on section=${url.searchParams.get("section")}, not roles`);
+    const tabs = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid^="people-tab-"][role="tab"]')].map(
+        (tab) => tab.textContent?.trim() ?? "",
+      ),
+    );
+    if (tabs.join("|") !== "Personen|Rollen|Gruppen|Freigaben")
+      breach("§6", "/people", `sections are ${tabs.join(", ")}`);
+  } catch (error) {
+    if (error instanceof NichtGemessen) throw error;
+    breach("§6", "/access", `the old address does not land: ${error.message}`);
+  } finally {
+    await page.close();
+  }
+}
+
+/**
  * The old Kontoverbindungen address still lands — with its query. An OAuth
  * callback issued before the move arrives at `/connections?failed=…`, and the
  * sentence it carries is the only place the person learns what happened.
@@ -3455,6 +3489,7 @@ try {
   await checkWorkflowListHealth(workflowList);
   await workflowList.close();
   await checkConnectionsRedirect(context);
+  await checkAccessRedirect(context);
 
   const connector = await openPage(context, "connectors/$resourceId");
   await checkConnectorSignIn(connector);
