@@ -12,9 +12,11 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
+import { resolveEffectiveUserRole } from "../../../auth/index.ts";
 import { users as usersTable } from "../../../db/schema/index.ts";
+import * as identity from "../../../identity/index.ts";
 import * as rolesSvc from "../../../rbac/index.ts";
-import { BadRequestError, NotFoundError } from "../../errors.ts";
+import { BadRequestError, LastAdminConflictError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -204,6 +206,10 @@ const assignUserRoleRoute = createRoute({
     },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: {
+      description: "last_admin — the change would leave the workspace without an administrator",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -391,15 +397,36 @@ export function registerRolesRoutes(app: OpenAPIHono<AppEnv>): void {
     const body = c.req.valid("json");
     // Application-state check: the role must belong to this tenant or
     // be a built-in. Schema validation cannot decide this.
-    if (body.role_id) {
-      const role = await rolesSvc.getRole(db, principal.tenant_id, body.role_id);
-      if (!role) throw new BadRequestError("role_id not found");
-    }
+    const role = body.role_id
+      ? await rolesSvc.getRole(db, principal.tenant_id, body.role_id)
+      : null;
+    if (body.role_id && !role) throw new BadRequestError("role_id not found");
     const rows = await db
-      .update(usersTable)
-      .set({ role_id: body.role_id ?? null })
-      .where(and(eq(usersTable.tenant_id, principal.tenant_id), eq(usersTable.id, user_id)))
-      .returning({ id: usersTable.id });
+      .transaction(async (tx) => {
+        const [current] = await tx
+          .select({ role: usersTable.role })
+          .from(usersTable)
+          .where(and(eq(usersTable.tenant_id, principal.tenant_id), eq(usersTable.id, user_id)))
+          .limit(1);
+        if (current) {
+          // Admin-only routes read the role NAME; a custom role with every
+          // permission is still not "admin". The last one may not leave.
+          await identity.assertAdminRemains(tx, {
+            tenant_id: principal.tenant_id,
+            user_id,
+            nextEffectiveRole: resolveEffectiveUserRole(current.role, role?.name),
+          });
+        }
+        return tx
+          .update(usersTable)
+          .set({ role_id: body.role_id ?? null })
+          .where(and(eq(usersTable.tenant_id, principal.tenant_id), eq(usersTable.id, user_id)))
+          .returning({ id: usersTable.id });
+      })
+      .catch((err: unknown) => {
+        if (err instanceof identity.LastAdminError) throw new LastAdminConflictError(err.message);
+        throw err;
+      });
     if (rows.length === 0) throw new NotFoundError("user");
     await auditAwait(
       {
