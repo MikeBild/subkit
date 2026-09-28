@@ -4,9 +4,9 @@ import type { SortingState } from "@tanstack/react-table";
 import { ChevronRight, RotateCcw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, auditHref, runHref, runsHref, workflowHref, workflowsHref } from "@/app/links";
+import { absolute, runHref, runsHref, workflowHref, workflowsHref } from "@/app/links";
 import { useRecordCrumb } from "@/app/record-crumb";
 import { useSession } from "@/app/session";
 import { CauseFix } from "@/components/cockpit/cause-fix";
@@ -30,6 +30,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { causeClassLabel } from "@/lib/cause-class";
+import { type ConnectorAuthInput, connectorAuthState } from "@/lib/connector-auth-state";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
@@ -48,12 +49,16 @@ import {
   RUN_STATUSES,
   type RunFact,
   requestSourceLabel,
+  rerunFailureText,
   runAuthorityFacts,
+  runCauseLinks,
   runCostFacts,
   runDurationMs,
   runIdFromPath,
   runName,
   runOutcomeSentence,
+  runStatusSentence,
+  runVerdict,
   SOURCE_KIND_KEYS,
   stepConnectorId,
   stepGuidance,
@@ -148,7 +153,11 @@ function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string)
       confirmLabel={t("runs.rerun.confirm")}
       onConfirm={() => rerun.mutateAsync()}
       pending={rerun.isPending}
-      error={rerun.error ? t("runs.rerun.failed") : null}
+      error={
+        rerun.error
+          ? rerunFailureText(rerun.error instanceof ApiError ? rerun.error : null, t)
+          : null
+      }
       testId="run-rerun"
     />
   );
@@ -184,11 +193,17 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
   const stepItems: ExecutionStep[] = steps.data?.items ?? [];
   const failing = stoppingStep(stepItems, outcome);
   const errorEvidence = failing ? previewText(failing.error) : null;
-  const payload = payloadEvidence(stepItems, current.status);
-  const failed = outcome
-    ? outcome.kind === "failed" || outcome.kind === "partial"
-    : current.status === "failed" || current.status === "timed_out";
-  const sentence = outcome ? runOutcomeSentence(outcome, t) : null;
+  const payload = payloadEvidence(stepItems, current.status, outcome);
+  const statusWord = (status: string) => statusLabel(t, status);
+  const verdict = runVerdict(current.status, outcome, t, statusWord);
+  const failed = verdict.tone !== null;
+  // Without the engine's outcome a failed run still gets its block: what is
+  // known is how it ended, and the way to the fix does not depend on more.
+  const sentence = outcome
+    ? runOutcomeSentence(outcome, t)
+    : failed
+      ? runStatusSentence(statusWord(current.status), t)
+      : null;
 
   const canReadWorkflows = session.permissions.includes("workflow:read");
   // An open repair proposal for this workflow is the first remedy: the engine
@@ -202,17 +217,42 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
       ),
   });
   const connectorId = outcome?.cause_class === "auth_failed" ? stepConnectorId(failing) : null;
+  // Where the connector's sign-in really stands — read from the connector,
+  // not assumed from the run: a rejected request may be a missing scope.
+  const connector = useQuery({
+    queryKey: ["connector", connectorId ?? ""],
+    enabled: connectorId !== null && session.permissions.includes("connector:read"),
+    queryFn: () =>
+      apiRequest<ConnectorAuthInput>(`/v1/connectors/${encodeURIComponent(connectorId ?? "")}`),
+  });
+  const authState = connectorId
+    ? {
+        connectorId,
+        state:
+          connector.data && typeof connector.data === "object"
+            ? connectorAuthState(connector.data)
+            : "unproven",
+      }
+    : null;
   const remedy = failed
     ? remedyFor({
         workflowId: current.workflow_id,
         executionId: current.id,
         patch: patch.data?.items?.[0] ?? null,
-        authState: connectorId ? { connectorId, state: "expired" } : null,
+        authState,
         canRun: session.permissions.includes("workflow:run"),
         canChat: session.permissions.includes("conversation:write"),
         prompt: t("remedy.chatPrompt"),
       })
     : null;
+  const payloadLabel = payload?.preview
+    ? t("runs.detail.preview")
+    : payload?.stepKey
+      ? t("runs.detail.outputOfStep", { step: payload.stepKey })
+      : t("tool.result");
+  // Offered for a partly failed run as well as a failed one: the dialog says
+  // the rerun repeats every step with real effects, including the ones that
+  // already ran — the reader decides with that sentence in front of them.
   const canRerun =
     session.permissions.includes("workflow:run") &&
     current.source_kind === "saved" &&
@@ -255,7 +295,7 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
       {sentence && failed ? (
         <CauseFix
           testId="run-detail-cause"
-          status={{ tone: "critical", label: statusLabel(t, current.status) }}
+          status={{ tone: verdict.tone ?? "critical", label: verdict.label }}
           cause={
             <span data-testid="run-detail-outcome">
               <OutcomeText sentence={sentence} />
@@ -263,12 +303,7 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
           }
           guidance={stepGuidance(failing)}
           remedy={remedy ? { label: t(remedy.labelKey), href: remedy.href } : null}
-          more={[
-            {
-              label: t("runs.detail.audit"),
-              href: auditHref({ resourceType: "execution", resourceId: current.id }),
-            },
-          ]}
+          more={runCauseLinks(current.id, session.permissions, t)}
           actions={
             canRerun ? <RerunAction run={current} onStarted={(id) => onShowRun(id)} /> : null
           }
@@ -362,18 +397,12 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
                   data-testid="run-detail-payload-toggle"
                 >
                   <ChevronRight data-icon="inline-start" />
-                  {payload.stepKey
-                    ? t("runs.detail.outputOfStep", { step: payload.stepKey })
-                    : t("tool.result")}
+                  {payloadLabel}
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent>
                 <EvidenceBlock
-                  title={
-                    payload.stepKey
-                      ? t("runs.detail.outputOfStep", { step: payload.stepKey })
-                      : t("tool.result")
-                  }
+                  title={payloadLabel}
                   text={payload.text}
                   tone="result"
                   testId="run-detail-result"
@@ -787,7 +816,14 @@ export function RunsPage() {
               )}
               {selected ? (
                 <Badge variant="outline" data-testid="run-detail-status">
-                  {statusLabel(t, selected.status)}
+                  {
+                    runVerdict(
+                      selected.status,
+                      (selected as ExecutionDetail).outcome ?? null,
+                      t,
+                      (status) => statusLabel(t, status),
+                    ).label
+                  }
                 </Badge>
               ) : null}
             </SheetTitle>

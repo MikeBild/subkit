@@ -2003,6 +2003,18 @@ const EN = {
   "authority.headline.runs.other": "up to {max} runs",
   "authority.headline.until": "valid until {until}",
   "decisions.workflowFilter": "One workflow only — clear",
+  "runs.state.held": "Prepared",
+  "runs.state.partial": "Partly completed",
+  "runs.detail.preview": "Preview — not written",
+  "runs.outcome.statusOnly": "This run ended as “{status}”; the engine reported no cause with it.",
+  "runs.rerun.refused.versionUnavailable":
+    "The version this run used no longer exists, so it cannot run again. Nothing was run.",
+  "runs.rerun.refused.archived": "The workflow is archived. Nothing was run.",
+  "runs.rerun.refused.notSaved": "Only runs of a saved workflow can run again. Nothing was run.",
+  "runs.rerun.refused.input": "The original input no longer fits the workflow. Nothing was run.",
+  "runs.rerun.refused.authority":
+    "No valid permission to run covers this version and environment. Nothing was run.",
+  "remedy.checkAuth": "Check the sign-in",
 } as const;
 
 export type TranslationKey = keyof typeof EN;
@@ -4054,6 +4066,21 @@ const DE: Record<TranslationKey, string> = {
   "authority.headline.runs.other": "bis zu {max} Läufe",
   "authority.headline.until": "gültig bis {until}",
   "decisions.workflowFilter": "Nur ein Workflow — aufheben",
+  "runs.state.held": "Vorbereitet",
+  "runs.state.partial": "Teilweise gelaufen",
+  "runs.detail.preview": "Vorschau – nicht geschrieben",
+  "runs.outcome.statusOnly":
+    "Dieser Lauf endete als „{status}“; eine Ursache hat die Engine nicht mitgeliefert.",
+  "runs.rerun.refused.versionUnavailable":
+    "Die Version dieses Laufs gibt es nicht mehr, deshalb kann er nicht erneut laufen. Es wurde nichts ausgeführt.",
+  "runs.rerun.refused.archived": "Der Workflow ist archiviert. Es wurde nichts ausgeführt.",
+  "runs.rerun.refused.notSaved":
+    "Nur Läufe eines gespeicherten Workflows lassen sich wiederholen. Es wurde nichts ausgeführt.",
+  "runs.rerun.refused.input":
+    "Die ursprüngliche Eingabe passt nicht mehr zum Workflow. Es wurde nichts ausgeführt.",
+  "runs.rerun.refused.authority":
+    "Keine gültige Freigabe deckt diese Version und Umgebung ab. Es wurde nichts ausgeführt.",
+  "remedy.checkAuth": "Anmeldung prüfen",
 };
 
 export const CATALOGS: Record<Locale, Record<TranslationKey, string>> = {

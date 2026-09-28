@@ -34,6 +34,7 @@ import {
   decisionWorkflowId,
   filterByKinds,
   isDecidable,
+  isWholeQueue,
   partitionByUrgency,
   QUEUE_KINDS,
   type QueueKind,
@@ -247,6 +248,13 @@ export function DecisionsPage() {
     preferences.kinds.length > 0 &&
     open.length + queue.heldSchedules.length + queue.failingWorkflows.length >
       filtered.length + held.length + failing.length;
+  // "Alle" is pressed only while nothing narrows the queue — a link's
+  // workflow narrows it as much as a chip or a tile does.
+  const wholeQueueShown = isWholeQueue({
+    kinds: preferences.kinds.length,
+    focus,
+    workflowFilter,
+  });
   const display = queueDisplayState({
     shown: filtered.length,
     held: held.length,
@@ -434,10 +442,10 @@ export function DecisionsPage() {
                 data-family-slot="kind-filters"
               >
                 <Button
-                  variant={preferences.kinds.length === 0 && focus === null ? "default" : "outline"}
+                  variant={wholeQueueShown ? "default" : "outline"}
                   size="sm"
                   data-testid="decisions-chip-all"
-                  aria-pressed={preferences.kinds.length === 0 && focus === null}
+                  aria-pressed={wholeQueueShown}
                   onClick={showWholeQueue}
                 >
                   {t("decisions.chip.all")}

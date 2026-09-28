@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { components } from "@/api/schema";
-import { uuidParam } from "@/app/links";
+import { auditHref, uuidParam } from "@/app/links";
 import { causeClassLabel } from "@/lib/cause-class";
 import { LOCALE_TAGS, type Locale, type TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
@@ -467,14 +467,109 @@ export function stoppingStep<T extends StepLike>(
 export function payloadEvidence<T extends StepLike>(
   steps: readonly T[],
   runStatus: string,
-): { text: string; stepKey: string | null } | null {
+  outcome: ExecutionOutcome | null = null,
+): { text: string; stepKey: string | null; preview: boolean } | null {
   const last = [...steps]
     .reverse()
     .find((step) => previewText(step.output_preview ?? step.result_preview) !== null);
   if (!last) return null;
   const text = previewText(last.output_preview ?? last.result_preview);
   if (!text) return null;
-  return { text, stepKey: runStatus === "succeeded" ? null : last.step_key };
+  // A held run wrote nothing: what it carries is the preview of a write that
+  // was held back, and calling that "Ergebnis" presents a held publication as
+  // executed. The engine reports such a run as `succeeded` with an outcome of
+  // `held`, so the status alone cannot tell.
+  if (outcome?.kind === "held") return { text, stepKey: null, preview: true };
+  const succeeded = outcome ? outcome.kind === "succeeded" : runStatus === "succeeded";
+  return { text, stepKey: succeeded ? null : last.step_key, preview: false };
+}
+
+/** The run statuses the engine counts as failed (`execution/outcome.ts`). */
+export const FAILED_RUN_STATUSES: ReadonlySet<string> = new Set(["failed", "timed_out", "aborted"]);
+
+/**
+ * What the sheet says a run IS — its badge, and whether it gets a cause block.
+ *
+ * Read from the engine's outcome where there is one, because the status alone
+ * lies twice: a held run and a partly failed run are both `succeeded`. The
+ * first badge read "Erfolgreich" above "Vorbereitet, Schreibzugriffe
+ * zurückgehalten", the second put "Erfolgreich" on a red cause block.
+ *
+ * Without an outcome (an older engine, a detail fetch that failed) the status
+ * decides, and every status the engine counts as failed is one.
+ */
+export interface RunVerdict {
+  label: string;
+  /** The cause block's tone; null when there is nothing to explain. */
+  tone: "critical" | "warning" | null;
+}
+
+export function runVerdict(
+  status: string,
+  outcome: ExecutionOutcome | null,
+  t: Translate,
+  statusWord: (status: string) => string,
+): RunVerdict {
+  if (outcome) {
+    switch (outcome.kind) {
+      case "held":
+        return { label: t("runs.state.held"), tone: null };
+      case "partial":
+        return { label: t("runs.state.partial"), tone: "warning" };
+      case "failed":
+        return {
+          label: statusWord(FAILED_RUN_STATUSES.has(status) ? status : "failed"),
+          tone: "critical",
+        };
+      default:
+        return { label: statusWord(status), tone: null };
+    }
+  }
+  return {
+    label: statusWord(status),
+    tone: FAILED_RUN_STATUSES.has(status) ? "critical" : null,
+  };
+}
+
+/**
+ * The sentence for a failed run the engine gave no outcome for. A red badge
+ * with no line under it is a red with no way to its cause (§1); this line
+ * says what is known — how it ended — and the block still offers the fix.
+ */
+export function runStatusSentence(statusWord: string, t: Translate): OutcomeSentence {
+  const plain = t("runs.outcome.statusOnly", { status: statusWord });
+  return { lead: plain, cause: null, tail: "", plain };
+}
+
+/**
+ * Why a rerun was refused, in words. The engine's known refusals get the
+ * cockpit's sentence; anything else is the engine's own message, marked as
+ * such — never a blanket "nothing was run" that hides the reason.
+ */
+const RERUN_REFUSALS: Partial<Record<string, TranslationKey>> = {
+  workflow_version_unavailable: "runs.rerun.refused.versionUnavailable",
+  workflow_archived: "runs.rerun.refused.archived",
+  conflict: "runs.rerun.refused.notSaved",
+  input_schema_violation: "runs.rerun.refused.input",
+};
+
+export function rerunFailureText(
+  error: { code?: string | null; message?: string } | null | undefined,
+  t: Translate,
+): string {
+  const code = error?.code ?? null;
+  const known = code ? RERUN_REFUSALS[code] : undefined;
+  if (known) return t(known);
+  if (code?.startsWith("execution_authority")) return t("runs.rerun.refused.authority");
+  const message = error?.message?.trim();
+  return message
+    ? `${t("runs.rerun.failed")} ${t("common.engineWording", { text: message })}`
+    : t("runs.rerun.failed");
+}
+
+/** The newest run that failed in any of the ways the engine counts, from a newest-first list. */
+export function latestFailedRun<T extends { status: string }>(runs: readonly T[]): T | null {
+  return runs.find((run) => FAILED_RUN_STATUSES.has(run.status)) ?? null;
 }
 
 /** The connector a step called, as the engine recorded it — for the sign-in remedy. */
@@ -493,4 +588,23 @@ export function stepGuidance(step: StepLike | null): string | null {
   if (!error || typeof error !== "object") return null;
   const guidance = (error as { guidance?: unknown }).guidance;
   return typeof guidance === "string" && guidance.trim() ? guidance : null;
+}
+
+/**
+ * The quieter ways further from a run's cause block. The audit trail only for
+ * a reader who may open it — a link that answers 403 is worse than none.
+ */
+export function runCauseLinks(
+  runId: string,
+  permissions: readonly string[],
+  t: Translate,
+): { label: string; href: string }[] {
+  return permissions.includes("audit:read")
+    ? [
+        {
+          label: t("runs.detail.audit"),
+          href: auditHref({ resourceType: "execution", resourceId: runId }),
+        },
+      ]
+    : [];
 }
