@@ -42,15 +42,21 @@ export function queryView<T>(
  * destructive alert naming what did not load, one sentence on what to do, and
  * the retry. `children` holds a second way out where retrying is not the only
  * one — a conversation that cannot be opened offers a new one.
+ *
+ * Without `onRetry` there is no retry: a failure retrying cannot change (a
+ * record that does not exist, or is not the reader's) says so in its own
+ * `description` and offers only the ways out in `children`.
  */
 export function LoadFailed({
   title,
+  description,
   onRetry,
   testId,
   children,
 }: {
   title: string;
-  onRetry(): void;
+  description?: string;
+  onRetry?: () => void;
   testId: string;
   children?: ReactNode;
 }) {
@@ -64,11 +70,13 @@ export function LoadFailed({
     >
       <AlertTitle>{title}</AlertTitle>
       <AlertDescription>
-        <p>{t("resource.loadFailedDescription")}</p>
+        <p>{description ?? t("resource.loadFailedDescription")}</p>
         <div className="mt-2 flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={onRetry} data-testid={`${testId}-retry`}>
-            {t("session.retry")}
-          </Button>
+          {onRetry ? (
+            <Button variant="outline" size="sm" onClick={onRetry} data-testid={`${testId}-retry`}>
+              {t("session.retry")}
+            </Button>
+          ) : null}
           {children}
         </div>
       </AlertDescription>
