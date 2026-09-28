@@ -1,15 +1,9 @@
 import type { components } from "@/api/schema";
-import { type ApiAccessSection, absolute, apiAccessHref } from "@/app/links";
-import type { AttentionListItem } from "@/components/cockpit/attention-list";
+import type { ApiAccessSection } from "@/app/links";
 import type { QueryView } from "@/components/failure-state";
 import type { TranslationKey } from "@/lib/i18n";
 import type { CatalogLabel } from "@/lib/machine-label";
 import { permissionLabel } from "@/pages/admin-model";
-import {
-  type ConnectionItem,
-  connectionNeedsRenewal,
-  connectionReasonKey,
-} from "@/pages/connections-model";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
@@ -31,8 +25,7 @@ export const UNUSED_KEY_DAYS = 90;
 // ── Page order ──────────────────────────────────────────────────────────────
 
 /**
- * The sections in the order a reader acts on them. The attention list comes
- * first (it names what is broken); then Kontoverbindungen — the section the
+ * The sections in the order a reader acts on them: Kontoverbindungen — the section the
  * OAuth callback and the old `/connections` address land on, and the only one
  * whose rows lapse on their own and ask for a renewal; then the keys this
  * installation hands out; then the applications connected to it, which a
@@ -143,7 +136,7 @@ export function keyIdleDays(
 
 /**
  * Keys in two groups: the ones that still hold rights (an expired key is
- * among them — it needs a decision, and the attention list points here), and
+ * among them — it needs a decision, and its row says so), and
  * the revoked ones, which hold nothing and are collapsed behind their count.
  */
 export function groupApiKeys<T extends Pick<ApiKeyItem, "revoked_at">>(
@@ -183,71 +176,60 @@ export function groupConnectedClients<
   };
 }
 
-// ── Attention ───────────────────────────────────────────────────────────────
+// ── Key state ───────────────────────────────────────────────────────────────
+
+/** A key that lapses within this many days says so on its row. */
+export const KEY_EXPIRING_DAYS = 7;
 
 /**
- * What on this page needs a person now, and nothing when all is well (§1: the
- * list renders nothing then). A lost grant is critical and names its cause; an
- * expired key is critical; a key idle for months is a warning — rights pile up
- * silently, and the inventory turns that into a decision (§11).
+ * The one state word a key's row carries, or none.
+ *
+ * Zugangsdaten used to raise these as a second task list above its sections;
+ * the tasks live on Heute, and a key's state belongs on the key. One word per
+ * row, the most pressing first: a revoked key holds nothing, an expired one no
+ * longer works, one about to lapse will stop soon, and one nobody has used
+ * for months is a standing right nobody needs (§11). A fresh key nobody has
+ * used yet carries nothing — its use line already says "Nie benutzt".
  */
-export function apiAccessAttention(
-  input: {
-    connections: readonly ConnectionItem[];
-    keys: readonly ApiKeyItem[];
-    nowMs: number;
-  },
-  t: Translate,
-  dateTime: (value: string) => string,
-): AttentionListItem[] {
-  const items: AttentionListItem[] = [];
-  for (const connection of input.connections) {
-    if (!connectionNeedsRenewal(connection)) continue;
-    const reason = connection.state_reason ? t(connectionReasonKey(connection.state_reason)) : "";
-    items.push({
-      id: `grant:${connection.id}`,
-      tone: "critical",
-      text: t(
-        connection.state === "unreadable"
-          ? "apiAccess.attention.grantUnreadable"
-          : "apiAccess.attention.grantExpired",
-        { name: connection.service_name ?? connection.name, reason },
-      ),
-      engineWording: connection.last_error,
-      href: absolute(apiAccessHref("grants")),
-      actionLabel: t("connections.renew"),
-    });
+export type KeyState =
+  | { kind: "revoked" }
+  | { kind: "expired" }
+  | { kind: "expiring"; days: number }
+  | { kind: "neverUsed"; days: number }
+  | { kind: "idle"; days: number };
+
+export function keyState(
+  key: Pick<ApiKeyItem, "revoked_at" | "expires_at" | "last_used_at" | "created_at">,
+  nowMs: number,
+): KeyState | null {
+  if (key.revoked_at) return { kind: "revoked" };
+  if (keyExpired(key, nowMs)) return { kind: "expired" };
+  if (key.expires_at !== null) {
+    const left = Date.parse(key.expires_at) - nowMs;
+    if (left <= KEY_EXPIRING_DAYS * 86_400_000)
+      return { kind: "expiring", days: Math.floor(left / 86_400_000) };
   }
-  for (const key of input.keys) {
-    if (key.revoked_at) continue;
-    const name = key.name || key.prefix;
-    if (keyExpired(key, input.nowMs)) {
-      items.push({
-        id: `key-expired:${key.id}`,
-        tone: "critical",
-        text: t("apiAccess.attention.keyExpired", {
-          name,
-          date: dateTime(key.expires_at ?? key.created_at),
-        }),
-        engineWording: null,
-        href: absolute(apiAccessHref("keys")),
-        actionLabel: t("apiAccess.attention.toKeys"),
-      });
-      continue;
-    }
-    const idle = keyIdleDays(key, input.nowMs);
-    if (idle !== null) {
-      items.push({
-        id: `key-idle:${key.id}`,
-        tone: "warning",
-        text: key.last_used_at
-          ? t("apiAccess.attention.keyUnused", { name, days: String(idle) })
-          : t("apiAccess.attention.keyNeverUsed", { name, date: dateTime(key.created_at) }),
-        engineWording: null,
-        href: absolute(apiAccessHref("keys")),
-        actionLabel: t("apiAccess.attention.toKeys"),
-      });
-    }
+  const idle = keyIdleDays(key, nowMs);
+  if (idle === null) return null;
+  return key.last_used_at ? { kind: "idle", days: idle } : { kind: "neverUsed", days: idle };
+}
+
+/** The chip's words: "läuft ab in 3 Tagen", "abgelaufen", "seit 120 Tagen ungenutzt". */
+export function keyStateText(state: KeyState, t: Translate): string {
+  switch (state.kind) {
+    case "revoked":
+      return t("apiKeys.revokedBadge");
+    case "expired":
+      return t("apiKeys.expiredBadge");
+    case "expiring":
+      return state.days === 0
+        ? t("apiKeys.state.expiresToday")
+        : state.days === 1
+          ? t("apiKeys.state.expiresTomorrow")
+          : t("apiKeys.state.expiresIn", { days: String(state.days) });
+    case "neverUsed":
+      return t("apiKeys.state.neverUsed", { days: String(state.days) });
+    case "idle":
+      return t("apiKeys.state.idle", { days: String(state.days) });
   }
-  return items;
 }

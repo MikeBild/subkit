@@ -1313,7 +1313,15 @@ async function mockApi(route) {
     const items = Array.from({ length: 42 }, (_, index) => ({
       ...rowFor(index),
       id: index === 0 ? uuid : `catalog-record-${index}`,
-    })).filter((row) => !narrowed || (row.enabled === true && row.health_state !== "ok"));
+    }))
+      .filter((row) => !narrowed || (row.enabled === true && row.health_state !== "ok"))
+      // `enabled=true` narrows as the engine does (the usage page's health figure).
+      .filter(
+        (row) =>
+          path !== "/v1/connectors" ||
+          url.searchParams.get("enabled") !== "true" ||
+          row.enabled === true,
+      );
     const categories =
       path === "/v1/workflows" || path === "/v1/connectors"
         ? [
@@ -1783,6 +1791,40 @@ async function mockApi(route) {
       },
     });
   }
+  // The repair decisions of a window, per verb — what the usage page's
+  // repair rate is computed from. Two applied of three decided.
+  if (path === "/v1/stats/events") {
+    if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
+      return json(route, { code: "validation", message: "request validation failed" }, 400);
+    const group = (action, total) => ({
+      key: { action },
+      buckets: [],
+      totals: {
+        calls: { total, by_outcome: { success: total, denied: 0, error: 0 } },
+        latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+      },
+    });
+    return json(route, {
+      bucket: url.searchParams.get("bucket"),
+      tz: "UTC",
+      from: url.searchParams.get("from"),
+      to: new Date().toISOString(),
+      groups:
+        url.searchParams.get("class") === "self_healing"
+          ? [
+              group("patch_candidate.proposed", 5),
+              group("patch_candidate.approved", 1),
+              group("patch_candidate.auto_applied", 1),
+              group("patch_candidate.rejected", 1),
+            ]
+          : [],
+      totals: {
+        calls: { total: 0, by_outcome: { success: 0, denied: 0, error: 0 }, by_status_class: {} },
+        latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+      },
+    });
+  }
+
   if (path === "/v1/stats/executions") {
     if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
       return json(route, { code: "validation", message: "request validation failed" }, 400);
@@ -3381,6 +3423,16 @@ for (const locale of variants) {
       if (route.startsWith("audit?") && route.includes("action="))
         await assertAuditActionChip(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "chat") await assertChat(page, `${locale.artifact}/${viewport.name}/${route}`);
+      // The engine's reason lives on Heute and on the workflow's own page; a
+      // list row states the health word and links to the failures, no more.
+      if (
+        route === "workflows" &&
+        ((await page.getByTestId("workflow-health-engine-wording").count()) > 0 ||
+          /Wortlaut der Engine|Wording from the engine/.test(text))
+      )
+        throw new Error(
+          `${locale.artifact}/${viewport.name}/workflows: a list row repeats the engine's wording`,
+        );
       if (route === "runs")
         await assertOpenOnce(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (/^runs\/.+/.test(route))
