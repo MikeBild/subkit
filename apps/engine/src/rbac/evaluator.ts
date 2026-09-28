@@ -247,6 +247,53 @@ async function hasResourceGrant(
   return rows.length > 0;
 }
 
+/**
+ * Whether the principal holds `permission` on at least one resource of
+ * `resource_type` through a live resource grant (its own or a group's).
+ *
+ * The question a list asks before it may say "nothing here": a reader without
+ * the tenant-wide permission still reads the resources granted to it, so its
+ * scoped view is an answer, not a refusal. Portal-token principals never
+ * inherit grants (see `can`), so they never hold one here either.
+ */
+export async function holdsAnyResourceGrant(
+  db: Db,
+  check: { tenant_id: string; principal: ResolvedPrincipal; permission: string },
+  resource_type: string,
+): Promise<boolean> {
+  if (check.principal.provider === "portal_token") return false;
+  const permissionId = await lookupPermissionId(db, check.permission);
+  if (!permissionId) return false;
+  const subjectClauses = [
+    and(
+      eq(resourceGrants.subject_type, check.principal.kind),
+      eq(resourceGrants.subject_id, check.principal.id),
+    ),
+  ];
+  if (check.principal.kind === "user") {
+    const groupIds = await userGroupIds(db, check.principal.id);
+    if (groupIds.length > 0) {
+      subjectClauses.push(
+        and(eq(resourceGrants.subject_type, "group"), inArray(resourceGrants.subject_id, groupIds)),
+      );
+    }
+  }
+  const rows = await db
+    .select({ id: resourceGrants.id })
+    .from(resourceGrants)
+    .where(
+      and(
+        eq(resourceGrants.tenant_id, check.tenant_id),
+        or(...subjectClauses),
+        eq(resourceGrants.resource_type, resource_type),
+        eq(resourceGrants.permission_id, permissionId),
+        or(isNull(resourceGrants.expires_at), gt(resourceGrants.expires_at, new Date(now()))),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 function matchesPortalTokenAllowlist(check: PermissionCheck): boolean {
   // The `portal_token_user` built-in role plus the allowlist together
   // define what an end-user principal can do. The allowlist path has

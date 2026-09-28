@@ -22,7 +22,7 @@ Runtime self-inspection answers four questions without guessing: what is sk's st
 3. **Identity.** `whoami` (MCP) / `GET /v1/identity/whoami` returns id, kind, tenant, email, `role_name`, `provider`, `base_url`, and raw `scopes`. `scopes` is what the credential *claims* (a ceiling), not the enforced decision.
 4. **Effective rights.** For "may I read/write this connector?" call `GET /v1/identity/permissions?resource_type=connector&resource_id=...` — `level` (`none` | `read-only` | `read-write`) is computed from the same `can()` the engine enforces. Never infer write access from `scopes`.
 5. **Token spend.** `get_token_budget` answers "how close am I to my monthly cap?" (`budget_tokens: null` = no cap). `get_llm_usage` returns the per-call ledger (`flow`, `model`, tokens, `latency_ms`, `result`) for attributing spend.
-6. **What's failing.** `GET /v1/operator/health-digest` (needs `stats:read`) is a deterministic digest of failed runs, pending safe/unsafe patch candidates, and `critical`/`warn` risk signals. `get_engine_status` deliberately omits this cross-workflow posture.
+6. **What's failing.** `GET /v1/attention` (MCP `get_attention`) is the list of what needs the caller now, one item per thing to act on. `GET /v1/operator/health-digest` (needs `stats:read`) is a deterministic digest of failed runs, pending safe/unsafe patch candidates, and `critical`/`warn` risk signals, headed by that same list. `get_engine_status` deliberately omits this cross-workflow posture.
 
 ## Full reference
 

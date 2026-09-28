@@ -13,6 +13,7 @@ import { buildOperatorHealthDigest } from "../../../operator/health-digest.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { AttentionV1Schema } from "./attention-schema.ts";
 
 /** The classifier's class behind a failure group's `cause`. */
 const CauseClass = z.enum(PREVIEW_CLASSIFICATIONS).openapi("FailureCauseClass");
@@ -28,6 +29,9 @@ const FailureGroupSchema = z
     count: z.number().int(),
     scheduled_count: z.number().int(),
     last_seen: z.string(),
+    first_seen: z.string(),
+    latest_execution_id: z.string(),
+    connector_id: z.string().nullable(),
     resolved_at: z.string().nullable(),
     cause: z.string(),
     cause_class: CauseClass,
@@ -72,6 +76,7 @@ const DigestResponse = z
       items: z.array(PatchSchema),
     }),
     risk: z.array(RiskSignalSchema),
+    attention: AttentionV1Schema,
     rendered: z.string(),
     all_clear: z.boolean(),
   })
@@ -108,7 +113,7 @@ export function registerOperatorRoutes(app: OpenAPIHono<AppEnv>): void {
     const q = c.req.valid("query");
     const digest = await buildOperatorHealthDigest(
       db,
-      principal.tenant_id,
+      principal,
       q.window_hours !== undefined ? { window_hours: q.window_hours } : undefined,
     );
     return c.json(digest, 200);

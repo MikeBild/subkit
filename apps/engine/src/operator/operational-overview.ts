@@ -371,7 +371,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
     unit: "count",
     severity: blocked > 0 ? "critical" : "healthy",
     generatedAt,
-    path: "/cockpit/decisions?bucket=blocked",
+    path: ATTENTION_PATH,
     labelId: "operational.open_blocked",
     prometheus: "subkit_operational_blocked",
   });
@@ -387,7 +387,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
     unit: "count",
     severity: failing > 0 ? "urgent" : "healthy",
     generatedAt,
-    path: "/cockpit/decisions?bucket=failing",
+    path: ATTENTION_PATH,
     labelId: "operational.open_failing",
     prometheus: "subkit_operational_failing",
   });
@@ -401,7 +401,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
     unit: "count",
     severity: overdue > 0 ? "urgent" : "healthy",
     generatedAt,
-    path: "/cockpit/decisions?bucket=overdue",
+    path: ATTENTION_PATH,
     labelId: "operational.open_overdue",
     prometheus: "subkit_operational_overdue",
   });
@@ -415,7 +415,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
     unit: "count",
     severity: other > 0 ? "information" : "healthy",
     generatedAt,
-    path: "/cockpit/decisions?bucket=other",
+    path: ATTENTION_PATH,
     labelId: "operational.open_other",
     prometheus: "subkit_operational_other_decisions",
   });
@@ -430,7 +430,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       freshness: "fresh" as const,
       required: true,
       drilldown: {
-        path: "/cockpit/decisions?bucket=blocked",
+        path: ATTENTION_PATH,
         label_id: "operational.open_blocked",
       },
     },
@@ -722,6 +722,19 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
  */
 export const NOT_OK_CONNECTORS_PATH = "/cockpit/connectors?health=not_ok";
 
+/**
+ * Where every decision tile and blocked/failing cause leads: the one attention
+ * list on the cockpit's start page (`buildAttention`). The four buckets used to
+ * open four filtered views of a separate decisions page; the list now holds
+ * them all, one item per thing to act on.
+ */
+export const ATTENTION_PATH = "/cockpit";
+
+/** A cause about one workflow opens that workflow's item in the review sheet. */
+function workflowReviewPath(workflowId: string): string {
+  return `/cockpit?review=workflow:${workflowId}`;
+}
+
 /** The audit rows behind `repairs.applied_ratio`: every decided repair. */
 export const DECIDED_REPAIRS_PATH =
   "/cockpit/audit?scope=all&action=patch_candidate.approved,patch_candidate.auto_applied,patch_candidate.rejected";
@@ -741,7 +754,7 @@ function worstComponentLink(
       ? components[0]
       : scored.reduce((a, b) => ((b.normalized_score ?? 0) < (a.normalized_score ?? 0) ? b : a));
   const link = worst?.drilldown ?? {
-    path: "/cockpit/decisions?bucket=blocked",
+    path: ATTENTION_PATH,
     label_id: "operational.open_blocked",
   };
   return { path: link.path, labelId: link.label_id };
@@ -781,7 +794,7 @@ async function readHealthCauses(
     reason: "held_for_review",
     detail: null,
     cause_class: null,
-    drilldown: { path: "/cockpit/decisions?bucket=blocked", label_id: "operational.open_blocked" },
+    drilldown: { path: workflowReviewPath(row.workflow_id), label_id: "operational.open_blocked" },
   }));
   for (const group of failingGroups) {
     causes.push({
@@ -793,7 +806,7 @@ async function readHealthCauses(
       detail: group.cause,
       cause_class: group.cause_class,
       drilldown: {
-        path: "/cockpit/decisions?bucket=failing",
+        path: group.workflow_id ? workflowReviewPath(group.workflow_id) : ATTENTION_PATH,
         label_id: "operational.open_failing",
       },
     });

@@ -20,6 +20,7 @@ import {
   reviewableDiff,
   seedPatchableWorkflow,
 } from "../test-helpers/patch-candidates.ts";
+import { adminPrincipal } from "../test-helpers/principals.ts";
 import {
   buildOperatorHealthDigest,
   collectFailureGroups,
@@ -145,7 +146,7 @@ afterAll(async () => {
 
 describe("buildOperatorHealthDigest", () => {
   test("groups by root-cause signature and tags origin", async () => {
-    const digest = await buildOperatorHealthDigest(testDb.db, tenant_id);
+    const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id));
 
     expect(digest.all_clear).toBe(false);
     expect(digest.failure_groups.length).toBe(3); // scheduled(2), manual(1), authoring(1)
@@ -166,7 +167,7 @@ describe("buildOperatorHealthDigest", () => {
   });
 
   test("surfaces open patch decisions and an outcome-first headline", async () => {
-    const digest = await buildOperatorHealthDigest(testDb.db, tenant_id);
+    const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id));
     expect(digest.patch_candidates.open).toBe(1);
     expect(digest.patch_candidates.items[0]?.summary).toBe("Widen messages selector");
     expect(digest.headline.startsWith("Needs attention:")).toBe(true);
@@ -179,14 +180,36 @@ describe("buildOperatorHealthDigest", () => {
       .insert(tenants)
       .values({ slug: "t-digest-empty", display_name: "Empty" })
       .returning();
-    const digest = await buildOperatorHealthDigest(testDb.db, empty!.id);
+    const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(empty!.id));
     expect(digest.all_clear).toBe(true);
     expect(digest.failure_groups.length).toBe(0);
     expect(digest.patch_candidates.open).toBe(0);
-    expect(digest.headline).toContain("healthy");
+    expect(digest.attention.items).toEqual([]);
+    expect(digest.headline).toBe("All clear — nothing needs your attention.");
   });
 
-  test("ranks a stuck proposed patch first, flags its age, and calls it out in the headline", async () => {
+  test("history and trends do not make a digest need attention; the attention list does", async () => {
+    // The main fixture holds an authoring trial and a manual run that failed —
+    // worth reading, nothing to act on — next to a failing scheduled workflow
+    // and an open fix. Only the last two are items, and the headline counts
+    // items, not the rows behind them.
+    const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id));
+    const ids = digest.attention.items.map((item) => item.id).sort();
+    expect(ids).toEqual(
+      [
+        `workflow:${workflow_id}`,
+        `workflow:${digest.patch_candidates.items[0]?.workflow_id}`,
+      ].sort(),
+    );
+    expect(digest.headline).toBe("Needs attention: 2 items (1 failing, 1 to decide).");
+    // Every item is one rendered line — the decision block IS the attention list.
+    const lines = digest.rendered
+      .split("\n")
+      .filter((line) => /^- \[(stopped|failing|decide)\]/.test(line));
+    expect(lines.length).toBe(digest.attention.items.length);
+  });
+
+  test("ranks a stuck proposed patch first, flags its age, and dates the item from it", async () => {
     const [t] = await testDb.db
       .insert(tenants)
       .values({ slug: "t-digest-stuck", display_name: "Stuck" })
@@ -233,7 +256,7 @@ describe("buildOperatorHealthDigest", () => {
       },
     ]);
 
-    const digest = await buildOperatorHealthDigest(testDb.db, t!.id, { audit: false });
+    const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(t!.id));
     expect(digest.patch_candidates.open).toBe(2);
     const first = digest.patch_candidates.items[0];
     expect(first?.summary).toBe("Rename removed field");
@@ -241,8 +264,13 @@ describe("buildOperatorHealthDigest", () => {
     expect(first?.stuck).toBe(true);
     expect(first?.age_days).toBeGreaterThanOrEqual(5);
     expect(digest.patch_candidates.items[1]?.stuck).toBe(false);
-    expect(digest.headline).toContain("stuck");
-    expect(digest.rendered).toContain("stuck 5d");
+    // Two fixes on one workflow are one thing to decide, waiting since the older.
+    expect(digest.attention.items).toHaveLength(1);
+    expect(digest.attention.items[0]?.counts.patches).toBe(2);
+    expect(digest.attention.items[0]?.since).toBe(
+      new Date(now - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    );
+    expect(digest.rendered).toContain("(2 fixes)");
   });
 
   test("every count reports the exact total when the backlog exceeds the item cap", async () => {
@@ -277,13 +305,13 @@ describe("buildOperatorHealthDigest", () => {
       diff: noChangeDiff("Moves a field to itself"),
     });
 
-    const digest = await buildOperatorHealthDigest(testDb.db, t!.id, { audit: false });
+    const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(t!.id));
     expect(digest.patch_candidates.open).toBe(backlog);
     expect(digest.patch_candidates.items.length).toBe(MAX_PENDING_PATCHES);
-    expect(digest.headline).toContain(`${backlog} fixes awaiting review`);
-    expect(digest.headline).not.toContain(`${MAX_PENDING_PATCHES} fixes`);
-    expect(digest.rendered).toContain(`${backlog} self-healing fixes awaiting review:`);
-    expect(digest.rendered).toContain(`(+${backlog - MAX_PENDING_PATCHES} more)`);
+    // The attention item counts the uncapped total, never the capped list.
+    expect(digest.attention.items[0]?.counts.patches).toBe(backlog);
+    expect(digest.rendered).toContain(`(${backlog} fixes)`);
+    expect(digest.rendered).not.toContain(`(${MAX_PENDING_PATCHES} fixes)`);
   });
 });
 

@@ -368,9 +368,10 @@ is the shared, cross-replica edge-state store that backs risk-signal raising.
 Risk signals describe host-global infrastructure (one Postgres pool, one set of
 DLQs, one engine RSS), so a standing critical must be audited exactly once per
 `false→true` edge across the whole deployment — not once per digest read, per
-reading tenant, or per replica. The signal builder runs on every MCP connect,
-resource read, REPL start, and status call, so auditing inline would otherwise
-flood `audit_log`. The risk-signal surface itself is documented in
+reading tenant, or per replica. The edges are taken by the scheduler once a
+minute (`scheduler/risk-signal-edges-runner.ts`); no read path — digest, MCP
+connect, attention list — takes or audits one, so the trail does not depend on
+anybody polling. The risk-signal surface itself is documented in
 [Observability](../operators/observability.md).
 
 The table is keyed by signal `kind` (host-global, no `tenant_id`). Each replica

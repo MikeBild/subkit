@@ -1,0 +1,509 @@
+// The attention list: every source at once, per reader.
+//
+// A hostile fixture on purpose — every source holds something at the same time,
+// one workflow carries three facts, another person has a waiting conversation,
+// a reader sees the tenant through one resource grant. Each case below pins one
+// promise of `buildAttention` and was checked to fail on the behaviour it
+// replaces (see the counter-check notes).
+
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { ResolvedPrincipal } from "../auth/types.ts";
+import { _resetConfigForTests, loadConfig } from "../config/loader.ts";
+import {
+  connectors,
+  conversationElicitations,
+  conversations,
+  executionSteps,
+  executions,
+  llmUsage,
+  outboundConnections,
+  patchCandidates,
+  runtimeSecretVersions,
+  selfHealingScans,
+  skillCandidates,
+  tenants,
+  users,
+  workflowsSchedules,
+} from "../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { currentMonthBucket } from "../llm/accounting/budget.ts";
+import { resetMetricsRegistryForTests } from "../observability/metrics.ts";
+import { grantResource } from "../rbac/grants.ts";
+import { getTestNow } from "../test-helpers/determinism/clock.ts";
+import { reviewableDiff, seedPatchableWorkflow } from "../test-helpers/patch-candidates.ts";
+import { adminPrincipal } from "../test-helpers/principals.ts";
+import {
+  type AttentionItem,
+  attentionAllClear,
+  buildAttention,
+  compareAttentionItems,
+  invalidateAttention,
+} from "./attention.ts";
+import { getOperationalOverview, invalidateOperationalOverview } from "./operational-overview.ts";
+
+const HOUR = 3600_000;
+let testDb: TestDb;
+let tenant_id: string;
+let owner: ResolvedPrincipal;
+let otherPerson: ResolvedPrincipal;
+let enduser: ResolvedPrincipal;
+let grantee: ResolvedPrincipal;
+const wf: Record<"held" | "fail" | "auth" | "chat" | "patch", string> = {
+  held: "",
+  fail: "",
+  auth: "",
+  chat: "",
+  patch: "",
+};
+let brokenConnectorId: string;
+let connectionId: string;
+let ownConversationId: string;
+let othersConversationId: string;
+
+async function seedUser(email: string, role: "admin" | "member" | "enduser"): Promise<string> {
+  const [row] = await testDb.db
+    .insert(users)
+    .values({ tenant_id, email, role, role_id: null })
+    .returning({ id: users.id });
+  if (!row) throw new Error("user fixture");
+  return row.id;
+}
+
+async function seedScheduledFailure(
+  workflow_id: string,
+  error: Record<string, unknown>,
+  request_meta: Record<string, unknown> | null = null,
+): Promise<void> {
+  const [exec] = await testDb.db
+    .insert(executions)
+    .values({
+      tenant_id,
+      workflow_id,
+      source_kind: "saved",
+      status: "failed",
+      request_source: "scheduler",
+      execution_mode: "prod",
+    })
+    .returning();
+  if (!exec) throw new Error("execution fixture");
+  await testDb.db.insert(executionSteps).values({
+    tenant_id,
+    execution_id: exec.id,
+    step_key: "read",
+    step_index: 0,
+    kind: "request",
+    status: "failed",
+    error,
+    request_meta,
+  });
+}
+
+beforeAll(async () => {
+  testDb = await createTestDb("operator-attention");
+  const db = testDb.db;
+  const now = getTestNow();
+
+  // A month allowance of 1000 tokens, 950 spent: critical at the usage page's 90 %.
+  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-attention-"));
+  const configPath = join(dir, "subkit.config.json");
+  writeFileSync(configPath, JSON.stringify({ tokens: { monthly_budget: 1000 } }));
+  await loadConfig({
+    env: { DATABASE_URL: testDb.url, NODE_ENV: "test" },
+    configPathOverride: configPath,
+  });
+  resetMetricsRegistryForTests();
+
+  const [tenant] = await db
+    .insert(tenants)
+    .values({
+      slug: "t-attention",
+      display_name: "Attention",
+      last_connector_reauth_scan_at: new Date(now),
+    })
+    .returning();
+  tenant_id = tenant!.id;
+
+  const ownerId = await seedUser("owner@a", "admin");
+  const otherId = await seedUser("other@a", "admin");
+  const enduserId = await seedUser("enduser@a", "enduser");
+  const granteeId = await seedUser("grantee@a", "enduser");
+  owner = adminPrincipal(tenant_id, ownerId);
+  otherPerson = adminPrincipal(tenant_id, otherId);
+  enduser = { provider: "api_key", kind: "user", id: enduserId, tenant_id, roles: ["enduser"] };
+  // No role at all: this reader sees the tenant only through its grant.
+  grantee = { provider: "api_key", kind: "user", id: granteeId, tenant_id, roles: [] };
+
+  for (const key of Object.keys(wf) as Array<keyof typeof wf>) {
+    wf[key] = (await seedPatchableWorkflow(db, tenant_id, `wf-${key}`, `WF ${key}`)).workflow_id;
+  }
+
+  const [broken] = await db
+    .insert(connectors)
+    .values({
+      tenant_id,
+      slug: "crm",
+      display_name: "CRM",
+      driver: "http",
+      environment: "prod",
+      auth_type: "none",
+      base_url: "https://crm.test",
+      config: {},
+      health_state: "needs_reauth",
+      health_reason: "token revoked",
+      health_changed_at: new Date(now - 3 * HOUR),
+    })
+    .returning();
+  brokenConnectorId = broken!.id;
+
+  // Held: the scheduler will not admit a run until someone grants authority.
+  await db.insert(workflowsSchedules).values({
+    tenant_id,
+    workflow_id: wf.held,
+    cron: "0 * * * *",
+    admission_hold: {
+      reason_code: "execution_authority_required",
+      observed_at: new Date(now - 2 * HOUR).toISOString(),
+    },
+  });
+
+  // Failing twice with an open fix: ONE item, both counts.
+  await seedScheduledFailure(wf.fail, { code: "http_5xx", message: "http 500 upstream boom" });
+  await seedScheduledFailure(wf.fail, { code: "http_5xx", message: "http 500 upstream boom" });
+  await db.insert(patchCandidates).values({
+    tenant_id,
+    workflow_id: wf.fail,
+    classification: "safe",
+    status: "proposed",
+    diff: reviewableDiff("fix for the failing one"),
+  });
+  // Failing on authentication, through a connector: remedied at the connector.
+  await seedScheduledFailure(
+    wf.auth,
+    { code: "http_4xx", message: "http 401 unauthorized" },
+    { driver: "http", connector: { connector_id: brokenConnectorId } },
+  );
+  // Failing for another reason, no fix: a conversation about the newest run.
+  await seedScheduledFailure(wf.chat, { code: "http_5xx", message: "http 502 bad gateway" });
+  // A fix on a workflow that is not failing — waiting five days (overdue).
+  await db.insert(patchCandidates).values({
+    tenant_id,
+    workflow_id: wf.patch,
+    classification: "safe",
+    status: "proposed",
+    created_at: new Date(now - 5 * 24 * HOUR),
+    diff: reviewableDiff("fix nobody asked for yet"),
+  });
+
+  // Skills: one decision, one feedback-only pattern that is never counted.
+  const skill = {
+    tenant_id,
+    scope: "global" as const,
+    title: "t",
+    body: "b",
+    evidence: {},
+    confidence: "high" as const,
+  };
+  await db.insert(skillCandidates).values([
+    { ...skill, pattern_kind: "success_pattern", fingerprint: "fp-success" },
+    { ...skill, pattern_kind: "failure_pattern", fingerprint: "fp-failure" },
+  ]);
+
+  // A connection whose stored token does not decrypt.
+  const [connection] = await db
+    .insert(outboundConnections)
+    .values({
+      tenant_id,
+      name: "wikikit",
+      base_url: "https://wiki.test",
+      issuer: "https://wiki.test",
+      authorization_endpoint: "https://wiki.test/authorize",
+      token_endpoint: "https://wiki.test/token",
+      client_id: "c",
+      scopes: ["read"],
+      access_token_version: 1,
+    })
+    .returning();
+  connectionId = connection!.id;
+
+  // A prepared secret version waiting for approval (installation-wide).
+  await db.insert(runtimeSecretVersions).values({
+    name: "settings.llm.api_key",
+    version: 2,
+    ciphertext: Buffer.from("x"),
+    iv: Buffer.from("x"),
+    auth_tag: Buffer.from("x"),
+    pending_since: new Date(now - HOUR),
+  });
+
+  // The drift scan last succeeded five hours ago: three cadences missed.
+  await db.insert(selfHealingScans).values({
+    tenant_id,
+    source: "scheduler",
+    filters: { tenant_id },
+    status: "succeeded",
+    updated_at: new Date(now - 5 * HOUR),
+  });
+
+  // 95 % of the month's allowance spent.
+  await db.insert(llmUsage).values({
+    tenant_id,
+    flow: "chat",
+    model: "m",
+    total_tokens: 950,
+    result: "ok",
+    month_bucket: currentMonthBucket(new Date(now)),
+  });
+
+  // Two people waiting on their own conversations.
+  const [own] = await db
+    .insert(conversations)
+    .values({ tenant_id, status: "awaiting_input", owner_id: ownerId, title: "Mine" })
+    .returning();
+  ownConversationId = own!.id;
+  await db.insert(conversationElicitations).values({
+    tenant_id,
+    conversation_id: ownConversationId,
+    tool_name: "run_workflow",
+    summary: "confirm",
+    input: {},
+    expires_at: new Date(now + 2 * 24 * HOUR),
+  });
+  const [others] = await db
+    .insert(conversations)
+    .values({ tenant_id, status: "awaiting_input", owner_id: otherId, title: "Theirs" })
+    .returning();
+  othersConversationId = others!.id;
+
+  await grantResource(db, {
+    tenant_id,
+    subject_type: "user",
+    subject_id: granteeId,
+    resource_type: "workflow",
+    resource_id: wf.auth,
+    permission: "workflow:read",
+  });
+});
+
+afterAll(async () => {
+  _resetConfigForTests();
+  await testDb.cleanup();
+});
+
+beforeEach(() => {
+  invalidateAttention();
+  invalidateOperationalOverview();
+});
+
+const byId = (items: AttentionItem[]) => new Map(items.map((item) => [item.id, item]));
+
+describe("every source, as an admin reads it", () => {
+  test("each source yields its item in its class", async () => {
+    const attention = await buildAttention(testDb.db, owner);
+    const items = byId(attention.items);
+    const classOf = (id: string) => items.get(id)?.class;
+
+    expect(classOf(`conversation:${ownConversationId}`)).toBe("stopped");
+    expect(classOf(`workflow:${wf.held}`)).toBe("stopped");
+    expect(classOf("freshness:self_healing.drift_scan")).toBe("stopped");
+    expect(classOf(`workflow:${wf.fail}`)).toBe("failing");
+    expect(classOf(`workflow:${wf.auth}`)).toBe("failing");
+    expect(classOf(`workflow:${wf.chat}`)).toBe("failing");
+    expect(classOf(`connector:${brokenConnectorId}`)).toBe("failing");
+    expect(classOf(`connection:${connectionId}`)).toBe("failing");
+    expect(classOf("budget")).toBe("failing");
+    expect(classOf(`workflow:${wf.patch}`)).toBe("decide");
+    expect(classOf("secret-approval:settings.llm.api_key@2")).toBe("decide");
+    expect(classOf("skills")).toBe("decide");
+    expect(items.get("skills")?.counts.skills).toBe(1);
+    expect(items.get(`connection:${connectionId}`)?.reason).toBe("secret_unreadable");
+    expect(items.get(`connector:${brokenConnectorId}`)?.actions[0]?.verb).toBe("reauth");
+    expect(items.get(`workflow:${wf.held}`)?.reason).toBe("execution_authority_required");
+    expect(Object.values(attention.sources).every((state) => state === "answered")).toBe(true);
+    expect(attention.status?.next_run_at).toBeNull();
+  });
+
+  test("one item per workflow: failures and open fixes merge, ids are unique", async () => {
+    const attention = await buildAttention(testDb.db, owner);
+    const ids = attention.items.map((item) => item.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const failing = byId(attention.items).get(`workflow:${wf.fail}`);
+    expect(failing?.counts).toEqual({ failures: 2, patches: 1 });
+    expect(failing?.cause_class).toBe("driver_error");
+  });
+
+  test("the primary action follows the remedy order", async () => {
+    const items = byId((await buildAttention(testDb.db, owner)).items);
+    const primary = (id: string) => items.get(id)?.actions.find((a) => a.primary);
+    expect(primary(`workflow:${wf.fail}`)).toMatchObject({
+      verb: "review",
+      href: `/cockpit?review=workflow:${wf.fail}`,
+    });
+    expect(primary(`workflow:${wf.held}`)?.verb).toBe("review");
+    expect(primary(`workflow:${wf.auth}`)).toMatchObject({
+      verb: "reauth",
+      href: `/cockpit/connectors/${brokenConnectorId}`,
+    });
+    const chat = primary(`workflow:${wf.chat}`);
+    expect(chat?.verb).toBe("chat");
+    expect(chat?.href).toStartWith(`/cockpit/chat/new?workflow_id=${wf.chat}&execution_id=`);
+    expect(items.get(`workflow:${wf.chat}`)?.actions.find((a) => !a.primary)).toMatchObject({
+      verb: "open_runs",
+      href: `/cockpit/runs?workflow_id=${wf.chat}&status=failed`,
+    });
+    expect(primary(`conversation:${ownConversationId}`)).toMatchObject({
+      verb: "answer",
+      href: `/cockpit/chat/${ownConversationId}`,
+    });
+    expect(primary(`connection:${connectionId}`)?.href).toBe("/cockpit/api-access?section=grants");
+  });
+
+  test("ordering: stopped → failing → decide, then nearest deadline, then oldest", async () => {
+    const { items } = await buildAttention(testDb.db, owner);
+    expect([...items].sort(compareAttentionItems)).toEqual(items);
+    const classes = items.map((item) => item.class);
+    expect(classes).toEqual([...classes].sort((a, b) => rank(a) - rank(b)));
+    // The only item with a deadline leads its class.
+    expect(items[0]?.id).toBe(`conversation:${ownConversationId}`);
+    // Among the stopped without a deadline, the oldest first: the scan stalled
+    // five hours ago, the schedule was held two hours ago.
+    expect(items[1]?.id).toBe("freshness:self_healing.drift_scan");
+    expect(items[2]?.id).toBe(`workflow:${wf.held}`);
+  });
+});
+
+function rank(klass: AttentionItem["class"]): number {
+  return { stopped: 0, failing: 1, decide: 2 }[klass];
+}
+
+describe("per reader", () => {
+  test("a person sees only their own waiting conversations — admins included", async () => {
+    const mine = (await buildAttention(testDb.db, owner)).items.map((i) => i.id);
+    expect(mine).toContain(`conversation:${ownConversationId}`);
+    expect(mine).not.toContain(`conversation:${othersConversationId}`);
+    const theirs = (await buildAttention(testDb.db, otherPerson)).items.map((i) => i.id);
+    expect(theirs).toContain(`conversation:${othersConversationId}`);
+    expect(theirs).not.toContain(`conversation:${ownConversationId}`);
+  });
+
+  test("a non-admin sees what its role reads; the rest is not_permitted, never empty", async () => {
+    const attention = await buildAttention(testDb.db, enduser);
+    const ids = attention.items.map((i) => i.id);
+    expect(ids).toContain(`workflow:${wf.fail}`);
+    expect(ids).toContain("skills");
+    expect(ids).not.toContain(`connector:${brokenConnectorId}`);
+    expect(ids).not.toContain("budget");
+    expect(attention.sources.connectors).toBe("not_permitted");
+    expect(attention.sources.connections).toBe("not_permitted");
+    expect(attention.sources.secret_approvals).toBe("not_permitted");
+    expect(attention.sources.freshness).toBe("not_permitted");
+    expect(attention.sources.failures).toBe("answered");
+    expect(attention.status).toBeNull();
+  });
+
+  test("a resource grant on one workflow shows that workflow's item and nothing else", async () => {
+    const attention = await buildAttention(testDb.db, grantee);
+    expect(attention.items.map((i) => i.id)).toEqual([`workflow:${wf.auth}`]);
+    expect(attention.sources.failures).toBe("answered");
+    expect(attention.sources.connectors).toBe("not_permitted");
+    expect(attention.sources.conversations).toBe("not_permitted");
+  });
+
+  test("without the grant the same reader is refused the source, not told it is empty", async () => {
+    const stranger: ResolvedPrincipal = { ...grantee, id: "00000000-0000-4000-8000-00000000beef" };
+    const attention = await buildAttention(testDb.db, stranger);
+    expect(attention.items).toEqual([]);
+    expect(attention.sources.failures).toBe("not_permitted");
+  });
+});
+
+describe("a source that fails", () => {
+  test("is reported failed, and the list is not all clear even with nothing in it", async () => {
+    const [empty] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "t-attention-empty", display_name: "Empty" })
+      .returning();
+    const reader = adminPrincipal(empty!.id);
+    // Prepared secret versions are installation-wide, so the fixture's one
+    // would reach this tenant too; this case is about the empty answer.
+    const noSecrets = { secret_approvals: async () => [] };
+    const healthy = await buildAttention(testDb.db, reader, { readers: noSecrets });
+    expect(healthy.items).toEqual([]);
+    expect(attentionAllClear(healthy)).toBe(true);
+
+    const broken = await buildAttention(testDb.db, reader, {
+      readers: {
+        ...noSecrets,
+        connections: async () => {
+          throw new Error("connections unreadable");
+        },
+      },
+    });
+    expect(broken.sources.connections).toBe("failed");
+    expect(broken.items).toEqual([]);
+    expect(attentionAllClear(broken)).toBe(false);
+  });
+
+  test("keeps every other source's items", async () => {
+    const attention = await buildAttention(testDb.db, owner, {
+      readers: {
+        skills: async () => {
+          throw new Error("skills unreadable");
+        },
+      },
+    });
+    expect(attention.sources.skills).toBe("failed");
+    expect(attention.items.map((i) => i.id)).toContain(`workflow:${wf.fail}`);
+    expect(attention.items.map((i) => i.id)).not.toContain("skills");
+  });
+});
+
+describe("parity with the operational overview's decision buckets", () => {
+  test("every non-zero bucket has at least one item behind it", async () => {
+    const overview = await getOperationalOverview(testDb.db, tenant_id);
+    const { items } = await buildAttention(testDb.db, owner);
+    const now = getTestNow();
+    const olderThan72h = (item: AttentionItem) =>
+      item.since !== null && now - Date.parse(item.since) > 72 * HOUR;
+
+    expect(overview.core.blocked.value).toBeGreaterThan(0);
+    expect(
+      items.some((i) => i.class === "stopped" && i.reason.startsWith("execution_authority")),
+    ).toBe(true);
+
+    expect(overview.core.failing.value).toBeGreaterThan(0);
+    expect(items.filter((i) => i.class === "failing" && i.kind === "workflow").length).toBe(
+      overview.core.failing.value ?? -1,
+    );
+
+    expect(overview.core.overdue.value).toBeGreaterThan(0);
+    expect(items.some((i) => i.class === "decide" && olderThan72h(i))).toBe(true);
+
+    expect(overview.core.other_decisions.value).toBeGreaterThan(0);
+    expect(
+      items.some(
+        (i) =>
+          (i.id === "skills" || i.kind === "workflow") && (i.counts.patches || i.counts.skills),
+      ),
+    ).toBe(true);
+  });
+
+  test("the overview's decision drilldowns open the attention list", async () => {
+    const overview = await getOperationalOverview(testDb.db, tenant_id);
+    for (const metric of [
+      overview.core.blocked,
+      overview.core.failing,
+      overview.core.overdue,
+      overview.core.other_decisions,
+    ]) {
+      expect(metric.drilldown.path).toBe("/cockpit");
+    }
+    const held = overview.core.health.causes.find((c) => c.kind === "held_schedule");
+    expect(held?.drilldown.path).toBe(`/cockpit?review=workflow:${wf.held}`);
+    const paths = JSON.stringify(overview);
+    expect(paths).not.toContain("/cockpit/decisions");
+    expect(paths).not.toContain("/cockpit/operations");
+  });
+});

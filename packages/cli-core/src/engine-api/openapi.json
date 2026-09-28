@@ -18166,6 +18166,9 @@
               "$ref": "#/components/schemas/OperatorRiskSignal"
             }
           },
+          "attention": {
+            "$ref": "#/components/schemas/AttentionV1"
+          },
           "rendered": {
             "type": "string"
           },
@@ -18180,6 +18183,7 @@
           "failure_groups",
           "patch_candidates",
           "risk",
+          "attention",
           "rendered",
           "all_clear"
         ]
@@ -18232,6 +18236,18 @@
           "last_seen": {
             "type": "string"
           },
+          "first_seen": {
+            "type": "string"
+          },
+          "latest_execution_id": {
+            "type": "string"
+          },
+          "connector_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "resolved_at": {
             "type": [
               "string",
@@ -18261,6 +18277,9 @@
           "count",
           "scheduled_count",
           "last_seen",
+          "first_seen",
+          "latest_execution_id",
+          "connector_id",
           "resolved_at",
           "cause",
           "cause_class",
@@ -18366,6 +18385,355 @@
           "metric",
           "value",
           "threshold"
+        ]
+      },
+      "AttentionV1": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "enum": [
+              "attention.v1"
+            ]
+          },
+          "generated_at": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "object",
+            "properties": {
+              "conversations": {
+                "type": "string",
+                "enum": [
+                  "answered",
+                  "failed",
+                  "not_permitted"
+                ]
+              },
+              "schedules": {
+                "type": "string",
+                "enum": [
+                  "answered",
+                  "failed",
+                  "not_permitted"
+                ]
+              },
+              "freshness": {
+                "type": "string",
+                "enum": [
+                  "answered",
+                  "failed",
+                  "not_permitted"
+                ]
+              },
+              "failures": {
+                "type": "string",
+                "enum": [
+                  "answered",
+                  "failed",
+                  "not_permitted"
+                ]
+              },
+              "patches": {
+                "type": "string",
+                "enum": [
+                  "answered",
+                  "failed",
+                  "not_permitted"
+                ]
+              },
+              "connectors": {
+                "type": "string",
+                "enum": [
+                  "answered",
+                  "failed",
+                  "not_permitted"
+                ]
+              },
+              "connections": {
+                "type": "string",
+                "enum": [
+                  "answered",
+                  "failed",
+                  "not_permitted"
+                ]
+              },
+              "secret_approvals": {
+                "type": "string",
+                "enum": [
+                  "answered",
+                  "failed",
+                  "not_permitted"
+                ]
+              },
+              "skills": {
+                "type": "string",
+                "enum": [
+                  "answered",
+                  "failed",
+                  "not_permitted"
+                ]
+              },
+              "budget": {
+                "type": "string",
+                "enum": [
+                  "answered",
+                  "failed",
+                  "not_permitted"
+                ]
+              },
+              "risk": {
+                "type": "string",
+                "enum": [
+                  "answered",
+                  "failed",
+                  "not_permitted"
+                ]
+              }
+            },
+            "required": [
+              "conversations",
+              "schedules",
+              "freshness",
+              "failures",
+              "patches",
+              "connectors",
+              "connections",
+              "secret_approvals",
+              "skills",
+              "budget",
+              "risk"
+            ]
+          },
+          "status": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "health_state": {
+                "type": "string",
+                "enum": [
+                  "healthy",
+                  "limited",
+                  "critical",
+                  "unknown"
+                ]
+              },
+              "next_run_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "health_state",
+              "next_run_at"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttentionItem"
+            }
+          }
+        },
+        "required": [
+          "schema_version",
+          "generated_at",
+          "sources",
+          "status",
+          "items"
+        ]
+      },
+      "AttentionItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable id: workflow:<id>, conversation:<id>, connector:<id>, connection:<id>, secret-approval:<name>@<version>, skills, budget, freshness:<source>, risk:<kind>."
+          },
+          "class": {
+            "type": "string",
+            "enum": [
+              "stopped",
+              "failing",
+              "decide"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "urgent"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "subject": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "workflow",
+                  "conversation",
+                  "connector",
+                  "connection",
+                  "secret"
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "name"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "awaiting_answer",
+              "execution_authority_required",
+              "execution_authority_unavailable",
+              "scheduler_stale",
+              "failing",
+              "patch_proposed",
+              "needs_reauth",
+              "needs_update",
+              "degraded",
+              "unhealthy",
+              "refresh_refused",
+              "refresh_failed",
+              "expired_no_refresh",
+              "secret_unreadable",
+              "secret_prepared",
+              "skills_proposed",
+              "budget_critical",
+              "risk_critical"
+            ]
+          },
+          "cause_class": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "ok",
+              "auth_failed",
+              "placeholder_unresolved",
+              "schema_mismatch",
+              "timeout",
+              "aborted",
+              "connector_missing",
+              "budget_exhausted",
+              "driver_error",
+              "preview_unsupported",
+              "unknown",
+              null
+            ]
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "patches": {
+                "type": "integer"
+              },
+              "failures": {
+                "type": "integer"
+              },
+              "skills": {
+                "type": "integer"
+              }
+            }
+          },
+          "since": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deadline": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Residual engine wording, or null. Show it as the engine's wording."
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttentionAction"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "class",
+          "severity",
+          "kind",
+          "subject",
+          "reason",
+          "cause_class",
+          "counts",
+          "since",
+          "deadline",
+          "detail",
+          "actions"
+        ]
+      },
+      "AttentionAction": {
+        "type": "object",
+        "properties": {
+          "verb": {
+            "type": "string",
+            "enum": [
+              "review",
+              "answer",
+              "reauth",
+              "renew",
+              "open_runs",
+              "chat",
+              "open"
+            ]
+          },
+          "href": {
+            "type": "string",
+            "description": "Router path under /cockpit where this is acted on."
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "permission": {
+            "type": "string",
+            "description": "The permission acting here needs."
+          }
+        },
+        "required": [
+          "verb",
+          "href",
+          "primary",
+          "permission"
         ]
       },
       "OperationalOverviewV1": {
@@ -38988,6 +39356,32 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OperatorHealthDigest"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/attention": {
+      "get": {
+        "tags": [
+          "operator"
+        ],
+        "summary": "What needs the caller's attention now",
+        "description": "One list of everything a person has to act on — own waiting conversations, held schedules, failing scheduled workflows with their open fixes, connectors and connections needing sign-in, prepared secret versions, skill proposals, a critical budget or risk signal — filtered per item by the caller's permissions.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "attention.v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttentionV1"
                 }
               }
             }

@@ -94,10 +94,22 @@ Deterministic, LLM-free, tenant-scoped digest of failed runs and pending self-he
 Response:
 - `generated_at`, `window_hours`, `headline`, `all_clear` (boolean), `rendered` (a pre-formatted string).
 - `failure_groups[]` — failed runs grouped by root cause. Each: `signature`, `workflow_id`/`workflow_name` (nullable), `step_key` (nullable), `error_code` (nullable), `origin` (`authoring` | `manual` | `scheduled` | `mixed`), `count`, `last_seen`, `cause`, `guidance` (nullable).
-- `patch_candidates` — `{ open: number, items: [{ id, workflow_id, workflow_name, classification: "safe" | "unsafe", age_days, stuck, summary }] }`. Self-healing fixes awaiting review. `open` is the exact count of candidates that are `proposed` AND reviewable on the workflow's current version — the same number `GET /v1/patch-candidates` reports as `reviewable_total`, the MCP connect instructions quote, and the operational overview counts; `items` is capped at 50. A proposed fix the current version provably cannot take (it changes nothing, its kind cannot be executed, or the workflow is gone) is closed by the engine as `inapplicable` and is not counted.
+- `patch_candidates` — `{ open: number, items: [{ id, workflow_id, workflow_name, classification: "safe" | "unsafe", age_days, stuck, summary }] }`. Self-healing fixes awaiting review. `open` is the exact count of candidates that are `proposed` AND reviewable on the workflow's current version — the same number `GET /v1/patch-candidates` reports as `reviewable_total` and the operational overview counts; `items` is capped at 50. A proposed fix the current version provably cannot take (it changes nothing, its kind cannot be executed, the workflow is gone, or it names no step to rewrite) is closed by the engine as `inapplicable` and is not counted.
 - `risk[]` — risk signals. Each: `kind`, `severity` (`warn` | `critical`), `headline`, `detail`, `metric`, `value`, `threshold`.
+- `attention` — the caller's attention list, exactly as `GET /v1/attention` returns it. `headline`, `all_clear` and the item lines of `rendered` are rendered from it.
 
-How to read: `all_clear=true` means nothing to act on. Otherwise group failures by `signature`/`cause`, prioritize `risk` entries with `severity: critical` (value crossed threshold), and offer the `safe`-classified patch candidates first. `origin` tells you whether a failure came from authoring vs. live scheduled runs.
+How to read: `all_clear=true` means nothing needs a person now — no attention item, and every source the caller may read answered. Failure history (a failed trial run) and `warn` trends can still be present; they are detail, not something to act on. Otherwise act on `attention.items` in order, and use `failure_groups` / `risk` for the detail behind them. `origin` tells you whether a failure came from authoring vs. live scheduled runs. Reading the digest writes no audit row: the `operator.risk_signal_*` edges are recorded by the scheduler.
+
+## GET /v1/attention — what needs a person now
+
+The one list every surface reads: the cockpit's start page, the MCP connect instructions ("Needs attention: …"), the MCP tool `get_attention` and the digest's headline. Authenticated; each item is checked against the caller's permissions on its subject, so a person holding a grant on one workflow sees that workflow's item. Read-only.
+
+Response (`schema_version: "attention.v1"`):
+- `sources` — for each of `conversations`, `schedules`, `freshness`, `failures`, `patches`, `connectors`, `connections`, `secret_approvals`, `skills`, `budget`, `risk`: `answered`, `failed` or `not_permitted`. A failed or unreadable source is never reported as empty.
+- `status` — `{ health_state, next_run_at }`, only for a caller with `stats:read`.
+- `items[]` — ordered stopped → failing → decide, then nearest deadline, then oldest. Each: `id` (stable: `workflow:<id>`, `conversation:<id>`, `connector:<id>`, `connection:<id>`, `secret-approval:<name>@<version>`, `skills`, `budget`, `freshness:<source>`, `risk:<kind>`), `class`, `severity`, `kind`, `subject` (`{kind, id, name}` or null), `reason` (a machine code), `cause_class`, `counts` (`failures`, `patches`, `skills`), `since`, `deadline`, `detail` (the engine's own wording, or null), `actions[]` (`verb`, `href`, `primary`, `permission`).
+
+Waiting conversations are the caller's own only. A workflow that is held, failing and has open fixes is one item carrying all three.
 
 ## get_token_budget (MCP)
 
@@ -141,5 +153,6 @@ How to read: use to confirm "is this deploy current and is its schema in sync?" 
 - May I read/write connector X (enforced)? → `GET /v1/identity/permissions?resource_type=connector&resource_id=...`.
 - Am I near my token cap? → `get_token_budget`.
 - Where did my tokens go (per-call)? → `get_llm_usage`.
+- What needs me now? → `GET /v1/attention` (MCP: `get_attention`).
 - What's failing and what fixes are pending? → `GET /v1/operator/health-digest` (needs `stats:read`).
 - Is an update available / is the schema drifting? → `GET /v1/diagnostics/version` (needs `audit:read`).

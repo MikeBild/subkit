@@ -194,15 +194,18 @@ These feed the leading-indicator `risk[]` block of `GET /v1/operator/health-dige
 > one-off Postgres blip decays to 0 within a tick or two instead of latching the warn
 > (short uptime) or being averaged into silence (long uptime).
 
-**Risk-signal audit dedup is per-process.** A risk signal crossing into `critical`
-(or recovering) writes a single `operator.risk_signal_raised` /
+**Risk-signal audits come from the scheduler, not from readers.** A risk signal
+crossing into `critical` (or recovering) writes a single `operator.risk_signal_raised` /
 `operator.risk_signal_cleared` audit row on the transition edge, under the **system**
-tenant. The edge tracker is in-process, so in an N-replica deployment a standing
-critical can produce up to N rows per edge — one per replica that first reads the
-digest. Audit volume is small, but SIEM dedup on `(action, resource_id)` should expect
-up to N duplicates per incident. A Postgres-side claim (`INSERT … ON CONFLICT` on a
-`(kind, window)` table) is the HA hardening if exactly-once attribution becomes a
-requirement.
+tenant, with `request_source: "scheduler"`. The scheduler checks the signals once a
+minute whether or not anyone is looking, so the trail keeps recording while no browser
+or client polls the digest; reading the digest, the attention list or the MCP connect
+summary never writes one. Each transition is claimed through a shared Postgres table,
+so an N-replica deployment still writes each edge exactly once.
+
+A **critical** signal is also an item on the attention list (`GET /v1/attention`,
+`risk:<kind>`; a critical monthly token allowance is the `budget` item). Warning-level
+signals stay in the digest's `risk[]` only — a trend, not something to act on now.
 
 ### Tenant-scoped runtime stats (`/v1/stats/*`)
 

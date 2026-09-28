@@ -14,16 +14,14 @@
 // scheduled workflow), and reuses the runtime failure classifier so
 // the cause reads like a sentence, not a stack trace. Open patch
 // decisions (proposed AND reviewable — `readOpenPatchDecisions`, the one
-// predicate every surface counts) ride along as the "fixes awaiting review"
-// bucket.
+// predicate every surface counts) ride along as the digest's review list.
+//
+// What needs a human NOW — the headline, `all_clear`, the "Needs attention"
+// lines and the MCP connect instructions — is not decided here. It is rendered
+// from `buildAttention` (attention.ts), the one list every surface reads.
 
 import { and, desc, eq, gte, inArray, isNull, max } from "drizzle-orm";
-import { AuditAction, audit } from "../audit/index.ts";
-import {
-  RiskSignalClearedMetadataSchema,
-  RiskSignalRaisedMetadataSchema,
-  SYSTEM_TENANT_ID,
-} from "../audit/types.ts";
+import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { executionSteps, executions, workflows } from "../db/schema/index.ts";
 import {
@@ -33,9 +31,14 @@ import {
 } from "../execution/classify.ts";
 import { classifyRunFailure, pickStoppingStep } from "../execution/outcome.ts";
 import { monthlyUsage, resolveMonthlyBudget } from "../llm/accounting/index.ts";
-import { getContext } from "../logging/context.ts";
 import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
-import { computeRiskSignals, type RiskSignal, takeRiskEdges, topRisk } from "./risk-signals.ts";
+import {
+  type AttentionItem,
+  type AttentionV1,
+  attentionAllClear,
+  buildAttention,
+} from "./attention.ts";
+import { computeRiskSignals, type RiskSignal } from "./risk-signals.ts";
 
 const DEFAULT_WINDOW_HOURS = 24;
 const MAX_SCANNED_EXECUTIONS = 500;
@@ -82,6 +85,19 @@ export interface DigestFailureGroup {
    */
   scheduled_count: number;
   last_seen: string;
+  /**
+   * The oldest failure of this group inside the window — when the cause
+   * started, as far as the window can see. `last_seen` answers "is it still
+   * happening"; ordering a queue by it would put the freshest breakage first.
+   */
+  first_seen: string;
+  /** The newest failed run of this group — what a chat about it attaches. */
+  latest_execution_id: string;
+  /**
+   * The connector the stopping step of the newest failed run resolved, when it
+   * went through one. What an authentication failure is remedied at.
+   */
+  connector_id: string | null;
   /**
    * The workflow's most recent clean run on its own schedule, when that run is
    * newer than this group's last failure. Null while the cause is still live.
@@ -133,10 +149,15 @@ export interface OperatorHealthDigest {
    *  failure groups above are lagging (a run already failed); these flag
    *  what is trending toward an incident. Highest-severity first. */
   risk: RiskSignal[];
+  /** What needs this reader now — the same list `GET /v1/attention` returns.
+   *  The headline, `all_clear` and the rendered decision block come from it. */
+  attention: AttentionV1;
   /** Plain-text fallback render; the CLI styles its own from the
    *  structured fields above. */
   rendered: string;
-  /** True when there is genuinely nothing to report. */
+  /** Nothing needs this reader: no attention item, and every source it may
+   *  read answered. Failure history and warning trends do not clear it or
+   *  block it — they are detail, not something to act on now. */
   all_clear: boolean;
 }
 
@@ -152,6 +173,12 @@ function mergeOrigin(a: FailureOrigin, b: FailureOrigin): FailureOrigin {
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+}
+
+/** The connector a persisted step's request metadata names, if it went through one. */
+function stepConnectorId(requestMeta: unknown): string | null {
+  const id = asRecord(asRecord(requestMeta).connector).connector_id;
+  return typeof id === "string" && id.length > 0 ? id : null;
 }
 
 /**
@@ -266,6 +293,7 @@ export async function collectFailureGroups(
           status: executionSteps.status,
           error: executionSteps.error,
           started_at: executionSteps.started_at,
+          request_meta: executionSteps.request_meta,
         })
         .from(executionSteps)
         .where(
@@ -314,6 +342,7 @@ export async function collectFailureGroups(
       if (origin === "scheduled") existing.scheduled_count += 1;
       existing.origin = mergeOrigin(existing.origin, origin);
       if (lastSeen > existing.last_seen) existing.last_seen = lastSeen;
+      if (lastSeen < existing.first_seen) existing.first_seen = lastSeen;
       continue;
     }
 
@@ -332,6 +361,10 @@ export async function collectFailureGroups(
       count: 1,
       scheduled_count: origin === "scheduled" ? 1 : 0,
       last_seen: lastSeen,
+      // Runs are read newest first, so the run that opens a group is its newest.
+      first_seen: lastSeen,
+      latest_execution_id: exec.id,
+      connector_id: stepConnectorId(step?.request_meta),
       resolved_at: null,
       cause,
       cause_class: classified.classification,
@@ -404,34 +437,37 @@ export function failingScheduledGroups(
   return groups.filter((group) => group.scheduled_count > 0 && group.resolved_at === null);
 }
 
+/**
+ * The digest for one reader.
+ *
+ * Its decision block — the headline, `all_clear` and the "Needs attention"
+ * lines — is rendered from `buildAttention`, the same list `GET /v1/attention`,
+ * `get_attention` and the MCP connect line read. The failure groups, the open
+ * patch list and the risk signals stay as the digest's detail: they include
+ * what is worth reading (an authoring trial that failed, a warning trend) but
+ * is not something a person has to act on now.
+ *
+ * Read-only. The RISK_SIGNAL_* edge audits are written by the scheduler tick
+ * (`scheduler/risk-signal-edges-runner.ts`), never by a read of this digest.
+ */
 export async function buildOperatorHealthDigest(
   db: Db,
-  tenant_id: string,
-  // `audit` (default true): emit the RISK_SIGNAL_* edge audits + advance the
-  // process-scoped edge tracker. The canonical operator reads (the HTTP route,
-  // the MCP resource) leave it on; the incidental read-only summaries (MCP
-  // `initialize` instructions, `sk login`) pass `audit: false` so a connect or
-  // a login is a pure read with no audit side-effect.
-  opts?: { window_hours?: number; audit?: boolean },
+  principal: ResolvedPrincipal,
+  opts?: { window_hours?: number },
 ): Promise<OperatorHealthDigest> {
+  const tenant_id = principal.tenant_id;
   const windowHours = opts?.window_hours ?? DEFAULT_WINDOW_HOURS;
   const generatedAt = new Date();
-  const failureGroups = await collectFailureGroups(db, tenant_id, windowHours, generatedAt);
-
-  // Open patch decisions, OLDEST first: a candidate's urgency grows with how
-  // long it has sat unreviewed, so when the cap bites it must drop the
-  // freshest rows, never the stuck ones. The total is exact and uncapped.
-  const openDecisions = await readOpenPatchDecisions(db, tenant_id, {
-    limit: MAX_PENDING_PATCHES,
-  });
+  const [failureGroups, openDecisions, attention] = await Promise.all([
+    collectFailureGroups(db, tenant_id, windowHours, generatedAt),
+    // Open patch decisions, OLDEST first: a candidate's urgency grows with how
+    // long it has sat unreviewed, so when the cap bites it must drop the
+    // freshest rows, never the stuck ones. The total is exact and uncapped.
+    readOpenPatchDecisions(db, tenant_id, { limit: MAX_PENDING_PATCHES }),
+    buildAttention(db, principal, { now: generatedAt }),
+  ]);
   const openTotal = openDecisions.open_total;
   const pendingRows = openDecisions.items.map((item) => item.row);
-  const oldestOpenDays =
-    openDecisions.oldest_open_at === null
-      ? null
-      : Math.floor(
-          (generatedAt.getTime() - openDecisions.oldest_open_at.getTime()) / (24 * 60 * 60 * 1000),
-        );
 
   const patchWfIds = [...new Set(pendingRows.map((r) => r.workflow_id))];
   const patchNameById = patchWfIds.length
@@ -482,82 +518,8 @@ export async function buildOperatorHealthDigest(
     monthBudget: resolveMonthlyBudget(tenant_id),
   });
 
-  // Audit each critical risk ONCE on the false→true edge and once on recovery
-  // — not on every digest read (the builder runs on every MCP connect /
-  // resource read / REPL start). The signals are host-scoped shared
-  // infrastructure, so rows land under the system tenant rather than the
-  // reading tenant (which would duplicate one host condition across every
-  // tenant that reads). `actor_id: null` is explicit (system, no human actor);
-  // `request_source` carries the surface that triggered the read so SIEM can
-  // split edges by entry point. Skipped entirely on read-only summary paths
-  // (audit:false) so a connect/login is a pure read. Fire-and-forget: the
-  // digest read must not block on the audit write.
-  if (opts?.audit !== false) {
-    const requestSource = getContext().request_source;
-    const edges = await takeRiskEdges(db, risk);
-    // Bind the audit insert to the SAME `db` the digest read from — not the
-    // global `getDb()` pool the bare `audit()` would reach for. The digest is
-    // already fully parameterised on `db`; letting its audit side-effect drift
-    // to a different handle is a latent DB-routing inconsistency (and makes an
-    // int test that injects a disposable db silently poison the process-global
-    // pool, racing every other suite's audit writes).
-    for (const r of edges.raised) {
-      audit(
-        {
-          tenant_id: SYSTEM_TENANT_ID,
-          actor_type: "system",
-          actor_id: null,
-          action: AuditAction.RISK_SIGNAL_RAISED,
-          resource_type: "operator_health_digest",
-          resource_id: r.kind,
-          result: "success",
-          metadata: RiskSignalRaisedMetadataSchema.parse({
-            kind: r.kind,
-            severity: r.severity,
-            metric: r.metric,
-            value: r.value,
-            threshold: r.threshold,
-            // Boot-artifact discriminator: a low uptime means this raise is the
-            // first digest read after a restart re-firing a standing critical,
-            // not a fresh live transition.
-            uptime_s: Math.round(process.uptime()),
-            ...(requestSource ? { request_source: requestSource } : {}),
-          }),
-        },
-        db,
-      );
-    }
-    for (const kind of edges.cleared) {
-      audit(
-        {
-          tenant_id: SYSTEM_TENANT_ID,
-          actor_type: "system",
-          actor_id: null,
-          action: AuditAction.RISK_SIGNAL_CLEARED,
-          resource_type: "operator_health_digest",
-          resource_id: kind,
-          result: "success",
-          metadata: RiskSignalClearedMetadataSchema.parse({
-            kind,
-            ...(requestSource ? { request_source: requestSource } : {}),
-          }),
-        },
-        db,
-      );
-    }
-  }
-
-  const openPatches = { total: openTotal, oldest_days: oldestOpenDays };
-  const allClear = failureGroups.length === 0 && openTotal === 0 && risk.length === 0;
-  const headline = buildHeadline(failureGroups, openPatches, risk);
-  const rendered = renderDigest(
-    headline,
-    windowHours,
-    failureGroups,
-    patchItems,
-    openPatches,
-    risk,
-  );
+  const headline = attentionHeadline(attention);
+  const rendered = renderDigest(headline, windowHours, attention, failureGroups, risk);
 
   return {
     generated_at: generatedAt.toISOString(),
@@ -566,57 +528,59 @@ export async function buildOperatorHealthDigest(
     failure_groups: failureGroups,
     patch_candidates: { open: openTotal, items: patchItems },
     risk,
+    attention,
     rendered,
-    all_clear: allClear,
+    all_clear: attentionAllClear(attention),
   };
 }
 
-/** The open-decision count and the oldest one's age — both uncapped. */
-interface OpenPatchSummary {
-  total: number;
-  oldest_days: number | null;
+const CLASS_WORD: Record<AttentionItem["class"], string> = {
+  stopped: "stopped",
+  failing: "failing",
+  decide: "to decide",
+};
+
+/**
+ * The attention list's one-line summary, in the engine's English — for the
+ * `sk` REPL, the MCP connect instructions and the digest. Counts items, never
+ * the rows behind them: three proposed fixes on one workflow are one thing to
+ * decide.
+ */
+export function attentionHeadline(attention: AttentionV1): string {
+  const failed = Object.entries(attention.sources)
+    .filter(([, state]) => state === "failed")
+    .map(([source]) => source);
+  const unread = failed.length > 0 ? ` Could not read: ${failed.join(", ")}.` : "";
+  if (attention.items.length === 0) {
+    return failed.length > 0
+      ? `Nothing needs your attention in what could be read.${unread}`
+      : "All clear — nothing needs your attention.";
+  }
+  const byClass = (["stopped", "failing", "decide"] as const)
+    .map((klass) => [klass, attention.items.filter((item) => item.class === klass).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([klass, n]) => `${n} ${CLASS_WORD[klass]}`);
+  const n = attention.items.length;
+  return `Needs attention: ${n} item${n === 1 ? "" : "s"} (${byClass.join(", ")}).${unread}`;
 }
 
-function buildHeadline(
-  groups: DigestFailureGroup[],
-  patches: OpenPatchSummary,
-  risk: RiskSignal[],
-): string {
-  const top = topRisk(risk);
-  if (groups.length === 0 && patches.total === 0 && risk.length === 0) {
-    return "All workflows healthy — nothing needs your attention.";
-  }
-  const parts: string[] = [];
-  // A critical leading risk leads the headline — the host is about to fail,
-  // which the lagging failure groups can't yet see.
-  if (top?.severity === "critical") {
-    parts.push(top.headline);
-  }
-  const operational = failingScheduledGroups(groups).length;
-  if (operational > 0) {
-    parts.push(`${operational} scheduled workflow${operational === 1 ? "" : "s"} failing`);
-  }
-  const nonScheduled = groups.length - operational;
-  if (nonScheduled > 0) {
-    parts.push(`${nonScheduled} test/authoring failure${nonScheduled === 1 ? "" : "s"}`);
-  }
-  if (patches.total > 0) {
-    // Call out the stuck backlog explicitly — a fix that's been waiting days is
-    // a different signal from a fix proposed an hour ago, and it's the one the
-    // operator has been unknowingly ignoring. The count is the exact total:
-    // the item list is capped and must never be what this line counts.
-    const oldest = patches.oldest_days ?? 0;
-    const stuckSuffix = oldest >= STUCK_PATCH_DAYS ? ` (oldest stuck ${oldest}d)` : "";
-    parts.push(
-      `${patches.total} fix${patches.total === 1 ? "" : "es"} awaiting review${stuckSuffix}`,
-    );
-  }
-  // Non-critical risks ride along as a count so they're never lost.
-  const warnRisks = risk.filter((r) => r.severity !== "critical").length;
-  if (warnRisks > 0) {
-    parts.push(`${warnRisks} risk${warnRisks === 1 ? "" : "s"} trending`);
-  }
-  return `Needs attention: ${parts.join(", ")}.`;
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** One line per attention item — subject, machine reason, counts, engine detail. */
+export function attentionLine(item: AttentionItem): string {
+  const subject = item.subject
+    ? `${item.subject.kind} "${item.subject.name ?? item.subject.id}"`
+    : item.kind;
+  const counts = [
+    item.counts.failures ? plural(item.counts.failures, "failure", "failures") : null,
+    item.counts.patches ? plural(item.counts.patches, "fix", "fixes") : null,
+    item.counts.skills ? plural(item.counts.skills, "skill proposal", "skill proposals") : null,
+  ].filter((part): part is string => part !== null);
+  const tail = counts.length > 0 ? ` (${counts.join(", ")})` : "";
+  const detail = item.detail ? ` — ${item.detail}` : "";
+  return `- [${item.class}] ${subject}: ${item.reason.replace(/_/g, " ")}${tail}${detail}`;
 }
 
 const ORIGIN_TAG: Record<FailureOrigin, string> = {
@@ -634,79 +598,60 @@ const RISK_TAG: Record<RiskSignal["severity"], string> = {
 function renderDigest(
   headline: string,
   windowHours: number,
+  attention: AttentionV1,
   groups: DigestFailureGroup[],
-  patches: DigestPatch[],
-  open: OpenPatchSummary,
   risk: RiskSignal[],
 ): string {
-  if (groups.length === 0 && open.total === 0 && risk.length === 0) return headline;
-  const lines: string[] = [headline, ""];
+  if (attention.items.length === 0 && groups.length === 0 && risk.length === 0) return headline;
+  const lines: string[] = [headline];
+  if (attention.items.length > 0) {
+    lines.push("");
+    for (const item of attention.items) lines.push(attentionLine(item));
+  }
   if (risk.length > 0) {
-    lines.push("Risk signals (leading indicators):");
+    lines.push("", "Risk signals (leading indicators):");
     for (const r of risk) {
       lines.push(`${RISK_TAG[r.severity]} ${r.headline}`);
       lines.push(`   ${r.detail}`);
     }
-    lines.push("");
   }
-  for (const g of groups) {
-    const label = g.workflow_name ?? g.workflow_id ?? "(draft)";
-    const times = g.count === 1 ? "once" : `${g.count}×`;
-    lines.push(`${ORIGIN_TAG[g.origin]} ${label} — failed ${times} (last ${g.last_seen})`);
-    lines.push(`   ${g.cause}`);
-    // The group stays in the list — what broke is worth reading — but it must
-    // not read as a running incident. The line says when it recovered, so the
-    // operator does not go looking for a fault that is already fixed.
-    if (g.resolved_at) lines.push(`   last ran clean on its schedule ${g.resolved_at}`);
-  }
-  if (open.total > 0) {
-    lines.push("");
-    lines.push(`${open.total} self-healing fix${open.total === 1 ? "" : "es"} awaiting review:`);
-    for (const p of patches) {
-      const label = p.workflow_name ?? p.workflow_id ?? "(workflow)";
-      // Age rides in the tag when the patch is stuck so the operator sees which
-      // fixes have been waiting the longest without opening each one.
-      const ageTag = p.stuck ? ` · stuck ${p.age_days}d` : "";
-      lines.push(`   • ${label} [${p.classification}${ageTag}]: ${p.summary}`);
+  if (groups.length > 0) {
+    lines.push("", `Failed runs in the last ${windowHours}h, by cause:`);
+    for (const g of groups) {
+      const label = g.workflow_name ?? g.workflow_id ?? "(draft)";
+      const times = g.count === 1 ? "once" : `${g.count}×`;
+      lines.push(`${ORIGIN_TAG[g.origin]} ${label} — failed ${times} (last ${g.last_seen})`);
+      lines.push(`   ${g.cause}`);
+      // The group stays in the list — what broke is worth reading — but it must
+      // not read as a running incident. The line says when it recovered, so the
+      // operator does not go looking for a fault that is already fixed.
+      if (g.resolved_at) lines.push(`   last ran clean on its schedule ${g.resolved_at}`);
     }
-    const more = open.total - patches.length;
-    if (more > 0) lines.push(`   (+${more} more)`);
   }
-  lines.push("");
-  lines.push(`Scanned the last ${windowHours}h. Ask me to walk through any of these.`);
+  lines.push("", "Ask me to walk through any of these.");
   return lines.join("\n");
 }
 
-/** How many risk lines the compact MCP summary carries before collapsing the
- *  tail to a "+N more" count. Keeps the `instructions` string short enough to
- *  ride every initialize without bloating the handshake. */
-const MCP_SUMMARY_TOP_N = 3;
+/** How many attention lines the compact MCP summary carries before collapsing
+ *  the tail to a "+N more" count. Keeps the `instructions` string short enough
+ *  to ride every initialize without bloating the handshake. */
+export const MCP_SUMMARY_TOP_N = 10;
 
 /**
- * Compact one-paragraph health/risk summary for the MCP surface — the
- * `instructions` string handed to the client at connect, the
- * `subkit://operator/health-digest` resource body, and the `get_engine_status`
- * tail. Bounded to the top-N risks so it never bloats the handshake. Reuses
- * the same digest builder as every other surface — one source of truth.
+ * Compact attention summary for the MCP surface — the `instructions` string
+ * handed to the client at connect. Rendered from `buildAttention` for the
+ * connecting principal: the headline counts the same items `GET /v1/attention`
+ * returns, and each line is one of them. Read-only.
  */
 export async function buildOperatorHealthSummary(
   db: Db,
-  tenant_id: string,
-): Promise<{ digest: OperatorHealthDigest; text: string }> {
-  // `audit: false` — this is the incidental read-only path (MCP `initialize`
-  // instructions + `sk login`). The RISK_SIGNAL_* edge audits fire only on the
-  // deliberate operator digest reads (HTTP route, MCP resource), so a connect
-  // or login never advances the edge tracker or writes an audit row.
-  const digest = await buildOperatorHealthDigest(db, tenant_id, { audit: false });
-  if (digest.all_clear) {
-    return { digest, text: "Engine health: all clear — no failing runs, pending fixes, or risks." };
-  }
-  const parts: string[] = [digest.headline];
-  if (digest.risk.length > 0) {
-    const shown = digest.risk.slice(0, MCP_SUMMARY_TOP_N);
-    for (const r of shown) parts.push(`- [${r.severity}] ${r.headline}`);
-    const more = digest.risk.length - shown.length;
-    if (more > 0) parts.push(`- (+${more} more risk${more === 1 ? "" : "s"})`);
-  }
-  return { digest, text: parts.join("\n") };
+  principal: ResolvedPrincipal,
+): Promise<{ attention: AttentionV1; text: string }> {
+  const attention = await buildAttention(db, principal);
+  const parts: string[] = [attentionHeadline(attention)];
+  const shown = attention.items.slice(0, MCP_SUMMARY_TOP_N);
+  for (const item of shown) parts.push(attentionLine(item));
+  const more = attention.items.length - shown.length;
+  if (more > 0) parts.push(`- (+${more} more — call get_attention for the full list)`);
+  return { attention, text: parts.join("\n") };
 }
