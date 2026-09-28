@@ -88,8 +88,21 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
       await stand.visit(page, `chat/${conversation.id}`);
       const input = page.getByTestId("chat-composer-input");
       await input.waitFor();
+      // Where to answer is said in the field itself — no separate hint line
+      // repeating that a question waits.
+      const placeholder =
+        locale === "de" ? "Deine Antwort auf die Rückfrage" : "Your answer to the question";
       if (!raced) {
-        await page.getByTestId("chat-reply-hint").waitFor();
+        await page.waitForFunction(
+          (expected) =>
+            document
+              .querySelector('[data-testid="chat-composer-input"]')
+              ?.getAttribute("placeholder")
+              ?.startsWith(expected),
+          placeholder,
+        );
+        if (await page.getByTestId("chat-reply-hint").count())
+          throw new Error("A separate reply hint still repeats the waiting question");
         if (
           await page
             .getByTestId("chat-transcript")
@@ -97,6 +110,16 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
             .count()
         )
           throw new Error("A text question displays binary approval actions");
+        // "Wartet auf dich" once, amber (§2), in the header badge — not red
+        // there and amber in the list, and not repeated under the title.
+        const status = page.getByTestId("chat-status");
+        if (
+          (await status.getAttribute("data-waiting")) !== "true" ||
+          (await status.getAttribute("class"))?.includes("destructive")
+        )
+          throw new Error("The waiting badge is not the amber waiting state");
+        if (/wartet|waiting/i.test(await page.getByTestId("chat-summary").innerText()))
+          throw new Error("The summary line repeats that the conversation is waiting");
         await capture("question");
       }
       await input.fill("Blau, bitte nur vorbereiten.");
@@ -107,7 +130,14 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
       });
       if (await page.getByTestId("chat-error").isVisible())
         throw new Error("Answering a text question displayed an error");
-      await page.getByTestId("chat-reply-hint").waitFor({ state: "hidden" });
+      await page.waitForFunction(
+        (expected) =>
+          !document
+            .querySelector('[data-testid="chat-composer-input"]')
+            ?.getAttribute("placeholder")
+            ?.startsWith(expected),
+        placeholder,
+      );
     }
     if (answers !== 2 || appends !== 1)
       throw new Error(`Wrong reply routing: answers=${answers}, appends=${appends}`);

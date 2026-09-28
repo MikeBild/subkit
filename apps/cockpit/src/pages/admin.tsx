@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import {
   ArrowDown,
   ArrowUp,
@@ -11,13 +10,14 @@ import {
   SlidersHorizontal,
   Trash2,
 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, decisionsHref } from "@/app/links";
+import { absolute, chatNewHref, decisionsHref, settingsHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { AttentionList } from "@/components/cockpit/attention-list";
+import { ConfirmAction } from "@/components/cockpit/confirm-action";
 import { ContextHelp } from "@/components/cockpit/context-help";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
@@ -68,6 +68,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -77,7 +84,35 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { catalogLabel, LabelText } from "@/lib/machine-label";
 import { statusLabel } from "@/lib/status-label";
-import { permissionLabel, roleLabel, settingMetaLabel } from "@/pages/admin-model";
+import {
+  activationStatusLabel,
+  assignableRoles,
+  GRANT_RESOURCE_TYPES,
+  type GrantResourceType,
+  isGrantResourceType,
+  isPersonRole,
+  PERSON_ROLES,
+  type PersonRole,
+  permissionLabel,
+  personRefusal,
+  resourceTypeLabel,
+  roleChange,
+  roleChangeNotes,
+  roleName,
+  settingLabel,
+  settingLeafTarget,
+  settingMetaLabel,
+  settingSectionOf,
+  settingsViewFromUrl,
+} from "@/pages/admin-model";
+import {
+  deliveryState,
+  eventPatternLabel,
+  platformLabel,
+  ruleNameLabel,
+  ruleTarget,
+  workflowPatternLabel,
+} from "@/pages/notifications-model";
 import {
   componentLabelKey,
   drilldownHref,
@@ -90,6 +125,8 @@ import {
 } from "@/pages/operations-model";
 
 type Envelope<T> = { items: T[] };
+/** How long an invite issued from the people page stays redeemable. */
+const INVITE_TTL_HOURS = 24;
 type RoleName = "admin" | "member" | "enduser";
 type AccessTab = "roles" | "groups" | "grants" | "permissions";
 
@@ -254,20 +291,235 @@ function builtinRoleDescription(
   return key[role] ? t(key[role]) : fallback;
 }
 
-export function PeoplePage() {
+/** Up to this many permissions are listed by name in a role-change consequence. */
+const CONSEQUENCE_LIMIT = 6;
+
+function PermissionList({
+  permissions,
+  testId,
+}: {
+  permissions: readonly string[];
+  testId: string;
+}) {
   const { t } = useI18n();
+  const shown = permissions.slice(0, CONSEQUENCE_LIMIT);
+  const more = permissions.length - shown.length;
+  return (
+    <ul className="grid gap-0.5 pl-4 text-sm" data-testid={testId}>
+      {shown.map((permission) => (
+        <li key={permission} className="list-disc">
+          <LabelText label={permissionLabel(permission, t)} />
+        </li>
+      ))}
+      {more > 0 ? (
+        <li className="list-none text-muted-foreground">
+          {t("people.change.more", { count: String(more) })}
+        </li>
+      ) : null}
+    </ul>
+  );
+}
+
+/**
+ * What a role change does, before it is done.
+ *
+ * Where both roles can be read, the consequence is the difference itself —
+ * what the person can do afterwards that they could not, and what they lose.
+ * Where they cannot (no `rbac:read`), it falls back to what the new role is
+ * for, from the role catalogue. Either way the sentence names the person.
+ */
+function RoleChangeConsequence({
+  email,
+  from,
+  to,
+  toName: targetName,
+  fromName,
+  isSelf,
+  roles,
+}: {
+  email: string;
+  from: RoleItem | null;
+  to: RoleItem | null;
+  /** The picked role's name — known even where the role catalogue is not readable. */
+  toName: string;
+  fromName: string;
+  /** The reader is changing their own role. */
+  isSelf: boolean;
+  roles: readonly RoleItem[] | undefined;
+}) {
+  const { t } = useI18n();
+  const notes = roleChangeNotes({ from: fromName, to: targetName, isSelf });
+  const noteText = notes.map((note) => (
+    <p key={note} className="font-medium text-foreground" data-testid={`people-change-${note}`}>
+      {t(`people.change.note.${note}`)}
+    </p>
+  ));
+  const detail = (role: RoleItem | null) => ({
+    queryKey: ["admin", "role", role?.id],
+    queryFn: () => apiRequest<RoleDetail>(`/v1/rbac/roles/${encodeURIComponent(role?.id ?? "")}`),
+    enabled: Boolean(role),
+  });
+  const before = useQuery(detail(from));
+  const after = useQuery(detail(to));
+  const toName = roleName(targetName, roles, t).text;
+  if (Array.isArray(before.data?.permissions) && Array.isArray(after.data?.permissions)) {
+    const change = roleChange(before.data.permissions, after.data.permissions);
+    return (
+      <>
+        <p>{t("people.change.intro", { email, role: toName })}</p>
+        {noteText}
+        {change.gained.length > 0 ? (
+          <>
+            <p className="font-medium text-foreground">{t("people.change.gains")}</p>
+            <PermissionList permissions={change.gained} testId="people-change-gained" />
+          </>
+        ) : null}
+        {change.lost.length > 0 ? (
+          <>
+            <p className="font-medium text-foreground">{t("people.change.loses")}</p>
+            <PermissionList permissions={change.lost} testId="people-change-lost" />
+          </>
+        ) : null}
+        {change.gained.length === 0 && change.lost.length === 0 && notes.length === 0 ? (
+          <p>{t("people.change.same")}</p>
+        ) : null}
+      </>
+    );
+  }
+  const purpose = builtinRoleDescription(targetName, to?.description ?? null, t);
+  return (
+    <>
+      <p>{t("people.change.intro", { email, role: toName })}</p>
+      {noteText}
+      {purpose ? <p>{t("people.change.purpose", { purpose })}</p> : null}
+    </>
+  );
+}
+
+/**
+ * One person: which role they hold and what that role lets them do.
+ *
+ * The list answered "who is here"; nothing answered "and what can they do".
+ * The permissions are the role's, read from the engine — a person's direct
+ * grants live on the access page and are named there.
+ */
+function PersonSheet({
+  user,
+  roles,
+  onClose,
+}: {
+  user: UserItem | null;
+  roles: readonly RoleItem[] | undefined;
+  onClose(): void;
+}) {
+  const { t } = useI18n();
+  const role = user
+    ? (roles?.find((candidate) => candidate.name === user.effective_role) ?? null)
+    : null;
+  const detail = useQuery({
+    queryKey: ["admin", "role", role?.id],
+    queryFn: () => apiRequest<RoleDetail>(`/v1/rbac/roles/${encodeURIComponent(role?.id ?? "")}`),
+    enabled: Boolean(role),
+  });
+  const label = user ? roleName(user.effective_role, roles, t) : null;
+  const purpose = user
+    ? builtinRoleDescription(user.effective_role, role?.description ?? null, t)
+    : null;
+  return (
+    <Sheet open={Boolean(user)} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent
+        className="w-full overflow-y-auto sm:max-w-md"
+        closeLabel={t("common.close")}
+        closeTestId="people-sheet-close"
+        data-testid="people-sheet"
+      >
+        <SheetHeader>
+          <SheetTitle className="break-all">{user?.email}</SheetTitle>
+          <SheetDescription>{t("people.sheet.description")}</SheetDescription>
+        </SheetHeader>
+        <div className="grid gap-4 p-4">
+          <section className="grid gap-1">
+            <h3 className="text-xs font-medium text-muted-foreground">{t("people.role")}</h3>
+            <p className="text-sm font-medium" data-testid="people-sheet-role">
+              {label ? <LabelText label={label} /> : null}
+            </p>
+            {purpose ? <p className="text-sm text-muted-foreground">{purpose}</p> : null}
+          </section>
+          <section className="grid gap-2">
+            <h3 className="text-xs font-medium text-muted-foreground">
+              {t("people.sheet.permissions")}
+            </h3>
+            {!role ? (
+              <p className="text-sm text-muted-foreground" data-testid="people-sheet-unreadable">
+                {t("people.sheet.unreadable")}
+              </p>
+            ) : Array.isArray(detail.data?.permissions) ? (
+              detail.data.permissions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t("people.sheet.none")}</p>
+              ) : (
+                <ul className="grid gap-1 text-sm" data-testid="people-sheet-permissions">
+                  {[...detail.data.permissions].sort().map((permission) => (
+                    <li key={permission}>
+                      <LabelText label={permissionLabel(permission, t)} />
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : detail.error ? (
+              <p className="text-sm text-muted-foreground">{t("people.sheet.unreadable")}</p>
+            ) : (
+              <Skeleton className="h-20 w-full" />
+            )}
+            <p className="text-xs text-muted-foreground">{t("people.sheet.grantsNote")}</p>
+          </section>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/** A person-role change the reader has picked and not yet confirmed. */
+interface PendingRoleChange {
+  user: UserItem;
+  to: string;
+}
+
+export function PeoplePage() {
+  const { t, dateTime } = useI18n();
   const session = useSession();
   const client = useQueryClient();
   const canWrite = session.permissions.includes("identity:write");
+  const canReadRoles = session.permissions.includes("rbac:read");
+  // A custom role is assigned through RBAC, not through the identity API,
+  // and needs its own right. Without it the picker offers the person roles
+  // only — the ones this page can actually save.
+  const canAssignCustom = session.permissions.includes("rbac:write");
   const [createOpen, setCreateOpen] = useState(false);
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<RoleName>("member");
+  const [role, setRole] = useState<PersonRole>("member");
   const [deactivate, setDeactivate] = useState<UserItem | null>(null);
-  const [secret, setSecret] = useState<string | null>(null);
+  const [invite, setInvite] = useState<{ token: string; expiresAt: string } | null>(null);
+  const [pendingChange, setPendingChange] = useState<PendingRoleChange | null>(null);
+  const [repair, setRepair] = useState<UserItem | null>(null);
+  const [inviteFor, setInviteFor] = useState<UserItem | null>(null);
+  const [opened, setOpened] = useState<UserItem | null>(null);
   const query = useQuery({
     queryKey: ["admin", "people"],
     queryFn: () => apiRequest<Envelope<UserItem>>("/v1/identity/users?limit=200"),
   });
+  const roles = useQuery({
+    queryKey: ["admin", "roles"],
+    enabled: canReadRoles,
+    queryFn: () => apiRequest<Envelope<RoleItem>>("/v1/rbac/roles"),
+  });
+  const roleItems = roles.data?.items;
+  const choices = useMemo(() => {
+    const all = assignableRoles(roleItems ?? []);
+    const offered = canAssignCustom ? all : all.filter((item) => isPersonRole(item.name));
+    // Without the role catalogue the three person roles are still known by name.
+    return offered.length > 0 ? offered.map((item) => item.name) : [...PERSON_ROLES];
+  }, [roleItems, canAssignCustom]);
+  const roleByName = (name: string) => roleItems?.find((item) => item.name === name) ?? null;
   const refresh = () => client.invalidateQueries({ queryKey: ["admin", "people"] });
   const create = useMutation({
     mutationFn: () =>
@@ -283,16 +535,30 @@ export function PeoplePage() {
     },
   });
   const update = useMutation({
-    mutationFn: ({ id, nextRole }: { id: string; nextRole: RoleName }) =>
-      apiRequest<UserItem>(`/v1/identity/users/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ role: nextRole }),
-      }),
+    mutationFn: ({ user, to }: PendingRoleChange) => {
+      if (isPersonRole(to))
+        return apiRequest<unknown>(`/v1/identity/users/${encodeURIComponent(user.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ role: to }),
+        });
+      const target = roleByName(to);
+      if (!target) throw new Error("role not found");
+      return apiRequest<unknown>(`/v1/rbac/users/${encodeURIComponent(user.id)}/role`, {
+        method: "POST",
+        body: JSON.stringify({ role_id: target.id }),
+      });
+    },
     onSuccess: async () => {
+      setPendingChange(null);
+      setRepair(null);
       await refresh();
       toast.success(t("people.roleUpdated"));
     },
   });
+  // The engine's reason, in words, inside the dialog that asked — "the last
+  // administrator" is not a generic failure and must not read like one.
+  const refusal = (error: unknown) =>
+    error ? personRefusal(error instanceof ApiError ? error : null, t) : null;
   const remove = useMutation({
     mutationFn: (id: string) =>
       apiRequest<void>(`/v1/identity/users/${encodeURIComponent(id)}`, {
@@ -304,13 +570,18 @@ export function PeoplePage() {
       toast.success(t("people.deactivated"));
     },
   });
-  const invite = useMutation({
+  const issueInvite = useMutation({
     mutationFn: (id: string) =>
-      apiRequest<{ plaintext_token: string }>(
+      apiRequest<{ plaintext_token: string; expires_at: string }>(
         `/v1/identity/users/${encodeURIComponent(id)}/invites`,
-        { method: "POST", body: JSON.stringify({}) },
+        // The validity is set here, not left to the engine's default, so the
+        // sentence that promises it before the click is the one that holds.
+        { method: "POST", body: JSON.stringify({ ttl_minutes: INVITE_TTL_HOURS * 60 }) },
       ),
-    onSuccess: (result) => setSecret(result.plaintext_token),
+    onSuccess: (result) => {
+      setInviteFor(null);
+      setInvite({ token: result.plaintext_token, expiresAt: result.expires_at });
+    },
   });
 
   const view = queryView(query, (data) => data.items.length === 0);
@@ -344,82 +615,160 @@ export function PeoplePage() {
         <EmptyCard text={t("resource.people.empty")} testId="people-empty" />
       ) : (
         <div className="grid gap-2" data-testid="people-list">
-          {(query.data?.items ?? []).map((user, index) => (
-            <Card key={user.id} size="sm" data-testid={`people-item-${index}`}>
-              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="min-w-0 flex-1">
-                  <CardTitle className="truncate text-sm">{user.email}</CardTitle>
-                  <CardDescription className="mt-1 flex flex-wrap gap-2">
-                    <Badge variant="outline">
-                      <LabelText label={roleLabel(user.effective_role, t)} />
-                    </Badge>
-                    <Badge variant="secondary">{statusLabel(t, user.status)}</Badge>
-                    {(user.oauth_connections ?? 0) > 0 && (
-                      <Badge variant="outline" data-testid={`people-connections-${index}`}>
-                        {t("people.connections", { count: String(user.oauth_connections ?? 0) })}
-                      </Badge>
-                    )}
-                    {!user.role_consistent && (
-                      <Badge variant="destructive" data-testid={`people-role-drift-${index}`}>
-                        {t("people.roleDrift")}
-                      </Badge>
-                    )}
-                  </CardDescription>
-                </div>
-                {canWrite && (
-                  <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:w-auto sm:grid-cols-[9rem_auto_auto]">
-                    <Select
-                      value={user.effective_role}
-                      onValueChange={(value) =>
-                        update.mutate({
-                          id: user.id,
-                          nextRole: value as RoleName,
-                        })
-                      }
-                    >
-                      <SelectTrigger
-                        className="w-full"
-                        data-testid={`people-role-${index}`}
-                        aria-label={t("people.role")}
+          {(query.data?.items ?? []).map((user, index) => {
+            const options = choices.includes(user.effective_role)
+              ? choices
+              : [user.effective_role, ...choices];
+            return (
+              <Card key={user.id} size="sm" data-testid={`people-item-${index}`}>
+                <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="truncate text-sm">
+                      <button
+                        type="button"
+                        className="max-w-full truncate text-left hover:underline focus-visible:underline"
+                        onClick={() => setOpened(user)}
+                        data-testid={`people-open-${index}`}
                       >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {(["admin", "member", "enduser"] as const).map((name) => (
-                            <SelectItem
-                              key={name}
-                              value={name}
-                              data-testid={`people-role-${index}-${name}`}
-                            >
-                              <LabelText label={roleLabel(name, t)} />
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => invite.mutate(user.id)}
-                      data-testid={`people-invite-${index}`}
-                    >
-                      {t("people.invite")}
-                    </Button>
-                    <IconButton
-                      label={t("people.deactivate")}
-                      data-testid={`people-deactivate-${index}`}
-                      onClick={() => setDeactivate(user)}
-                    >
-                      <Trash2 />
-                    </IconButton>
+                        {user.email}
+                      </button>
+                    </CardTitle>
+                    <CardDescription className="mt-1 flex flex-wrap gap-2">
+                      <Badge variant="outline" data-testid={`people-role-badge-${index}`}>
+                        <LabelText label={roleName(user.effective_role, roleItems, t)} />
+                      </Badge>
+                      <Badge variant="secondary">{statusLabel(t, user.status)}</Badge>
+                      {!user.role_consistent &&
+                        (canWrite && isPersonRole(user.effective_role) ? (
+                          // Red with its way to the fix (§1): the badge IS the
+                          // action, and it says what it will do before it does it.
+                          <button
+                            type="button"
+                            onClick={() => setRepair(user)}
+                            data-testid={`people-role-drift-${index}`}
+                          >
+                            <Badge variant="destructive">{t("people.roleDriftRepair")}</Badge>
+                          </button>
+                        ) : (
+                          <Badge variant="destructive" data-testid={`people-role-drift-${index}`}>
+                            {t("people.roleDriftAskAdmin")}
+                          </Badge>
+                        ))}
+                    </CardDescription>
                   </div>
-                )}
-              </CardHeader>
-            </Card>
-          ))}
+                  {canWrite && (
+                    <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:w-auto sm:grid-cols-[11rem_auto_auto]">
+                      <Select
+                        value={user.effective_role}
+                        onValueChange={(value) => {
+                          if (value !== user.effective_role) setPendingChange({ user, to: value });
+                        }}
+                      >
+                        <SelectTrigger
+                          className="w-full"
+                          data-testid={`people-role-${index}`}
+                          aria-label={t("people.role")}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {options.map((name) => (
+                              <SelectItem
+                                key={name}
+                                value={name}
+                                data-testid={`people-role-${index}-${name}`}
+                              >
+                                <LabelText label={roleName(name, roleItems, t)} />
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setInviteFor(user)}
+                        data-testid={`people-invite-${index}`}
+                      >
+                        {t("people.invite")}
+                      </Button>
+                      <IconButton
+                        label={t("people.deactivate")}
+                        data-testid={`people-deactivate-${index}`}
+                        onClick={() => setDeactivate(user)}
+                      >
+                        <Trash2 />
+                      </IconButton>
+                    </div>
+                  )}
+                </CardHeader>
+              </Card>
+            );
+          })}
         </div>
       )}
+      <PersonSheet user={opened} roles={roleItems} onClose={() => setOpened(null)} />
+      <ConfirmAction
+        open={Boolean(pendingChange)}
+        onOpenChange={(open) => !open && setPendingChange(null)}
+        title={t("people.change.title")}
+        consequence={
+          pendingChange ? (
+            <RoleChangeConsequence
+              email={pendingChange.user.email}
+              from={roleByName(pendingChange.user.effective_role)}
+              to={roleByName(pendingChange.to)}
+              toName={pendingChange.to}
+              fromName={pendingChange.user.effective_role}
+              isSelf={pendingChange.user.id === session.principal.id}
+              roles={roleItems}
+            />
+          ) : null
+        }
+        confirmLabel={t("people.change.confirm")}
+        onConfirm={() => pendingChange && update.mutateAsync(pendingChange)}
+        error={refusal(update.error)}
+        testId="people-role-confirm"
+      />
+      <ConfirmAction
+        open={Boolean(repair)}
+        onOpenChange={(open) => !open && setRepair(null)}
+        title={t("people.repair.title")}
+        consequence={
+          repair ? (
+            <p>
+              {t("people.repair.consequence", {
+                email: repair.email,
+                role: roleName(repair.effective_role, roleItems, t).text,
+              })}
+            </p>
+          ) : null
+        }
+        confirmLabel={t("people.repair.confirm")}
+        onConfirm={() => repair && update.mutateAsync({ user: repair, to: repair.effective_role })}
+        error={refusal(update.error)}
+        testId="people-repair-confirm"
+      />
+      <ConfirmAction
+        open={Boolean(inviteFor)}
+        onOpenChange={(open) => !open && setInviteFor(null)}
+        title={t("people.invite")}
+        consequence={
+          inviteFor ? (
+            <p>
+              {t("people.inviteConsequence", {
+                email: inviteFor.email,
+                hours: String(INVITE_TTL_HOURS),
+              })}
+            </p>
+          ) : null
+        }
+        confirmLabel={t("people.invite")}
+        onConfirm={() => inviteFor && issueInvite.mutateAsync(inviteFor.id)}
+        error={refusal(issueInvite.error)}
+        testId="people-invite-confirm"
+      />
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent showCloseButton={false} data-testid="people-create-dialog">
           <DialogHeader>
@@ -439,24 +788,27 @@ export function PeoplePage() {
             </Field>
             <Field>
               <FieldLabel>{t("people.role")}</FieldLabel>
-              <Select value={role} onValueChange={(value) => setRole(value as RoleName)}>
+              <Select value={role} onValueChange={(value) => isPersonRole(value) && setRole(value)}>
                 <SelectTrigger className="w-full" data-testid="people-create-role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    {(["admin", "member", "enduser"] as const).map((name) => (
+                    {PERSON_ROLES.map((name) => (
                       <SelectItem
                         key={name}
                         value={name}
                         data-testid={`people-create-role-${name}`}
                       >
-                        <LabelText label={roleLabel(name, t)} />
+                        <LabelText label={roleName(name, roleItems, t)} />
                       </SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
+              {/* A new person starts on a person role; a custom one is given
+                  afterwards, from the list, through RBAC. */}
+              <FieldDescription>{t("people.createRoleHint")}</FieldDescription>
             </Field>
           </FieldGroup>
           <DialogFooter>
@@ -511,9 +863,13 @@ export function PeoplePage() {
         </AlertDialogContent>
       </AlertDialog>
       <SecretDialog
-        secret={secret}
-        onClose={() => setSecret(null)}
-        title={t("people.inviteReady")}
+        secret={invite?.token ?? null}
+        onClose={() => setInvite(null)}
+        title={
+          invite
+            ? t("people.inviteReadyUntil", { time: dateTime(invite.expiresAt) })
+            : t("people.inviteReady")
+        }
       />
     </AdminFrame>
   );
@@ -613,7 +969,7 @@ function AccessCollection<T extends { id?: string; name?: string; description?: 
 }
 
 export function AccessPage() {
-  const { t } = useI18n();
+  const { t, dateTime } = useI18n();
   const session = useSession();
   const client = useQueryClient();
   const canWrite = session.permissions.includes("rbac:write");
@@ -624,9 +980,15 @@ export function AccessPage() {
   const [grantOpen, setGrantOpen] = useState(false);
   const [grantSubjectType, setGrantSubjectType] = useState<"user" | "group">("user");
   const [grantSubjectId, setGrantSubjectId] = useState("");
+  const [grantResourceType, setGrantResourceType] = useState<GrantResourceType>("workflow");
   const [grantResourceId, setGrantResourceId] = useState("");
-  const [grantPermission, setGrantPermission] = useState("workflow:read");
+  const [grantPermission, setGrantPermission] = useState("");
   const [managedRole, setManagedRole] = useState<RoleItem | null>(null);
+  const [revoking, setRevoking] = useState<GrantItem | null>(null);
+  const [memberGroup, setMemberGroup] = useState<GroupItem | null>(null);
+  const [memberUserId, setMemberUserId] = useState("");
+  const [roleGroup, setRoleGroup] = useState<GroupItem | null>(null);
+  const [groupRoleId, setGroupRoleId] = useState("");
   const roles = useQuery({
     queryKey: ["admin", "roles"],
     queryFn: () => apiRequest<Envelope<RoleItem>>("/v1/rbac/roles"),
@@ -650,6 +1012,13 @@ export function AccessPage() {
   const workflows = useQuery({
     queryKey: ["admin", "workflows"],
     queryFn: () => apiRequest<Envelope<WorkflowItem>>("/v1/workflows?limit=200"),
+  });
+  const connectors = useQuery({
+    queryKey: ["admin", "connectors"],
+    queryFn: () =>
+      apiRequest<Envelope<WorkflowItem & { display_name?: string | null }>>(
+        "/v1/connectors?limit=200",
+      ),
   });
   const roleDetail = useQuery({
     queryKey: ["admin", "role", managedRole?.id],
@@ -682,7 +1051,11 @@ export function AccessPage() {
       apiRequest<void>(`/v1/rbac/grants/${encodeURIComponent(id)}`, {
         method: "DELETE",
       }),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["admin", "grants"] }),
+    onSuccess: async () => {
+      setRevoking(null);
+      await client.invalidateQueries({ queryKey: ["admin", "grants"] });
+      toast.success(t("access.grantRevoked"));
+    },
   });
   const createGrant = useMutation({
     mutationFn: () =>
@@ -691,7 +1064,7 @@ export function AccessPage() {
         body: JSON.stringify({
           subject_type: grantSubjectType,
           subject_id: grantSubjectId,
-          resource_type: "workflow",
+          resource_type: grantResourceType,
           resource_id: grantResourceId,
           permission: grantPermission,
         }),
@@ -700,6 +1073,30 @@ export function AccessPage() {
       setGrantOpen(false);
       await client.invalidateQueries({ queryKey: ["admin", "grants"] });
       toast.success(t("access.grantCreated"));
+    },
+  });
+  const addMember = useMutation({
+    mutationFn: () =>
+      apiRequest(
+        `/v1/rbac/groups/${encodeURIComponent(memberGroup?.id ?? "")}/members/${encodeURIComponent(memberUserId)}`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      setMemberGroup(null);
+      setMemberUserId("");
+      toast.success(t("access.memberAdded"));
+    },
+  });
+  const assignGroupRole = useMutation({
+    mutationFn: () =>
+      apiRequest(
+        `/v1/rbac/groups/${encodeURIComponent(roleGroup?.id ?? "")}/roles/${encodeURIComponent(groupRoleId)}`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      setRoleGroup(null);
+      setGroupRoleId("");
+      toast.success(t("access.groupRoleAssigned"));
     },
   });
   const changeRolePermission = useMutation({
@@ -718,19 +1115,36 @@ export function AccessPage() {
   });
   const subjectItems =
     grantSubjectType === "user" ? (people.data?.items ?? []) : (groups.data?.items ?? []);
+  // A grant names a person or group and one record. Where the name cannot be
+  // resolved the kind is said instead — never the id, which says nothing a
+  // reader can act on.
   const subjectName = (grant: GrantItem) => {
     if (grant.subject_type === "user")
       return (
         people.data?.items.find((item) => item.id === grant.subject_id)?.email ?? t("access.person")
       );
-    return (
-      groups.data?.items.find((item) => item.id === grant.subject_id)?.name ?? t("access.group")
+    if (grant.subject_type === "group")
+      return (
+        groups.data?.items.find((item) => item.id === grant.subject_id)?.name ?? t("access.group")
+      );
+    return t("access.systemAccount");
+  };
+  const resourceChoices = (type: GrantResourceType) =>
+    (type === "workflow" ? workflows.data?.items : connectors.data?.items) ?? [];
+  const recordName = (item: WorkflowItem & { display_name?: string | null }) =>
+    item.display_name || item.name || item.slug || null;
+  const resourceName = (grant: GrantItem) => {
+    const kind = resourceTypeLabel(grant.resource_type, t).text;
+    if (!isGrantResourceType(grant.resource_type)) return kind;
+    const record = resourceChoices(grant.resource_type).find(
+      (item) => item.id === grant.resource_id,
     );
+    const name = record ? recordName(record) : null;
+    return name ? t("access.grantResource", { kind, name }) : kind;
   };
-  const workflowName = (grant: GrantItem) => {
-    const workflow = workflows.data?.items.find((item) => item.id === grant.resource_id);
-    return workflow?.name || workflow?.slug || t("access.workflow");
-  };
+  const grantPermissions = (permissions.data?.items ?? []).filter(
+    (permission) => permission.resource_type === grantResourceType,
+  );
   return (
     <AdminFrame
       testId="admin-access"
@@ -801,8 +1215,8 @@ export function AccessPage() {
               <Card key={role.id} size="sm" data-testid={`roles-list-${index}`}>
                 <CardHeader>
                   <div className="flex items-center gap-2">
-                    <CardTitle>
-                      <LabelText label={roleLabel(role.name, t)} />
+                    <CardTitle data-testid={`roles-list-${index}-name`}>
+                      <LabelText label={roleName(role.name, roles.data?.items, t)} />
                     </CardTitle>
                     {role.is_builtin && <Badge variant="secondary">{t("access.builtin")}</Badge>}
                   </div>
@@ -846,7 +1260,41 @@ export function AccessPage() {
             items={groups.data?.items ?? []}
             failedTitle={t("resource.loadFailed", { resource: t("access.groups") })}
             empty={t("access.noGroups")}
+            render={(group, index) => (
+              <Card key={group.id} size="sm" data-testid={`groups-list-${index}`}>
+                <CardHeader>
+                  <CardTitle>{group.name}</CardTitle>
+                  {group.description && <CardDescription>{group.description}</CardDescription>}
+                  {canWrite && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setMemberGroup(group)}
+                        data-testid={`group-add-member-${index}`}
+                      >
+                        {t("access.addMember")}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setRoleGroup(group)}
+                        data-testid={`group-assign-role-${index}`}
+                      >
+                        {t("access.assignGroupRole")}
+                      </Button>
+                    </div>
+                  )}
+                </CardHeader>
+              </Card>
+            )}
           />
+          {/* The engine adds and removes members but has no way to list them.
+              Said once, so an empty-looking group is not read as a group
+              without members. */}
+          <p className="text-xs text-muted-foreground" data-testid="groups-members-note">
+            {t("access.membersNotListed")}
+          </p>
         </TabsContent>
         <TabsContent value="grants" className="pt-4">
           <div className="mb-4 flex justify-end">
@@ -875,14 +1323,17 @@ export function AccessPage() {
                       <LabelText label={permissionLabel(grant.permission, t)} />
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {subjectName(grant)} · {workflowName(grant)} · {grant.permission}
+                      {subjectName(grant)} · {resourceName(grant)} ·{" "}
+                      {grant.expires_at
+                        ? t("access.grantExpires", { time: dateTime(grant.expires_at) })
+                        : t("access.grantNoExpiry")}
                     </p>
                   </div>
                   {canWrite && (
                     <IconButton
                       label={t("access.revokeGrant")}
                       data-testid={`grant-revoke-${index}`}
-                      onClick={() => revokeGrant.mutate(grant.id)}
+                      onClick={() => setRevoking(grant)}
                     >
                       <Trash2 />
                     </IconButton>
@@ -965,7 +1416,7 @@ export function AccessPage() {
         <DialogContent showCloseButton={false} data-testid="grant-create-dialog">
           <DialogHeader>
             <DialogTitle>{t("access.createGrant")}</DialogTitle>
-            <DialogDescription>{t("access.grantDescription")}</DialogDescription>
+            <DialogDescription>{t("access.grantDescriptionTyped")}</DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <Field>
@@ -1014,20 +1465,53 @@ export function AccessPage() {
               </Select>
             </Field>
             <Field>
-              <FieldLabel>{t("access.workflow")}</FieldLabel>
-              <Select value={grantResourceId} onValueChange={setGrantResourceId}>
-                <SelectTrigger className="w-full" data-testid="grant-workflow">
-                  <SelectValue placeholder={t("access.chooseWorkflow")} />
+              <FieldLabel>{t("access.resourceType")}</FieldLabel>
+              <Select
+                value={grantResourceType}
+                onValueChange={(value) => {
+                  if (!isGrantResourceType(value)) return;
+                  // A permission belongs to one kind of record; carrying the
+                  // workflow's choice over to a connector would send a grant
+                  // the engine cannot check.
+                  setGrantResourceType(value);
+                  setGrantResourceId("");
+                  setGrantPermission("");
+                }}
+              >
+                <SelectTrigger className="w-full" data-testid="grant-resource-type">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    {(workflows.data?.items ?? []).map((workflow, index) => (
+                    {GRANT_RESOURCE_TYPES.map((type) => (
                       <SelectItem
-                        key={workflow.id}
-                        value={workflow.id}
-                        data-testid={`grant-workflow-${index}`}
+                        key={type}
+                        value={type}
+                        data-testid={`grant-resource-type-${type}`}
                       >
-                        {workflow.name || workflow.slug || t("access.workflow")}
+                        <LabelText label={resourceTypeLabel(type, t)} />
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <FieldDescription>{t("access.grantTypesNote")}</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel>{t("access.grantRecord")}</FieldLabel>
+              <Select value={grantResourceId} onValueChange={setGrantResourceId}>
+                <SelectTrigger className="w-full" data-testid="grant-resource">
+                  <SelectValue placeholder={t("access.chooseRecord")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {resourceChoices(grantResourceType).map((record, index) => (
+                      <SelectItem
+                        key={record.id}
+                        value={record.id}
+                        data-testid={`grant-resource-${index}`}
+                      >
+                        {recordName(record) ?? resourceTypeLabel(grantResourceType, t).text}
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -1038,21 +1522,19 @@ export function AccessPage() {
               <FieldLabel>{t("access.permissions")}</FieldLabel>
               <Select value={grantPermission} onValueChange={setGrantPermission}>
                 <SelectTrigger className="w-full" data-testid="grant-permission">
-                  <SelectValue />
+                  <SelectValue placeholder={t("access.choosePermission")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    {(permissions.data?.items ?? [])
-                      .filter((permission) => permission.resource_type === "workflow")
-                      .map((permission, index) => (
-                        <SelectItem
-                          key={permission.name}
-                          value={permission.name}
-                          data-testid={`grant-permission-${index}`}
-                        >
-                          <LabelText label={permissionLabel(permission.name, t)} />
-                        </SelectItem>
-                      ))}
+                    {grantPermissions.map((permission, index) => (
+                      <SelectItem
+                        key={permission.name}
+                        value={permission.name}
+                        data-testid={`grant-permission-${index}`}
+                      >
+                        <LabelText label={permissionLabel(permission.name, t)} />
+                      </SelectItem>
+                    ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -1086,7 +1568,9 @@ export function AccessPage() {
         >
           <DialogHeader>
             <DialogTitle>{t("access.managePermissions")}</DialogTitle>
-            <DialogDescription>{managedRole?.name}</DialogDescription>
+            <DialogDescription>
+              {managedRole ? roleName(managedRole.name, roles.data?.items, t).text : null}
+            </DialogDescription>
           </DialogHeader>
           <div
             className="flex max-h-96 flex-col gap-2 overflow-y-auto"
@@ -1122,6 +1606,146 @@ export function AccessPage() {
           <DialogFooter>
             <Button onClick={() => setManagedRole(null)} data-testid="role-permissions-done">
               {t("common.done")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <ConfirmAction
+        open={Boolean(revoking)}
+        onOpenChange={(open) => !open && setRevoking(null)}
+        title={t("access.revokeGrant")}
+        consequence={
+          revoking ? (
+            <p>
+              {t("access.revokeConsequence", {
+                subject: subjectName(revoking),
+                permission: permissionLabel(revoking.permission, t).text,
+                resource: resourceName(revoking),
+              })}
+            </p>
+          ) : null
+        }
+        confirmLabel={t("access.revokeGrant")}
+        tone="destructive"
+        onConfirm={() => revoking && revokeGrant.mutateAsync(revoking.id)}
+        error={
+          revokeGrant.error
+            ? t("access.revokeFailed", {
+                reason:
+                  revokeGrant.error instanceof ApiError
+                    ? revokeGrant.error.message
+                    : t("resource.loadFailedDescription"),
+              })
+            : null
+        }
+        testId="grant-revoke-confirm"
+      />
+      <Dialog
+        open={Boolean(memberGroup)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setMemberGroup(null);
+            setMemberUserId("");
+          }
+        }}
+      >
+        <DialogContent showCloseButton={false} data-testid="group-member-dialog">
+          <DialogHeader>
+            <DialogTitle>{t("access.addMember")}</DialogTitle>
+            <DialogDescription>
+              {t("access.addMemberConsequence", { group: memberGroup?.name ?? "" })}
+            </DialogDescription>
+          </DialogHeader>
+          <Field>
+            <FieldLabel>{t("access.person")}</FieldLabel>
+            <Select value={memberUserId} onValueChange={setMemberUserId}>
+              <SelectTrigger className="w-full" data-testid="group-member-person">
+                <SelectValue placeholder={t("access.choosePerson")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {(people.data?.items ?? []).map((person, index) => (
+                    <SelectItem
+                      key={person.id}
+                      value={person.id}
+                      data-testid={`group-member-person-${index}`}
+                    >
+                      {person.email}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setMemberGroup(null)}
+              data-testid="group-member-cancel"
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={!memberUserId || addMember.isPending}
+              onClick={() => addMember.mutate()}
+              data-testid="group-member-submit"
+            >
+              {t("access.addMember")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(roleGroup)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRoleGroup(null);
+            setGroupRoleId("");
+          }
+        }}
+      >
+        <DialogContent showCloseButton={false} data-testid="group-role-dialog">
+          <DialogHeader>
+            <DialogTitle>{t("access.assignGroupRole")}</DialogTitle>
+            <DialogDescription>
+              {t("access.assignGroupRoleConsequence", { group: roleGroup?.name ?? "" })}
+            </DialogDescription>
+          </DialogHeader>
+          <Field>
+            <FieldLabel>{t("people.role")}</FieldLabel>
+            <Select value={groupRoleId} onValueChange={setGroupRoleId}>
+              <SelectTrigger className="w-full" data-testid="group-role-select">
+                <SelectValue placeholder={t("access.chooseRole")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {assignableRoles(roles.data?.items ?? []).map((role, index) => (
+                    <SelectItem
+                      key={role.id}
+                      value={role.id}
+                      data-testid={`group-role-select-${index}`}
+                    >
+                      <LabelText label={roleName(role.name, roles.data?.items, t)} />
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRoleGroup(null)}
+              data-testid="group-role-cancel"
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={!groupRoleId || assignGroupRole.isPending}
+              onClick={() => assignGroupRole.mutate()}
+              data-testid="group-role-submit"
+            >
+              {t("access.assignGroupRole")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1361,6 +1985,7 @@ interface NotificationRuleItem {
   event_pattern: string;
   workflow_pattern: string;
   severity: string;
+  target_workspace_id?: string;
   target_channel_id: string;
   active: boolean;
 }
@@ -1368,18 +1993,15 @@ interface NotificationRuleItem {
 interface NotificationChannelItem {
   id: string;
   platform: string;
+  workspace_id?: string;
   channel_id: string;
   default_severity: string;
   rate_limit_per_minute: number;
   circuit_state: string;
+  circuit_open_until?: string | null;
+  consecutive_failures?: number;
   active: boolean;
 }
-
-const CIRCUIT_LABEL: Readonly<Record<string, TranslationKey>> = {
-  closed: "notifications.circuit.closed",
-  open: "notifications.circuit.open",
-  half_open: "notifications.circuit.halfOpen",
-};
 
 const SEVERITY_LABEL: Readonly<Record<string, TranslationKey>> = {
   debug: "notifications.severity.debug",
@@ -1397,7 +2019,28 @@ const SEVERITY_LABEL: Readonly<Record<string, TranslationKey>> = {
  * "unknown" (§2), and the shared helper is allowed to fall through to it.
  */
 export function NotificationsPage() {
-  const { t } = useI18n();
+  const { t, dateTime } = useI18n();
+  const session = useSession();
+  const client = useQueryClient();
+  const canWrite = session.permissions.includes("notification:write");
+  const resume = useMutation({
+    mutationFn: (id: string) =>
+      apiRequest(`/v1/notifications/channels/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ active: true }),
+      }),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ["admin", "notification-channels"] });
+      toast.success(t("notifications.resumed"));
+    },
+    onError: (error) =>
+      toast.error(
+        t("notifications.resumeFailed", {
+          reason: error instanceof ApiError ? error.message : t("resource.loadFailedDescription"),
+        }),
+      ),
+  });
+  const now = Date.now();
   const rules = useQuery({
     queryKey: ["admin", "notification-rules"],
     queryFn: () => apiRequest<Envelope<NotificationRuleItem>>("/v1/notifications/rules"),
@@ -1444,9 +2087,12 @@ export function NotificationsPage() {
           </EmptyHeader>
           <EmptyContent>
             <Button asChild variant="outline">
-              <Link to="/chat" data-testid="notifications-empty-setup">
+              <a
+                href={absolute(chatNewHref({ prompt: t("notifications.setupPrompt") }))}
+                data-testid="notifications-empty-setup"
+              >
                 {t("notifications.emptySetup")}
-              </Link>
+              </a>
             </Button>
           </EmptyContent>
         </Empty>
@@ -1463,29 +2109,42 @@ export function NotificationsPage() {
                   {t("notifications.noRules")}
                 </p>
               ) : (
-                ruleItems.map((rule, index) => (
-                  <div
-                    key={rule.id}
-                    className="rounded-lg border p-3"
-                    data-testid={`notifications-rule-${index}`}
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="min-w-0 font-medium break-words">{rule.name}</p>
-                      <Badge variant={rule.active ? "secondary" : "outline"}>
-                        {t(rule.active ? "notifications.active" : "notifications.paused")}
-                      </Badge>
-                      <Badge variant="outline">
-                        {word(SEVERITY_LABEL, rule.severity, rule.severity)}
-                      </Badge>
+                ruleItems.map((rule, index) => {
+                  const target = ruleTarget(rule, channelItems);
+                  return (
+                    <div
+                      key={rule.id}
+                      className="rounded-lg border p-3"
+                      data-testid={`notifications-rule-${index}`}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="min-w-0 font-medium break-words">{ruleNameLabel(rule, t)}</p>
+                        <Badge variant={rule.active ? "secondary" : "outline"}>
+                          {t(rule.active ? "notifications.active" : "notifications.paused")}
+                        </Badge>
+                        <Badge variant="outline">
+                          {word(SEVERITY_LABEL, rule.severity, rule.severity)}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground break-words">
+                        <LabelText label={eventPatternLabel(rule.event_pattern, t)} /> ·{" "}
+                        <LabelText label={workflowPatternLabel(rule.workflow_pattern, t)} />
+                      </p>
+                      <p
+                        className="mt-1 text-sm text-muted-foreground break-words"
+                        data-testid={`notifications-rule-${index}-target`}
+                      >
+                        {target.kind === "inbox"
+                          ? t("notifications.target.inbox")
+                          : target.kind === "channel"
+                            ? t("notifications.target.channel", {
+                                channel: platformLabel(target.channel.platform, t).text,
+                              })
+                            : t("notifications.target.pending")}
+                      </p>
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground break-words">
-                      {t("notifications.ruleMatch", {
-                        events: rule.event_pattern,
-                        workflows: rule.workflow_pattern || "*",
-                      })}
-                    </p>
-                  </div>
-                ))
+                  );
+                })
               )}
             </CardContent>
           </Card>
@@ -1504,39 +2163,85 @@ export function NotificationsPage() {
                   {t("notifications.noChannels")}
                 </p>
               ) : (
-                channelItems.map((channel, index) => (
-                  <div
-                    key={channel.id}
-                    className="rounded-lg border p-3"
-                    data-testid={`notifications-channel-${index}`}
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="min-w-0 font-medium break-words">{channel.platform}</p>
-                      <Badge variant={channel.active ? "secondary" : "outline"}>
-                        {t(channel.active ? "notifications.active" : "notifications.paused")}
-                      </Badge>
-                      <Badge
-                        variant={channel.circuit_state === "closed" ? "outline" : "destructive"}
-                      >
-                        {word(
-                          CIRCUIT_LABEL,
-                          channel.circuit_state,
-                          t("notifications.circuit.open"),
-                        )}
-                      </Badge>
+                channelItems.map((channel, index) => {
+                  const delivery = deliveryState(channel, now);
+                  return (
+                    <div
+                      key={channel.id}
+                      className="rounded-lg border p-3"
+                      data-testid={`notifications-channel-${index}`}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="min-w-0 font-medium break-words">
+                          <LabelText label={platformLabel(channel.platform, t)} />
+                        </p>
+                        <Badge variant={channel.active ? "secondary" : "outline"}>
+                          {t(channel.active ? "notifications.active" : "notifications.paused")}
+                        </Badge>
+                        {/* Only a running cool-down is red: that is the one phase
+                          in which events are skipped. Anything this build has
+                          no word for is the engine's own, neutral. */}
+                        <Badge
+                          variant={delivery.kind === "suspended" ? "destructive" : "outline"}
+                          data-testid={`notifications-channel-${index}-delivery`}
+                        >
+                          {delivery.kind === "machine" ? (
+                            <LabelText label={{ text: delivery.value, machine: true }} />
+                          ) : (
+                            t(
+                              delivery.kind === "delivering"
+                                ? "notifications.circuit.closed"
+                                : delivery.kind === "retrying"
+                                  ? "notifications.circuit.halfOpen"
+                                  : "notifications.circuit.open",
+                            )
+                          )}
+                        </Badge>
+                      </div>
+                      {delivery.kind === "suspended" ? (
+                        <p
+                          className="mt-1 text-sm break-words"
+                          data-testid={`notifications-channel-${index}-cause`}
+                        >
+                          {t("notifications.suspendedCause", {
+                            count: String(delivery.failures),
+                          })}{" "}
+                          {delivery.until
+                            ? t("notifications.suspendedUntil", { time: dateTime(delivery.until) })
+                            : t("notifications.suspendedRetry")}
+                        </p>
+                      ) : null}
+                      {!channel.active ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <p className="text-sm text-muted-foreground">
+                            {t("notifications.pausedCause")}
+                          </p>
+                          {canWrite ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={resume.isPending}
+                              onClick={() => resume.mutate(channel.id)}
+                              data-testid={`notifications-channel-${index}-resume`}
+                            >
+                              {t("notifications.resume")}
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <p className="mt-1 text-sm text-muted-foreground break-words">
+                        {t("notifications.channelLimit", {
+                          severity: word(
+                            SEVERITY_LABEL,
+                            channel.default_severity,
+                            channel.default_severity,
+                          ),
+                          limit: String(channel.rate_limit_per_minute),
+                        })}
+                      </p>
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground break-words">
-                      {t("notifications.channelLimit", {
-                        severity: word(
-                          SEVERITY_LABEL,
-                          channel.default_severity,
-                          channel.default_severity,
-                        ),
-                        limit: String(channel.rate_limit_per_minute),
-                      })}
-                    </p>
-                  </div>
-                ))
+                  );
+                })
               )}
             </CardContent>
           </Card>
@@ -1579,75 +2284,6 @@ function settingSection(path: string, t: ReturnType<typeof useI18n>["t"]): strin
   const section = path.split(".")[0] ?? "";
   const key = SETTING_SECTION_KEYS[section];
   return key ? t(key) : t("settings.section.other");
-}
-
-function settingLabel(path: string, t: ReturnType<typeof useI18n>["t"]): string {
-  const lower = path.toLowerCase();
-  const provider = [
-    "anthropic",
-    "openai",
-    "gemini",
-    "azure",
-    "bedrock",
-    "vertex",
-    "ai_gateway",
-  ].find((name) => lower.includes(`.${name}.`));
-  const providerLabels: Readonly<Record<string, string>> = {
-    ai_gateway: "AI Gateway",
-    anthropic: "Anthropic",
-    azure: "Azure",
-    bedrock: "Amazon Bedrock",
-    gemini: "Gemini",
-    openai: "OpenAI",
-    vertex: "Google Vertex AI",
-  };
-  const providerLabel = provider ? providerLabels[provider] : null;
-  const key = lower.includes("enabled")
-    ? "settings.label.enabled"
-    : lower.includes("model")
-      ? "settings.label.model"
-      : lower.includes("provider")
-        ? "settings.label.provider"
-        : lower.includes("key") || lower.includes("secret") || lower.includes("password")
-          ? "settings.label.secret"
-          : lower.includes("endpoint")
-            ? "settings.label.endpoint"
-            : lower.includes("url")
-              ? "settings.label.url"
-              : lower.includes("timeout") || lower.endsWith("_ms")
-                ? "settings.label.timeout"
-                : lower.includes("ttl")
-                  ? "settings.label.ttl"
-                  : lower.includes("threshold") ||
-                      lower.includes("_pct") ||
-                      lower.includes("fraction")
-                    ? "settings.label.threshold"
-                    : lower.includes("max_") || lower.includes("cap") || lower.includes("limit")
-                      ? "settings.label.limit"
-                      : lower.includes("format")
-                        ? "settings.label.format"
-                        : lower.includes("level")
-                          ? "settings.label.level"
-                          : lower.includes("mode")
-                            ? "settings.label.mode"
-                            : lower.includes("region") || lower.includes("location")
-                              ? "settings.label.region"
-                              : lower.includes("bucket")
-                                ? "settings.label.bucket"
-                                : lower.includes("port")
-                                  ? "settings.label.port"
-                                  : lower.includes("concurrency")
-                                    ? "settings.label.concurrency"
-                                    : lower.includes("retention")
-                                      ? "settings.label.retention"
-                                      : lower.includes("budget")
-                                        ? "settings.label.budget"
-                                        : lower.includes("theme")
-                                          ? "settings.label.theme"
-                                          : "settings.label.value";
-  return providerLabel
-    ? t("settings.providerLabel", { provider: providerLabel, label: t(key) })
-    : t(key);
 }
 
 function authProvidersFrom(value: unknown): AuthProviderSetting[] {
@@ -1773,14 +2409,32 @@ function AuthProvidersEditor({
               >
                 <ArrowDown />
               </IconButton>
-              <IconButton
-                label={t("settings.auth.remove")}
-                data-testid={`settings-auth-provider-${index}-remove`}
-                disabled={disabled || value.length === 1}
-                onClick={() => onChange(value.filter((_, currentIndex) => currentIndex !== index))}
-              >
-                <Trash2 />
-              </IconButton>
+              <ConfirmAction
+                title={t("settings.auth.removeTitle", {
+                  provider: provider.label || t("settings.auth.unnamedProvider"),
+                })}
+                consequence={
+                  <>
+                    <p>{t("settings.auth.removeConsequence")}</p>
+                    <p>{t("settings.auth.removeLockout")}</p>
+                  </>
+                }
+                confirmLabel={t("settings.auth.remove")}
+                tone="destructive"
+                onConfirm={() =>
+                  onChange(value.filter((_, currentIndex) => currentIndex !== index))
+                }
+                testId={`settings-auth-provider-${index}-remove-confirm`}
+                trigger={
+                  <IconButton
+                    label={t("settings.auth.remove")}
+                    data-testid={`settings-auth-provider-${index}-remove`}
+                    disabled={disabled || value.length === 1}
+                  >
+                    <Trash2 />
+                  </IconButton>
+                }
+              />
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1868,10 +2522,18 @@ export function SettingsPage() {
   const session = useSession();
   const client = useQueryClient();
   const canWrite = session.permissions.includes("settings:write");
-  const [search, setSearch] = useState("");
+  // The view lives in the address: a reload, a shared link and the J5 link
+  // from the usage page all land on the same tab, search and field.
+  const [linked] = useState(() => settingsViewFromUrl(window.location.search));
+  const [leaf, setLeaf] = useState(linked.leaf);
+  const [search, setSearch] = useState(linked.leaf ? "" : linked.q);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [restartSetting, setRestartSetting] = useState<SettingItem | null>(null);
-  const [activeSection, setActiveSection] = useState("");
+  const [activeSection, setActiveSection] = useState(
+    linked.leaf ? settingSectionOf(linked.leaf) : (linked.section ?? ""),
+  );
+  const [leafMissing, setLeafMissing] = useState(false);
+  const focused = useRef(false);
   const query = useQuery({
     queryKey: ["admin", "settings"],
     queryFn: () => apiRequest<SettingsResponse>("/v1/settings"),
@@ -1890,10 +2552,11 @@ export function SettingsPage() {
         if (!needle) return true;
         return (
           item.path.toLowerCase().includes(needle) ||
-          item.meta.description?.toLowerCase().includes(needle)
+          item.meta.description?.toLowerCase().includes(needle) ||
+          settingLabel(item.path, t).text.toLowerCase().includes(needle)
         );
       }),
-    [allItems, search],
+    [allItems, search, t],
   );
   const changedItems = useMemo(
     () => allItems.filter((item) => Object.hasOwn(drafts, item.path)),
@@ -1911,7 +2574,47 @@ export function SettingsPage() {
     ? activeSection
     : (sections[0]?.[0] ?? "");
   const selectedItems = sections.find(([section]) => section === selectedSection)?.[1] ?? [];
-  const pendingRestartCount = query.data?.pending_restart_fields.length ?? 0;
+  const pendingRestartFields = query.data?.pending_restart_fields ?? [];
+  const pendingRestartCount = pendingRestartFields.length;
+  const restartItems = changedItems.filter((item) => item.meta.requiresRestart);
+  useEffect(() => {
+    const href = absolute(
+      settingsHref(leaf, {
+        section: leaf ? null : activeSection || null,
+        q: leaf ? null : search.trim() || null,
+      }),
+    );
+    if (`${window.location.pathname}${window.location.search}` !== href)
+      window.history.replaceState(window.history.state, "", href);
+  }, [leaf, activeSection, search]);
+  // Once the list is on screen: open the linked leaf's field, scroll to it and
+  // put the cursor in it. Once — a later refetch must not pull focus back.
+  useEffect(() => {
+    if (focused.current || !leaf || !query.data) return;
+    focused.current = true;
+    // A group path (`llm.providers.anthropic`) opens its tab at its first
+    // setting; only a path nothing lives under is "no such setting".
+    const target = settingLeafTarget(
+      allItems.map((item) => item.path),
+      leaf,
+    );
+    if (!target) {
+      setLeafMissing(true);
+      return;
+    }
+    const index = target.index;
+    requestAnimationFrame(() => {
+      // The field itself where it has one; a composite editor (the auth
+      // providers) has none, so its first control takes the cursor.
+      const item = document.querySelector<HTMLElement>(`[data-testid="setting-item-${index}"]`);
+      const field =
+        document.getElementById(`setting-${index}`) ??
+        item?.querySelector<HTMLElement>("input, button, select, textarea") ??
+        null;
+      (item ?? field)?.scrollIntoView({ block: "center" });
+      field?.focus();
+    });
+  }, [leaf, query.data, allItems]);
   const save = useMutation({
     mutationFn: async ({
       items: pending,
@@ -1950,7 +2653,10 @@ export function SettingsPage() {
         <Input
           className="sm:max-w-sm"
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => {
+            setLeaf(null);
+            setSearch(event.target.value);
+          }}
           placeholder={t("settings.search")}
           data-testid="settings-search"
         />
@@ -2025,14 +2731,13 @@ export function SettingsPage() {
                       pendingRestartCount > 0 ? "border-border bg-muted text-foreground" : undefined
                     }
                   >
-                    {pendingRestartCount > 0
-                      ? t("settings.status.pending", {
-                          count: pendingRestartCount,
-                        })
-                      : (query.data?.activation_status ?? t("settings.status.active")).replaceAll(
-                          "_",
-                          " ",
-                        )}
+                    {pendingRestartCount > 0 ? (
+                      t("settings.status.pending", {
+                        count: pendingRestartCount,
+                      })
+                    ) : (
+                      <LabelText label={activationStatusLabel(query.data?.activation_status, t)} />
+                    )}
                   </Badge>
                 </dd>
                 <p className="text-xs text-muted-foreground">
@@ -2040,14 +2745,49 @@ export function SettingsPage() {
                     ? t("settings.status.pendingDescription")
                     : t("settings.status.activeDescription")}
                 </p>
+                {pendingRestartCount > 0 ? (
+                  <ul className="grid gap-0.5 text-xs" data-testid="settings-pending-restart">
+                    {pendingRestartFields.map((path) => (
+                      <li key={path}>
+                        <a
+                          className="underline-offset-2 hover:underline"
+                          href={absolute(settingsHref(path))}
+                          data-testid="settings-pending-restart-link"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            focused.current = false;
+                            setSearch("");
+                            setLeafMissing(false);
+                            setActiveSection(settingSectionOf(path));
+                            setLeaf(path);
+                          }}
+                        >
+                          {settingLabel(path, t).text}{" "}
+                          <span className="font-mono text-muted-foreground">{path}</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
             </dl>
           </section>
 
+          {leafMissing && leaf ? (
+            <p className="text-sm text-muted-foreground" data-testid="settings-leaf-missing">
+              {t("settings.leafMissing", { path: leaf })}
+            </p>
+          ) : null}
           {sections.length === 0 ? (
             <EmptyCard text={t("settings.noMatches")} testId="settings-no-matches" />
           ) : (
-            <Tabs value={selectedSection} onValueChange={setActiveSection}>
+            <Tabs
+              value={selectedSection}
+              onValueChange={(section) => {
+                setLeaf(null);
+                setActiveSection(section);
+              }}
+            >
               <div className="overflow-x-auto border-b" data-testid="settings-categories">
                 <TabsList variant="line" className="h-10 w-max min-w-full justify-start gap-4 p-0">
                   {sections.map(([section, sectionItems], sectionIndex) => (
@@ -2095,6 +2835,11 @@ export function SettingsPage() {
                                   <span className="mt-1 block truncate font-mono text-xs font-normal text-muted-foreground">
                                     {item.path}
                                   </span>
+                                  {item.meta.description ? (
+                                    <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                                      {item.meta.description}
+                                    </span>
+                                  ) : null}
                                 </span>
                                 <ContextHelp
                                   label={t("settings.about", {
@@ -2150,14 +2895,24 @@ export function SettingsPage() {
                               htmlFor={`setting-${index}`}
                             >
                               <span className="min-w-0">
-                                <span className="block truncate">{settingLabel(item.path, t)}</span>
+                                <span className="block truncate">
+                                  <LabelText label={settingLabel(item.path, t)} />
+                                </span>
                                 <span className="mt-1 block truncate font-mono text-xs font-normal text-muted-foreground">
                                   {item.path}
                                 </span>
+                                {item.meta.description ? (
+                                  <span
+                                    className="mt-1 block text-xs font-normal text-muted-foreground"
+                                    data-testid={`setting-description-${index}`}
+                                  >
+                                    {item.meta.description}
+                                  </span>
+                                ) : null}
                               </span>
                               <ContextHelp
                                 label={t("settings.about", {
-                                  setting: settingLabel(item.path, t),
+                                  setting: settingLabel(item.path, t).text,
                                 })}
                                 testId={`setting-help-${index}`}
                               >
@@ -2180,7 +2935,7 @@ export function SettingsPage() {
                                     }))
                                   }
                                   disabled={!canWrite || save.isPending}
-                                  aria-label={settingLabel(item.path, t)}
+                                  aria-label={settingLabel(item.path, t).text}
                                   data-testid={`setting-input-${index}`}
                                 />
                               ) : (
@@ -2283,7 +3038,20 @@ export function SettingsPage() {
         <AlertDialogContent data-testid="settings-restart-dialog">
           <AlertDialogHeader>
             <AlertDialogTitle>{t("settings.restartTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("settings.restartDescription")}</AlertDialogDescription>
+            <AlertDialogDescription asChild>
+              <div className="grid gap-2" data-testid="settings-restart-description">
+                <p>{t("settings.restartDescription")}</p>
+                <ul className="grid gap-0.5 pl-4">
+                  {restartItems.map((item) => (
+                    <li key={item.path} className="list-disc">
+                      {settingLabel(item.path, t).text}{" "}
+                      <span className="font-mono text-xs">{item.path}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p>{t("settings.restartWho")}</p>
+              </div>
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="settings-restart-cancel">

@@ -254,3 +254,26 @@ export function windowCost(envelope: unknown): WindowCost | null {
     unpricedCalls,
   };
 }
+
+/**
+ * A workflow id on the usage page, resolved to what a reader can be told.
+ *
+ * `status` is the HTTP status of the failed lookup, `0` for a failure without
+ * one, `null` while there is none. Only a 404 says the workflow is gone.
+ */
+export type WorkflowNameLookup =
+  | { kind: "named"; name: string }
+  | { kind: "gone" }
+  | { kind: "unreadable" }
+  | { kind: "pending" };
+
+export function workflowNameLookup(
+  data: { name?: string | null; slug?: string | null } | undefined,
+  status: number | null,
+): WorkflowNameLookup {
+  const name = data?.name?.trim() || data?.slug?.trim();
+  if (name) return { kind: "named", name };
+  if (status === 404) return { kind: "gone" };
+  if (status !== null || data !== undefined) return { kind: "unreadable" };
+  return { kind: "pending" };
+}

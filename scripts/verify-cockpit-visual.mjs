@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
+import ENGINE_PERMISSIONS from "../apps/engine/src/rbac/permissions.json" with { type: "json" };
 import { verifyChatActivation } from "./lib/cockpit-chat-activation.mjs";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
 import { verifyChatApprovals } from "./lib/cockpit-chat-approvals.mjs";
@@ -13,6 +14,7 @@ import { verifyChatReauth } from "./lib/cockpit-chat-reauth.mjs";
 import { verifyChatReplies } from "./lib/cockpit-chat-replies.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
+import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
 import { verifyScheduleHolds } from "./lib/cockpit-schedule-holds.mjs";
 import { assertNoVisibleUuids } from "./lib/cockpit-visible-uuids.mjs";
@@ -109,6 +111,12 @@ const hostileAuthority = {
   created_by: "b6c5d4e3-f2a1-4098-8765-4a3b2c1d0e9f",
   tenant_id: "4c3b2a1f-0e9d-4c8b-9a76-5f4e3d2c1b0a",
 };
+// A second person, holding a CUSTOM role, and a system account. Hostile on
+// purpose: a custom role is what the people page used to call "Unbekannt", and
+// an audit row by a system account must name the account, not a person.
+const CUSTOM_ROLE_ID = "018f4b4a-6d33-7b3a-9c2d-00000000c0de";
+const REVIEWER_ID = "018f4b4a-6d33-7b3a-9c2d-0000000000a2";
+const SYSTEM_ACCOUNT_ID = "018f4b4a-6d33-7b3a-9c2d-0000000005a1";
 const routes = [
   // The landing page was never photographed, which is how a whole class of
   // page-shell defect stayed invisible to this sweep.
@@ -313,7 +321,13 @@ const AUDIT_FIXTURE_ENTRIES = Array.from({ length: 24 }, (_, index) => {
     // the Akteur column cannot disagree — a view filtered to the engine must
     // not print "Person".
     actor_type: row.actor_type ?? ["user", "system_account", "system", "user"][index % 4],
-    actor_id: index % 4 === 2 ? null : uuid,
+    actor_id:
+      index % 4 === 2
+        ? null
+        : (row.actor_type ?? ["user", "system_account", "system", "user"][index % 4]) ===
+            "system_account"
+          ? SYSTEM_ACCOUNT_ID
+          : uuid,
     action: row.action,
     resource_type: row.resource_type,
     resource_id: row.resource_type === "settings" ? null : uuid,
@@ -1037,6 +1051,16 @@ async function mockApi(route) {
       next_cursor: null,
     });
   }
+  // The usage page names workflow ids one by one: one known past the list's
+  // first page, and one that no longer exists (a 404, "no longer kept").
+  if (path === "/v1/workflows/catalog-record-1")
+    return json(route, {
+      id: "catalog-record-1",
+      name: "Monatsreport für alle Tochtergesellschaften",
+    });
+  if (path === "/v1/workflows/0e6b2c52-7d1f-4d8e-9d55-5f0c2f7a9e10")
+    return json(route, { error: { code: "not_found", message: "workflow" } }, 404);
+
   if (path === `/v1/workflows/${uuid}`)
     return json(route, {
       id: uuid,
@@ -1610,9 +1634,10 @@ async function mockApi(route) {
   if (path === "/v1/status") {
     return json(route, {
       tokens_today: 1_240_000,
-      tokens_month: 138_000_000,
+      // 95 % of the cap: the red badge, which must lead to the setting.
+      tokens_month: 142_500_000,
       monthly_budget_tokens: 150_000_000,
-      remaining_monthly_budget_tokens: 12_000_000,
+      remaining_monthly_budget_tokens: 7_500_000,
       llm_provider: { configured: true, reachable: true },
     });
   }
@@ -1621,10 +1646,12 @@ async function mockApi(route) {
       return json(route, { code: "validation", message: "request validation failed" }, 400);
     const axis = url.searchParams.get("group_by") ?? "workflow";
     const byAxis = {
+      // Keyed by `executions.workflow_id` — an id the page must turn into a
+      // name and a link, and one id no workflow answers to any more.
       workflow: [
-        ["mission-control-reporting-rollup-monthly-with-a-very-long-name", 812, 96_400_000],
-        ["ga4-daily-report", 240, 31_600_000],
-        ["radar-publish-weekly", 61, 10_000_000],
+        [uuid, 812, 96_400_000],
+        ["catalog-record-1", 240, 31_600_000],
+        ["0e6b2c52-7d1f-4d8e-9d55-5f0c2f7a9e10", 61, 10_000_000],
         // Consumption nothing can be attributed to, which on a real
         // installation is most of it: every call without a run has no
         // workflow. The row must be visible and named, not dropped.
@@ -1883,10 +1910,10 @@ async function mockApi(route) {
     });
   if (path === "/v1/settings")
     return json(route, {
-      saved_revision: 7,
+      saved_revision: 8,
       active_revision: 7,
-      activation_status: "active",
-      pending_restart_fields: [],
+      activation_status: "restart_required",
+      pending_restart_fields: ["auth.providers"],
       items: [
         {
           path: "auth.providers",
@@ -1933,6 +1960,18 @@ async function mockApi(route) {
           },
         },
         {
+          path: "tokens.monthly_budget",
+          value: 150000000,
+          meta: {
+            source: "tenant",
+            scope: "tenant",
+            sensitive: false,
+            requiresRestart: false,
+            description: "Hard cap on tokens consumed per calendar month. 0 = unlimited.",
+            kind: "number",
+          },
+        },
+        {
           path: "observability.usage.enabled",
           value: true,
           meta: {
@@ -1956,6 +1995,22 @@ async function mockApi(route) {
           effective_role: "admin",
           role_consistent: true,
           status: "active",
+        },
+        {
+          id: REVIEWER_ID,
+          email: "reviewer@example.com",
+          role: "member",
+          effective_role: "Revision",
+          role_consistent: true,
+          status: "active",
+        },
+        {
+          id: "018f4b4a-6d33-7b3a-9c2d-0000000000a3",
+          email: "drift@example.com",
+          role: "member",
+          effective_role: "enduser",
+          role_consistent: false,
+          status: "invited",
         },
       ],
       // Declared by the settings response and read by the page; a fixture that
@@ -2002,7 +2057,49 @@ async function mockApi(route) {
           description: "Backing role for portal-token principals",
           is_builtin: true,
         },
+        {
+          id: "00000000-0000-4000-8000-000000000004",
+          name: "member",
+          description: "Day-to-day operator access",
+          is_builtin: true,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000000005",
+          name: "enduser",
+          description: "Portal end-user",
+          is_builtin: true,
+        },
+        {
+          id: CUSTOM_ROLE_ID,
+          name: "Revision",
+          description: "Liest Läufe und das Audit, ändert nichts.",
+          is_builtin: false,
+        },
       ],
+    });
+  // One role with its permissions — what a role change gains and loses.
+  const roleDetail = /^\/v1\/rbac\/roles\/([^/]+)$/.exec(path);
+  if (roleDetail) {
+    const id = decodeURIComponent(roleDetail[1]);
+    const byId = {
+      [uuid]: ENGINE_PERMISSIONS.map((permission) => permission.name),
+      [CUSTOM_ROLE_ID]: ["audit:read", "execution:read", "workflow:read"],
+      "00000000-0000-4000-8000-000000000004": ["workflow:read", "workflow:run", "execution:read"],
+      "00000000-0000-4000-8000-000000000005": ["workflow:run", "execution:read"],
+    };
+    return byId[id]
+      ? json(route, {
+          id,
+          name: id,
+          description: null,
+          is_builtin: id !== CUSTOM_ROLE_ID,
+          permissions: byId[id],
+        })
+      : json(route, { error: { code: "not_found", message: "role" } }, 404);
+  }
+  if (path === "/v1/identity/system-accounts")
+    return json(route, {
+      items: [{ id: SYSTEM_ACCOUNT_ID, name: "Reporting-Bot", description: null }],
     });
   if (path === "/v1/rbac/groups")
     return json(route, {
@@ -2014,19 +2111,55 @@ async function mockApi(route) {
         {
           id: uuid,
           subject_type: "group",
+          subject_id: uuid,
           resource_type: "workflow",
+          resource_id: uuid,
           permission: "workflow:run",
+          expires_at: null,
+        },
+        {
+          id: "grant-connector",
+          subject_type: "user",
+          subject_id: REVIEWER_ID,
+          resource_type: "connector",
+          resource_id: uuid,
+          permission: "connector:test",
+          expires_at: "2026-12-31T23:00:00.000Z",
+        },
+        {
+          // A kind the page cannot pick from: named, never printed as an id.
+          id: "grant-schedule",
+          subject_type: "system_account",
+          subject_id: SYSTEM_ACCOUNT_ID,
+          resource_type: "schedule",
+          resource_id: uuid,
+          permission: "schedule:pause",
           expires_at: null,
         },
       ],
     });
-  if (path === "/v1/rbac/permissions")
+  if (path === "/v1/notifications/rules")
     return json(route, {
       items: [
         {
-          name: "workflow:run",
-          description: "Run workflows",
-          resource_type: "workflow",
+          id: "rule-inbox",
+          name: "sk CLI inbox (default)",
+          event_pattern: "*",
+          workflow_pattern: "*",
+          severity: "info",
+          target_workspace_id: "_cli",
+          target_channel_id: "_inbox",
+          active: true,
+        },
+        {
+          id: "rule-slack",
+          name: "Fehlgeschlagene Läufe",
+          event_pattern: "execution.*",
+          workflow_pattern: "",
+          severity: "error",
+          target_workspace_id: "T0001",
+          target_channel_id: "C0001",
+          active: true,
         },
       ],
     });
@@ -2034,6 +2167,52 @@ async function mockApi(route) {
   // run sheet's workflow has none, so its remedy is the one its cause asks for.
   if (path === "/v1/patch-candidates" && url.searchParams.get("workflow_id") === runWorkflowId)
     return json(route, { total: 0, reviewable_total: 0, items: [] });
+  if (path === "/v1/notifications/channels")
+    return json(route, {
+      items: [
+        {
+          // The inbox is never circuit-broken, whatever this row says.
+          id: "channel-inbox",
+          platform: "sk_cli",
+          workspace_id: "_cli",
+          channel_id: "_inbox",
+          default_severity: "info",
+          rate_limit_per_minute: 60,
+          circuit_state: "open",
+          circuit_open_until: null,
+          consecutive_failures: 0,
+          active: true,
+        },
+        {
+          id: "channel-slack",
+          platform: "slack",
+          workspace_id: "T0001",
+          channel_id: "C0001",
+          default_severity: "error",
+          rate_limit_per_minute: 20,
+          circuit_state: "open",
+          // Stamped at the request: the sweep outlives a fixed four minutes.
+          circuit_open_until: new Date(Date.now() + 4 * 60_000).toISOString(),
+          consecutive_failures: 10,
+          active: true,
+        },
+        {
+          id: "channel-google",
+          platform: "google_chat",
+          workspace_id: "spaces/AAA",
+          channel_id: "spaces/AAA",
+          default_severity: "warn",
+          rate_limit_per_minute: 10,
+          circuit_state: "draining",
+          circuit_open_until: null,
+          consecutive_failures: 0,
+          active: false,
+        },
+      ],
+    });
+  // The engine's whole catalogue: every resource and every action it knows
+  // must have a name on the page, or the page says "Unbekannt" about it.
+  if (path === "/v1/rbac/permissions") return json(route, { items: ENGINE_PERMISSIONS });
   if (path === "/v1/patch-candidates")
     return json(route, {
       total: 2,
@@ -3153,6 +3332,12 @@ for (const locale of variants) {
       });
     }
     await verifyHealthyOperationsIsQuiet(page, `${locale.artifact}/${viewport.name}/operations`);
+    if (viewport.name === "desktop")
+      await verifyInstallationPages(page, stand, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-installation-${state}`, {
+          fullPage: false,
+        }),
+      );
     await verifyScheduleHolds(page, stand, uuid, locale.name, operationalOverview, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-schedule-held-${state}`, {
         fullPage: false,
@@ -3280,10 +3465,17 @@ for (const locale of variants) {
       await page.locator('[data-testid="conversation-new"]').click();
       await page.locator('[data-testid="chat-empty"]').waitFor({ state: "visible" });
       const modePicker = page.locator('[data-testid="chat-permission-select"]');
-      const defaultMode = locale.name === "de" ? "Systemstandard" : "System default";
+      const defaultMode = locale.name === "de" ? "Systemstandard" : "system default";
       if (!(await modePicker.textContent())?.includes(defaultMode))
         throw new Error(`${locale.artifact}: new chat does not inherit the system mode`);
+      // §14: the mode in force shows which gates remain, and no two entries
+      // are one matrix under two names — "system default" is `auto`, once.
+      const gatesFor = async () => page.getByTestId("chat-mode-gates").innerText();
+      const autoGates = await gatesFor();
       await modePicker.click();
+      const optionCount = await page.getByRole("option").count();
+      if (optionCount !== 3)
+        throw new Error(`${locale.artifact}: the mode picker offers ${optionCount} modes, not 3`);
       await page
         .getByRole("option", {
           name: locale.name === "de" ? "Vor Änderungen fragen" : "Ask before changes",
@@ -3296,6 +3488,8 @@ for (const locale of variants) {
         )
       )
         throw new Error(`${locale.artifact}: explicit conservative mode is not selectable`);
+      if ((await gatesFor()) === autoGates)
+        throw new Error(`${locale.artifact}: "ask" reads the same gates as the default mode`);
       await page.locator('[data-testid="conversation-new"]').click();
       if (!(await modePicker.textContent())?.includes(defaultMode))
         throw new Error(`${locale.artifact}: new chat retains an unintended override`);
