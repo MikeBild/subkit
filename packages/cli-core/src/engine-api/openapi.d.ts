@@ -6287,6 +6287,10 @@ export interface paths {
                     status?: string;
                     request_source?: string;
                     q?: string;
+                    /** @description Only runs that started at or after this instant (ISO 8601). The same field and bounds `GET /v1/stats/executions` counts on. */
+                    started_from?: string;
+                    /** @description Only runs that started before this instant (ISO 8601, exclusive). */
+                    started_to?: string;
                     parent_execution_id?: string;
                 };
                 header?: never;
