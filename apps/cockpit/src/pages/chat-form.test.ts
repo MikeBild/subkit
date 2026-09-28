@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ConversationDetail } from "@/api/client";
-import { type ChatForm, chatForm, formValues } from "./chat-form";
+import { type ChatForm, chatForm, formFieldLabel, formValues } from "./chat-form";
 
 const form: ChatForm = {
   id: "question",
@@ -53,4 +53,15 @@ test("typed form values preserve false, validate choices and never copy unrelate
   expect(formValues(form, { days: "7", data: "{" })).toBeNull();
   expect(formValues(form, { days: "7", format: "foreign" })).toBeNull();
   expect(formValues(form, { days: "7", projects: ["foreign"] })).toBeNull();
+});
+
+test("a field without a label reads as words, never as its raw name", () => {
+  const known = { period_end: "Periodenende" };
+  expect(formFieldLabel({ name: "period_end", label: "period_end" }, known)).toBe("Periodenende");
+  expect(
+    formFieldLabel({ name: "report_recipient_email", label: "report_recipient_email" }, known),
+  ).toBe("Report recipient email");
+  expect(formFieldLabel({ name: "maxRows", label: "maxRows" }, known)).toBe("Max rows");
+  // A label the engine did send is the author's word and stays.
+  expect(formFieldLabel({ name: "site", label: "Website" }, known)).toBe("Website");
 });

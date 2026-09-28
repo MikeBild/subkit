@@ -27,6 +27,30 @@ export function chatForm(detail: ConversationDetail | undefined): ChatForm | nul
   };
 }
 
+/**
+ * A field's label as a reader sees it.
+ *
+ * The engine sends a label; when the model gave none it is the field's own
+ * name — `report_recipient_email`. A handful of names have a word in the
+ * catalogue; every other one used to reach the form as the raw identifier.
+ * Spaced and capitalised it reads as a label and still matches what the
+ * workflow calls the input.
+ */
+export function formFieldLabel(
+  field: Pick<ChatFormField, "name" | "label">,
+  known: Readonly<Record<string, string>>,
+): string {
+  if (field.label && field.label !== field.name) return field.label;
+  const named = known[field.name];
+  if (named) return named;
+  const words = field.name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_\-.]+/g, " ")
+    .trim()
+    .toLowerCase();
+  return words ? `${words.charAt(0).toUpperCase()}${words.slice(1)}` : field.name;
+}
+
 export function formValues(
   form: ChatForm,
   values: Record<string, string | boolean | string[]>,
