@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MoreHorizontal, Plug, Plus, RefreshCw } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { ChevronRight, MoreHorizontal, Plug, Plus, RefreshCw } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import {
   type ApiAccessSection,
   absolute,
+  apiAccessHref,
   apiAccessSectionFromUrl,
   connectorHref,
 } from "@/app/links";
@@ -20,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -53,9 +55,13 @@ import {
   type ApiKeyItem,
   apiAccessAttention,
   type ConnectedClientItem,
+  deepLinkReady,
   defaultKeyScopes,
+  groupApiKeys,
+  groupConnectedClients,
   keyExpired,
   ROTATE_OVERLAP_MINUTES,
+  readableSections,
   scopeCatalogue,
   scopeLabel,
   scopeRisk,
@@ -134,15 +140,26 @@ export function ApiAccessPage() {
     [connections.data, keys.data, t, dateTime],
   );
 
+  const sections = readableSections({ grants: canGrants, keys: canKeys, clients: canClients });
+  const views = {
+    grants: queryView(connections, (data) => data.items.length === 0),
+    keys: queryView(keys, (data) => data.items.length === 0),
+    clients: queryView(clients, (data) => data.items.length === 0),
+  };
+  const ready = deepLinkReady(sections.map((section) => views[section]));
+
   // An address that names a section opens the page there — the OAuth callback
-  // lands on `section=grants`, the attention list links to its section.
+  // lands on `section=grants`, the attention list links to its section. Only
+  // once every list has arrived: the scroll used to run on mount, while the
+  // lists were skeletons, and the content that loaded above the heading then
+  // pushed it out of view. Once — a refetch must not pull the page back.
+  const scrolled = useRef(false);
   useEffect(() => {
+    if (scrolled.current || !ready) return;
+    scrolled.current = true;
     const section = apiAccessSectionFromUrl(window.location.search);
-    if (!section) return;
-    const heading = document.getElementById(sectionHeadingId(section));
-    heading?.scrollIntoView({ block: "start" });
-    heading?.focus({ preventScroll: true });
-  }, []);
+    if (section) revealSection(section);
+  }, [ready]);
 
   return (
     <PageFrame
@@ -153,14 +170,32 @@ export function ApiAccessPage() {
       surface="installation"
     >
       <div className="flex flex-col gap-8">
+        {sections.length > 1 ? (
+          <SectionIndex
+            sections={sections}
+            counts={{
+              grants: connections.data?.items.length,
+              keys: keys.data ? groupApiKeys(keys.data.items).active.length : undefined,
+              clients: clients.data
+                ? groupConnectedClients(clients.data.items).granted.length
+                : undefined,
+            }}
+          />
+        ) : null}
         <AttentionList
           items={attention}
           title={t("apiAccess.attention.title")}
           testId="api-access-attention"
         />
-        {canKeys ? <KeysSection query={keys} /> : null}
-        {canClients ? <ClientsSection query={clients} /> : null}
-        {canGrants ? <GrantsSection query={connections} /> : null}
+        {sections.map((section) =>
+          section === "grants" ? (
+            <GrantsSection key={section} query={connections} />
+          ) : section === "keys" ? (
+            <KeysSection key={section} query={keys} />
+          ) : (
+            <ClientsSection key={section} query={clients} />
+          ),
+        )}
       </div>
     </PageFrame>
   );
@@ -168,6 +203,64 @@ export function ApiAccessPage() {
 
 function sectionHeadingId(section: ApiAccessSection): string {
   return `api-access-${section}-title`;
+}
+
+/** Bring a section's heading to the top of the scroll region and put focus on it. */
+function revealSection(section: ApiAccessSection) {
+  const heading = document.getElementById(sectionHeadingId(section));
+  heading?.scrollIntoView({ block: "start", inline: "nearest" });
+  heading?.focus({ preventScroll: true });
+}
+
+const SECTION_TITLE_KEYS = {
+  grants: "apiAccess.section.grants",
+  keys: "apiAccess.section.keys",
+  clients: "apiAccess.section.clients",
+} as const;
+
+/**
+ * Three anchors with what each section holds — the account connections, the
+ * live keys, the applications someone has approved — so the section a reader
+ * came for is one click away however long the one above it is. The count is
+ * what the click shows, not the rows collapsed below it.
+ */
+function SectionIndex({
+  sections,
+  counts,
+}: {
+  sections: readonly ApiAccessSection[];
+  counts: Record<ApiAccessSection, number | undefined>;
+}) {
+  const { t } = useI18n();
+  return (
+    <nav aria-label={t("apiAccess.index.label")} data-testid="api-access-index">
+      <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        {sections.map((section) => (
+          <li key={section}>
+            <a
+              href={absolute(apiAccessHref(section))}
+              className="font-medium underline-offset-4 hover:underline"
+              data-testid={`api-access-index-${section}`}
+              onClick={(event) => {
+                event.preventDefault();
+                window.history.replaceState(
+                  window.history.state,
+                  "",
+                  absolute(apiAccessHref(section)),
+                );
+                revealSection(section);
+              }}
+            >
+              {t(SECTION_TITLE_KEYS[section])}
+              {counts[section] === undefined ? null : (
+                <span className="ml-1 tabular-nums text-muted-foreground">{counts[section]}</span>
+              )}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
 }
 
 function Section({
@@ -204,6 +297,47 @@ function Section({
       </div>
       {children}
     </section>
+  );
+}
+
+/**
+ * A group a reader seldom needs, behind a named toggle with its count (§8.4:
+ * never a bare chevron). The rows are not mounted until it opens — production
+ * put ~490 of them behind one of these.
+ */
+function CollapsedGroup({
+  label,
+  hint,
+  testId,
+  children,
+}: {
+  label: (open: boolean) => string;
+  hint?: string;
+  testId: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} data-testid={testId}>
+      <div className="flex flex-col gap-1">
+        <CollapsibleTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-2 w-fit"
+            data-testid={`${testId}-toggle`}
+          >
+            <ChevronRight
+              data-icon="inline-start"
+              className={cn("transition-transform", open && "rotate-90")}
+            />
+            {label(open)}
+          </Button>
+        </CollapsibleTrigger>
+        {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+      </div>
+      <CollapsibleContent className="mt-2">{children}</CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -294,6 +428,87 @@ function KeysSection({ query }: { query: ListQuery<ApiKeyItem> }) {
 
   const view = queryView(query, (data) => data.items.length === 0);
   const nowMs = Date.now();
+  const renderKey = (key: ApiKeyItem, testKey: string) => {
+    const expired = keyExpired(key, nowMs);
+    const live = !key.revoked_at;
+    return (
+      <Card key={key.id} size="sm" data-testid={`api-key-item-${testKey}`}>
+        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="truncate font-medium">{key.name || t("apiKeys.unnamed")}</p>
+              {key.revoked_at ? (
+                <Badge variant="outline" data-testid={`api-key-revoked-${testKey}`}>
+                  <span aria-hidden="true">○</span> {t("apiKeys.revokedBadge")}
+                </Badge>
+              ) : expired ? (
+                <Badge variant="destructive" data-testid={`api-key-expired-${testKey}`}>
+                  <span aria-hidden="true">●</span> {t("apiKeys.expiredBadge")}
+                </Badge>
+              ) : null}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {key.prefix} · {t("apiKeys.created", { date: dateTime(key.created_at) })}
+            </p>
+            <p
+              className="mt-1 text-xs text-muted-foreground"
+              data-testid={`api-key-use-${testKey}`}
+            >
+              {key.last_used_at
+                ? t("apiKeys.lastUsed", {
+                    when: formatRelativeTime(locale, key.last_used_at),
+                  })
+                : t("apiKeys.neverUsed")}
+              {" · "}
+              {key.revoked_at
+                ? t("apiKeys.revokedAt", { date: dateTime(key.revoked_at) })
+                : key.expires_at
+                  ? t(expired ? "apiKeys.expiredAt" : "apiKeys.expiresAt", {
+                      date: dateTime(key.expires_at),
+                    })
+                  : t("apiKeys.noExpiry")}
+              {live && key.rotating_out_at ? (
+                <>
+                  {" · "}
+                  {t("apiKeys.rotatingOut", { date: dateTime(key.rotating_out_at) })}
+                </>
+              ) : null}
+            </p>
+            <ScopeList scopes={key.scopes} testId={`api-key-scopes-${testKey}`} />
+          </div>
+          {live && (canRotate || canRevoke) ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <IconButton label={t("common.actions")} data-testid={`api-key-menu-${testKey}`}>
+                  <MoreHorizontal />
+                </IconButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {canRotate ? (
+                  <DropdownMenuItem
+                    onSelect={() => setRotating(key)}
+                    data-testid={`api-key-rotate-${testKey}`}
+                  >
+                    {t("apiKeys.rotate")}
+                  </DropdownMenuItem>
+                ) : null}
+                {canRevoke ? (
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => setRevoking(key)}
+                    data-testid={`api-key-revoke-${testKey}`}
+                  >
+                    {t("apiKeys.revoke")}
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </CardContent>
+      </Card>
+    );
+  };
+  const groups = groupApiKeys(query.data?.items ?? []);
   return (
     <Section
       section="keys"
@@ -317,89 +532,27 @@ function KeysSection({ query }: { query: ListQuery<ApiKeyItem> }) {
         />
       ) : (
         <div className="grid gap-2" data-testid="api-keys-list">
-          {(query.data?.items ?? []).map((key, index) => {
-            const expired = keyExpired(key, nowMs);
-            const live = !key.revoked_at;
-            return (
-              <Card key={key.id} size="sm" data-testid={`api-key-item-${index}`}>
-                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate font-medium">{key.name || t("apiKeys.unnamed")}</p>
-                      {key.revoked_at ? (
-                        <Badge variant="outline" data-testid={`api-key-revoked-${index}`}>
-                          <span aria-hidden="true">○</span> {t("apiKeys.revokedBadge")}
-                        </Badge>
-                      ) : expired ? (
-                        <Badge variant="destructive" data-testid={`api-key-expired-${index}`}>
-                          <span aria-hidden="true">●</span> {t("apiKeys.expiredBadge")}
-                        </Badge>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {key.prefix} · {t("apiKeys.created", { date: dateTime(key.created_at) })}
-                    </p>
-                    <p
-                      className="mt-1 text-xs text-muted-foreground"
-                      data-testid={`api-key-use-${index}`}
-                    >
-                      {key.last_used_at
-                        ? t("apiKeys.lastUsed", {
-                            when: formatRelativeTime(locale, key.last_used_at),
-                          })
-                        : t("apiKeys.neverUsed")}
-                      {" · "}
-                      {key.revoked_at
-                        ? t("apiKeys.revokedAt", { date: dateTime(key.revoked_at) })
-                        : key.expires_at
-                          ? t(expired ? "apiKeys.expiredAt" : "apiKeys.expiresAt", {
-                              date: dateTime(key.expires_at),
-                            })
-                          : t("apiKeys.noExpiry")}
-                      {live && key.rotating_out_at ? (
-                        <>
-                          {" · "}
-                          {t("apiKeys.rotatingOut", { date: dateTime(key.rotating_out_at) })}
-                        </>
-                      ) : null}
-                    </p>
-                    <ScopeList scopes={key.scopes} testId={`api-key-scopes-${index}`} />
-                  </div>
-                  {live && (canRotate || canRevoke) ? (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <IconButton
-                          label={t("common.actions")}
-                          data-testid={`api-key-menu-${index}`}
-                        >
-                          <MoreHorizontal />
-                        </IconButton>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {canRotate ? (
-                          <DropdownMenuItem
-                            onSelect={() => setRotating(key)}
-                            data-testid={`api-key-rotate-${index}`}
-                          >
-                            {t("apiKeys.rotate")}
-                          </DropdownMenuItem>
-                        ) : null}
-                        {canRevoke ? (
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onSelect={() => setRevoking(key)}
-                            data-testid={`api-key-revoke-${index}`}
-                          >
-                            {t("apiKeys.revoke")}
-                          </DropdownMenuItem>
-                        ) : null}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  ) : null}
-                </CardContent>
-              </Card>
-            );
-          })}
+          {groups.active.length === 0 ? (
+            <p className="text-sm text-muted-foreground" data-testid="api-keys-none-active">
+              {t("apiKeys.noneActive")}
+            </p>
+          ) : (
+            groups.active.map((key, index) => renderKey(key, String(index)))
+          )}
+          {groups.revoked.length > 0 ? (
+            <CollapsedGroup
+              testId="api-keys-revoked"
+              label={(open) =>
+                t(open ? "apiKeys.hideRevoked" : "apiKeys.showRevoked", {
+                  count: groups.revoked.length,
+                })
+              }
+            >
+              <div className="grid gap-2">
+                {groups.revoked.map((key, index) => renderKey(key, `r${index}`))}
+              </div>
+            </CollapsedGroup>
+          ) : null}
         </div>
       )}
       <Card size="sm" data-testid="api-keys-token-exchange">
@@ -606,6 +759,61 @@ function ClientsSection({ query }: { query: ListQuery<ConnectedClientItem> }) {
     },
   });
   const view = queryView(query, (data) => data.items.length === 0);
+  const renderClient = (item: ConnectedClientItem, testKey: string) => (
+    <Card key={item.id} size="sm" data-testid={`connected-client-${testKey}`}>
+      <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start">
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium">
+            {item.client_name || t("connectedClients.unnamed")}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {item.approved_by.length
+              ? t("connectedClients.approvedBy", { people: item.approved_by.join(", ") })
+              : t("connectedClients.noLiveApproval")}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {item.disabled_at ? (
+              <Badge variant="outline" data-testid={`connected-client-revoked-${testKey}`}>
+                <span aria-hidden="true">○</span>{" "}
+                {t(item.retired_at ? "connectedClients.retired" : "connectedClients.revoked")}
+              </Badge>
+            ) : (
+              <Badge variant="secondary">
+                {t("connectedClients.live", { count: String(item.live_connections) })}
+              </Badge>
+            )}
+            <Badge variant="outline">
+              {t("apiKeys.created", { date: dateTime(item.created_at) })}
+            </Badge>
+          </div>
+        </div>
+        {/* A retired registration comes back on its next authorization;
+              revoking it is how a person makes that impossible. */}
+        {canRevoke && (!item.disabled_at || item.retired_at) ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <IconButton
+                label={t("common.actions")}
+                data-testid={`connected-client-menu-${testKey}`}
+              >
+                <MoreHorizontal />
+              </IconButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={() => setRevoking(item)}
+                data-testid={`connected-client-revoke-${testKey}`}
+              >
+                {t("connectedClients.revoke")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+  const groups = groupConnectedClients(query.data?.items ?? []);
   return (
     <Section
       section="clients"
@@ -628,57 +836,45 @@ function ClientsSection({ query }: { query: ListQuery<ConnectedClientItem> }) {
         />
       ) : (
         <div className="grid gap-2" data-testid="connected-clients-list">
-          {(query.data?.items ?? []).map((item, index) => (
-            <Card key={item.id} size="sm" data-testid={`connected-client-${index}`}>
-              <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">
-                    {item.client_name || t("connectedClients.unnamed")}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {item.approved_by.length
-                      ? t("connectedClients.approvedBy", { people: item.approved_by.join(", ") })
-                      : t("connectedClients.noLiveApproval")}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {item.disabled_at ? (
-                      <Badge variant="outline" data-testid={`connected-client-revoked-${index}`}>
-                        <span aria-hidden="true">○</span> {t("connectedClients.revoked")}
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary">
-                        {t("connectedClients.live", { count: String(item.live_connections) })}
-                      </Badge>
-                    )}
-                    <Badge variant="outline">
-                      {t("apiKeys.created", { date: dateTime(item.created_at) })}
-                    </Badge>
-                  </div>
-                </div>
-                {canRevoke && !item.disabled_at ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <IconButton
-                        label={t("common.actions")}
-                        data-testid={`connected-client-menu-${index}`}
-                      >
-                        <MoreHorizontal />
-                      </IconButton>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onSelect={() => setRevoking(item)}
-                        data-testid={`connected-client-revoke-${index}`}
-                      >
-                        {t("connectedClients.revoke")}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : null}
-              </CardContent>
-            </Card>
-          ))}
+          {groups.granted.length === 0 ? (
+            <p
+              className="text-sm text-muted-foreground"
+              data-testid="connected-clients-none-granted"
+            >
+              {t("connectedClients.noneGranted")}
+            </p>
+          ) : (
+            groups.granted.map((item, index) => renderClient(item, String(index)))
+          )}
+          {groups.ungranted.length > 0 ? (
+            <CollapsedGroup
+              testId="connected-clients-ungranted"
+              label={(open) =>
+                t(open ? "connectedClients.hideUngranted" : "connectedClients.showUngranted", {
+                  count: groups.ungranted.length,
+                })
+              }
+            >
+              <div className="grid gap-2">
+                {groups.ungranted.map((item, index) => renderClient(item, `u${index}`))}
+              </div>
+            </CollapsedGroup>
+          ) : null}
+          {groups.disabled.length > 0 ? (
+            <CollapsedGroup
+              testId="connected-clients-disabled"
+              label={(open) =>
+                t(open ? "connectedClients.hideDisabled" : "connectedClients.showDisabled", {
+                  count: groups.disabled.length,
+                })
+              }
+              hint={t("connectedClients.retirementRule")}
+            >
+              <div className="grid gap-2">
+                {groups.disabled.map((item, index) => renderClient(item, `d${index}`))}
+              </div>
+            </CollapsedGroup>
+          ) : null}
         </div>
       )}
       <ConfirmAction

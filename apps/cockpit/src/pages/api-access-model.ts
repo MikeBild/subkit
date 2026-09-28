@@ -1,6 +1,7 @@
 import type { components } from "@/api/schema";
-import { absolute, apiAccessHref } from "@/app/links";
+import { type ApiAccessSection, absolute, apiAccessHref } from "@/app/links";
 import type { AttentionListItem } from "@/components/cockpit/attention-list";
+import type { QueryView } from "@/components/failure-state";
 import type { TranslationKey } from "@/lib/i18n";
 import type { CatalogLabel } from "@/lib/machine-label";
 import { permissionLabel } from "@/pages/admin-model";
@@ -26,6 +27,38 @@ export const ROTATE_OVERLAP_MINUTES = 60;
 
 /** A key nobody has used for this long is a standing right nobody needs (§11). */
 export const UNUSED_KEY_DAYS = 90;
+
+// ── Page order ──────────────────────────────────────────────────────────────
+
+/**
+ * The sections in the order a reader acts on them. The attention list comes
+ * first (it names what is broken); then Kontoverbindungen — the section the
+ * OAuth callback and the old `/connections` address land on, and the only one
+ * whose rows lapse on their own and ask for a renewal; then the keys this
+ * installation hands out; then the applications connected to it, which a
+ * person mostly reads and seldom acts on. Kontoverbindungen used to come last,
+ * below a wall of dead application registrations, where nobody reached it.
+ */
+export const API_ACCESS_ORDER = [
+  "grants",
+  "keys",
+  "clients",
+] as const satisfies readonly ApiAccessSection[];
+
+/** The sections this reader may read, in page order. */
+export function readableSections(can: Record<ApiAccessSection, boolean>): ApiAccessSection[] {
+  return API_ACCESS_ORDER.filter((section) => can[section]);
+}
+
+/**
+ * Whether a deep link may scroll to its section yet. Every list above and
+ * around the target grows when it arrives; scrolling while one is still a
+ * skeleton lands on a heading that the next render pushes out of view. So:
+ * only once no readable list is still loading — an error is settled too.
+ */
+export function deepLinkReady(views: readonly QueryView[]): boolean {
+  return views.every((view) => view !== "loading");
+}
 
 // ── Scopes ──────────────────────────────────────────────────────────────────
 
@@ -106,6 +139,48 @@ export function keyIdleDays(
   const since = Date.parse(key.last_used_at ?? key.created_at);
   const days = Math.floor((nowMs - since) / 86_400_000);
   return days >= UNUSED_KEY_DAYS ? days : null;
+}
+
+/**
+ * Keys in two groups: the ones that still hold rights (an expired key is
+ * among them — it needs a decision, and the attention list points here), and
+ * the revoked ones, which hold nothing and are collapsed behind their count.
+ */
+export function groupApiKeys<T extends Pick<ApiKeyItem, "revoked_at">>(
+  keys: readonly T[],
+): { active: T[]; revoked: T[] } {
+  return {
+    active: keys.filter((key) => !key.revoked_at),
+    revoked: keys.filter((key) => Boolean(key.revoked_at)),
+  };
+}
+
+// ── Connected applications ──────────────────────────────────────────────────
+
+export interface ClientGroups<T> {
+  /** Someone's valid grant keeps these working — what a reader came for. */
+  granted: T[];
+  /** Registered and enabled, but nobody holds a grant: nothing can use them. */
+  ungranted: T[];
+  /** Retired by housekeeping or revoked by an administrator: not listed by default. */
+  disabled: T[];
+}
+
+/**
+ * Applications in the order a reader needs them. Production held ~500
+ * registrations against four real applications; listed flat, the real ones
+ * drowned and the section below them was out of reach.
+ */
+export function groupConnectedClients<
+  T extends Pick<ConnectedClientItem, "disabled_at" | "live_connections" | "created_at">,
+>(clients: readonly T[]): ClientGroups<T> {
+  const newestFirst = (a: T, b: T) => Date.parse(b.created_at) - Date.parse(a.created_at);
+  const enabled = clients.filter((client) => !client.disabled_at);
+  return {
+    granted: enabled.filter((client) => client.live_connections > 0).sort(newestFirst),
+    ungranted: enabled.filter((client) => client.live_connections === 0).sort(newestFirst),
+    disabled: clients.filter((client) => Boolean(client.disabled_at)).sort(newestFirst),
+  };
 }
 
 // ── Attention ───────────────────────────────────────────────────────────────
