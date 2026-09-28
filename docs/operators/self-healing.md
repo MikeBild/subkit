@@ -62,15 +62,22 @@ flowchart LR
 - [Workflows](../concepts/workflows.md) — the execution model and the self-healing repair loop (Run → Drift → Patch Candidate → Skill Candidate) in full.
 
 
-## Reviewing the decision queue
+## Reviewing proposed repairs
+
+Proposed repairs appear on the Cockpit's start page, **Today** (German: **Heute**),
+the one list of what needs a person. A failing workflow and the repairs waiting for
+it are one entry; its **Review** action opens a review sheet over the list, and the
+sheet's address (`?review=…`) can be shared or bookmarked. The same list is
+available as `GET /v1/attention` and the MCP tool `get_attention`.
 
 The cockpit counts a repair only when it can change the current workflow. Missing
 step references, unsupported repairs and repairs that no longer change anything
-remain under Suggestions, with no approval button. Conversation questions have
-their own section. Knowledge approval uses **Adopt and activate** and requires
-permission to activate skills; previously created draft skills remain drafts.
+are not offered for approval. Waiting conversation questions are entries of their
+own, and only for the person they ask. Knowledge approval uses **Adopt and
+activate** and requires permission to activate skills; previously created draft
+skills remain drafts.
 
-Open a repair to review its before/after changes. Approval submits the preview's
+In the review sheet, open a repair to see its before/after changes. Approval submits the preview's
 `review_digest` as `expected_review_digest`; changed proposals or workflow versions
 require a fresh preview. The CLI exposes the preview through
 `sk patch-candidates preview <id>` and accepts the digest with
