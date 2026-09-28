@@ -30,6 +30,7 @@ import {
 } from "../../db/schema/index.ts";
 import { _resetRssHighWaterForTests, setDlqJobCount } from "../../observability/instrumentation.ts";
 import { resetMetricsRegistryForTests } from "../../observability/metrics.ts";
+import { invalidateAttention } from "../../operator/attention.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 // Mirror the server's resolveEngineVersion() logic so tests assert the
@@ -80,8 +81,8 @@ describe("mcp initialize — instructions field", () => {
     // The engine always sets instructions (either all-clear or a risk summary).
     expect(typeof instructions).toBe("string");
     expect(instructions!.length).toBeGreaterThan(0);
-    // All-clear path produces the "Engine health: all clear" sentence.
-    expect(instructions).toContain("all clear");
+    // All-clear path produces the attention list's all-clear headline.
+    expect(instructions).toContain("All clear — nothing needs your attention.");
   });
 
   test("tenant with pending failures gets a non-empty instructions string carrying the headline", async () => {
@@ -129,7 +130,9 @@ describe("mcp initialize — instructions field", () => {
       error: { code: "http_4xx", message: "404 not found" },
     });
 
-    // Connect a fresh client — each connection re-derives the digest.
+    // Connect a fresh client — each connection re-derives the attention list,
+    // past its 10 s tenant cache (which this test clears explicitly).
+    invalidateAttention();
     const client = await suite.connect();
     const instructions = client.getInstructions();
     expect(typeof instructions).toBe("string");
@@ -143,6 +146,7 @@ describe("mcp initialize — instructions field", () => {
     resetMetricsRegistryForTests();
     _resetRssHighWaterForTests();
     setDlqJobCount("execution.dlq", 10);
+    invalidateAttention();
 
     const client = await suite.connect();
     const instructions = client.getInstructions();
@@ -198,10 +202,10 @@ describe("mcp initialize — instructions field", () => {
       expect(instructions).toContain(BASE_INTRO_SENTINEL);
 
       // The operator health digest is NOT appended when stats:read is denied.
-      // Digest output contains "Engine health" on the all-clear path and
-      // "Needs attention" on the non-all-clear path. Absence of both
-      // confirms the gate held — the member received BASE_INTRO only.
-      expect(instructions).not.toContain("Engine health");
+      // The summary reads "All clear" on the all-clear path and "Needs
+      // attention" otherwise. Absence of both confirms the gate held — the
+      // member received BASE_INTRO only.
+      expect(instructions).not.toContain("All clear");
       expect(instructions).not.toContain("Needs attention");
 
       // The server still exposes the full tool palette — the member can

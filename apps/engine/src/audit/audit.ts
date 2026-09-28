@@ -98,8 +98,8 @@ function logEntry(filled: AuditEntry): void {
 
 // In-flight fire-and-forget audit writes, tracked so tests can await them
 // deterministically. A fire-and-forget audit otherwise races test assertions
-// that count `audit_log` rows (e.g. the operator risk-signal edge audits
-// written by `buildOperatorHealthDigest`): under load the write can land after
+// that count `audit_log` rows (e.g. a test proving a read path writes none):
+// under load the write can land after
 // a test has already snapshotted the table. The set holds only transient
 // promises — each removes itself on settle — so production cost is one add +
 // one finally per audit, with no behavioural change. Size is bounded by the
