@@ -400,12 +400,15 @@ function ChatComposer({
   disabled,
   status,
   placeholder,
+  describedBy,
   onSend,
   onStop,
 }: {
   disabled: boolean;
   status: React.ComponentProps<typeof PromptInputSubmit>["status"];
   placeholder: string;
+  /** The id of a hint that says where the answer goes, when one is shown. */
+  describedBy?: string;
   onSend: (message: string, references: ConversationReference[]) => Promise<unknown>;
   /** Sending and stopping are one affordance: the button swaps its glyph. */
   onStop: () => void;
@@ -452,6 +455,7 @@ function ChatComposer({
             name="message"
             className="min-h-[46px] px-4 py-[11px] leading-6"
             placeholder={placeholder}
+            aria-describedby={describedBy}
             disabled={disabled}
             onKeyDown={(event) => {
               mentions.onKeyDown(event);
@@ -509,6 +513,10 @@ function ModeGateMatrix({ mode }: { mode: AuthoringMode }) {
           {gates.free.map((key) => t(key)).join(" · ")}
         </p>
       ) : null}
+      <p data-testid="chat-mode-gates-outside">
+        <span className="font-medium text-foreground">{t("chat.mode.outside")}</span>{" "}
+        {gates.outside.map((key) => t(key)).join(" ")}
+      </p>
       {gates.guidance ? <p data-testid="chat-mode-guidance">{t(gates.guidance)}</p> : null}
     </div>
   );
@@ -951,30 +959,23 @@ export function ChatPage() {
   const turnFailureMessage =
     (send.error instanceof ApiError ? send.error.message : null) ?? turnFailure?.message ?? null;
   /**
-   * Try the failed turn again.
+   * After a failed turn: look again, then decide — never resend by itself.
    *
-   * A send that failed in this session left its text in the composer — the
-   * composer clears only on success — so the retry submits the composer: one
-   * path, and the field empties when it works. A turn that died before a
-   * reload already stored the reader's message; sending it again would
-   * duplicate it, so the retry asks the assistant to take up the last step
-   * instead.
+   * The engine takes no idempotency key for a turn, so an automatic resend
+   * can store the message twice, open a second conversation after a create
+   * that timed out, or — after a reload — ask the assistant to "try again" and
+   * start a live run a standing permission covers without a question. This
+   * refreshes the conversation so the reader sees what actually arrived, and
+   * puts the cursor in the composer: a send in this session left its text
+   * there; the reader sends it again, knowingly, if it is missing.
    */
-  const retryTurn = () => {
-    if (send.error) {
-      const input = document.querySelector<HTMLTextAreaElement>(
-        '[data-testid="chat-composer-input"]',
-      );
-      if (input?.form && input.value.trim()) {
-        input.form.requestSubmit();
-        return;
-      }
-      if (send.variables) {
-        send.mutate(send.variables);
-        return;
-      }
-    }
-    send.mutate({ message: t("chat.retryPrompt") });
+  const retryTurn = async () => {
+    send.reset();
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["conversation", activeId] }),
+      queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+    ]);
+    document.querySelector<HTMLTextAreaElement>('[data-testid="chat-composer-input"]')?.focus();
   };
   const cancel = useMutation({
     mutationFn: () => cancelConversation(activeId ?? ""),
@@ -1180,6 +1181,12 @@ export function ChatPage() {
     (detail.error.status === 404 || detail.error.status === 403);
   const listFailed = queryView(conversations, () => false) === "error";
   const storedMode = detail.data ? storedAuthoringMode(detail.data.draft) : "loading";
+  const composerHint =
+    pendingChoice || pendingForm
+      ? { text: t("chat.choice.hint"), visible: true }
+      : resume?.pending_approval?.tool_name === "ask_user_text" && !send.isPending
+        ? { text: t("chat.replyHint"), visible: false }
+        : null;
   // The matrix for the mode in force: the one being picked, or the one the
   // conversation was started in. A legacy or armed exception has no matrix
   // this page can state, so it shows none rather than a guess.
@@ -1356,15 +1363,16 @@ export function ChatPage() {
                   {turnFailureMessage && (
                     <p className="mt-1 break-words font-mono text-xs">{turnFailureMessage}</p>
                   )}
+                  <p className="mt-1">{t("chat.retryManual")}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <Button
                       variant="outline"
                       size="sm"
                       disabled={send.isPending || decide.isPending}
-                      onClick={retryTurn}
+                      onClick={() => void retryTurn()}
                       data-testid="chat-error-retry"
                     >
-                      {t(send.error ? "chat.resend" : "chat.retryTurn")}
+                      {t("chat.retryCheck")}
                     </Button>
                   </div>
                 </>
@@ -1686,6 +1694,19 @@ export function ChatPage() {
                 </span>
               </div>
             )}
+            {/* Where the answer goes. A text question says it in the field's
+                placeholder and, for a screen reader, here; a choice or form
+                disables the field, and a disabled field's placeholder is too
+                faint to read — so that hint is shown. */}
+            {composerHint ? (
+              <p
+                id="chat-composer-hint"
+                className={composerHint.visible ? "mb-2 text-sm text-muted-foreground" : "sr-only"}
+                data-testid="chat-composer-hint"
+              >
+                {composerHint.text}
+              </p>
+            ) : null}
             <PromptInputProvider
               key={activeId ?? "new"}
               initialInput={selection.kind === "new" ? initialPrompt : ""}
@@ -1699,12 +1720,11 @@ export function ChatPage() {
                 // A separate line above it repeated what the header badge and
                 // the card in the transcript already said.
                 placeholder={
-                  pendingChoice || pendingForm
-                    ? t("chat.choice.hint")
-                    : resume?.pending_approval?.tool_name === "ask_user_text"
-                      ? t("chat.replyHint")
-                      : t("chat.composer.placeholder")
+                  composerHint && !composerHint.visible
+                    ? composerHint.text
+                    : t("chat.composer.placeholder")
                 }
+                describedBy={composerHint ? "chat-composer-hint" : undefined}
                 onStop={() => cancel.mutate()}
                 onSend={(message, references) => send.mutateAsync({ message, references })}
               />

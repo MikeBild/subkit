@@ -55,13 +55,19 @@ test("typed form values preserve false, validate choices and never copy unrelate
   expect(formValues(form, { days: "7", projects: ["foreign"] })).toBeNull();
 });
 
-test("a field without a label reads as words, never as its raw name", () => {
+test("a field without a label is its name, marked as one — never invented prose", () => {
   const known = { period_end: "Periodenende" };
-  expect(formFieldLabel({ name: "period_end", label: "period_end" }, known)).toBe("Periodenende");
+  expect(formFieldLabel({ name: "period_end", label: "period_end" }, known)).toEqual({
+    text: "Periodenende",
+    machine: false,
+  });
+  // Not dressed up as English prose: the input's own name, shown as a name.
   expect(
     formFieldLabel({ name: "report_recipient_email", label: "report_recipient_email" }, known),
-  ).toBe("Report recipient email");
-  expect(formFieldLabel({ name: "maxRows", label: "maxRows" }, known)).toBe("Max rows");
+  ).toEqual({ text: "report_recipient_email", machine: true });
   // A label the engine did send is the author's word and stays.
-  expect(formFieldLabel({ name: "site", label: "Website" }, known)).toBe("Website");
+  expect(formFieldLabel({ name: "site", label: "Website" }, known)).toEqual({
+    text: "Website",
+    machine: false,
+  });
 });

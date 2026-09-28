@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
-import { apiRequest } from "@/api/client";
+import { ApiError, apiRequest } from "@/api/client";
 import { absolute, runsHref, settingsHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { type CockpitColumn, DataTable } from "@/components/cockpit/data-table";
@@ -14,6 +14,7 @@ import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/comp
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { canReadDirectory } from "@/pages/audit-model";
 import {
   budgetPressure,
   budgetSummary,
@@ -27,7 +28,9 @@ import {
   usageRows,
   usageStatsEndpoint,
   usageTotals,
+  type WorkflowNameLookup,
   windowCost,
+  workflowNameLookup,
 } from "@/pages/usage-model";
 
 const AXIS_LABEL: Record<ConsumptionAxis, TranslationKey> = {
@@ -94,7 +97,8 @@ export function UsagePage() {
   // person at all. Fetched only when that axis is open.
   const people = useQuery({
     queryKey: ["usage-people"],
-    enabled: allowed && axis === "user",
+    // Only asked when the engine would answer: a refused read is an audit row.
+    enabled: allowed && axis === "user" && canReadDirectory(session),
     queryFn: () =>
       apiRequest<{ items?: Array<{ id: string; email?: string; name?: string }> }>(
         "/v1/identity/users?limit=200",
@@ -109,23 +113,36 @@ export function UsagePage() {
     return byId;
   }, [people.data]);
   // Names for the workflow axis. `llm_usage` is attributed through the run,
-  // so the key is the workflow's id — printed raw, the axis named nothing.
-  const workflowList = useQuery({
-    queryKey: ["usage-workflows"],
-    enabled: allowed && axis === "workflow",
-    queryFn: () =>
-      apiRequest<{ items?: Array<{ id: string; name?: string | null; slug?: string | null }> }>(
-        "/v1/workflows?limit=200",
-      ),
+  // so the key is the workflow's id. Each id on screen is looked up by itself:
+  // a list capped at 200 called every workflow past the cap "no longer
+  // kept". Only a 404 says a workflow is gone; any other failure is a name
+  // this page could not read.
+  const workflowIds = useMemo(
+    () =>
+      axis === "workflow" ? spend.filter((row) => !row.unattributed).map((row) => row.key) : [],
+    [axis, spend],
+  );
+  const workflowLookups = useQueries({
+    queries: workflowIds.map((id) => ({
+      queryKey: ["usage-workflow", id],
+      enabled: allowed,
+      retry: false,
+      queryFn: () =>
+        apiRequest<{ name?: string | null; slug?: string | null }>(
+          `/v1/workflows/${encodeURIComponent(id)}`,
+        ),
+    })),
   });
   const workflowName = useMemo(() => {
-    const byId = new Map<string, string>();
-    for (const item of workflowList.data?.items ?? []) {
-      const label = item.name?.trim() || item.slug?.trim();
-      if (label) byId.set(item.id, label);
-    }
+    const byId = new Map<string, WorkflowNameLookup>();
+    workflowIds.forEach((id, index) => {
+      const lookup = workflowLookups[index];
+      const status =
+        lookup?.error instanceof ApiError ? lookup.error.status : lookup?.error ? 0 : null;
+      byId.set(id, workflowNameLookup(lookup?.data, status));
+    });
     return byId;
-  }, [workflowList.data]);
+  }, [workflowIds, workflowLookups]);
   const pressure = budgetPressure(budget);
 
   const number = useMemo(
@@ -182,7 +199,8 @@ export function UsagePage() {
             );
           }
           if (axis === "workflow") {
-            const name = workflowName.get(row.key);
+            const lookup = workflowName.get(row.key);
+            const name = lookup?.kind === "named" ? lookup.name : null;
             if (name)
               return (
                 <a
@@ -193,13 +211,13 @@ export function UsagePage() {
                   {name}
                 </a>
               );
-            const unreadable = Boolean(workflowList.error) || workflowName.size === 0;
+            if (!lookup || lookup.kind === "pending") return MISSING;
             return (
               <span className="truncate text-muted-foreground">
                 {t(
-                  unreadable
-                    ? "resource.usage.workflowUnreadable"
-                    : "resource.usage.unknownWorkflow",
+                  lookup.kind === "gone"
+                    ? "resource.usage.unknownWorkflow"
+                    : "resource.usage.workflowUnreadable",
                 )}
               </span>
             );
@@ -236,17 +254,7 @@ export function UsagePage() {
         { width: "w-[17%]" },
       ),
     ];
-  }, [
-    t,
-    dateTime,
-    axis,
-    number,
-    percent,
-    personName,
-    people.error,
-    workflowName,
-    workflowList.error,
-  ]);
+  }, [t, dateTime, axis, number, percent, personName, people.error, workflowName]);
 
   const columns = useMemo<CockpitColumn<UsageRow>[]>(() => {
     const column = tableColumns<UsageRow>({ t, dateTime });
@@ -532,6 +540,9 @@ export function UsagePage() {
               {t("resource.usage.runtimeDescription")}
             </p>
           </header>
+          <p className="text-muted-foreground text-xs" data-testid="usage-runs-link-note">
+            {t("resource.usage.runsLinkNote")}
+          </p>
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" data-testid="usage-summary">
             {runtime.isPending
               ? [0, 1, 2, 3].map((index) => <Skeleton key={index} className="h-28 w-full" />)

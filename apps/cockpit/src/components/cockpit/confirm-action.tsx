@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type MouseEvent, type ReactNode, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Spinner } from "@/components/ui/spinner";
 import { useI18n } from "@/lib/i18n-context";
 
 /**
@@ -25,6 +26,11 @@ import { useI18n } from "@/lib/i18n-context";
  * row). A caller whose act starts somewhere a trigger cannot sit — a Select
  * that has already picked the new value — holds `open` itself and passes
  * `onOpenChange`.
+ *
+ * `onConfirm` may return a promise. The dialog then stays open, both buttons
+ * disabled, until it settles: closed on success, still open on failure so the
+ * reader sees the refusal next to what they tried. Closing at the click hid a
+ * failed change behind a dialog that looked like it had worked.
  */
 export function ConfirmAction({
   title,
@@ -41,18 +47,41 @@ export function ConfirmAction({
   consequence: ReactNode;
   confirmLabel: string;
   tone?: "default" | "destructive";
-  onConfirm(): void;
+  onConfirm(): unknown;
   trigger?: ReactNode;
   open?: boolean;
   onOpenChange?(open: boolean): void;
   testId?: string;
 }) {
   const { t } = useI18n();
+  const [ownOpen, setOwnOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const isOpen = open ?? ownOpen;
+  const setOpen = (next: boolean) => {
+    if (pending && !next) return;
+    if (open === undefined) setOwnOpen(next);
+    onOpenChange?.(next);
+  };
+  const confirm = async (event: MouseEvent) => {
+    event.preventDefault();
+    const result = onConfirm();
+    if (!(result instanceof Promise)) {
+      setOpen(false);
+      return;
+    }
+    setPending(true);
+    try {
+      await result;
+      setPending(false);
+      if (open === undefined) setOwnOpen(false);
+      onOpenChange?.(false);
+    } catch {
+      // Stays open: the caller reports why, and the reader can cancel.
+      setPending(false);
+    }
+  };
   return (
-    <AlertDialog
-      {...(open === undefined ? {} : { open })}
-      {...(onOpenChange ? { onOpenChange } : {})}
-    >
+    <AlertDialog open={isOpen} onOpenChange={setOpen}>
       {trigger ? <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger> : null}
       <AlertDialogContent data-testid={testId}>
         <AlertDialogHeader>
@@ -64,14 +93,17 @@ export function ConfirmAction({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel data-testid={`${testId}-cancel`}>
+          <AlertDialogCancel disabled={pending} data-testid={`${testId}-cancel`}>
             {t("common.cancel")}
           </AlertDialogCancel>
           <AlertDialogAction
             variant={tone === "destructive" ? "destructive" : "default"}
-            onClick={onConfirm}
+            disabled={pending}
+            aria-busy={pending || undefined}
+            onClick={(event) => void confirm(event)}
             data-testid={`${testId}-confirm`}
           >
+            {pending ? <Spinner data-icon="inline-start" /> : null}
             {confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
