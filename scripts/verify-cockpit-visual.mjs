@@ -2245,8 +2245,14 @@ function artifactRouteName(route) {
   // a directory that does not exist. The record's id is not part of the name:
   // the frame is of the DETAIL surface, and a second id would make two names
   // for one photograph.
+  //
+  // `-record`, not `-detail`: the catalog pass below photographs every detail
+  // page as `<resource>-detail` on desktop. When the workflow page joined this
+  // route list it was written under the same name, overwrote that frame in all
+  // four desktop variants, and the run ended with 860 frames counted and 856
+  // files on disk — correctly suspicious, with the wrong guess about why.
   const [path, query] = (route || "overview").split("?");
-  const name = path.replace(/\/[^/]+$/, "-detail");
+  const name = path.replace(/\/[^/]+$/, "-record");
   // A query becomes part of the name, so two narrowings of one page are two
   // frames rather than one overwriting the other (`decisions-bucket-failing`).
   return query ? `${name}-${query.replace(/[^a-z0-9]+/gi, "-").replace(/-+$/, "")}` : name;
@@ -2955,9 +2961,22 @@ async function prepareOutput() {
  * so there is no path, so `screenshot` is never reached. Nothing here has to
  * remember to check anything.
  */
+/** Every file this run has written, so a second write to one is caught where it happens. */
+const writtenPaths = new Map();
+
+function claimFrame(path, label) {
+  const earlier = writtenPaths.get(path);
+  if (earlier !== undefined)
+    throw new Error(
+      `Frame "${label}" would overwrite "${earlier}" at ${path}. Two photographs under one name leave one file and two counts, and the end-of-run tally can only say the numbers disagree.`,
+    );
+  writtenPaths.set(path, label);
+}
+
 async function shoot(page, label, options) {
   await prepareOutput();
   const path = resolve(outputDir, stand.frameName(page, label));
+  claimFrame(path, label);
   await page.screenshot({ animations: "disabled", ...options, path });
   framesWritten += 1;
   written.set(label, path);
@@ -2970,6 +2989,7 @@ async function shoot(page, label, options) {
 async function shootSheet(page, label, options) {
   await prepareOutput();
   const path = resolve(outputDir, stand.sheetName(label));
+  claimFrame(path, label);
   await page.screenshot({ animations: "disabled", ...options, path });
   framesWritten += 1;
   written.set(label, path);
