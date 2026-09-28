@@ -266,11 +266,15 @@ describe("approvePatchCandidate", () => {
       .where(eq(workflowVersions.workflow_id, ctx.workflow_id));
     expect(versionsAfter.length).toBe(versionsBefore.length);
 
-    // Still open for review — not silently closed as a repair that happened.
+    // Never recorded as a repair that happened: no anchor is a defect of the
+    // candidate that no version can cure, so it is closed as inapplicable with
+    // that reason — never `applied`, and never left open as a decision nobody
+    // can make.
     const after = (
       await db.select().from(patchCandidates).where(eq(patchCandidates.id, candidateId))
     )[0];
-    expect(after?.status).toBe("proposed");
+    expect(after?.status).toBe("inapplicable");
+    expect(after?.closed_reason).toBe("no_step_anchor");
 
     // The refusal is on the record, with the reason.
     const auditRows = await db

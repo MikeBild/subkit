@@ -456,6 +456,7 @@ async function processDriftSignalLocked(
     signal,
     base_version_id: baseVersionId,
     workflow_step_id: ctx.workflow_step_id ?? null,
+    step_id: ctx.step_id,
   });
   if (terminal) {
     const policy = await resolvePolicy(ctx.tenant_id, ctx.workflow_id, db);

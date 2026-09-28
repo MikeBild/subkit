@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/index.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
+import { isExecutionStepId } from "./step-snapshot.ts";
 import type { DriftSignal } from "./types.ts";
 
 function stableStringify(value: unknown): string {
@@ -97,6 +98,8 @@ export async function findMatchingTerminalEndpointCandidate(
     signal: DriftSignal;
     base_version_id?: string | null;
     workflow_step_id?: string | null;
+    /** The failing execution step of a reactive signal — its other anchor. */
+    step_id?: string | null;
   },
 ) {
   const rows = await exec
@@ -126,6 +129,15 @@ export async function findMatchingTerminalEndpointCandidate(
   );
 }
 
+/** Whether a live signal names the step a patch would rewrite — directly, or
+ *  through its failing execution step (`resolveCandidateStepKey`'s two anchors). */
+function signalCarriesAnchor(params: {
+  workflow_step_id?: string | null;
+  step_id?: string | null;
+}): boolean {
+  return !!params.workflow_step_id || isExecutionStepId(params.step_id);
+}
+
 /**
  * An `inapplicable` candidate was proven undecidable against ONE workflow
  * version. It suppresses re-proposal only while the workflow still sits on
@@ -141,11 +153,18 @@ function matchesInapplicableBoundary(
     endpoint_key: string | null;
     base_version_id?: string | null;
     workflow_step_id?: string | null;
+    step_id?: string | null;
   },
   fingerprint: string,
 ): boolean {
   const diff = candidate.diff as Record<string, unknown>;
   const candidateFingerprint = candidateDriftFingerprint(candidate);
+  // A candidate closed for having no step anchor proved something about
+  // itself, not about the version: it says nothing about a re-proposal that
+  // DOES carry an anchor, which a person could decide. It suppresses only an
+  // equally anchorless re-proposal — the one that would be closed at birth
+  // again and loop on every scan.
+  if (candidate.closed_reason === "no_step_anchor" && signalCarriesAnchor(params)) return false;
   return (
     !!candidate.closed_against_version_id &&
     candidate.closed_against_version_id === params.base_version_id &&
