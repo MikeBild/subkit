@@ -153,4 +153,26 @@ describe("mcp settings tools", () => {
       }),
     ]);
   });
+
+  test("read tool reports the same default and enum members as REST", async () => {
+    const { plaintext } = await suite.issueApiKey(["mcp:admin", "settings:read"]);
+    const client = await suite.connectWithApiKey(plaintext);
+    const result = await client.callTool({
+      name: "subkit_settings",
+      arguments: { path: "log.level" },
+    });
+    expect(result.isError).toBeFalsy();
+    const mcpMeta = (textBody(result) as unknown as { items: Array<{ meta: object }> }).items[0]
+      ?.meta;
+    const rest = await fetch(`${suite.http.baseUrl}/v1/settings/log.level`, {
+      headers: { authorization: `Bearer ${suite.http.apiKey}` },
+    });
+    const restMeta = ((await rest.json()) as { meta: object }).meta;
+    const expected = {
+      default: "info",
+      enum_values: ["trace", "debug", "info", "warn", "error", "fatal"],
+    };
+    expect(mcpMeta).toMatchObject(expected);
+    expect(restMeta).toMatchObject(expected);
+  });
 });
