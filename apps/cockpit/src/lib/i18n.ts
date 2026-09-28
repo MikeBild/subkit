@@ -2263,6 +2263,7 @@ const EN = {
   "audit.reason.authorityUnavailable": "Approval could not be checked",
   "audit.reason.refreshReplayed": "Refresh token used twice",
   "audit.reason.manualReissue": "Issued again by hand",
+  "audit.reason.clientRetired": "Application retired for disuse",
   // Chat: modes and their gates, a conversation that cannot be opened, retry.
   "chat.mode.asks": "Asks first:",
   "chat.mode.free": "Without asking:",
@@ -4778,6 +4779,7 @@ const DE: Record<TranslationKey, string> = {
   "audit.reason.authorityUnavailable": "Freigabe war nicht prüfbar",
   "audit.reason.refreshReplayed": "Aktualisierungs-Token doppelt verwendet",
   "audit.reason.manualReissue": "Von Hand neu ausgestellt",
+  "audit.reason.clientRetired": "Anwendung wegen Nichtnutzung stillgelegt",
   // Chat: modes and their gates, a conversation that cannot be opened, retry.
   "chat.mode.asks": "Fragt vorher:",
   "chat.mode.free": "Ohne Rückfrage:",

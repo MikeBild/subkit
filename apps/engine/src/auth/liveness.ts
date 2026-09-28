@@ -21,6 +21,8 @@ export interface UserLivenessRow {
 /** The columns a client-registration decision needs. */
 export interface ClientLivenessRow {
   disabled_at: Date | null;
+  /** Set with `disabled_at` when housekeeping retired an unused registration. */
+  retired_at: Date | null;
 }
 
 export type LivenessRefusal =
@@ -28,7 +30,8 @@ export type LivenessRefusal =
   | "user_deleted"
   | "user_disabled"
   | "client_missing"
-  | "client_revoked";
+  | "client_revoked"
+  | "client_retired";
 
 /**
  * `null` when the person may still authenticate. Disabling or soft-deleting
@@ -47,7 +50,8 @@ export function clientLivenessRefusal(
   client: ClientLivenessRow | undefined,
 ): LivenessRefusal | null {
   if (!client) return "client_missing";
-  if (client.disabled_at !== null) return "client_revoked";
+  if (client.disabled_at !== null)
+    return client.retired_at !== null ? "client_retired" : "client_revoked";
   return null;
 }
 
@@ -65,5 +69,7 @@ export function livenessRefusalDescription(refusal: LivenessRefusal): string {
     case "client_missing":
     case "client_revoked":
       return "the client registration behind this connection was revoked — the client has to register and be approved again";
+    case "client_retired":
+      return "the client registration behind this connection was retired after a week without a valid approval or any use — approving it again brings it back";
   }
 }

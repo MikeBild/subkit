@@ -143,6 +143,7 @@ const REASON_KEYS: Record<string, TranslationKey> = {
   execution_authority_unavailable: "audit.reason.authorityUnavailable",
   refresh_replayed: "audit.reason.refreshReplayed",
   manual_re_issue: "audit.reason.manualReissue",
+  client_retired: "audit.reason.clientRetired",
 };
 
 /**
