@@ -89,7 +89,7 @@ function zodToJson(schema: ZodType): Record<string, unknown> {
   return zodToJsonSchema7(schema);
 }
 
-const DEFAULT_PRIMARY = "claude-sonnet-4-6";
+export const DEFAULT_PRIMARY_MODEL = "claude-sonnet-4-6";
 // The fallback carries TWO jobs, and they pull in the same direction only if it
 // is the STRONGER model: it absorbs an overloaded primary, and it is where
 // `applyFlowModelElevation` sends `judge` and `generate`. It must also be
@@ -102,7 +102,7 @@ const DEFAULT_PRIMARY = "claude-sonnet-4-6";
 // elevation exists to do. The nightly judge-calibration job is what surfaced
 // it — it pins no model, so it rode the shipped default and failed while its
 // sibling job, which pins `claude-sonnet-4-6`, passed on the same key.
-const DEFAULT_FALLBACK = "claude-opus-4-7";
+export const DEFAULT_FALLBACK_MODEL = "claude-opus-4-7";
 
 /**
  * Snapshot of the global LLM-routing configuration for /health.
@@ -165,8 +165,8 @@ export function globalLlmStatus(): GlobalLlmStatus {
     vertex_api_key_set: Boolean(vertex.api_key),
     vertex_service_account_set: Boolean(vertex.client_email && vertex.private_key),
     configuration_error: null,
-    default_primary: cfg.model || DEFAULT_PRIMARY,
-    default_fallback: cfg.fallback_model || DEFAULT_FALLBACK,
+    default_primary: cfg.model || DEFAULT_PRIMARY_MODEL,
+    default_fallback: cfg.fallback_model || DEFAULT_FALLBACK_MODEL,
   };
 }
 
@@ -217,9 +217,10 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
   } catch {
     /* loader not initialised — unit tests fall back to DEFAULT_* */
   }
-  const primary = settings?.llm_primary_model ?? tenant?.llm_primary ?? cfgModel ?? DEFAULT_PRIMARY;
+  const primary =
+    settings?.llm_primary_model ?? tenant?.llm_primary ?? cfgModel ?? DEFAULT_PRIMARY_MODEL;
   const fallback =
-    settings?.llm_fallback_model ?? tenant?.llm_fallback ?? cfgFallback ?? DEFAULT_FALLBACK;
+    settings?.llm_fallback_model ?? tenant?.llm_fallback ?? cfgFallback ?? DEFAULT_FALLBACK_MODEL;
   const provider =
     (settings?.llm_provider as LlmProviderKind | undefined) ?? currentProvider(tenant_id);
   const fallback_provider = currentFallbackProvider(provider, tenant_id);

@@ -182,15 +182,29 @@ export function budgetPressure(summary: BudgetSummary): "ample" | "tightening" |
 export interface WindowCost {
   amount: number;
   currency: string;
-  /** Models the configured rates did not cover. Named, never folded into the amount. */
+  /** Models neither the built-in catalog nor an override priced. Named, never folded into the amount. */
   unpricedModels: string[];
   unpricedCalls: number;
 }
 
 /**
+ * The models the window's cost could not price, by name.
+ *
+ * Read on its own because `windowCost` is `null` exactly when nothing was
+ * priced — and that is when a reader most needs to know which models lack a
+ * price. SubKit ships list prices for the models it uses, so an unpriced model
+ * is a specific one, not "no prices at all".
+ */
+export function unpricedModels(envelope: unknown): string[] {
+  const cost = isRecord(envelope) && isRecord(envelope.cost) ? envelope.cost : null;
+  if (!cost || !Array.isArray(cost.unpriced_models)) return [];
+  return cost.unpriced_models.filter((m): m is string => typeof m === "string");
+}
+
+/**
  * The window's money, or nothing.
  *
- * `null` when no rate is configured at all: an amount of zero beside a month
+ * `null` when no call in the window had a price: an amount of zero beside a month
  * that plainly consumed tokens reads as "this was free", which is the most
  * expensive misreading this data can produce. A partial amount — some models
  * priced, some not — IS returned, because `unpricedCalls` travels with it and

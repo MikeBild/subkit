@@ -787,12 +787,17 @@ const QueueSection = z
  * SAYING so is the honest version, and it is why every cost answer carries
  * the basis it was computed on.
  *
- * A model absent from this list is not free. It is unpriced, and a surface
+ * These entries are overrides on top of the built-in catalog
+ * (`llm/model-price-catalog.ts`), applied per model. The catalog is never
+ * copied into the stored configuration, so a release that corrects a list
+ * price reaches every model the operator has not priced themselves.
+ *
+ * A model with neither an override nor a catalog price is not free. It is unpriced, and a surface
  * that meets one reports its tokens and names it as unpriced rather than
  * adding zero — a nought that means "not measured" is the costliest reading
  * in the product.
  */
-const ModelPriceSchema = z.object({
+export const ModelPriceSchema = z.object({
   model: z.string().min(1).describe("Model identifier as it appears in `llm_usage.model`."),
   input_per_mtok: z.number().nonnegative().describe("Price per 1M uncached input tokens."),
   output_per_mtok: z.number().nonnegative().describe("Price per 1M output tokens."),
@@ -813,13 +818,15 @@ const TokensSection = z
     currency: z
       .string()
       .default("USD")
-      .describe("ISO 4217 code the prices below are quoted in.")
+      .describe(
+        "ISO 4217 code for tokens.prices. The built-in catalog is in USD and applies only while this is USD; otherwise only tokens.prices entries price anything.",
+      )
       .meta(tenant()),
     prices: z
       .array(ModelPriceSchema)
       .default([])
       .describe(
-        "Price per million tokens per model. Empty means no model is priced: surfaces then report tokens and say the price is not configured, rather than reporting zero.",
+        "Per-model price overrides on top of the built-in catalog, per 1M tokens. An entry replaces its model's catalog price. A model with neither is reported as unpriced, not as zero.",
       )
       .meta(tenant({ structural: true, runtimeEditable: true })),
     monthly_budget: z

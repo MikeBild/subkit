@@ -4415,6 +4415,34 @@ Operators read this surface from the CLI:
 (human ASCII table + sparkline by default, `--json` for cron/CI/ETL), and it feeds the
 `sk` settings Status heatmap + Usage token bar.
 
+### What the AI usage cost
+
+`GET /v1/stats/llm` and `GET /v1/executions/{id}/cost` put a money figure beside the
+tokens, so you can see what an automation or a month of AI use cost without typing a
+price first.
+
+- **Prices come with sk.** Each release carries a list-price catalog, in USD per
+  million tokens, for the models sk picks by default and the models people most often
+  configure. It covers uncached input, output, cache reads and cache writes (the
+  five-minute write price). Each entry records the vendor pricing page it came from.
+- **Your prices win, one model at a time.** An entry in `tokens.prices` replaces the
+  catalog price for that model only. Every other model keeps its catalog price. Set
+  one with `sk settings set tokens.prices '[{"model":"claude-sonnet-4-6","input_per_mtok":3,"output_per_mtok":15,"cache_read_per_mtok":0.3,"cache_write_per_mtok":3.75}]'`.
+- **The catalog is never written into your settings.** `tokens.prices` holds only what
+  you entered. That is how a newer release's corrected or added prices reach every
+  model you have not priced yourself, as soon as it is running.
+- **One currency per figure.** The catalog is quoted in USD, so it applies only while
+  `tokens.currency` is `USD`. If you use another currency, only your own
+  `tokens.prices` entries price anything. Converting would mean mixing two currencies
+  in one total.
+- **Unpriced means named, not free.** A model with neither your price nor a catalog
+  price counts toward `unpriced_models` and `unpriced_calls`, never toward `amount`.
+  When no model in the window has a price, the Usage page shows tokens and names the
+  models that need one. `price_sources` lists which rate priced each model: `catalog`
+  or `override`.
+- **Current prices, not an invoice.** Prices are applied when you read the figure
+  (`rates_basis: "current"`). History is always priced at today's rates.
+
 ---
 
 ## Resource Limits and Operational Safety
@@ -14292,9 +14320,9 @@ Token budget
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `tokens.currency` | string | `"USD"` | tenant | no | no | ISO 4217 code the prices below are quoted in. |
+| `tokens.currency` | string | `"USD"` | tenant | no | no | ISO 4217 code for tokens.prices. The built-in catalog is in USD and applies only while this is USD; otherwise only tokens.prices entries price anything. |
 | `tokens.monthly_budget` | number | `0` | tenant | no | no | Hard cap on tokens consumed per calendar month. 0 = unlimited. |
-| `tokens.prices` | json | `[]` | tenant | no | no | Price per million tokens per model. Empty means no model is priced: surfaces then report tokens and say the price is not configured, rather than reporting zero. |
+| `tokens.prices` | json | `[]` | tenant | no | no | Per-model price overrides on top of the built-in catalog, per 1M tokens. An entry replaces its model's catalog price. A model with neither is reported as unpriced, not as zero. |
 
 ## operations
 Startup operations
