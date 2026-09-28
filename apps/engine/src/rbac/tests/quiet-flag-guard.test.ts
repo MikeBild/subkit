@@ -74,7 +74,8 @@ const QUIET_TRUE = /quiet\s*:\s*true\b/;
 //   - the evaluator's own type definition (the `quiet?: boolean` doc) and
 //     the `connectorAccessLevel` probe (read/write level introspection —
 //     a "no" on write is a routine level outcome, not an incident)
-//   - the evaluator's own unit tests (exercise the probe path)
+//   - the evaluator's own unit tests (exercise the probe path), including the
+//     `resourceAccess` ↔ `can()` equivalence test
 //   - this guard test itself (references the literal in prose/regex)
 const ALLOWED = new Set<string>([
   "apps/engine/src/http/routes/oauth/shared.ts",
@@ -86,6 +87,7 @@ const ALLOWED = new Set<string>([
   "apps/engine/src/operator/attention.ts",
   "apps/engine/src/rbac/evaluator.ts",
   "apps/engine/src/rbac/tests/evaluator.test.ts",
+  "apps/engine/src/rbac/tests/resource-access.test.ts",
   "apps/engine/src/rbac/tests/quiet-flag-guard.test.ts",
 ]);
 
