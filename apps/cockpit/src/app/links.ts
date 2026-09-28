@@ -129,7 +129,7 @@ export function reviewFromUrl(search: string): string | null {
 
 /**
  * The settings page, opened at one leaf (`server.public_base_url`), or at a
- * tab and a search. `settingsViewFromUrl` in pages/admin-model.ts reads it back.
+ * section and a search. `settingsViewFromUrl` in pages/settings-model.ts reads it back.
  */
 export function settingsHref(
   leaf?: string | null,

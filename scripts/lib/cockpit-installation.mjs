@@ -31,7 +31,7 @@ function assertNoRawValues(text, where, locale) {
   if (/(^|\s)\*(\s|$)/m.test(text)) throw new Error(`${where}: shows a raw "*" pattern`);
 }
 
-export async function verifyInstallationPages(page, stand, locale, capture) {
+export async function verifyInstallationPages(page, stand, locale, capture, settings) {
   for (const { route, marker, tabs } of PAGES) {
     await stand.visit(page, route);
     await page.getByTestId(marker).waitFor({ state: "visible" });
@@ -84,21 +84,19 @@ export async function verifyInstallationPages(page, stand, locale, capture) {
     const field = active?.closest('[data-testid^="setting-item-"]');
     return Boolean(field?.textContent?.includes("tokens.monthly_budget"));
   });
-  // Opening the leaf moved the whole page sideways: the settings column was as
-  // wide as the tab strip's every tab side by side, the page's scroll region
-  // clipped it, and scrolling to the field shifted the region left — the
-  // first tab and the first status icon cut off with no way back. The page
-  // scrolls vertically only; the strip scrolls inside itself.
+  // Opening the leaf once moved the whole page sideways: the settings column
+  // was as wide as a tab strip holding every section side by side, the page's
+  // scroll region clipped it, and scrolling to the field shifted the region
+  // left. There is no strip any more; the page scrolls vertically only, the
+  // leaf's section is the open one and its row is marked.
   const drift = await page.evaluate(() => {
     const main = document.querySelector('[data-testid="admin-settings"]');
     const region = main?.querySelector('[data-family-slot="scroll-region"]');
     const content = main?.querySelector('[data-family-slot="content"]');
     const heading = main?.querySelector("h1");
-    const strip = main?.querySelector('[data-testid="settings-categories"]');
-    const tab = strip?.querySelector('[role="tab"][data-state="active"]');
-    if (!region || !content || !heading || !strip || !tab) return { missing: true };
-    const stripBox = strip.getBoundingClientRect();
-    const tabBox = tab.getBoundingClientRect();
+    const link = main?.querySelector('[data-testid="settings-section-link-tokens"]');
+    const row = document.activeElement?.closest('[data-testid^="setting-item-"]');
+    if (!region || !content || !heading || !link || !row) return { missing: true };
     return {
       missing: false,
       documentScrollLeft: document.documentElement.scrollLeft,
@@ -106,7 +104,8 @@ export async function verifyInstallationPages(page, stand, locale, capture) {
       regionOverflow: region.scrollWidth - region.clientWidth,
       contentLeft: Math.round(content.getBoundingClientRect().left),
       headingLeft: Math.round(heading.getBoundingClientRect().left),
-      tabInStrip: tabBox.left >= stripBox.left - 1 && tabBox.right <= stripBox.right + 1,
+      sectionCurrent: link.getAttribute("aria-current") === "page",
+      rowHighlighted: row.getAttribute("data-highlighted") === "true",
     };
   });
   if (drift.missing) throw new Error("/settings: the leaf deep link's page parts are missing");
@@ -115,16 +114,95 @@ export async function verifyInstallationPages(page, stand, locale, capture) {
       `/settings?leaf=: the page is scrolled sideways (document ${drift.documentScrollLeft}px, region ${drift.regionScrollLeft}px)`,
     );
   if (drift.regionOverflow > 0)
-    throw new Error(
-      `/settings?leaf=: the page is ${drift.regionOverflow}px wider than its frame — something only the tab strip may be is not contained`,
-    );
+    throw new Error(`/settings?leaf=: the page is ${drift.regionOverflow}px wider than its frame`);
   if (Math.abs(drift.contentLeft - drift.headingLeft) > 1)
     throw new Error(
       `/settings?leaf=: the content starts at ${drift.contentLeft}px, its heading at ${drift.headingLeft}px`,
     );
-  if (!drift.tabInStrip)
-    throw new Error("/settings?leaf=: the setting's tab is outside the visible part of its strip");
+  if (!drift.sectionCurrent)
+    throw new Error("/settings?leaf=: the setting's section is not the open one in the list");
+  if (!drift.rowHighlighted)
+    throw new Error("/settings?leaf=: the linked setting's row is not marked");
   if (!(await page.getByTestId("settings-pending-restart").isVisible()))
     throw new Error("/settings: a pending restart does not say which settings wait for it");
   await capture("settings-budget-leaf");
+
+  await verifySettingsSections(page, stand, settings, capture);
+}
+
+// The settings sections were a tab strip of twenty, twice as wide as the page
+// and scrolled sideways to find one. Every section is now a link in a grouped
+// list, and at each of these widths every one of them stands fully inside the
+// list and the viewport — none behind a horizontal scroll. The fixture carries
+// every section the engine has, so the count is the real installation's.
+const SETTINGS_WIDTHS = [
+  { width: 1280, height: 800 },
+  { width: 1024, height: 768 },
+  { width: 390, height: 844 },
+];
+
+async function verifySettingsSections(page, stand, { settingsSections, viewport }, capture) {
+  try {
+    for (const size of SETTINGS_WIDTHS) {
+      const where = `/settings at ${size.width}px`;
+      await page.setViewportSize(size);
+      await stand.visit(page, "settings");
+      await page.getByTestId("settings-section-list").waitFor({ state: "visible" });
+      const shape = await page.evaluate(() => {
+        const main = document.querySelector('[data-testid="admin-settings"]');
+        const list = main?.querySelector('[data-testid="settings-section-list"]');
+        const region = main?.querySelector('[data-family-slot="scroll-region"]');
+        if (!main || !list || !region) return { missing: true };
+        const box = list.getBoundingClientRect();
+        const links = [...list.querySelectorAll('a[data-testid^="settings-section-link-"]')];
+        const inside = links.filter((link) => {
+          const rect = link.getBoundingClientRect();
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.left >= box.left - 1 &&
+            rect.right <= box.right + 1 &&
+            rect.left >= -1 &&
+            rect.right <= window.innerWidth + 1
+          );
+        });
+        return {
+          missing: false,
+          tablists: main.querySelectorAll('[role="tablist"], [role="tab"]').length,
+          listOverflow: list.scrollWidth - list.clientWidth,
+          documentOverflow:
+            document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          regionOverflow: region.scrollWidth - region.clientWidth,
+          links: links.length,
+          inside: inside.length,
+        };
+      });
+      if (shape.missing) throw new Error(`${where}: the section list is missing`);
+      if (shape.tablists > 0)
+        throw new Error(`${where}: the sections are tabs (${shape.tablists} tab roles)`);
+      if (shape.listOverflow > 0)
+        throw new Error(`${where}: the section list scrolls sideways by ${shape.listOverflow}px`);
+      if (shape.documentOverflow > 0 || shape.regionOverflow > 0)
+        throw new Error(
+          `${where}: the page is wider than the viewport (document ${shape.documentOverflow}px, region ${shape.regionOverflow}px)`,
+        );
+      if (shape.inside !== settingsSections)
+        throw new Error(
+          `${where}: ${shape.inside} of ${settingsSections} sections stand fully inside the list (${shape.links} links)`,
+        );
+      await capture(`settings-sections-${size.width}`);
+      // Narrow: the list is the start view, a section opens in its place and
+      // "Alle Bereiche" leads back to the whole list.
+      if (size.width < 720) {
+        await page.getByTestId("settings-section-link-tokens").click();
+        await page.getByTestId("settings-section-tokens").waitFor({ state: "visible" });
+        if (await page.getByTestId("settings-section-list").isVisible())
+          throw new Error(`${where}: an opened section shares the screen with the list`);
+        await page.getByTestId("settings-back").click();
+        await page.getByTestId("settings-section-list").waitFor({ state: "visible" });
+      }
+    }
+  } finally {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+  }
 }
