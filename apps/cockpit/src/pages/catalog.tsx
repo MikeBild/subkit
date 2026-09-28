@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { Bot, FolderTree, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -300,7 +301,7 @@ function catalogColumns(
             <HealthMark row={row} index={index} />
           </span>
         ),
-        { sortable: true, width: "w-[21%]", ownsRowLink: true },
+        { sortable: true, width: "w-[21%]", ownsRowLink: true, interactive: true },
       ),
       column.status("lifecycle", (row) => row.lifecycle, t("catalog.lifecycle"), {
         sortable: true,
@@ -587,6 +588,7 @@ export function CatalogPage({
   permissions: readonly string[];
 }) {
   const { t, dateTime } = useI18n();
+  const navigate = useNavigate();
   const config = CONFIG[resource];
   const [state, setState] = useCatalogState(config);
   const [search, setSearch] = useState(state.q);
@@ -872,7 +874,9 @@ export function CatalogPage({
         }}
         onOpen={(row) => {
           const id = row.id;
-          if (typeof id === "string") window.location.assign(absolute(recordHref(resource, id)));
+          // A router navigation, as every other list opens its record: a full
+          // page load would throw the cockpit away to show one record.
+          if (typeof id === "string") void navigate({ to: recordHref(resource, id) });
         }}
         rowHref={(row) => (typeof row.id === "string" ? recordHref(resource, row.id) : null)}
         {...(canRecategorize

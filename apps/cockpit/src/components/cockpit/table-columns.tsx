@@ -47,6 +47,8 @@ interface ColumnOptions {
    * than the name — a link of its own must not end up inside the row's link.
    */
   ownsRowLink?: boolean;
+  /** The cell holds links or controls of its own; the row's link must not wrap it. */
+  interactive?: boolean;
 }
 
 /**
@@ -69,7 +71,11 @@ export function tableColumns<TRow extends RowData>({
     id,
     header: label,
     enableSorting: options?.sortable ?? false,
-    meta: { width: options?.width, ownsRowLink: options?.ownsRowLink },
+    meta: {
+      width: options?.width,
+      ownsRowLink: options?.ownsRowLink,
+      interactive: options?.interactive,
+    },
   });
 
   return {
@@ -151,7 +157,7 @@ export function tableColumns<TRow extends RowData>({
       options?: ColumnOptions,
     ): CockpitColumn<TRow> {
       return helper.accessor((row): unknown => get(row)?.label ?? null, {
-        ...base(id, label, options),
+        ...base(id, label, { ...options, interactive: true }),
         cell: ({ row }) => {
           const relation = get(row.original);
           if (!relation?.label) return MISSING;
@@ -178,7 +184,7 @@ export function tableColumns<TRow extends RowData>({
       options?: ColumnOptions,
     ): CockpitColumn<TRow> {
       return helper.accessor((row): unknown => get(row).length, {
-        ...base(id, label, options),
+        ...base(id, label, { ...options, interactive: true }),
         cell: ({ row }) => {
           const relations = get(row.original);
           if (relations.length === 0) return MISSING;
