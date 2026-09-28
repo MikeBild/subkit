@@ -328,10 +328,17 @@ const readConnectors: TenantReader = async (db, tenantId) => {
   });
 };
 
+/**
+ * A connection is urgent only when something depends on it. One that no
+ * connector's credential points at breaks nothing when it ends — its card
+ * says "Von keinem Konnektor genutzt" beside the state, and that is where it
+ * is seen; the attention list stays for what is actually failing.
+ */
 const readConnections: TenantReader = async (db, tenantId) => {
   const views = await listConnections(db, tenantId);
   return views.flatMap((view): Candidate[] => {
     if (view.state !== "expired" && view.state !== "unreadable") return [];
+    if (view.used_by.length === 0) return [];
     return [
       {
         source: "connections",

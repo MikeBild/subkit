@@ -1,4 +1,5 @@
 export { discoverService, normalizeBaseUrl, requireConnectable } from "./discovery.ts";
+export { OFFLINE_ACCESS_SCOPE, permissionScopes, requestedScopes } from "./scopes.ts";
 export {
   type CompleteConnectionResult,
   completeConnection,

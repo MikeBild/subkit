@@ -18,6 +18,7 @@ import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import { connectors, credentials } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { invalidateTenantState } from "../operator/tenant-state.ts";
 import {
   hasCredentialAuthorityRevisionColumn,
   hasCredentialConnectionColumn,
@@ -294,7 +295,7 @@ export async function upsertCredential(
   // id, then update with the real ciphertext keyed on the id. This keeps
   // the AAD = tenant_id + credential_id contract intact. Postgres lets
   // us do this in a single transaction trivially.
-  return await db.transaction(async (tx) => {
+  const row = await db.transaction(async (tx) => {
     // Credentials are bucketed into two slots:
     //   - the "oauth2_client" slot: RFC 7591 registered OAuth2 client
     //     identity (client_id + client_secret). At most one row per
@@ -478,6 +479,9 @@ export async function upsertCredential(
       mode: input.mode,
     };
   });
+  // Whether a connection is in use is read off credentials (attention list).
+  invalidateTenantState(input.tenant_id);
+  return row;
 }
 
 export async function rotateOAuth2Tokens(
@@ -950,6 +954,7 @@ export async function deleteCredential(
     ? (result as { rowCount?: number }).rowCount! > 0
     : true;
   if (ok) {
+    invalidateTenantState(tenant_id);
     await auditAwait(
       {
         tenant_id,
