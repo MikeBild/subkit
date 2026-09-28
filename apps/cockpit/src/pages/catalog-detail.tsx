@@ -193,7 +193,7 @@ function ConnectorStateBadges({
   return (
     <>
       <Badge variant={lost ? "destructive" : "outline"} data-testid="detail-connector-auth-state">
-        <span aria-hidden="true">{lost ? "●" : "○"}</span> {t(authStateLabel(authState))}
+        {t(authStateLabel(authState))}
       </Badge>
       {record.enabled === false ? (
         <Badge variant="outline" data-testid="detail-connector-disabled">
