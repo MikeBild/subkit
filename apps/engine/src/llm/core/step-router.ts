@@ -13,6 +13,7 @@ import type { ConversationSurface } from "../../conversations/agent/types.ts";
 import type { ConversationTool } from "../../conversations/tools/index.ts";
 import type { AuthoringStage } from "../../conversations/types.ts";
 import { logger } from "../../logging/logger.ts";
+import { bareModelId } from "../pricing.ts";
 import type { LlmProviderKind } from "../types.ts";
 import { resolveThinking } from "./thinking-policy.ts";
 
@@ -235,14 +236,19 @@ const LADDERS: Partial<Record<LlmProviderKind, UpgradeLadder>> = {
   gemini: GEMINI_LADDER,
 };
 
-function bareModelId(modelId: string): string {
-  // Strip provider prefixes (`anthropic/claude-…`).
-  const noProvider = modelId.includes("/") ? (modelId.split("/").pop() ?? modelId) : modelId;
-  // Strip vendor-stamped date suffixes so `gpt-4o-2024-11-20` and
-  // `claude-haiku-4-5-20251001` collapse to their base ids in the
-  // ladder lookup. The pattern matches a trailing `-YYYYMMDD` (8
-  // contiguous digits) or `-YYYY-MM-DD`.
-  return noProvider.replace(/-\d{4}-\d{2}-\d{2}$/, "").replace(/-\d{8}$/, "");
+/** Every model id any upgrade ladder names, as a source or as a target. */
+export function ladderModelIds(): string[] {
+  const ids = new Set<string>();
+  for (const ladder of new Set(Object.values(LADDERS))) {
+    if (!ladder) continue;
+    for (const table of [ladder.oneUp, ladder.top]) {
+      for (const [from, to] of Object.entries(table)) {
+        ids.add(from);
+        ids.add(to);
+      }
+    }
+  }
+  return [...ids].sort();
 }
 
 /** Returns the next-tier-up model id for `modelId` on `provider`, or `modelId` if no upgrade exists. */

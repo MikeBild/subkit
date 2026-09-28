@@ -1454,6 +1454,28 @@
           "unpriced_calls": {
             "type": "integer"
           },
+          "price_sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "model": {
+                  "type": "string"
+                },
+                "price_source": {
+                  "type": "string",
+                  "enum": [
+                    "catalog",
+                    "override"
+                  ]
+                }
+              },
+              "required": [
+                "model",
+                "price_source"
+              ]
+            }
+          },
           "rates_basis": {
             "type": "string",
             "enum": [
@@ -1466,6 +1488,7 @@
           "currency",
           "unpriced_models",
           "unpriced_calls",
+          "price_sources",
           "rates_basis"
         ]
       },
@@ -9478,6 +9501,28 @@
           "unpriced_calls": {
             "type": "integer"
           },
+          "price_sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "model": {
+                  "type": "string"
+                },
+                "price_source": {
+                  "type": "string",
+                  "enum": [
+                    "catalog",
+                    "override"
+                  ]
+                }
+              },
+              "required": [
+                "model",
+                "price_source"
+              ]
+            }
+          },
           "rates_basis": {
             "type": "string",
             "enum": [
@@ -9490,6 +9535,7 @@
           "currency",
           "unpriced_models",
           "unpriced_calls",
+          "price_sources",
           "rates_basis"
         ]
       },

@@ -15,6 +15,7 @@ import {
   budgetSummary,
   consumptionRows,
   llmStatsEndpoint,
+  unpricedModels,
   windowCost,
   workflowNameLookup,
 } from "@/pages/usage-model";
@@ -170,7 +171,24 @@ describe("the window's money", () => {
   test("an envelope without a cost block yields nothing", () => {
     for (const bad of [null, undefined, {}, { cost: "nope" }]) {
       expect(windowCost(bad)).toBeNull();
+      expect(unpricedModels(bad)).toEqual([]);
     }
+  });
+
+  test("a window nothing could be priced in still names the models that lack a price", () => {
+    // No amount is shown, so the line beneath it is the only place the reader
+    // learns WHICH models need a price — "no prices at all" is not the case
+    // once SubKit ships list prices.
+    const envelope = {
+      cost: {
+        amount: 0,
+        currency: "USD",
+        unpriced_models: ["some-new-model", "another-model"],
+        unpriced_calls: 40,
+      },
+    };
+    expect(windowCost(envelope)).toBeNull();
+    expect(unpricedModels(envelope)).toEqual(["some-new-model", "another-model"]);
   });
 });
 

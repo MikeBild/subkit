@@ -4,7 +4,7 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { getConfig } from "../../../config/loader.ts";
-import { priceCalls } from "../../../llm/index.ts";
+import { effectiveModelPrices, priceCalls } from "../../../llm/index.ts";
 import { can } from "../../../rbac/index.ts";
 import { aggregateLlm, type LlmGroupDim } from "../../../stats/aggregate-llm.ts";
 import { BadRequestError, ForbiddenError } from "../../errors.ts";
@@ -136,7 +136,7 @@ export function registerStatsLlmRoute(app: OpenAPIHono<AppEnv>): void {
         cache_read_tokens: group.totals.tokens.cache_read,
         cache_creation_tokens: group.totals.tokens.cache_creation,
       })),
-      tokenPrices?.prices ?? [],
+      effectiveModelPrices(tokenPrices ?? {}),
       tokenPrices?.currency ?? "USD",
     );
 

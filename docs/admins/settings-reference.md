@@ -199,9 +199,9 @@ Token budget
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `tokens.currency` | string | `"USD"` | tenant | no | no | ISO 4217 code the prices below are quoted in. |
+| `tokens.currency` | string | `"USD"` | tenant | no | no | ISO 4217 code for tokens.prices. The built-in catalog is in USD and applies only while this is USD; otherwise only tokens.prices entries price anything. |
 | `tokens.monthly_budget` | number | `0` | tenant | no | no | Hard cap on tokens consumed per calendar month. 0 = unlimited. |
-| `tokens.prices` | json | `[]` | tenant | no | no | Price per million tokens per model. Empty means no model is priced: surfaces then report tokens and say the price is not configured, rather than reporting zero. |
+| `tokens.prices` | json | `[]` | tenant | no | no | Per-model price overrides on top of the built-in catalog, per 1M tokens. An entry replaces its model's catalog price. A model with neither is reported as unpriced, not as zero. |
 
 ## operations
 Startup operations
