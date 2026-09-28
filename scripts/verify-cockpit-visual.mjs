@@ -672,6 +672,23 @@ const OAUTH_CLIENTS = (() => {
   ];
 })();
 
+/** One real leaf per settings section the fixture otherwise lacks (config/walk.ts). */
+const SETTINGS_SECTION_LEAVES = [
+  ["log.level", "info"],
+  ["llm.provider", "anthropic"],
+  ["storage.object_store.endpoint", "https://objects.example.com"],
+  ["egress.mode", "allow"],
+  ["errors.ring_size", 200],
+  ["spec.allow_private_fetch", false],
+  ["queue.concurrency", 4],
+  ["operations.update_check_enabled", true],
+  ["sandbox.memory_bytes", 67108864],
+  ["repl.permissionMode", "default"],
+  ["ui.theme", "auto"],
+  ["notifications.push.enabled", false],
+  ["connectors.web_scraper.runtime.respect_robots", true],
+];
+
 const API_KEY_BASE = {
   scopes: ["workflow:read", "workflow:run"],
   created_at: "2026-08-10T07:00:00.000Z",
@@ -2087,6 +2104,27 @@ async function mockApi(route) {
             kind: "boolean",
           },
         },
+        // Every other section the engine has, one setting each: a real
+        // installation shows twenty tabs, far wider than the page. With five,
+        // the strip fit, and a settings column blown out to the strip's full
+        // width — the page shifted sideways on a leaf deep link — could not
+        // happen here.
+        ...SETTINGS_SECTION_LEAVES.map(([leaf, value]) => ({
+          path: leaf,
+          value,
+          meta: {
+            source: "default",
+            scope: "global",
+            sensitive: false,
+            requiresRestart: false,
+            kind:
+              typeof value === "boolean"
+                ? "boolean"
+                : typeof value === "number"
+                  ? "number"
+                  : "string",
+          },
+        })),
       ],
       diagnostics: { pending_restart_keys: [], override_keys: [] },
     });
