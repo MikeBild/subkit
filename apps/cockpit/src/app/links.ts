@@ -133,9 +133,9 @@ export function reviewFromUrl(search: string): string | null {
  */
 export function settingsHref(
   leaf?: string | null,
-  view: { section?: string | null; q?: string | null } = {},
+  view: { section?: string | null; q?: string | null; filter?: "changed" | null } = {},
 ): string {
-  return withQuery("/settings", { leaf, section: view.section, q: view.q });
+  return withQuery("/settings", { leaf, section: view.section, q: view.q, filter: view.filter });
 }
 
 export function auditHref(

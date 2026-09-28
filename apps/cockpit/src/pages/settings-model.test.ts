@@ -8,19 +8,30 @@ import { settingsHref } from "@/app/links";
 import { CATALOGS, translate } from "@/lib/i18n";
 import {
   isUnset,
+  parseSettingDraft,
   SETTING_GROUPS,
   SETTING_SECTION_KEYS,
   type SettingItem,
+  settingDiffersFromDefault,
+  settingDraftError,
   settingFieldValue,
+  settingIsChanged,
   settingLabel,
   settingLeafTarget,
   settingMetaLabel,
   settingNavigation,
+  settingResetDraft,
+  settingSecretName,
   settingSectionOf,
   settingSourceIsNotable,
+  settingsActivationPath,
   settingsAttention,
   settingsLeafFromUrl,
+  settingsPatch,
+  settingsSaveFailure,
   settingsViewFromUrl,
+  settingUnit,
+  settingValueText,
 } from "@/pages/settings-model";
 
 const query = (href: string) => href.slice(href.indexOf("?"));
@@ -158,11 +169,13 @@ describe("the settings view a link opens", () => {
       leaf: "tokens.monthly_budget",
       section: null,
       q: "",
+      filter: "all",
     });
     expect(settingsViewFromUrl(query(settingsHref(null, { section: "llm", q: "model" })))).toEqual({
       leaf: null,
       section: "llm",
       q: "model",
+      filter: "all",
     });
     expect(settingsViewFromUrl("?section=a%2Fb").section).toBeNull();
   });
@@ -217,5 +230,186 @@ describe("a setting's text field", () => {
         undefined,
       ),
     ).toBe("");
+  });
+});
+
+function setting(
+  path: string,
+  value: unknown,
+  meta: Partial<SettingItem["meta"]> & { kind: string },
+): SettingItem {
+  return {
+    path,
+    value,
+    meta: {
+      source: "default",
+      scope: "global",
+      sensitive: false,
+      requiresRestart: false,
+      ...meta,
+    },
+  };
+}
+
+describe("the Geändert filter", () => {
+  test("a ?filter=changed link opens the filter; anything else is all", () => {
+    expect(settingsViewFromUrl(query(settingsHref(null, { filter: "changed" }))).filter).toBe(
+      "changed",
+    );
+    expect(settingsViewFromUrl("?filter=bogus").filter).toBe("all");
+    expect(settingsViewFromUrl("").filter).toBe("all");
+  });
+
+  test("a setting is changed when its stored value is not the schema's default", () => {
+    expect(settingIsChanged(setting("log.level", "debug", { kind: "enum", default: "info" }))).toBe(
+      true,
+    );
+    expect(settingIsChanged(setting("log.level", "info", { kind: "enum", default: "info" }))).toBe(
+      false,
+    );
+    // Key order is no change.
+    expect(
+      settingIsChanged(
+        setting("tokens.prices", [{ b: 1, a: 2 }], { kind: "json", default: [{ a: 2, b: 1 }] }),
+      ),
+    ).toBe(false);
+    // A nullable default of null is a default.
+    expect(
+      settingIsChanged(setting("llm.fallback_provider", null, { kind: "enum", default: null })),
+    ).toBe(false);
+  });
+
+  test("a setting without a reported default is never counted as changed", () => {
+    expect(settingIsChanged(setting("database.url", "postgres://x", { kind: "string" }))).toBe(
+      false,
+    );
+  });
+
+  test("a stored secret counts as changed; an empty one does not", () => {
+    const secret = { kind: "string", sensitive: true, default: "" };
+    expect(settingIsChanged(setting("llm.api_key", "***", secret))).toBe(true);
+    expect(settingIsChanged(setting("llm.api_key", "", secret))).toBe(false);
+    expect(settingIsChanged(setting("llm.api_key", null, secret))).toBe(false);
+  });
+});
+
+describe("Geändert · Standard · Zurücksetzen", () => {
+  const budget = setting("tokens.monthly_budget", 500, { kind: "number", default: 0 });
+
+  test("shows while the value on screen differs from the default", () => {
+    expect(settingDiffersFromDefault(budget, undefined)).toBe(true);
+    // A draft back to the default clears it — that is what Zurücksetzen does.
+    expect(settingDiffersFromDefault(budget, "0")).toBe(false);
+    expect(settingDiffersFromDefault({ ...budget, value: 0 }, undefined)).toBe(false);
+    expect(settingDiffersFromDefault({ ...budget, value: 0 }, "12")).toBe(true);
+  });
+
+  test("Zurücksetzen drafts the default as the field holds it", () => {
+    expect(settingResetDraft(budget)).toBe("0");
+    expect(
+      settingResetDraft(setting("log.level", "debug", { kind: "enum", default: "info" })),
+    ).toBe("info");
+    expect(
+      settingResetDraft(
+        setting("llm.fallback_provider", "openai", { kind: "enum", default: null }),
+      ),
+    ).toBe("");
+    expect(
+      parseSettingDraft(setting("llm.fallback_provider", "openai", { kind: "enum" }), ""),
+    ).toBeNull();
+  });
+
+  test("never for a secret, and never without a reported default", () => {
+    const secret = setting("llm.api_key", "***", { kind: "string", sensitive: true, default: "" });
+    expect(settingDiffersFromDefault(secret, undefined)).toBe(false);
+    expect(settingResetDraft(secret)).toBeNull();
+    const database = setting("database.url", "postgres://x", { kind: "string" });
+    expect(settingResetDraft(database)).toBeNull();
+    expect(settingDiffersFromDefault(database, undefined)).toBe(false);
+  });
+
+  test("names the default in words", () => {
+    expect(settingValueText(false, de)).toBe("Aus");
+    expect(settingValueText(null, de)).toBe(de("settings.unset"));
+    expect(settingValueText("", de)).toBe("leer");
+    expect(settingValueText(0, de)).toBe("0");
+    expect(settingValueText("x".repeat(80), de)).toHaveLength(58);
+  });
+});
+
+describe("a number draft", () => {
+  const port = setting("server.port", 3000, { kind: "number", default: 3000 });
+
+  test("is a number, and an empty or non-numeric draft is flagged, never a silent 0", () => {
+    expect(parseSettingDraft(port, "3001")).toBe(3001);
+    expect(parseSettingDraft(port, "")).toBeUndefined();
+    expect(parseSettingDraft(port, "abc")).toBeUndefined();
+    expect(settingDraftError(port, "")).toBe("settings.invalidNumber");
+    expect(settingDraftError(port, "3001")).toBeNull();
+  });
+
+  test("carries its unit where the name says one", () => {
+    expect(settingUnit("sandbox.wall_ms")).toBe("settings.unit.ms");
+    expect(settingUnit("sandbox.memory_bytes")).toBe("settings.unit.bytes");
+    expect(settingUnit("auth.mcp_oauth.access_token_ttl_seconds")).toBe("settings.unit.seconds");
+    expect(settingUnit("notifications.push.thresholdSec")).toBe("settings.unit.seconds");
+    expect(settingUnit("repl.portalTokenTtlMin")).toBe("settings.unit.minutes");
+    expect(settingUnit("observability.usage.retention_days")).toBe("settings.unit.days");
+    expect(settingUnit("tokens.monthly_budget")).toBe("settings.unit.tokens");
+    expect(settingUnit("queue.concurrency")).toBeNull();
+  });
+});
+
+describe("one save", () => {
+  const items = [
+    setting("log.level", "info", { kind: "enum", default: "info" }),
+    setting("tokens.monthly_budget", 0, { kind: "number", default: 0 }),
+    setting("llm.api_key", "***", { kind: "string", sensitive: true, default: "" }),
+    setting("server.port", 3000, { kind: "number", default: 3000 }),
+  ];
+
+  test("is one patch of every draft against the revision the page was read at", () => {
+    expect(
+      settingsPatch(
+        { saved_revision: 7, items },
+        { "log.level": "debug", "tokens.monthly_budget": "500", "llm.api_key": "sk-new" },
+        { "llm.api_key": "secret://settings.llm.api_key/3" },
+      ),
+    ).toEqual({
+      expected_revision: 7,
+      scope: "global",
+      changes: {
+        "log.level": "debug",
+        "tokens.monthly_budget": 500,
+        "llm.api_key": "secret://settings.llm.api_key/3",
+      },
+    });
+  });
+
+  test("a secret's plaintext never enters the patch", () => {
+    expect(() =>
+      settingsPatch({ saved_revision: 7, items }, { "llm.api_key": "sk-new" }, {}),
+    ).toThrow();
+    expect(settingSecretName("llm.api_key")).toBe("settings.llm.api_key");
+  });
+
+  test("an invalid draft is not sent, and nothing is saved without a revision", () => {
+    expect(() => settingsPatch({ saved_revision: 7, items }, { "server.port": "" }, {})).toThrow();
+    expect(() =>
+      settingsPatch({ saved_revision: null, items }, { "log.level": "debug" }, {}),
+    ).toThrow();
+  });
+
+  test("activates the revision it saved", () => {
+    expect(settingsActivationPath({ saved_revision: 8 })).toBe("/v1/settings/revisions/8/activate");
+  });
+
+  test("a 409 is somebody else's newer revision; anything else is a plain failure", () => {
+    expect(settingsSaveFailure({ status: 409 })).toBe("conflict");
+    expect(settingsSaveFailure({ status: 422 })).toBe("failed");
+    expect(settingsSaveFailure(new Error("network"))).toBe("failed");
+    expect(de("settings.conflict")).toBe(
+      "Inzwischen hat jemand gespeichert – neu laden, deine Entwürfe bleiben.",
+    );
   });
 });

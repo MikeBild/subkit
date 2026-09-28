@@ -89,6 +89,10 @@ const LeafMetaSchema = z
     requiresRestart: z.boolean(),
     description: z.string().optional(),
     kind: z.string(),
+    /** The schema's default; absent for a leaf that has none (a bootstrap binding). */
+    default: z.unknown().optional(),
+    /** The allowed values of an enum leaf, in schema order. */
+    enum_values: z.array(z.string()).optional(),
   })
   .openapi("SettingLeafMeta");
 

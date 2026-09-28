@@ -171,7 +171,7 @@ version with different preview evidence.
 
 ### Runtime configuration across surfaces
 
-Cockpit Settings, `GET /v1/settings` + `PUT /v1/settings/{path}`, and the
+Cockpit Settings (all drafts of a save as one revision), `GET /v1/settings` + `PUT /v1/settings/{path}`, and the
 admin-only MCP tools `subkit_settings` + `subkit_update_setting` share the same
 schema, persistence, RBAC, audit events, tenant scoping, secret masking, and
 activation response. Hot values are visible to the next runtime read. A

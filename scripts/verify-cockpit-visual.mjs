@@ -4,7 +4,7 @@ import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
-import { listConfigLeaves } from "../apps/engine/src/config/walk.ts";
+import { leafSchemaMeta, listConfigLeaves } from "../apps/engine/src/config/walk.ts";
 import ENGINE_PERMISSIONS from "../apps/engine/src/rbac/permissions.json" with { type: "json" };
 import { verifyApiAccess } from "./lib/cockpit-api-access.mjs";
 import { verifyChatActivation } from "./lib/cockpit-chat-activation.mjs";
@@ -686,9 +686,12 @@ const OAUTH_CLIENTS = (() => {
  */
 const ENGINE_SETTINGS = listConfigLeaves().map((leaf) => {
   const sensitive = Boolean(leaf.meta?.secret);
-  const value = sensitive
-    ? null
-    : leaf.kind === "boolean"
+  // The engine's own default and enum members (`leafSchemaMeta`): an unchanged
+  // installation shows no "Geändert" anywhere and a select for every enum. A
+  // leaf without a default (a bootstrap binding) holds a placeholder of its kind.
+  const schemaMeta = leafSchemaMeta(leaf);
+  const placeholder =
+    leaf.kind === "boolean"
       ? false
       : leaf.kind === "number"
         ? 0
@@ -699,6 +702,11 @@ const ENGINE_SETTINGS = listConfigLeaves().map((leaf) => {
             : leaf.kind === "json"
               ? {}
               : "";
+  const value = sensitive
+    ? null
+    : Object.hasOwn(schemaMeta, "default")
+      ? schemaMeta.default
+      : placeholder;
   return {
     path: leaf.path.join("."),
     value,
@@ -709,6 +717,7 @@ const ENGINE_SETTINGS = listConfigLeaves().map((leaf) => {
       requiresRestart: Boolean(leaf.meta?.requiresRestart),
       ...(leaf.description ? { description: leaf.description } : {}),
       kind: leaf.kind,
+      ...schemaMeta,
     },
   };
 });
@@ -725,7 +734,21 @@ function settingsWith(overrides) {
     throw new Error(
       `settings fixture names settings the engine does not have: ${unknown.map((item) => item.path)}`,
     );
-  return ENGINE_SETTINGS.map((item) => byPath.get(item.path) ?? item);
+  // A hostile value keeps the engine's default and enum members beside it, as
+  // the engine reports them for every leaf.
+  return ENGINE_SETTINGS.map((item) => {
+    const override = byPath.get(item.path);
+    if (!override) return item;
+    const { default: defaultValue, enum_values } = item.meta;
+    return {
+      ...override,
+      meta: {
+        ...(Object.hasOwn(item.meta, "default") ? { default: defaultValue } : {}),
+        ...(enum_values ? { enum_values } : {}),
+        ...override.meta,
+      },
+    };
+  });
 }
 
 const API_KEY_BASE = {

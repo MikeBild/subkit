@@ -240,4 +240,66 @@ describe("runtime configuration HTTP contract", () => {
       ]),
     );
   });
+
+  test("one save is one revision: every change lands together or none does", async () => {
+    // The settings page saves all its drafts as one PATCH against the revision
+    // GET /v1/settings reported — that number must be the PATCH's base.
+    const listed = (await (await authedFetch("/v1/settings")).json()) as {
+      saved_revision: number;
+    };
+    const before = (await (await authedFetch("/v1/settings/revisions")).json()) as {
+      items: unknown[];
+    };
+
+    const saved = await authedFetch("/v1/settings", {
+      method: "PATCH",
+      body: JSON.stringify({
+        expected_revision: listed.saved_revision,
+        changes: { "log.level": "debug", "tokens.monthly_budget": 500 },
+        scope: "global",
+      }),
+    });
+    expect(saved.status).toBe(200);
+    const state = (await saved.json()) as { saved_revision: number };
+    expect(state.saved_revision).toBe(listed.saved_revision + 1);
+    const after = (await (await authedFetch("/v1/settings/revisions")).json()) as {
+      items: unknown[];
+    };
+    expect(after.items.length).toBe(before.items.length + 1);
+    const revision = (await (
+      await authedFetch(`/v1/settings/revisions/${state.saved_revision}`)
+    ).json()) as { document: { log: { level: string }; tokens: { monthly_budget: number } } };
+    expect(revision.document.log.level).toBe("debug");
+    expect(revision.document.tokens.monthly_budget).toBe(500);
+
+    // One invalid change rejects the whole save: no revision, nothing half-written.
+    const invalid = await authedFetch("/v1/settings", {
+      method: "PATCH",
+      body: JSON.stringify({
+        expected_revision: state.saved_revision,
+        changes: { "log.level": "warn", "tokens.monthly_budget": "a lot" },
+        scope: "global",
+      }),
+    });
+    expect(invalid.status).toBe(422);
+    // A writer still holding the old number conflicts instead of overwriting.
+    const stale = await authedFetch("/v1/settings", {
+      method: "PATCH",
+      body: JSON.stringify({
+        expected_revision: listed.saved_revision,
+        changes: { "log.level": "warn" },
+        scope: "global",
+      }),
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ code: "revision_conflict" });
+    const untouched = (await (await authedFetch("/v1/settings/revisions")).json()) as {
+      items: unknown[];
+    };
+    expect(untouched.items.length).toBe(after.items.length);
+    const relisted = (await (await authedFetch("/v1/settings")).json()) as {
+      saved_revision: number;
+    };
+    expect(relisted.saved_revision).toBe(state.saved_revision);
+  });
 });
