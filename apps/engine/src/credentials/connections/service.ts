@@ -238,6 +238,24 @@ export async function startConnection(
 
 // ── Token endpoint ──────────────────────────────────────────────────────────
 
+/**
+ * The engine's own wording when a token endpoint answered with a non-2xx. The
+ * detail after it is the OAuth `error` code when the body carried one, else
+ * the bare HTTP status — which is what tells a refusal from a failure.
+ */
+const TOKEN_REFUSED_PREFIX = "token endpoint refused: ";
+
+/**
+ * Whether a failed renewal was the other side saying no: its token endpoint
+ * answered with an RFC 6749 §5.2 error code. Read off `last_error`, which only
+ * the engine writes (`postTokenEndpoint`); an unreachable endpoint, a bare
+ * status or an answer without a token is a failure, not a refusal.
+ */
+export function refreshWasRefused(lastError: string | null): boolean {
+  if (!lastError?.startsWith(TOKEN_REFUSED_PREFIX)) return false;
+  return /^[a-z][a-z_]*$/.test(lastError.slice(TOKEN_REFUSED_PREFIX.length));
+}
+
 async function postTokenEndpoint(
   tokenEndpoint: string,
   form: Record<string, string>,
@@ -260,7 +278,7 @@ async function postTokenEndpoint(
       body && typeof body === "object" && "error" in body
         ? String((body as { error: unknown }).error)
         : String(res.status);
-    throw new ConnectionError(failureCode, `token endpoint refused: ${detail}`);
+    throw new ConnectionError(failureCode, `${TOKEN_REFUSED_PREFIX}${detail}`);
   }
   const parsed = TokenResponseSchema.safeParse(body);
   if (!parsed.success) {
@@ -539,12 +557,19 @@ async function currentAccessToken(db: Db, row: ConnectionRow): Promise<string | 
  * decided together so a state can never go out without its reason.
  */
 export function connectionStateOf(
-  row: Pick<ConnectionRow, "refresh_failed_at" | "expires_at" | "refresh_token_version">,
+  row: Pick<
+    ConnectionRow,
+    "refresh_failed_at" | "expires_at" | "refresh_token_version" | "last_error"
+  >,
   readable: boolean,
   nowMs: number,
 ): { state: ConnectionState; state_reason: ConnectionStateReason | null } {
   if (!readable) return { state: "unreadable", state_reason: "secret_unreadable" };
-  if (row.refresh_failed_at) return { state: "expired", state_reason: "refresh_failed" };
+  if (row.refresh_failed_at)
+    return {
+      state: "expired",
+      state_reason: refreshWasRefused(row.last_error) ? "refresh_refused" : "refresh_failed",
+    };
   const expiresMs = row.expires_at?.getTime() ?? null;
   if (row.refresh_token_version === null) {
     if (expiresMs !== null && expiresMs <= nowMs)

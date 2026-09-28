@@ -2183,8 +2183,8 @@ export interface paths {
         /** Complete a connection; the other side redirects the browser here */
         get: {
             parameters: {
-                query: {
-                    state: string;
+                query?: {
+                    state?: string;
                     code?: string;
                     error?: string;
                     error_description?: string;
@@ -17194,7 +17194,7 @@ export interface components {
         /** @enum {string} */
         ConnectionState: "valid" | "expiring" | "expired" | "unreadable";
         /** @enum {string|null} */
-        ConnectionStateReason: "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | null;
+        ConnectionStateReason: "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | null;
         ConnectionUser: {
             connector_id: string;
             slug: string;

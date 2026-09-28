@@ -59,6 +59,7 @@ describe("connections model", () => {
   });
 
   test("every reason the engine records has its own sentence", () => {
+    expect(connectionReasonKey("refresh_refused")).toBe("connections.reason.refreshRefused");
     expect(connectionReasonKey("refresh_failed")).toBe("connections.reason.refreshFailed");
     expect(connectionReasonKey("expired_no_refresh")).toBe("connections.reason.expiredNoRefresh");
     expect(connectionReasonKey("secret_unreadable")).toBe("connections.reason.secretUnreadable");

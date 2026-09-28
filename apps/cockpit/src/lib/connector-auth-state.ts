@@ -16,6 +16,7 @@ export type ConnectorAuthState =
 
 export interface ConnectorAuthInput {
   auth_type?: string | null;
+  driver?: string | null;
   health_state?: string | null;
   needs_reauth?: boolean | null;
   auth_failed_at?: string | null;
@@ -37,6 +38,30 @@ export type CredentialEvidence = {
 export interface ProbeOutcome {
   ok: boolean;
   error_code?: string;
+}
+
+/**
+ * Auth types whose material lives in the credential table and is returned by
+ * the connector's credential read. For these an empty read means nothing is
+ * stored — whatever `health_state` says, because a new connector's health
+ * defaults to "ok" and deleting its credential resets nothing.
+ *
+ * Not here: `none`; `oauth2_client`, whose rows the credential read leaves out
+ * on purpose (client identity, not applicable auth); and a postgres connector,
+ * whose login is its DSN.
+ */
+const STORED_AUTH_TYPES = new Set([
+  "header",
+  "query",
+  "bearer",
+  "basic",
+  "oauth2",
+  "oauth2_private_key",
+  "aws_sigv4",
+]);
+
+export function credentialIsStored(connector: ConnectorAuthInput): boolean {
+  return STORED_AUTH_TYPES.has(connector.auth_type ?? "") && connector.driver !== "postgres";
 }
 
 const LABELS: Record<ConnectorAuthState, TranslationKey> = {
@@ -71,12 +96,10 @@ export function connectorAuthState(
   const grant = credential?.connection?.state;
   if (grant === "expired" || grant === "unreadable") return "expired";
   if (connector.auth_type === "none") return "not_required";
+  // Read and empty for a kind that is stored there: nothing to sign in with.
+  if (credential === null && credentialIsStored(connector)) return "credentials_missing";
   // A credential that was accepted at least once and never rejected since.
   if (connector.health_state === "ok" && !connector.auth_failed_at) return "connected";
-  // Read and empty, and nothing proves the connector works: nothing is stored.
-  // Only here — a connector whose login lives outside the credential table
-  // (a DSN, an MCP sign-in) and is healthy stays "connected".
-  if (credential === null) return "credentials_missing";
   return "unproven";
 }
 
