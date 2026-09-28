@@ -34,13 +34,24 @@ type CandidateRow = typeof patchCandidates.$inferSelect;
 
 /**
  * Readiness reasons that prove the current workflow version can never take the
- * patch: it changes nothing, its kind has no executable semantics, or the
- * workflow is gone. A new version re-opens evaluation (see terminal-dedup).
+ * patch: it changes nothing, its kind has no executable semantics, the
+ * workflow is gone, or the candidate names no step to rewrite. A new version
+ * re-opens evaluation (see terminal-dedup).
+ *
+ * `no_step_anchor` is a defect of the CANDIDATE, not of the version: no answer
+ * a person gives can make an anchorless patch land, on this version or any
+ * other. Leaving such a row `proposed` kept it out of every count and in the
+ * queue forever — and, worse, let it stand in for the same drift in the active
+ * lookup, so a correctly anchored re-proposal was deduplicated against it.
+ * Its closure suppresses only an equally anchorless re-proposal on the same
+ * version (`matchesInapplicableBoundary`), so it can never mute a drift that
+ * a person could decide.
  */
 export const UNDECIDABLE_REASONS: ReadonlySet<string> = new Set([
   "no_change",
   "patch_not_applicable",
   "workflow_missing",
+  "no_step_anchor",
 ]);
 
 export interface OpenPatchDecision {
