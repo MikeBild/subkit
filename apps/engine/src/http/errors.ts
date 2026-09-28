@@ -148,6 +148,16 @@ export class ConflictError extends HttpError {
   }
 }
 
+/**
+ * The change would leave the workspace without an administrator. Its own
+ * code, so a client can say that — not a generic "conflict".
+ */
+export class LastAdminConflictError extends HttpError {
+  constructor(message: string) {
+    super(409, "last_admin", message);
+  }
+}
+
 export class PayloadTooLargeError extends HttpError {
   constructor(message: string, details?: Record<string, unknown>) {
     super(413, "payload_too_large", message, details);
