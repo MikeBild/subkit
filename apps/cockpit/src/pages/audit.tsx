@@ -580,7 +580,6 @@ export function AuditPage() {
         recordsLabel={t("catalog.records")}
         loadedLabel={t("catalog.loaded", { count: rows.length })}
         actionsLabel={t("common.actions")}
-        openLabel={t("common.open")}
       />
       {/* What a complete-looking log does NOT hold. Without this line a short
           page reads as "nothing happened" rather than "nothing of this kind was

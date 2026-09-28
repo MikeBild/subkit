@@ -58,8 +58,8 @@ A fresh saved-workflow checkpoint displays “Workflow saved” in the chat head
 
 The Cockpit composes the checked-in shadcn components for navigation, menus, cards, tables, sheets,
 empty states and forms. Pages use one hierarchy: page heading and primary action, a compact toolbar,
-then the data state. Cards do not wrap unrelated controls, and table rows use a named open button
-instead of a pointer-only row action.
+then the data state. Cards do not wrap unrelated controls, and a table row is opened through the
+link in its name cell, never through a pointer-only row action.
 
 The signed-in user menu is the single home for profile information, language, theme and sign-out.
 Language defaults to browser detection and can be pinned to English or German. Theme defaults to
@@ -100,12 +100,21 @@ state, date, size, relation link and relation chips — come from
 `src/components/cockpit/table-columns.tsx` so a date on Runs and a date on Files cannot drift apart.
 
 The page description is opt-in: a visible sentence under the heading only where the title does not
-already say what the page is for (Connectors beside Connections, Skills, Access, System,
-Notifications, Decisions, the Overview). A list's primary action heads the page only while the list
-has rows; an empty list carries it in its empty state, so the same button never stands twice. A row
-opens by its own click and by one named "Open" button — the "⋯" glyph is reserved for a real menu of
-further actions — and a name cell is text, not a third way to the same record. The breadcrumb stands
-only on a record's page, as "List › Record", and its list crumb is the way back.
+already say what the page is for (Connectors beside Connections, Skills, Access, Notifications).
+A list's primary action heads the page only while the list has rows; an empty list carries it in its
+empty state, so the same button never stands twice. A row opens by its name: the name cell is a real
+`<a href>` to the record's own address (a button where the record opens in place and has none), so
+the keyboard, a screen reader and "open in new tab" all reach it; the whole row stays clickable as a
+pointer convenience that ignores clicks on controls inside it, and the row itself is no tab stop.
+There is no "Open" button in a row. A mobile card is not a button: its title is the link, and its row
+actions are shown on the card as well. The "⋯" glyph is reserved for a real menu of several further
+actions; a single further act is a named button. The breadcrumb stands only on a record's page, as
+"List › Record", and its list crumb is the way back.
+
+Tasks live on one page only: Heute, the start page. It lists what needs the reader — one sentence
+per subject with one primary action and at most one secondary link — and says "Alles erledigt."
+with one status line when nothing is open and every source it may read has answered. Object pages
+show their state and at most link to the entry; every fact has exactly one home.
 
 Every read has four states — loading, error, empty, ready — decided once by `queryView` in
 `src/components/failure-state.tsx`. A failed read renders `LoadFailed` (what did not load, what to

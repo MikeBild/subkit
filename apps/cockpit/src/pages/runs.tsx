@@ -771,6 +771,8 @@ export function RunsPage() {
         sorting={[] as SortingState}
         onSortingChange={() => {}}
         onOpen={(run) => showRun(run.id)}
+        rowHref={(run) => runHref(run.id)}
+        linkColumn="started_at"
         page={page}
         pageSize={PAGE_SIZE}
         total={total}
@@ -781,7 +783,6 @@ export function RunsPage() {
         recordsLabel={t("catalog.records")}
         loadedLabel={t("catalog.loaded", { count: rows.length })}
         actionsLabel={t("common.actions")}
-        openLabel={t("common.open")}
       />
 
       <Sheet open={Boolean(selectedId)} onOpenChange={(open) => !open && showRun(null)}>
