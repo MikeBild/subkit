@@ -83,7 +83,15 @@ export function PageFrame({
           They used to differ between `sm` and `lg` — 32px against 24px — which
           indented every page's content against its own heading in exactly the
           window sizes nobody screenshots. */}
-      <header data-family-slot="page-header" className="shrink-0 border-b px-4 py-6 sm:px-6">
+      {/* The header reserves the same gutter as the body below it. Where a
+          scrollbar takes space (Linux, Windows), `both-edges` puts one
+          scrollbar width on the LEFT of the body too; a centred column hides
+          that, but a full-width column on a phone started 15px right of its
+          own heading — invisible on a Mac, whose scrollbars take no space. */}
+      <header
+        data-family-slot="page-header"
+        className={cn("shrink-0 border-b px-4 py-6 sm:px-6", gutter && "overflow-hidden", gutter)}
+      >
         <div
           className={cn("flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between", column)}
         >
@@ -99,7 +107,11 @@ export function PageFrame({
       {toolbar && (
         <div
           data-family-slot="filters"
-          className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-3 sm:px-6"
+          className={cn(
+            "flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-3 sm:px-6",
+            gutter && "overflow-hidden",
+            gutter,
+          )}
         >
           {toolbar}
         </div>
