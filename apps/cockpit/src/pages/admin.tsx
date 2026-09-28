@@ -82,7 +82,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { catalogLabel, LabelText } from "@/lib/machine-label";
+import { catalogLabel, EngineWording, LabelText } from "@/lib/machine-label";
 import { statusLabel } from "@/lib/status-label";
 import {
   activationStatusLabel,
@@ -104,6 +104,7 @@ import {
   settingMetaLabel,
   settingSectionOf,
   settingsViewFromUrl,
+  stripScrollLeft,
 } from "@/pages/admin-model";
 import {
   deliveryState,
@@ -2611,8 +2612,27 @@ export function SettingsPage() {
         document.getElementById(`setting-${index}`) ??
         item?.querySelector<HTMLElement>("input, button, select, textarea") ??
         null;
-      (item ?? field)?.scrollIntoView({ block: "center" });
-      field?.focus();
+      // Vertically only: `inline: "nearest"` leaves the horizontal scroll
+      // alone when the field already fits. The cursor goes in without a
+      // second, unconstrained scroll of its own.
+      (item ?? field)?.scrollIntoView({ block: "center", inline: "nearest" });
+      field?.focus({ preventScroll: true });
+      // The tab the setting lives on, moved into view inside its strip only.
+      const strip = document.querySelector<HTMLElement>('[data-testid="settings-categories"]');
+      const tab = strip?.querySelector<HTMLElement>('[role="tab"][data-state="active"]');
+      if (strip && tab) {
+        const stripBox = strip.getBoundingClientRect();
+        const tabBox = tab.getBoundingClientRect();
+        strip.scrollLeft = stripScrollLeft(
+          {
+            left: stripBox.left,
+            scrollLeft: strip.scrollLeft,
+            clientWidth: strip.clientWidth,
+            scrollWidth: strip.scrollWidth,
+          },
+          { left: tabBox.left, width: tabBox.width },
+        );
+      }
     });
   }, [leaf, query.data, allItems]);
   const save = useMutation({
@@ -2681,7 +2701,14 @@ export function SettingsPage() {
           testId="settings-load-failed"
         />
       ) : (
-        <div className="grid gap-5 pb-20" data-testid="settings-list">
+        // One column no wider than the page. An implicit grid column is as
+        // wide as its widest item's min-content, and the tab strip below is
+        // `w-max`: every tab side by side. The column grew to that width, the
+        // page's scroll region clipped it (`overflow-x: hidden`), and the leaf
+        // deep link's scroll then shifted the whole page left — the first tab
+        // and the first status icon cut off. `minmax(0, 1fr)` lets the strip
+        // scroll inside itself instead.
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-5 pb-20" data-testid="settings-list">
           <section
             className="overflow-hidden rounded-xl ring-1 ring-foreground/10"
             aria-label={t("settings.status.title")}
@@ -2836,9 +2863,7 @@ export function SettingsPage() {
                                     {item.path}
                                   </span>
                                   {item.meta.description ? (
-                                    <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                                      {item.meta.description}
-                                    </span>
+                                    <EngineWording text={item.meta.description} />
                                   ) : null}
                                 </span>
                                 <ContextHelp
@@ -2902,12 +2927,10 @@ export function SettingsPage() {
                                   {item.path}
                                 </span>
                                 {item.meta.description ? (
-                                  <span
-                                    className="mt-1 block text-xs font-normal text-muted-foreground"
-                                    data-testid={`setting-description-${index}`}
-                                  >
-                                    {item.meta.description}
-                                  </span>
+                                  <EngineWording
+                                    text={item.meta.description}
+                                    testId={`setting-description-${index}`}
+                                  />
                                 ) : null}
                               </span>
                               <ContextHelp

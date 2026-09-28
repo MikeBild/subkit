@@ -296,6 +296,22 @@ export function settingLeafTarget(
 }
 
 /**
+ * Where the tab strip's own scroll must stand for a tab to sit in its middle
+ * (clamped to what the strip can scroll). The tab is brought into view by
+ * moving THIS strip only: `scrollIntoView` on a tab, or a plain `focus()` on a
+ * field, also scrolls every ancestor — and the page's scroll region, clipped
+ * with `overflow-x: hidden`, then stood shifted left with no way back.
+ */
+export function stripScrollLeft(
+  strip: { left: number; scrollLeft: number; clientWidth: number; scrollWidth: number },
+  tab: { left: number; width: number },
+): number {
+  const target = strip.scrollLeft + (tab.left - strip.left) - (strip.clientWidth - tab.width) / 2;
+  const max = Math.max(0, strip.scrollWidth - strip.clientWidth);
+  return Math.min(max, Math.max(0, Math.round(target)));
+}
+
+/**
  * The tab a setting lives on: its first path segment. `tokens.monthly_budget`
  * opens on `tokens`.
  */

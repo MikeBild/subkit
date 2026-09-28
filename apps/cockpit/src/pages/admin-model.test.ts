@@ -25,6 +25,7 @@ import {
   settingSectionOf,
   settingsLeafFromUrl,
   settingsViewFromUrl,
+  stripScrollLeft,
 } from "@/pages/admin-model";
 
 const query = (href: string) => href.slice(href.indexOf("?"));
@@ -270,5 +271,29 @@ describe("where a ?leaf= address lands", () => {
   test("an unreported activation state is said as such, not as active", () => {
     expect(activationStatusLabel(null, de).text).toBe(de("settings.activation.unreported"));
     expect(activationStatusLabel(null, de).text).not.toBe(de("settings.activation.active"));
+  });
+});
+
+describe("the settings tab strip scrolls on its own", () => {
+  // Opening a leaf used to move the whole page left: the tab and the field
+  // were scrolled into view with every ancestor, including the page's clipped
+  // scroll region. Only the strip moves now, and only as far as it can.
+  const strip = { left: 16, scrollLeft: 0, clientWidth: 400, scrollWidth: 1600 };
+
+  test("a tab far to the right is brought to the strip's middle", () => {
+    // 1000 into the strip, 100 wide: centred when the strip stands at 850.
+    expect(stripScrollLeft(strip, { left: 1016, width: 100 })).toBe(850);
+  });
+
+  test("a tab already at the start leaves the strip at 0, never negative", () => {
+    expect(stripScrollLeft(strip, { left: 16, width: 100 })).toBe(0);
+  });
+
+  test("the strip never scrolls past its end", () => {
+    expect(stripScrollLeft(strip, { left: 1566, width: 50 })).toBe(1200);
+  });
+
+  test("the current scroll is taken into account", () => {
+    expect(stripScrollLeft({ ...strip, scrollLeft: 850 }, { left: 166, width: 100 })).toBe(850);
   });
 });
