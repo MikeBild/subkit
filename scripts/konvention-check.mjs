@@ -85,7 +85,8 @@ const MOUNT_MARKERS = {
   people: '[data-testid="admin-people"]',
   access: '[data-testid="admin-access"]',
   "api-access": '[data-testid="admin-api-access"]',
-  connections: '[data-testid="admin-connections"]',
+  // The old Kontoverbindungen address: a redirect, marked by where it lands.
+  connections: '[data-testid="admin-api-access"]',
   operations: '[data-testid="admin-operations"]',
   notifications: '[data-testid="admin-notifications"]',
   settings: '[data-testid="admin-settings"]',
@@ -109,6 +110,13 @@ const MOUNT_MARKERS = {
 };
 
 const NOW = Date.now();
+
+// The API keys' scopes, as the engine stores them. None of these strings may
+// reach the page: each is named and given its risk word (§11).
+const API_KEY_SCOPES = [
+  ["workflow:read", "workflow:run"],
+  ["*", "rbac:write", "connector:write"],
+];
 const days = (count) => new Date(NOW - count * 86_400_000).toISOString();
 const hours = (count) => new Date(NOW + count * 3_600_000).toISOString();
 
@@ -1131,8 +1139,11 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
       });
     }
 
-    // Anbindungen: one connection per state word, so every badge the page can
-    // render is in the DOM — and the expired one carries its way back (§11).
+    // Kontoverbindungen: one connection per state word, so every badge the
+    // page can render is in the DOM — and each expired one carries its cause
+    // and its way back (§11). Both expiry causes are here: a refused refresh
+    // (with the engine's own wording) and a grant that ended with no refresh
+    // token, which used to render its reason as "—".
     if (path === "/v1/connections")
       return json(route, {
         items: [
@@ -1152,7 +1163,15 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
             last_refreshed_at: days(0.5),
             refresh_failed_at: null,
             last_error: null,
-            used_by_connectors: 2,
+            state_reason: null,
+            used_by: [
+              {
+                connector_id: ID,
+                slug: "reporting-api-0",
+                display_name: "Reporting API 1",
+                workflow_count: 3,
+              },
+            ],
             created_at: days(20),
           },
           {
@@ -1170,8 +1189,9 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
             last_used_at: days(3),
             last_refreshed_at: days(2),
             refresh_failed_at: days(1),
-            last_error: "invalid_grant",
-            used_by_connectors: 0,
+            last_error: "token endpoint refused: invalid_grant",
+            state_reason: "refresh_refused",
+            used_by: [],
             created_at: days(40),
           },
           {
@@ -1190,16 +1210,40 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
             last_refreshed_at: null,
             refresh_failed_at: null,
             last_error: null,
-            used_by_connectors: 0,
+            state_reason: null,
+            used_by: [],
             created_at: days(2),
+          },
+          {
+            id: "018f4b4a-6d33-7b3a-9c2d-123456789abf",
+            name: "ablage",
+            base_url: "https://ablage.example.org",
+            issuer: "https://ablage.example.org",
+            service_name: "Ablage",
+            service_description: null,
+            scopes: ["files.read"],
+            granted_scopes: ["files.read"],
+            state: "expired",
+            auto_renew: false,
+            expires_at: days(3),
+            last_used_at: days(4),
+            last_refreshed_at: null,
+            refresh_failed_at: null,
+            last_error: null,
+            state_reason: "expired_no_refresh",
+            used_by: [],
+            created_at: days(60),
           },
         ],
       });
+    // The connector this detail shows sends a Kontoverbindung that has
+    // expired: its sign-in must read as lost and offer "Neu anmelden", though
+    // its own record still says healthy (hostile on purpose).
     if (path === `/v1/connectors/${ID}/credential`)
       return json(route, {
         mode: "connection",
         environment: "prod",
-        connection: { id: ID, name: "wiki" },
+        connection: { id: ID, name: "wiki", state: "expired" },
         updated_at: days(2),
       });
     // Vorbereitete Änderungen: one waits, so Einstellungen shows the section.
@@ -1329,10 +1373,23 @@ function apiMock(gateOpen, { unknownDecisionKind = false } = {}) {
             id: ID,
             name: "Reporting-Abruf",
             prefix: "sk_live_demo",
-            scopes: ["workflow:read", "workflow:run"],
+            scopes: API_KEY_SCOPES[0],
             created_at: days(30),
             last_used_at: days(1),
             expires_at: null,
+            rotating_out_at: null,
+            revoked_at: null,
+          },
+          // Past its expiry and never revoked: the attention list must say so.
+          {
+            id: "018f4b4a-6d33-7b3a-9c2d-123456789ac0",
+            name: "Altes Skript",
+            prefix: "sk_live_old1",
+            scopes: API_KEY_SCOPES[1],
+            created_at: days(200),
+            last_used_at: days(120),
+            expires_at: days(5),
+            rotating_out_at: null,
             revoked_at: null,
           },
         ],
@@ -2856,6 +2913,108 @@ async function checkNoRawTimestamps(page, where) {
 const RESUME_LINE =
   "Du hast den Konnektor \u201eReporting API 1\u201c in prod entworfen, aber noch nicht geprobt.";
 
+/**
+ * §11 — Zugangsdaten is the one rights page, and it names what it holds.
+ *
+ * The word "Anbindung" meant three things (outbound grants, inbound clients, a
+ * deleted connector) and is gone; a key's rights are words with a risk, never
+ * `resource:action`; and every lost grant and expired key stands in the
+ * attention list with its cause — never a dash.
+ */
+async function checkRightsPage(page) {
+  const where = "/api-access";
+  const text = await page.evaluate(() => document.body.innerText);
+  if (/Anbindung/i.test(text)) breach("§5", where, 'the word "Anbindung" is on the page');
+  const scopeText = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid^="api-key-scopes-"]')]
+      .map((element) => (element instanceof HTMLElement ? element.innerText : ""))
+      .join("\n"),
+  );
+  if (!scopeText) breach("§11", where, "no key rights are shown");
+  for (const scope of API_KEY_SCOPES.flat()) {
+    if (scope !== "*" && scopeText.includes(scope))
+      breach("§11", where, `raw scope string "${scope}" instead of a named right`);
+  }
+  if (!/verwaltet/.test(scopeText))
+    breach("§11", where, 'a managing right is not marked "verwaltet"');
+  const attention = await page.evaluate(() => {
+    const list = document.querySelector('[data-testid="api-access-attention"]');
+    return list instanceof HTMLElement ? list.innerText : null;
+  });
+  if (attention === null) {
+    breach("§1", where, "an expired grant and an expired key raise no attention list");
+    return;
+  }
+  for (const expected of [
+    "Die Kontoverbindung Ablage ist abgelaufen",
+    "kann sich nicht selbst erneuern",
+    "Die andere Seite hat die Erneuerung abgelehnt",
+    "Der API-Schlüssel Altes Skript ist am",
+  ]) {
+    if (!attention.includes(expected))
+      breach("§1", `${where} · attention`, `missing "${expected}"`);
+  }
+  if (attention.includes("—")) breach("§2", `${where} · attention`, "a reason is a dash");
+}
+
+/**
+ * The old Kontoverbindungen address still lands — with its query. An OAuth
+ * callback issued before the move arrives at `/connections?failed=…`, and the
+ * sentence it carries is the only place the person learns what happened.
+ */
+async function checkConnectionsRedirect(context) {
+  const page = await context.newPage();
+  try {
+    await stand.visit(page, "connections?failed=denied&name=wiki");
+    await page
+      .locator('[data-testid="connection-failed"]')
+      .waitFor({ state: "visible", timeout: 15_000 });
+    const url = new URL(page.url());
+    if (url.pathname !== "/cockpit/api-access")
+      breach("§6", "/connections", `lands on ${url.pathname} instead of /cockpit/api-access`);
+    if (url.searchParams.get("section") !== "grants")
+      breach("§6", "/connections", "the redirect lost section=grants");
+    const sentence = await page.locator('[data-testid="connection-failed"]').innerText();
+    if (!sentence.includes("wiki"))
+      breach("§6", "/connections", `the callback sentence lost its name: "${sentence}"`);
+  } catch (error) {
+    breach(
+      "§6",
+      "/connections?failed=denied",
+      `the callback sentence is not shown: ${error.message}`,
+    );
+  } finally {
+    await page.close();
+  }
+}
+
+/**
+ * §11 — a connector whose Kontoverbindung expired says so on its own page and
+ * offers the way back, though its record still reads healthy. The bar used to
+ * say "Aktiv" for every connector.
+ */
+async function checkConnectorSignIn(page) {
+  const where = `/connectors/${ID}`;
+  const state = await page.evaluate(() => {
+    const read = (id) => {
+      const element = document.querySelector(`[data-testid="${id}"]`);
+      return element instanceof HTMLElement ? element.innerText.trim() : null;
+    };
+    return {
+      bar: read("detail-connector-auth-state"),
+      card: read("connector-auth-state"),
+      renew: read("connector-renew-signin"),
+      text: document.body.innerText,
+    };
+  });
+  if (!state.bar?.includes("Abgelaufen"))
+    breach("§11", where, `governance bar reads "${state.bar ?? "nothing"}" for an expired sign-in`);
+  if (!state.card?.includes("Abgelaufen"))
+    breach("§11", where, `Anmeldung card reads "${state.card ?? "nothing"}"`);
+  if (state.renew !== "Neu anmelden") breach("§1", where, 'no "Neu anmelden" for a lost sign-in');
+  if (/Anbindung/i.test(state.text)) breach("§5", where, 'the word "Anbindung" is on the page');
+}
+
 async function checkResumeLine(page) {
   const line = await page.evaluate(() => {
     const element = document.querySelector('[data-testid="chat-summary"]');
@@ -3550,6 +3709,15 @@ try {
   const chat = await openPage(context, "chat");
   await checkResumeLine(chat);
   await chat.close();
+
+  const rights = await openPage(context, "api-access");
+  await checkRightsPage(rights);
+  await rights.close();
+  await checkConnectionsRedirect(context);
+
+  const connector = await openPage(context, "connectors/$resourceId");
+  await checkConnectorSignIn(connector);
+  await connector.close();
 
   for (const route of ROUTES) {
     besuchteRouten += 1;

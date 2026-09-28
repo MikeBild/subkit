@@ -13,6 +13,7 @@ import {
   runDiscoveryCached,
   UpdateConnectorSchema,
 } from "../../../connectors/index.ts";
+import * as credsvc from "../../../credentials/index.ts";
 import { logger } from "../../../logging/index.ts";
 
 import { NotFoundError } from "../../errors.ts";
@@ -223,7 +224,18 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!found) throw new NotFoundError("connector");
     // Embed redacted credential summaries so `sk credentials list` (and any GET
     // consumer) can see what's attached — no secret material is included.
-    const creds = await connectorSvc.listConnectorCredentials(principal.tenant_id, id, db);
+    const rows = await connectorSvc.listConnectorCredentials(principal.tenant_id, id, db);
+    // The grant a credential sends is named with its state, so an expired
+    // Kontoverbindung shows on the connector that depends on it.
+    const connections = await credsvc.summarizeConnections(
+      db,
+      principal.tenant_id,
+      rows.flatMap((row) => (row.connection_id ? [row.connection_id] : [])),
+    );
+    const creds = rows.map(({ connection_id, ...row }) => ({
+      ...row,
+      connection: connection_id ? (connections.get(connection_id) ?? null) : null,
+    }));
     return c.json({ ...serialize(found), credentials: creds }, 200);
   });
 

@@ -16,15 +16,52 @@ export type ConnectorAuthState =
 
 export interface ConnectorAuthInput {
   auth_type?: string | null;
+  driver?: string | null;
   health_state?: string | null;
   needs_reauth?: boolean | null;
   auth_failed_at?: string | null;
 }
 
+/**
+ * What the connector's own credential read says (`GET /v1/connectors/{id}/credential`):
+ * `null` once loaded means nothing is stored; `undefined` means not read (the
+ * list has no such column). A credential that sends a Kontoverbindung carries
+ * that connection's state, so an expired grant reads as an expired sign-in
+ * before any request fails.
+ */
+export type CredentialEvidence = {
+  mode: string;
+  connection: { state: "valid" | "expiring" | "expired" | "unreadable" } | null;
+} | null;
+
 /** Probe outcome, used to refine the state once the connection was tested. */
 export interface ProbeOutcome {
   ok: boolean;
   error_code?: string;
+}
+
+/**
+ * Auth types whose material lives in the credential table and is returned by
+ * the connector's credential read. For these an empty read means nothing is
+ * stored — whatever `health_state` says, because a new connector's health
+ * defaults to "ok" and deleting its credential resets nothing.
+ *
+ * Not here: `none`; `oauth2_client`, whose rows the credential read leaves out
+ * on purpose (client identity, not applicable auth); and a postgres connector,
+ * whose login is its DSN.
+ */
+const STORED_AUTH_TYPES = new Set([
+  "header",
+  "query",
+  "bearer",
+  "basic",
+  "oauth2",
+  "oauth2_private_key",
+  "aws_sigv4",
+]);
+
+export function credentialIsStored(connector: ConnectorAuthInput): boolean {
+  return STORED_AUTH_TYPES.has(connector.auth_type ?? "") && connector.driver !== "postgres";
 }
 
 const LABELS: Record<ConnectorAuthState, TranslationKey> = {
@@ -46,6 +83,7 @@ const HINTS: Record<ConnectorAuthState, TranslationKey> = {
 export function connectorAuthState(
   connector: ConnectorAuthInput,
   probe?: ProbeOutcome | null,
+  credential?: CredentialEvidence,
 ): ConnectorAuthState {
   if (probe) {
     if (probe.ok) return connector.auth_type === "none" ? "not_required" : "connected";
@@ -55,7 +93,11 @@ export function connectorAuthState(
   }
   if (connector.needs_reauth === true || connector.health_state === "needs_reauth")
     return "expired";
+  const grant = credential?.connection?.state;
+  if (grant === "expired" || grant === "unreadable") return "expired";
   if (connector.auth_type === "none") return "not_required";
+  // Read and empty for a kind that is stored there: nothing to sign in with.
+  if (credential === null && credentialIsStored(connector)) return "credentials_missing";
   // A credential that was accepted at least once and never rejected since.
   if (connector.health_state === "ok" && !connector.auth_failed_at) return "connected";
   return "unproven";
