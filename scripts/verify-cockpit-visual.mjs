@@ -2646,6 +2646,31 @@ async function assertTodayHostile(page, label, language) {
 }
 
 /** An old address lands on Heute — with the review it named, and nothing else. */
+/**
+ * Open → close leaves no trail: Back after closing a review sheet goes where
+ * the reader was before it opened, never into the sheet again. Closing used
+ * to push a second address, so Back reopened what had just been closed — and
+ * after a decision, an empty sheet.
+ */
+async function assertReviewCloseLeavesNoTrail(page, label) {
+  const open = page.locator(
+    `[data-testid="attention-list"] > li[data-attention-id="workflow:${uuid}"] [data-testid$="-primary"]`,
+  );
+  const sheet = page.locator('[data-testid="attention-review"]');
+  await open.click();
+  await sheet.waitFor({ state: "visible" });
+  await page.locator('[data-testid="attention-review-close"]').click();
+  await sheet.waitFor({ state: "hidden" });
+  if (new URL(page.url()).searchParams.get("review"))
+    throw new Error(`${label}: the closed sheet is still in the address`);
+  await page.goBack();
+  await page.waitForTimeout(300);
+  const reopened =
+    (await sheet.isVisible().catch(() => false)) ||
+    (page.url().startsWith("http") && new URL(page.url()).searchParams.has("review"));
+  if (reopened) throw new Error(`${label}: Back after closing reopens the review sheet`);
+}
+
 async function assertLandsOnToday(page, label, review) {
   const url = new URL(page.url());
   if (url.pathname.replace(/\/$/, "") !== "/cockpit")
@@ -3414,6 +3439,9 @@ for (const locale of variants) {
       await shoot(page, `${locale.artifact}-${viewport.name}-${artifactRoute}`, {
         fullPage: false,
       });
+      // After the frame: it navigates away from the page it photographed.
+      if (route === "")
+        await assertReviewCloseLeavesNoTrail(page, `${locale.artifact}/${viewport.name}/today`);
     }
     await verifyTodayCalm(page, `${locale.artifact}/${viewport.name}/today-calm`, locale.name, () =>
       shoot(page, `${locale.artifact}-${viewport.name}-today-calm`, { fullPage: false }),
