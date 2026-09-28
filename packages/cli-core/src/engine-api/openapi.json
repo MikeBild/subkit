@@ -2825,6 +2825,7 @@
           "null"
         ],
         "enum": [
+          "refresh_refused",
           "refresh_failed",
           "expired_no_refresh",
           "secret_unreadable",
@@ -25457,10 +25458,9 @@
         "parameters": [
           {
             "schema": {
-              "type": "string",
-              "minLength": 1
+              "type": "string"
             },
-            "required": true,
+            "required": false,
             "name": "state",
             "in": "query"
           },

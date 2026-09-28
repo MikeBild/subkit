@@ -102,7 +102,9 @@ const StartResponse = z
 
 const CallbackQuery = z
   .object({
-    state: z.string().min(1),
+    // Optional in the schema so a browser that arrives without one still lands
+    // on the Cockpit with a sentence, not on a JSON 400 (`state_invalid`).
+    state: z.string().optional(),
     code: z.string().optional(),
     error: z.string().optional(),
     error_description: z.string().optional(),
@@ -296,6 +298,7 @@ export function registerConnectionRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(callbackRoute, async (c) => {
     const query = c.req.valid("query");
     const origin = resolvePublicOrigin({ req: c.req.raw }) ?? new URL(c.req.url).origin;
+    if (!query.state) return cockpitReturn(origin, { failed: "state_invalid" });
     const result = await completeConnection(c.get("db"), {
       state: query.state,
       code: query.code,

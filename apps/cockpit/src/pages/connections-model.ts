@@ -32,6 +32,8 @@ export function connectionStateKey(state: ConnectionItem["state"]): TranslationK
  */
 export function connectionReasonKey(reason: ConnectionStateReason): TranslationKey {
   switch (reason) {
+    case "refresh_refused":
+      return "connections.reason.refreshRefused";
     case "refresh_failed":
       return "connections.reason.refreshFailed";
     case "expired_no_refresh":

@@ -76,11 +76,19 @@ export type ConnectionState = "valid" | "expiring" | "expired" | "unreadable";
 /**
  * Why a connection is not usable — recorded for every state that is not ok,
  * so a page never has to print "—" beside "abgelaufen":
- *   refresh_failed      the engine tried to renew and the other side refused
+ *   refresh_refused     the other side's token endpoint answered the renewal
+ *                       with an OAuth error (`invalid_grant`, …): it said no
+ *   refresh_failed      the renewal failed for another reason — unreachable,
+ *                       timed out, a bare HTTP status, no token in the answer;
+ *                       `last_error` carries the engine's account of which
  *   expired_no_refresh  the grant ended and there is no refresh token to renew it
  *   secret_unreadable   the stored token does not decrypt under the running MASTER_KEY
  */
-export type ConnectionStateReason = "refresh_failed" | "expired_no_refresh" | "secret_unreadable";
+export type ConnectionStateReason =
+  | "refresh_refused"
+  | "refresh_failed"
+  | "expired_no_refresh"
+  | "secret_unreadable";
 
 /** A connector whose credential points at the connection, and how many live workflows use it. */
 export interface ConnectionUser {

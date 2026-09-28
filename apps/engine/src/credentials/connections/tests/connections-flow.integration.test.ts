@@ -343,7 +343,8 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
       const [item] = await listConnections();
       expect(item).toMatchObject({
         state: "expired",
-        state_reason: "refresh_failed",
+        // The fake server answers the renewal with `invalid_grant`: a refusal.
+        state_reason: "refresh_refused",
         last_error: expect.stringContaining("invalid_grant"),
       });
       // The connector that sends this grant says so on its own page, on both reads.
@@ -567,6 +568,17 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     } finally {
       fake.decision = "approve";
     }
+  });
+
+  test("a callback without a state still lands on the Cockpit with a sentence", async () => {
+    const landed = await fetch(`${server.baseUrl}/v1/connections/callback?code=x`, {
+      redirect: "manual",
+    });
+    expect(landed.status).toBe(302);
+    const where = new URL(landed.headers.get("location") ?? "");
+    expect(where.pathname).toBe("/cockpit/api-access");
+    expect(where.searchParams.get("section")).toBe("grants");
+    expect(where.searchParams.get("failed")).toBe("state_invalid");
   });
 
   test("a second connection may not take a taken name", async () => {

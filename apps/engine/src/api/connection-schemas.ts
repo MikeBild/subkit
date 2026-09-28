@@ -13,7 +13,7 @@ export const ConnectionStateEnum = z
 
 /** Why a connection is not usable; set exactly when the state is expired or unreadable. */
 export const ConnectionStateReasonEnum = z
-  .enum(["refresh_failed", "expired_no_refresh", "secret_unreadable"])
+  .enum(["refresh_refused", "refresh_failed", "expired_no_refresh", "secret_unreadable"])
   .openapi("ConnectionStateReason");
 
 /** The connection as a connector's credential names it — see `summarizeConnections`. */

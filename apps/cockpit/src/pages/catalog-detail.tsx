@@ -606,6 +606,7 @@ export function CatalogDetailPage({
       ? connectorAuthState(
           {
             auth_type: typeof record.auth_type === "string" ? record.auth_type : null,
+            driver: typeof record.driver === "string" ? record.driver : null,
             health_state: typeof record.health_state === "string" ? record.health_state : null,
             needs_reauth: record.needs_reauth === true,
             auth_failed_at:

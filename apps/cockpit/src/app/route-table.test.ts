@@ -112,12 +112,21 @@ describe("cockpit route table", () => {
       redirectTarget(REDIRECT_ROUTES["/connections"], "?failed=denied&name=wiki+crm&section=keys"),
     ).toBe("/api-access?section=grants&failed=denied&name=wiki+crm");
     expect(redirectTarget(REDIRECT_ROUTES["/connections"], "")).toBe("/api-access?section=grants");
+    // Values that look like JSON numbers stay exactly as sent.
+    expect(
+      redirectTarget(REDIRECT_ROUTES["/connections"], "?connected=1e5&name=12345678901234567890"),
+    ).toBe("/api-access?section=grants&connected=1e5&name=12345678901234567890");
   });
 
-  test("builds every redirect as a route that throws before it renders", () => {
+  test("builds every redirect as a browser navigation on the raw query", () => {
     const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
     expect(source).toContain("Object.keys(REDIRECT_ROUTES)");
-    expect(source).toContain("redirectTarget(REDIRECT_ROUTES[path], location.searchStr)");
+    // The raw query, and a browser navigation: the router's own search
+    // serialiser JSON-parses values (`1e5` → `100000`) on both of its paths.
+    expect(source).toContain("redirectTarget(REDIRECT_ROUTES[path], window.location.search)");
+    expect(source).toContain("window.location.replace(");
+    const code = source.replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/location\.searchStr|redirect\(\{/);
     expect(source).not.toContain("ConnectionsPage");
   });
 
