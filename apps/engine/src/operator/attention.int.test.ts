@@ -32,6 +32,7 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { currentMonthBucket } from "../llm/accounting/budget.ts";
 import { resetMetricsRegistryForTests } from "../observability/metrics.ts";
 import { grantResource } from "../rbac/grants.ts";
+import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { reviewableDiff, seedPatchableWorkflow } from "../test-helpers/patch-candidates.ts";
 import { adminPrincipal } from "../test-helpers/principals.ts";
@@ -42,6 +43,11 @@ import {
   compareAttentionItems,
   invalidateAttention,
 } from "./attention.ts";
+import {
+  collectFailureGroups,
+  DECISION_FAILURE_WINDOW_HOURS,
+  failingScheduledGroups,
+} from "./health-digest.ts";
 import { getOperationalOverview, invalidateOperationalOverview } from "./operational-overview.ts";
 
 const HOUR = 3600_000;
@@ -578,6 +584,42 @@ describe("parity with the operational overview's decision buckets", () => {
           (i.class === "decide" || i.class === "failing"),
       ),
     ).toBe(true);
+  });
+
+  test("each old bucket names the same workflows the attention list does", async () => {
+    const overview = await getOperationalOverview(testDb.db, tenant_id);
+    const { items } = await buildAttention(testDb.db, owner);
+    const workflowItems = items.filter((i) => i.subject?.kind === "workflow");
+    const ids = (list: AttentionItem[]) => new Set(list.map((i) => i.subject?.id));
+
+    // blocked: the overview's held-schedule causes ↔ stopped workflow items.
+    const held = new Set(
+      overview.core.health.causes.filter((c) => c.kind === "held_schedule").map((c) => c.id),
+    );
+    const stopped = workflowItems.filter((i) => i.class === "stopped");
+    expect(ids(stopped)).toEqual(held);
+    expect(stopped.length).toBe(overview.core.blocked.value ?? -1);
+
+    // failing: the overview's own failing groups ↔ items carrying failures.
+    const failingGroups = failingScheduledGroups(
+      await collectFailureGroups(testDb.db, tenant_id, DECISION_FAILURE_WINDOW_HOURS),
+    );
+    const failingWorkflows = new Set(failingGroups.map((g) => g.workflow_id ?? undefined));
+    expect(ids(workflowItems.filter((i) => (i.counts.failures ?? 0) > 0))).toEqual(
+      failingWorkflows,
+    );
+    expect(failingWorkflows.size).toBe(overview.core.failing.value ?? -1);
+
+    // overdue + other: the open fixes behind both tiles ↔ items carrying fixes,
+    // and the skill proposals ↔ the one skills item.
+    const open = await readOpenPatchDecisions(testDb.db, tenant_id);
+    const withPatches = workflowItems.filter((i) => (i.counts.patches ?? 0) > 0);
+    expect(ids(withPatches)).toEqual(new Set(open.items.map((d) => d.row.workflow_id)));
+    const patchCount = withPatches.reduce((n, i) => n + (i.counts.patches ?? 0), 0);
+    const skillCount = items.find((i) => i.id === "skills")?.counts.skills ?? 0;
+    expect(patchCount + skillCount).toBe(
+      (overview.core.overdue.value ?? 0) + (overview.core.other_decisions.value ?? 0),
+    );
   });
 
   test("the overview's decision drilldowns open the attention list", async () => {
