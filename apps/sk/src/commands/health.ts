@@ -207,7 +207,13 @@ export const healthCommand = defineCommand({
 
     if (status) renderTokenBudget(status);
 
-    if (digest && !digest.all_clear) {
+    // `all_clear` answers "does anything need a person now". This command is
+    // the runtime posture, so it also shows what is merely worth reading — a
+    // failed trial run, a warning trend — when nothing needs acting on.
+    if (
+      digest &&
+      (!digest.all_clear || digest.failure_groups.length > 0 || (digest.risk?.length ?? 0) > 0)
+    ) {
       // Normalize `risk` at the chokepoint — a version-skewed engine
       // without the field would otherwise crash on `digest.risk.length`.
       renderDigest({ ...digest, risk: digest.risk ?? [] });

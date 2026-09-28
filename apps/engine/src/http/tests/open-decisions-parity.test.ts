@@ -26,6 +26,7 @@ import {
   reviewableDiff,
   seedPatchableWorkflow,
 } from "../../test-helpers/patch-candidates.ts";
+import { adminPrincipal } from "../../test-helpers/principals.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -61,12 +62,15 @@ afterAll(async () => {
 });
 
 test("digest, MCP attention line, list reviewable_total and overview report the same open count", async () => {
-  const digest = await buildOperatorHealthDigest(srv.db, srv.tenantId, { audit: false });
+  const digest = await buildOperatorHealthDigest(srv.db, adminPrincipal(srv.tenantId));
   expect(digest.patch_candidates.open).toBe(OPEN);
-  expect(digest.headline).toContain(`${OPEN} fixes awaiting review`);
+  // Three open fixes on one workflow are one thing to decide; the item carries
+  // the exact count behind it.
+  expect(digest.headline).toBe("Needs attention: 1 item (1 to decide).");
+  expect(digest.attention.items[0]?.counts.patches).toBe(OPEN);
 
-  const summary = await buildOperatorHealthSummary(srv.db, srv.tenantId);
-  expect(summary.text).toContain(`${OPEN} fixes awaiting review`);
+  const summary = await buildOperatorHealthSummary(srv.db, adminPrincipal(srv.tenantId));
+  expect(summary.text).toContain(`(${OPEN} fixes)`);
 
   const res = await fetch(`${srv.baseUrl}/v1/patch-candidates?status=proposed`, {
     headers: { authorization: `Bearer ${srv.apiKey}` },

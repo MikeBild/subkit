@@ -108,11 +108,14 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
   // runs in the `conversation.run-turn` pg-boss worker.
   const taskStore = new ConversationTaskStore({ db, tenant_id: principal.tenant_id });
 
-  // Compact health/risk summary handed to the client at connect via the
-  // SDK `instructions` field. The server is already tenant-bound through
-  // `principal.tenant_id`, so this is the same digest every other surface
-  // reads. Best-effort: a digest failure must NEVER fail initialize — a
-  // broken health read should not deny the client its tools.
+  // Compact attention summary handed to the client at connect via the SDK
+  // `instructions` field — rendered from `buildAttention` for THIS principal,
+  // the same list `GET /v1/attention` and `get_attention` return. Computed
+  // fresh for every session (no server-side cache beyond attention's 10 s
+  // tenant facts); a client that stores the instructions it received at
+  // connect keeps showing that snapshot until it reconnects. Best-effort: a
+  // failure must NEVER fail initialize — a broken read should not deny the
+  // client its tools.
   // The summary exposes cross-workflow operational posture, so it is gated on
   // `stats:read` — the same permission the HTTP route and the MCP resource
   // enforce. A principal without it (e.g. a portal token scoped to one
@@ -144,7 +147,7 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
       // eventual result/error through a single handler so it neither leaks an
       // unhandled rejection nor silently drops (it held a DB connection on the
       // hot path — worth a log under the very saturation this predicts).
-      const digestText = buildOperatorHealthSummary(db, principal.tenant_id).then(
+      const digestText = buildOperatorHealthSummary(db, principal).then(
         (s) => s.text,
         (err) => {
           logger.warn({

@@ -106,6 +106,22 @@ describe("mcp tools — call envelope characterization", () => {
     expect(snapshot).toEqual(expected);
   });
 
+  test("get_attention returns the same list as GET /v1/attention", async () => {
+    const rest = await fetch(`${suite.http.baseUrl}/v1/attention`, {
+      headers: { authorization: `Bearer ${suite.http.apiKey}` },
+    });
+    expect(rest.status).toBe(200);
+    const expected = (await rest.json()) as { generated_at: string };
+
+    const client = await suite.connect();
+    const result = await client.callTool({ name: "get_attention", arguments: {} });
+    expect(result.isError).not.toBe(true);
+    const content = result.content as Array<{ type: string; text: string }>;
+    const attention = JSON.parse(content[0]!.text) as { generated_at: string };
+    // Built per request: only the timestamp may differ.
+    expect({ ...attention, generated_at: "" }).toEqual({ ...expected, generated_at: "" });
+  });
+
   test("tools/call match_connector_template_by_url returns the canonical {isError, content:[text]} envelope", async () => {
     const client = await suite.connect();
     const result = await client.callTool({

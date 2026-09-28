@@ -90,6 +90,7 @@ import { registerMetricsRoute } from "./routes/metrics.ts";
 import { registerNotificationRoutes } from "./routes/notifications/index.ts";
 import { registerMcpOAuthRoutes } from "./routes/oauth.ts";
 import { registerOAuthClientAdminRoutes } from "./routes/oauth-clients.ts";
+import { registerAttentionRoute } from "./routes/operator/attention.ts";
 import { registerOperatorRoutes } from "./routes/operator/health-digest.ts";
 import { registerOperationalOverviewRoute } from "./routes/operator/operational-overview.ts";
 import { registerPatchCandidateRoutes } from "./routes/patch-candidates.ts";
@@ -353,6 +354,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerAiSummarizeRoute(app);
   registerPatchCandidateRoutes(app);
   registerOperatorRoutes(app);
+  registerAttentionRoute(app);
   registerOperationalOverviewRoute(app);
   registerSelfHealingRoutes(app);
   registerHooksInboundRoutes(app);

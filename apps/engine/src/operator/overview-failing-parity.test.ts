@@ -22,6 +22,7 @@ import {
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
+import { adminPrincipal } from "../test-helpers/principals.ts";
 import {
   buildOperatorHealthDigest,
   DECISION_FAILURE_WINDOW_HOURS,
@@ -160,9 +161,8 @@ afterAll(async () => {
 });
 
 test("the overview tile and the decision queue report the same failing workflows", async () => {
-  const digest = await buildOperatorHealthDigest(testDb.db, tenant_id, {
+  const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id), {
     window_hours: DECISION_FAILURE_WINDOW_HOURS,
-    audit: false,
   });
   const queue = failingScheduledGroups(digest.failure_groups);
   // Two scheduled causes; the manual run and the authoring trial are not
@@ -174,7 +174,7 @@ test("the overview tile and the decision queue report the same failing workflows
   expect(overview.core.failing.value).toBe(queue.length);
   // Named and reachable: a number that says nothing about what it counts is
   // what sent people to a list of eleven thousand runs.
-  expect(overview.core.failing.drilldown.path).toBe("/cockpit/decisions?bucket=failing");
+  expect(overview.core.failing.drilldown.path).toBe("/cockpit");
   expect(overview.core.failing.severity).toBe("urgent");
 
   // Each failing group is a cause a surface can word itself: the workflow it
@@ -221,9 +221,8 @@ test("retrying it by hand does not delete the record that it broke", () => {
       hoursAgo: 1,
     });
     invalidateOperationalOverview(tenant_id);
-    const digest = await buildOperatorHealthDigest(testDb.db, tenant_id, {
+    const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id), {
       window_hours: DECISION_FAILURE_WINDOW_HOURS,
-      audit: false,
     });
     const store = digest.failure_groups.find((group) => group.step_key === "store");
     expect(store?.origin).toBe("mixed");
@@ -254,9 +253,8 @@ test("a group that never ran unattended is still not a decision", async () => {
     hoursAgo: 2,
   });
   invalidateOperationalOverview(tenant_id);
-  const digest = await buildOperatorHealthDigest(testDb.db, tenant_id, {
+  const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id), {
     window_hours: DECISION_FAILURE_WINDOW_HOURS,
-    audit: false,
   });
   const probe = digest.failure_groups.find((group) => group.step_key === "probe");
   expect(probe?.origin).toBe("mixed");
@@ -273,9 +271,8 @@ test("a manual success does not close a scheduled failure", async () => {
   // would close the decision on the strength of the operator's own probe.
   await seedSuccess({ request_source: "cli", hoursAgo: 1 });
   invalidateOperationalOverview(tenant_id);
-  const digest = await buildOperatorHealthDigest(testDb.db, tenant_id, {
+  const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id), {
     window_hours: DECISION_FAILURE_WINDOW_HOURS,
-    audit: false,
   });
   for (const group of failingScheduledGroups(digest.failure_groups)) {
     expect(group.resolved_at).toBeNull();
@@ -294,9 +291,8 @@ test("a workflow that has run clean on its schedule since stops being a decision
   // `last_seen` and, until now, nothing about what happened afterwards.
   await seedSuccess({ request_source: "scheduler", hoursAgo: 0 });
   invalidateOperationalOverview(tenant_id);
-  const digest = await buildOperatorHealthDigest(testDb.db, tenant_id, {
+  const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id), {
     window_hours: DECISION_FAILURE_WINDOW_HOURS,
-    audit: false,
   });
 
   // It leaves the queue and the tile together — the parity this file exists
@@ -388,9 +384,8 @@ test("a busy neighbour cannot bury another workflow's recovery", async () => {
   );
 
   invalidateOperationalOverview(tenant_id);
-  const digest = await buildOperatorHealthDigest(testDb.db, tenant_id, {
+  const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id), {
     window_hours: DECISION_FAILURE_WINDOW_HOURS,
-    audit: false,
   });
   const quiet = digest.failure_groups.find((group) => group.step_key === "ping");
   expect(quiet).toBeDefined();
@@ -438,9 +433,8 @@ test("a workflow that was deleted stops asking to be decided about", async () =>
     error: { code: "http_4xx", message: "http 422" },
   });
 
-  const before = await buildOperatorHealthDigest(testDb.db, tenant_id, {
+  const before = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id), {
     window_hours: DECISION_FAILURE_WINDOW_HOURS,
-    audit: false,
   });
   expect(
     failingScheduledGroups(before.failure_groups).some((g) => g.workflow_id === gone!.id),
@@ -453,9 +447,8 @@ test("a workflow that was deleted stops asking to be decided about", async () =>
     .set({ deleted_at: new Date(getTestNow()) })
     .where(eq(workflows.id, gone!.id));
 
-  const after = await buildOperatorHealthDigest(testDb.db, tenant_id, {
+  const after = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id), {
     window_hours: DECISION_FAILURE_WINDOW_HOURS,
-    audit: false,
   });
   expect(after.failure_groups.some((g) => g.workflow_id === gone!.id)).toBe(false);
   // And ONLY that one went. Guarding against over-correction by counting the

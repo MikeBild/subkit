@@ -93,7 +93,8 @@ test("no core metric or health component drilldown leads to the operations page"
     expect(source.drilldown.path).not.toBe("/cockpit/operations");
 
   const byId = new Map(overview.core.health.components.map((c) => [c.id, c.drilldown.path]));
-  expect(byId.get("decisions.blocked")).toBe("/cockpit/decisions?bucket=blocked");
+  // Blocked work is on the attention list, not on a separate decisions page.
+  expect(byId.get("decisions.blocked")).toBe("/cockpit");
   expect(byId.get("executions.success_ratio")).toBe("/cockpit/runs?status=failed&source=scheduler");
   expect(byId.get("connectors.healthy_ratio")).toBe("/cockpit/connectors?health=not_ok");
   // The section tile of the same ratio leads to the same narrowed list: at 0 %
@@ -111,7 +112,7 @@ test("a historical repair ratio leads to decided repairs, not to the open queue"
     .flatMap((section) => section.metrics)
     .find((metric) => metric.id === "repairs.applied_ratio");
   expect(repairs?.drilldown.path.startsWith("/cockpit/audit?")).toBe(true);
-  expect(repairs?.drilldown.path).not.toBe("/cockpit/decisions");
+  expect(repairs?.drilldown.path).not.toBe("/cockpit");
 });
 
 test("a seeded unhealthy connector appears in causes with a link to that connector", async () => {

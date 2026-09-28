@@ -4349,15 +4349,18 @@ These feed the leading-indicator `risk[]` block of `GET /v1/operator/health-dige
 > one-off Postgres blip decays to 0 within a tick or two instead of latching the warn
 > (short uptime) or being averaged into silence (long uptime).
 
-**Risk-signal audit dedup is per-process.** A risk signal crossing into `critical`
-(or recovering) writes a single `operator.risk_signal_raised` /
+**Risk-signal audits come from the scheduler, not from readers.** A risk signal
+crossing into `critical` (or recovering) writes a single `operator.risk_signal_raised` /
 `operator.risk_signal_cleared` audit row on the transition edge, under the **system**
-tenant. The edge tracker is in-process, so in an N-replica deployment a standing
-critical can produce up to N rows per edge — one per replica that first reads the
-digest. Audit volume is small, but SIEM dedup on `(action, resource_id)` should expect
-up to N duplicates per incident. A Postgres-side claim (`INSERT … ON CONFLICT` on a
-`(kind, window)` table) is the HA hardening if exactly-once attribution becomes a
-requirement.
+tenant, with `request_source: "scheduler"`. The scheduler checks the signals once a
+minute whether or not anyone is looking, so the trail keeps recording while no browser
+or client polls the digest; reading the digest, the attention list or the MCP connect
+summary never writes one. Each transition is claimed through a shared Postgres table,
+so an N-replica deployment still writes each edge exactly once.
+
+A **critical** signal is also an item on the attention list (`GET /v1/attention`,
+`risk:<kind>`; a critical monthly token allowance is the `budget` item). Warning-level
+signals stay in the digest's `risk[]` only — a trend, not something to act on now.
 
 ### Tenant-scoped runtime stats (`/v1/stats/*`)
 
@@ -13534,9 +13537,10 @@ is the shared, cross-replica edge-state store that backs risk-signal raising.
 Risk signals describe host-global infrastructure (one Postgres pool, one set of
 DLQs, one engine RSS), so a standing critical must be audited exactly once per
 `false→true` edge across the whole deployment — not once per digest read, per
-reading tenant, or per replica. The signal builder runs on every MCP connect,
-resource read, REPL start, and status call, so auditing inline would otherwise
-flood `audit_log`. The risk-signal surface itself is documented in
+reading tenant, or per replica. The edges are taken by the scheduler once a
+minute (`scheduler/risk-signal-edges-runner.ts`); no read path — digest, MCP
+connect, attention list — takes or audits one, so the trail does not depend on
+anybody polling. The risk-signal surface itself is documented in
 [Observability](../operators/observability.md).
 
 The table is keyed by signal `kind` (host-global, no `tenant_id`). Each replica
@@ -14048,7 +14052,7 @@ flowchart LR
 
 `stats:read` exposes process-scoped operational signals — grant it only to operator/admin principals on a shared deployment.
 
-The operator health digest (`GET /v1/operator/health-digest`, the `subkit://operator/health-digest` MCP resource, and the on-connect MCP `instructions` summary) is gated on `stats:read`. Its **failing-runs** and **pending-patch** sections are tenant-scoped, but its predictive-maintenance **risk signals** (Postgres-pool saturation, dead-letter-queue growth, transient-DB-retry rate, connector-health mix, LLM-fallback fraction, RSS high-water) read *engine-wide* gauges — the pool, the DLQs, and the host RSS are shared infrastructure, not per-tenant. A principal with `stats:read` on a multi-tenant deployment can therefore infer host-level load that other tenants contribute to.
+The operator health digest (`GET /v1/operator/health-digest`, the `subkit://operator/health-digest` MCP resource, and the on-connect MCP `instructions` summary) is gated on `stats:read`. The attention list those surfaces are headed by (`GET /v1/attention`, MCP `get_attention`) has no tenant-wide gate of its own: every item is checked against the reader's permission on its subject — a grant on one workflow shows that workflow's item — and a source the reader cannot read is reported `not_permitted`, never as empty. Waiting conversations are always the reader's own, for admins too. Its **failing-runs** and **pending-patch** sections are tenant-scoped, but its predictive-maintenance **risk signals** (Postgres-pool saturation, dead-letter-queue growth, transient-DB-retry rate, connector-health mix, LLM-fallback fraction, RSS high-water) read *engine-wide* gauges — the pool, the DLQs, and the host RSS are shared infrastructure, not per-tenant. A principal with `stats:read` on a multi-tenant deployment can therefore infer host-level load that other tenants contribute to.
 
 This is intentional: `stats:read` is the operator-tier permission, and "your runs are fine but the host is about to OOM" is exactly the warning the per-tenant lagging signals cannot give in time.
 
