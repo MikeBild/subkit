@@ -16,7 +16,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { EncryptedPayload } from "../crypto/aes-gcm.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
-import { connectors, credentials, outboundConnections } from "../db/schema/index.ts";
+import { connectors, credentials } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import {
   hasCredentialAuthorityRevisionColumn,
@@ -24,7 +24,8 @@ import {
 } from "../runtime-config/secret-columns.ts";
 import type { ConnectionAuthorityIdentity } from "./authority-metadata.ts";
 import { authorityScopeSet, sameAuthorityScopes } from "./authority-scopes.ts";
-import { readAccessToken } from "./connections/service.ts";
+import { readAccessToken, summarizeConnections } from "./connections/service.ts";
+import type { ConnectionSummary } from "./connections/types.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -687,7 +688,8 @@ export async function getCredentialForConnector(
 
 /**
  * How a connector authenticates, for a page that must never see the material:
- * the mode, the environment, and the outbound connection it points at.
+ * the mode, the environment, and the outbound connection it points at — with
+ * that connection's state, so an expired grant shows on the connector too.
  */
 export async function describeCredentialForConnector(
   tenant_id: string,
@@ -697,7 +699,7 @@ export async function describeCredentialForConnector(
 ): Promise<{
   mode: string;
   environment: "dev" | "prod";
-  connection: { id: string; name: string } | null;
+  connection: ConnectionSummary | null;
   updated_at: string;
 } | null> {
   if (!UUID_RE.test(connector_id)) return null;
@@ -708,10 +710,8 @@ export async function describeCredentialForConnector(
       environment: credentials.environment,
       updated_at: credentials.updated_at,
       connection_id: credentials.connection_id,
-      connection_name: outboundConnections.name,
     })
     .from(credentials)
-    .leftJoin(outboundConnections, eq(outboundConnections.id, credentials.connection_id))
     .where(
       and(
         eq(credentials.tenant_id, tenant_id),
@@ -724,13 +724,14 @@ export async function describeCredentialForConnector(
     .limit(1);
   const row = rows[0];
   if (!row) return null;
+  const connection = row.connection_id
+    ? ((await summarizeConnections(db, tenant_id, [row.connection_id])).get(row.connection_id) ??
+      null)
+    : null;
   return {
     mode: row.connection_id ? "connection" : row.mode,
     environment: row.environment,
-    connection:
-      row.connection_id && row.connection_name
-        ? { id: row.connection_id, name: row.connection_name }
-        : null,
+    connection,
     updated_at: row.updated_at.toISOString(),
   };
 }

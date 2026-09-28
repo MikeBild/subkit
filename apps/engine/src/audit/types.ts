@@ -549,7 +549,7 @@ export const AuditAction = {
   SECRET_VERSION_APPROVED: "secret.version_approved",
   SECRET_VERSION_REJECTED: "secret.version_rejected",
 
-  // ── Outbound connections (SubKit as OAuth 2.1 client, Cockpit "Anbindungen") ──
+  // ── Outbound connections (SubKit as OAuth 2.1 client, Cockpit "Kontoverbindungen") ──
   // Tokens live as runtime secret versions and never appear in metadata;
   // the rows carry the connection name, the issuer host and the scopes.
   CONNECTION_CREATED: "connection.created",

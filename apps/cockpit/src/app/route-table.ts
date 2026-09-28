@@ -14,6 +14,8 @@
  * an entry does not compile, and a check that reads this file reads exactly
  * what the router reads.
  */
+import { apiAccessHref } from "./links";
+
 export const PAGE_ROUTES = [
   "/",
   "/decisions",
@@ -22,7 +24,6 @@ export const PAGE_ROUTES = [
   "/people",
   "/access",
   "/api-access",
-  "/connections",
   "/notifications",
   "/operations",
   "/settings",
@@ -35,8 +36,33 @@ export type PageRoute = (typeof PAGE_ROUTES)[number];
  *
  * A redirect is a route a person can type or bookmark. `/` picks its target
  * from the session's permissions, which is why it has none written down here.
+ *
+ * `/connections` was the Kontoverbindungen page before it became a section of
+ * Zugangsdaten. Bookmarks still point there, and an OAuth callback issued
+ * before the move lands there with its result in the query — so the query
+ * travels with the redirect (`redirectTarget`).
  */
-export const REDIRECT_ROUTES: Readonly<Record<string, string | null>> = {};
+export const REDIRECT_ROUTES = {
+  "/connections": apiAccessHref("grants"),
+} as const satisfies Readonly<Record<string, string>>;
+
+export type RedirectRoute = keyof typeof REDIRECT_ROUTES;
+
+/**
+ * Where a redirect lands, with the query it arrived with. The target's own
+ * parameters win (a `section` the old address cannot override); everything
+ * else the address carried — `connected`, `renewed`, `failed`, `name` — is
+ * kept verbatim, because the page it lands on reads them.
+ */
+export function redirectTarget(target: string, incomingSearch: string): string {
+  const [path, own = ""] = target.split("?");
+  const params = new URLSearchParams(own);
+  for (const [key, value] of new URLSearchParams(incomingSearch)) {
+    if (!params.has(key)) params.append(key, value);
+  }
+  const query = params.toString();
+  return query ? `${path}?${query}` : (path ?? "/");
+}
 
 /** The chat, its new-conversation entry, and one conversation by id. */
 export const CHAT_ROUTES = ["/chat", "/chat/new", "/chat/$conversationId"] as const;

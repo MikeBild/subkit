@@ -149,7 +149,9 @@ const routes = [
   "people",
   "access",
   "api-access",
-  "connections",
+  // The old Kontoverbindungen address, with a callback result in its query:
+  // it must land on the grants section of Zugangsdaten and say the sentence.
+  "connections?failed=denied&name=Postfach",
   "operations",
   "settings",
 ];
@@ -1260,7 +1262,15 @@ async function mockApi(route) {
           last_refreshed_at: conversation.updated_at,
           refresh_failed_at: null,
           last_error: null,
-          used_by_connectors: 2,
+          state_reason: null,
+          used_by: [
+            {
+              connector_id: uuid,
+              slug: "reporting-api",
+              display_name: "Reporting API",
+              workflow_count: 4,
+            },
+          ],
           created_at: "2026-06-02T09:00:00.000Z",
         },
         {
@@ -1279,7 +1289,8 @@ async function mockApi(route) {
           last_refreshed_at: null,
           refresh_failed_at: null,
           last_error: null,
-          used_by_connectors: 1,
+          state_reason: null,
+          used_by: [],
           created_at: "2026-07-14T09:00:00.000Z",
         },
         {
@@ -1297,8 +1308,9 @@ async function mockApi(route) {
           last_used_at: "2026-08-19T09:00:00.000Z",
           last_refreshed_at: null,
           refresh_failed_at: "2026-08-20T09:05:00.000Z",
-          last_error: "invalid_grant",
-          used_by_connectors: 3,
+          last_error: "token endpoint refused: invalid_grant",
+          state_reason: "refresh_refused",
+          used_by: [],
           created_at: "2026-05-05T09:00:00.000Z",
         },
         {
@@ -1317,44 +1329,10 @@ async function mockApi(route) {
           last_refreshed_at: null,
           refresh_failed_at: null,
           last_error: null,
-          used_by_connectors: 0,
+          state_reason: "secret_unreadable",
+          used_by: [],
           created_at: "2026-04-01T09:00:00.000Z",
         },
-      ],
-    });
-  }
-  if (path === "/v1/connections") {
-    // One row per state the page words differently. A fixture that only ever
-    // shows healthy grants proves nothing about the two that need a way back.
-    const grant = (id, name, state, extra) => ({
-      id,
-      name,
-      base_url: `https://${id}.example.com`,
-      issuer: "https://login.example.com",
-      service_name: name,
-      service_description: null,
-      scopes: ["reports.read"],
-      granted_scopes: state === "valid" ? ["reports.read"] : null,
-      state,
-      auto_renew: state !== "expired",
-      expires_at: null,
-      last_used_at: null,
-      last_refreshed_at: null,
-      refresh_failed_at: null,
-      last_error: null,
-      used_by_connectors: 0,
-      created_at: "2026-06-02T09:00:00.000Z",
-      ...extra,
-    });
-    return json(route, {
-      items: [
-        grant("reporting", "Reporting-Portal", "valid", {
-          expires_at: "2026-12-01T09:00:00.000Z",
-          used_by_connectors: 2,
-        }),
-        grant("billing", "Abrechnung", "expiring", { expires_at: "2026-09-05T09:00:00.000Z" }),
-        grant("mail", "Postfach", "expired", { last_error: "invalid_grant" }),
-        grant("inventory", "Lager", "unreadable", {}),
       ],
     });
   }
@@ -1900,7 +1878,7 @@ async function mockApi(route) {
     return json(route, {
       mode: "connection",
       environment: "prod",
-      connection: { id: "connection-valid", name: "Reporting-Portal" },
+      connection: { id: "connection-valid", name: "Reporting-Portal", state: "valid" },
       updated_at: new Date(SWEEP_NOW - 6 * 3_600_000).toISOString(),
     });
   if (path === "/v1/settings")
@@ -1995,6 +1973,7 @@ async function mockApi(route) {
           created_at: "2026-08-10T07:00:00.000Z",
           last_used_at: null,
           expires_at: null,
+          rotating_out_at: null,
           revoked_at: null,
         },
       ],
@@ -2271,10 +2250,12 @@ function markerFor(route) {
   if (path === "") return '[data-testid="overview-page"]';
   // Decisions owns its page rather than rendering a list of records.
   if (path === "decisions") return '[data-testid="decisions-page"]';
+  // The old Kontoverbindungen address redirects; the frame is where it lands,
+  // and the callback sentence it carried must be on it.
+  if (path === "connections") return '[data-testid="connection-failed"]';
   // Installation surfaces name their frame after the section, not the record
-  // type. Connections joined them without joining this list, and the sweep has
-  // been waiting for a marker that is not on the page since.
-  if (["people", "access", "api-access", "operations", "settings", "connections"].includes(path))
+  // type.
+  if (["people", "access", "api-access", "operations", "settings"].includes(path))
     return `[data-testid="admin-${path}"]`;
   // Connectors render through the shared catalog table like every other list.
   if (["workflows", "connectors", "knowledge", "skills", "files"].includes(path))

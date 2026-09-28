@@ -426,6 +426,8 @@ export interface CredentialSummary {
   has_oauth_refresh: boolean;
   granted_scopes: string | null;
   oauth2_expires_at: string | null;
+  /** The outbound connection the credential sends, if any; the route adds its name and state. */
+  connection_id: string | null;
   created_at: string;
 }
 
@@ -448,6 +450,7 @@ export async function listConnectorCredentials(
       oauth2_refresh_ciphertext: credentials.oauth2_refresh_ciphertext,
       granted_scopes: credentials.granted_scopes,
       oauth2_expires_at: credentials.oauth2_expires_at,
+      connection_id: credentials.connection_id,
       created_at: credentials.created_at,
     })
     .from(credentials)
@@ -466,6 +469,7 @@ export async function listConnectorCredentials(
     has_oauth_refresh: r.oauth2_refresh_ciphertext != null,
     granted_scopes: r.granted_scopes,
     oauth2_expires_at: r.oauth2_expires_at?.toISOString() ?? null,
+    connection_id: r.connection_id,
     created_at: r.created_at.toISOString(),
   }));
 }

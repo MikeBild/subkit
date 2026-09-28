@@ -360,7 +360,7 @@
 
   {
     "name": "connection:read",
-    "description": "List outbound connections (Cockpit: Anbindungen) and their state",
+    "description": "List outbound connections (Cockpit: Zugangsdaten → Kontoverbindungen) and their state",
     "resource_type": "connection"
   },
   {

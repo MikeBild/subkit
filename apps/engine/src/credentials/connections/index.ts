@@ -2,6 +2,7 @@ export { discoverService, normalizeBaseUrl, requireConnectable } from "./discove
 export {
   type CompleteConnectionResult,
   completeConnection,
+  connectionStateOf,
   disconnectConnection,
   getConnection,
   listConnections,
@@ -12,5 +13,6 @@ export {
   type StartConnectionResult,
   secretNames,
   startConnection,
+  summarizeConnections,
 } from "./service.ts";
 export * from "./types.ts";

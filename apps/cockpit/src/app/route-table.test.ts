@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { NAVIGATION } from "@/app/navigation";
-import { ALL_ROUTE_PATHS, CATALOG_RESOURCES, PAGE_ROUTES } from "@/app/route-table";
+import {
+  ALL_ROUTE_PATHS,
+  CATALOG_RESOURCES,
+  PAGE_ROUTES,
+  REDIRECT_ROUTES,
+  redirectTarget,
+} from "@/app/route-table";
+import { apiAccessSectionFromUrl } from "./links";
 
 /**
  * The router cannot be imported here — it reaches `window` while it loads — so
@@ -88,6 +95,39 @@ describe("cockpit route table", () => {
     // And not through CATALOG_RESOURCES: that list wires the generic
     // catalogue pair, whose resource maps have no entry for runs.
     expect(CATALOG_RESOURCES as readonly string[]).not.toContain("runs");
+  });
+
+  test("sends the old Kontoverbindungen address to its section on Zugangsdaten, query and all", () => {
+    // `/connections` became a section of `/api-access`. A bookmark and an
+    // OAuth callback issued before the move both still land on the old path,
+    // the callback with its result in the query — dropping it would swallow
+    // the one sentence that says whether the connection worked.
+    expect(REDIRECT_ROUTES["/connections"]).toBe("/api-access?section=grants");
+    expect(PAGE_ROUTES as readonly string[]).not.toContain("/connections");
+    expect(ALL_ROUTE_PATHS).toContain("/connections");
+    const landed = redirectTarget(REDIRECT_ROUTES["/connections"], "?connected=wiki&renewed=1");
+    expect(landed).toBe("/api-access?section=grants&connected=wiki&renewed=1");
+    expect(apiAccessSectionFromUrl(landed.slice(landed.indexOf("?")))).toBe("grants");
+    expect(
+      redirectTarget(REDIRECT_ROUTES["/connections"], "?failed=denied&name=wiki+crm&section=keys"),
+    ).toBe("/api-access?section=grants&failed=denied&name=wiki+crm");
+    expect(redirectTarget(REDIRECT_ROUTES["/connections"], "")).toBe("/api-access?section=grants");
+    // Values that look like JSON numbers stay exactly as sent.
+    expect(
+      redirectTarget(REDIRECT_ROUTES["/connections"], "?connected=1e5&name=12345678901234567890"),
+    ).toBe("/api-access?section=grants&connected=1e5&name=12345678901234567890");
+  });
+
+  test("builds every redirect as a browser navigation on the raw query", () => {
+    const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
+    expect(source).toContain("Object.keys(REDIRECT_ROUTES)");
+    // The raw query, and a browser navigation: the router's own search
+    // serialiser JSON-parses values (`1e5` → `100000`) on both of its paths.
+    expect(source).toContain("redirectTarget(REDIRECT_ROUTES[path], window.location.search)");
+    expect(source).toContain("window.location.replace(");
+    const code = source.replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/location\.searchStr|redirect\(\{/);
+    expect(source).not.toContain("ConnectionsPage");
   });
 
   test("keeps every parameterised path out of the mapped page list", () => {
