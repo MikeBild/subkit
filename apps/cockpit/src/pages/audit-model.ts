@@ -2,6 +2,7 @@ import type { components } from "@/api/schema";
 import { absolute, conversationHref, identifierParam, recordHref, runHref } from "@/app/links";
 import type { CatalogResource } from "@/app/route-table";
 import type { TranslationKey } from "@/lib/i18n";
+import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 
 type AuditEntry = components["schemas"]["AuditEntry"];
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
@@ -66,8 +67,30 @@ const ACTOR_KEYS: Record<string, TranslationKey> = {
   system: "audit.actor.system",
 };
 
-export function actorTypeKey(actorType: string): TranslationKey {
-  return ACTOR_KEYS[actorType] ?? "common.unknown";
+/**
+ * The kind of principal that acted, as a word. A kind this build has no word
+ * for is the engine's own value, marked as one — "Unbekannt" about a value the
+ * log recorded exactly would be false (§2, §15.2).
+ */
+export function actorTypeLabel(actorType: string, t: Translate): CatalogLabel {
+  return catalogLabel(actorType, ACTOR_KEYS[actorType], t);
+}
+
+/**
+ * WHO acted (§15.2 "Verursacher"): the person's or system account's name where
+ * the directory knows it, the kind otherwise — never an id. `null` when the row
+ * records no actor at all; the column then shows the dash and infers nothing.
+ */
+export function auditActorName(
+  entry: Pick<AuditEntry, "actor_type" | "actor_id">,
+  directory: ReadonlyMap<string, string>,
+  t: Translate,
+): CatalogLabel | null {
+  const kind = entry.actor_type?.trim() ?? "";
+  const named = entry.actor_id ? directory.get(entry.actor_id) : undefined;
+  if (named) return { text: named, machine: false };
+  if (!kind) return null;
+  return actorTypeLabel(kind, t);
 }
 
 const RESULT_KEYS: Record<string, TranslationKey> = {
@@ -84,8 +107,41 @@ const RESULT_KEYS: Record<string, TranslationKey> = {
  * printed, and two copies of one map are how a surface and the row it was
  * opened from start disagreeing about what "denied" is called.
  */
-export function auditResultKey(result: string): TranslationKey {
-  return RESULT_KEYS[result] ?? "common.unknown";
+export function auditResultLabel(result: string, t: Translate): CatalogLabel {
+  return catalogLabel(result, RESULT_KEYS[result], t);
+}
+
+/** The engine's reason tokens a reader meets in the log, in words. */
+const REASON_KEYS: Record<string, TranslationKey> = {
+  expired_sliding: "audit.reason.expiredSliding",
+  expired_absolute: "audit.reason.expiredAbsolute",
+  idle_timeout: "audit.reason.idleTimeout",
+  logout: "audit.reason.logout",
+  revoked: "audit.reason.revoked",
+  user_deactivated: "audit.reason.userDeactivated",
+  bad_signature: "audit.reason.badSignature",
+  credential_rejected: "audit.reason.credentialRejected",
+  circuit_open: "audit.reason.circuitOpen",
+  operator_rejected_confirmation: "audit.reason.operatorRejected",
+  execution_authority_required: "audit.reason.authorityRequired",
+  execution_authority_unavailable: "audit.reason.authorityUnavailable",
+  refresh_replayed: "audit.reason.refreshReplayed",
+  manual_re_issue: "audit.reason.manualReissue",
+};
+
+/**
+ * Why, as the row recorded it. A known token reads as a sentence; an unknown
+ * token stays the engine's value, flagged as one; free text the engine wrote is
+ * shown as written. `null` when there is no reason.
+ */
+export function auditReasonLabel(
+  reason: string | null | undefined,
+  t: Translate,
+): CatalogLabel | null {
+  const text = reason?.trim() ?? "";
+  if (!text) return null;
+  if (!/^[a-z][a-z0-9_.:-]*$/.test(text)) return { text, machine: false };
+  return catalogLabel(text, REASON_KEYS[text], t);
 }
 
 const RESOURCE_KEYS: Record<string, TranslationKey> = {
@@ -115,14 +171,27 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   role: "nav.access",
   user: "nav.people",
   settings: "nav.settings",
+  connection: "permission.resource.connections",
+  schedule: "permission.resource.schedules",
+  subscription: "permission.resource.subscriptions",
+  inbound_hook: "permission.resource.inboundHooks",
+  portal_token: "permission.resource.portalTokens",
+  resource_grant: "access.grants",
+  group: "access.groups",
+  system_account: "audit.actor.systemAccount",
+  user_invite: "people.invite",
 };
 
-export function resourceTypeKey(resourceType: string): TranslationKey {
-  // The audit writer is intentionally extensible and can introduce a new
-  // resource before the Cockpit catalogue knows its exact noun. Calling a
-  // recorded resource "unknown" is false; retain a truthful neutral label
-  // until the precise translation lands.
-  return RESOURCE_KEYS[resourceType] ?? "audit.resource.other";
+/**
+ * What kind of record a row is about.
+ *
+ * The audit writer is extensible and can introduce a resource before this
+ * catalogue knows its noun. The fallback used to be "Weitere Ressource" — a
+ * polite "Unbekannt" about a type the log recorded exactly. It is now that
+ * type, recognisably a machine value (§15.2).
+ */
+export function auditResourceLabel(resourceType: string, t: Translate): CatalogLabel {
+  return catalogLabel(resourceType, RESOURCE_KEYS[resourceType], t);
 }
 
 /**
@@ -559,22 +628,29 @@ function recordedText(value: string | null | undefined): string | null {
  * into `sk audit show`, a ticket or a second surface, and a trail that hides
  * its own correlation key cannot be followed anywhere.
  */
+function labelFact(label: string, value: CatalogLabel | null): AuditFact {
+  return value
+    ? { label, value: value.text, ...(value.machine ? { mono: true } : {}) }
+    : { label, value: null };
+}
+
 export function auditDetailFacts(
   entry: AuditEntry,
   t: Translate,
   dateTime: FormatDateTime,
+  directory: ReadonlyMap<string, string> = new Map(),
 ): AuditFact[] {
   return [
     // Absolute. "3 hours ago" is not a fact an auditor can quote.
     { label: t("audit.column.time"), value: dateTime(entry.ts) },
-    { label: t("audit.column.result"), value: t(auditResultKey(entry.result)) },
-    // Kind and id side by side. "Person" alone does not say which person, and
-    // a bare id does not say that it is one.
-    { label: t("audit.column.actor"), value: t(actorTypeKey(entry.actor_type)) },
+    labelFact(t("audit.column.result"), auditResultLabel(entry.result, t)),
+    // Who, then the id behind them. A name alone does not say it is a person
+    // record, and a bare id does not say whose it is.
+    labelFact(t("audit.column.actor"), auditActorName(entry, directory, t)),
     { label: t("audit.detail.actorId"), value: recordedText(entry.actor_id), mono: true },
-    { label: t("audit.column.resource"), value: t(resourceTypeKey(entry.resource_type)) },
+    labelFact(t("audit.column.resource"), auditResourceLabel(entry.resource_type, t)),
     { label: t("audit.detail.resourceId"), value: recordedText(entry.resource_id), mono: true },
-    { label: t("audit.column.reason"), value: recordedText(entry.reason) },
+    labelFact(t("audit.column.reason"), auditReasonLabel(entry.reason, t)),
     { label: t("audit.detail.trace"), value: recordedText(entry.trace_id), mono: true },
     { label: t("audit.detail.ip"), value: recordedText(entry.ip), mono: true },
     { label: t("audit.detail.userAgent"), value: recordedText(entry.user_agent), mono: true },

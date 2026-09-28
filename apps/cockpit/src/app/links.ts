@@ -95,9 +95,15 @@ export function decisionsHref(
   return withQuery("/decisions", { bucket: filter.bucket, workflow_id: filter.workflowId });
 }
 
-/** The settings page, opened at one leaf (`server.public_base_url`). */
-export function settingsHref(leaf?: string | null): string {
-  return withQuery("/settings", { leaf });
+/**
+ * The settings page, opened at one leaf (`server.public_base_url`), or at a
+ * tab and a search. `settingsViewFromUrl` in pages/admin-model.ts reads it back.
+ */
+export function settingsHref(
+  leaf?: string | null,
+  view: { section?: string | null; q?: string | null } = {},
+): string {
+  return withQuery("/settings", { leaf, section: view.section, q: view.q });
 }
 
 export function auditHref(
