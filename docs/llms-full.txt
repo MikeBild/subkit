@@ -6277,11 +6277,18 @@ Beides findest du im Cockpit unter **Installation**: die Kontoverbindungen im Ab
 **Einstellungen**.
 
 **Zugangsdaten** ist die eine Seite für alles, was an dieser Installation Rechte hält oder
-vergibt: **API-Schlüssel** (womit Skripte und Programme SubKit aufrufen), **Verbundene
-Anwendungen** (Programme, denen jemand Zugriff auf diese Installation freigegeben hat) und
-**Kontoverbindungen** (Systeme, die SubKit in deinem Namen aufrufen darf). Was dort
+vergibt: **Kontoverbindungen** (Systeme, die SubKit in deinem Namen aufrufen darf),
+**API-Schlüssel** (womit Skripte und Programme SubKit aufrufen) und **Verbundene
+Anwendungen** (Programme, denen jemand Zugriff auf diese Installation freigegeben hat) — in
+dieser Reihenfolge, mit einem Verzeichnis der drei Abschnitte ganz oben. Was dort
 Aufmerksamkeit braucht — eine abgelaufene Kontoverbindung, ein abgelaufener oder seit
-Monaten unbenutzter Schlüssel — steht oben auf der Seite, mit Grund und Weg.
+Monaten unbenutzter Schlüssel — steht darüber, mit Grund und Weg.
+
+Offen stehen nur die Schlüssel, die noch Rechte halten, und die Anwendungen, für die jemand
+eine gültige Freigabe hält. Widerrufene Schlüssel und Anwendungen ohne gültige Freigabe sind
+zugeklappt, mit ihrer Anzahl. Eine Anwendungs-Registrierung, die seit 7 Tagen niemand
+freigegeben oder benutzt hat, legt SubKit still; sie kommt zurück, sobald jemand sie wieder
+freigibt. Eine widerrufene Registrierung kommt nicht zurück.
 
 ---
 

@@ -610,6 +610,7 @@ const EN = {
   "resource.apiAccess.description":
     "Everything that holds or grants rights on this installation, in one place: keys, connected applications, account connections.",
   "apiAccess.section.keys": "API keys",
+  "apiAccess.index.label": "Sections on this page",
   "apiAccess.section.keysDescription":
     "Keys that scripts and programs use to call this installation.",
   "apiAccess.section.clients": "Connected applications",
@@ -699,6 +700,9 @@ const EN = {
   "apiKeys.revokedAt": "revoked on {date}",
   "apiKeys.rotatingOut": "old key still works until {date}",
   "apiKeys.revokedBadge": "revoked",
+  "apiKeys.noneActive": "No API key is active — every key here has been revoked.",
+  "apiKeys.showRevoked": "Revoked keys ({count})",
+  "apiKeys.hideRevoked": "Hide revoked keys ({count})",
   "apiKeys.expiredBadge": "expired",
   "apiKeys.rotateTitle": "Rotate {name}?",
   "apiKeys.rotateConsequence":
@@ -723,6 +727,14 @@ const EN = {
   "connectedClients.noLiveApproval": "No live approval — nothing can use this registration.",
   "connectedClients.live": "{count} valid approval(s)",
   "connectedClients.revoked": "Revoked",
+  "connectedClients.retired": "Retired",
+  "connectedClients.noneGranted": "Nobody holds a valid approval for an application right now.",
+  "connectedClients.showUngranted": "Show without a valid approval ({count})",
+  "connectedClients.hideUngranted": "Hide without a valid approval ({count})",
+  "connectedClients.showDisabled": "Show retired and revoked ({count})",
+  "connectedClients.hideDisabled": "Hide retired and revoked ({count})",
+  "connectedClients.retirementRule":
+    "A registration nobody has approved or used for 7 days is retired. It comes back as soon as someone approves it again; a revoked one does not.",
   "connectedClients.unnamed": "Unnamed application",
   "connectedClients.revoke": "Withdraw access",
   "connectedClients.revokeTitle": "Withdraw access from {name}?",
@@ -981,6 +993,7 @@ const EN = {
   "workflows.trigger.webhookUnbound": "On request – webhook not set up",
   "workflows.health": "Health: {state}",
   "common.engineWording": "Wording from the engine: {text}",
+  "common.engineWordingLabel": "Wording from the engine",
   "connectors.usedByCount": "{count} workflows",
   "runs.childRun": "Child run",
   "audit.column.time": "Time",
@@ -2267,7 +2280,9 @@ const EN = {
   "chat.mode.guidance.plan":
     "Enforces the same gates as “Ask before changes”; that it only plans is an instruction to the model — a guardrail, not a limit.",
   "chat.unavailable": "Conversation not available",
-  "chat.notFound": "This conversation does not exist or is not visible to you",
+  "chat.notFound": "This conversation does not exist or you have no access to it",
+  "chat.notFoundDescription":
+    "Trying again will not change that. Open a conversation from the list or start a new one.",
   "chat.retryCheck": "Refresh the conversation",
   "chat.retryManual":
     "Nothing is sent again by itself: check the refreshed conversation and send your message yourself if it is missing.",
@@ -3068,6 +3083,7 @@ const DE: Record<TranslationKey, string> = {
   "resource.apiAccess.description":
     "Alles, was an dieser Installation Rechte hält oder vergibt, an einem Ort: Schlüssel, verbundene Anwendungen, Kontoverbindungen.",
   "apiAccess.section.keys": "API-Schlüssel",
+  "apiAccess.index.label": "Abschnitte dieser Seite",
   "apiAccess.section.keysDescription":
     "Schlüssel, mit denen Skripte und Programme diese Installation aufrufen.",
   "apiAccess.section.clients": "Verbundene Anwendungen",
@@ -3157,6 +3173,9 @@ const DE: Record<TranslationKey, string> = {
   "apiKeys.revokedAt": "widerrufen am {date}",
   "apiKeys.rotatingOut": "alter Schlüssel gilt noch bis {date}",
   "apiKeys.revokedBadge": "widerrufen",
+  "apiKeys.noneActive": "Kein API-Schlüssel ist aktiv — alle hier sind widerrufen.",
+  "apiKeys.showRevoked": "Widerrufene Schlüssel ({count})",
+  "apiKeys.hideRevoked": "Widerrufene Schlüssel ({count}) ausblenden",
   "apiKeys.expiredBadge": "abgelaufen",
   "apiKeys.rotateTitle": "{name} rotieren?",
   "apiKeys.rotateConsequence":
@@ -3182,6 +3201,14 @@ const DE: Record<TranslationKey, string> = {
     "Keine gültige Freigabe — diese Registrierung kann niemand nutzen.",
   "connectedClients.live": "{count} gültige Freigabe(n)",
   "connectedClients.revoked": "Widerrufen",
+  "connectedClients.retired": "Stillgelegt",
+  "connectedClients.noneGranted": "Gerade hält niemand eine gültige Freigabe für eine Anwendung.",
+  "connectedClients.showUngranted": "Ohne gültige Freigabe ({count}) anzeigen",
+  "connectedClients.hideUngranted": "Ohne gültige Freigabe ({count}) ausblenden",
+  "connectedClients.showDisabled": "Stillgelegte und widerrufene ({count}) anzeigen",
+  "connectedClients.hideDisabled": "Stillgelegte und widerrufene ({count}) ausblenden",
+  "connectedClients.retirementRule":
+    "Eine Registrierung, die seit 7 Tagen niemand freigegeben oder benutzt hat, wird stillgelegt. Sie kommt zurück, sobald jemand sie wieder freigibt; eine widerrufene nicht.",
   "connectedClients.unnamed": "Unbenannte Anwendung",
   "connectedClients.revoke": "Zugriff entziehen",
   "connectedClients.revokeTitle": "{name} den Zugriff entziehen?",
@@ -3444,6 +3471,7 @@ const DE: Record<TranslationKey, string> = {
   "workflows.trigger.webhookUnbound": "Auf Anfrage – Webhook nicht eingerichtet",
   "workflows.health": "Zustand: {state}",
   "common.engineWording": "Wortlaut der Engine: {text}",
+  "common.engineWordingLabel": "Wortlaut der Engine",
   "connectors.usedByCount": "{count} Workflows",
   "runs.childRun": "Untergeordneter Lauf",
   "audit.column.time": "Zeitpunkt",
@@ -4768,7 +4796,9 @@ const DE: Record<TranslationKey, string> = {
   "chat.mode.guidance.plan":
     "Erzwingt dieselben Schranken wie „Vor Änderungen fragen“; dass nur geplant wird, ist eine Anweisung an das Modell — eine Leitplanke, keine Grenze.",
   "chat.unavailable": "Unterhaltung nicht verfügbar",
-  "chat.notFound": "Diese Unterhaltung gibt es nicht oder sie ist für dich nicht sichtbar",
+  "chat.notFound": "Diese Unterhaltung gibt es nicht oder du hast keinen Zugriff",
+  "chat.notFoundDescription":
+    "Erneut versuchen ändert daran nichts. Öffne eine Unterhaltung aus der Liste oder beginne eine neue.",
   "chat.retryCheck": "Unterhaltung aktualisieren",
   "chat.retryManual":
     "Nichts wird von selbst erneut gesendet: prüf die aktualisierte Unterhaltung und schick deine Nachricht selbst noch einmal ab, falls sie fehlt.",
