@@ -479,7 +479,19 @@ function KeysSection({ query }: { query: ListQuery<ApiKeyItem> }) {
             </p>
             <ScopeList scopes={key.scopes} testId={`api-key-scopes-${testKey}`} />
           </div>
-          {live && (canRotate || canRevoke) ? (
+          {/* A "⋯" only where it opens a menu of several acts; a key only one
+              of them applies to gets that one as a named button. */}
+          {live && canRotate !== canRevoke ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 self-start"
+              onClick={() => (canRotate ? setRotating(key) : setRevoking(key))}
+              data-testid={`api-key-${canRotate ? "rotate" : "revoke"}-${testKey}`}
+            >
+              {t(canRotate ? "apiKeys.rotate" : "apiKeys.revoke")}
+            </Button>
+          ) : live && canRotate && canRevoke ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <IconButton label={t("common.actions")} data-testid={`api-key-menu-${testKey}`}>
@@ -792,26 +804,17 @@ function ClientsSection({ query }: { query: ListQuery<ConnectedClientItem> }) {
         </div>
         {/* A retired registration comes back on its next authorization;
               revoking it is how a person makes that impossible. */}
+        {/* One act, so one named button — a "⋯" is a menu of several. */}
         {canRevoke && (!item.disabled_at || item.retired_at) ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <IconButton
-                label={t("common.actions")}
-                data-testid={`connected-client-menu-${testKey}`}
-              >
-                <MoreHorizontal />
-              </IconButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                variant="destructive"
-                onSelect={() => setRevoking(item)}
-                data-testid={`connected-client-revoke-${testKey}`}
-              >
-                {t("connectedClients.revoke")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 self-start"
+            onClick={() => setRevoking(item)}
+            data-testid={`connected-client-revoke-${testKey}`}
+          >
+            {t("connectedClients.revoke")}
+          </Button>
         ) : null}
       </CardContent>
     </Card>
@@ -1159,22 +1162,15 @@ function ConnectionRow({
               <RefreshCw data-icon="inline-start" className={cn(renewing && "animate-spin")} />
               {t("connections.renew")}
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <IconButton label={t("common.actions")} data-testid={`connection-menu-${index}`}>
-                  <MoreHorizontal />
-                </IconButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  variant="destructive"
-                  onSelect={onDisconnect}
-                  data-testid={`connection-disconnect-${index}`}
-                >
-                  {t("connections.disconnect")}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* One further act beside the renewal: a named button, not a "⋯". */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onDisconnect}
+              data-testid={`connection-disconnect-${index}`}
+            >
+              {t("connections.disconnect")}
+            </Button>
           </div>
         )}
       </CardContent>

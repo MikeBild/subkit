@@ -521,7 +521,6 @@ export function UsagePage() {
               recordsLabel={t("catalog.records")}
               loadedLabel={t("catalog.loaded", { count: spend.length })}
               actionsLabel={t("common.actions")}
-              openLabel={t("common.open")}
             />
           </div>
         </section>
@@ -609,7 +608,6 @@ export function UsagePage() {
               recordsLabel={t("catalog.records")}
               loadedLabel={t("catalog.loaded", { count: rows.length })}
               actionsLabel={t("common.actions")}
-              openLabel={t("common.open")}
             />
           </div>
         </section>

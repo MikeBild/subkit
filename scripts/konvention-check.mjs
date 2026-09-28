@@ -2835,6 +2835,49 @@ async function checkFailureState(page, where) {
 }
 
 /**
+ * A row opens by its name, and by nothing named "Öffnen".
+ *
+ * Every row carried an "Öffnen" button beside a row click that did the same —
+ * two ways to one place, in every row of every list. The name is the link now:
+ * a real `<a href>` where the record has an address (a button where it opens
+ * in place), reachable by keyboard, and the row itself is no tab stop. The
+ * rule is read off the rendered rows of every route, desktop table and mobile
+ * card alike, so a list that brings the button back cannot hide it.
+ */
+async function checkRowsOpenByTheirName(page, where) {
+  const shape = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('[data-family-collection-row="true"]')];
+    return {
+      rows: rows.length,
+      openControls: rows.flatMap((row) =>
+        [...row.querySelectorAll("a, button, [role='button']")]
+          .filter(
+            (control) =>
+              /^Öffnen$/.test(control.textContent?.trim() ?? "") ||
+              /-open-\d+$/.test(control.getAttribute("data-testid") ?? ""),
+          )
+          .map((control) => control.getAttribute("data-testid") ?? control.textContent?.trim()),
+      ),
+      tabStops: rows.filter((row) => row.getAttribute("tabindex") === "0").length,
+      buttonCards: rows.filter((row) => row.tagName === "BUTTON" && row.querySelector("a, button"))
+        .length,
+      clickable: rows.filter((row) => row.classList.contains("cursor-pointer")).length,
+      named: document.querySelectorAll(
+        '[data-testid$="-row-link-0"], [data-testid$="-mobile-row-link-0"]',
+      ).length,
+    };
+  });
+  for (const control of new Set(shape.openControls))
+    breach("§12", where, `a row carries an "Öffnen" control (${control}) beside its own link`);
+  if (shape.tabStops > 0)
+    breach("§12", where, `${shape.tabStops} rows are tab stops — the name link is the way in`);
+  if (shape.buttonCards > 0)
+    breach("§12", where, `${shape.buttonCards} mobile cards are buttons wrapping controls`);
+  if (shape.clickable > 0 && shape.named === 0)
+    breach("§12", where, "rows open on click, but no row names itself with a link");
+}
+
+/**
  * §5 / §2 / §12 — a detail surface that is NOT a route is swept too.
  *
  * The route table covers every detail PAGE. It cannot cover a detail view that
@@ -2870,7 +2913,7 @@ async function sweepDetailSurface(page, route) {
       return;
     }
   }
-  const opener = page.locator('[data-testid="data-table-open-0"]');
+  const opener = page.locator('[data-testid="data-table-row-link-0"]');
   if ((await opener.count()) === 0) {
     if ((await page.locator('[data-testid="data-table"]').count()) > 0)
       gap(`/${route} · detail surface`, "the list offers no row to open");
@@ -3321,6 +3364,7 @@ try {
     await checkNoRawTimestamps(page, `/${route}`);
     await checkScreenReaderLanguage(page, `/${route}`);
     await checkNoZeroKpiTile(page, `/${route}`);
+    await checkRowsOpenByTheirName(page, `/${route}`);
     await sweepDetailSurface(page, route);
     await page.close();
   }

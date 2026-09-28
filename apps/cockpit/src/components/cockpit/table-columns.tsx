@@ -42,6 +42,11 @@ interface ColumnOptions {
   sortable?: boolean;
   /** A Tailwind width class; declared widths are what keep the table `table-fixed`. */
   width?: string;
+  /**
+   * The cell places the row's link itself (`<RowName>`), because it holds more
+   * than the name — a link of its own must not end up inside the row's link.
+   */
+  ownsRowLink?: boolean;
 }
 
 /**
@@ -64,7 +69,7 @@ export function tableColumns<TRow extends RowData>({
     id,
     header: label,
     enableSorting: options?.sortable ?? false,
-    meta: { width: options?.width },
+    meta: { width: options?.width, ownsRowLink: options?.ownsRowLink },
   });
 
   return {

@@ -616,7 +616,7 @@ export function PeoplePage() {
                         type="button"
                         className="max-w-full truncate text-left hover:underline focus-visible:underline"
                         onClick={() => setOpened(user)}
-                        data-testid={`people-open-${index}`}
+                        data-testid={`people-name-${index}`}
                       >
                         {user.email}
                       </button>
