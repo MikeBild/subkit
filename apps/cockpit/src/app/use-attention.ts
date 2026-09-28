@@ -1,43 +1,43 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { apiRequest } from "@/api/client";
-import { type Attention, attentionBadge } from "@/pages/today-model";
+import {
+  type Attention,
+  type AttentionItem,
+  attentionBadge,
+  entrySnapshot,
+  type HiddenEntries,
+  NO_HIDDEN,
+  settleHidden,
+} from "@/pages/today-model";
 import { ATTENTION_READ_PERMISSIONS } from "./navigation";
 
-// Entries decided in this tab, hidden until the engine stops listing them.
+// Entries decided in this tab, hidden as what they were when decided.
 //
-// The engine keeps a tenant's attention facts for ten seconds per process, so
-// the read right after a decision can still carry the entry that was just
-// settled. Removing it from the cache alone would bring it back on that read
-// and take it away again on the next — a flicker that reads as "it did not
-// work". So a decided entry stays hidden until an answer arrives WITHOUT it;
-// after that it is shown again if it ever comes back, because then it is new.
-let hidden: ReadonlySet<string> = new Set();
+// A decided entry leaves the list at once. It stays away while the engine
+// still lists it UNCHANGED — the read right after a decision can predate it —
+// and it is back the moment the engine lists it as anything else: the last fix
+// of a failing workflow decided, the workflow still failing, now with a chat
+// as its way forward. `settleHidden` in the model owns that rule.
+let hidden: HiddenEntries = NO_HIDDEN;
 const listeners = new Set<() => void>();
 
-function publish(next: ReadonlySet<string>): void {
+function publish(next: HiddenEntries): void {
+  if (next === hidden) return;
   hidden = next;
   for (const listener of listeners) listener();
 }
 
-export function hideAttentionEntry(id: string): void {
-  if (hidden.has(id)) return;
-  publish(new Set([...hidden, id]));
+export function hideAttentionEntry(item: AttentionItem): void {
+  publish(new Map([...hidden, [item.id, entrySnapshot(item)]]));
 }
 
 /** A decision that failed brings its entry back. */
 export function restoreAttentionEntry(id: string): void {
   if (!hidden.has(id)) return;
-  const next = new Set(hidden);
+  const next = new Map(hidden);
   next.delete(id);
   publish(next);
-}
-
-/** Forget every hidden id the engine no longer lists. */
-export function settleHiddenAttention(listed: readonly string[]): void {
-  const present = new Set(listed);
-  const next = new Set([...hidden].filter((id) => present.has(id)));
-  if (next.size !== hidden.size) publish(next);
 }
 
 function subscribe(listener: () => void): () => void {
@@ -45,7 +45,7 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-export function useHiddenAttention(): ReadonlySet<string> {
+export function useHiddenAttention(): HiddenEntries {
   return useSyncExternalStore(
     subscribe,
     () => hidden,
@@ -70,7 +70,7 @@ export function useAttention(permissions: readonly string[]) {
     staleTime: 30_000,
     queryFn: async () => {
       const attention = await apiRequest<Attention>("/v1/attention");
-      settleHiddenAttention(attention.items.map((item) => item.id));
+      publish(settleHidden(hidden, attention.items));
       return attention;
     },
   });

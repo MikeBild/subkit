@@ -29,7 +29,7 @@ import {
   workflowHref,
 } from "@/app/links";
 import { useSession } from "@/app/session";
-import { useDecisionQueue } from "@/app/use-decisions";
+import { useHeldSchedules } from "@/app/use-decisions";
 import { BackgroundTools } from "@/components/ai-elements/background-tools";
 import {
   Confirmation,
@@ -1106,12 +1106,10 @@ export function ChatPage() {
     const items = workflowCatalogue.data?.items ?? [];
     return (slug: string) => resolveWorkflowNameBySlug(items, slug);
   }, [workflowCatalogue.data]);
-  const decisionQueue = useDecisionQueue(session.permissions);
+  const heldSchedules = useHeldSchedules(session.permissions);
   const targetWorkflowId =
     resume?.active_target.kind === "workflow" ? resume.active_target.id : null;
-  const heldTarget = decisionQueue.heldSchedules.find(
-    (schedule) => schedule.workflow_id === targetWorkflowId,
-  );
+  const heldTarget = heldSchedules.find((schedule) => schedule.workflow_id === targetWorkflowId);
   const automationStatus = useQuery({
     queryKey: ["workflow-automation-status", targetWorkflowId],
     enabled: Boolean(targetWorkflowId && session.permissions.includes("schedule:read")),

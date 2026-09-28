@@ -8,8 +8,13 @@ import {
   attentionEntries,
   attentionSentence,
   entryActions,
+  entrySnapshot,
+  type ReviewHistory,
+  reviewAccess,
+  reviewNavigation,
   reviewTarget,
   sentenceText,
+  settleHidden,
   sinceLabel,
   statusLine,
   todayView,
@@ -315,7 +320,11 @@ describe("the page state", () => {
   });
 
   test("an entry decided in this tab stays away while the engine still lists it", () => {
-    const view = todayView(attention({ items: [item()] }), new Set([`workflow:${W}`]));
+    const decided = item();
+    const view = todayView(
+      attention({ items: [decided] }),
+      new Map([[decided.id, entrySnapshot(decided)]]),
+    );
     expect(view.kind).toBe("calm");
   });
 });
@@ -344,7 +353,8 @@ describe("the badge", () => {
     });
     const view = todayView(listed);
     expect(attentionBadge(listed)?.count).toBe(view.kind === "items" ? view.items.length : -1);
-    expect(attentionBadge(listed, new Set(["skills"]))?.count).toBe(1);
+    const skills = listed.items[2] as AttentionItem;
+    expect(attentionBadge(listed, new Map([["skills", entrySnapshot(skills)]]))?.count).toBe(1);
   });
 });
 
@@ -354,5 +364,113 @@ describe("the review sheet", () => {
     expect(reviewTarget("skills")).toEqual({ kind: "skills" });
     expect(reviewTarget("connector:x")).toEqual({ kind: "other" });
     expect(reviewTarget("workflow:not-a-uuid")).toEqual({ kind: "other" });
+  });
+});
+
+describe("an entry decided in this tab", () => {
+  // A failing workflow with one open fix: its primary action is the review.
+  const withFix = item({
+    counts: { failures: 3, patches: 1 },
+    actions: [
+      {
+        verb: "review",
+        href: `/cockpit?review=workflow:${W}`,
+        primary: true,
+        permission: "workflow:write",
+      },
+      { verb: "open_runs", href: "/cockpit/runs", primary: false, permission: "execution:read" },
+    ],
+  });
+  // The same workflow once the fix is decided: still failing, now a chat.
+  const stillFailing = item({
+    counts: { failures: 3 },
+    actions: [
+      { verb: "chat", href: "/cockpit/chat/new", primary: true, permission: "conversation:write" },
+      { verb: "open_runs", href: "/cockpit/runs", primary: false, permission: "execution:read" },
+    ],
+  });
+  const hidden = new Map([[withFix.id, entrySnapshot(withFix)]]);
+
+  test("stays hidden while the engine still lists it unchanged", () => {
+    expect(todayView(attention({ items: [withFix] }), hidden).kind).toBe("calm");
+    expect(settleHidden(hidden, [withFix])).toBe(hidden);
+  });
+
+  test("is back at once when the engine lists the same subject as a different task", () => {
+    // Deciding the last fix of a failing workflow does not end the task.
+    const view = todayView(attention({ items: [stillFailing] }), hidden);
+    expect(view.kind).toBe("items");
+    if (view.kind === "items") expect(view.items[0]?.actions[0]?.verb).toBe("chat");
+    expect(attentionBadge(attention({ items: [stillFailing] }), hidden)?.count).toBe(1);
+    expect(settleHidden(hidden, [stillFailing]).size).toBe(0);
+  });
+
+  test("is forgotten once the engine no longer lists it", () => {
+    expect(settleHidden(hidden, []).size).toBe(0);
+  });
+});
+
+describe("what a review sheet may show", () => {
+  test("a workflow's fixes need workflow:read, skill proposals skill:read", () => {
+    const workflow = reviewTarget(`workflow:${W}`);
+    expect(reviewAccess(workflow, ["workflow:read"])).toBe("readable");
+    expect(reviewAccess(workflow, ["conversation:read", "stats:read"])).toBe("not_permitted");
+    expect(reviewAccess(reviewTarget("skills"), ["skill:read"])).toBe("readable");
+    expect(reviewAccess(reviewTarget("skills"), ["workflow:read"])).toBe("not_permitted");
+  });
+
+  test("any other entry has nothing to review in the sheet", () => {
+    expect(reviewAccess(reviewTarget("connector:x"), ["connector:read"])).toBe("nothing");
+    expect(reviewAccess(reviewTarget("workflow:stale"), ["workflow:read"])).toBe("nothing");
+  });
+});
+
+/** A browser history, small enough to reason about. */
+function fakeHistory() {
+  const entries: { url: string; state: unknown }[] = [{ url: "/cockpit", state: null }];
+  let index = 0;
+  const history: ReviewHistory & { entries: typeof entries; url: () => string } = {
+    entries,
+    url: () => entries[index]?.url ?? "",
+    get state() {
+      return entries[index]?.state ?? null;
+    },
+    pushState(state, _unused, url) {
+      entries.splice(index + 1);
+      entries.push({ url, state });
+      index += 1;
+    },
+    replaceState(state, _unused, url) {
+      entries[index] = { url, state };
+    },
+    back() {
+      index = Math.max(0, index - 1);
+    },
+  };
+  return history;
+}
+
+describe("the review sheet and Back", () => {
+  const href = (review: string | null) => (review ? `/cockpit?review=${review}` : "/cockpit");
+
+  test("open then close leaves the history as it was — Back never reopens the sheet", () => {
+    const history = fakeHistory();
+    const navigation = reviewNavigation(history, href);
+    navigation.open("skills");
+    expect(history.url()).toBe("/cockpit?review=skills");
+    navigation.close();
+    expect(history.url()).toBe("/cockpit");
+    // Nothing ahead of the reader but the closed sheet, and nothing behind.
+    expect(history.entries.slice(0, 1).map((entry) => entry.url)).toEqual(["/cockpit"]);
+    history.back();
+    expect(history.url()).toBe("/cockpit");
+  });
+
+  test("a sheet that arrived by link closes in place", () => {
+    const history = fakeHistory();
+    history.replaceState(null, "", "/cockpit?review=skills");
+    reviewNavigation(history, href).close();
+    expect(history.url()).toBe("/cockpit");
+    expect(history.entries).toHaveLength(1);
   });
 });
