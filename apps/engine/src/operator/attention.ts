@@ -920,7 +920,7 @@ export async function buildAttention(
 ): Promise<AttentionV1> {
   const now = opts.now ?? new Date();
   const tenantId = principal.tenant_id;
-  const probe = (permission: string, resource?: { type: string; id: string }) =>
+  const decide = (permission: string, resource?: { type: string; id: string }) =>
     can(db, {
       tenant_id: tenantId,
       principal,
@@ -929,16 +929,22 @@ export async function buildAttention(
       // Hiding what a reader may not see is the expected outcome, not an
       // incident: a WARN per filtered item would drown real denials.
       quiet: true,
-    }).then((decision) => decision.allow);
+    });
+  const probe = (permission: string, resource?: { type: string; id: string }) =>
+    decide(permission, resource).then((decision) => decision.allow);
 
   // Which sources this reader may read at all: tenant-wide, or through a
-  // resource grant on the source's resource type.
+  // resource grant on the source's resource type. A credential whose ceiling
+  // excludes the permission reads nothing of the source, grants or not — every
+  // per-item check would be refused by the same ceiling, and counting the
+  // source as answered would turn that refusal into a false "all clear".
   const permitted = new Map<AttentionSource, boolean>();
   await Promise.all(
     ATTENTION_SOURCES.map(async (source) => {
       const gate = SOURCE_GATES[source];
-      let allowed = await probe(gate.permission);
-      if (!allowed && gate.resource_type) {
+      const tenantWide = await decide(gate.permission);
+      let allowed = tenantWide.allow;
+      if (!allowed && gate.resource_type && tenantWide.source !== "credential_ceiling") {
         allowed = await holdsAnyResourceGrant(
           db,
           { tenant_id: tenantId, principal, permission: gate.permission },
