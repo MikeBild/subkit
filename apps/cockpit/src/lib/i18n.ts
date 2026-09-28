@@ -392,6 +392,8 @@ const EN = {
   "connections.autoRenews": "renews itself",
   "connections.expiresAt": "expires on {date}",
   "connections.noExpiry": "does not expire",
+  "connections.noAutoRenew":
+    "Does not renew itself — the service issued no refresh token. Renew before it expires.",
   "connections.usedByLabel": "Used by",
   "connections.usedByWorkflows": "{count} workflow(s)",
   "connections.notUsed": "Not used by any connector",
@@ -2965,6 +2967,8 @@ const DE: Record<TranslationKey, string> = {
   "connections.autoRenews": "erneuert sich selbst",
   "connections.expiresAt": "läuft ab am {date}",
   "connections.noExpiry": "läuft nicht ab",
+  "connections.noAutoRenew":
+    "Verlängert sich nicht automatisch — der Dienst hat kein Refresh-Token ausgestellt. Vor Ablauf erneuern.",
   "connections.usedByLabel": "Genutzt von",
   "connections.usedByWorkflows": "{count} Workflow(s)",
   "connections.notUsed": "Von keinem Konnektor genutzt",

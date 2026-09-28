@@ -7,7 +7,7 @@
 //   the sweep refreshes before expiry → a refused refresh reads "expired" →
 //   "Erneuern" repeats the flow → "Trennen" revokes and forgets.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import { setConfigKey } from "../../../config/loader.ts";
 import { loadConnectorSystem } from "../../../connectors/system.ts";
@@ -19,6 +19,7 @@ import {
   runtimeSecretVersions,
 } from "../../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../http/tests/setup.ts";
+import { logger } from "../../../logging/logger.ts";
 import { listSecretVersions } from "../../../runtime-config/service.ts";
 import { createWorkflow } from "../../../workflows/service.ts";
 import { getCredentialForConnector } from "../../service.ts";
@@ -613,5 +614,141 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     const summary = await api(`/v1/connectors/${connectorId}/credential`);
     expect(await summary.json()).toMatchObject({ mode: "oauth2", connection: null });
     expect(await api(`/v1/connections/${connectionId}`).then((r) => r.status)).toBe(404);
+  });
+});
+
+// An OpenID Connect server issues a refresh token only when the authorization
+// asked for `offline_access`. A client that requests only the person's
+// permissions gets a grant that ends after one access-token lifetime and can
+// never renew itself — and renewing it the same way changes nothing.
+describe("a server that issues refresh tokens only for offline_access", () => {
+  let oidc: FakeOAuthServer;
+
+  beforeAll(async () => {
+    oidc = await startFakeOAuthServer({
+      name: "OIDC Probe",
+      scopes: ["openid", "read", "offline_access"],
+      refreshRequiresOfflineAccess: true,
+    });
+  });
+
+  afterAll(async () => {
+    await oidc.close();
+  });
+
+  async function view(name: string): Promise<ConnectionView> {
+    const item = (await listConnections()).find((c) => c.name === name);
+    if (!item) throw new Error(`connection ${name} not listed`);
+    return item;
+  }
+
+  test("discover offers the permissions, not the protocol scope", async () => {
+    const res = await api("/v1/connections/discover", {
+      method: "POST",
+      body: JSON.stringify({ base_url: oidc.baseUrl }),
+    });
+    expect(((await res.json()) as { scopes_supported: string[] }).scopes_supported).toEqual([
+      "openid",
+      "read",
+    ]);
+  });
+
+  test("start asks for offline_access itself, and the grant renews itself", async () => {
+    oidc.clients.clear();
+    const res = await api("/v1/connections/start", {
+      method: "POST",
+      body: JSON.stringify({ name: "oidc", base_url: oidc.baseUrl, scopes: ["read"] }),
+    });
+    expect(res.status).toBe(200);
+    const url = new URL(((await res.json()) as { authorization_url: string }).authorization_url);
+    expect(url.searchParams.get("scope")).toBe("read offline_access");
+    expect([...oidc.clients.values()].map((c) => c.scope)).toEqual(["read offline_access"]);
+    await approveInBrowser(url.toString());
+
+    const item = await view("oidc");
+    expect(item).toMatchObject({
+      state: "valid",
+      auto_renew: true,
+      // What the person granted — the protocol scope is not a permission.
+      scopes: ["read"],
+      granted_scopes: ["read"],
+    });
+  });
+
+  test("Erneuern asks for offline_access again, even for a row that never had it", async () => {
+    const item = await view("oidc");
+    // A connection made before this engine asked for it: no refresh token.
+    await server.db
+      .update(outboundConnections)
+      .set({ refresh_token_version: null })
+      .where(eq(outboundConnections.id, item.id));
+    expect((await view("oidc")).auto_renew).toBe(false);
+
+    oidc.clients.clear();
+    const res = await api(`/v1/connections/${item.id}/renew`, { method: "POST" });
+    expect(res.status).toBe(200);
+    const url = new URL(((await res.json()) as { authorization_url: string }).authorization_url);
+    expect(url.searchParams.get("scope")).toBe("read offline_access");
+    expect([...oidc.clients.values()].map((c) => c.scope)).toEqual(["read offline_access"]);
+    await approveInBrowser(url.toString());
+    expect(await view("oidc")).toMatchObject({ state: "valid", auto_renew: true });
+  });
+
+  test("a server that does not advertise offline_access is not asked for it", async () => {
+    fake.clients.clear();
+    const res = await api("/v1/connections/start", {
+      method: "POST",
+      // Even when a person sends it, it is not a permission to request.
+      body: JSON.stringify({
+        name: "plain",
+        base_url: fake.baseUrl,
+        scopes: ["read", "offline_access"],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const url = new URL(((await res.json()) as { authorization_url: string }).authorization_url);
+    expect(url.searchParams.get("scope")).toBe("read");
+    expect([...fake.clients.values()].map((c) => c.scope)).toEqual(["read"]);
+    await approveInBrowser(url.toString());
+    expect(await view("plain")).toMatchObject({ scopes: ["read"], auto_renew: true });
+  });
+
+  test("a grant without a refresh token says so: a warning, auto_renew false, the old one retired", async () => {
+    const before = await view("oidc");
+    const [row] = await server.db
+      .select({ refresh: outboundConnections.refresh_token_version })
+      .from(outboundConnections)
+      .where(eq(outboundConnections.id, before.id));
+    expect(row?.refresh).not.toBeNull();
+
+    const warnings: Record<string, unknown>[] = [];
+    const spy = spyOn(logger, "warn").mockImplementation(((entry: unknown) => {
+      if (entry && typeof entry === "object") warnings.push(entry as Record<string, unknown>);
+    }) as typeof logger.warn);
+    oidc.issueRefreshToken = false;
+    try {
+      const res = await api(`/v1/connections/${before.id}/renew`, { method: "POST" });
+      const url = ((await res.json()) as { authorization_url: string }).authorization_url;
+      await approveInBrowser(url);
+    } finally {
+      oidc.issueRefreshToken = true;
+      spy.mockRestore();
+    }
+
+    const warning = warnings.find((w) => w.action === "connection.no_refresh_token");
+    expect(warning).toMatchObject({ module: "connections", name: "oidc" });
+    expect(warning?.expires_at).toEqual(expect.any(String));
+    expect(JSON.stringify(warning)).not.toContain(oidc.accessTokens.at(-1) ?? "never");
+
+    const after = await view("oidc");
+    // Honest: usable until it ends, and it will not renew itself — not a
+    // stale refresh token of a client this engine no longer is.
+    expect(after).toMatchObject({ state: "expiring", auto_renew: false, state_reason: null });
+    const names = secretNames(server.tenantId, "oidc");
+    const registry = await listSecretVersions(server.db);
+    const previous = registry
+      .find((s) => s.name === names.refresh)
+      ?.versions.find((v) => v.version === row?.refresh);
+    expect(previous?.revoked_at ?? null).not.toBeNull();
   });
 });

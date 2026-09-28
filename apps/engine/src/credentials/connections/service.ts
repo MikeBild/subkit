@@ -22,7 +22,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, asc, count, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
-import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import {
   connectors,
@@ -42,7 +41,15 @@ import type { ConnectionAuthorityIdentity } from "../authority-metadata.ts";
 import { sameAuthorityScopes } from "../authority-scopes.ts";
 import { discoverService, requireConnectable } from "./discovery.ts";
 import {
-  type AuthorizationServerMetadata,
+  expiryOf,
+  grantedScopes,
+  messageOf,
+  postTokenEndpoint,
+  refreshWasRefused,
+  registerClient,
+} from "./oauth-client.ts";
+import { permissionScopes, requestedScopes } from "./scopes.ts";
+import {
   ConnectionError,
   type ConnectionState,
   type ConnectionStateReason,
@@ -50,15 +57,12 @@ import {
   type ConnectionUser,
   type ConnectionView,
   type DiscoveryResult,
-  RegistrationResponseSchema,
   type TokenResponse,
-  TokenResponseSchema,
 } from "./types.ts";
 
 const START_TTL_MS = 10 * 60_000;
 /** Refresh this long before `expires_at`, so a token is never handed out on its last breath. */
 export const REFRESH_BUFFER_MS = 5 * 60_000;
-const TOKEN_TIMEOUT_MS = 15_000;
 /** `last_used_at` is written at most this often per connection. */
 const LAST_USED_WRITE_INTERVAL_MS = 60_000;
 /** The name the person types: a slug, because it becomes part of a secret name. */
@@ -90,52 +94,7 @@ function assertName(name: string): void {
   }
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 // ── Registration and the authorization URL ──────────────────────────────────
-
-async function registerClient(args: {
-  metadata: AuthorizationServerMetadata;
-  redirectUri: string;
-  clientUri: string | null;
-  scopes: string[];
-}): Promise<string> {
-  const endpoint = args.metadata.registration_endpoint;
-  if (!endpoint) throw new ConnectionError("registration_missing", "no registration endpoint");
-  let res: Response;
-  try {
-    res = await getDriverFetch()(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json", accept: "application/json" },
-      signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS),
-      body: JSON.stringify({
-        client_name: "SubKit",
-        ...(args.clientUri ? { client_uri: args.clientUri } : {}),
-        redirect_uris: [args.redirectUri],
-        grant_types: ["authorization_code", "refresh_token"],
-        response_types: ["code"],
-        token_endpoint_auth_method: "none",
-        scope: args.scopes.join(" "),
-      }),
-    });
-  } catch (error) {
-    throw new ConnectionError("registration_failed", `registration failed: ${messageOf(error)}`);
-  }
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new ConnectionError(
-      "registration_failed",
-      `registration answered ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`,
-    );
-  }
-  const parsed = RegistrationResponseSchema.safeParse(await res.json().catch(() => null));
-  if (!parsed.success) {
-    throw new ConnectionError("registration_failed", "registration answered without a client_id");
-  }
-  return parsed.data.client_id;
-}
 
 export interface StartConnectionInput {
   tenant_id: string;
@@ -162,7 +121,9 @@ export async function startConnection(
 ): Promise<StartConnectionResult> {
   const name = input.name.trim().toLowerCase();
   assertName(name);
-  const scopes = [...new Set(input.scopes.map((s) => s.trim()).filter(Boolean))];
+  // What the person grants is stored; what the server is asked for adds the
+  // protocol scopes this server needs (scopes.ts) — re-derived every round.
+  const scopes = permissionScopes(input.scopes);
   if (scopes.length === 0) throw new ConnectionError("scopes_missing", "pick at least one scope");
 
   let existing: ConnectionRow | null = null;
@@ -181,11 +142,12 @@ export async function startConnection(
 
   const discovery = await discoverService(existing ? existing.base_url : input.base_url);
   const metadata = requireConnectable(discovery);
+  const requested = requestedScopes(scopes, metadata);
   const client_id = await registerClient({
     metadata,
     redirectUri: input.redirect_uri,
     clientUri: input.client_uri,
-    scopes,
+    scopes: requested,
   });
 
   const code_verifier = base64url(randomBytes(48));
@@ -216,7 +178,7 @@ export async function startConnection(
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", client_id);
   url.searchParams.set("redirect_uri", input.redirect_uri);
-  url.searchParams.set("scope", scopes.join(" "));
+  url.searchParams.set("scope", requested.join(" "));
   url.searchParams.set("state", state);
   url.searchParams.set("code_challenge", code_challenge);
   url.searchParams.set("code_challenge_method", "S256");
@@ -237,67 +199,7 @@ export async function startConnection(
   };
 }
 
-// ── Token endpoint ──────────────────────────────────────────────────────────
-
-/**
- * The engine's own wording when a token endpoint answered with a non-2xx. The
- * detail after it is the OAuth `error` code when the body carried one, else
- * the bare HTTP status — which is what tells a refusal from a failure.
- */
-const TOKEN_REFUSED_PREFIX = "token endpoint refused: ";
-
-/**
- * Whether a failed renewal was the other side saying no: its token endpoint
- * answered with an RFC 6749 §5.2 error code. Read off `last_error`, which only
- * the engine writes (`postTokenEndpoint`); an unreachable endpoint, a bare
- * status or an answer without a token is a failure, not a refusal.
- */
-export function refreshWasRefused(lastError: string | null): boolean {
-  if (!lastError?.startsWith(TOKEN_REFUSED_PREFIX)) return false;
-  return /^[a-z][a-z_]*$/.test(lastError.slice(TOKEN_REFUSED_PREFIX.length));
-}
-
-async function postTokenEndpoint(
-  tokenEndpoint: string,
-  form: Record<string, string>,
-  failureCode: "token_exchange_failed" | "refresh_failed",
-): Promise<TokenResponse> {
-  let res: Response;
-  try {
-    res = await getDriverFetch()(tokenEndpoint, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-      signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS),
-      body: new URLSearchParams(form).toString(),
-    });
-  } catch (error) {
-    throw new ConnectionError(failureCode, `token endpoint unreachable: ${messageOf(error)}`);
-  }
-  const body = await res.json().catch(() => null);
-  if (!res.ok) {
-    const detail =
-      body && typeof body === "object" && "error" in body
-        ? String((body as { error: unknown }).error)
-        : String(res.status);
-    throw new ConnectionError(failureCode, `${TOKEN_REFUSED_PREFIX}${detail}`);
-  }
-  const parsed = TokenResponseSchema.safeParse(body);
-  if (!parsed.success) {
-    throw new ConnectionError(failureCode, "token endpoint answered without an access token");
-  }
-  return parsed.data;
-}
-
-function expiryOf(token: TokenResponse): Date | null {
-  return typeof token.expires_in === "number"
-    ? new Date(Date.now() + token.expires_in * 1000)
-    : null;
-}
-
-function grantedScopes(token: TokenResponse): string[] | null {
-  if (typeof token.scope !== "string") return null;
-  return token.scope.split(/\s+/).filter(Boolean);
-}
+// ── Tokens ──────────────────────────────────────────────────────────────────
 
 /** Mint the new versions, then retire the old ones. Old versions that cannot be revoked are logged, never fatal. */
 async function storeTokens(
@@ -308,6 +210,13 @@ async function storeTokens(
     token: TokenResponse;
     created_by: string | null;
     previous: { access: number | null; refresh: number | null };
+    /**
+     * `refresh_token`: an answer without a new refresh token keeps the old one
+     * (RFC 6749 §6). `authorization_code`: every round registers a new client,
+     * so an old refresh token belongs to a client that no longer asks — it is
+     * retired, and the connection honestly has none.
+     */
+    grant: "authorization_code" | "refresh_token";
   },
 ): Promise<{ access: number; refresh: number | null }> {
   const names = secretNames(args.tenant_id, args.name);
@@ -339,9 +248,12 @@ async function storeTokens(
     }
   };
   await retire(names.access, args.previous.access);
-  // A refresh response without a new refresh token keeps the old one (RFC 6749 §6).
-  if (refresh) await retire(names.refresh, args.previous.refresh);
-  return { access: access.version, refresh: refresh?.version ?? args.previous.refresh };
+  const keepPrevious = !refresh && args.grant === "refresh_token";
+  if (!keepPrevious) await retire(names.refresh, args.previous.refresh);
+  return {
+    access: access.version,
+    refresh: refresh?.version ?? (keepPrevious ? args.previous.refresh : null),
+  };
 }
 
 export type CompleteConnectionResult =
@@ -416,6 +328,19 @@ export async function completeConnection(
   } catch (error) {
     return fail("token_exchange_failed", messageOf(error));
   }
+  if (!token.refresh_token) {
+    // Not an error — the grant works until `expires_at` — but it will not
+    // renew itself, and the person must learn that before it ends.
+    logger.warn({
+      module: "connections",
+      action: "connection.no_refresh_token",
+      msg: "the token endpoint issued no refresh token; the connection will not renew itself",
+      tenant_id: start.tenant_id,
+      name: start.name,
+      issuer_host: new URL(start.issuer).host,
+      expires_at: expiryOf(token)?.toISOString() ?? null,
+    });
+  }
 
   const connectionId = await db.transaction(async (tx) => {
     const [existing] = start.connection_id
@@ -441,6 +366,7 @@ export async function completeConnection(
         access: existing?.access_token_version ?? null,
         refresh: existing?.refresh_token_version ?? null,
       },
+      grant: "authorization_code",
     });
 
     const shared = {
@@ -595,8 +521,8 @@ function toView(
     issuer: row.issuer,
     service_name: row.service_name,
     service_description: row.service_description,
-    scopes: row.scopes,
-    granted_scopes: row.granted_scopes ?? null,
+    scopes: permissionScopes(row.scopes),
+    granted_scopes: row.granted_scopes ? permissionScopes(row.granted_scopes) : null,
     state,
     state_reason,
     auto_renew: row.refresh_token_version !== null,
@@ -769,6 +695,7 @@ async function refreshRow(
         token,
         created_by: actorId,
         previous: { access: row.access_token_version, refresh: row.refresh_token_version },
+        grant: "refresh_token",
       });
       const [updated] = await tx
         .update(outboundConnections)
