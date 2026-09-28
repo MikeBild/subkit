@@ -1,4 +1,5 @@
 import type { ConversationDetail } from "@/api/client";
+import type { CatalogLabel } from "@/lib/machine-label";
 
 type Pending = NonNullable<NonNullable<ConversationDetail["resume_summary"]>["pending_approval"]>;
 export type ChatFormField = NonNullable<NonNullable<Pending["prompt"]>["fields"]>[number];
@@ -25,6 +26,25 @@ export function chatForm(detail: ConversationDetail | undefined): ChatForm | nul
     fields: pending.prompt.fields,
     expiresAt: pending.expires_at,
   };
+}
+
+/**
+ * A field's label as a reader sees it.
+ *
+ * The engine sends a label; when the model gave none it is the field's own
+ * name — `report_recipient_email`. A handful of names have a word in the
+ * catalogue. Every other one is the input's name, shown AS a name (machine
+ * styled): spacing it into "Report recipient email" dressed an identifier as
+ * English prose on a German page.
+ */
+export function formFieldLabel(
+  field: Pick<ChatFormField, "name" | "label">,
+  known: Readonly<Record<string, string>>,
+): CatalogLabel {
+  if (field.label && field.label !== field.name) return { text: field.label, machine: false };
+  const named = known[field.name];
+  if (named) return { text: named, machine: false };
+  return { text: field.name, machine: true };
 }
 
 export function formValues(

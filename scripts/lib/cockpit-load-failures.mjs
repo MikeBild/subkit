@@ -79,6 +79,12 @@ export async function verifyLoadFailures(page, stand, conversation, capture) {
     ]);
     if (!(await page.getByTestId("chat-load-failed-new").isVisible()))
       throw new Error("/chat/<id>: a conversation that cannot be opened offers no way on");
+    if (!(await page.getByTestId("chat-load-failed-list").isVisible()))
+      throw new Error("/chat/<id>: a conversation that cannot be opened offers no way to the list");
+    // The header must not call a failed conversation a new one.
+    const title = (await page.getByTestId("chat-title").innerText()).trim();
+    if (title === "Neue Unterhaltung" || title === "New conversation")
+      throw new Error("/chat/<id>: the header titles a failed conversation as a new one");
     await capture("chat");
   } finally {
     await page.unroute(detail, refuse);

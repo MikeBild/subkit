@@ -3,21 +3,24 @@ import type { components } from "@/api/schema";
 import { ALL_ROUTE_PATHS } from "@/app/route-table";
 import { type Locale, type TranslationKey, translate } from "@/lib/i18n";
 import {
-  actorTypeKey,
+  actorTypeLabel,
   auditActionLabel,
   auditActionsFromUrl,
+  auditActorName,
   auditDetailFacts,
   auditEvidenceBlocks,
   auditFilterFromUrl,
   auditLinkParams,
+  auditReasonLabel,
   auditResourceHref,
-  auditResultKey,
+  auditResourceLabel,
+  auditResultLabel,
   auditScopeParams,
   auditTraceFromUrl,
+  canReadDirectory,
   isAuditEntry,
   isAuditScope,
   LINKED_RESOURCE_TYPES,
-  resourceTypeKey,
   shortIdentifier,
 } from "@/pages/audit-model";
 
@@ -43,6 +46,10 @@ const ENTRY: AuditEntry = {
 };
 
 const entry = (patch: Partial<AuditEntry>): AuditEntry => ({ ...ENTRY, ...patch });
+const deText = (key: TranslationKey): string => translate("de", key);
+const absoluteTime = (value: string | Date): string => `absolute:${value.toString()}`;
+const factFor = (facts: ReturnType<typeof auditDetailFacts>, key: TranslationKey) =>
+  facts.find((fact) => fact.label === deText(key));
 
 describe("audit resource relations", () => {
   test("routes a known resource type to its cockpit page", () => {
@@ -122,21 +129,39 @@ describe("audit resource relations", () => {
 
 describe("audit vocabulary", () => {
   test("names actor and resource types as words", () => {
-    expect(actorTypeKey("system_account")).toBe("audit.actor.systemAccount");
-    expect(resourceTypeKey("connector")).toBe("resource.connectors.title");
-    expect(resourceTypeKey("notification_delivery")).toBe("nav.notifications");
-    expect(resourceTypeKey("session")).toBe("audit.resource.session");
-    expect(resourceTypeKey("credential")).toBe("permission.resource.credentials");
-    expect(resourceTypeKey("setting")).toBe("nav.settings");
-    expect(resourceTypeKey("webhook_inbound")).toBe("audit.resource.inboundWebhook");
-    expect(resourceTypeKey("mcp_oauth_client")).toBe("audit.resource.oauthClient");
-    expect(resourceTypeKey("mcp_oauth_code")).toBe("audit.resource.oauthCode");
-    expect(resourceTypeKey("mcp_oauth_token")).toBe("audit.resource.oauthToken");
+    expect(actorTypeLabel("system_account", deText)).toEqual({
+      text: deText("audit.actor.systemAccount"),
+      machine: false,
+    });
+    const named: Array<[string, TranslationKey]> = [
+      ["connector", "resource.connectors.title"],
+      ["notification_delivery", "nav.notifications"],
+      ["session", "audit.resource.session"],
+      ["credential", "permission.resource.credentials"],
+      ["setting", "nav.settings"],
+      ["webhook_inbound", "audit.resource.inboundWebhook"],
+      ["mcp_oauth_client", "audit.resource.oauthClient"],
+      ["mcp_oauth_code", "audit.resource.oauthCode"],
+      ["mcp_oauth_token", "audit.resource.oauthToken"],
+      // The outbound connections the engine audits under `connection.*`.
+      ["connection", "apiAccess.section.grants"],
+    ];
+    for (const [type, key] of named)
+      expect(auditResourceLabel(type, deText), type).toEqual({ text: deText(key), machine: false });
   });
 
-  test("admits when a type is not one it knows", () => {
-    expect(actorTypeKey("robot")).toBe("common.unknown");
-    expect(resourceTypeKey("robot")).toBe("audit.resource.other");
+  test("a type it does not know is the machine value, never a word for unknown", () => {
+    // "Unbekannt" and "Weitere Ressource" both claimed the log recorded
+    // something indistinct; it recorded exactly this token (§2, §15.2).
+    expect(actorTypeLabel("robot", deText)).toEqual({ text: "robot", machine: true });
+    expect(auditResourceLabel("robot", deText)).toEqual({ text: "robot", machine: true });
+    expect(auditResultLabel("teapot", deText)).toEqual({ text: "teapot", machine: true });
+    for (const label of [
+      actorTypeLabel("robot", deText),
+      auditResourceLabel("robot", deText),
+      auditResultLabel("teapot", deText),
+    ])
+      expect(label.text).not.toBe(deText("common.unknown"));
     // The machine value itself, marked as one — not a word claiming the log
     // recorded something indistinct.
     expect(auditActionLabel("robot.started")).toEqual({
@@ -521,8 +546,10 @@ describe("what one record says about itself", () => {
   });
 
   test("the outcome is read from the one map the table also reads", () => {
-    expect(auditResultKey("denied")).toBe("audit.result.denied");
-    expect(auditResultKey("teapot")).toBe("common.unknown");
+    expect(auditResultLabel("denied", de)).toEqual({
+      text: de("audit.result.denied"),
+      machine: false,
+    });
     expect(
       labelled(auditDetailFacts(entry({ result: "denied" }), de, dateTime), "audit.column.result")
         ?.value,
@@ -672,5 +699,91 @@ describe("the narrowing a link brings to the log", () => {
     expect(auditScopeParams("decisions").action?.split(",")).not.toContain(
       "patch_candidate.closed_inapplicable",
     );
+  });
+});
+
+describe("who caused a row (§15.2 Verursacher)", () => {
+  const directory = new Map([
+    ["018f4b4a-6d33-7b3a-9c2d-aaaaaaaaaaaa", "operator@example.com"],
+    ["018f4b4a-6d33-7b3a-9c2d-bbbbbbbbbbbb", "Reporting bot"],
+  ]);
+
+  test("a person or system account by name", () => {
+    expect(
+      auditActorName(
+        { actor_type: "user", actor_id: "018f4b4a-6d33-7b3a-9c2d-aaaaaaaaaaaa" },
+        directory,
+        deText,
+      ),
+    ).toEqual({ text: "operator@example.com", machine: false });
+    expect(
+      auditActorName(
+        { actor_type: "system_account", actor_id: "018f4b4a-6d33-7b3a-9c2d-bbbbbbbbbbbb" },
+        directory,
+        deText,
+      ),
+    ).toEqual({ text: "Reporting bot", machine: false });
+  });
+
+  test("an actor the directory cannot name is its kind — never its id", () => {
+    const label = auditActorName(
+      { actor_type: "user", actor_id: "018f4b4a-6d33-7b3a-9c2d-cccccccccccc" },
+      directory,
+      deText,
+    );
+    expect(label).toEqual({ text: deText("audit.actor.user"), machine: false });
+    expect(label?.text).not.toContain("018f4b4a");
+    expect(auditActorName({ actor_type: "system", actor_id: null }, directory, deText)).toEqual({
+      text: deText("audit.actor.system"),
+      machine: false,
+    });
+  });
+
+  test("no actor recorded is no actor — the dash, nothing inferred", () => {
+    expect(auditActorName({ actor_type: "", actor_id: null }, directory, deText)).toBeNull();
+  });
+
+  test("the detail sheet names the same person the row does", () => {
+    const facts = auditDetailFacts(
+      entry({ actor_type: "user", actor_id: "018f4b4a-6d33-7b3a-9c2d-aaaaaaaaaaaa" }),
+      deText,
+      absoluteTime,
+      directory,
+    );
+    expect(factFor(facts, "audit.column.actor")?.value).toBe("operator@example.com");
+  });
+});
+
+describe("why a row happened", () => {
+  test("a known reason token reads as a sentence", () => {
+    expect(auditReasonLabel("expired_sliding", deText)).toEqual({
+      text: deText("audit.reason.expiredSliding"),
+      machine: false,
+    });
+  });
+
+  test("an unknown token stays the engine's own, marked; prose stays prose", () => {
+    expect(auditReasonLabel("quota_frobnicated", deText)).toEqual({
+      text: "quota_frobnicated",
+      machine: true,
+    });
+    expect(auditReasonLabel("Rolle deckt skill:write nicht ab.", deText)).toEqual({
+      text: "Rolle deckt skill:write nicht ab.",
+      machine: false,
+    });
+    expect(auditReasonLabel("  ", deText)).toBeNull();
+    expect(auditReasonLabel(null, deText)).toBeNull();
+  });
+});
+
+describe("whether the audit page asks for the directory", () => {
+  test("only an administrator — anyone else's read is refused and itself audited", () => {
+    const reader = (role_name: string | null, permissions: string[]) => ({
+      permissions,
+      principal: { role_name },
+    });
+    expect(canReadDirectory(reader("admin", ["identity:read", "audit:read"]))).toBe(true);
+    expect(canReadDirectory(reader("Revision", ["identity:read", "audit:read"]))).toBe(false);
+    expect(canReadDirectory(reader("admin", ["audit:read"]))).toBe(false);
   });
 });

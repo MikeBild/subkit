@@ -16,6 +16,7 @@ import {
   consumptionRows,
   llmStatsEndpoint,
   windowCost,
+  workflowNameLookup,
 } from "@/pages/usage-model";
 
 describe("the consumption breakdown", () => {
@@ -255,5 +256,21 @@ describe("the call count", () => {
     // Zero is what the wrong shape produced. It must not be reachable from a
     // payload that plainly carries a count.
     expect(rows[0]?.calls).toBe(0);
+  });
+});
+
+describe("a workflow id on the usage page", () => {
+  test("named by its own lookup, not by a capped list", () => {
+    expect(workflowNameLookup({ name: "Monatsreport", slug: "m" }, null)).toEqual({
+      kind: "named",
+      name: "Monatsreport",
+    });
+  });
+
+  test("only a 404 says the workflow is gone; other failures are unreadable", () => {
+    expect(workflowNameLookup(undefined, 404)).toEqual({ kind: "gone" });
+    expect(workflowNameLookup(undefined, 403)).toEqual({ kind: "unreadable" });
+    expect(workflowNameLookup(undefined, 0)).toEqual({ kind: "unreadable" });
+    expect(workflowNameLookup(undefined, null)).toEqual({ kind: "pending" });
   });
 });
