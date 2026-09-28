@@ -411,6 +411,16 @@ describe("per reader", () => {
     expect(attention.sources.conversations).toBe("not_permitted");
   });
 
+  test("a key whose scopes exclude the permission reads nothing, grant or not", async () => {
+    // The grant would admit the source; the credential ceiling refuses every
+    // item in it. An answered, empty source here would be a false all-clear.
+    const scoped: ResolvedPrincipal = { ...grantee, scopes: ["execution:read"] };
+    const attention = await buildAttention(testDb.db, scoped);
+    expect(attention.items).toEqual([]);
+    expect(attention.sources.failures).toBe("not_permitted");
+    expect(attention.sources.patches).toBe("not_permitted");
+  });
+
   test("without the grant the same reader is refused the source, not told it is empty", async () => {
     const stranger: ResolvedPrincipal = { ...grantee, id: "00000000-0000-4000-8000-00000000beef" };
     const attention = await buildAttention(testDb.db, stranger);
@@ -482,10 +492,15 @@ describe("parity with the operational overview's decision buckets", () => {
     expect(items.some((i) => i.class === "decide" && olderThan72h(i))).toBe(true);
 
     expect(overview.core.other_decisions.value).toBeGreaterThan(0);
+    // A recent proposal: the skill proposal, or the fix on the failing workflow
+    // (which rides that workflow's `failing` item rather than its own).
     expect(
       items.some(
         (i) =>
-          (i.id === "skills" || i.kind === "workflow") && (i.counts.patches || i.counts.skills),
+          (i.counts.patches || i.counts.skills) &&
+          i.since !== null &&
+          !olderThan72h(i) &&
+          (i.class === "decide" || i.class === "failing"),
       ),
     ).toBe(true);
   });

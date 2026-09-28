@@ -82,12 +82,17 @@ describe("GET /v1/operator/health-digest", () => {
       all_clear: boolean;
       failure_groups: Array<{ origin: string; error_code: string; guidance: string | null }>;
       headline: string;
+      rendered: string;
     };
     expect(body.all_clear).toBe(false);
     const group = body.failure_groups.find((g) => g.error_code === "http_4xx");
     expect(group?.origin).toBe("scheduled");
     expect(group?.guidance).toBe("The path is wrong.");
-    expect(body.headline).toContain("scheduled");
+    // The headline counts attention items: the open fix. The scheduled failure
+    // belongs to no saved workflow, so there is nothing to act on — it stays in
+    // the digest's detail.
+    expect(body.headline).toBe("Needs attention: 1 item (1 to decide).");
+    expect(body.rendered).toContain("[scheduled]");
   });
 
   test("patch items carry age_days and stuck through the HTTP body", async () => {
