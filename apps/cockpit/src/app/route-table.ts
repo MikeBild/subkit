@@ -14,18 +14,16 @@
  * an entry does not compile, and a check that reads this file reads exactly
  * what the router reads.
  */
-import { apiAccessHref } from "./links";
+import { apiAccessHref, attentionHref, uuidParam } from "./links";
 
 export const PAGE_ROUTES = [
   "/",
-  "/decisions",
   "/audit",
   "/usage",
   "/people",
   "/access",
   "/api-access",
   "/notifications",
-  "/operations",
   "/settings",
 ] as const;
 
@@ -34,19 +32,41 @@ export type PageRoute = (typeof PAGE_ROUTES)[number];
 /**
  * Paths that render no page of their own but must still land somewhere.
  *
- * A redirect is a route a person can type or bookmark. `/` picks its target
- * from the session's permissions, which is why it has none written down here.
+ * A redirect is a route a person can type or bookmark, or that a mail, an
+ * audit row or an older engine handed out. Each one's target is decided by
+ * `legacyTarget`, from the path and the query it arrived with.
  *
  * `/connections` was the Kontoverbindungen page before it became a section of
  * Zugangsdaten. Bookmarks still point there, and an OAuth callback issued
  * before the move lands there with its result in the query — so the query
  * travels with the redirect (`redirectTarget`).
+ *
+ * `/decisions` and `/operations` were the decisions queue and the system page.
+ * Both were a second and third place for what Heute now says once: what needs
+ * the reader, and why the installation is not well. Their addresses land on
+ * Heute — a link that named one workflow opens that workflow's review sheet.
  */
-export const REDIRECT_ROUTES = {
-  "/connections": apiAccessHref("grants"),
-} as const satisfies Readonly<Record<string, string>>;
+export const REDIRECT_ROUTES = ["/connections", "/decisions", "/operations"] as const;
 
-export type RedirectRoute = keyof typeof REDIRECT_ROUTES;
+export type RedirectRoute = (typeof REDIRECT_ROUTES)[number];
+
+/**
+ * Where an old address lands, from its path and its RAW query.
+ *
+ * Only `/connections` carries its query along: the page it lands on reads the
+ * OAuth callback's result out of it. The decisions queue's `bucket` narrowed a
+ * page that no longer exists — carried along, it would only sit in Heute's
+ * address meaning nothing. `workflow_id` is the one thing an old decisions
+ * link said that still has a place, and it has to be a UUID to get there.
+ */
+export function legacyTarget(path: RedirectRoute, search: string): string {
+  if (path === "/connections") return redirectTarget(apiAccessHref("grants"), search);
+  if (path === "/decisions") {
+    const workflowId = uuidParam(new URLSearchParams(search), "workflow_id");
+    return workflowId ? attentionHref({ review: `workflow:${workflowId}` }) : attentionHref();
+  }
+  return attentionHref();
+}
 
 /**
  * Where a redirect lands, with the query it arrived with. The target's own
@@ -112,7 +132,7 @@ export type CatalogResource = (typeof CATALOG_RESOURCES)[number];
  * expected to report the gap rather than skip it in silence.
  */
 export const ALL_ROUTE_PATHS: readonly string[] = [
-  ...Object.keys(REDIRECT_ROUTES),
+  ...REDIRECT_ROUTES,
   ...PAGE_ROUTES,
   ...CHAT_ROUTES,
   ...RUN_ROUTES,

@@ -1,31 +1,23 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { NotFoundPage, RouteErrorPage } from "@/components/failure-state";
-import {
-  AccessPage,
-  NotificationsPage,
-  OperationsPage,
-  PeoplePage,
-  SettingsPage,
-} from "@/pages/admin";
+import { AccessPage, NotificationsPage, PeoplePage, SettingsPage } from "@/pages/admin";
 import { ApiAccessPage } from "@/pages/api-access";
 import { AuditPage } from "@/pages/audit";
 import { CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
-import { DecisionsPage } from "@/pages/decisions";
-import { OverviewPage } from "@/pages/overview";
 import { RunsPage } from "@/pages/runs";
+import { TodayPage } from "@/pages/today";
 import { UsagePage } from "@/pages/usage";
 import { absolute } from "./links";
 import {
   CATALOG_RESOURCES,
   CHAT_ROUTES,
+  legacyTarget,
   PAGE_ROUTES,
   type PageRoute,
   REDIRECT_ROUTES,
-  type RedirectRoute,
   RUN_ROUTES,
-  redirectTarget,
 } from "./route-table";
 import { useSession } from "./session";
 import { AppShell } from "./shell";
@@ -69,15 +61,13 @@ const runRoutes = [
 // here — invisible to the navigation and to the conformity sweep — cannot be
 // added: it has to be in the table first, and then it is swept.
 const PAGE_COMPONENTS: Record<PageRoute, () => React.ReactElement> = {
-  "/": OverviewPage,
-  "/decisions": DecisionsPage,
+  "/": TodayPage,
   "/audit": AuditPage,
   "/usage": UsagePage,
   "/people": PeoplePage,
   "/access": AccessPage,
   "/api-access": ApiAccessPage,
   "/notifications": NotificationsPage,
-  "/operations": OperationsPage,
   "/settings": SettingsPage,
 };
 
@@ -96,14 +86,12 @@ const dedicatedRoutes = PAGE_ROUTES.map((path) =>
 // precision, and `to` + `search` would quote `renewed=1`. A moved address is
 // rare enough that a full load is the honest price for its query arriving
 // exactly as it was sent.
-const redirectRoutes = (Object.keys(REDIRECT_ROUTES) as RedirectRoute[]).map((path) =>
+const redirectRoutes = REDIRECT_ROUTES.map((path) =>
   createRoute({
     getParentRoute: () => rootRoute,
     path,
     beforeLoad: () => {
-      window.location.replace(
-        absolute(redirectTarget(REDIRECT_ROUTES[path], window.location.search)),
-      );
+      window.location.replace(absolute(legacyTarget(path, window.location.search)));
     },
   }),
 );

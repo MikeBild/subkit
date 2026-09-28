@@ -119,19 +119,17 @@ const CUSTOM_ROLE_ID = "018f4b4a-6d33-7b3a-9c2d-00000000c0de";
 const REVIEWER_ID = "018f4b4a-6d33-7b3a-9c2d-0000000000a2";
 const SYSTEM_ACCOUNT_ID = "018f4b4a-6d33-7b3a-9c2d-0000000005a1";
 const routes = [
-  // The landing page was never photographed, which is how a whole class of
-  // page-shell defect stayed invisible to this sweep.
+  // Heute, with the hostile answer: an entry from every source at once, and
+  // one source that could not be read.
   "",
-  "decisions",
-  // Each overview tile links here with its own bucket, and until now the sweep
-  // only ever visited the bare page — so every narrowed view shipped
-  // unphotographed, and three of the four buckets turned out not to narrow
-  // anything at all. A tile that counts one thing and lands on another is the
-  // defect this catches; it cannot be caught from the unnarrowed page.
-  "decisions?bucket=blocked",
+  // One entry's review sheet, at its own address.
+  `?review=workflow:${uuid}`,
+  // The old addresses, photographed where they land: the decisions queue (a
+  // bucket that no longer narrows anything, and one workflow's decisions) and
+  // the system page.
   "decisions?bucket=failing",
-  "decisions?bucket=overdue",
-  "decisions?bucket=other",
+  `decisions?workflow_id=${uuid}`,
+  "operations",
   "chat",
   "workflows",
   "runs",
@@ -161,7 +159,6 @@ const routes = [
   // The old Kontoverbindungen address, with a callback result in its query:
   // it must land on the grants section of Zugangsdaten and say the sentence.
   "connections?failed=denied&name=Postfach",
-  "operations",
   "settings",
 ];
 
@@ -735,251 +732,194 @@ function json(route, body, status = 200) {
   });
 }
 
-function overviewMetric(id, value, path, severity = "information", kind = "count") {
-  return {
-    id,
-    value,
-    value_state: value === 0 ? "zero" : "observed",
-    severity,
-    kind,
-    unit: kind === "ratio" ? "ratio" : "count",
-    drilldown: { path },
-  };
-}
-
-function operationalOverview() {
-  const generatedAt = "2026-08-26T10:00:00.000Z";
-  return {
-    schema_version: "operational-overview.v1",
-    contract_version: "2.3",
-    product: "subkit",
-    generated_at: generatedAt,
-    recommended_refresh_seconds: 60,
-    snapshot_state: "ready",
-    core: {
-      blocked: overviewMetric(
-        "decisions.blocked",
-        2,
-        "/cockpit/decisions?bucket=blocked",
-        "critical",
-      ),
-      // Non-zero on purpose: a tile that only ever renders its empty state is
-      // photographed 700 times without anyone seeing what it looks like when it
-      // has something to say.
-      failing: overviewMetric(
-        "decisions.failing",
-        2,
-        "/cockpit/decisions?bucket=failing",
-        "urgent",
-      ),
-      overdue: overviewMetric(
-        "decisions.overdue",
-        3,
-        "/cockpit/decisions?bucket=overdue",
-        "urgent",
-      ),
-      other_decisions: overviewMetric("decisions.other", 7, "/cockpit/decisions?bucket=other"),
-      // Hostile on purpose, and consistent with the tiles above: two blocked
-      // workflows make the engine's score critical and aim it at the blocked
-      // list; a connector needing re-auth sits among healthy ones; the drift
-      // scan has not run for a day, so the numbers behind the page are stale.
-      // A fixture that is healthy here photographs a system page with nothing
-      // on it, which is exactly the frame that cannot show a missing cause.
-      health: {
-        ...overviewMetric(
-          "operations.health",
-          41,
-          "/cockpit/decisions?bucket=blocked",
-          "critical",
-          "score",
-        ),
-        state: "critical",
-        components: [
-          {
-            id: "decisions.blocked",
-            raw_value: 2,
-            unit: "count",
-            normalized_score: 0,
-            weight: 0.5,
-            contribution: 0,
-            freshness: "fresh",
-            required: true,
-            drilldown: {
-              path: "/cockpit/decisions?bucket=blocked",
-              label_id: "operational.open_blocked",
-            },
-          },
-          {
-            id: "executions.success_ratio",
-            raw_value: 0.9375,
-            unit: "ratio",
-            normalized_score: 93.75,
-            weight: 0.3,
-            contribution: 28.125,
-            freshness: "fresh",
-            required: true,
-            drilldown: {
-              path: "/cockpit/runs?status=failed&source=scheduler",
-              label_id: "operational.open_runs",
-            },
-          },
-          {
-            id: "connectors.healthy_ratio",
-            raw_value: 0.8,
-            unit: "ratio",
-            normalized_score: 80,
-            weight: 0.2,
-            contribution: 16,
-            freshness: "fresh",
-            required: true,
-            drilldown: {
-              path: "/cockpit/connectors?health=not_ok",
-              label_id: "operational.open_connectors",
-            },
-          },
-        ],
-        causes: [
-          {
-            kind: "held_schedule",
-            id: uuid,
-            label: "Monatsreport: automatic runs held for review",
-            subject: { kind: "workflow", id: uuid, name: "Monatsreport" },
-            reason: "held_for_review",
-            detail: null,
-            cause_class: null,
-            drilldown: {
-              path: "/cockpit/decisions?bucket=blocked",
-              label_id: "operational.open_blocked",
-            },
-          },
-          {
-            kind: "connector",
-            id: uuid,
-            label: "Mailer: needs reauth",
-            subject: { kind: "connector", id: uuid, name: "Mailer" },
-            reason: "needs_reauth",
-            detail: "Token refresh rejected by the provider.",
-            cause_class: null,
-            drilldown: {
-              path: `/cockpit/connectors/${uuid}`,
-              label_id: "operational.open_connector",
-            },
-          },
-        ],
-      },
-      data_freshness: {
-        ...overviewMetric(
-          "data.freshness",
-          90_000,
-          "/cockpit/audit?scope=operations",
-          "critical",
-          "duration",
-        ),
-        value_state: "stale",
-        state: "stale",
-        sources: [
-          {
-            id: "self_healing.drift_scan",
-            updated_at: "2026-08-25T09:00:00.000Z",
-            expected_interval_seconds: 3600,
-            stale_after_seconds: 7200,
-            state: "stale",
-            drilldown: {
-              path: "/cockpit/audit?scope=operations",
-              label_id: "operational.open_scans",
-            },
-          },
-          {
-            id: "connectors.reauth_scan",
-            updated_at: generatedAt,
-            expected_interval_seconds: 3600,
-            stale_after_seconds: 7200,
-            state: "fresh",
-            drilldown: { path: "/cockpit/connectors", label_id: "operational.open_connectors" },
-          },
-        ],
-      },
-    },
-    // The four sections and eight metrics a running installation serves.
-    //
-    // This used to be one section holding one tile. Seven of the eight metric
-    // ids the page knows how to label were therefore never photographed, in
-    // any language, at any width — and neither was the `progress`
-    // visualization, a whole rendering branch. Eight hundred green screenshots
-    // of a page showing a single tile say nothing about the page people open.
-    //
-    // It also swallowed a change made to this very file's subject: the only
-    // metric whose drilldown still renders a link is `executions.incidents_24h`
-    // (the rest lead to a list that cannot answer for the number). Absent from
-    // the fixture, that link was photographed zero times. A fixture that omits
-    // what the code singles out cannot see whether it works.
-    //
-    // Values are chosen to be awkward rather than tidy: a ratio that is not a
-    // round number, a long repeating decimal, a zero beside a non-zero in the
-    // same row, and an incident count high enough to render the link and its
-    // urgent state.
-    sections: [
+/**
+ * Heute's hostile answer (`GET /v1/attention`): an entry from every source the
+ * engine reads — a waiting question, a stale heartbeat, a held workflow with a
+ * fix, a failing one, a connector, an account connection, a prepared secret,
+ * skill proposals, the allowance — in the engine's order, and the risk source
+ * FAILED. Every entry is one sentence with one primary action; the failed
+ * source is named, never counted as empty.
+ */
+const ATTENTION_ENGINE_DETAIL = "upstream answered 504 after 30s";
+const attentionEntry = (entry) => ({
+  severity: "urgent",
+  cause_class: null,
+  counts: {},
+  deadline: null,
+  detail: null,
+  ...entry,
+});
+const ATTENTION_ITEMS = [
+  attentionEntry({
+    id: `conversation:${conversation.id}`,
+    class: "stopped",
+    kind: "conversation",
+    subject: { kind: "conversation", id: conversation.id, name: conversation.title },
+    reason: "awaiting_answer",
+    since: new Date(SWEEP_NOW - 2 * 3_600_000).toISOString(),
+    deadline: new Date(SWEEP_NOW + 20 * 3_600_000).toISOString(),
+    actions: [
       {
-        id: "workflows",
-        title: "Workflows",
-        visualization: "kpi",
-        metrics: [
-          overviewMetric("automation.active_workflows", 91, "/cockpit/workflows"),
-          overviewMetric("executions.total_24h", 36, "/cockpit/runs"),
-        ],
-        drilldown: { path: "/cockpit/workflows" },
-      },
-      {
-        id: "reliability",
-        title: "Reliability",
-        visualization: "kpi",
-        metrics: [
-          overviewMetric("executions.success_ratio", 0.9375, "/cockpit/runs", "healthy", "ratio"),
-          // Any production incident at all is `critical` to the engine, not a
-          // graded band — so a non-zero count here is the severity it ships.
-          // The path is the engine's own, both halves: this is the only metric
-          // that still renders a link, and a fixture carrying a different one
-          // photographs a link the product does not have.
-          overviewMetric(
-            "executions.incidents_24h",
-            3,
-            "/cockpit/runs?status=failed&source=scheduler",
-            "critical",
-          ),
-          overviewMetric("executions.trial_failures_24h", 0, "/cockpit/runs?status=failed"),
-        ],
-        drilldown: { path: "/cockpit/runs" },
-      },
-      {
-        id: "connections",
-        title: "Connections",
-        visualization: "progress",
-        metrics: [
-          // 0.8 is the engine's `urgent` band for this metric (>= 0.7, < 0.9).
-          // Taken from the rule rather than picked, so the fixture cannot
-          // photograph a severity the product never emits at this value.
-          overviewMetric("connectors.healthy_ratio", 0.8, "/cockpit/connectors", "urgent", "ratio"),
-        ],
-        drilldown: { path: "/cockpit/connectors" },
-      },
-      {
-        id: "learning",
-        title: "Learning",
-        visualization: "kpi",
-        metrics: [
-          overviewMetric(
-            "repairs.applied_ratio",
-            0.654320987654321,
-            "/cockpit/audit?scope=all&action=patch_candidate.approved,patch_candidate.auto_applied,patch_candidate.rejected",
-            "information",
-            "ratio",
-          ),
-          overviewMetric("skills.reusable", 49, "/cockpit/skills"),
-        ],
-        drilldown: { path: "/cockpit/skills" },
+        verb: "answer",
+        href: `/cockpit/chat/${conversation.id}`,
+        primary: true,
+        permission: "conversation:write",
       },
     ],
-    audit: { path: "/cockpit/audit", snapshot_generated_at: generatedAt },
+  }),
+  attentionEntry({
+    id: "freshness:self_healing.drift_scan",
+    class: "stopped",
+    severity: "critical",
+    kind: "self_healing.drift_scan",
+    subject: null,
+    reason: "scheduler_stale",
+    since: new Date(SWEEP_NOW - 5 * 3_600_000).toISOString(),
+    actions: [
+      {
+        verb: "open",
+        href: "/cockpit/audit?scope=operations",
+        primary: true,
+        permission: "audit:read",
+      },
+    ],
+  }),
+  attentionEntry({
+    id: `workflow:${uuid}`,
+    class: "stopped",
+    severity: "critical",
+    kind: "workflow",
+    subject: { kind: "workflow", id: uuid, name: "Monatsreport" },
+    reason: "execution_authority_required",
+    counts: { patches: 1 },
+    since: new Date(SWEEP_NOW - 36 * 3_600_000).toISOString(),
+    detail: ATTENTION_ENGINE_DETAIL,
+    actions: [
+      {
+        verb: "review",
+        href: `/cockpit?review=workflow:${uuid}`,
+        primary: true,
+        permission: "workflow:write",
+      },
+    ],
+  }),
+  attentionEntry({
+    id: `workflow:${runWorkflowId}`,
+    class: "failing",
+    kind: "workflow",
+    subject: { kind: "workflow", id: runWorkflowId, name: "Umsatzbericht an den Vorstand" },
+    reason: "failing",
+    cause_class: "timeout",
+    counts: { failures: 14 },
+    since: new Date(SWEEP_NOW - 3 * 86_400_000).toISOString(),
+    detail: ATTENTION_ENGINE_DETAIL,
+    actions: [
+      {
+        verb: "chat",
+        href: `/cockpit/chat/new?workflow_id=${runWorkflowId}&execution_id=${uuid}`,
+        primary: true,
+        permission: "conversation:write",
+      },
+      {
+        verb: "open_runs",
+        href: `/cockpit/runs?workflow_id=${runWorkflowId}&status=failed`,
+        primary: false,
+        permission: "execution:read",
+      },
+    ],
+  }),
+  attentionEntry({
+    id: `connector:${runConnectorId}`,
+    class: "failing",
+    kind: "connector",
+    subject: { kind: "connector", id: runConnectorId, name: "Mailer" },
+    reason: "needs_reauth",
+    since: new Date(SWEEP_NOW - 86_400_000).toISOString(),
+    detail: "Token refresh rejected by the provider.",
+    actions: [
+      {
+        verb: "reauth",
+        href: `/cockpit/connectors/${runConnectorId}`,
+        primary: true,
+        permission: "connector:oauth",
+      },
+    ],
+  }),
+  attentionEntry({
+    id: "connection:google-drive",
+    class: "failing",
+    kind: "connection",
+    subject: { kind: "connection", id: "google-drive", name: "Google Drive" },
+    reason: "expired_no_refresh",
+    since: new Date(SWEEP_NOW - 9 * 86_400_000).toISOString(),
+    actions: [
+      {
+        verb: "renew",
+        href: "/cockpit/api-access?section=grants",
+        primary: true,
+        permission: "connection:write",
+      },
+    ],
+  }),
+  attentionEntry({
+    id: "budget",
+    class: "failing",
+    severity: "critical",
+    kind: "token_budget",
+    subject: null,
+    reason: "budget_critical",
+    since: null,
+    actions: [{ verb: "open", href: "/cockpit/usage", primary: true, permission: "stats:read" }],
+  }),
+  attentionEntry({
+    id: "secret-approval:smtp_password@3",
+    class: "decide",
+    kind: "secret_version",
+    subject: { kind: "secret", id: "smtp_password@3", name: "smtp_password" },
+    reason: "secret_prepared",
+    since: new Date(SWEEP_NOW - 4 * 3_600_000).toISOString(),
+    actions: [
+      { verb: "open", href: "/cockpit/settings", primary: true, permission: "settings:write" },
+    ],
+  }),
+  attentionEntry({
+    id: "skills",
+    class: "decide",
+    kind: "skill_candidates",
+    subject: null,
+    reason: "skills_proposed",
+    counts: { skills: 1 },
+    since: new Date(SWEEP_NOW - 20 * 3_600_000).toISOString(),
+    actions: [
+      { verb: "review", href: "/cockpit?review=skills", primary: true, permission: "skill:write" },
+    ],
+  }),
+];
+const ATTENTION_SOURCES = [
+  "conversations",
+  "schedules",
+  "freshness",
+  "failures",
+  "patches",
+  "connectors",
+  "connections",
+  "secret_approvals",
+  "skills",
+  "budget",
+  "risk",
+];
+function attentionAnswer({ items = ATTENTION_ITEMS, failed = ["risk"] } = {}) {
+  return {
+    schema_version: "attention.v1",
+    generated_at: new Date(SWEEP_NOW).toISOString(),
+    sources: Object.fromEntries(
+      ATTENTION_SOURCES.map((source) => [source, failed.includes(source) ? "failed" : "answered"]),
+    ),
+    status: {
+      health_state: items.length ? "critical" : "healthy",
+      next_run_at: new Date(SWEEP_NOW + 3_600_000).toISOString(),
+    },
+    items,
   };
 }
 
@@ -1057,7 +997,7 @@ async function mockApi(route) {
   if (/^\/v1\/workflows\/[^/]+\/automation-status$/.test(path))
     return json(route, { schedules: [] });
   if (path === "/v1/schedules") return json(route, { schedules: [], total: 0 });
-  if (path === "/v1/operational-overview") return json(route, operationalOverview());
+  if (path === "/v1/attention") return json(route, attentionAnswer());
   if (path === "/v1/conversations" && request.method() === "GET") {
     // The status filter is answered, not ignored. It used to be: the decisions
     // page asks `?status=awaiting_input`, got all 32 conversations back with
@@ -2543,8 +2483,8 @@ function artifactRouteName(route) {
   // route list it was written under the same name, overwrote that frame in all
   // four desktop variants, and the run ended with 860 frames counted and 856
   // files on disk — correctly suspicious, with the wrong guess about why.
-  const [path, query] = (route || "overview").split("?");
-  const name = path.replace(/\/[^/]+$/, "-record");
+  const [rawPath, query] = route.split("?");
+  const name = (rawPath || "today").replace(/\/[^/]+$/, "-record");
   // A query becomes part of the name, so two narrowings of one page are two
   // frames rather than one overwriting the other (`decisions-bucket-failing`).
   return query ? `${name}-${query.replace(/[^a-z0-9]+/gi, "-").replace(/-+$/, "")}` : name;
@@ -2560,15 +2500,18 @@ function markerFor(route) {
   if (/^runs\/.+/.test(path)) return '[data-testid="run-detail-facts"]';
   if (/^workflows\/.+/.test(path)) return '[data-testid="workflow-recent-runs"]';
   if (path === "chat") return '[data-testid="chat-workspace"]';
-  if (path === "") return '[data-testid="overview-page"]';
-  // Decisions owns its page rather than rendering a list of records.
-  if (path === "decisions") return '[data-testid="decisions-page"]';
+  // Heute, its review sheet, and the old addresses that land on one of them.
+  const query = route.split("?")[1] ?? "";
+  if (path === "" || path === "decisions" || path === "operations")
+    return query.startsWith("review=") || query.startsWith("workflow_id=")
+      ? '[data-testid="attention-review-body"]'
+      : '[data-testid="attention-list"]';
   // The old Kontoverbindungen address redirects; the frame is where it lands,
   // and the callback sentence it carried must be on it.
   if (path === "connections") return '[data-testid="connection-failed"]';
   // Installation surfaces name their frame after the section, not the record
   // type.
-  if (["people", "access", "api-access", "operations", "settings"].includes(path))
+  if (["people", "access", "api-access", "settings"].includes(path))
     return `[data-testid="admin-${path}"]`;
   // Connectors render through the shared catalog table like every other list.
   if (["workflows", "connectors", "knowledge", "skills", "files"].includes(path))
@@ -2652,91 +2595,80 @@ async function assertOpenOnce(page, label) {
 }
 
 /**
- * The system page names what makes the installation red, each with its way in.
- *
- * It used to hold a scan button and a sentence saying its findings were on the
- * overview — while the overview's red health tile linked here. The hostile
- * snapshot carries a critical score, two causes and a stale source, so every
- * one of them must be a line, and the causes must lead where they are fixed.
+ * Heute under the hostile answer: every entry one sentence with ONE primary
+ * action and at most one secondary link, the badge equal to the list, the
+ * failed source named — and neither "Alles erledigt" nor a status line, nor
+ * the engine's own wording, anywhere on the list.
  */
-async function assertOperationsNamesItsCauses(page, label) {
-  const block = page.locator('[data-testid="operations-attention"]');
-  try {
-    await block.waitFor({ state: "visible", timeout: 10_000 });
-  } catch (error) {
-    throw new Error(`${label}: a critical snapshot with causes shows no attention block`, {
-      cause: error,
-    });
-  }
-  const links = await block
-    .locator('a[data-testid^="operations-attention-link-"]')
-    .evaluateAll((anchors) => anchors.map((anchor) => anchor.getAttribute("href")));
-  for (const expected of ["/cockpit/decisions?bucket=blocked", "/cockpit/audit?scope=operations"]) {
-    if (!links.includes(expected))
-      throw new Error(
-        `${label}: no attention line leads to ${expected} (links: ${links.join(", ")})`,
-      );
-  }
-  if (links.some((href) => href?.startsWith("/cockpit/cockpit")))
-    throw new Error(`${label}: an attention link carries the base twice`);
-  const text = await block.innerText();
-  if (!text.includes("Mailer")) throw new Error(`${label}: the connector cause is not named`);
-  // The engine's `label` is English prose; the page words the cause itself
-  // from `subject` + `reason`, in either language.
-  for (const engineLabel of ["Mailer: needs reauth", "automatic runs held for review"])
-    if (text.includes(engineLabel))
-      throw new Error(`${label}: the engine's sentence "${engineLabel}" is shown as the page's`);
-  // The free text the engine wrote is kept — on its own line, as the engine's.
-  const wording = await block
-    .locator('[data-testid^="operations-attention-engine-wording-"]')
-    .allInnerTexts();
-  if (!wording.some((line) => line.includes("Token refresh rejected by the provider.")))
-    throw new Error(`${label}: the engine's detail is not shown as the engine's wording`);
+async function assertTodayHostile(page, label, language) {
+  const shape = await page.evaluate(() => {
+    const entries = [...document.querySelectorAll('[data-testid="attention-list"] > li')];
+    return {
+      ids: entries.map((entry) => entry.getAttribute("data-attention-id")),
+      primaries: entries.map((entry) => entry.querySelectorAll('[data-testid$="-primary"]').length),
+      secondaries: entries.map(
+        (entry) => entry.querySelectorAll('[data-testid$="-secondary"]').length,
+      ),
+      text: document.querySelector('[data-testid="attention-page"]')?.innerText ?? "",
+      status: document.querySelectorAll('[data-testid="attention-status"]').length,
+      calm: document.querySelectorAll('[data-testid="attention-calm"]').length,
+      unread: document.querySelector('[data-testid="attention-unread"]')?.textContent ?? null,
+      badge: document.querySelector('[data-testid="nav-overview-count"]')?.textContent ?? null,
+    };
+  });
+  const expected = ATTENTION_ITEMS.map((item) => item.id);
+  if (shape.ids.join("|") !== expected.join("|"))
+    throw new Error(`${label}: entries ${shape.ids.join(", ")} — the engine sent ${expected}`);
+  if (shape.primaries.some((count) => count !== 1))
+    throw new Error(`${label}: an entry without exactly one primary action`);
+  if (shape.secondaries.some((count) => count > 1))
+    throw new Error(`${label}: an entry with more than one secondary link`);
+  if (shape.badge !== null && Number(shape.badge) !== expected.length)
+    throw new Error(`${label}: the badge says ${shape.badge}, the list holds ${expected.length}`);
+  if (shape.calm || shape.status)
+    throw new Error(`${label}: "all done" or a status line beside open entries`);
+  if (!shape.unread?.includes(language === "de" ? "Betriebssignale" : "operating signals"))
+    throw new Error(`${label}: the failed source is not named (${shape.unread})`);
+  if (shape.text.includes(ATTENTION_ENGINE_DETAIL))
+    throw new Error(`${label}: the engine's wording stands on the list`);
+}
+
+/** An old address lands on Heute — with the review it named, and nothing else. */
+async function assertLandsOnToday(page, label, review) {
+  const url = new URL(page.url());
+  if (url.pathname.replace(/\/$/, "") !== "/cockpit")
+    throw new Error(`${label}: lands on ${url.pathname}, not on Heute`);
+  if (url.searchParams.get("review") !== review)
+    throw new Error(`${label}: lands with review=${url.searchParams.get("review")}`);
+  if (!review && url.search) throw new Error(`${label}: carries ${url.search} onto Heute`);
 }
 
 /**
- * The same page with nothing wrong says nothing — no "all good" card.
- *
- * Swaps the snapshot for a healthy one and restores it in `finally`: a
+ * Heute with nothing open: "Alles erledigt." and one status line, nothing
+ * else — no badge, no tile. Swaps the answer and restores it in `finally`: a
  * scenario that leaves its route behind poisons every frame after it.
  */
-async function verifyHealthyOperationsIsQuiet(page, label) {
-  const pattern = "**/v1/operational-overview*";
-  const healthy = (route) => {
-    const data = operationalOverview();
-    Object.assign(data.core.blocked, { value: 0, value_state: "zero", severity: "healthy" });
-    Object.assign(data.core.health, {
-      value: 100,
-      state: "healthy",
-      severity: "healthy",
-      causes: [],
-      components: data.core.health.components.map((component) => ({
-        ...component,
-        raw_value: component.unit === "count" ? 0 : 1,
-        normalized_score: 100,
-      })),
-    });
-    Object.assign(data.core.data_freshness, {
-      value: 0,
-      value_state: "zero",
-      state: "fresh",
-      severity: "healthy",
-      sources: data.core.data_freshness.sources.map((source) => ({
-        ...source,
-        updated_at: data.generated_at,
-        state: "fresh",
-      })),
-    });
-    return route.fulfill({ json: data });
-  };
-  await page.route(pattern, healthy);
+async function verifyTodayCalm(page, label, language, capture) {
+  const pattern = "**/v1/attention*";
+  const calm = (route) => route.fulfill({ json: attentionAnswer({ items: [], failed: [] }) });
+  await page.route(pattern, calm);
   try {
-    await stand.visit(page, "operations");
-    await page.locator('[data-testid="operations-health"]').waitFor({ state: "visible" });
-    if (await page.locator('[data-testid="operations-attention"]').count())
-      throw new Error(`${label}: a healthy installation still shows an attention block`);
+    await stand.visit(page, "");
+    await page.locator('[data-testid="attention-calm"]').waitFor({ state: "visible" });
+    const shape = await page.evaluate(() => ({
+      status: document.querySelectorAll('[data-testid="attention-status"]').length,
+      badge: document.querySelectorAll('[data-testid="nav-overview-count"]').length,
+      kpis: document.querySelectorAll("[data-family-kpi-id]").length,
+      text: document.querySelector('[data-testid="attention-calm"]')?.innerText ?? "",
+    }));
+    if (shape.status !== 1) throw new Error(`${label}: ${shape.status} status lines, not one`);
+    if (shape.badge) throw new Error(`${label}: a badge although nothing is open`);
+    if (shape.kpis) throw new Error(`${label}: KPI tiles on a calm Heute`);
+    if (!shape.text.startsWith(language === "de" ? "Alles erledigt." : "All done."))
+      throw new Error(`${label}: the calm state reads "${shape.text}"`);
+    await capture();
   } finally {
-    await page.unroute(pattern, healthy);
+    await page.unroute(pattern, calm);
   }
 }
 
@@ -3393,7 +3325,7 @@ for (const locale of variants) {
         .catch(() => {});
       for (const errorSelector of [
         '[data-testid="data-table-retry"]',
-        '[data-testid="overview-error"]',
+        '[data-testid="attention-error"]',
       ]) {
         if (
           await page
@@ -3424,8 +3356,14 @@ for (const locale of variants) {
       await assertHeadingAlignment(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertBlankLists(page, `${locale.artifact}/${viewport.name}/${route}`);
-      if (route === "operations")
-        await assertOperationsNamesItsCauses(page, `${locale.artifact}/${viewport.name}/${route}`);
+      if (route === "")
+        await assertTodayHostile(page, `${locale.artifact}/${viewport.name}/today`, locale.name);
+      if (route.startsWith("decisions") || route === "operations")
+        await assertLandsOnToday(
+          page,
+          `${locale.artifact}/${viewport.name}/${route}`,
+          route.includes("workflow_id=") ? `workflow:${uuid}` : null,
+        );
       if (route.startsWith("connectors?health="))
         await assertUnhealthyConnectorsOnly(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route.startsWith("audit?") && route.includes("action="))
@@ -3465,7 +3403,9 @@ for (const locale of variants) {
         fullPage: false,
       });
     }
-    await verifyHealthyOperationsIsQuiet(page, `${locale.artifact}/${viewport.name}/operations`);
+    await verifyTodayCalm(page, `${locale.artifact}/${viewport.name}/today-calm`, locale.name, () =>
+      shoot(page, `${locale.artifact}-${viewport.name}-today-calm`, { fullPage: false }),
+    );
     if (viewport.name === "desktop")
       await verifyInstallationPages(page, stand, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-installation-${state}`, {
@@ -3480,7 +3420,7 @@ for (const locale of variants) {
       activeKeys: API_KEYS.filter((item) => !item.revoked_at).length,
       revokedKeys: API_KEYS.filter((item) => item.revoked_at).length,
     });
-    await verifyScheduleHolds(page, stand, uuid, locale.name, operationalOverview, (state) =>
+    await verifyScheduleHolds(page, stand, uuid, locale.name, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-schedule-held-${state}`, {
         fullPage: false,
       }),
@@ -3534,26 +3474,30 @@ for (const locale of variants) {
           fullPage: false,
         });
       }
-      // The expanded decision card. The sweep only ever photographed collapsed
-      // cards, which is how a surface that asks people to approve things they
-      // cannot see stayed green through every frame this sweep took.
-      await stand.visit(page, "decisions");
+      // The expanded decision card, in the review sheet. The sweep only ever
+      // photographed collapsed cards, which is how a surface that asks people
+      // to approve things they cannot see stayed green through every frame.
       let expandedCards = 0;
-      for (const prefix of ["decision-deferred", "decision-aged"]) {
-        // Two positions per section, because the three kinds expand to entirely
-        // different panels and one of them is always second in its section.
-        for (const position of [0, 1]) {
-          const toggle = page.locator(`[data-testid="${prefix}-${position}-toggle"]`);
+      for (const [review, positions] of [
+        [`workflow:${uuid}`, [0, 1]],
+        ["skills", [0]],
+      ]) {
+        await stand.visit(page, `?review=${review}`);
+        await page.locator('[data-testid="attention-review-body"]').waitFor({ state: "visible" });
+        for (const position of positions) {
+          const toggle = page.locator(`[data-testid="review-decision-${position}-toggle"]`);
           if (!(await toggle.count())) continue;
           await toggle.first().scrollIntoViewIfNeeded();
           await toggle.first().click();
           await page
-            .locator(`[data-testid="${prefix}-${position}-detail"]`)
+            .locator(`[data-testid="review-decision-${position}-detail"]`)
             .waitFor({ state: "visible", timeout: 10_000 });
           await page.waitForTimeout(300);
-          await shoot(page, `${locale.artifact}-desktop-${prefix}-${position}-expanded`, {
-            fullPage: false,
-          });
+          await shoot(
+            page,
+            `${locale.artifact}-desktop-review-${review.split(":")[0]}-${position}-expanded`,
+            { fullPage: false },
+          );
           expandedCards += 1;
         }
       }
@@ -3562,19 +3506,6 @@ for (const locale of variants) {
       if (expandedCards === 0) {
         throw new Error(`${locale.artifact}: no decision card exposed an expand toggle`);
       }
-      // §8.5: the queue has one stable ordering. Photograph its foot explicitly
-      // because the ordinary viewport frame does not reach the audit exit.
-      await stand.visit(page, "decisions");
-      // What stands at the FOOT of the decisions page. There used to be
-      // two shelves of settled work there; there is one sentence with one link
-      // now, and a frame that stops at the viewport would show neither. This
-      // console's frames are exactly as tall as the viewport — 1000 px — so the
-      // foot needs a photograph of its own.
-      await page.locator('[data-testid="decisions-history"]').scrollIntoViewIfNeeded();
-      await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-decisions-foot`, {
-        fullPage: false,
-      });
 
       // The other end of that link, opened the way the link opens it.
       await stand.visit(page, "audit?scope=decisions");

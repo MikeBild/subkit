@@ -1,7 +1,7 @@
 /** Database enforcement is covered by the scheduler and HTTP integration suites. */
-export async function verifyScheduleHolds(page, stand, workflowId, locale, snapshot, capture) {
+export async function verifyScheduleHolds(page, stand, workflowId, locale, capture) {
   const schedulePattern = "**/v1/schedules*";
-  const overviewPattern = "**/v1/operational-overview*";
+  const attentionPattern = "**/v1/attention*";
   const schedule = {
     id: workflowId,
     workflow_id: workflowId,
@@ -36,96 +36,86 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
     },
   }));
   let cleared = false;
-  const schedules = (route) =>
+  const open = () => (cleared ? heldSchedules.slice(1) : heldSchedules);
+  const schedules = (route) => route.fulfill({ json: { schedules: open(), total: open().length } });
+  // Heute's answer for the same installation: one stopped entry per held
+  // workflow, and nothing else — so the badge has one number to agree with.
+  const attention = (route) =>
     route.fulfill({
       json: {
-        schedules: cleared ? heldSchedules.slice(1) : heldSchedules,
-        total: cleared ? 12 : 13,
+        schema_version: "attention.v1",
+        generated_at: new Date().toISOString(),
+        sources: Object.fromEntries(
+          [
+            "conversations",
+            "schedules",
+            "freshness",
+            "failures",
+            "patches",
+            "connectors",
+            "connections",
+            "secret_approvals",
+            "skills",
+            "budget",
+            "risk",
+          ].map((source) => [source, "answered"]),
+        ),
+        status: { health_state: "critical", next_run_at: null },
+        items: open().map((held) => ({
+          id: `workflow:${held.workflow_id}`,
+          class: "stopped",
+          severity: "critical",
+          kind: "workflow",
+          subject: { kind: "workflow", id: held.workflow_id, name: held.workflow_name },
+          reason: held.admission_hold.reason_code,
+          cause_class: null,
+          counts: {},
+          since: held.admission_hold.observed_at,
+          deadline: null,
+          detail: null,
+          actions: [
+            {
+              verb: "review",
+              href: `/cockpit?review=workflow:${held.workflow_id}`,
+              primary: true,
+              permission: "workflow:write",
+            },
+          ],
+        })),
       },
     });
-  const overview = (route) => {
-    const data = snapshot();
-    Object.assign(data.core.blocked, { value: 13, severity: "critical", value_state: "observed" });
-    Object.assign(data.core.health, {
-      value: null,
-      state: "critical",
-      severity: "critical",
-      value_state: "missing",
-    });
-    data.sections.push({
-      id: "reliability",
-      title: "Reliability",
-      visualization: "kpi",
-      metrics: [
-        {
-          id: "executions.success_ratio",
-          value: null,
-          value_state: "missing",
-          severity: "unknown",
-          kind: "ratio",
-          drilldown: { path: "/cockpit/runs" },
-        },
-      ],
-      drilldown: { path: "/cockpit/runs" },
-    });
-    return route.fulfill({ json: data });
-  };
   await page.route(schedulePattern, schedules);
-  await page.route(overviewPattern, overview);
+  await page.route(attentionPattern, attention);
   try {
     await stand.visit(page, "");
-    await page
-      .getByText(locale === "de" ? "Keine Läufe (24 h)" : "No runs (24 h)", { exact: true })
-      .waitFor();
-    if (
-      !(await page.getByTestId("overview-page").innerText()).includes(
-        locale === "de" ? "Kritisch" : "Critical",
-      )
-    )
-      throw new Error("Known hold is hidden by missing success evidence");
-    // Critical with no score (nothing ran): the red tile still leads to its
-    // cause. A rule that linked only positive values dropped exactly this one.
-    if (!(await page.getByTestId("family-kpi-operations-health-open").count()))
-      throw new Error("The critical health tile has no way to its cause");
-    await capture("overview");
-    await stand.visit(page, "decisions");
-    const cards = page.getByTestId("schedule-admission-held");
-    const card = cards.first();
-    await card.waitFor();
-    if (await page.getByTestId("decisions-empty").count())
-      throw new Error("Held schedules presented as an empty queue");
-    // Sixteen, not fifteen: the workflow that is approved and failing counts as
-    // an open decision too. It was invisible before — the page listed only what
-    // could not start — and a badge that leaves it out is the reason nobody
-    // looked. The count is said on the badge and on the chips, nowhere else,
-    // and the chips must sum to the badge.
+    const entries = page.locator('[data-testid="attention-list"] > li');
+    await entries.first().waitFor();
+    if ((await entries.count()) !== 13)
+      throw new Error(`Heute lists ${await entries.count()} held workflows, not 13`);
+    if (await page.getByTestId("attention-calm").count())
+      throw new Error("Held schedules presented as all done");
     // The badge sits in the sidebar, which narrow widths render off-canvas and
-    // so not at all until opened; there the chips carry the check alone.
-    const badgeLocator = page.getByTestId("nav-decisions-count");
+    // so not at all until opened; there the list carries the check alone.
+    const badgeLocator = page.getByTestId("nav-overview-count");
     if (await badgeLocator.count()) {
       const badge = (await badgeLocator.first().innerText()).trim();
-      if (badge !== "16")
-        throw new Error(
-          `Decision badge reads ${badge}: it excludes the held schedule or the failing workflow`,
-        );
+      if (badge !== "13") throw new Error(`Heute's badge reads ${badge}, the list holds 13`);
+      if ((await badgeLocator.first().getAttribute("data-attention-stopped")) !== "true")
+        throw new Error("Stopped workflows and the badge is not red");
     }
-    let chipSum = 0;
-    for (const index of [0, 1, 2]) {
-      const chip = (await page.getByTestId(`decisions-chip-${index}`).innerText()).trim();
-      const match = chip.match(/·\s*(\d+)$/);
-      if (!match) throw new Error(`Kind chip ${index} names no count: "${chip}"`);
-      chipSum += Number(match[1]);
-    }
-    if (chipSum !== 16) throw new Error(`Kind chips sum to ${chipSum}, the badge says 16`);
-    if ((await cards.count()) !== 13) throw new Error("Held schedule queue lost entries");
-    const toolbar = await page.getByTestId("decisions-toolbar").boundingBox();
-    const firstCard = await card.boundingBox();
-    if (!toolbar || !firstCard || toolbar.y >= firstCard.y)
-      throw new Error("Controls buried below schedule holds");
-    const preparedCard = cards.nth(1);
-    const preparedText = await preparedCard.innerText();
-    if (!preparedText.includes(locale === "de" ? "vorbereitet" : "prepared"))
-      throw new Error("A waiting prepared version is not mentioned where the decision is made");
+    const first = entries.first();
+    if (!(await first.innerText()).includes("Held publishing workflow"))
+      throw new Error("The held workflow is not named on its entry");
+    await capture("today");
+    await first.locator('[data-testid$="-primary"]').click();
+    const sheet = page.getByTestId("attention-review");
+    await sheet.waitFor();
+    if (!page.url().includes(`review=workflow`))
+      throw new Error("The review sheet has no address of its own");
+    const card = sheet.getByTestId("schedule-admission-held");
+    await card.waitFor();
+    if ((await sheet.getByTestId("schedule-admission-held").count()) !== 1)
+      throw new Error("The sheet holds another workflow's hold");
     if ((await card.innerText()).includes(locale === "de" ? "vorbereitet" : "prepared"))
       throw new Error("A hold with nothing prepared claims a prepared version");
     const details = card.getByTestId("schedule-admission-details");
@@ -137,34 +127,17 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
       throw new Error("Schedule details not keyboard accessible");
     await page.keyboard.press("Enter");
     await capture("decision");
-    await page.getByTestId("decisions-chip-0").click();
-    if ((await cards.count()) !== 0)
-      throw new Error("Fix filter does not exclude scheduled workflows");
-    await page.getByTestId("decisions-chip-all").click();
-    await page.getByTestId("decisions-chip-2").click();
-    if (
-      (await cards.count()) !== 13 ||
-      (await page.getByTestId("decisions-current").count()) ||
-      (await page.getByTestId("decisions-empty-filtered").count())
-    )
-      throw new Error("Schedule filter does not isolate held workflows");
-    await page.getByTestId("decisions-section-suggestions").click();
-    if (await cards.count()) throw new Error("Holds leaked into suggestions");
-    await page.getByTestId("decisions-section-decisions").click();
-    await page.getByTestId("decisions-chip-all").click();
-    await page.getByTestId("decisions-chip-0").click();
-    await stand.visit(page, "decisions?bucket=blocked");
+    // Back closes the sheet: it has an address, so the browser's own button
+    // is the way out.
+    await page.goBack();
+    await sheet.waitFor({ state: "hidden" });
+    await stand.visit(page, `?review=workflow:${heldSchedules[1].workflow_id}`);
+    const prepared = page.getByTestId("attention-review").getByTestId("schedule-admission-held");
+    await prepared.waitFor();
+    if (!(await prepared.innerText()).includes(locale === "de" ? "vorbereitet" : "prepared"))
+      throw new Error("A waiting prepared version is not mentioned where the decision is made");
+    await stand.visit(page, `?review=workflow:${workflowId}`);
     await card.waitFor();
-    // Arriving from the tile still overrides a saved, unrelated kind filter —
-    // that requirement is unchanged. What changed is how: the tile no longer
-    // SETS the chip to "schedule", because that one kind covers two sections
-    // and so the Blocked number listed the failing workflows too. The arrival
-    // now scopes the page itself and says which number it came from.
-    if (!(await page.getByTestId("decisions-focus").count()))
-      throw new Error("A narrowed queue does not say it is narrowed");
-    if (await page.getByTestId("decisions-failing").count())
-      throw new Error("The blocked tile leads to the failing workflows as well");
-    await page.getByTestId("decisions-chip-all").click();
     await card.getByRole("link").click();
     await page.getByTestId("detail-workflows").waitFor();
     await page.getByTestId("authority-grant-open").waitFor();
@@ -205,8 +178,8 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
       await stand.visit(page, `chat/${conversation.id}`);
       const handoff = page.getByTestId("chat-schedule-next-step");
       await handoff.waitFor();
-      const beforeCount = (await page.getByTestId("nav-decisions-count").count())
-        ? Number(await page.getByTestId("nav-decisions-count").innerText())
+      const beforeCount = (await page.getByTestId("nav-overview-count").count())
+        ? Number(await page.getByTestId("nav-overview-count").innerText())
         : null;
       if (
         !(await handoff.innerText()).includes(
@@ -329,9 +302,8 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
           await page.waitForFunction(
             (expected) =>
               Number(
-                document
-                  .querySelector('[data-testid="nav-decisions-count"]')
-                  ?.textContent?.trim() ?? 0,
+                document.querySelector('[data-testid="nav-overview-count"]')?.textContent?.trim() ??
+                  0,
               ) === expected,
             beforeCount - 1,
           );
@@ -345,7 +317,7 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
         await page.waitForFunction(
           (expected) =>
             Number(
-              document.querySelector('[data-testid="nav-decisions-count"]')?.textContent?.trim() ??
+              document.querySelector('[data-testid="nav-overview-count"]')?.textContent?.trim() ??
                 0,
             ) === expected,
           beforeCount - 1,
@@ -359,6 +331,6 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, snaps
     }
   } finally {
     await page.unroute(schedulePattern, schedules);
-    await page.unroute(overviewPattern, overview);
+    await page.unroute(attentionPattern, attention);
   }
 }

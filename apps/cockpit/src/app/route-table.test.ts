@@ -4,11 +4,11 @@ import { NAVIGATION } from "@/app/navigation";
 import {
   ALL_ROUTE_PATHS,
   CATALOG_RESOURCES,
+  legacyTarget,
   PAGE_ROUTES,
   REDIRECT_ROUTES,
-  redirectTarget,
 } from "@/app/route-table";
-import { apiAccessSectionFromUrl } from "./links";
+import { apiAccessSectionFromUrl, reviewFromUrl } from "./links";
 
 /**
  * The router cannot be imported here — it reaches `window` while it loads — so
@@ -102,32 +102,59 @@ describe("cockpit route table", () => {
     // OAuth callback issued before the move both still land on the old path,
     // the callback with its result in the query — dropping it would swallow
     // the one sentence that says whether the connection worked.
-    expect(REDIRECT_ROUTES["/connections"]).toBe("/api-access?section=grants");
+    expect(REDIRECT_ROUTES).toContain("/connections");
     expect(PAGE_ROUTES as readonly string[]).not.toContain("/connections");
     expect(ALL_ROUTE_PATHS).toContain("/connections");
-    const landed = redirectTarget(REDIRECT_ROUTES["/connections"], "?connected=wiki&renewed=1");
+    const landed = legacyTarget("/connections", "?connected=wiki&renewed=1");
     expect(landed).toBe("/api-access?section=grants&connected=wiki&renewed=1");
     expect(apiAccessSectionFromUrl(landed.slice(landed.indexOf("?")))).toBe("grants");
-    expect(
-      redirectTarget(REDIRECT_ROUTES["/connections"], "?failed=denied&name=wiki+crm&section=keys"),
-    ).toBe("/api-access?section=grants&failed=denied&name=wiki+crm");
-    expect(redirectTarget(REDIRECT_ROUTES["/connections"], "")).toBe("/api-access?section=grants");
+    expect(legacyTarget("/connections", "?failed=denied&name=wiki+crm&section=keys")).toBe(
+      "/api-access?section=grants&failed=denied&name=wiki+crm",
+    );
+    expect(legacyTarget("/connections", "")).toBe("/api-access?section=grants");
     // Values that look like JSON numbers stay exactly as sent.
-    expect(
-      redirectTarget(REDIRECT_ROUTES["/connections"], "?connected=1e5&name=12345678901234567890"),
-    ).toBe("/api-access?section=grants&connected=1e5&name=12345678901234567890");
+    expect(legacyTarget("/connections", "?connected=1e5&name=12345678901234567890")).toBe(
+      "/api-access?section=grants&connected=1e5&name=12345678901234567890",
+    );
+  });
+
+  test("sends the decisions queue and the system page to Heute", () => {
+    const W = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
+    for (const path of ["/decisions", "/operations"] as const) {
+      expect(REDIRECT_ROUTES).toContain(path);
+      expect(PAGE_ROUTES as readonly string[]).not.toContain(path);
+      // Still routed: the sweep visits an old address and sees where it lands.
+      expect(ALL_ROUTE_PATHS).toContain(path);
+    }
+    expect(legacyTarget("/decisions", "")).toBe("/");
+    // A bucket narrowed a page that no longer exists; it does not travel.
+    for (const bucket of ["blocked", "failing", "overdue", "other"])
+      expect(legacyTarget("/decisions", `?bucket=${bucket}`)).toBe("/");
+    // One workflow's decisions open that workflow's review sheet.
+    const review = legacyTarget("/decisions", `?workflow_id=${W}`);
+    expect(review).toBe(`/?review=workflow:${W}`);
+    expect(reviewFromUrl(review.slice(1))).toBe(`workflow:${W}`);
+    expect(legacyTarget("/decisions", `?bucket=failing&workflow_id=${W}`)).toBe(
+      `/?review=workflow:${W}`,
+    );
+    // Not a workflow id: Heute, never a sheet for an address nobody wrote.
+    expect(legacyTarget("/decisions", "?workflow_id=1e5")).toBe("/");
+    expect(legacyTarget("/operations", "")).toBe("/");
+    expect(legacyTarget("/operations", "?tab=health")).toBe("/");
   });
 
   test("builds every redirect as a browser navigation on the raw query", () => {
     const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
-    expect(source).toContain("Object.keys(REDIRECT_ROUTES)");
+    expect(source).toContain("REDIRECT_ROUTES.map(");
     // The raw query, and a browser navigation: the router's own search
     // serialiser JSON-parses values (`1e5` → `100000`) on both of its paths.
-    expect(source).toContain("redirectTarget(REDIRECT_ROUTES[path], window.location.search)");
+    expect(source).toContain("legacyTarget(path, window.location.search)");
     expect(source).toContain("window.location.replace(");
     const code = source.replace(/^\s*\/\/.*$/gm, "");
     expect(code).not.toMatch(/location\.searchStr|redirect\(\{/);
     expect(source).not.toContain("ConnectionsPage");
+    expect(source).not.toContain("DecisionsPage");
+    expect(source).not.toContain("OperationsPage");
   });
 
   test("keeps every parameterised path out of the mapped page list", () => {
