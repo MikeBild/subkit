@@ -42,6 +42,18 @@ const listExecutionsRoute = createRoute({
         request_source: z.string().optional(),
         /** Free text, matched against the name or slug of the workflow. */
         q: z.string().trim().min(1).max(200).optional(),
+        started_from: z
+          .string()
+          .datetime({ offset: true })
+          .optional()
+          .describe(
+            "Only runs that started at or after this instant (ISO 8601). The same field and bounds `GET /v1/stats/executions` counts on.",
+          ),
+        started_to: z
+          .string()
+          .datetime({ offset: true })
+          .optional()
+          .describe("Only runs that started before this instant (ISO 8601, exclusive)."),
         /** Lineage filter: list the reruns spawned from this execution. */
         parent_execution_id: z.string().uuid().optional(),
       })
@@ -113,6 +125,8 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
         ...(q.status !== undefined ? { status: q.status } : {}),
         ...(q.request_source !== undefined ? { request_source: q.request_source } : {}),
         ...(q.q !== undefined ? { q: q.q } : {}),
+        ...(q.started_from !== undefined ? { started_from: new Date(q.started_from) } : {}),
+        ...(q.started_to !== undefined ? { started_to: new Date(q.started_to) } : {}),
         ...(q.parent_execution_id !== undefined
           ? { parent_execution_id: q.parent_execution_id }
           : {}),
