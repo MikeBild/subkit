@@ -46,6 +46,7 @@ import {
   auditResourceLabel,
   auditResultLabel,
   auditScopeParams,
+  canReadDirectory,
   isAuditEntry,
   isAuditScope,
   shortIdentifier,
@@ -188,10 +189,10 @@ export function AuditPage() {
   // acted ("Person"), which answers nothing an audit is read for. Names come
   // from the directory the reader may already see; without that right the
   // kind is still said, and an id is never printed.
-  const canReadDirectory = session.permissions.includes("identity:read");
+  const directoryReadable = canReadDirectory(session);
   const people = useQuery({
     queryKey: ["audit-directory", "people"],
-    enabled: allowed && canReadDirectory,
+    enabled: allowed && directoryReadable,
     queryFn: () =>
       apiRequest<{ items?: Array<{ id: string; email?: string; name?: string }> }>(
         "/v1/identity/users?limit=200",
@@ -199,7 +200,7 @@ export function AuditPage() {
   });
   const accounts = useQuery({
     queryKey: ["audit-directory", "system-accounts"],
-    enabled: allowed && canReadDirectory,
+    enabled: allowed && directoryReadable,
     queryFn: () =>
       apiRequest<{ items?: Array<{ id: string; name?: string }> }>("/v1/identity/system-accounts"),
   });

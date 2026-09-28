@@ -1,4 +1,5 @@
 import type { ConversationDetail } from "@/api/client";
+import type { CatalogLabel } from "@/lib/machine-label";
 
 type Pending = NonNullable<NonNullable<ConversationDetail["resume_summary"]>["pending_approval"]>;
 export type ChatFormField = NonNullable<NonNullable<Pending["prompt"]>["fields"]>[number];
@@ -32,23 +33,18 @@ export function chatForm(detail: ConversationDetail | undefined): ChatForm | nul
  *
  * The engine sends a label; when the model gave none it is the field's own
  * name — `report_recipient_email`. A handful of names have a word in the
- * catalogue; every other one used to reach the form as the raw identifier.
- * Spaced and capitalised it reads as a label and still matches what the
- * workflow calls the input.
+ * catalogue. Every other one is the input's name, shown AS a name (machine
+ * styled): spacing it into "Report recipient email" dressed an identifier as
+ * English prose on a German page.
  */
 export function formFieldLabel(
   field: Pick<ChatFormField, "name" | "label">,
   known: Readonly<Record<string, string>>,
-): string {
-  if (field.label && field.label !== field.name) return field.label;
+): CatalogLabel {
+  if (field.label && field.label !== field.name) return { text: field.label, machine: false };
   const named = known[field.name];
-  if (named) return named;
-  const words = field.name
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[_\-.]+/g, " ")
-    .trim()
-    .toLowerCase();
-  return words ? `${words.charAt(0).toUpperCase()}${words.slice(1)}` : field.name;
+  if (named) return { text: named, machine: false };
+  return { text: field.name, machine: true };
 }
 
 export function formValues(

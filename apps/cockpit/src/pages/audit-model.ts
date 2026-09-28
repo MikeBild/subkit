@@ -77,6 +77,22 @@ export function actorTypeLabel(actorType: string, t: Translate): CatalogLabel {
 }
 
 /**
+ * Whether this reader may list people and system accounts.
+ *
+ * The directory routes pass `identity:read` and then insist on the ROLE
+ * `admin` (`policy.adminOnly`). A reader with the permission but another role
+ * was refused — and every refusal is itself written to the audit log, so each
+ * visit to the audit page by such a reader added a "Verweigert" row about the
+ * visit. Ask only when the answer can be yes.
+ */
+export function canReadDirectory(session: {
+  permissions: readonly string[];
+  principal: { role_name?: string | null };
+}): boolean {
+  return session.permissions.includes("identity:read") && session.principal.role_name === "admin";
+}
+
+/**
  * WHO acted (§15.2 "Verursacher"): the person's or system account's name where
  * the directory knows it, the kind otherwise — never an id. `null` when the row
  * records no actor at all; the column then shows the dash and infers nothing.

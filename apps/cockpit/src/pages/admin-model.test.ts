@@ -14,10 +14,13 @@ import {
   activationStatusLabel,
   assignableRoles,
   permissionLabel,
+  personRefusal,
   roleChange,
+  roleChangeNotes,
   roleLabel,
   roleName,
-  settingLeafLabel,
+  settingLabel,
+  settingLeafTarget,
   settingMetaLabel,
   settingSectionOf,
   settingsLeafFromUrl,
@@ -194,9 +197,14 @@ describe("the settings view a link opens", () => {
     expect(settingsViewFromUrl("?section=a%2Fb").section).toBeNull();
   });
 
-  test("a setting is labelled by its own leaf, not by a keyword guess", () => {
-    expect(settingLeafLabel("tokens.monthly_budget")).toBe("Monthly budget");
-    expect(settingLeafLabel("execution.default_timeout_ms")).toBe("Default timeout ms");
+  test("a setting is named in the reader's language, with its parent where needed", () => {
+    expect(settingLabel("tokens.monthly_budget", de)).toEqual({
+      text: "Monatliches Token-Kontingent",
+      machine: false,
+    });
+    expect(settingLabel("llm.providers.anthropic.api_key", de).text).toBe(
+      "Anthropic · API-Schlüssel",
+    );
   });
 
   test("the activation state is a word, and an unknown one is the machine value", () => {
@@ -206,5 +214,58 @@ describe("the settings view a link opens", () => {
     });
     expect(activationStatusLabel(null, de).machine).toBe(false);
     expect(activationStatusLabel("rolling", de)).toEqual({ text: "rolling", machine: true });
+  });
+});
+
+describe("what a role change says beyond its permissions", () => {
+  test("leaving admin always says people and role management go with it", () => {
+    // Admin-only routes check the role NAME: a custom role with every
+    // permission is still not "admin", so "the rights stay the same" was false.
+    expect(roleChangeNotes({ from: "admin", to: "Revision", isSelf: false })).toEqual([
+      "leavesAdmin",
+    ]);
+    expect(roleChangeNotes({ from: "admin", to: "member", isSelf: true })).toEqual([
+      "selfLeavesAdmin",
+    ]);
+    expect(roleChangeNotes({ from: "member", to: "Revision", isSelf: true })).toEqual(["self"]);
+    expect(roleChangeNotes({ from: "member", to: "admin", isSelf: false })).toEqual([]);
+  });
+
+  test("a refusal says why — the last administrator in words", () => {
+    expect(personRefusal({ code: "last_admin", message: "x" }, de)).toBe(
+      de("people.refusal.lastAdmin"),
+    );
+    expect(personRefusal({ code: "teapot", message: "short and stout" }, de)).toBe(
+      de("people.refusal.engine", { reason: "short and stout" }),
+    );
+    expect(personRefusal(null, de)).toBe(de("people.roleUpdateFailed"));
+  });
+});
+
+describe("where a ?leaf= address lands", () => {
+  const paths = [
+    "llm.provider",
+    "llm.providers.anthropic.api_key",
+    "llm.providers.anthropic.model",
+  ];
+
+  test("a setting is itself; a group opens at its first setting", () => {
+    expect(settingLeafTarget(paths, "llm.provider")).toEqual({ index: 0, kind: "leaf" });
+    expect(settingLeafTarget(paths, "llm.providers.anthropic")).toEqual({
+      index: 1,
+      kind: "group",
+    });
+    expect(settingLeafTarget(paths, "llm")).toEqual({ index: 0, kind: "group" });
+  });
+
+  test("only a path nothing lives under is missing", () => {
+    expect(settingLeafTarget(paths, "llm.providers.frob")).toBeNull();
+    // A prefix of a word is not a group.
+    expect(settingLeafTarget(paths, "llm.prov")).toBeNull();
+  });
+
+  test("an unreported activation state is said as such, not as active", () => {
+    expect(activationStatusLabel(null, de).text).toBe(de("settings.activation.unreported"));
+    expect(activationStatusLabel(null, de).text).not.toBe(de("settings.activation.active"));
   });
 });

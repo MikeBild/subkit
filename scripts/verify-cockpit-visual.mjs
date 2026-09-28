@@ -971,6 +971,15 @@ async function mockApi(route) {
   }
   if (path === `/v1/conversations/${uuid}/messages`)
     return sse(route, { conversation, status: "active" });
+  // The usage page names workflow ids one by one: one known past the list's
+  // first page, and one that no longer exists (a 404, "no longer kept").
+  if (path === "/v1/workflows/catalog-record-1")
+    return json(route, {
+      id: "catalog-record-1",
+      name: "Monatsreport für alle Tochtergesellschaften",
+    });
+  if (path === "/v1/workflows/0e6b2c52-7d1f-4d8e-9d55-5f0c2f7a9e10")
+    return json(route, { error: { code: "not_found", message: "workflow" } }, 404);
   if (path === `/v1/workflows/${uuid}/execution-authorities`)
     return json(route, { items: [], next_cursor: null });
   if (path === `/v1/workflows/${uuid}`)

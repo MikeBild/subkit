@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest } from "@/api/client";
+import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, decisionsHref, settingsHref } from "@/app/links";
 import { useSession } from "@/app/session";
@@ -95,10 +95,13 @@ import {
   PERSON_ROLES,
   type PersonRole,
   permissionLabel,
+  personRefusal,
   resourceTypeLabel,
   roleChange,
+  roleChangeNotes,
   roleName,
-  settingLeafLabel,
+  settingLabel,
+  settingLeafTarget,
   settingMetaLabel,
   settingSectionOf,
   settingsViewFromUrl,
@@ -366,6 +369,8 @@ function RoleChangeConsequence({
   from,
   to,
   toName: targetName,
+  fromName,
+  isSelf,
   roles,
 }: {
   email: string;
@@ -373,9 +378,18 @@ function RoleChangeConsequence({
   to: RoleItem | null;
   /** The picked role's name — known even where the role catalogue is not readable. */
   toName: string;
+  fromName: string;
+  /** The reader is changing their own role. */
+  isSelf: boolean;
   roles: readonly RoleItem[] | undefined;
 }) {
   const { t } = useI18n();
+  const notes = roleChangeNotes({ from: fromName, to: targetName, isSelf });
+  const noteText = notes.map((note) => (
+    <p key={note} className="font-medium text-foreground" data-testid={`people-change-${note}`}>
+      {t(`people.change.note.${note}`)}
+    </p>
+  ));
   const detail = (role: RoleItem | null) => ({
     queryKey: ["admin", "role", role?.id],
     queryFn: () => apiRequest<RoleDetail>(`/v1/rbac/roles/${encodeURIComponent(role?.id ?? "")}`),
@@ -389,6 +403,7 @@ function RoleChangeConsequence({
     return (
       <>
         <p>{t("people.change.intro", { email, role: toName })}</p>
+        {noteText}
         {change.gained.length > 0 ? (
           <>
             <p className="font-medium text-foreground">{t("people.change.gains")}</p>
@@ -401,7 +416,7 @@ function RoleChangeConsequence({
             <PermissionList permissions={change.lost} testId="people-change-lost" />
           </>
         ) : null}
-        {change.gained.length === 0 && change.lost.length === 0 ? (
+        {change.gained.length === 0 && change.lost.length === 0 && notes.length === 0 ? (
           <p>{t("people.change.same")}</p>
         ) : null}
       </>
@@ -411,6 +426,7 @@ function RoleChangeConsequence({
   return (
     <>
       <p>{t("people.change.intro", { email, role: toName })}</p>
+      {noteText}
       {purpose ? <p>{t("people.change.purpose", { purpose })}</p> : null}
     </>
   );
@@ -574,7 +590,12 @@ export function PeoplePage() {
       await refresh();
       toast.success(t("people.roleUpdated"));
     },
-    onError: () => toast.error(t("people.roleUpdateFailed")),
+    // The engine's reason, in words — "the last administrator" is not a
+    // generic failure and must not read like one.
+    onError: (error) =>
+      toast.error(personRefusal(error instanceof ApiError ? error : null, t), {
+        id: "people-role-refused",
+      }),
   });
   const remove = useMutation({
     mutationFn: (id: string) =>
@@ -595,6 +616,7 @@ export function PeoplePage() {
         // sentence that promises it before the click is the one that holds.
         { method: "POST", body: JSON.stringify({ ttl_minutes: INVITE_TTL_HOURS * 60 }) },
       ),
+    onError: (error) => toast.error(personRefusal(error instanceof ApiError ? error : null, t)),
     onSuccess: (result) => {
       setInviteFor(null);
       setInvite({ token: result.plaintext_token, expiresAt: result.expires_at });
@@ -737,12 +759,14 @@ export function PeoplePage() {
               from={roleByName(pendingChange.user.effective_role)}
               to={roleByName(pendingChange.to)}
               toName={pendingChange.to}
+              fromName={pendingChange.user.effective_role}
+              isSelf={pendingChange.user.id === session.principal.id}
               roles={roleItems}
             />
           ) : null
         }
         confirmLabel={t("people.change.confirm")}
-        onConfirm={() => pendingChange && update.mutate(pendingChange)}
+        onConfirm={() => pendingChange && update.mutateAsync(pendingChange)}
         testId="people-role-confirm"
       />
       <ConfirmAction
@@ -760,7 +784,7 @@ export function PeoplePage() {
           ) : null
         }
         confirmLabel={t("people.repair.confirm")}
-        onConfirm={() => repair && update.mutate({ user: repair, to: repair.effective_role })}
+        onConfirm={() => repair && update.mutateAsync({ user: repair, to: repair.effective_role })}
         testId="people-repair-confirm"
       />
       <ConfirmAction
@@ -778,7 +802,7 @@ export function PeoplePage() {
           ) : null
         }
         confirmLabel={t("people.invite")}
-        onConfirm={() => inviteFor && issueInvite.mutate(inviteFor.id)}
+        onConfirm={() => inviteFor && issueInvite.mutateAsync(inviteFor.id)}
         testId="people-invite-confirm"
       />
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -1338,6 +1362,12 @@ export function AccessPage() {
       await client.invalidateQueries({ queryKey: ["admin", "grants"] });
       toast.success(t("access.grantRevoked"));
     },
+    onError: (error) =>
+      toast.error(
+        t("access.revokeFailed", {
+          reason: error instanceof ApiError ? error.message : t("resource.loadFailedDescription"),
+        }),
+      ),
   });
   const createGrant = useMutation({
     mutationFn: () =>
@@ -1909,7 +1939,7 @@ export function AccessPage() {
         }
         confirmLabel={t("access.revokeGrant")}
         tone="destructive"
-        onConfirm={() => revoking && revokeGrant.mutate(revoking.id)}
+        onConfirm={() => revoking && revokeGrant.mutateAsync(revoking.id)}
         testId="grant-revoke-confirm"
       />
       <Dialog
@@ -2305,6 +2335,12 @@ export function NotificationsPage() {
       await client.invalidateQueries({ queryKey: ["admin", "notification-channels"] });
       toast.success(t("notifications.resumed"));
     },
+    onError: (error) =>
+      toast.error(
+        t("notifications.resumeFailed", {
+          reason: error instanceof ApiError ? error.message : t("resource.loadFailedDescription"),
+        }),
+      ),
   });
   const now = Date.now();
   const rules = useQuery({
@@ -2818,10 +2854,11 @@ export function SettingsPage() {
         if (!needle) return true;
         return (
           item.path.toLowerCase().includes(needle) ||
-          item.meta.description?.toLowerCase().includes(needle)
+          item.meta.description?.toLowerCase().includes(needle) ||
+          settingLabel(item.path, t).text.toLowerCase().includes(needle)
         );
       }),
-    [allItems, search],
+    [allItems, search, t],
   );
   const changedItems = useMemo(
     () => allItems.filter((item) => Object.hasOwn(drafts, item.path)),
@@ -2857,11 +2894,17 @@ export function SettingsPage() {
   useEffect(() => {
     if (focused.current || !leaf || !query.data) return;
     focused.current = true;
-    const index = allItems.findIndex((item) => item.path === leaf);
-    if (index < 0) {
+    // A group path (`llm.providers.anthropic`) opens its tab at its first
+    // setting; only a path nothing lives under is "no such setting".
+    const target = settingLeafTarget(
+      allItems.map((item) => item.path),
+      leaf,
+    );
+    if (!target) {
       setLeafMissing(true);
       return;
     }
+    const index = target.index;
     requestAnimationFrame(() => {
       // The field itself where it has one; a composite editor (the auth
       // providers) has none, so its first control takes the cursor.
@@ -3021,7 +3064,7 @@ export function SettingsPage() {
                             setLeaf(path);
                           }}
                         >
-                          {settingLeafLabel(path)}{" "}
+                          {settingLabel(path, t).text}{" "}
                           <span className="font-mono text-muted-foreground">{path}</span>
                         </a>
                       </li>
@@ -3155,7 +3198,7 @@ export function SettingsPage() {
                             >
                               <span className="min-w-0">
                                 <span className="block truncate">
-                                  {settingLeafLabel(item.path)}
+                                  <LabelText label={settingLabel(item.path, t)} />
                                 </span>
                                 <span className="mt-1 block truncate font-mono text-xs font-normal text-muted-foreground">
                                   {item.path}
@@ -3171,7 +3214,7 @@ export function SettingsPage() {
                               </span>
                               <ContextHelp
                                 label={t("settings.about", {
-                                  setting: settingLeafLabel(item.path),
+                                  setting: settingLabel(item.path, t).text,
                                 })}
                                 testId={`setting-help-${index}`}
                               >
@@ -3194,7 +3237,7 @@ export function SettingsPage() {
                                     }))
                                   }
                                   disabled={!canWrite || save.isPending}
-                                  aria-label={settingLeafLabel(item.path)}
+                                  aria-label={settingLabel(item.path, t).text}
                                   data-testid={`setting-input-${index}`}
                                 />
                               ) : (
@@ -3303,7 +3346,7 @@ export function SettingsPage() {
                 <ul className="grid gap-0.5 pl-4">
                   {restartItems.map((item) => (
                     <li key={item.path} className="list-disc">
-                      {settingLeafLabel(item.path)}{" "}
+                      {settingLabel(item.path, t).text}{" "}
                       <span className="font-mono text-xs">{item.path}</span>
                     </li>
                   ))}
