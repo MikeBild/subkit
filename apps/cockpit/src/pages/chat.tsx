@@ -121,6 +121,7 @@ import { type ChatForm, chatForm } from "./chat-form";
 import { ChatFormCard } from "./chat-form-card";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 import { CHAT_MARKDOWN_COMPONENTS } from "./chat-message-link";
+import { AUTHORING_MODES, DEFAULT_AUTHORING_MODE, modeGates, modeLabelKey } from "./chat-mode";
 import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
 import { type ChatReauth, chatReauth } from "./chat-reauth";
 import { ChatReauthCard } from "./chat-reauth-card";
@@ -483,6 +484,34 @@ function ChatComposer({
   );
 }
 
+/**
+ * What a mode still asks about and what it lets through (§14).
+ *
+ * A mode's name says nothing about its gates; two names over one matrix are a
+ * reading trap. The rows come from the engine's enforcement table
+ * (`chat-mode.ts`), and a mode whose difference is only an instruction to the
+ * model says so — a Leitplanke, not a Grenze.
+ */
+function ModeGateMatrix({ mode }: { mode: AuthoringMode }) {
+  const { t } = useI18n();
+  const gates = modeGates(mode);
+  return (
+    <div className="grid gap-0.5 text-xs text-muted-foreground" data-testid="chat-mode-gates">
+      <p data-testid="chat-mode-gates-asks">
+        <span className="font-medium text-foreground">{t("chat.mode.asks")}</span>{" "}
+        {gates.asks.map((key) => t(key)).join(" · ")}
+      </p>
+      {gates.free.length > 0 ? (
+        <p data-testid="chat-mode-gates-free">
+          <span className="font-medium text-foreground">{t("chat.mode.free")}</span>{" "}
+          {gates.free.map((key) => t(key)).join(" · ")}
+        </p>
+      ) : null}
+      {gates.guidance ? <p data-testid="chat-mode-guidance">{t(gates.guidance)}</p> : null}
+    </div>
+  );
+}
+
 function ChatMessage({
   message,
   messageIndex,
@@ -651,6 +680,7 @@ function ChatMessage({
               <ChatReauthCard
                 key={`${message.id}-reauth-${partIndex}`}
                 action={reauth}
+                connectorName={nameFor(reauth.connectorId)?.label || reauth.label || null}
                 pending={Boolean(approval || choice || form)}
                 busy={approvalBusy}
                 onRenew={onReauth}
@@ -796,7 +826,7 @@ export function ChatPage() {
     selectionFromPath(initialPrompt),
   );
   const [showHidden, setShowHidden] = useState(false);
-  const [newPermissionMode, setNewPermissionMode] = useState<AuthoringMode | "default">("default");
+  const [newPermissionMode, setNewPermissionMode] = useState<AuthoringMode>(DEFAULT_AUTHORING_MODE);
   const [conversationSearch, setConversationSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [streamedText, setStreamedText] = useState("");
@@ -881,7 +911,7 @@ export function ChatPage() {
           : {
               message,
               references,
-              ...(newPermissionMode !== "default" ? { permissionMode: newPermissionMode } : {}),
+              permissionMode: newPermissionMode,
               target: {
                 ...(workflowId ? { workflow_id: workflowId } : {}),
                 ...(connectorId ? { connector_id: connectorId } : {}),
@@ -918,6 +948,32 @@ export function ChatPage() {
       ?.last_turn_error ?? null;
   const turnFailureMessage =
     (send.error instanceof ApiError ? send.error.message : null) ?? turnFailure?.message ?? null;
+  /**
+   * Try the failed turn again.
+   *
+   * A send that failed in this session left its text in the composer — the
+   * composer clears only on success — so the retry submits the composer: one
+   * path, and the field empties when it works. A turn that died before a
+   * reload already stored the reader's message; sending it again would
+   * duplicate it, so the retry asks the assistant to take up the last step
+   * instead.
+   */
+  const retryTurn = () => {
+    if (send.error) {
+      const input = document.querySelector<HTMLTextAreaElement>(
+        '[data-testid="chat-composer-input"]',
+      );
+      if (input?.form && input.value.trim()) {
+        input.form.requestSubmit();
+        return;
+      }
+      if (send.variables) {
+        send.mutate(send.variables);
+        return;
+      }
+    }
+    send.mutate({ message: t("chat.retryPrompt") });
+  };
   const cancel = useMutation({
     mutationFn: () => cancelConversation(activeId ?? ""),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversation", activeId] }),
@@ -1085,13 +1141,13 @@ export function ChatPage() {
   // resting state and the row already carries it.
   const badge =
     send.isPending || decide.isPending
-      ? { label: t("chat.outcome.in_progress"), urgent: false }
+      ? { label: t("chat.outcome.in_progress"), waiting: false }
       : resume?.pending_approval || activeRow?.outcome === "awaiting_you"
-        ? { label: t("chat.outcome.awaiting_you"), urgent: true }
+        ? { label: t("chat.outcome.awaiting_you"), waiting: true }
         : resume?.stage === "workflow_saved"
-          ? { label: t("chat.resume.stage.workflowSaved"), urgent: false }
+          ? { label: t("chat.resume.stage.workflowSaved"), waiting: false }
           : activeRow?.outcome === "in_progress" || (!activeRow && current?.status === "active")
-            ? { label: t("chat.outcome.in_progress"), urgent: false }
+            ? { label: t("chat.outcome.in_progress"), waiting: false }
             : null;
   // Titles are prose the model wrote: internal references never reach a row.
   const listRows = useMemo(
@@ -1106,7 +1162,7 @@ export function ChatPage() {
   );
   const startNew = () => {
     setSelection({ kind: "new" });
-    setNewPermissionMode("default");
+    setNewPermissionMode(DEFAULT_AUTHORING_MODE);
     setChatPath(null);
     setListOpen(false);
   };
@@ -1115,7 +1171,21 @@ export function ChatPage() {
   // and a composer, as if nothing had been asked for, and a message typed
   // there would have gone to the conversation that had just failed.
   const conversationFailed = Boolean(activeId) && queryView(detail, () => false) === "error";
+  // Unknown or not the reader's: retrying cannot help, the way on is the list.
+  const conversationMissing =
+    conversationFailed &&
+    detail.error instanceof ApiError &&
+    (detail.error.status === 404 || detail.error.status === 403);
   const listFailed = queryView(conversations, () => false) === "error";
+  const storedMode = detail.data ? storedAuthoringMode(detail.data.draft) : "loading";
+  // The matrix for the mode in force: the one being picked, or the one the
+  // conversation was started in. A legacy or armed exception has no matrix
+  // this page can state, so it shows none rather than a guess.
+  const matrixMode: AuthoringMode | null = !activeId
+    ? newPermissionMode
+    : storedMode === "auto" || storedMode === "ask" || storedMode === "plan"
+      ? storedMode
+      : null;
   const list = (
     <ConversationList
       failed={
@@ -1171,7 +1241,12 @@ export function ChatPage() {
                 other end of the same line, so the page has one left edge. */}
             <div className="min-w-0">
               <h1 className="truncate text-sm font-semibold" data-testid="chat-title">
-                {current?.title || t("chat.new")}
+                {current?.title ||
+                  (conversationFailed
+                    ? t("chat.unavailable")
+                    : activeId && detail.data
+                      ? t("chat.untitled")
+                      : t("chat.new"))}
               </h1>
               <p className="truncate text-xs text-muted-foreground" data-testid="chat-summary">
                 {resumeSummaryLine(resume, t)}
@@ -1189,7 +1264,15 @@ export function ChatPage() {
                 "Waiting for you" and "In progress" do; "Answered" and "Idle"
                 are the resting state and were on almost every conversation. */}
               {current && badge && (
-                <Badge variant={badge.urgent ? "destructive" : "outline"} data-testid="chat-status">
+                // "Wartet auf dich" is amber (§2) — the same tone the list
+                // gives it. It was red here and amber there: one state, two
+                // alarms of different weight.
+                <Badge
+                  variant="outline"
+                  className={cn(badge.waiting && "border-warning/40 bg-warning/10 text-warning")}
+                  data-testid="chat-status"
+                  data-waiting={badge.waiting || undefined}
+                >
                   {badge.label}
                 </Badge>
               )}
@@ -1214,43 +1297,44 @@ export function ChatPage() {
               </IconButton>
             </div>
           </div>
-          <div className={cn("mt-2 grid gap-1", COLUMN)} data-testid="chat-permission">
-            {activeId ? (
-              <p className="text-xs text-muted-foreground">
-                {t("chat.mode.label")}:{" "}
-                {t(`chat.mode.${detail.data ? storedAuthoringMode(detail.data.draft) : "loading"}`)}
-              </p>
-            ) : (
-              <Select
-                value={newPermissionMode}
-                disabled={send.isPending}
-                onValueChange={(value) => {
-                  if (
-                    value === "default" ||
-                    value === "auto" ||
-                    value === "ask" ||
-                    value === "plan"
-                  )
-                    setNewPermissionMode(value);
-                }}
-              >
-                <SelectTrigger
-                  aria-label={t("chat.mode.label")}
-                  data-testid="chat-permission-select"
+          {conversationFailed ? null : (
+            <div className={cn("mt-2 grid gap-1", COLUMN)} data-testid="chat-permission">
+              {activeId ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("chat.mode.label")}:{" "}
+                  {t(
+                    storedMode === "auto" || storedMode === "ask" || storedMode === "plan"
+                      ? modeLabelKey(storedMode)
+                      : `chat.mode.${storedMode}`,
+                  )}
+                </p>
+              ) : (
+                <Select
+                  value={newPermissionMode}
+                  disabled={send.isPending}
+                  onValueChange={(value) => {
+                    const mode = AUTHORING_MODES.find((candidate) => candidate === value);
+                    if (mode) setNewPermissionMode(mode);
+                  }}
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(["default", "auto", "ask", "plan"] as const).map((mode) => (
-                    <SelectItem key={mode} value={mode} data-testid={`chat-permission-${mode}`}>
-                      {t(`chat.mode.${mode}`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            <p className="text-xs text-muted-foreground">{t("chat.mode.boundary")}</p>
-          </div>
+                  <SelectTrigger
+                    aria-label={t("chat.mode.label")}
+                    data-testid="chat-permission-select"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AUTHORING_MODES.map((mode) => (
+                      <SelectItem key={mode} value={mode} data-testid={`chat-permission-${mode}`}>
+                        {t(modeLabelKey(mode))}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {matrixMode ? <ModeGateMatrix mode={matrixMode} /> : null}
+            </div>
+          )}
         </header>
 
         {/* The turn that just died, and the one that died before a reload. The
@@ -1270,6 +1354,17 @@ export function ChatPage() {
                   {turnFailureMessage && (
                     <p className="mt-1 break-words font-mono text-xs">{turnFailureMessage}</p>
                   )}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={send.isPending || decide.isPending}
+                      onClick={retryTurn}
+                      data-testid="chat-error-retry"
+                    >
+                      {t(send.error ? "chat.resend" : "chat.retryTurn")}
+                    </Button>
+                  </div>
                 </>
               )}
             </AlertDescription>
@@ -1295,10 +1390,18 @@ export function ChatPage() {
               <MessageScrollerContent className={COLUMN}>
                 {conversationFailed ? (
                   <LoadFailed
-                    title={t("chat.loadFailed")}
+                    title={t(conversationMissing ? "chat.notFound" : "chat.loadFailed")}
                     onRetry={() => void detail.refetch()}
                     testId="chat-load-failed"
                   >
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setListOpen(true)}
+                      data-testid="chat-load-failed-list"
+                    >
+                      {t("chat.conversations.open")}
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"

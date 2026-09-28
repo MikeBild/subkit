@@ -125,15 +125,13 @@ const EN = {
   "chat.choice.submit": "Send selection",
   "chat.choice.hint": "Choose an option in the question above to continue.",
   "chat.mode.label": "Authoring mode",
-  "chat.mode.default": "System default — autonomous preparation",
+  "chat.mode.default": "Autonomous preparation (system default)",
   "chat.mode.auto": "Autonomous preparation",
   "chat.mode.ask": "Ask before changes",
   "chat.mode.plan": "Planning only",
   "chat.mode.yolo": "Explicit unrestricted exception",
   "chat.mode.legacy": "Existing session policy",
   "chat.mode.loading": "Loading stored mode…",
-  "chat.mode.boundary":
-    "Prepare changes here. Activation and live actions need a separate permission.",
   "authority.unsupportedSteps": "Review these steps: {steps}",
   "authority.adjustTitle": "Automatic operation is not ready for approval",
   "authority.adjustDescription":
@@ -1649,7 +1647,6 @@ const EN = {
   "catalog.conversations.open": "Open conversation",
   "chat.summary": "Work with SubKit through governed actions.",
   "chat.summary.inProgress": "An active conversation is ready to continue.",
-  "chat.resume.awaitingApproval": "You were setting up {target} and left an approval pending.",
   "chat.resume.connectorReadyToSave": "You were setting up {target}; the probe succeeded.",
   "chat.resume.connectorDrafting": "You were drafting {target} but have not probed it yet.",
   "chat.resume.workflowReadyToCommit": "You were authoring {target}; the last preview succeeded.",
@@ -1680,7 +1677,6 @@ const EN = {
   "chat.stop": "Stop",
   "chat.toggleContext": "Toggle working context",
   "chat.failed": "Action failed",
-  "chat.textQuestionSummary": "A question is waiting for your answer.",
   "chat.replyHint": "Answer the question below to continue.",
   "chat.pendingQuestionRequired": "Answer the open question using its controls to continue.",
   "chat.failedDescription": "The request could not be completed. Your input has been kept.",
@@ -2077,6 +2073,24 @@ const EN = {
   "audit.reason.authorityUnavailable": "Approval could not be checked",
   "audit.reason.refreshReplayed": "Refresh token used twice",
   "audit.reason.manualReissue": "Issued again by hand",
+  // Chat: modes and their gates, a conversation that cannot be opened, retry.
+  "chat.mode.asks": "Asks first:",
+  "chat.mode.free": "Without asking:",
+  "chat.mode.gate.readAndCheck": "reading and checking",
+  "chat.mode.gate.preparation": "saving drafts and adding knowledge sources",
+  "chat.mode.gate.otherChanges": "other changes to the workspace",
+  "chat.mode.gate.dangerous": "deleting, overwriting and writing to outside systems",
+  "chat.mode.gate.inlineCredential": "storing credentials pasted into the chat",
+  "chat.mode.gate.activateAndRun": "activating and running live (a separate approval)",
+  "chat.mode.guidance.plan":
+    "Enforces the same gates as “Ask before changes”; that it only plans is an instruction to the model — a guardrail, not a limit.",
+  "chat.unavailable": "Conversation not available",
+  "chat.notFound": "This conversation does not exist or is not visible to you",
+  "chat.resend": "Send again",
+  "chat.retryTurn": "Try again",
+  "chat.retryPrompt": "Please try the last step again.",
+  "chat.reauth.titleNamed": "Reconnect “{name}”",
+  "chat.resume.settingUp": "You are setting up {target}.",
 } as const;
 
 export type TranslationKey = keyof typeof EN;
@@ -2200,15 +2214,13 @@ const DE: Record<TranslationKey, string> = {
   "chat.choice.submit": "Auswahl senden",
   "chat.choice.hint": "Wähle eine Option in der Rückfrage oben, um fortzufahren.",
   "chat.mode.label": "Entwurfsmodus",
-  "chat.mode.default": "Systemstandard — autonome Vorbereitung",
+  "chat.mode.default": "Autonome Vorbereitung (Systemstandard)",
   "chat.mode.auto": "Autonome Vorbereitung",
   "chat.mode.ask": "Vor Änderungen fragen",
   "chat.mode.plan": "Nur planen",
   "chat.mode.yolo": "Explizite unbeschränkte Ausnahme",
   "chat.mode.legacy": "Bestehende Sitzungsrichtlinie",
   "chat.mode.loading": "Gespeicherter Modus wird geladen…",
-  "chat.mode.boundary":
-    "Hier bereitest du Änderungen vor. Aktivieren und live ausführen erfordern eine eigene Freigabe.",
   "authority.unsupportedSteps": "Diese Schritte prüfen: {steps}",
   "authority.adjustTitle": "Automatik noch nicht freigabefähig",
   "authority.adjustDescription":
@@ -3759,7 +3771,6 @@ const DE: Record<TranslationKey, string> = {
   "catalog.conversations.open": "Unterhaltung öffnen",
   "chat.summary": "Mit SubKit über gesteuerte Aktionen arbeiten.",
   "chat.summary.inProgress": "Eine aktive Unterhaltung kann fortgesetzt werden.",
-  "chat.resume.awaitingApproval": "Du hast {target} eingerichtet und eine Freigabe offen gelassen.",
   "chat.resume.connectorReadyToSave": "Du hast {target} eingerichtet; die Probe war erfolgreich.",
   "chat.resume.connectorDrafting": "Du hast {target} entworfen, aber noch nicht geprobt.",
   "chat.resume.workflowReadyToCommit":
@@ -3795,7 +3806,6 @@ const DE: Record<TranslationKey, string> = {
   "chat.stop": "Stoppen",
   "chat.toggleContext": "Arbeitskontext ein- oder ausblenden",
   "chat.failed": "Aktion fehlgeschlagen",
-  "chat.textQuestionSummary": "Eine Rückfrage wartet auf deine Antwort.",
   "chat.replyHint": "Beantworte die Rückfrage unten, um fortzufahren.",
   "chat.pendingQuestionRequired":
     "Beantworte die offene Rückfrage über ihre Auswahl, um fortzufahren.",
@@ -4199,6 +4209,24 @@ const DE: Record<TranslationKey, string> = {
   "audit.reason.authorityUnavailable": "Freigabe war nicht prüfbar",
   "audit.reason.refreshReplayed": "Aktualisierungs-Token doppelt verwendet",
   "audit.reason.manualReissue": "Von Hand neu ausgestellt",
+  // Chat: modes and their gates, a conversation that cannot be opened, retry.
+  "chat.mode.asks": "Fragt vorher:",
+  "chat.mode.free": "Ohne Rückfrage:",
+  "chat.mode.gate.readAndCheck": "lesen und prüfen",
+  "chat.mode.gate.preparation": "Entwürfe speichern und Wissensquellen anlegen",
+  "chat.mode.gate.otherChanges": "andere Änderungen am Arbeitsbereich",
+  "chat.mode.gate.dangerous": "löschen, überschreiben und nach draußen schreiben",
+  "chat.mode.gate.inlineCredential": "eingefügte Zugangsdaten speichern",
+  "chat.mode.gate.activateAndRun": "aktivieren und live ausführen (eigene Freigabe)",
+  "chat.mode.guidance.plan":
+    "Erzwingt dieselben Schranken wie „Vor Änderungen fragen“; dass nur geplant wird, ist eine Anweisung an das Modell — eine Leitplanke, keine Grenze.",
+  "chat.unavailable": "Unterhaltung nicht verfügbar",
+  "chat.notFound": "Diese Unterhaltung gibt es nicht oder sie ist für dich nicht sichtbar",
+  "chat.resend": "Erneut senden",
+  "chat.retryTurn": "Erneut versuchen",
+  "chat.retryPrompt": "Bitte versuch den letzten Schritt noch einmal.",
+  "chat.reauth.titleNamed": "„{name}“ erneut verbinden",
+  "chat.resume.settingUp": "Du richtest {target} ein.",
 };
 
 export const CATALOGS: Record<Locale, Record<TranslationKey, string>> = {

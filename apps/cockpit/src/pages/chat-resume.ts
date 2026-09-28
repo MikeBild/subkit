@@ -37,7 +37,7 @@ type Translate = (key: TranslationKey, values?: Record<string, string>) => strin
 
 const SENTENCE_KEYS: Partial<Record<string, TranslationKey>> = {
   workflow_saved: "chat.resume.workflowSaved",
-  awaiting_approval: "chat.resume.awaitingApproval",
+  awaiting_approval: "chat.resume.settingUp",
   connector_ready_to_save: "chat.resume.connectorReadyToSave",
   connector_drafting: "chat.resume.connectorDrafting",
   workflow_ready_to_commit: "chat.resume.workflowReadyToCommit",
@@ -96,8 +96,10 @@ export function resumeSummaryLine(
   t: Translate,
 ): string {
   if (!resume) return t("chat.summary");
-  if (resume.pending_approval?.tool_name === "ask_user_choice") return t("chat.choice.title");
-  if (resume.pending_approval?.tool_name === "ask_user_text") return t("chat.textQuestionSummary");
+  // "Wartet auf dich" is said once, by the header badge; the card in the
+  // transcript is where the reader acts. This line said it a second time —
+  // "Deine Antwort wird benötigt", "eine Freigabe offen gelassen" — so it
+  // names what the conversation is about instead.
   const key = SENTENCE_KEYS[resume.stage?.toLowerCase() ?? ""];
   if (!key) return t("chat.summary.inProgress");
   return t(key, { target: resumeTarget(resume.active_target, t) });
