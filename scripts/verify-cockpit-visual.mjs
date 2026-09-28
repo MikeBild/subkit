@@ -2657,6 +2657,10 @@ async function assertReviewCloseLeavesNoTrail(page, label) {
     `[data-testid="attention-list"] > li[data-attention-id="workflow:${uuid}"] [data-testid$="-primary"]`,
   );
   const sheet = page.locator('[data-testid="attention-review"]');
+  // A page of ours before Heute, so Back has somewhere of ours to go: the
+  // blank page a fresh tab starts on refuses the cockpit's storage.
+  await stand.visit(page, "usage");
+  await stand.visit(page, "");
   await open.click();
   await sheet.waitFor({ state: "visible" });
   await page.locator('[data-testid="attention-review-close"]').click();
@@ -2664,11 +2668,21 @@ async function assertReviewCloseLeavesNoTrail(page, label) {
   if (new URL(page.url()).searchParams.get("review"))
     throw new Error(`${label}: the closed sheet is still in the address`);
   await page.goBack();
-  await page.waitForTimeout(300);
-  const reopened =
-    (await sheet.isVisible().catch(() => false)) ||
-    (page.url().startsWith("http") && new URL(page.url()).searchParams.has("review"));
-  if (reopened) throw new Error(`${label}: Back after closing reopens the review sheet`);
+  await page
+    .locator('[data-testid="resource-usage"], [data-testid="admin-usage"]')
+    .first()
+    .waitFor({
+      state: "attached",
+      timeout: 10_000,
+    })
+    .catch(() => {});
+  const url = new URL(page.url());
+  if ((await sheet.isVisible().catch(() => false)) || url.searchParams.has("review"))
+    throw new Error(`${label}: Back after closing reopens the review sheet`);
+  if (!url.pathname.endsWith("/usage"))
+    throw new Error(
+      `${label}: Back after closing lands on ${url.pathname}, not where the reader was`,
+    );
 }
 
 async function assertLandsOnToday(page, label, review) {
