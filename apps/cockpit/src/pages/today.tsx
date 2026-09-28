@@ -265,42 +265,47 @@ function AttentionEntry({
   const testId = `attention-item-${index}`;
   return (
     <li
-      className={cn(
-        "flex min-w-0 flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between",
-        CLASS_WEIGHT[item.class],
-      )}
       data-testid={testId}
       data-attention-id={item.id}
       data-attention-class={item.class}
       data-family-slot="decision-row"
     >
-      <p className="min-w-0 break-words text-sm" data-testid={`${testId}-text`}>
-        <SentenceText sentence={sentence} />
-      </p>
-      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2">
-        {secondary ? (
-          <ActionLink
-            action={secondary}
-            item={item}
-            permissions={permissions}
-            testId={`${testId}-secondary`}
-            onReview={onReview}
-            variant="link"
-            label={t(actionLabelKey(secondary, item))}
-          />
-        ) : null}
-        {primary ? (
-          <ActionLink
-            action={primary}
-            item={item}
-            permissions={permissions}
-            testId={`${testId}-primary`}
-            onReview={onReview}
-            variant="primary"
-            label={t(actionLabelKey(primary, item))}
-          />
-        ) : null}
-      </div>
+      {/* The entry is a card of its own: its edge — not the sentence padded
+          inside it — lines up under the page heading. */}
+      <article
+        className={cn(
+          "flex min-w-0 flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between",
+          CLASS_WEIGHT[item.class],
+        )}
+      >
+        <p className="min-w-0 break-words text-sm" data-testid={`${testId}-text`}>
+          <SentenceText sentence={sentence} />
+        </p>
+        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2">
+          {secondary ? (
+            <ActionLink
+              action={secondary}
+              item={item}
+              permissions={permissions}
+              testId={`${testId}-secondary`}
+              onReview={onReview}
+              variant="link"
+              label={t(actionLabelKey(secondary, item))}
+            />
+          ) : null}
+          {primary ? (
+            <ActionLink
+              action={primary}
+              item={item}
+              permissions={permissions}
+              testId={`${testId}-primary`}
+              onReview={onReview}
+              variant="primary"
+              label={t(actionLabelKey(primary, item))}
+            />
+          ) : null}
+        </div>
+      </article>
     </li>
   );
 }
