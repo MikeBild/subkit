@@ -110,13 +110,6 @@ export function listSkillCandidateEvidence(
   return apiRequest(`/v1/skill-candidates/${encodeURIComponent(id)}/evidence`);
 }
 
-/**
- * How far back this queue asks. It has to be the engine's
- * `DECISION_FAILURE_WINDOW_HOURS`, because the overview counts the same thing
- * over that span — when the two drifted apart, the overview said "production
- * incidents: 0" beside a badge counting two of them, and nothing on either
- * screen explained the difference. `decision-window.test.ts` holds them equal.
- */
 export type HeldSchedule = components["schemas"]["ScheduleEntry"];
 export async function listHeldSchedules(): Promise<HeldSchedule[]> {
   const result = await apiRequest<{ schedules: HeldSchedule[] }>("/v1/schedules");
