@@ -114,7 +114,7 @@ export function NotFoundPage() {
       primaryAction={
         <Button asChild data-testid="not-found-home-action">
           <a href={absolute("/")} data-testid="not-found-home">
-            {t("familyFailure.overview")}
+            {t("familyFailure.today")}
           </a>
         </Button>
       }
@@ -138,7 +138,7 @@ export function RouteErrorPage({ reset }: ErrorComponentProps) {
       secondaryAction={
         <Button variant="outline" asChild data-testid="fatal-error-home-action">
           <a href={absolute("/")} data-testid="fatal-error-home">
-            {t("familyFailure.overview")}
+            {t("familyFailure.today")}
           </a>
         </Button>
       }
