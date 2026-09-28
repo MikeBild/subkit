@@ -4,7 +4,7 @@
 // and §13 says a standard has one source and no diverging copies. This tree
 // holds two copies: `COCKPIT-KONVENTION.md` at the root — the family document
 // itself — and the verbatim German copy of §8 inside `apps/cockpit/UI-UX.md`,
-// which is there because this product's attention page (Heute) is measured against it.
+// which is there because this product's attention list (on the Übersicht) is measured against it.
 //
 // Neither was held. Measured on 21.08.2026: `apps/cockpit/UI-UX.md` is named
 // nowhere in scripts/, tests/, package.json, .github/ or apps/cockpit/src, and
@@ -52,7 +52,7 @@ const konvention = konventionBytes.toString("utf8");
 const uiux = readFileSync(UI_UX, "utf8");
 
 describe("the root copy of the family convention", () => {
-  test("it is byte-identical to the reviewed v2.0 document", () => {
+  test("it is byte-identical to the reviewed v2.1 document", () => {
     // THE WHOLE FILE, and the digest is typed on purpose: this repository cannot
     // reach the five sibling checkouts, so the only thing it CAN hold is that
     // its own copy still has the bytes that were reviewed. Raising it is a
@@ -67,27 +67,29 @@ describe("the root copy of the family convention", () => {
     // file, not a hold on it.
     //
     // So the value below is not "SubKit's current bytes" but the reviewed
-    // document. v2.0 is SubKit-first: SubKit authored it and carries it before
+    // document. v2.x is SubKit-first: SubKit authored it and carries it before
     // the five siblings, which keep v1.7 (md5 3ca37336047cb1ae1c51b789d1a91aa9)
-    // until their own slices adopt v2.0 byte for byte. The digest below is the
-    // reviewed v2.0 text those slices will copy. Raising it is a deliberate
+    // until their own slices adopt v2.x byte for byte. The digest below is the
+    // reviewed v2.1 text those slices will copy — v2.1 renames the start page
+    // back to „Übersicht" and puts the operations bar above the attention list. Raising it is a deliberate
     // two-line change — the document AND this line — and never a re-pin to
     // whatever the file happens to hold.
     const digest = createHash("sha256").update(konventionBytes).digest("hex");
-    expect(digest, "COCKPIT-KONVENTION.md is no longer the reviewed v2.0 text").toBe(
-      "63ec43cbaef3f9261748adc46f043f8a821703716fdb9ae12ad31af9397957d4",
+    expect(digest, "COCKPIT-KONVENTION.md is no longer the reviewed v2.1 text").toBe(
+      "710c0e146445f82fa9aaecaae5a16e670074d361ccd210657c8b8c814fdcd7fb",
     );
   });
 
-  test("it carries the paragraphs v1.5 through v2.0 were cut for, not just its header", () => {
+  test("it carries the paragraphs v1.5 through v2.1 were cut for, not just its header", () => {
     // The digest above catches everything, but it catches it in one word:
     // "different". These name WHAT is missing when it goes red — and they are
     // the reason the two versions exist. A version line is one line, and one
     // line is what a hand edit changes: the header alone would pass on a file
     // saying 1.6 whose body is still 1.4, which is exactly the drift §7 leaves
     // to nobody.
-    expect(konvention).toContain("Version 2.0 · 28.09.2026");
-    expect(konvention).toContain('**Leitregel (v2.0): Aufgaben leben nur auf „Heute".**');
+    expect(konvention).toContain("Version 2.1 · 28.09.2026");
+    expect(konvention).toContain('**Leitregel (v2.1): Aufgaben leben nur auf der „Übersicht".**');
+    expect(konvention).toContain("**Betriebsleiste.** Genau vier Werte in einer Zeile");
     expect(konvention).toContain("### 0.1 Ein Fakt, ein Ort");
     expect(konvention).toContain("## 0. Wofür das Cockpit da ist");
     expect(konvention).toContain("**Wortmarke und App-Icon.**");

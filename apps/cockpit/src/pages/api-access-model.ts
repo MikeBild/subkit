@@ -185,7 +185,7 @@ export const KEY_EXPIRING_DAYS = 7;
  * The one state word a key's row carries, or none.
  *
  * Zugangsdaten used to raise these as a second task list above its sections;
- * the tasks live on Heute, and a key's state belongs on the key. One word per
+ * the tasks live on Übersicht, and a key's state belongs on the key. One word per
  * row, the most pressing first: a revoked key holds nothing, an expired one no
  * longer works, one about to lapse will stop soon, and one nobody has used
  * for months is a standing right nobody needs (§11). A fresh key nobody has

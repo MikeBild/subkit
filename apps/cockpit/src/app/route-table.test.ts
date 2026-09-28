@@ -133,7 +133,7 @@ describe("cockpit route table", () => {
     expect(legacyTarget("/access", "?q=admin")).toBe("/people?section=roles&q=admin");
   });
 
-  test("sends the decisions queue and the system page to Heute", () => {
+  test("sends the decisions queue and the system page to Übersicht", () => {
     const W = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
     for (const path of ["/decisions", "/operations"] as const) {
       expect(REDIRECT_ROUTES).toContain(path);
@@ -152,7 +152,7 @@ describe("cockpit route table", () => {
     expect(legacyTarget("/decisions", `?bucket=failing&workflow_id=${W}`)).toBe(
       `/?review=workflow:${W}`,
     );
-    // Not a workflow id: Heute, never a sheet for an address nobody wrote.
+    // Not a workflow id: Übersicht, never a sheet for an address nobody wrote.
     expect(legacyTarget("/decisions", "?workflow_id=1e5")).toBe("/");
     expect(legacyTarget("/operations", "")).toBe("/");
     expect(legacyTarget("/operations", "?tab=health")).toBe("/");

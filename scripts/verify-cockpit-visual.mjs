@@ -119,7 +119,7 @@ const CUSTOM_ROLE_ID = "018f4b4a-6d33-7b3a-9c2d-00000000c0de";
 const REVIEWER_ID = "018f4b4a-6d33-7b3a-9c2d-0000000000a2";
 const SYSTEM_ACCOUNT_ID = "018f4b4a-6d33-7b3a-9c2d-0000000005a1";
 const routes = [
-  // Heute, with the hostile answer: an entry from every source at once, and
+  // Übersicht, with the hostile answer: an entry from every source at once, and
   // one source that could not be read.
   "",
   // One entry's review sheet, at its own address.
@@ -738,7 +738,7 @@ function json(route, body, status = 200) {
 }
 
 /**
- * Heute's hostile answer (`GET /v1/attention`): an entry from every source the
+ * Übersicht's hostile answer (`GET /v1/attention`): an entry from every source the
  * engine reads — a waiting question, a stale heartbeat, a held workflow with a
  * fix, a failing one, a connector, an account connection, a prepared secret,
  * skill proposals, the allowance — in the engine's order, and the risk source
@@ -2531,7 +2531,7 @@ function artifactRouteName(route) {
   // four desktop variants, and the run ended with 860 frames counted and 856
   // files on disk — correctly suspicious, with the wrong guess about why.
   const [rawPath, query] = route.split("?");
-  const name = (rawPath || "today").replace(/\/[^/]+$/, "-record");
+  const name = (rawPath || "overview").replace(/\/[^/]+$/, "-record");
   // A query becomes part of the name, so two narrowings of one page are two
   // frames rather than one overwriting the other (`decisions-bucket-failing`).
   return query ? `${name}-${query.replace(/[^a-z0-9]+/gi, "-").replace(/-+$/, "")}` : name;
@@ -2547,7 +2547,7 @@ function markerFor(route) {
   if (/^runs\/.+/.test(path)) return '[data-testid="run-detail-facts"]';
   if (/^workflows\/.+/.test(path)) return '[data-testid="workflow-recent-runs"]';
   if (path === "chat") return '[data-testid="chat-workspace"]';
-  // Heute, its review sheet, and the old addresses that land on one of them.
+  // Übersicht, its review sheet, and the old addresses that land on one of them.
   const query = route.split("?")[1] ?? "";
   if (path === "" || path === "decisions" || path === "operations")
     return query.startsWith("review=") || query.startsWith("workflow_id=")
@@ -2656,12 +2656,12 @@ async function assertOpenOnce(page, label) {
 }
 
 /**
- * Heute under the hostile answer: every entry one sentence with ONE primary
+ * Übersicht under the hostile answer: every entry one sentence with ONE primary
  * action and at most one secondary link, the badge equal to the list, the
  * failed source named — and neither "Alles erledigt" nor a status line, nor
  * the engine's own wording, anywhere on the list.
  */
-async function assertTodayHostile(page, label, language) {
+async function assertOverviewHostile(page, label, language) {
   const shape = await page.evaluate(() => {
     const entries = [...document.querySelectorAll('[data-testid="attention-list"] > li')];
     return {
@@ -2692,9 +2692,51 @@ async function assertTodayHostile(page, label, language) {
     throw new Error(`${label}: the failed source is not named (${shape.unread})`);
   if (shape.text.includes(ATTENTION_ENGINE_DETAIL))
     throw new Error(`${label}: the engine's wording stands on the list`);
+  await assertOperationsBar(page, label);
 }
 
-/** An old address lands on Heute — with the review it named, and nothing else. */
+/**
+ * The operations bar: four figures above the list — one row on a desktop, two
+ * by two on a phone — compact enough that the attention list still starts on
+ * the first screen, and every link carrying the window it counted.
+ */
+async function assertOperationsBar(page, label) {
+  await page.locator('[data-testid="operations-bar"] [data-figure-state]').first().waitFor();
+  const shape = await page.evaluate(() => {
+    const bar = document.querySelector('[data-testid="operations-bar"]');
+    const figures = [...(bar?.querySelectorAll("[data-figure-state]") ?? [])];
+    const below = document.querySelector(
+      '[data-testid="attention-list"], [data-testid="attention-calm"]',
+    );
+    return {
+      count: figures.length,
+      rows: new Set(figures.map((figure) => Math.round(figure.getBoundingClientRect().top))).size,
+      columns: new Set(figures.map((figure) => Math.round(figure.getBoundingClientRect().left)))
+        .size,
+      height: Math.max(...figures.map((figure) => figure.getBoundingClientRect().height)),
+      belowTop: below ? below.getBoundingClientRect().top : null,
+      links: [...(bar?.querySelectorAll("a") ?? [])].map((link) => link.getAttribute("href")),
+      innerHeight: window.innerHeight,
+      phone: window.innerWidth < 640,
+    };
+  });
+  if (shape.count !== 4)
+    throw new Error(`${label}: the operations bar holds ${shape.count} figures`);
+  const grid = shape.phone ? [2, 2] : [1, 4];
+  if (shape.rows !== grid[0] || shape.columns !== grid[1])
+    throw new Error(
+      `${label}: the figures stand in ${shape.rows}×${shape.columns}, not ${grid[0]}×${grid[1]}`,
+    );
+  if (shape.height > 96)
+    throw new Error(`${label}: a figure is ${shape.height}px tall, not compact`);
+  if (shape.belowTop !== null && shape.belowTop > shape.innerHeight)
+    throw new Error(`${label}: the bar pushes what needs the reader below the first screen`);
+  for (const href of shape.links)
+    if (!/started_from=|ts_from=|health=not_ok/.test(href ?? ""))
+      throw new Error(`${label}: a figure links to ${href}, not to the list of its window`);
+}
+
+/** An old address lands on Übersicht — with the review it named, and nothing else. */
 /**
  * Open → close leaves no trail: Back after closing a review sheet goes where
  * the reader was before it opened, never into the sheet again. Closing used
@@ -2706,7 +2748,7 @@ async function assertReviewCloseLeavesNoTrail(page, label) {
     `[data-testid="attention-list"] > li[data-attention-id="workflow:${uuid}"] [data-testid$="-primary"]`,
   );
   const sheet = page.locator('[data-testid="attention-review"]');
-  // A page of ours before Heute, so Back has somewhere of ours to go: the
+  // A page of ours before Übersicht, so Back has somewhere of ours to go: the
   // blank page a fresh tab starts on refuses the cockpit's storage.
   await stand.visit(page, "usage");
   await stand.visit(page, "");
@@ -2734,21 +2776,22 @@ async function assertReviewCloseLeavesNoTrail(page, label) {
     );
 }
 
-async function assertLandsOnToday(page, label, review) {
+async function assertLandsOnOverview(page, label, review) {
   const url = new URL(page.url());
   if (url.pathname.replace(/\/$/, "") !== "/cockpit")
-    throw new Error(`${label}: lands on ${url.pathname}, not on Heute`);
+    throw new Error(`${label}: lands on ${url.pathname}, not on Übersicht`);
   if (url.searchParams.get("review") !== review)
     throw new Error(`${label}: lands with review=${url.searchParams.get("review")}`);
-  if (!review && url.search) throw new Error(`${label}: carries ${url.search} onto Heute`);
+  if (!review && url.search) throw new Error(`${label}: carries ${url.search} onto Übersicht`);
 }
 
 /**
- * Heute with nothing open: "Alles erledigt." and one status line, nothing
- * else — no badge, no tile. Swaps the answer and restores it in `finally`: a
- * scenario that leaves its route behind poisons every frame after it.
+ * Übersicht with nothing open: the operations bar stays, and below it "Alles
+ * erledigt." and one status line, nothing else — no badge. Swaps the answer
+ * and restores it in `finally`: a scenario that leaves its route behind
+ * poisons every frame after it.
  */
-async function verifyTodayCalm(page, label, language, capture) {
+async function verifyOverviewCalm(page, label, language, capture) {
   const pattern = "**/v1/attention*";
   const calm = (route) => route.fulfill({ json: attentionAnswer({ items: [], failed: [] }) });
   await page.route(pattern, calm);
@@ -2758,12 +2801,11 @@ async function verifyTodayCalm(page, label, language, capture) {
     const shape = await page.evaluate(() => ({
       status: document.querySelectorAll('[data-testid="attention-status"]').length,
       badge: document.querySelectorAll('[data-testid="nav-overview-count"]').length,
-      kpis: document.querySelectorAll("[data-family-kpi-id]").length,
       text: document.querySelector('[data-testid="attention-calm"]')?.innerText ?? "",
     }));
     if (shape.status !== 1) throw new Error(`${label}: ${shape.status} status lines, not one`);
     if (shape.badge) throw new Error(`${label}: a badge although nothing is open`);
-    if (shape.kpis) throw new Error(`${label}: KPI tiles on a calm Heute`);
+    await assertOperationsBar(page, label);
     if (!shape.text.startsWith(language === "de" ? "Alles erledigt." : "All done."))
       throw new Error(`${label}: the calm state reads "${shape.text}"`);
     await capture();
@@ -3472,9 +3514,13 @@ for (const locale of variants) {
       await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertBlankLists(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "")
-        await assertTodayHostile(page, `${locale.artifact}/${viewport.name}/today`, locale.name);
+        await assertOverviewHostile(
+          page,
+          `${locale.artifact}/${viewport.name}/overview`,
+          locale.name,
+        );
       if (route.startsWith("decisions") || route === "operations")
-        await assertLandsOnToday(
+        await assertLandsOnOverview(
           page,
           `${locale.artifact}/${viewport.name}/${route}`,
           route.includes("workflow_id=") ? `workflow:${uuid}` : null,
@@ -3484,7 +3530,16 @@ for (const locale of variants) {
       if (route.startsWith("audit?") && route.includes("action="))
         await assertAuditActionChip(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "chat") await assertChat(page, `${locale.artifact}/${viewport.name}/${route}`);
-      // The engine's reason lives on Heute and on the workflow's own page; a
+      // The operating figures have one place, the Übersicht; Nutzung keeps
+      // consumption and its runtime table.
+      if (
+        route === "usage" &&
+        (await page.locator('[data-family-kpi-id], [data-testid="operations-bar"]').count()) > 0
+      )
+        throw new Error(
+          `${locale.artifact}/${viewport.name}/usage: the operating figures stand here a second time`,
+        );
+      // The engine's reason lives on Übersicht and on the workflow's own page; a
       // list row states the health word and links to the failures, no more.
       if (
         route === "workflows" &&
@@ -3541,14 +3596,17 @@ for (const locale of variants) {
       });
       // After the frame: it navigates away from the page it photographed.
       if (route === "")
-        await assertReviewCloseLeavesNoTrail(page, `${locale.artifact}/${viewport.name}/today`);
+        await assertReviewCloseLeavesNoTrail(page, `${locale.artifact}/${viewport.name}/overview`);
     }
     if (new Set(headingLeft.values()).size !== 1)
       throw new Error(
         `${locale.artifact}/${viewport.name}: page titles start at different x — ${JSON.stringify(Object.fromEntries(headingLeft))}`,
       );
-    await verifyTodayCalm(page, `${locale.artifact}/${viewport.name}/today-calm`, locale.name, () =>
-      shoot(page, `${locale.artifact}-${viewport.name}-today-calm`, { fullPage: false }),
+    await verifyOverviewCalm(
+      page,
+      `${locale.artifact}/${viewport.name}/overview-calm`,
+      locale.name,
+      () => shoot(page, `${locale.artifact}-${viewport.name}-overview-calm`, { fullPage: false }),
     );
     if (viewport.name === "desktop")
       await verifyInstallationPages(page, stand, locale.name, (state) =>

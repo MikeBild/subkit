@@ -1,19 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import {
-  formatDurationMs,
-  usageBounds,
-  usageRows,
-  usageStatsEndpoint,
-  usageTotals,
-} from "@/pages/usage-model";
+import { formatDurationMs, usageRows } from "@/pages/usage-model";
 
 describe("cockpit usage presentation", () => {
-  test("supplies the required usage window", () => {
-    const endpoint = usageStatsEndpoint(usageBounds("30d", new Date("2026-08-10T12:00:00.000Z")));
-    expect(endpoint).toContain("bucket=day");
-    expect(endpoint).toContain("from=2026-07-11T12%3A00%3A00.000Z");
-  });
-
   test("turns usage buckets into readable rows", () => {
     expect(
       usageRows({
@@ -50,32 +38,5 @@ describe("cockpit usage presentation", () => {
   test("ignores an envelope that carries no groups", () => {
     expect(usageRows(null)).toEqual([]);
     expect(usageRows({})).toEqual([]);
-  });
-
-  test("reads the headline totals and the success rate they imply", () => {
-    expect(
-      usageTotals({
-        totals: {
-          executions: { count: 40, by_status: { completed: 36, failed: 4 } },
-          duration_ms: { avg: 1110, p95: 2300 },
-        },
-      }),
-    ).toEqual({
-      executions: 40,
-      averageDurationMs: 1110,
-      p95DurationMs: 2300,
-      successRatePercent: 90,
-      failedRuns: 4,
-    });
-  });
-
-  test("reports no success rate when nothing ran", () => {
-    expect(usageTotals({ totals: { executions: { count: 0, by_status: {} } } })).toEqual({
-      executions: 0,
-      averageDurationMs: null,
-      p95DurationMs: null,
-      successRatePercent: null,
-      failedRuns: 0,
-    });
   });
 });

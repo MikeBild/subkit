@@ -1,8 +1,8 @@
 /**
- * UI lifecycle coverage of a decision in Heute's review sheet; HTTP
+ * UI lifecycle coverage of a decision in Übersicht's review sheet; HTTP
  * integration tests enforce persistence and authorization.
  *
- * The entry leaves Heute the moment its last decision is taken and comes back
+ * The entry leaves Übersicht the moment its last decision is taken and comes back
  * when the engine refuses it; the toast leads to the audit trail.
  */
 export async function verifyDecisionLifecycle(page, stand, id, locale, capture) {
@@ -201,7 +201,7 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
       .waitFor();
     await capture("failed-review");
     if ((await card.count()) !== 1) throw new Error("Failed approval removed the card");
-    // A refused decision brings its entry back: it was taken off Heute the
+    // A refused decision brings its entry back: it was taken off Übersicht the
     // moment the button was pressed.
     await listed().waitFor({ state: "attached" });
     await openSheet();
@@ -209,13 +209,13 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
     await card.locator('[data-testid$="-toggle"]').click();
     await approve.click();
     // The last decision of the entry closes the sheet and takes the entry off
-    // Heute at once; the toast leads to the audit trail of what was decided.
+    // Übersicht at once; the toast leads to the audit trail of what was decided.
     await page.getByTestId("attention-review").waitFor({ state: "hidden" });
     const audit = page.getByTestId("attention-decided-audit");
     await audit.waitFor();
     if (!(await audit.getAttribute("href"))?.includes("/cockpit/audit?"))
       throw new Error("The decision's toast does not lead to the audit trail");
-    if (await listed().count()) throw new Error("The decided entry is still on Heute");
+    if (await listed().count()) throw new Error("The decided entry is still on Übersicht");
     await page.reload();
     await page.getByTestId("attention-page").waitFor();
     await page.getByTestId("attention-history").waitFor();

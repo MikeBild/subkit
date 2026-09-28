@@ -30,7 +30,7 @@ function contractMeta(): Plugin {
  * address without the slash — `/cockpit`, `/cockpit?review=…` — because the
  * router runs with `trailingSlash: "never"`. Vite's dev and preview servers
  * only know the base WITH its slash and answer the bare one with a "did you
- * mean" page, so every link to Heute was dead here and nowhere else.
+ * mean" page, so every link to Übersicht was dead here and nowhere else.
  */
 function bareBase(): Plugin {
   const rewrite = (req: { url?: string }, _res: unknown, next: () => void) => {

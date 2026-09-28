@@ -134,7 +134,7 @@ describe("runs", () => {
   });
 });
 
-describe("Heute", () => {
+describe("Übersicht", () => {
   test("the entry a link names is the review sheet the page opens", () => {
     for (const id of [`workflow:${ID}`, "skills", `connector:${ID}`, "secret-approval:mail@3"])
       expect(reviewFromUrl(query(attentionHref({ review: id })))).toBe(id);
