@@ -17490,6 +17490,7 @@ export interface components {
             approved_by: string[];
             live_connections: number;
             disabled_at: string | null;
+            retired_at: string | null;
             created_at: string;
         };
         Whoami: {

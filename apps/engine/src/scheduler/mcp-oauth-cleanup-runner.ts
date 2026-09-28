@@ -22,6 +22,18 @@
 //      live refresh tokens still authenticate. The guard therefore checks
 //      all three proof-of-use tables via NOT EXISTS.
 //
+//   4b) mcp_oauth_clients — RETIRED, not deleted: a DCR registration created
+//      more than 7 days ago that nobody holds a valid grant for (no live
+//      access or refresh token — the same predicate the Cockpit's
+//      "Verbundene Anwendungen" reads) and that shows no use in the last 7
+//      days (no access token used, no refresh token minted, no authorization
+//      code issued). `disabled_at` and `retired_at` are set together; the
+//      registration leaves the list and comes back the moment a person
+//      completes an authorization for it (server-provider.ts). A client that
+//      registers on every run and never returns — a deploy verifier — would
+//      otherwise bury the real applications under hundreds of rows no one can
+//      use. Manual registrations are never retired.
+//
 //   5) mcp_oauth_states — in-flight CLIENT-direction authorization rows
 //      (subkit acting as an OAuth client against an external MCP server)
 //      whose `expires_at` has passed. These are short-lived (10-min TTL);
@@ -35,7 +47,7 @@
 // abort the remaining sweeps. The cron is scheduled at hour resolution so
 // a failed tick costs at most one extra hour of table growth.
 
-import { and, lt, notExists, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, notExists, or, sql } from "drizzle-orm";
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../audit/index.ts";
 import type { Db } from "../db/client.ts";
 import {
@@ -62,6 +74,9 @@ const CODE_GRACE = sql`interval '1 day'`;
  *  garbage-collected after 30 days. */
 const CLIENT_GRACE = sql`interval '30 days'`;
 
+/** A DCR registration with no valid grant and no use for this long is retired. */
+const RETIRE_AFTER = sql`interval '7 days'`;
+
 /**
  * Run the four MCP OAuth retention sweeps.
  *
@@ -75,6 +90,7 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
   let refresh_tokens_deleted = 0;
   let codes_deleted = 0;
   let clients_deleted = 0;
+  let retired: Array<{ id: string; client_id: string; client_name: string | null }> = [];
   let states_deleted = 0;
   let connector_oauth_start_grants_deleted = 0;
   let connector_oauth_states_deleted = 0;
@@ -196,6 +212,123 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     });
   }
 
+  // ── Sweep 4b: retire dead DCR registrations ───────────────────────────────
+  // tenant-filter:exempt — mcp_oauth_clients has no tenant_id; the NOT EXISTS
+  // subqueries guard over the client's own token rows, across tenants. One
+  // statement, so a token minted between "is it dead?" and "retire it" cannot
+  // slip past a separate read.
+  try {
+    const at = new Date();
+    retired = await db
+      .update(mcpOauthClients)
+      .set({ disabled_at: at, retired_at: at })
+      .where(
+        and(
+          eq(mcpOauthClients.registration_source, "dcr"),
+          isNull(mcpOauthClients.disabled_at),
+          lt(mcpOauthClients.created_at, sql`now() - ${RETIRE_AFTER}`),
+          // A valid grant (a live access token — listClientApprovals), or an
+          // access token used within the window.
+          notExists(
+            db
+              .select({ id: mcpOauthAccessTokens.id })
+              .from(mcpOauthAccessTokens) // tenant-filter:exempt — cross-tenant retention sweep; subquery is a NOT EXISTS guard only
+              .where(
+                and(
+                  sql`${mcpOauthAccessTokens.client_id} = ${mcpOauthClients.client_id}`,
+                  or(
+                    and(
+                      isNull(mcpOauthAccessTokens.revoked_at),
+                      gt(mcpOauthAccessTokens.expires_at, sql`now()`),
+                    ),
+                    gt(mcpOauthAccessTokens.last_used_at, sql`now() - ${RETIRE_AFTER}`),
+                  ),
+                ),
+              ),
+          ),
+          // A valid grant (a live refresh token), or one minted within the
+          // window — a rotation is use.
+          notExists(
+            db
+              .select({ id: mcpOauthRefreshTokens.id })
+              .from(mcpOauthRefreshTokens) // tenant-filter:exempt — cross-tenant retention sweep; subquery is a NOT EXISTS guard only
+              .where(
+                and(
+                  sql`${mcpOauthRefreshTokens.client_id} = ${mcpOauthClients.client_id}`,
+                  or(
+                    and(
+                      isNull(mcpOauthRefreshTokens.revoked_at),
+                      gt(mcpOauthRefreshTokens.expires_at, sql`now()`),
+                    ),
+                    gt(mcpOauthRefreshTokens.created_at, sql`now() - ${RETIRE_AFTER}`),
+                  ),
+                ),
+              ),
+          ),
+          // An authorization in flight, or one just completed.
+          notExists(
+            db
+              .select({ id: mcpOauthAuthorizationCodes.id })
+              .from(mcpOauthAuthorizationCodes) // tenant-filter:exempt — cross-tenant retention sweep; subquery is a NOT EXISTS guard only
+              .where(
+                and(
+                  sql`${mcpOauthAuthorizationCodes.client_id} = ${mcpOauthClients.client_id}`,
+                  gt(mcpOauthAuthorizationCodes.created_at, sql`now() - ${RETIRE_AFTER}`),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning({
+        id: mcpOauthClients.id,
+        client_id: mcpOauthClients.client_id,
+        client_name: mcpOauthClients.client_name,
+      });
+  } catch (err) {
+    logger.error({
+      module: "scheduler",
+      action: "mcp_oauth_cleanup.clients_retire_failed",
+      msg: "MCP OAuth dead-registration retirement failed",
+      tick_id: tickId,
+      ...errorFields(err),
+    });
+  }
+
+  // One row per sweep that retired anything, naming what it retired — the
+  // Cockpit's count of hidden registrations has its reason in the trail.
+  if (retired.length > 0) {
+    try {
+      await auditAwait(
+        {
+          tenant_id: SYSTEM_TENANT_ID,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.MCP_OAUTH_CLIENT_RETIRED,
+          resource_type: "mcp_oauth_client",
+          resource_id: null,
+          result: "success",
+          metadata: {
+            request_source: "scheduler",
+            count: retired.length,
+            ids: retired.map((row) => row.id),
+            client_names: [
+              ...new Set(retired.flatMap((row) => (row.client_name ? [row.client_name] : []))),
+            ],
+          },
+        },
+        db,
+      );
+    } catch (err) {
+      logger.error({
+        module: "scheduler",
+        action: "mcp_oauth_cleanup.retire_audit_failed",
+        msg: "MCP OAuth retirement audit row failed",
+        tick_id: tickId,
+        ...errorFields(err),
+      });
+    }
+  }
+
   // ── Sweep 5: expired client-direction in-flight authorization states ──────
   // tenant-filter:exempt — cross-tenant retention sweep
   // CLIENT direction (subkit → external MCP server). 10-min TTL rows; an
@@ -279,6 +412,7 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
           access_tokens_deleted,
           refresh_tokens_deleted,
           clients_deleted,
+          clients_retired: retired.length,
           states_deleted,
           connector_oauth_start_grants_deleted,
           connector_oauth_states_deleted,
@@ -306,6 +440,7 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     access_tokens_deleted,
     refresh_tokens_deleted,
     clients_deleted,
+    clients_retired: retired.length,
     states_deleted,
     connector_oauth_start_grants_deleted,
     connector_oauth_states_deleted,

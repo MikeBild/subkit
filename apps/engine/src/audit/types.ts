@@ -737,6 +737,12 @@ export const AuditAction = {
   MCP_OAUTH_EXPIRED_PRUNED: "mcp_oauth.expired_pruned",
   // Emitted when an admin disables a registered OAuth client via the admin API.
   MCP_OAUTH_CLIENT_DISABLED: "mcp_oauth.client_disabled",
+  // Emitted once per cleanup tick that retired dynamic registrations nobody
+  // holds a grant for or has used in a week (count + row ids in metadata).
+  MCP_OAUTH_CLIENT_RETIRED: "mcp_oauth.client_retired",
+  // Emitted when a person completes an authorization for a retired
+  // registration and it becomes usable again.
+  MCP_OAUTH_CLIENT_REACTIVATED: "mcp_oauth.client_reactivated",
   MCP_OAUTH_CLIENT_LISTED: "mcp_oauth.client_listed",
   MCP_OAUTH_TOKEN_REJECTED: "mcp_oauth.token_rejected",
 } as const;

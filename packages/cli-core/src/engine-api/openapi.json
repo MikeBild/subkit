@@ -3915,6 +3915,12 @@
               "null"
             ]
           },
+          "retired_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
             "type": "string"
           }
@@ -3928,6 +3934,7 @@
           "approved_by",
           "live_connections",
           "disabled_at",
+          "retired_at",
           "created_at"
         ]
       },
