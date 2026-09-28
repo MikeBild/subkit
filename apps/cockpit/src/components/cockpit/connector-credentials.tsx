@@ -116,7 +116,7 @@ export function ConnectorCredentials({
             variant={lost ? "destructive" : state === "connected" ? "secondary" : "outline"}
             data-testid="connector-auth-state"
           >
-            <span aria-hidden="true">{lost ? "●" : "○"}</span> {t(authStateLabel(state))}
+            {t(authStateLabel(state))}
           </Badge>
         </CardTitle>
         <CardDescription>

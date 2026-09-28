@@ -7,8 +7,11 @@ import { resolve } from "node:path";
 import { settingsHref } from "@/app/links";
 import { CATALOGS, translate } from "@/lib/i18n";
 import {
+  isUnset,
   SETTING_GROUPS,
   SETTING_SECTION_KEYS,
+  type SettingItem,
+  settingFieldValue,
   settingLabel,
   settingLeafTarget,
   settingMetaLabel,
@@ -195,5 +198,24 @@ describe("where a ?leaf= address lands", () => {
     expect(settingLeafTarget(paths, "llm.providers.frob")).toBeNull();
     // A prefix of a word is not a group.
     expect(settingLeafTarget(paths, "llm.prov")).toBeNull();
+  });
+});
+
+describe("a setting's text field", () => {
+  const meta = { sensitive: false } as SettingItem["meta"];
+  test("an unset setting shows an empty field, never the word null", () => {
+    expect(settingFieldValue({ value: null, meta }, undefined)).toBe("");
+    expect(isUnset({ value: null })).toBe(true);
+  });
+  test("a set value, a draft and a secret", () => {
+    expect(settingFieldValue({ value: "info", meta }, undefined)).toBe("info");
+    expect(settingFieldValue({ value: 3, meta }, undefined)).toBe("3");
+    expect(settingFieldValue({ value: "info", meta }, "debug")).toBe("debug");
+    expect(
+      settingFieldValue(
+        { value: "x", meta: { sensitive: true } as SettingItem["meta"] },
+        undefined,
+      ),
+    ).toBe("");
   });
 });
