@@ -128,6 +128,15 @@ export function reviewFromUrl(search: string): string | null {
 }
 
 /**
+ * Nutzung, read over one window (`24h` · `7d` · `30d`). The page's default,
+ * thirty days, is left out. `usageWindowFromUrl` in pages/operations-figures.ts
+ * reads it back.
+ */
+export function usageHref(filter: { window?: "24h" | "7d" | "30d" | null } = {}): string {
+  return withQuery("/usage", { window: filter.window === "30d" ? null : filter.window });
+}
+
+/**
  * The settings page, opened at one leaf (`server.public_base_url`), or at a
  * section and a search. `settingsViewFromUrl` in pages/settings-model.ts reads it back.
  */
