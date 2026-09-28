@@ -429,6 +429,81 @@ describe("per reader", () => {
   });
 });
 
+describe("permission cost", () => {
+  test("a non-admin's filter costs the same for one granted item as for ten", async () => {
+    // Counts every query the reader's part issues. The tenant facts are warmed
+    // first: this measures the per-reader permission filter, which runs on the
+    // MCP connect path against a 400 ms budget.
+    let queries = 0;
+    const counted = new Set(["select", "selectDistinct", "execute", "$count"]);
+    const countingDb = new Proxy(testDb.db, {
+      get(target, prop) {
+        const value = Reflect.get(target, prop, target) as unknown;
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          if (typeof prop === "string" && counted.has(prop)) queries += 1;
+          return (value as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+
+    const [t] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "t-attention-cost", display_name: "Cost" })
+      .returning();
+    const costTenant = t!.id;
+    const [u] = await testDb.db
+      .insert(users)
+      .values({ tenant_id: costTenant, email: "cost@a", role: "enduser", role_id: null })
+      .returning({ id: users.id });
+    const reader: ResolvedPrincipal = {
+      provider: "api_key",
+      kind: "user",
+      id: u!.id,
+      tenant_id: costTenant,
+      roles: [],
+    };
+    const ids: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const { workflow_id } = await seedPatchableWorkflow(testDb.db, costTenant, `cost-${i}`);
+      ids.push(workflow_id);
+      await testDb.db.insert(patchCandidates).values({
+        tenant_id: costTenant,
+        workflow_id,
+        classification: "safe",
+        status: "proposed",
+        diff: reviewableDiff(`fix ${i}`),
+      });
+    }
+    const grant = (workflowId: string) =>
+      grantResource(testDb.db, {
+        tenant_id: costTenant,
+        subject_type: "user",
+        subject_id: reader.id,
+        resource_type: "workflow",
+        resource_id: workflowId,
+        permission: "workflow:read",
+      });
+
+    await buildAttention(testDb.db, adminPrincipal(costTenant)); // warm the tenant cache
+    await grant(ids[0] as string);
+    queries = 0;
+    const one = await buildAttention(countingDb, reader);
+    const forOne = queries;
+    expect(one.items).toHaveLength(1);
+
+    for (const id of ids.slice(1)) await grant(id);
+    queries = 0;
+    const ten = await buildAttention(countingDb, reader);
+    const forTen = queries;
+    expect(ten.items).toHaveLength(10);
+    expect(forTen).toBe(forOne);
+    // Seven distinct gates at a few catalog reads each, plus the reader's own
+    // conversations — bounded, and independent of how many items there are.
+    expect(forTen).toBeLessThanOrEqual(30);
+  });
+});
+
 describe("a source that fails", () => {
   test("is reported failed, and the list is not all clear even with nothing in it", async () => {
     const [empty] = await testDb.db
