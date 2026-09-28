@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
 import ENGINE_PERMISSIONS from "../apps/engine/src/rbac/permissions.json" with { type: "json" };
+import { verifyApiAccess } from "./lib/cockpit-api-access.mjs";
 import { verifyChatActivation } from "./lib/cockpit-chat-activation.mjs";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
 import { verifyChatApprovals } from "./lib/cockpit-chat-approvals.mjs";
@@ -607,6 +608,108 @@ const messages = [
   ...toolTurn,
 ];
 
+/**
+ * The applications connected to this installation, as production held them:
+ * a deploy verifier registered a client on every run and never came back —
+ * 200 registrations nobody holds a grant for, thirty retired by housekeeping,
+ * one revoked — against three real applications, in no order at all. Listed
+ * flat, the real ones drowned and Kontoverbindungen below them was out of
+ * reach. The names are words, never identifiers (cockpit-visible-uuids).
+ */
+const REAL_OAUTH_CLIENTS = ["Claude", "ChatGPT", "WatchKit"];
+const OAUTH_CLIENTS = (() => {
+  const at = (day) => `2026-08-${String(day).padStart(2, "0")}T09:00:00.000Z`;
+  const dead = Array.from({ length: 200 }, (_, index) => ({
+    id: `00000000-0000-4000-9000-${String(index).padStart(12, "0")}`,
+    client_id: `deploy-verify-${index}`,
+    client_name: "Deploy verify",
+    redirect_uris: ["https://verify.example.com/callback"],
+    registration_source: "dcr",
+    approved_by: [],
+    live_connections: 0,
+    disabled_at: null,
+    retired_at: null,
+    created_at: at(1 + (index % 20)),
+  }));
+  const retired = Array.from({ length: 30 }, (_, index) => ({
+    ...dead[index],
+    id: `00000000-0000-4000-9100-${String(index).padStart(12, "0")}`,
+    client_id: `deploy-verify-retired-${index}`,
+    disabled_at: "2026-08-25T09:00:00.000Z",
+    retired_at: "2026-08-25T09:00:00.000Z",
+  }));
+  const real = REAL_OAUTH_CLIENTS.map((name, index) => ({
+    id: `00000000-0000-4000-9200-${String(index).padStart(12, "0")}`,
+    client_id: `real-${index}`,
+    client_name: name,
+    redirect_uris: ["https://app.example.com/callback"],
+    registration_source: "dcr",
+    approved_by: ["operator@example.com"],
+    live_connections: 1,
+    disabled_at: null,
+    retired_at: null,
+    created_at: at(2 + index),
+  }));
+  const revoked = {
+    ...real[0],
+    id: "00000000-0000-4000-9300-000000000000",
+    client_id: "revoked",
+    client_name: "Altes Werkzeug",
+    approved_by: [],
+    live_connections: 0,
+    disabled_at: "2026-07-01T09:00:00.000Z",
+  };
+  return [
+    ...dead.slice(0, 90),
+    real[0],
+    ...retired.slice(0, 15),
+    revoked,
+    ...dead.slice(90, 160),
+    real[1],
+    ...retired.slice(15),
+    ...dead.slice(160),
+    real[2],
+  ];
+})();
+
+const API_KEY_BASE = {
+  scopes: ["workflow:read", "workflow:run"],
+  created_at: "2026-08-10T07:00:00.000Z",
+  last_used_at: null,
+  expires_at: null,
+  rotating_out_at: null,
+  revoked_at: null,
+};
+const ACTIVE_KEY_NAMES = [
+  "Cockpit verification",
+  "Reporting-Export",
+  "Nachtlauf",
+  "Buchhaltung",
+  "Monitoring",
+];
+const API_KEYS = [
+  ...Array.from({ length: 20 }, (_, index) => ({
+    ...API_KEY_BASE,
+    id: `00000000-0000-4000-9400-${String(index).padStart(12, "0")}`,
+    name: `Altes Skript ${index + 1}`,
+    prefix: `wf_live_old${index}`,
+    revoked_at: "2026-07-20T09:00:00.000Z",
+  })),
+  ...ACTIVE_KEY_NAMES.map((name, index) => ({
+    ...API_KEY_BASE,
+    id: index === 0 ? uuid : `00000000-0000-4000-9500-${String(index).padStart(12, "0")}`,
+    name,
+    prefix: index === 0 ? "wf_live_demo" : `wf_live_key${index}`,
+  })),
+  ...Array.from({ length: 20 }, (_, index) => ({
+    ...API_KEY_BASE,
+    id: `00000000-0000-4000-9600-${String(index).padStart(12, "0")}`,
+    name: `Abgelöster Schlüssel ${index + 1}`,
+    prefix: `wf_live_gone${index}`,
+    revoked_at: "2026-08-01T09:00:00.000Z",
+  })),
+];
+
 function json(route, body, status = 200) {
   return route.fulfill({
     status,
@@ -917,6 +1020,8 @@ async function mockApi(route) {
         "identity:read",
         "rbac:read",
         "api_key:read",
+        "mcp_oauth_client:read",
+        "mcp_oauth_client:revoke",
         "settings:read",
         "identity:write",
         "rbac:write",
@@ -2017,21 +2122,12 @@ async function mockApi(route) {
       // omits it renders a page that cannot mount.
       diagnostics: { pending_restart_keys: [], override_keys: [] },
     });
+  if (path === "/v1/oauth/clients") return json(route, { items: OAUTH_CLIENTS });
   if (path === "/v1/identity/api-keys")
     return json(route, {
-      items: [
-        {
-          id: uuid,
-          name: "Cockpit verification",
-          prefix: "wf_live_demo",
-          scopes: ["workflow:read", "workflow:run"],
-          created_at: "2026-08-10T07:00:00.000Z",
-          last_used_at: null,
-          expires_at: null,
-          rotating_out_at: null,
-          revoked_at: null,
-        },
-      ],
+      // Hostile: five live keys among forty revoked ones, interleaved as a
+      // long-lived installation returns them. The live ones must lead.
+      items: API_KEYS,
       // Declared by the settings response; a fixture that omits it renders a
       // page that cannot mount.
       diagnostics: { pending_restart_keys: [], override_keys: [] },
@@ -3338,6 +3434,14 @@ for (const locale of variants) {
           fullPage: false,
         }),
       );
+    await verifyApiAccess(page, stand, locale.name, {
+      realClients: REAL_OAUTH_CLIENTS,
+      deadClients: OAUTH_CLIENTS.filter((item) => !item.disabled_at && item.live_connections === 0)
+        .length,
+      disabledClients: OAUTH_CLIENTS.filter((item) => item.disabled_at).length,
+      activeKeys: API_KEYS.filter((item) => !item.revoked_at).length,
+      revokedKeys: API_KEYS.filter((item) => item.revoked_at).length,
+    });
     await verifyScheduleHolds(page, stand, uuid, locale.name, operationalOverview, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-schedule-held-${state}`, {
         fullPage: false,

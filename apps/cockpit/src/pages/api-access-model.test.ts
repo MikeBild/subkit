@@ -1,10 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { CATALOGS, type TranslationKey } from "@/lib/i18n";
 import {
+  API_ACCESS_ORDER,
   type ApiKeyItem,
   apiAccessAttention,
+  type ConnectedClientItem,
+  deepLinkReady,
   defaultKeyScopes,
+  groupApiKeys,
+  groupConnectedClients,
   keyIdleDays,
+  readableSections,
   scopeCatalogue,
   scopeLabel,
   scopeRisk,
@@ -174,5 +180,148 @@ describe("attention on Zugangsdaten", () => {
       UNUSED_KEY_DAYS,
     );
     expect(keyIdleDays({ last_used_at: daysAgo(1), created_at: daysAgo(400) }, NOW)).toBeNull();
+  });
+});
+
+function client(overrides: Partial<ConnectedClientItem>): ConnectedClientItem {
+  return {
+    id: "00000000-0000-4000-8000-000000000001",
+    client_id: "c-1",
+    client_name: "Claude",
+    redirect_uris: ["https://claude.ai/api/mcp/auth_callback"],
+    registration_source: "dcr",
+    approved_by: ["anna@example.com"],
+    live_connections: 1,
+    disabled_at: null,
+    retired_at: null,
+    created_at: daysAgo(30),
+    ...overrides,
+  };
+}
+
+describe("connected applications, in the order a reader needs them", () => {
+  // Production: 494 registrations by a deploy verifier against four real
+  // applications. Listed flat, the real ones drowned.
+  const dead = Array.from({ length: 200 }, (_, index) =>
+    client({
+      id: `dead-${index}`,
+      client_id: `dead-${index}`,
+      client_name: "Deploy verify",
+      approved_by: [],
+      live_connections: 0,
+      created_at: daysAgo(index % 5),
+    }),
+  );
+  const retired = Array.from({ length: 30 }, (_, index) =>
+    client({
+      id: `retired-${index}`,
+      client_id: `retired-${index}`,
+      client_name: "Deploy verify",
+      approved_by: [],
+      live_connections: 0,
+      disabled_at: daysAgo(2),
+      retired_at: daysAgo(2),
+    }),
+  );
+  const revoked = client({
+    id: "revoked",
+    client_id: "revoked",
+    approved_by: [],
+    live_connections: 0,
+    disabled_at: daysAgo(40),
+  });
+  const real = [
+    client({ id: "claude", client_name: "Claude", created_at: daysAgo(60) }),
+    client({ id: "chatgpt", client_name: "ChatGPT", created_at: daysAgo(20) }),
+    client({ id: "watchkit", client_name: "WatchKit", created_at: daysAgo(3) }),
+  ];
+  // Interleaved as the engine returns them: no order at all.
+  const all = [
+    ...dead.slice(0, 100),
+    real[0],
+    revoked,
+    ...retired,
+    real[1],
+    ...dead.slice(100),
+    real[2],
+  ].filter((item): item is ConnectedClientItem => Boolean(item));
+
+  test("the applications someone holds a valid grant for lead, newest first", () => {
+    const groups = groupConnectedClients(all);
+    expect(groups.granted.map((item) => item.id)).toEqual(["watchkit", "chatgpt", "claude"]);
+  });
+
+  test("registrations nobody holds a grant for are a group of their own", () => {
+    const groups = groupConnectedClients(all);
+    expect(groups.ungranted).toHaveLength(200);
+    expect(groups.ungranted.every((item) => item.live_connections === 0)).toBe(true);
+  });
+
+  test("retired and revoked registrations are apart from both, whatever their grants", () => {
+    const groups = groupConnectedClients(all);
+    expect(groups.disabled).toHaveLength(31);
+    // A disabled registration is never listed with the live ones, even if a
+    // stale count still says it has connections.
+    const stale = client({ id: "stale", disabled_at: daysAgo(1), live_connections: 2 });
+    expect(groupConnectedClients([stale]).granted).toEqual([]);
+    expect(groupConnectedClients([stale]).disabled.map((item) => item.id)).toEqual(["stale"]);
+  });
+
+  test("nothing is lost between the groups", () => {
+    const groups = groupConnectedClients(all);
+    expect(groups.granted.length + groups.ungranted.length + groups.disabled.length).toBe(
+      all.length,
+    );
+  });
+});
+
+describe("API keys: live first, revoked collapsed", () => {
+  const revokedKeys = Array.from({ length: 40 }, (_, index) =>
+    key({ id: `rev-${index}`, revoked_at: daysAgo(index + 1) }),
+  );
+  const activeKeys = Array.from({ length: 5 }, (_, index) => key({ id: `live-${index}` }));
+  const expired = key({ id: "expired", expires_at: daysAgo(2) });
+
+  test("a key that still holds rights is active — an expired one too, it needs a decision", () => {
+    const groups = groupApiKeys([
+      ...revokedKeys.slice(0, 20),
+      ...activeKeys,
+      expired,
+      ...revokedKeys.slice(20),
+    ]);
+    expect(groups.active.map((item) => item.id)).toEqual([
+      "live-0",
+      "live-1",
+      "live-2",
+      "live-3",
+      "live-4",
+      "expired",
+    ]);
+    expect(groups.revoked).toHaveLength(40);
+  });
+});
+
+describe("the order of the sections and when a deep link may scroll", () => {
+  test("Kontoverbindungen comes first, the applications last", () => {
+    // The OAuth callback and the old /connections address land on grants;
+    // it used to sit below ~500 application rows.
+    expect([...API_ACCESS_ORDER]).toEqual(["grants", "keys", "clients"]);
+  });
+
+  test("a section the reader may not read is absent, the order stays", () => {
+    expect(readableSections({ grants: true, keys: false, clients: true })).toEqual([
+      "grants",
+      "clients",
+    ]);
+    expect(readableSections({ grants: false, keys: false, clients: false })).toEqual([]);
+  });
+
+  test("a deep link waits until no readable list is loading", () => {
+    // Scrolling on mount landed on a heading the arriving lists then pushed
+    // out of view.
+    expect(deepLinkReady(["loading", "ready", "ready"])).toBe(false);
+    expect(deepLinkReady(["ready", "loading"])).toBe(false);
+    expect(deepLinkReady(["ready", "empty", "error"])).toBe(true);
+    expect(deepLinkReady([])).toBe(true);
   });
 });
