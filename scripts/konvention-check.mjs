@@ -43,7 +43,7 @@ import { IDENTITY_META, standAt } from "./lib/cockpit-identity.mjs";
  * as "Standard"). Label and assert stand side by side on purpose — one says what
  * was measured against, the other says whether that is still the family's yardstick.
  */
-const KONVENTION_VERSION = "2.1";
+const KONVENTION_VERSION = "2.1.1";
 
 /** The version the repository copy actually names — the label, never the assert. */
 let konventionVersionImRepo = null;
@@ -1487,7 +1487,7 @@ function checkKonventionVersion() {
     breach("§7", where, `no readable convention copy in the repo root (${String(error)})`);
     return;
   }
-  konventionVersionImRepo = header.match(/^Version (\d+\.\d+)/m)?.[1] ?? null;
+  konventionVersionImRepo = header.match(/^Version (\d+\.\d+(?:\.\d+)?)/m)?.[1] ?? null;
   if (konventionVersionImRepo !== KONVENTION_VERSION)
     breach(
       "§7",

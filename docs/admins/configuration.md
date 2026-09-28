@@ -90,7 +90,10 @@ The legacy `/v1/setup` aliases remain available for compatible clients.
 
 ## Saved and active revisions
 
-`GET /v1/settings` provides the human-oriented settings view. The canonical state endpoint is
+`GET /v1/settings` provides the human-oriented settings view. Each item's `meta` carries the
+schema's `default` (absent for a bootstrap binding such as `database.url`, masked for a secret) and,
+for an enum, its `enum_values`; the MCP tool `subkit_settings` reports the same fields. The
+canonical state endpoint is
 `GET /v1/settings/runtime`; it reports:
 
 ```json

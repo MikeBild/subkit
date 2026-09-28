@@ -1,6 +1,6 @@
 # Cockpit-Konvention
 
-Version 2.1 · 28.09.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
+Version 2.1.1 · 28.09.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
 
 **Modell: Konvention statt Bibliothek.** Jedes Produkt bleibt eigenständig — eigenes Repo, eigene shadcn-Komponenten (vendored, wie shadcn gedacht ist), eigene Releases, kein shared Package. Geteilt wird nur dieses Dokument. Eine Kopie liegt in jedem Repo; Abweichungen sind erlaubt, wo das Produkt es begründet — die Konvention ist der Default, nicht das Gesetz.
 
@@ -18,6 +18,7 @@ Referenz-Implementierung: für v2.x ist SubKit die Referenz (Startseite „Über
 Änderungen v1.7: §8.2 auf genau ein Ordnungswerkzeug reduziert. Art-Chips mit Zählern bleiben; der redundante Gruppieren-Umschalter entfällt. Die Sortierung ist fest: ablaufend zuerst, dann älteste.
 Änderungen v2.0: Übersicht, Entscheidungs-Seite und System-Seite verschmelzen zu **einer** Startseite „Heute" mit einer Anliegen-Liste. Neu §0.1 „Ein Fakt, ein Ort" mit Matrix; §1 neu gefasst (Heute statt drei Zonen, keine Null-Kacheln, „Alles erledigt" nur, wenn jede lesbare Quelle geantwortet hat); §6 Installation ohne System, mit „Personen & Rechte"; §8 neu gefasst als Anliegen-Grammatik mit Prüf-Seitenblatt — die Karten-Anatomie aus v1.7 wandert ins Seitenblatt, Art-Chips, Rubriken, Zähler-Kacheln und Incident-Banner entfallen; §9.2 und §12 verweisen auf Heute; §10 Zeilen öffnen über den Namen als echten Link und per Klick, ohne „Öffnen"-Knopf, „⋯" nur für echte Menüs; neu §10.1 „Zahlen führen auf Listen, die dasselbe zählen".
 Änderungen v2.1: Die Startseite heißt wieder **„Übersicht"** (englisch „Overview") wie in allen sechs Produkten. §1 neu gegliedert: Seitenkopf mit Zeitfenster (24 Std · 7 Tage · 30 Tage) → Betriebsleiste mit genau vier Werten → Anliegen-Liste „Braucht dich" → Verweis auf den Audit-Trail; „keine Null-Kacheln" bleibt. §0.1: Ausführungen, Erfolgsquote, Konnektor-Gesundheit und Reparaturquote wohnen in der Betriebsleiste der Übersicht, nicht mehr auf Nutzung. §6 kanonischer Name „Übersicht". §8.5: ein Wert der Betriebsleiste, der auf gefilterte Audit-Einträge führt, ist kein zweiter Verweis auf die Geschichte. §8.6: die Betriebsleiste bleibt im leeren Zustand stehen.
+Änderungen v2.1.1: §6 Einstellungen — eine Zeile sagt, wenn ein Wert vom Standard abweicht, und setzt ihn per Entwurf zurück; „Alle | Geändert“ neben der Suche; Geheimnisse zeigen nur „Hinterlegt“ oder „Nicht hinterlegt“; ein Speichern ist ein Vorgang für alle Entwürfe der Seite, ein Konflikt behält sie.
 
 ---
 
@@ -154,7 +155,7 @@ Der **Browser-Titel** lautet einheitlich „<Produktname> Cockpit". Ein Cockpit,
 Produktnamen nicht nennt oder ihn anders schreibt als seine Geschwister, ist an der Stelle
 uneinheitlich, an der es zuerst gelesen wird.
 
-**Einstellungen** gliedern ihre Bereiche als gruppierte, senkrechte Liste — keine Tabs, keine Zähler, kein seitliches Scrollen bei keiner Breite: ab 720px Inhaltsbreite steht die Liste links neben dem gewählten Bereich, darunter ist sie die Startansicht, und ein Bereich öffnet sich mit „← Alle Bereiche" an ihrer Stelle.
+**Einstellungen** gliedern ihre Bereiche als gruppierte, senkrechte Liste — keine Tabs, keine Zähler, kein seitliches Scrollen bei keiner Breite: ab 720px Inhaltsbreite steht die Liste links neben dem gewählten Bereich, darunter ist sie die Startansicht, und ein Bereich öffnet sich mit „← Alle Bereiche" an ihrer Stelle. Eine Zeile zeigt das passende Bedienelement (Auswahl, Schalter, Zahl mit Einheit) und nur dann „Geändert · Standard: X · Zurücksetzen", wenn der Wert vom Standard abweicht; Zurücksetzen legt nur einen Entwurf an. „Alle | Geändert" steht neben der Suche und ist adressierbar. Ein Geheimnis zeigt nie seinen Wert, nur „Hinterlegt · Ersetzen" oder „Nicht hinterlegt · Hinterlegen". Entwürfe gehören der Seite, nicht dem Bereich: eine Leiste „N ungespeicherte Änderungen · Verwerfen · Speichern" speichert alle auf einmal, nie automatisch; hat inzwischen jemand gespeichert, sagt die Leiste das und die Entwürfe bleiben. Wer nur lesen darf, liest „Du darfst ansehen, nicht ändern."
 
 ## 7. Drift-Kontrolle ohne Shared Code
 

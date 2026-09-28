@@ -17258,6 +17258,8 @@ export interface components {
             requiresRestart: boolean;
             description?: string;
             kind: string;
+            default?: unknown;
+            enum_values?: string[];
         };
         SettingPutResult: {
             value?: unknown;
