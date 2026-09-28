@@ -734,7 +734,7 @@ const EN = {
   "connectedClients.showDisabled": "Show retired and revoked ({count})",
   "connectedClients.hideDisabled": "Hide retired and revoked ({count})",
   "connectedClients.retirementRule":
-    "A registration nobody has approved or used for 7 days is retired. It comes back as soon as someone approves it again; a revoked one does not.",
+    "A registration nobody has approved or used for 7 days is retired. It comes back as soon as someone approves it again, until it is removed 30 days after registering; a revoked one does not.",
   "connectedClients.unnamed": "Unnamed application",
   "connectedClients.revoke": "Withdraw access",
   "connectedClients.revokeTitle": "Withdraw access from {name}?",
@@ -3209,7 +3209,7 @@ const DE: Record<TranslationKey, string> = {
   "connectedClients.showDisabled": "Stillgelegte und widerrufene ({count}) anzeigen",
   "connectedClients.hideDisabled": "Stillgelegte und widerrufene ({count}) ausblenden",
   "connectedClients.retirementRule":
-    "Eine Registrierung, die seit 7 Tagen niemand freigegeben oder benutzt hat, wird stillgelegt. Sie kommt zurück, sobald jemand sie wieder freigibt; eine widerrufene nicht.",
+    "Eine Registrierung, die seit 7 Tagen niemand freigegeben oder benutzt hat, wird stillgelegt. Sie kommt zurück, sobald jemand sie wieder freigibt, bis sie 30 Tage nach der Registrierung entfernt wird; eine widerrufene nicht.",
   "connectedClients.unnamed": "Unbenannte Anwendung",
   "connectedClients.revoke": "Zugriff entziehen",
   "connectedClients.revokeTitle": "{name} den Zugriff entziehen?",

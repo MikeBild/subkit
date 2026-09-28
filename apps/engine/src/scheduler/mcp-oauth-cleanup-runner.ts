@@ -22,7 +22,7 @@
 //      live refresh tokens still authenticate. The guard therefore checks
 //      all three proof-of-use tables via NOT EXISTS.
 //
-//   4b) mcp_oauth_clients — RETIRED, not deleted: a DCR registration created
+//   4b) mcp_oauth_clients — RETIRED (disabled, reversibly): a DCR registration created
 //      more than 7 days ago that nobody holds a valid grant for (no live
 //      access or refresh token — the same predicate the Cockpit's
 //      "Verbundene Anwendungen" reads) and that shows no use in the last 7
@@ -32,7 +32,10 @@
 //      completes an authorization for it (server-provider.ts). A client that
 //      registers on every run and never returns — a deploy verifier — would
 //      otherwise bury the real applications under hundreds of rows no one can
-//      use. Manual registrations are never retired.
+//      use. Manual registrations are never retired. Retirement itself
+//      deletes nothing; sweep 4 above still removes, 30 days after
+//      registration, any client with no token or code rows left — a retired
+//      one included. After that the host has to register again, as before.
 //
 //   5) mcp_oauth_states — in-flight CLIENT-direction authorization rows
 //      (subkit acting as an OAuth client against an external MCP server)
