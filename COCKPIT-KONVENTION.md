@@ -1,12 +1,12 @@
 # Cockpit-Konvention
 
-Version 2.0 · 28.09.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
+Version 2.1 · 28.09.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
 
 **Modell: Konvention statt Bibliothek.** Jedes Produkt bleibt eigenständig — eigenes Repo, eigene shadcn-Komponenten (vendored, wie shadcn gedacht ist), eigene Releases, kein shared Package. Geteilt wird nur dieses Dokument. Eine Kopie liegt in jedem Repo; Abweichungen sind erlaubt, wo das Produkt es begründet — die Konvention ist der Default, nicht das Gesetz.
 
-**v2.0 ist SubKit-first — eine gewollte Abweichung von der Familie, bis die Geschwister folgen.** SubKit setzt v2.0 und `FAMILY-UI.json` 3.0 zuerst um. ContentKit, WorkKit, WikiKit, CodeKit und WatchKit arbeiten nach v1.7 und `FAMILY-UI.json` 2.3, bis ihre eigenen Umsetzungs-Schnitte folgen; bis dahin gilt in ihren Repos die v1.7-Kopie. Was ein Geschwister umsetzen muss, steht in `FAMILY-UI.json` unter `migration`. Die v2.3-Schnittstelle `GET /v1/operational-overview` bleibt in SubKit erhalten, damit Geschwister und Prometheus weiterlesen können.
+**v2.x ist SubKit-first — eine gewollte Abweichung von der Familie, bis die Geschwister folgen.** SubKit setzt v2.1 und `FAMILY-UI.json` 3.0 zuerst um. ContentKit, WorkKit, WikiKit, CodeKit und WatchKit arbeiten nach v1.7 und `FAMILY-UI.json` 2.3, bis ihre eigenen Umsetzungs-Schnitte folgen; bis dahin gilt in ihren Repos die v1.7-Kopie. Den Startseiten-Namen „Übersicht" tragen alle sechs bereits. Was ein Geschwister umsetzen muss, steht in `FAMILY-UI.json` unter `migration`. Die v2.3-Schnittstelle `GET /v1/operational-overview` bleibt in SubKit erhalten, damit Geschwister und Prometheus weiterlesen können.
 
-Referenz-Implementierung: für v2.0 ist SubKit die Referenz (Startseite „Heute", Prüf-Seitenblatt, Zeilen, „Personen & Rechte"). Die Karten-Anatomie einer Entscheidung (§8.4) stammt aus WorkKit (Übergabe „workkit-entscheidungen-uebergabe"), §9–§11 aus SubKit (Übergabe „subkit-referenzarchitektur-uebergabe").
+Referenz-Implementierung: für v2.x ist SubKit die Referenz (Startseite „Übersicht" mit Betriebsleiste und Anliegen-Liste, Prüf-Seitenblatt, Zeilen, „Personen & Rechte"). Die Karten-Anatomie einer Entscheidung (§8.4) stammt aus WorkKit (Übergabe „workkit-entscheidungen-uebergabe"), §9–§11 aus SubKit (Übergabe „subkit-referenzarchitektur-uebergabe").
 
 Änderungen v1.1: neuer §8 Entscheidungs-Grammatik (hebt das Muster aus der WorkKit-Übergabe auf Familienebene); §1 Zone A verweist auf §8.
 Änderungen v1.2: neue §9 Diff-Freigabe, §10 Sammlungs-Listen, §11 Verbindungs-Status (heben die Muster aus der SubKit-Übergabe auf Familienebene); §4 um „Leere führt zur Handlung" ergänzt.
@@ -17,6 +17,7 @@ Referenz-Implementierung: für v2.0 ist SubKit die Referenz (Startseite „Heute
 Änderungen v1.6 (Fortsetzung): §8.5 neu gefasst — die Regale unter der Queue entfallen ersatzlos. Die Entscheidungs-Seite zeigt nur noch, was wartet; Zurückgestellt, Verworfen und Entschieden sind Vergangenheit und wohnen allein im Audit-Protokoll, erreichbar über genau einen Verweis. §8.8 nennt entsprechend die Trennung von Zustand und Geschichte statt der Regale.
 Änderungen v1.7: §8.2 auf genau ein Ordnungswerkzeug reduziert. Art-Chips mit Zählern bleiben; der redundante Gruppieren-Umschalter entfällt. Die Sortierung ist fest: ablaufend zuerst, dann älteste.
 Änderungen v2.0: Übersicht, Entscheidungs-Seite und System-Seite verschmelzen zu **einer** Startseite „Heute" mit einer Anliegen-Liste. Neu §0.1 „Ein Fakt, ein Ort" mit Matrix; §1 neu gefasst (Heute statt drei Zonen, keine Null-Kacheln, „Alles erledigt" nur, wenn jede lesbare Quelle geantwortet hat); §6 Installation ohne System, mit „Personen & Rechte"; §8 neu gefasst als Anliegen-Grammatik mit Prüf-Seitenblatt — die Karten-Anatomie aus v1.7 wandert ins Seitenblatt, Art-Chips, Rubriken, Zähler-Kacheln und Incident-Banner entfallen; §9.2 und §12 verweisen auf Heute; §10 Zeilen öffnen über den Namen als echten Link und per Klick, ohne „Öffnen"-Knopf, „⋯" nur für echte Menüs; neu §10.1 „Zahlen führen auf Listen, die dasselbe zählen".
+Änderungen v2.1: Die Startseite heißt wieder **„Übersicht"** (englisch „Overview") wie in allen sechs Produkten. §1 neu gegliedert: Seitenkopf mit Zeitfenster (24 Std · 7 Tage · 30 Tage) → Betriebsleiste mit genau vier Werten → Anliegen-Liste „Braucht dich" → Verweis auf den Audit-Trail; „keine Null-Kacheln" bleibt. §0.1: Ausführungen, Erfolgsquote, Konnektor-Gesundheit und Reparaturquote wohnen in der Betriebsleiste der Übersicht, nicht mehr auf Nutzung. §6 kanonischer Name „Übersicht". §8.5: ein Wert der Betriebsleiste, der auf gefilterte Audit-Einträge führt, ist kein zweiter Verweis auf die Geschichte. §8.6: die Betriebsleiste bleibt im leeren Zustand stehen.
 
 ---
 
@@ -41,19 +42,19 @@ zweitverwertet werden.
 Wer eine Fläche baut, beantwortet zuerst: **muss ein Mensch hier etwas tun oder etwas
 Aktuelles sehen?** Wenn nein, gehört sie nicht ins Cockpit, sondern in den Audit-Trail.
 
-**Leitregel (v2.0): Aufgaben leben nur auf „Heute".** Objektseiten zeigen ihren Zustand und
-verlinken höchstens zur Aufgabe. Jeder Fakt hat genau einen Ort.
+**Leitregel (v2.1): Aufgaben leben nur auf der „Übersicht".** Objektseiten zeigen ihren Zustand
+und verlinken höchstens zur Aufgabe. Jeder Fakt hat genau einen Ort.
 
 ### 0.1 Ein Fakt, ein Ort
 
 | Fakt | Ort | Sonst |
 |---|---|---|
-| Aufgaben (Entscheidungen, Scheitern, Anmeldung, Kontingent, Rückfragen, Geheimnis-Freigaben) | Heute | Objektseiten: Zustand + Link |
-| Gesundheitszustand | Statuszeile auf Heute, **nur im leeren Zustand**; Ursachen sind Einträge | nirgends |
+| Aufgaben (Entscheidungen, Scheitern, Anmeldung, Kontingent, Rückfragen, Geheimnis-Freigaben) | Übersicht, Anliegen-Liste | Objektseiten: Zustand + Link |
+| Gesundheitszustand | Statuszeile auf der Übersicht, **nur im leeren Zustand**; Ursachen sind Einträge | nirgends |
 | Komponenten/Score | nur API, MCP, Prometheus | — |
 | Zahl offener Anliegen | Abzeichen am Navigationseintrag = Zahl der Einträge | Listenköpfe ohne Zahl |
-| Ausführungen, Erfolgsquote, Konnektor-Gesundheit, Reparaturquote | Nutzung, Abschnitt „Betrieb" (je Wert ein Link in eine gefilterte Liste, §10.1) | — |
-| Datenstand | Eintrag auf Heute, nur wenn veraltet | — |
+| Ausführungen, Erfolgsquote, Konnektor-Gesundheit, Reparaturquote | Übersicht, Betriebsleiste (je Wert ein Link in die gefilterte Liste desselben Zeitfensters, §10.1) | Nutzung zeigt Verbrauch, Kontingent und Laufzeit, nicht diese Werte |
+| Datenstand | Eintrag auf der Übersicht, nur wenn veraltet | — |
 | Drift-Scan | kein Knopf im Cockpit (der Scheduler scannt; CLI/MCP behalten ihn) | — |
 | Titel wiederholende Beschreibungen | entfallen | — |
 | „Öffnen" in Zeilen | entfällt; der Name ist ein echter Link, die Zeile klickbar (§10) | — |
@@ -65,30 +66,44 @@ wiederholen. Zwei Stellen mit derselben Zahl sind zwei Stellen, die auseinanderl
 
 ## 1. Startscreen-Vertrag
 
-Der erste Screen jedes Cockpits ist **„Heute"** (`/`, englisch „Today"): eine Liste der
-Anliegen, die diese Person jetzt braucht. Er ersetzt Übersichts-Kacheln, Entscheidungs-Seite
-und System-Seite aus v1.7; deren alte Adressen leiten auf Heute um (ein Link, der einen
-Gegenstand nannte, öffnet dessen Prüf-Seitenblatt).
+Der erste Screen jedes Cockpits ist die **„Übersicht"** (`/`, englisch „Overview"): oben die
+Betriebsleiste, darunter die Liste der Anliegen, die diese Person jetzt braucht. Sie ersetzt
+Entscheidungs-Seite und System-Seite aus v1.7; deren alte Adressen leiten auf die Übersicht um
+(ein Link, der einen Gegenstand nannte, öffnet dessen Prüf-Seitenblatt).
 
-**Aufbau.** Seitenkopf → Anliegen-Liste (§8) → genau ein Verweis „Was bereits entschieden
-wurde" auf den Audit-Trail. Kein Ereignisstrom, keine Liste letzter Läufe, keine Kachel.
+**Aufbau.** Seitenkopf (Titel „Übersicht", Zeitfenster 24 Std · 7 Tage · 30 Tage, Vorgabe
+24 Std) → Betriebsleiste → „Braucht dich": die Anliegen-Liste (§8) → ein Hinweis auf nicht
+lesbare Quellen, nur wenn eine Quelle nicht geantwortet hat → genau ein Verweis „Was bereits
+entschieden wurde" auf den Audit-Trail. Kein Ereignisstrom, keine Liste letzter Läufe.
 
-**Keine Null-Kacheln.** Heute zeigt keine Zahl, die 0 sein kann. Eine Kachel „Blockiert: 0"
-beantwortet eine Frage, die niemand gestellt hat, und eine Wand aus Nullen lehrt, die Seite zu
-überlesen.
+**Betriebsleiste.** Genau vier Werte in einer Zeile, auf dem Telefon 2 × 2: Ausführungen,
+Erfolgsquote, Gesunde Konnektoren, Übernommene Reparaturen. Ausführungen, Erfolgsquote und
+Reparaturen zählen im gewählten Zeitfenster; „Gesunde Konnektoren" ist ein Zustand und trägt
+„Stand jetzt". Jeder Wert führt auf die gefilterte Liste desselben Fensters (§10.1). Ein Wert,
+der nicht gelesen werden konnte, sagt „nicht lesbar" und bietet an, erneut zu lesen — je Wert,
+nicht für die ganze Leiste. Die Leiste ist kompakt (etwa 72 px hoch), damit die Anliegen im
+ersten Screen stehen. Sie zeigt Zahlen, keine Aufgaben: was jemanden braucht, ist ein Eintrag
+der Liste.
 
-**Leer.** Ist nichts offen, steht dort „Alles erledigt." und **eine** Statuszeile
-(Gesundheitszustand · nächste geplante Ausführung). Das gilt **nur**, wenn jede Quelle, die
-diese Person lesen darf, geantwortet hat. Hat eine Quelle nicht geantwortet, nennt die Seite,
-was fehlt — ein falsches „Alles erledigt" ist schlimmer als keines. Wer keine Quelle lesen
-darf, landet auf dem ersten sichtbaren Navigationseintrag.
+**Keine Null-Kacheln.** Die Übersicht zeigt keine nackte 0. Ein Wert ohne Daten sagt das in
+Worten („Keine im Zeitraum", „Keine aktiven Konnektoren") und trägt keinen Link. Eine Kachel
+„Blockiert: 0" beantwortet eine Frage, die niemand gestellt hat, und eine Wand aus Nullen
+lehrt, die Seite zu überlesen.
 
-**Abzeichen.** Der Navigationseintrag „Heute" trägt die Zahl der Einträge der Liste — dieselbe
-Zahl, nicht eine zweite Zählung.
+**Leer.** Ist nichts offen, bleibt die Betriebsleiste stehen, und statt der Liste steht dort
+„Alles erledigt." und **eine** Statuszeile (Gesundheitszustand · nächste geplante Ausführung).
+Das gilt **nur**, wenn jede Quelle, die diese Person lesen darf, geantwortet hat. Hat eine
+Quelle nicht geantwortet, nennt die Seite, was fehlt — ein falsches „Alles erledigt" ist
+schlimmer als keines. Wer keine Quelle lesen darf, landet auf dem ersten sichtbaren
+Navigationseintrag.
 
-Regeln: Kein Zähler ohne Link. Kein Rot ohne Weg zur Ursache. Betriebsmetriken wohnen unter
-Installation → Nutzung (Abschnitt „Betrieb") bzw. in API, MCP und Prometheus, nie auf dem
-Startscreen. „Nichts zu tun" ist ein ruhiger Zustand, kein inszenierter Erfolg.
+**Abzeichen.** Der Navigationseintrag „Übersicht" trägt die Zahl der Einträge der Liste —
+dieselbe Zahl, nicht eine zweite Zählung.
+
+Regeln: Kein Zähler ohne Link. Kein Rot ohne Weg zur Ursache. Die vier Betriebswerte wohnen
+in der Betriebsleiste der Übersicht; Nutzung zeigt Verbrauch, Kontingent und Laufzeit, nicht
+diese Werte. Komponenten und Score liefern API, MCP und Prometheus. „Nichts zu tun" ist ein
+ruhiger Zustand, kein inszenierter Erfolg.
 
 ## 2. Zustandsvokabular
 
@@ -123,9 +138,9 @@ Deutsch auf oberster Ebene; Fachbegriffe (SRE, API-Namen) erst in der Detailtief
 
 ## 6. Struktur-Konstanten
 
-Sidebar links: Wortmarke, gruppierte Navigation, Account unten (Avatar · E-Mail · Rolle · Menü: Profil/Sprache/Darstellung/Abmelden). Ganz oben, ungruppiert und ohne Überschrift: **Heute** mit Abzeichen (§1). Installation-Sektion enthält mindestens: Nutzung · Einstellungen · Zugangsdaten · Personen & Rechte · Benachrichtigungen · Audit. Eine System-Seite gibt es nicht mehr: der Gesundheitszustand ist die Statuszeile auf Heute, seine Ursachen sind Einträge dort, Komponenten und Score liefern API, MCP und Prometheus (§0.1). **Personen & Rechte** ist die eine Seite für Personen, Rollen, Gruppen und Freigaben, je Abschnitt eine Adresse (`?section=…`); **Zugangsdaten** ist die eine Seite für API-Schlüssel, verbundene Anwendungen und Kontoverbindungen. Deep-Links funktionieren; abgelöste Adressen leiten auf ihren neuen Ort um, statt „nicht gefunden" zu zeigen; unbekannte Routen zeigen eine gestaltete Seite mit Rückweg. Mandanten-Switcher trennt Prod/Test, Test ausblendbar.
+Sidebar links: Wortmarke, gruppierte Navigation, Account unten (Avatar · E-Mail · Rolle · Menü: Profil/Sprache/Darstellung/Abmelden). Ganz oben, ungruppiert und ohne Überschrift: **Übersicht** mit Abzeichen (§1). Installation-Sektion enthält mindestens: Nutzung · Einstellungen · Zugangsdaten · Personen & Rechte · Benachrichtigungen · Audit. Eine System-Seite gibt es nicht mehr: der Gesundheitszustand ist die Statuszeile auf der Übersicht, seine Ursachen sind Einträge dort, Komponenten und Score liefern API, MCP und Prometheus (§0.1). **Personen & Rechte** ist die eine Seite für Personen, Rollen, Gruppen und Freigaben, je Abschnitt eine Adresse (`?section=…`); **Zugangsdaten** ist die eine Seite für API-Schlüssel, verbundene Anwendungen und Kontoverbindungen. Deep-Links funktionieren; abgelöste Adressen leiten auf ihren neuen Ort um, statt „nicht gefunden" zu zeigen; unbekannte Routen zeigen eine gestaltete Seite mit Rückweg. Mandanten-Switcher trennt Prod/Test, Test ausblendbar.
 
-**Kanonische Gruppennamen.** Geteilte Konzepte heißen in allen sechs Produkten gleich: die Admin-Gruppe heißt **„Installation"** (nie „Administration"), der Startseiten-Eintrag heißt **„Heute"** und steht **ungruppiert** ganz oben (§1), die Rolle heißt **„Administrator"** (eine Schreibweise, keine Versalien-Varianten). Produktspezifische Gruppen (Wiki, Überwachung, …) bleiben frei benannt — aber deutsch und in Normalschreibung.
+**Kanonische Gruppennamen.** Geteilte Konzepte heißen in allen sechs Produkten gleich: die Admin-Gruppe heißt **„Installation"** (nie „Administration"), der Startseiten-Eintrag heißt **„Übersicht"** und steht **ungruppiert** ganz oben (§1), die Rolle heißt **„Administrator"** (eine Schreibweise, keine Versalien-Varianten). Produktspezifische Gruppen (Wiki, Überwachung, …) bleiben frei benannt — aber deutsch und in Normalschreibung.
 
 **Wortmarke und App-Icon.** Die Seitenleiste trägt oben die Wortmarke: **Produkt-Icon plus
 Produktname in kanonischer Schreibweise** — WorkKit · SubKit · WikiKit · ContentKit · CodeKit ·
@@ -145,9 +160,9 @@ Die Konvention wird nicht technisch erzwungen. Zwei leichte Mechanismen statt de
 
 ## 8. Anliegen-Grammatik
 
-Jedes Produkt, das menschliche Aufmerksamkeit braucht (Freigaben, Reviews, Budget-Gates, Proposals, Rückfragen, gestörte Anmeldungen, scheiternde Automatik), zeigt sie an **einem** Ort: der Anliegen-Liste auf „Heute" (§1). Eine eigene Entscheidungs-Seite, Übersichts-Kacheln und eine System-Seite gibt es daneben nicht. Die Liste beantwortet die drei Fragen in dieser Reihenfolge: Was passiert? Braucht es mich? Was tue ich dann? Jedes Produkt baut das Muster in eigenen Komponenten nach (kein Import).
+Jedes Produkt, das menschliche Aufmerksamkeit braucht (Freigaben, Reviews, Budget-Gates, Proposals, Rückfragen, gestörte Anmeldungen, scheiternde Automatik), zeigt sie an **einem** Ort: der Anliegen-Liste auf der „Übersicht" (§1). Eine eigene Entscheidungs-Seite und eine System-Seite gibt es daneben nicht; die Betriebsleiste über der Liste zeigt Zahlen, keine Aufgaben. Die Liste beantwortet die drei Fragen in dieser Reihenfolge: Was passiert? Braucht es mich? Was tue ich dann? Jedes Produkt baut das Muster in eigenen Komponenten nach (kein Import).
 
-**8.1 Eine Quelle.** Die Liste kommt von der Engine, nicht aus dem Browser: `GET /v1/attention` (`attention.v1`) liefert die Einträge, je Eintrag gegen die Rechte der lesenden Person geprüft, und je Quelle ihren Stand (`answered` · `failed` · `not_permitted`). Digest, MCP-Verbindungszeile und das MCP-Werkzeug `get_attention` rendern dieselbe Liste. Rückfragen sind immer die eigenen der lesenden Person. Der Navigationseintrag „Heute" trägt als Abzeichen die Zahl der Einträge.
+**8.1 Eine Quelle.** Die Liste kommt von der Engine, nicht aus dem Browser: `GET /v1/attention` (`attention.v1`) liefert die Einträge, je Eintrag gegen die Rechte der lesenden Person geprüft, und je Quelle ihren Stand (`answered` · `failed` · `not_permitted`). Digest, MCP-Verbindungszeile und das MCP-Werkzeug `get_attention` rendern dieselbe Liste. Rückfragen sind immer die eigenen der lesenden Person. Der Navigationseintrag „Übersicht" trägt als Abzeichen die Zahl der Einträge.
 
 **8.2 Ein Eintrag je Gegenstand, drei Klassen.** Was denselben Gegenstand betrifft, ist **ein** Eintrag: ein scheiternder Workflow samt seinen offenen Korrekturen ist ein Eintrag, nicht einer je Lauf und einer je Korrektur; mehrere Skill-Vorschläge sind ein Eintrag. Die Klassen und ihre feste Reihenfolge: **gestoppt** (etwas steht, bis jemand handelt — gehaltener Zeitplan, wartende Rückfrage, abgelaufene Anmeldung) → **scheitert** (etwas läuft und schlägt fehl) → **entscheiden** (ein Vorschlag wartet, nichts ist blockiert). Innerhalb einer Klasse: nächste Frist zuerst, dann älteste. Es gibt keine Art-Chips, keine Rubriken, keinen Gruppieren-Umschalter und keine Zahl im Listenkopf. Nicht aufgenommen werden Warnungen, Test- und Autoren-Fehlschläge und ungenutzte Schlüssel — sie sind Zustand eines Objekts, keine Aufgabe.
 
@@ -157,7 +172,7 @@ Jedes Produkt, das menschliche Aufmerksamkeit braucht (Freigaben, Reviews, Budge
 
 **Drei Arten von Nein.** Wo das Produkt sie kennt, unterscheidet das Seitenblatt: Ablehnung **mit** Begründung (schickt zurück ans Nacharbeiten) · Ablehnung **ohne** Begründung (beendet) · **Verwerfen** (folgenlos — als „folgenlos" beschriftet). Eine unbeantwortete Frist verfällt sichtbar als „verfallen (nicht entschieden)", nie stillschweigend. Ein wiederholter identischer Vorschlag zeigt die frühere Ablehnung samt Begründung — die Oberfläche bohrt nicht nach, bis der Mensch ja sagt. Wo Auftraggeber und Freigeber getrennte Rollen sind, zeigt das Seitenblatt, wer entscheiden darf; die eigene Beauftragung ist markiert.
 
-**8.5 Zustand und Geschichte sind getrennte Flächen.** Heute zeigt ausschließlich, was auf den Menschen wartet. Zurückgestellt, Verworfen und Entschieden sind Vergangenheit: Erledigtes verlässt die Liste — es wird nicht gedimmt, nicht durchgestrichen, nicht in eigene Sektionen unter der Liste gestellt und nicht über Zustands-Filter wieder hereingeholt. Die vollständige Geschichte wohnt im Audit-/Aktivitätsprotokoll (append, nie gekürzt) und ist von Heute über **genau einen** Verweis erreichbar — „Was bereits entschieden wurde", ein Satz mit Link, keine Zähler-Kacheln.
+**8.5 Zustand und Geschichte sind getrennte Flächen.** Die Anliegen-Liste zeigt ausschließlich, was auf den Menschen wartet. Zurückgestellt, Verworfen und Entschieden sind Vergangenheit: Erledigtes verlässt die Liste — es wird nicht gedimmt, nicht durchgestrichen, nicht in eigene Sektionen unter der Liste gestellt und nicht über Zustands-Filter wieder hereingeholt. Die vollständige Geschichte wohnt im Audit-/Aktivitätsprotokoll (append, nie gekürzt) und ist von der Übersicht über **genau einen** Verweis erreichbar — „Was bereits entschieden wurde", ein Satz mit Link, keine Zähler-Kacheln. Ein Wert der Betriebsleiste, der auf die gefilterten Audit-Einträge seines Zeitfensters führt (§10.1), ist kein zweiter Verweis auf die Geschichte, sondern der Beleg seiner Zahl.
 
 **8.5b Die Zahl selbst ist eine Design-Frage.** Eine Liste, die einem Menschen
 Hunderte Positionen vorlegt, hat ihre Aufgabe verfehlt, egal wie gut sie gegliedert ist.
@@ -183,7 +198,7 @@ Gegenstand") ist die Antwort darauf.
 > durch einen Markdown-Renderer geschickt hat statt sie zu lesen. **Auch eine Korrektur kann
 > beschädigen, was sie korrigiert.**
 
-**8.6 Leere.** Nichts offen und jede lesbare Quelle hat geantwortet: „Alles erledigt." und eine Statuszeile (Gesundheitszustand · nächste geplante Ausführung) — nichts sonst, keine Kachel mit 0. Eine Quelle hat nicht geantwortet: kein „Alles erledigt", sondern ein Hinweis, welche Quelle nicht lesbar war, mit „Erneut lesen"; die Einträge der übrigen Quellen stehen trotzdem da. Eine Quelle, die die Person nicht lesen darf, zählt nicht als fehlend. Die Statuszeile erscheint nur im leeren Zustand; ist etwas offen, sind die Ursachen eines schlechten Zustands selbst Einträge. Alle Fälle sind getrennt testbar (§4 gilt).
+**8.6 Leere.** Nichts offen und jede lesbare Quelle hat geantwortet: „Alles erledigt." und eine Statuszeile (Gesundheitszustand · nächste geplante Ausführung); darüber bleibt die Betriebsleiste (§1) stehen — nichts sonst, keine Kachel mit 0. Eine Quelle hat nicht geantwortet: kein „Alles erledigt", sondern ein Hinweis, welche Quelle nicht lesbar war, mit „Erneut lesen"; die Einträge der übrigen Quellen stehen trotzdem da. Eine Quelle, die die Person nicht lesen darf, zählt nicht als fehlend. Die Statuszeile erscheint nur im leeren Zustand; ist etwas offen, sind die Ursachen eines schlechten Zustands selbst Einträge. Alle Fälle sind getrennt testbar (§4 gilt).
 
 **8.7 Kein Incident-Banner.** Ein offenes Budget- oder Health-Gate und eine gerissene Frist sind Einträge der Klasse „gestoppt" oder „scheitert" und stehen damit oben in der Liste. Ein zusätzliches Banner wäre ein zweiter Ort für denselben Fakt (§0.1). Eine Startseite, die bei offenen Gates „Alles erledigt" meldet, bleibt ein Konventionsbruch.
 
@@ -195,7 +210,7 @@ Schlägt ein Agent oder Automat eine Änderung an einem verwalteten Objekt vor (
 
 **9.1 Diff-Karte.** Der Vorschlag erscheint als Karte in der Konversation bzw. auf der Quellseite: Ziel-Label (Objekt · Version, nie UUID) → Zeilen-Diff (alt/neu) → wo vorhanden das Prüf-Ergebnis daneben (Dry-Run, Preview, Lint) → Aktionen nach §8.4 („Freigeben", „Ablehnen", Notizfeld klappt auf). Kein Seitenwechsel für die Entscheidung.
 
-**9.2 Doppelte Sichtbarkeit.** Jeder offene Vorschlag steht zusätzlich als Eintrag auf Heute (§8), und sein Prüf-Seitenblatt zeigt dieselbe Karte — die Karte am Entstehungsort ist der schnelle Weg, Heute das Sicherheitsnetz gegen Vergessen. Beide führen auf dieselbe API-Entscheidung, mit Audit-Spur. Das ist keine Doppelung im Sinne von §0.1: die Aufgabe wohnt auf Heute, die Karte am Entstehungsort ist ihr Kontext.
+**9.2 Doppelte Sichtbarkeit.** Jeder offene Vorschlag steht zusätzlich als Eintrag auf der Übersicht (§8), und sein Prüf-Seitenblatt zeigt dieselbe Karte — die Karte am Entstehungsort ist der schnelle Weg, die Übersicht das Sicherheitsnetz gegen Vergessen. Beide führen auf dieselbe API-Entscheidung, mit Audit-Spur. Das ist keine Doppelung im Sinne von §0.1: die Aufgabe wohnt auf der Übersicht, die Karte am Entstehungsort ist ihr Kontext.
 
 **9.3 Produkt-Spezifisch bleibt:** der Diff-Renderer (Text, JSON, Code, Markdown), die Prüf-Semantik (Dry-Run vs. Preview vs. Build) und das Zielobjekt-Vokabular.
 
@@ -205,7 +220,7 @@ Jede Sammlung gleichrangiger Objekte (Workflows, Skills, Quellen, Checks, Spaces
 
 **Zeilen öffnen über den Namen.** Die Namens-Zelle ist ein echter Link (`<a href>`) auf die eigene Adresse des Objekts — Tastatur, Screenreader und „in neuem Tab öffnen" erreichen ihn. Die ganze Zeile bleibt als Komfort klickbar und ignoriert Klicks auf Bedienelemente in ihr; die Zeile selbst ist kein Tab-Stopp. Einen „Öffnen"-Knopf in der Zeile gibt es nicht. Das „⋯" steht nur für ein **echtes Menü** mehrerer weiterer Aktionen; eine einzelne weitere Aktion ist ein benannter Knopf. Die mobile Karte ist kein Knopf: ihr Titel ist der Link, sie enthält keine verschachtelten Links, und die Zeilenaktionen stehen auch mobil auf der Karte.
 
-**Zustand statt Aufgabe.** Eine Objektliste zeigt den Zustand ihrer Zeilen (Chips nach §2/§11) und höchstens einen Link zum Eintrag auf Heute; eine eigene Aufmerksamkeitsliste über der Tabelle ist eine zweite Aufgabenliste und damit ein Konventionsbruch (§0.1). Listenköpfe tragen keine Zahl offener Anliegen.
+**Zustand statt Aufgabe.** Eine Objektliste zeigt den Zustand ihrer Zeilen (Chips nach §2/§11) und höchstens einen Link zum Eintrag auf der Übersicht; eine eigene Aufmerksamkeitsliste über der Tabelle ist eine zweite Aufgabenliste und damit ein Konventionsbruch (§0.1). Listenköpfe tragen keine Zahl offener Anliegen.
 
 **10.1 Zahlen führen auf Listen, die dasselbe zählen.** Jede Zahl mit Link (Kennzahl, Chip, Zähler) führt auf eine Liste, die **dasselbe** zählt: gleiches Zeitfenster, gleicher Filter, gleicher Gegenstand. „Ausführungen (30 Tage): 412" öffnet die Ausführungsliste der letzten 30 Tage, nicht alle; „Erfolgsquote" öffnet die gescheiterten Läufe desselben Fensters. Eine gezählte Null hat nichts zu öffnen und trägt keinen Link; ein Verhältnis, ein Score oder eine Dauer bei 0 ist der schlechteste Zustand und behält seinen Weg zur Ursache. Eine Zahl, deren Link auf eine anders zählende Liste führt, ist ein Konventionsbruch — der Mensch vergleicht beide und glaubt keiner.
 
@@ -217,7 +232,7 @@ Alles, was eine Fremdsystem-Verbindung repräsentiert (Connector, Binding, Quell
 
 ## 12. Berichts-Grammatik
 
-Jeder automatisch erzeugte Bericht oder Digest endet mit einem Block „**Was du entscheiden musst**" — dessen Positionen sind dieselben wie die Einträge auf Heute (§8, aus derselben Engine-Quelle) und verlinken auf ihr Prüf-Seitenblatt. Ein Bericht ohne Befund ist kein leerer Lauf, sondern der Beleg, dass geprüft wurde: „0 Befunde · geprüft vor 2 min" (§4). Die **Reihe** der Berichte ist sichtbar — Lücken (ausgefallene Läufe) erscheinen als Lücke, nicht als Stille. Drei Nicht-Zustände bleiben unterscheidbar: geprüft-nichts-gefunden · nie hingeschaut · kein Zugang. Erfolgs-Aussagen verlinken ihren Beleg — eine Messung mit Herkunft, nie die Behauptung des Agenten; Assistenten-Antworten zitieren ihre Quellobjekte als Links.
+Jeder automatisch erzeugte Bericht oder Digest endet mit einem Block „**Was du entscheiden musst**" — dessen Positionen sind dieselben wie die Einträge auf der Übersicht (§8, aus derselben Engine-Quelle) und verlinken auf ihr Prüf-Seitenblatt. Ein Bericht ohne Befund ist kein leerer Lauf, sondern der Beleg, dass geprüft wurde: „0 Befunde · geprüft vor 2 min" (§4). Die **Reihe** der Berichte ist sichtbar — Lücken (ausgefallene Läufe) erscheinen als Lücke, nicht als Stille. Drei Nicht-Zustände bleiben unterscheidbar: geprüft-nichts-gefunden · nie hingeschaut · kein Zugang. Erfolgs-Aussagen verlinken ihren Beleg — eine Messung mit Herkunft, nie die Behauptung des Agenten; Assistenten-Antworten zitieren ihre Quellobjekte als Links.
 
 ## 13. Prüfen vor Reparieren
 

@@ -41,9 +41,9 @@ export type PageRoute = (typeof PAGE_ROUTES)[number];
  * travels with the redirect (`redirectTarget`).
  *
  * `/decisions` and `/operations` were the decisions queue and the system page.
- * Both were a second and third place for what Heute now says once: what needs
+ * Both were a second and third place for what Übersicht now says once: what needs
  * the reader, and why the installation is not well. Their addresses land on
- * Heute — a link that named one workflow opens that workflow's review sheet.
+ * Übersicht — a link that named one workflow opens that workflow's review sheet.
  *
  * `/access` was the roles, groups and grants page. It is a section of
  * Personen & Rechte now, and its address lands on the roles — what it opened
@@ -59,7 +59,7 @@ export type RedirectRoute = (typeof REDIRECT_ROUTES)[number];
  * `/connections` carries its query along: the page it lands on reads the
  * OAuth callback's result out of it. `/access` does too, under the section it
  * lands on — its own `section` wins, whatever the old address said. The decisions queue's `bucket` narrowed a
- * page that no longer exists — carried along, it would only sit in Heute's
+ * page that no longer exists — carried along, it would only sit in Übersicht's
  * address meaning nothing. `workflow_id` is the one thing an old decisions
  * link said that still has a place, and it has to be a UUID to get there.
  */

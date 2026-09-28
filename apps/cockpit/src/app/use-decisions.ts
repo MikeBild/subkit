@@ -24,7 +24,7 @@ import {
   patchTitle,
   skillDecision,
 } from "@/pages/decisions-model";
-import { type ReviewAccess, type ReviewTarget, reviewAccess } from "@/pages/today-model";
+import { type ReviewAccess, type ReviewTarget, reviewAccess } from "@/pages/overview-model";
 
 /**
  * The ids two of the decision sources name their target with, as names. The

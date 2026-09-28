@@ -15,20 +15,20 @@ describe("cockpit navigation contract", () => {
   test("does not render entries without their effective permission", () => {
     const groups = visibleNavigation(["conversation:read", "workflow:read"]);
     expect(groups.flatMap((group) => group.items).map((item) => item.labelKey)).toEqual([
-      "nav.today",
+      "nav.overview",
       "nav.chat",
       "nav.workflows",
     ]);
   });
 
-  test("Heute shows for any source a reader may read, and for nothing else", () => {
+  test("Übersicht shows for any source a reader may read, and for nothing else", () => {
     // A reviewer with only a skill or a workflow grant still has something to
-    // do; gating Heute on `stats:read` hid it from exactly them.
+    // do; gating Übersicht on `stats:read` hid it from exactly them.
     for (const permission of ATTENTION_READ_PERMISSIONS) expect(paths([permission])).toContain("/");
     expect(paths(["audit:read"])).not.toContain("/");
   });
 
-  test("Heute stands alone at the top, without a heading", () => {
+  test("Übersicht stands alone at the top, without a heading", () => {
     const home = NAVIGATION[0];
     expect(home?.id).toBe("home");
     expect(home?.labelKey).toBeUndefined();
