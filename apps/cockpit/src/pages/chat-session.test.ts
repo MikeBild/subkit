@@ -12,6 +12,7 @@ import {
   recoverFailedSend,
   shouldRestoreComposer,
   tokenPill,
+  turnFailureCause,
 } from "./chat-session";
 
 const user = { role: "user" };
@@ -153,6 +154,60 @@ describe("a failed first send", () => {
         messagesAfter: [user, assistant],
       }),
     ).toEqual({ switchTo: null, restoreComposer: true });
+  });
+
+  // The reported jump: a send typed before the list had loaded took an EMPTY
+  // snapshot of what existed, and the list diff reached a minute back — so a
+  // waiting conversation opened 30 seconds earlier read as "the one this send
+  // created". The page moved there, found a request in it, and kept the text
+  // out of the composer: the message vanished into someone else's question.
+  test("never names a conversation that existed before the send", () => {
+    const listed = [{ id: "awaiting", created_at: "2026-09-29T09:59:30.000Z" }];
+    expect(
+      conversationOpenedByFailedSend({ startedId: null, knownIds: new Set(), sentAt, listed }),
+    ).toBeNull();
+  });
+
+  test("names nothing from the list when it did not know what existed before", () => {
+    const listed = [{ id: "c-new", created_at: "2026-09-29T10:00:01.000Z" }];
+    expect(
+      conversationOpenedByFailedSend({ startedId: null, knownIds: null, sentAt, listed }),
+    ).toBeNull();
+    // The create stream's own frame is still trusted without a snapshot.
+    expect(
+      conversationOpenedByFailedSend({ startedId: "c-new", knownIds: null, sentAt, listed }),
+    ).toBe("c-new");
+  });
+});
+
+describe("failure cause", () => {
+  test("names a provider quota and when it resets", () => {
+    expect(
+      turnFailureCause({
+        code: "llm_provider_limited",
+        kind: "quota_exhausted",
+        retry_at: "2026-10-01T00:00:00.000Z",
+      }),
+    ).toEqual({ kind: "provider_quota_exhausted", retryAt: "2026-10-01T00:00:00.000Z" });
+    expect(turnFailureCause({ code: "llm_provider_limited", kind: "rate_limit" })?.kind).toBe(
+      "provider_rate_limited",
+    );
+  });
+
+  test("a provider that cannot be reached is said so", () => {
+    expect(turnFailureCause({ code: "llm_provider_unavailable", kind: "other" })).toEqual({
+      kind: "provider_unreachable",
+      retryAt: null,
+    });
+    expect(turnFailureCause({ code: "llm_provider_unavailable", kind: "overloaded" })?.kind).toBe(
+      "provider_overloaded",
+    );
+    expect(turnFailureCause({ code: "llm_quota_exhausted" })?.kind).toBe("tenant_budget_exhausted");
+  });
+
+  test("an untyped failure has no named cause", () => {
+    expect(turnFailureCause({ code: "internal" })).toBeNull();
+    expect(turnFailureCause(null)).toBeNull();
   });
 });
 
