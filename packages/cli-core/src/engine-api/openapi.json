@@ -24136,7 +24136,7 @@
           "Stats"
         ],
         "summary": "The Übersicht's operations figures over one window",
-        "description": "Runs that started in the window and their success rate, the enabled connectors healthy now, and the share of repairs decided in the window that were applied — the four figures of the cockpit's operations bar, each with the cockpit list it counts.",
+        "description": "Runs that started in the window and their success rate, the enabled connectors healthy now, and the share of repairs decided in the window that were applied — the cockpit's operations bar reads its run, success, connector and repair figures from here, each with the cockpit list it counts.",
         "security": [
           {
             "bearerAuth": []

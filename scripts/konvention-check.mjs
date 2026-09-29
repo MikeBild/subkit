@@ -1067,6 +1067,44 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
         remaining_monthly_budget_tokens: 109_500_000,
       });
 
+    // The operations bar's runs, success rate, connector health and repair
+    // rate: the engine's one count. Answered from the fixtures the other reads
+    // hold — the executions totals below, the connector rows, two applied of
+    // three decided repairs — so the bar and the lists it opens agree.
+    if (path === "/v1/stats/operating-figures") {
+      const from = url.searchParams.get("from");
+      const to = url.searchParams.get("to");
+      if (!from || !to)
+        return json(route, { code: "validation", message: "request validation failed" }, 400);
+      const rows = catalogRows("/v1/connectors").filter((row) => row.enabled === true);
+      const notOk = rows.filter((row) => row.health_state !== "ok").length;
+      const window = { started_from: from, started_to: to };
+      return json(route, {
+        schema_version: "operating-figures.v1",
+        window: { from, to },
+        runs: {
+          total: 22,
+          succeeded: 20,
+          failed: 2,
+          success_rate_percent: 91,
+          href: `/cockpit/runs?${new URLSearchParams(window)}`,
+          failed_href: `/cockpit/runs?${new URLSearchParams({ status: "failed", ...window })}`,
+        },
+        connectors: {
+          enabled: rows.length,
+          not_ok: notOk,
+          healthy_percent: Math.round(((rows.length - notOk) / rows.length) * 100),
+          href: "/cockpit/connectors?health=not_ok",
+        },
+        repairs: {
+          decided: 3,
+          applied: 2,
+          applied_percent: 67,
+          href: `/cockpit/audit?${new URLSearchParams({ scope: "all", ts_from: from, ts_to: to })}`,
+        },
+      });
+    }
+
     // The repair decisions of a window, per verb — what the usage page's
     // repair rate is computed from. Two applied of three decided.
     if (path === "/v1/stats/events") {

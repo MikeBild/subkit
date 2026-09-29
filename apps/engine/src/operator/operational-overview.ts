@@ -14,6 +14,7 @@ import {
   DECISION_FAILURE_WINDOW_HOURS,
   failingScheduledGroups,
 } from "./health-digest.ts";
+import { readOperatingFigures, resolveOperatingBounds } from "./operating-figures.ts";
 import { registerTenantStateCache } from "./tenant-state.ts";
 
 export const OPERATIONAL_SCHEMA_VERSION = "operational-overview.v1" as const;
@@ -213,13 +214,10 @@ interface SnapshotRow extends Record<string, unknown> {
   other_decisions: string | number;
   active_workflows: string | number;
   execution_total_24h: string | number;
-  execution_success_24h: string | number;
   production_failures_24h: string | number;
   trial_failures_24h: string | number;
   connectors_total: string | number;
   connectors_not_ok: string | number;
-  repairs_applied: string | number;
-  repairs_decided: string | number;
   skills_total: string | number;
   pending_skill_candidates: string | number;
 }
@@ -297,6 +295,16 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
   );
   const failing = failingGroups.length;
 
+  // The success and repair ratios are the Übersicht's figures over the last
+  // 24 hours, asked of the reader `GET /v1/stats/operating-figures` answers
+  // from — one definition, so a scrape, an MCP client and the cockpit's bar
+  // cannot quote two rates for one question. They used to be computed here:
+  // runs FINISHED in the window, and repairs by their stored status over all
+  // time. Taken as raw counts, not the figures' rounded percents.
+  const bounds = resolveOperatingBounds({ window: "24h" }, now);
+  if (!bounds.ok) throw new Error(`operational overview window: ${bounds.reason}`);
+  const figures = await readOperatingFigures(db, tenantId, bounds);
+
   const result = await db.execute<SnapshotRow>(sql`
     WITH decisions AS (
       SELECT created_at, FALSE AS blocking FROM patch_candidates
@@ -319,13 +327,10 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       (SELECT count(*) FROM decisions WHERE NOT blocking AND created_at > now() - interval '72 hours') AS other_decisions,
       (SELECT count(*) FROM workflows WHERE tenant_id = ${tenantId} AND lifecycle = 'active' AND deleted_at IS NULL) AS active_workflows,
       (SELECT count(*) FROM finished) AS execution_total_24h,
-      (SELECT count(*) FROM finished WHERE status = 'succeeded') AS execution_success_24h,
       (SELECT count(*) FROM finished WHERE status IN ('failed', 'timed_out') AND source_kind = 'saved' AND request_source = 'scheduler') AS production_failures_24h,
       (SELECT count(*) FROM finished WHERE status IN ('failed', 'timed_out') AND (source_kind IN ('draft', 'step') OR request_source <> 'scheduler')) AS trial_failures_24h,
       (SELECT count(*) FROM connectors WHERE tenant_id = ${tenantId} AND ${connectorCountsTowardHealth()}) AS connectors_total,
       (SELECT count(*) FROM connectors WHERE tenant_id = ${tenantId} AND ${connectorCountsAgainstHealth()}) AS connectors_not_ok,
-      (SELECT count(*) FROM patch_candidates WHERE tenant_id = ${tenantId} AND status = 'applied') AS repairs_applied,
-      (SELECT count(*) FROM patch_candidates WHERE tenant_id = ${tenantId} AND status IN ('applied', 'rejected', 'superseded')) AS repairs_decided,
       (SELECT count(*) FROM skills WHERE tenant_id = ${tenantId}) AS skills_total,
       (SELECT count(*) FROM skill_candidates WHERE tenant_id = ${tenantId} AND status = 'proposed') AS pending_skill_candidates
   `);
@@ -336,16 +341,14 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
   const overdue = numberOf(row.overdue);
   const other = numberOf(row.other_decisions);
   const executions = numberOf(row.execution_total_24h);
-  const successes = numberOf(row.execution_success_24h);
   const connectors = numberOf(row.connectors_total);
   // The numerator is the complement of `GET /v1/connectors?health=not_ok`:
   // one predicate, so the list a red tile opens holds exactly what it counted.
   const healthyConnectors = connectors - numberOf(row.connectors_not_ok);
-  const successRatio = executions > 0 ? successes / executions : null;
+  const successRatio = figures.runs.total > 0 ? figures.runs.succeeded / figures.runs.total : null;
   const connectorRatio = connectors > 0 ? healthyConnectors / connectors : null;
-  const repairsDecided = numberOf(row.repairs_decided);
   const repairAppliedRatio =
-    repairsDecided > 0 ? numberOf(row.repairs_applied) / repairsDecided : null;
+    figures.repairs.decided > 0 ? figures.repairs.applied / figures.repairs.decided : null;
   const blockingScore = Math.max(0, 100 - blocked * 10);
   const completeHealth = successRatio !== null && connectorRatio !== null;
   const healthScore = completeHealth
@@ -553,7 +556,8 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
         product({
           id: "executions.success_ratio",
           label: "Execution success",
-          definition: "Successful executions divided by all runs finished in 24 hours.",
+          definition:
+            "Successful runs divided by all runs started in the last 24 hours, as GET /v1/stats/operating-figures counts them; a run still in flight counts toward the whole, not the successes.",
           relevance: "Shows recent workflow reliability.",
           kind: "ratio",
           value: successRatio,
@@ -657,7 +661,8 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
         product({
           id: "repairs.applied_ratio",
           label: "Repair application rate",
-          definition: "Applied self-healing patches divided by all decided patches.",
+          definition:
+            "Repairs approved or applied automatically divided by all repairs decided (approved, applied automatically, rejected) in the last 24 hours, as GET /v1/stats/operating-figures counts them.",
           relevance: "Shows how often proposed repairs become accepted operational changes.",
           kind: "ratio",
           value: repairAppliedRatio,
@@ -966,7 +971,13 @@ export function projectOperationalOverviewMetrics(snapshot: OperationalOverview)
     snapshot.core.data_freshness,
     ...snapshot.sections.flatMap((section) => section.metrics),
   ];
-  for (const entry of all)
-    if (entry.value !== null && entry.value_state !== "forbidden")
-      registry.set(entry.prometheus.name, entry.value);
+  // A figure without a value is scraped as NaN — Prometheus's "no value" —
+  // not left at its last number: the ratios count a 24-hour window, and a
+  // quiet day has no ratio. Skipping the write kept yesterday's rate on the
+  // scrape, and an empty series renders as 0, which for a ratio reads as
+  // "everything failed".
+  for (const entry of all) {
+    if (entry.value_state === "forbidden") continue;
+    registry.set(entry.prometheus.name, entry.value ?? Number.NaN);
+  }
 }

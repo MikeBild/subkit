@@ -1,7 +1,8 @@
-// GET /v1/stats/operating-figures — the Übersicht's four operations figures
-// over one window: runs, success rate, healthy connectors (now), applied
-// repairs. Read through `operator/operating-figures.ts`, the reader the MCP
-// tool `get_operating_figures` answers from. Gated by `stats:read`.
+// GET /v1/stats/operating-figures — four of the Übersicht's operations
+// figures over one window: runs, success rate, healthy connectors (now),
+// applied repairs. Read through `operator/operating-figures.ts`, the reader
+// the MCP tool `get_operating_figures`, the cockpit's operations bar and the
+// operational overview's ratios answer from. Gated by `stats:read`.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
@@ -70,7 +71,7 @@ const route = createRoute({
   tags: ["Stats"],
   summary: "The Übersicht's operations figures over one window",
   description:
-    "Runs that started in the window and their success rate, the enabled connectors healthy now, and the share of repairs decided in the window that were applied — the four figures of the cockpit's operations bar, each with the cockpit list it counts.",
+    "Runs that started in the window and their success rate, the enabled connectors healthy now, and the share of repairs decided in the window that were applied — the cockpit's operations bar reads its run, success, connector and repair figures from here, each with the cockpit list it counts.",
   security: [{ bearerAuth: [] }],
   request: { query: OperatingFiguresQuery },
   responses: {

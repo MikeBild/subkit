@@ -6,20 +6,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
-  CONNECTORS_ENABLED_ENDPOINT,
-  CONNECTORS_NOT_OK_ENDPOINT,
-  executionStatsEndpoint,
   type FigureBasis,
-  listTotal,
   llmStatsEndpoint,
   OPERATING_FIGURE_IDS,
   type OperatingFigure,
   type OperatingFigureId,
+  operatingCounts,
   operatingFigures,
+  operatingFiguresEndpoint,
   type Read,
-  repairStatsEndpoint,
-  repairTotals,
-  runTotals,
   STATS_WINDOWS,
   STATUS_ENDPOINT,
   type StatsWindow,
@@ -79,37 +74,20 @@ export function canReadOperations(permissions: readonly string[]): boolean {
 }
 
 /**
- * The reads the six figures are made of, over one fixed window. Nothing is
- * asked that the engine would refuse: a refused read is an audit row, so the
- * connector totals are read only by someone who may read connectors. Cost and
- * budget are the reads Nutzung makes — `stats:read`, like the bar itself.
+ * The reads the six figures are made of, over one fixed window. Runs, success
+ * rate, connector health and repair rate are one read — the engine's own count
+ * (`GET /v1/stats/operating-figures`), the answer the MCP tool and the
+ * operational overview give too. Cost and budget are the reads Nutzung makes.
+ * All of them are `stats:read`, like the bar itself.
  */
 export function useOperationsFigures(bounds: WindowBounds, permissions: readonly string[]) {
   const can = (permission: string) => permissions.includes(permission);
   const allowed = canReadOperations(permissions);
   const canConnectors = can("connector:read");
-  const runs = useQuery({
-    queryKey: ["operations-runs", bounds],
+  const counts = useQuery({
+    queryKey: ["operations-figures", bounds],
     enabled: allowed,
-    queryFn: () => apiRequest<unknown>(executionStatsEndpoint(bounds)),
-  });
-  // The repair decisions of the same window, per verb — the rows the repair
-  // rate's link opens.
-  const repairs = useQuery({
-    queryKey: ["operations-repairs", bounds],
-    enabled: allowed,
-    queryFn: () => apiRequest<unknown>(repairStatsEndpoint(bounds)),
-  });
-  // Connector health is a state, not a trend: two totals the engine counts.
-  const enabled = useQuery({
-    queryKey: ["operations-connectors", "enabled"],
-    enabled: allowed && canConnectors,
-    queryFn: () => apiRequest<unknown>(CONNECTORS_ENABLED_ENDPOINT),
-  });
-  const notOk = useQuery({
-    queryKey: ["operations-connectors", "not_ok"],
-    enabled: allowed && canConnectors,
-    queryFn: () => apiRequest<unknown>(CONNECTORS_NOT_OK_ENDPOINT),
+    queryFn: () => apiRequest<unknown>(operatingFiguresEndpoint(bounds)),
   });
 
   // The window's model calls and their money — the same query Nutzung makes
@@ -130,16 +108,8 @@ export function useOperationsFigures(bounds: WindowBounds, permissions: readonly
     query.isError ? { state: "failed" } : { state: "answered", value };
   const figures = operatingFigures({
     bounds,
-    totals: read(runs, runTotals(runs.data)),
-    connectors: canConnectors
-      ? enabled.isError || notOk.isError
-        ? { state: "failed" }
-        : {
-            state: "answered",
-            value: { enabled: listTotal(enabled.data), notOk: listTotal(notOk.data) },
-          }
-      : null,
-    repairs: read(repairs, repairTotals(repairs.data)),
+    counts: read(counts, operatingCounts(counts.data)),
+    connectorsPermitted: canConnectors,
     spend: read(spend, windowSpend(spend.data)),
     budget: read(status, budgetSummary(status.data)),
     canOpen: {
@@ -152,20 +122,13 @@ export function useOperationsFigures(bounds: WindowBounds, permissions: readonly
   });
   // Every read has answered — or failed — before any figure is shown: a
   // figure that appears late moves the ones beside it.
-  const pending =
-    runs.isPending ||
-    repairs.isPending ||
-    spend.isPending ||
-    status.isPending ||
-    (canConnectors && (enabled.isPending || notOk.isPending));
+  const pending = counts.isPending || spend.isPending || status.isPending;
+  // Runs, success rate, connector health and repair rate share one read: a
+  // retry on any of them asks it again.
   const retry = (id: OperatingFigureId) => {
-    if (id === "connectorHealth") {
-      void enabled.refetch();
-      void notOk.refetch();
-    } else if (id === "repairRate") void repairs.refetch();
-    else if (id === "cost") void spend.refetch();
+    if (id === "cost") void spend.refetch();
     else if (id === "budget") void status.refetch();
-    else void runs.refetch();
+    else void counts.refetch();
   };
   return { allowed, figures, pending, retry };
 }

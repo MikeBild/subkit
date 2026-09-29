@@ -5,17 +5,14 @@ import { describe, expect, test } from "bun:test";
 import { auditFilterFromUrl } from "@/pages/audit-model";
 import { connectorHealthFilterFromUrl } from "@/pages/connectors-model";
 import {
-  CONNECTORS_ENABLED_ENDPOINT,
-  CONNECTORS_NOT_OK_ENDPOINT,
   DECIDED_REPAIR_ACTIONS,
   executionStatsEndpoint,
-  listTotal,
   llmStatsEndpoint,
+  type OperatingCounts,
   type OperatingFigure,
+  operatingCounts,
   operatingFigures,
-  repairStatsEndpoint,
-  repairTotals,
-  runTotals,
+  operatingFiguresEndpoint,
   usageWindowFromUrl,
   windowBounds,
   windowBucket,
@@ -24,32 +21,46 @@ import {
 import { filterFromUrl } from "@/pages/runs-model";
 import { budgetSummary, windowCost } from "@/pages/usage-model";
 
-describe("the window's run totals", () => {
-  test("supplies the required window", () => {
-    const endpoint = executionStatsEndpoint(
-      windowBounds("30d", new Date("2026-08-10T12:00:00.000Z")),
-    );
-    expect(endpoint).toContain("bucket=day");
-    expect(endpoint).toContain("from=2026-07-11T12%3A00%3A00.000Z");
+describe("the engine's operating figures", () => {
+  const NOW = new Date("2026-08-10T12:00:00.000Z");
+
+  test("are asked over the window's two fixed instants", () => {
+    const endpoint = operatingFiguresEndpoint(windowBounds("30d", NOW));
+    expect(endpoint.startsWith("/v1/stats/operating-figures?")).toBe(true);
+    const query = new URLSearchParams(endpoint.slice(endpoint.indexOf("?")));
+    expect([query.get("from"), query.get("to")]).toEqual([
+      "2026-07-11T12:00:00.000Z",
+      "2026-08-10T12:00:00.000Z",
+    ]);
   });
 
-  test("reads the run count and the success rate it implies", () => {
+  test("reads the counts and the engine's own percentages, not a second rounding", () => {
     expect(
-      runTotals({
-        totals: {
-          executions: { count: 40, by_status: { completed: 36, failed: 4 } },
-          duration_ms: { avg: 1110, p95: 2300 },
-        },
+      operatingCounts({
+        schema_version: "operating-figures.v1",
+        window: { from: "a", to: "b" },
+        // 36 of 40 would be 90 here; the engine's number is the one shown.
+        runs: { total: 40, succeeded: 36, failed: 4, success_rate_percent: 91 },
+        connectors: { enabled: 8, not_ok: 2, healthy_percent: 75 },
+        repairs: { decided: 4, applied: 3, applied_percent: 75 },
       }),
-    ).toEqual({ executions: 40, successRatePercent: 90, failedRuns: 4 });
+    ).toEqual({
+      runs: { total: 40, failed: 4, successRatePercent: 91 },
+      connectors: { enabled: 8, notOk: 2, healthyPercent: 75 },
+      repairs: { decided: 4, appliedPercent: 75 },
+    });
   });
 
-  test("reports no success rate when nothing ran", () => {
-    expect(runTotals({ totals: { executions: { count: 0, by_status: {} } } })).toEqual({
-      executions: 0,
-      successRatePercent: null,
-      failedRuns: 0,
-    });
+  test("an answer that is not the figures is no counts at all", () => {
+    expect(operatingCounts(null)).toBeNull();
+    expect(operatingCounts({ totals: { executions: { count: 40 } } })).toBeNull();
+    expect(
+      operatingCounts({
+        runs: { total: 1, failed: 0 },
+        connectors: { enabled: 1 },
+        repairs: { decided: 0 },
+      }),
+    ).toBeNull();
   });
 });
 
@@ -69,12 +80,18 @@ describe("the operations figures", () => {
     monthly_budget_tokens: 150_000_000,
     remaining_monthly_budget_tokens: 109_500_000,
   });
+  const counts = (over: Partial<OperatingCounts> = {}) =>
+    answered<OperatingCounts | null>({
+      runs: { total: 40, failed: 2, successRatePercent: 95 },
+      connectors: { enabled: 8, notOk: 2, healthyPercent: 75 },
+      repairs: { decided: 4, appliedPercent: 75 },
+      ...over,
+    });
   const figuresOf = (overrides: Partial<Parameters<typeof operatingFigures>[0]> = {}) =>
     operatingFigures({
       bounds: WEEK,
-      totals: answered({ executions: 40, failedRuns: 2, successRatePercent: 95 }),
-      connectors: answered({ enabled: 8, notOk: 2 }),
-      repairs: answered({ decided: 4, applied: 3 }),
+      counts: counts(),
+      connectorsPermitted: true,
       spend: answered(priced),
       budget: answered(month),
       canOpen: all,
@@ -96,10 +113,9 @@ describe("the operations figures", () => {
     expect(stats(executionStatsEndpoint(WEEK)).get("from")).toBe("2026-08-03T12:00:00.000Z");
     expect(windowBucket("24h")).toBe("hour");
     expect(windowBucket("30d")).toBe("day");
-    // The repair rate is read over the very same bounds as the runs.
-    const repairs = stats(repairStatsEndpoint(WEEK));
-    expect(repairs.get("class")).toBe("self_healing");
-    expect([repairs.get("from"), repairs.get("to")]).toEqual([WEEK.from, WEEK.to]);
+    // Runs, connectors and repairs are counted over the very same bounds.
+    const figures = stats(operatingFiguresEndpoint(WEEK));
+    expect([figures.get("from"), figures.get("to")]).toEqual([WEEK.from, WEEK.to]);
   });
 
   test("every link opens the list the number counted: same window, same filter", () => {
@@ -121,7 +137,7 @@ describe("the operations figures", () => {
     // Runs: the runs that started in the window — the stats query's bounds.
     const window = { startedFrom: WEEK.from, startedTo: WEEK.to };
     expect(filterFromUrl(query(runs?.href ?? null))).toMatchObject({ status: "all", ...window });
-    const statsQuery = stats(executionStatsEndpoint(WEEK));
+    const statsQuery = stats(operatingFiguresEndpoint(WEEK));
     expect([statsQuery.get("from"), statsQuery.get("to")]).toEqual([
       window.startedFrom,
       window.startedTo,
@@ -146,8 +162,10 @@ describe("the operations figures", () => {
 
   test("a link that would open an empty list is no link", () => {
     const [, rate, connectors] = figuresOf({
-      totals: answered({ executions: 12, failedRuns: 0, successRatePercent: 100 }),
-      connectors: answered({ enabled: 5, notOk: 0 }),
+      counts: counts({
+        runs: { total: 12, failed: 0, successRatePercent: 100 },
+        connectors: { enabled: 5, notOk: 0, healthyPercent: 100 },
+      }),
     }).map(value);
     expect(rate?.value).toBe(100);
     expect(rate?.href).toBeNull();
@@ -157,9 +175,11 @@ describe("the operations figures", () => {
 
   test("a figure with nothing to say says so — never a tile reading 0", () => {
     const figures = figuresOf({
-      totals: answered({ executions: 0, failedRuns: 0, successRatePercent: null }),
-      connectors: answered({ enabled: 0, notOk: 0 }),
-      repairs: answered({ decided: 0, applied: 0 }),
+      counts: counts({
+        runs: { total: 0, failed: 0, successRatePercent: null },
+        connectors: { enabled: 0, notOk: 0, healthyPercent: null },
+        repairs: { decided: 0, appliedPercent: null },
+      }),
       spend: answered({ calls: 0, cost: windowCost({ cost: { amount: 0, currency: "USD" } }) }),
     });
     // Always six: the bar keeps its shape, and each empty slot says why.
@@ -174,9 +194,11 @@ describe("the operations figures", () => {
     // A rate of nought over real runs is a fact, and it stays.
     expect(
       figuresOf({
-        totals: answered({ executions: 3, failedRuns: 3, successRatePercent: 0 }),
-        connectors: null,
-        repairs: answered(null),
+        counts: counts({
+          runs: { total: 3, failed: 3, successRatePercent: 0 },
+          repairs: { decided: 0, appliedPercent: null },
+        }),
+        connectorsPermitted: false,
       }).map((figure) => [figure.id, figure.state, value(figure)?.value]),
     ).toEqual([
       ["runs", "value", 3],
@@ -190,9 +212,7 @@ describe("the operations figures", () => {
 
   test("a read that failed is said as unreadable, never as nothing to report", () => {
     const figures = figuresOf({
-      totals: { state: "failed" },
-      connectors: { state: "failed" },
-      repairs: { state: "failed" },
+      counts: { state: "failed" },
       spend: { state: "failed" },
       budget: { state: "failed" },
     });
@@ -297,29 +317,21 @@ describe("the operations figures", () => {
     ]);
   });
 
-  test("the repair rate counts exactly the verbs its link opens", () => {
-    const group = (action: string, total: number) => ({
-      key: { action },
-      totals: { calls: { total, by_outcome: { success: total, denied: 0, error: 0 } } },
-    });
+  test("an answer that was not the figures is unreadable, never nothing to report", () => {
     expect(
-      repairTotals({
-        groups: [
-          group("patch_candidate.proposed", 9),
-          group("patch_candidate.approved", 2),
-          group("patch_candidate.auto_applied", 1),
-          group("patch_candidate.rejected", 3),
-        ],
-      }),
-    ).toEqual({ decided: 6, applied: 3 });
-    expect(repairTotals({ items: [] })).toBeNull();
-    expect(repairTotals(null)).toBeNull();
+      figuresOf({ counts: answered(null) })
+        .slice(0, 4)
+        .map((figure) => [figure.id, figure.state]),
+    ).toEqual([
+      ["runs", "unreadable"],
+      ["successRate", "unreadable"],
+      ["connectorHealth", "unreadable"],
+      ["repairRate", "unreadable"],
+    ]);
   });
 
-  test("connector health is the engine's two totals, the unwell one being the linked list", () => {
-    expect(CONNECTORS_NOT_OK_ENDPOINT).toContain("health=not_ok");
-    expect(CONNECTORS_ENABLED_ENDPOINT).toContain("enabled=true");
-    expect(listTotal({ items: [], total: 7 })).toBe(7);
-    expect(listTotal({ items: [] })).toBeNull();
+  test("a reader who may not read connectors is told so, whatever the engine counted", () => {
+    const connector = figuresOf({ connectorsPermitted: false })[2];
+    expect([connector?.id, connector?.state]).toEqual(["connectorHealth", "not_permitted"]);
   });
 });
