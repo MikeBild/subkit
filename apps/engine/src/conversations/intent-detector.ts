@@ -108,7 +108,7 @@ const NEW_WORKFLOW_MODIFIER_PATTERN =
 // rename pass: it is the one place the legacy user-facing word is
 // deliberately matched, precisely to route it onto the connector path.
 const ENUMERATION_PATTERNS = [
-  /\b(welche|which|list|show|zeige?|gib|wieviele|how many|anzahl)\b.*\b(workflows?|connectors?|integrations?)\b/i,
+  /\b(welche|which|list|show|zeige?|gib|wie\s*viele|how many|number of|anzahl)\b.*\b(workflows?|connectors?|integrations?)\b/i,
   /\b(workflows?|connectors?|integrations?)\b.*\b(habe ich|do i have|listen?|available|vorhanden|insgesamt)/i,
 ];
 
@@ -123,6 +123,21 @@ const CONNECTOR_NOUN_RE = /\b(?:connectors?|integrations?)\b/i;
 export interface EnumerationCoverage {
   workflows_complete: boolean;
   connectors_complete: boolean;
+  /**
+   * The question names a workflow slug that exists in this tenant — it is
+   * about that workflow, not an enumeration of the catalog.
+   */
+  names_existing_workflow?: boolean;
+}
+
+// Count wording. A count is answered by the snapshot's exact totals and
+// category counts even when its rows are trimmed; a list verb beside it
+// ("wie viele … und welche") still asks for the rows.
+const COUNT_RE = /\b(?:wie\s*viele|how\s+many|anzahl|insgesamt|number\s+of)\b/i;
+const LIST_VERB_RE = /\b(?:welche|which|list|listen?|show|zeige?|gib|nenne?)\b/i;
+
+function isCountOnly(text: string): boolean {
+  return COUNT_RE.test(text) && !LIST_VERB_RE.test(text);
 }
 
 /** True when the text is an enumeration question the snapshot could answer. */
@@ -138,8 +153,23 @@ export function matchesEnumerationIntent(text: string | null | undefined): boole
  * a page: withholding tools there forced an answer from the first 40 rows,
  * and the model denied workflows past the cap. So a trimmed kind forces its
  * list tool for the first step instead (the router releases it afterwards).
+ *
+ * Two questions look like enumerations and are not:
+ * - one that names an existing workflow is about that workflow ("how many
+ *   steps does customer-sync have") — no pin either way, the model picks;
+ * - a count ("wie viele Workflows habe ich") needs no rows: the snapshot's
+ *   totals and category counts are exact even when its rows are trimmed.
+ * The named workflow is checked first: "wie viele Schritte hat
+ * customer-sync" is count wording the snapshot cannot answer, and a
+ * no-tools pin holds for the whole turn.
  */
 function enumerationIntent(text: string, coverage: EnumerationCoverage): DetectedIntent {
+  if (coverage.names_existing_workflow === true) {
+    return { reason: "enumeration_names_workflow" };
+  }
+  if (isCountOnly(text)) {
+    return { forceNoTools: true, reason: "enumeration_count_from_snapshot" };
+  }
   const asksWorkflows = WORKFLOW_NOUN_RE.test(text);
   const asksConnectors = CONNECTOR_NOUN_RE.test(text);
   if (asksWorkflows && !coverage.workflows_complete) {
@@ -229,6 +259,31 @@ export function detectUserIntent(
   }
 
   return { reason: "no_strong_intent" };
+}
+
+/**
+ * The tool the turn's first step is pinned to: the detected intent's, else
+ * the state-driven follow-up — each only when the palette carries it this
+ * turn. A tool missing from the palette (RBAC, surface, stage) is not forced:
+ * the AI SDK would reject the call, so the turn falls back to `"auto"`.
+ */
+export function resolvePreferredTool(
+  intent: Pick<DetectedIntent, "forceTool">,
+  stateDrivenTool: string | null,
+  hasTool: (name: string) => boolean,
+): string | null {
+  if (intent.forceTool && hasTool(intent.forceTool)) return intent.forceTool;
+  if (stateDrivenTool && hasTool(stateDrivenTool)) return stateDrivenTool;
+  return null;
+}
+
+/** The stream-level `toolChoice` for the turn's first step. */
+export function turnToolChoice(
+  preferredTool: string | null,
+  forceNoTools: boolean,
+): { type: "tool"; toolName: string } | "none" | "auto" {
+  if (preferredTool) return { type: "tool", toolName: preferredTool };
+  return forceNoTools ? "none" : "auto";
 }
 
 /** Envelope-resolver: when a pending confirm is open, parse the user's

@@ -23,6 +23,8 @@
 // Pure functions — no DB, no network.
 
 import { describe, expect, test } from "bun:test";
+import { classifyChatElicitError } from "../../../chat/elicit-routing.ts";
+import { ElicitationValidationError } from "../../service/elicit.ts";
 import { validateElicitationAnswer } from "./validate-answer.ts";
 
 // ── ask_user_form ────────────────────────────────────────────────────────────
@@ -57,6 +59,41 @@ describe("validateElicitationAnswer — ask_user_form", () => {
       expect(jsonErr).toBeDefined();
       expect(jsonErr?.message).toContain("invalid JSON");
     }
+  });
+
+  test("a sensitive json field's parse error never quotes the submitted token", () => {
+    const secret = "hunter2SecretValue";
+    // Precondition: the runtime's parser does echo the token.
+    expect(() => JSON.parse(`{"key": ${secret}}`)).toThrow(secret);
+    const input = {
+      question: "Service account",
+      fields: [{ name: "key_json", label: "Key JSON", type: "json" as const, sensitive: true }],
+    };
+    const result = validateElicitationAnswer("ask_user_form", input, {
+      key_json: `{"key": ${secret}}`,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.field_errors).toEqual([{ name: "key_json", message: "invalid JSON" }]);
+    expect(JSON.stringify(result)).not.toContain(secret);
+    // The same errors become the HTTP/SSE error body and the chat reply.
+    const err = new ElicitationValidationError("e1", result.field_errors, {
+      id: "e1",
+      tool_name: "ask_user_form",
+      summary: "Service account",
+      input,
+    });
+    expect(err.message).not.toContain(secret);
+    expect(JSON.stringify(classifyChatElicitError(err))).not.toContain(secret);
+  });
+
+  test("a non-sensitive json field keeps the parser's reason", () => {
+    const result = validateElicitationAnswer("ask_user_form", formInput, {
+      username: "alice",
+      config_json: '{"key": notjson}',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.field_errors[0]?.message).toContain("notjson");
   });
 
   test("valid flat-map submission → ok:true", () => {

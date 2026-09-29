@@ -15,6 +15,8 @@ import {
   detectUserIntent,
   inferStateDrivenFollowUpTool,
   matchesEnumerationIntent,
+  resolvePreferredTool,
+  turnToolChoice,
 } from "./intent-detector.ts";
 import type { AuthoringSummary } from "./types.ts";
 
@@ -169,6 +171,52 @@ describe("detectUserIntent", () => {
       const res = detectUserIntent("welche workflows und connectors habe ich", connectorsTrimmed);
       expect(res.forceNoTools).toBeUndefined();
       expect(res.forceTool).toBe("list_connectors");
+    });
+
+    test("a count is answered from the snapshot's exact totals even when its rows are trimmed", () => {
+      for (const text of [
+        "wie viele Workflows habe ich?",
+        "wieviele workflows habe ich",
+        "How many workflows do I have?",
+        "Anzahl der Workflows",
+        "workflows insgesamt",
+        "number of workflows in my tenant",
+      ]) {
+        expect(detectUserIntent(text, workflowsTrimmed), text).toEqual({
+          forceNoTools: true,
+          reason: "enumeration_count_from_snapshot",
+        });
+      }
+    });
+
+    test("a count asked together with the rows still fetches the rows", () => {
+      expect(
+        detectUserIntent("wie viele workflows habe ich und welche sind es?", workflowsTrimmed)
+          .forceTool,
+      ).toBe("list_workflows");
+    });
+
+    test("a question naming an existing workflow pins nothing", () => {
+      const named = { ...workflowsTrimmed, names_existing_workflow: true };
+      expect(detectUserIntent("Zeig mir den Workflow customer-sync", named)).toEqual({
+        reason: "enumeration_names_workflow",
+      });
+      // Count wording about one workflow is not a catalog count: no no-tools pin.
+      expect(
+        detectUserIntent("wie viele Schritte hat der workflow customer-sync?", {
+          ...complete,
+          names_existing_workflow: true,
+        }),
+      ).toEqual({ reason: "enumeration_names_workflow" });
+    });
+
+    test("a real enumeration on a trimmed snapshot still forces the list", () => {
+      expect(
+        detectUserIntent("welche workflows habe ich", {
+          ...workflowsTrimmed,
+          names_existing_workflow: false,
+        }).forceTool,
+      ).toBe("list_workflows");
     });
 
     test("matchesEnumerationIntent gates the coverage lookup", () => {
@@ -411,5 +459,39 @@ describe("inferStateDrivenFollowUpTool", () => {
         }),
       }),
     ).toBeNull();
+  });
+});
+
+describe("the turn's first-step tool choice", () => {
+  const palette = (names: string[]) => (name: string) => names.includes(name);
+
+  test("forces the detected tool when the palette carries it", () => {
+    const tool = resolvePreferredTool(
+      { forceTool: "list_workflows" },
+      null,
+      palette(["list_workflows"]),
+    );
+    expect(turnToolChoice(tool, false)).toEqual({ type: "tool", toolName: "list_workflows" });
+  });
+
+  test("a palette without list_workflows falls back to auto", () => {
+    const tool = resolvePreferredTool(
+      { forceTool: "list_workflows" },
+      null,
+      palette(["run_workflow"]),
+    );
+    expect(tool).toBeNull();
+    expect(turnToolChoice(tool, false)).toBe("auto");
+  });
+
+  test("the state-driven follow-up only when the palette carries it", () => {
+    expect(resolvePreferredTool({}, "save_workflow_draft", palette(["save_workflow_draft"]))).toBe(
+      "save_workflow_draft",
+    );
+    expect(resolvePreferredTool({}, "save_workflow_draft", palette([]))).toBeNull();
+  });
+
+  test("an answer-from-snapshot turn withholds tools", () => {
+    expect(turnToolChoice(null, true)).toBe("none");
   });
 });

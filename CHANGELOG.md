@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- The token budget now weighs prompt-cache writes at 2× (the one-hour cache
+  rate SubKit writes) instead of 1.25×, so cache-heavy tenants use their
+  monthly budget faster. Usage rows recorded before the change keep 1.25×.
+
 ## 8.0.26 — 2026-09-16
 
 ### Fixed

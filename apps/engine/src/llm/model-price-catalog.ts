@@ -24,6 +24,15 @@
 //
 // A vendor that bills long prompts higher lists that tier as `long_context`;
 // cost queries split calls at its threshold, one call at a time.
+//
+// No Anthropic entry has one, although every Claude call carries the
+// `context-1m` beta header (`core/model-init.ts`). The price list says: "Claude
+// 4.6 and later models ... include the full 1M token context window at
+// standard pricing. (A 900k-token request is billed at the same per-token rate
+// as a 9k-token request.)" The older models listed here (Sonnet 4.5, Haiku 4.5,
+// 3.5 Haiku) have a 200k window, so no prompt of theirs reaches a premium tier.
+// A test pins this; a vendor that reintroduces a premium adds the tier here
+// with its published rates.
 
 import { type ModelPrice, type SourcedModelPrice, vendorModelId } from "./pricing.ts";
 
