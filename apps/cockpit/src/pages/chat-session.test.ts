@@ -256,6 +256,8 @@ describe("header pills", () => {
 
   test("cost only when priced, and a floor when a model had no rate", () => {
     expect(costPill({ cost: null })).toBeNull();
+    // Nothing spent (e.g. the provider refused the only call): no "0,00 $".
+    expect(costPill({ cost: { amount: 0, currency: "USD", unpriced_models: [] } })).toBeNull();
     expect(costPill({ cost: { amount: 0.42, currency: "EUR", unpriced_models: [] } })).toEqual({
       amount: 0.42,
       currency: "EUR",
