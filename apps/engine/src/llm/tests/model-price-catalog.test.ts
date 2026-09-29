@@ -350,3 +350,38 @@ describe("the catalog never reaches the stored configuration", () => {
     expect(getConfig().tokens.prices).toEqual([]);
   });
 });
+
+describe("Anthropic long context", () => {
+  // Every Claude call carries the context-1m beta header. The vendor's price
+  // list bills Claude 4.6 and later at standard rates across the whole 1M
+  // window; the older catalog models have a 200k window.
+  test("no Anthropic entry carries a long-context tier", () => {
+    const claude = MODEL_PRICE_CATALOG.filter((p) => p.model.startsWith("claude-"));
+    expect(claude.length).toBeGreaterThan(0);
+    for (const price of claude) expect(price.long_context, price.model).toBeUndefined();
+  });
+
+  test("a 900k-token prompt on a 1M-window model is billed at the base rate", () => {
+    const rates = effectiveModelPrices({});
+    for (const [model, input, output] of [
+      ["claude-sonnet-4-6", 3, 15],
+      ["claude-opus-4-6", 5, 25],
+      ["claude-opus-5-5", 4, 20],
+    ] as const) {
+      const result = priceCalls(
+        [
+          {
+            model,
+            prompt_tokens: 900_000,
+            completion_tokens: 100_000,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+          },
+        ],
+        rates,
+        "USD",
+      );
+      expect(result.amount, model).toBeCloseTo(0.9 * input + 0.1 * output, 6);
+    }
+  });
+});

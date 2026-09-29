@@ -21,8 +21,14 @@ import { getMockProvider, resetMockProvider } from "../llm/mock-provider.ts";
 import { TEST_HUMAN_ANSWER } from "../test-helpers/answer-actor.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
 import { loadCategoryIndex } from "../workflows/catalog-view.ts";
-import { type FastPathParams, matchCategoryListIntent, tryFastPath } from "./fast-path.ts";
+import {
+  type FastPathParams,
+  matchCategoryListIntent,
+  matchListIntent,
+  tryFastPath,
+} from "./fast-path.ts";
 import { renderRunOutput } from "./fast-path-render.ts";
+import { loadEnumerationCoverage } from "./loop/enumeration-coverage.ts";
 import { listWorkflowsTool } from "./tools/generated/workflows.ts";
 import type { ToolContext } from "./tools/index.ts";
 import type { TurnEvent } from "./types.ts";
@@ -723,20 +729,33 @@ describe("tryFastPath — one catalog block", () => {
     expect(result).not.toBeNull();
     expect(result?.fast_path_tool).toBe("list_workflows");
     const text = result?.assistant_text ?? "";
-    expect(text.startsWith("4 workflows in **notion**:")).toBe(true);
-    for (const slug of notion) expect(text).toContain(`- ${slug} (active)`);
+    // Asked in German, answered in German; a name equal to its slug is not repeated.
+    expect(text.startsWith("4 Workflows in **notion**:")).toBe(true);
+    for (const slug of notion) expect(text).toContain(`- ${slug} (aktiv)`);
+    expect(text).not.toContain("(active)");
     expect(text).not.toContain("notion-retired");
     expect(text).not.toContain("aa-filler");
-    expect(text).toContain(
-      "- notion-archive (active) — notion-archive: Copies new Notion pages into the archive.",
-    );
-    expect(text).toContain(
-      "- notion-digest (active) — notion-digest: Mails a weekly digest of edited pages.",
-    );
+    expect(text).toContain("- notion-archive (aktiv) — Copies new Notion pages into the archive.");
+    expect(text).toContain("- notion-digest (aktiv) — Mails a weekly digest of edited pages.");
+    expect(text).toContain("- notion-search (aktiv)\n");
     const output = findToolResultOutput(result?.events);
     expect(output.category).toBe("notion");
     expect(output.total).toBe(4);
     expect(getMockProvider().calls.length).toBe(0);
+  });
+
+  test("asked in English, answered in English; a name that differs from the slug is shown", async () => {
+    await seedCategoryCatalog();
+    await tdb.db
+      .update(workflows)
+      .set({ name: "Notion full-text search", description: null })
+      .where(eq(workflows.id, await workflowIdBySlug("notion-search")));
+    const text =
+      (await tryFastPath(makeParams("show me the notion workflows")))?.assistant_text ?? "";
+    expect(text.startsWith("4 workflows in **notion**:")).toBe(true);
+    expect(text).toContain("- notion-archive (active) — Copies new Notion pages into the archive.");
+    expect(text).toContain("- notion-search (active) — Notion full-text search");
+    expect(text).not.toContain("(aktiv)");
   });
 
   test("the count equals the category size list_workflows reports, on every phrasing", async () => {
@@ -809,6 +828,56 @@ describe("tryFastPath — one catalog block", () => {
     const result = await tryFastPath(makeParams("zeige alle workflows"));
     expect(result?.assistant_text?.startsWith("45 workflows:")).toBe(true);
     expect(findToolResultOutput(result?.events).category).toBeUndefined();
+  });
+
+  test("a word that is no category falls through without a denial or an audit row", async () => {
+    await seedCategoryCatalog();
+    const restricted = makePrincipal({
+      provider: "portal_token",
+      roles: ["portal_token_user"],
+      allowed_workflows: ["00000000-0000-0000-0000-000000000099"],
+    });
+    const deniedListReads = async () =>
+      (
+        await tdb.db
+          .select()
+          .from(auditLog)
+          .where(
+            and(eq(auditLog.action, AuditAction.POLICY_DENIED), eq(auditLog.tenant_id, tenantId)),
+          )
+      ).filter((row) => (row.metadata as Record<string, unknown>)?.tool === "list_workflows")
+        .length;
+    const before = await deniedListReads();
+    for (const [text, word] of [
+      ["show me the failed workflows", "failed"],
+      ["zeig mir die aktiven workflows", "aktiven"],
+    ] as const) {
+      // Preconditions: only the category matcher sees this text.
+      expect(matchListIntent(text), text).toBeNull();
+      expect(matchCategoryListIntent(text), text).toBe(word);
+      expect(await tryFastPath({ ...makeParams(text), principal: restricted }), text).toBeNull();
+    }
+    expect(await deniedListReads()).toBe(before);
+  });
+
+  test("the enumeration steering sees a named workflow and a trimmed catalog", async () => {
+    await seedCategoryCatalog();
+    expect(
+      await loadEnumerationCoverage(tenantId, "wie viele Schritte hat notion-sync?", tdb.db),
+    ).toEqual({
+      workflows_complete: false,
+      connectors_complete: true,
+      names_existing_workflow: true,
+    });
+    expect(
+      (await loadEnumerationCoverage(tenantId, "Zeig mir die notion-Workflows", tdb.db))
+        .names_existing_workflow,
+    ).toBe(false);
+    // A deleted workflow is not named.
+    expect(
+      (await loadEnumerationCoverage(tenantId, "workflow notion-retired", tdb.db))
+        .names_existing_workflow,
+    ).toBe(false);
   });
 
   test("a principal without workflow:read is denied and audited", async () => {
