@@ -283,11 +283,28 @@ price first.
 
 - **Prices come with sk.** Each release carries a list-price catalog, in USD per
   million tokens, for the models sk picks by default and the models people most often
-  configure. It covers uncached input, output, cache reads and cache writes (the
-  five-minute write price). Each entry records the vendor pricing page it came from.
+  configure. It covers uncached input, output, cache reads and cache writes. Each entry
+  records the vendor pricing page it came from.
+- **Cache writes cost what sk actually writes.** sk asks Anthropic for the one-hour
+  prompt cache, so the catalog charges an Anthropic cache write at the one-hour rate
+  (2x input), not the five-minute rate. OpenAI and Google bill a cache write as plain
+  input. When you set `cache_write_per_mtok` yourself, give the rate for the cache sk
+  writes: for an Anthropic model, the one-hour rate.
+- **Long prompts cost more where the vendor says so.** Some models bill a call at a
+  higher rate once its prompt passes a threshold: `gpt-5.6-sol` above 272,000 tokens,
+  `gemini-2.5-pro` above 200,000. sk compares each call's prompt with the threshold
+  and prices the whole call at the higher rate. Summed tokens never decide it, so
+  two short calls stay short together. Your own `tokens.prices` entry is one flat rate
+  for every call of that model, whatever the prompt length.
 - **Your prices win, one model at a time.** An entry in `tokens.prices` replaces the
   catalog price for that model only. Every other model keeps its catalog price. Set
-  one with `sk settings set tokens.prices '[{"model":"claude-sonnet-4-6","input_per_mtok":3,"output_per_mtok":15,"cache_read_per_mtok":0.3,"cache_write_per_mtok":3.75}]'`.
+  one with `sk settings set tokens.prices '[{"model":"claude-sonnet-4-6","input_per_mtok":3,"output_per_mtok":15,"cache_read_per_mtok":0.3,"cache_write_per_mtok":6}]'`.
+- **Cloud platform ids find their model.** A call recorded under a Bedrock id
+  (`us.anthropic.claude-haiku-4-5-20251001-v1:0`) or a Vertex id
+  (`claude-haiku-4-5@20251001`) is priced at the catalog price of the model it serves,
+  and reported as `catalog_normalized`. A platform can charge more than the vendor's
+  list price, for example on Bedrock's regional endpoints. If yours does, set a
+  `tokens.prices` entry under the exact platform id. An exact entry always wins.
 - **The catalog is never written into your settings.** `tokens.prices` holds only what
   you entered. That is how a newer release's corrected or added prices reach every
   model you have not priced yourself, as soon as it is running.
@@ -298,8 +315,9 @@ price first.
 - **Unpriced means named, not free.** A model with neither your price nor a catalog
   price counts toward `unpriced_models` and `unpriced_calls`, never toward `amount`.
   When no model in the window has a price, the Usage page shows tokens and names the
-  models that need one. `price_sources` lists which rate priced each model: `catalog`
-  or `override`.
+  models that need one. `price_sources` lists which rate priced each model: `catalog`,
+  `catalog_normalized` (a catalog price reached through a Bedrock or Vertex id) or
+  `override`.
 - **Current prices, not an invoice.** Prices are applied when you read the figure
   (`rates_basis: "current"`). History is always priced at today's rates.
 
