@@ -17132,7 +17132,7 @@ export interface components {
             price_sources: {
                 model: string;
                 /** @enum {string} */
-                price_source: "catalog" | "override";
+                price_source: "catalog" | "catalog_normalized" | "override";
             }[];
             /** @enum {string} */
             rates_basis: "current";
@@ -19223,7 +19223,7 @@ export interface components {
             price_sources: {
                 model: string;
                 /** @enum {string} */
-                price_source: "catalog" | "override";
+                price_source: "catalog" | "catalog_normalized" | "override";
             }[];
             /** @enum {string} */
             rates_basis: "current";

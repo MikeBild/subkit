@@ -1479,6 +1479,7 @@
                   "type": "string",
                   "enum": [
                     "catalog",
+                    "catalog_normalized",
                     "override"
                   ]
                 }
@@ -9742,6 +9743,7 @@
                   "type": "string",
                   "enum": [
                     "catalog",
+                    "catalog_normalized",
                     "override"
                   ]
                 }
