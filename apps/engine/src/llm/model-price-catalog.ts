@@ -101,6 +101,9 @@ export const MODEL_PRICE_CATALOG: readonly CatalogModelPrice[] = Object.freeze([
     source: "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
   },
   openai("gpt-4o", 2.5, 10, 1.25),
+  // The first gpt-4o snapshot keeps its own, higher price and no cached-input
+  // rate. Listed exactly, or its calls would fall back to the bare id's price.
+  openai("gpt-4o-2024-05-13", 5, 15, 5),
   openai("gpt-4o-mini", 0.15, 0.6, 0.075),
   openai("gpt-4.1", 2, 8, 0.5),
   openai("gpt-4.1-mini", 0.4, 1.6, 0.1),
