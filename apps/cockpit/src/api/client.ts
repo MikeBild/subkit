@@ -155,6 +155,11 @@ async function streamConversation(
         outcome = { ...parsed, events: [] } as unknown as ConversationRun;
       } else if (eventName === "error")
         throw new ApiError(500, parsed, response.headers.get("x-trace-id"));
+      // The create stream names the new conversation before its turn runs;
+      // its frame carries no `type`, so it gets one here — a send that fails
+      // later still knows which conversation the engine opened.
+      else if (eventName === "conversation_started")
+        onEvent?.({ ...parsed, type: "conversation_started" });
       else onEvent?.(parsed);
     }
     if (done) break;
