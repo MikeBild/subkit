@@ -54,6 +54,7 @@ import { getWorkflow } from "../workflows/service.ts";
 import type { AnswerActor } from "./answer-actor.ts";
 import {
   type RenderPayload,
+  type ReplyLanguage,
   renderConnectorsList,
   renderExecutionsList,
   renderKnowledgeSourcesList,
@@ -220,6 +221,16 @@ const CATEGORY_LIST_RES = [
     "i",
   ),
 ];
+
+// No locale travels with a turn, so the reply follows the request's own words,
+// as the held-preview reply does: a German phrasing gets a German answer.
+const GERMAN_CATEGORY_LIST_RE =
+  /(?:^|\s)(?:zeige?|mir|die|alle|aus|der\s+kategorie|und\s+was\s+sie\s+tun)(?=\s|$)|@kategorie\//i;
+
+/** The language a category listing answers in. */
+export function categoryListLanguage(text: string): ReplyLanguage {
+  return GERMAN_CATEGORY_LIST_RE.test(text) ? "de" : "en";
+}
 
 /** The candidate category word of a single-block listing, lower-cased. */
 export function matchCategoryListIntent(text: string): string | null {
@@ -662,7 +673,12 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
       const input = { category: categoryCandidate };
       const denied = await denyCatalogRead(p, "workflow:read", "list_workflows", input);
       if (denied) return denied;
-      const payload = await renderWorkflowCategoryList(p, categoryCandidate, index);
+      const payload = await renderWorkflowCategoryList(
+        p,
+        categoryCandidate,
+        index,
+        categoryListLanguage(text),
+      );
       if (payload) return answerCatalogRead(p, "list_workflows", input, payload);
     }
   }

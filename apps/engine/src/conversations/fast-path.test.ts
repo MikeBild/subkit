@@ -729,20 +729,33 @@ describe("tryFastPath — one catalog block", () => {
     expect(result).not.toBeNull();
     expect(result?.fast_path_tool).toBe("list_workflows");
     const text = result?.assistant_text ?? "";
-    expect(text.startsWith("4 workflows in **notion**:")).toBe(true);
-    for (const slug of notion) expect(text).toContain(`- ${slug} (active)`);
+    // Asked in German, answered in German; a name equal to its slug is not repeated.
+    expect(text.startsWith("4 Workflows in **notion**:")).toBe(true);
+    for (const slug of notion) expect(text).toContain(`- ${slug} (aktiv)`);
+    expect(text).not.toContain("(active)");
     expect(text).not.toContain("notion-retired");
     expect(text).not.toContain("aa-filler");
-    expect(text).toContain(
-      "- notion-archive (active) — notion-archive: Copies new Notion pages into the archive.",
-    );
-    expect(text).toContain(
-      "- notion-digest (active) — notion-digest: Mails a weekly digest of edited pages.",
-    );
+    expect(text).toContain("- notion-archive (aktiv) — Copies new Notion pages into the archive.");
+    expect(text).toContain("- notion-digest (aktiv) — Mails a weekly digest of edited pages.");
+    expect(text).toContain("- notion-search (aktiv)\n");
     const output = findToolResultOutput(result?.events);
     expect(output.category).toBe("notion");
     expect(output.total).toBe(4);
     expect(getMockProvider().calls.length).toBe(0);
+  });
+
+  test("asked in English, answered in English; a name that differs from the slug is shown", async () => {
+    await seedCategoryCatalog();
+    await tdb.db
+      .update(workflows)
+      .set({ name: "Notion full-text search", description: null })
+      .where(eq(workflows.id, await workflowIdBySlug("notion-search")));
+    const text =
+      (await tryFastPath(makeParams("show me the notion workflows")))?.assistant_text ?? "";
+    expect(text.startsWith("4 workflows in **notion**:")).toBe(true);
+    expect(text).toContain("- notion-archive (active) — Copies new Notion pages into the archive.");
+    expect(text).toContain("- notion-search (active) — Notion full-text search");
+    expect(text).not.toContain("(aktiv)");
   });
 
   test("the count equals the category size list_workflows reports, on every phrasing", async () => {
