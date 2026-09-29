@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-import { and, desc, eq, gte, inArray, isNull, max, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, max, ne, sql } from "drizzle-orm";
 import { getConfig, installRuntimeConfig } from "../config/loader.ts";
 import { type Config, ConfigSchema } from "../config/schema.ts";
 import { dottedPath, findLeafByPath, listConfigLeaves } from "../config/walk.ts";
@@ -15,6 +14,7 @@ import { logger } from "../logging/logger.ts";
 import {
   ACTIVATION_TIMEOUT_MS,
   CONFIG_STATE_KEY,
+  defaultReplicaInstanceId,
   REPLICA_LEASE_MS,
   type RevisionStatus,
   RuntimeConfigConflictError,
@@ -24,6 +24,7 @@ import {
   type RuntimeRevision,
   RuntimeSecretInUseError,
 } from "./contracts.ts";
+import { clone, configDigest, getDeep, restartFieldsDiffering, setDeep } from "./document.ts";
 import { hasPendingSecretColumns, secretVersionProjection } from "./secret-columns.ts";
 
 export {
@@ -43,48 +44,6 @@ export {
 const SECRET_REF = /^secret:\/\/([A-Za-z0-9][A-Za-z0-9._-]{0,254})\/([1-9][0-9]*)$/;
 const SECRET_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
 export const DATABASE_URL_BOOTSTRAP_SENTINEL = "bootstrap://DATABASE_URL";
-
-function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value === null || typeof value !== "object") return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, child]) => [key, canonicalize(child)]),
-  );
-}
-
-export function configDigest(document: unknown): string {
-  return createHash("sha256")
-    .update(JSON.stringify(canonicalize(document)))
-    .digest("hex");
-}
-
-function getDeep(source: unknown, path: string[]): unknown {
-  let cursor = source;
-  for (const segment of path) {
-    if (cursor === null || typeof cursor !== "object") return undefined;
-    cursor = (cursor as Record<string, unknown>)[segment];
-  }
-  return cursor;
-}
-
-function setDeep(target: Record<string, unknown>, path: string[], value: unknown): void {
-  let cursor = target;
-  for (let index = 0; index < path.length - 1; index += 1) {
-    const segment = path[index]!;
-    const child = cursor[segment];
-    if (child === null || typeof child !== "object" || Array.isArray(child)) {
-      cursor[segment] = {};
-    }
-    cursor = cursor[segment] as Record<string, unknown>;
-  }
-  cursor[path.at(-1)!] = value;
-}
 
 export function parseSecretReference(value: string): { name: string; version: number } | null {
   const match = SECRET_REF.exec(value);
@@ -390,9 +349,65 @@ async function requireRevision(db: Executor, revision: number): Promise<RuntimeR
   return toRevision(row);
 }
 
+/** A restart-required revision waits while another replica's lease is still
+ * fresh. Internal: the boot loop retries on it until the lease runs out. */
+class HealthyLeaseConflictError extends RuntimeConfigConflictError {}
+
+/** How long boot waits for a foreign lease to run out before giving up: one
+ * lease window plus a heartbeat of slack. */
+export const BOOT_LEASE_WAIT_MS = REPLICA_LEASE_MS + 5_000;
+
+export interface BootLeaseWait {
+  /** Give up (and throw the conflict) after this many milliseconds. */
+  maxWaitMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+  /** This process's replica id; a lease under it cannot be another live process. */
+  instanceId?: string;
+}
+
+/**
+ * Load the canonical snapshot at boot. A restart-required revision is
+ * promoted only when no other replica holds a fresh lease. Right after an
+ * unclean end the previous process's lease is still fresh for up to
+ * REPLICA_LEASE_MS; throwing then would make the supervisor restart us into
+ * the same refusal until its start limit gives up, so boot waits (with
+ * backoff, outside any transaction) for the lease to run out and only throws
+ * when a lease stays fresh past the wait — a replica that is really alive.
+ */
 export async function initializeRuntimeConfig(
   db: Db,
   seed: Config,
+  leaseWait: BootLeaseWait = {},
+): Promise<RuntimeConfigStateView> {
+  const maxWaitMs = leaseWait.maxWaitMs ?? BOOT_LEASE_WAIT_MS;
+  const sleep = leaseWait.sleep ?? ((ms: number) => Bun.sleep(ms));
+  const ownInstanceId = leaseWait.instanceId ?? defaultReplicaInstanceId();
+  const startedAt = Date.now();
+  let backoffMs = 500;
+  for (;;) {
+    try {
+      return await initializeRuntimeConfigOnce(db, seed, ownInstanceId);
+    } catch (error) {
+      if (!(error instanceof HealthyLeaseConflictError)) throw error;
+      const waited = Date.now() - startedAt;
+      if (waited >= maxWaitMs) throw error;
+      logger.warn({
+        module: "runtime_config",
+        action: "boot.lease_wait",
+        msg: "a restart-required revision waits for another replica's lease to expire",
+        waited_ms: waited,
+        next_attempt_ms: backoffMs,
+      });
+      await sleep(Math.min(backoffMs, Math.max(0, maxWaitMs - waited)));
+      backoffMs = Math.min(backoffMs * 2, 5_000);
+    }
+  }
+}
+
+async function initializeRuntimeConfigOnce(
+  db: Db,
+  seed: Config,
+  ownInstanceId: string,
 ): Promise<RuntimeConfigStateView> {
   const state = await db.transaction(async (tx) => {
     await tx.insert(runtimeConfigState).values({ key: CONFIG_STATE_KEY }).onConflictDoNothing();
@@ -415,10 +430,15 @@ export async function initializeRuntimeConfig(
           const healthy = await tx
             .select({ instance_id: runtimeConfigReplicas.instance_id })
             .from(runtimeConfigReplicas)
-            .where(gte(runtimeConfigReplicas.last_seen_at, cutoff))
+            .where(
+              and(
+                gte(runtimeConfigReplicas.last_seen_at, cutoff),
+                ne(runtimeConfigReplicas.instance_id, ownInstanceId),
+              ),
+            )
             .limit(1);
           if (healthy.length > 0) {
-            throw new RuntimeConfigConflictError(
+            throw new HealthyLeaseConflictError(
               `revision ${savedRevision} requires a coordinated restart; a prior replica lease is still healthy`,
             );
           }
@@ -578,7 +598,6 @@ export async function saveRuntimeConfigPatch(
     }
     const base = await requireRevision(tx, baseRevision);
     const document = clone(base.document);
-    const pendingRestart = new Set<string>();
 
     for (const [path, value] of entries) {
       const leaf = findLeafByPath(path);
@@ -607,8 +626,19 @@ export async function saveRuntimeConfigPatch(
       const targetPath =
         args.scope === "tenant" ? ["tenants", args.tenant_id!, ...leaf.path] : leaf.path;
       setDeep(document, targetPath, value);
-      if (leaf.meta.requiresRestart) pendingRestart.add(path);
     }
+
+    // What waits for a restart is every restart-sensitive value that differs
+    // from what the running process loaded — not only the paths of this
+    // patch. A later save on top of a revision still waiting for its restart
+    // must carry that wait forward; otherwise it would hot-activate the
+    // earlier restart-sensitive change (the listener keeps the old port) and
+    // drop it from the "waiting for a restart" line.
+    const active =
+      state.active_revision === base.revision
+        ? base
+        : await requireRevision(tx, state.active_revision);
+    const pendingRestart = restartFieldsDiffering(active.document, document);
 
     await validateAndResolveDocument(tx, document);
     const digest = configDigest(document);
@@ -618,7 +648,7 @@ export async function saveRuntimeConfigPatch(
         document,
         digest,
         status: "saved",
-        pending_restart_fields: [...pendingRestart].sort(),
+        pending_restart_fields: pendingRestart,
         created_by: args.created_by,
       })
       .returning();

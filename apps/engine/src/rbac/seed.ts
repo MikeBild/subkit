@@ -78,6 +78,9 @@ function memberPermissionFilter(name: string): boolean {
   // mcp_oauth_client:* is admin-only — these are platform-global rows
   // (no tenant_id) and must not be exposed to member-level principals.
   if (name.startsWith("mcp_oauth_client:")) return false;
+  // system:restart ends the engine process for every tenant it serves —
+  // an operator act on shared infrastructure, never day-to-day member work.
+  if (name === "system:restart") return false;
   // chat_workspace:write installs or removes a tenant-wide
   // Slack/Teams/Google app binding (with encrypted bot credentials);
   // the DELETE route gates on `:write` per the project convention,

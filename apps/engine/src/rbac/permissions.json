@@ -341,6 +341,11 @@
     "description": "Update engine-global or tenant-scoped settings",
     "resource_type": "settings"
   },
+  {
+    "name": "system:restart",
+    "description": "Restart the engine so a saved restart-sensitive setting takes effect (admin only; needs a supervisor)",
+    "resource_type": "system"
+  },
 
   {
     "name": "file:read",

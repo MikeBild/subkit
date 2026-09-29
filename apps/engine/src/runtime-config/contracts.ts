@@ -1,7 +1,14 @@
+import { hostname } from "node:os";
+
 export const CONFIG_STATE_KEY = "runtime";
 export const REPLICA_HEARTBEAT_MS = 10_000;
 export const REPLICA_LEASE_MS = 30_000;
 export const ACTIVATION_TIMEOUT_MS = 60_000;
+
+/** This process's replica lease id: an explicit SUBKIT_REPLICA_ID, else host and pid. */
+export function defaultReplicaInstanceId(): string {
+  return process.env.SUBKIT_REPLICA_ID || `${hostname()}-${process.pid}`;
+}
 
 export type RevisionStatus = "saved" | "preparing" | "active" | "failed" | "restart_required";
 

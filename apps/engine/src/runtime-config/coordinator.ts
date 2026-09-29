@@ -1,10 +1,9 @@
-import { hostname } from "node:os";
 import { eq } from "drizzle-orm";
 import type { Config } from "../config/schema.ts";
 import type { Db } from "../db/client.ts";
 import { runtimeConfigReplicas, runtimeConfigState } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
-import { CONFIG_STATE_KEY, REPLICA_HEARTBEAT_MS } from "./contracts.ts";
+import { CONFIG_STATE_KEY, defaultReplicaInstanceId, REPLICA_HEARTBEAT_MS } from "./contracts.ts";
 import {
   applyRuntimeConfig,
   getRuntimeConfigState,
@@ -26,7 +25,7 @@ export class RuntimeConfigCoordinator {
   constructor(
     private readonly db: Db,
     private readonly productVersion: string,
-    instanceId = process.env.SUBKIT_REPLICA_ID || `${hostname()}-${process.pid}`,
+    instanceId = defaultReplicaInstanceId(),
   ) {
     this.instanceId = instanceId;
   }

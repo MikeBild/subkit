@@ -143,6 +143,13 @@ const ServerSection = z
         "External-facing URL the engine resolves at. Used by /install, chat link replies, and OAuth2 redirect-URI synthesis. Required for any OAuth2 connector.",
       )
       .meta(global()),
+    restart_supervised: z
+      .boolean()
+      .default(false)
+      .describe(
+        "A supervisor (systemd with Restart=on-failure, Docker with a restart policy) starts the engine again after it ends. Enables POST /v1/system/restart (exit code 75).",
+      )
+      .meta(global()),
   })
   .prefault({})
   .describe("HTTP server");
