@@ -43,6 +43,35 @@ export function weightedTotalTokens(u: TokenUsageBreakdown): number {
   );
 }
 
+/**
+ * The tokens a call is billed for — the one definition every spend reader
+ * (cost, conversation usage, execution cost, the monthly budget, stats) sees,
+ * because `recordUsage` applies it before the row is written.
+ *
+ * A call that failed without producing a single output token was not processed
+ * by the provider: a refusal (quota, rate limit, auth, context too large) or
+ * SubKit's own budget cap turning it away before dispatch. Its prompt figure is
+ * the tokenizer's estimate, never a provider-reported count, so it bills
+ * nothing. A failure that did produce output was processed and keeps its
+ * tokens; so does every success.
+ */
+export function billedTokenUsage(u: TokenUsageBreakdown & { result: string }): TokenUsageBreakdown {
+  if (u.result !== "success" && u.completion_tokens === 0) {
+    return {
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      cache_read_tokens: 0,
+      cache_creation_tokens: 0,
+    };
+  }
+  return {
+    prompt_tokens: u.prompt_tokens,
+    completion_tokens: u.completion_tokens,
+    cache_read_tokens: u.cache_read_tokens,
+    cache_creation_tokens: u.cache_creation_tokens,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Money
 //

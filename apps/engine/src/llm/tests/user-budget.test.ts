@@ -11,13 +11,15 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
+import { EMBEDDED_MIGRATIONS } from "../../db/migrations/embedded.ts";
 import { llmUsage, tenantLlmSettings, tenants, userLlmSettings } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
   checkAndDecrement,
   currentMonthBucket,
+  monthlyUsage,
   monthlyUsageForUser,
   recordUsage,
   resolveUserMonthlyBudget,
@@ -488,5 +490,94 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
     expect(verdict.budget).toBeNull();
     expect(verdict.remaining).toBeNull();
     expect(verdict.scope).toBeUndefined();
+  });
+});
+
+describe.skipIf(skip)("recordUsage — a call the provider did not process is not spend", () => {
+  const base = {
+    flow: "converse" as const,
+    model: "mock",
+    latency_ms: 7,
+    user_id: USER_A,
+    actor_type: "user" as const,
+  };
+
+  test("a refusal keeps its row as an error with zero tokens, and moves no budget", async () => {
+    const tenantBefore = await monthlyUsage(tenantId, testDb.db);
+    const userBefore = await monthlyUsageForUser(tenantId, USER_A, testDb.db);
+    for (const result of ["quota_exhausted", "error", "context_too_large"] as const) {
+      await recordUsage(
+        {
+          ...base,
+          tenant_id: tenantId,
+          prompt_tokens: 15_191,
+          completion_tokens: 0,
+          cache_read_tokens: 4_000,
+          result,
+          error: "You have reached your specified API usage limits",
+        },
+        testDb.db,
+      );
+    }
+    expect(await monthlyUsage(tenantId, testDb.db)).toBe(tenantBefore);
+    expect(await monthlyUsageForUser(tenantId, USER_A, testDb.db)).toBe(userBefore);
+    const rows = await testDb.db.select().from(llmUsage).where(eq(llmUsage.tenant_id, tenantId));
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      expect(row.result).not.toBe("success");
+      expect(row.error).toBe("You have reached your specified API usage limits");
+      expect(row.prompt_tokens).toBe(0);
+      expect(row.cache_read_tokens).toBe(0);
+      expect(row.total_tokens).toBe(0);
+    }
+  });
+
+  test("a failure that produced output was processed and stays billed", async () => {
+    await recordUsage(
+      {
+        ...base,
+        tenant_id: tenantId,
+        prompt_tokens: 1_000,
+        completion_tokens: 40,
+        result: "error",
+      },
+      testDb.db,
+    );
+    expect(await monthlyUsageForUser(tenantId, USER_A, testDb.db)).toBe(1_040);
+  });
+
+  test("a success is recorded as reported", async () => {
+    await recordUsage(
+      { ...base, tenant_id: tenantId, prompt_tokens: 900, completion_tokens: 0, result: "success" },
+      testDb.db,
+    );
+    expect(await monthlyUsage(tenantId, testDb.db)).toBe(900);
+  });
+
+  test("the migration clears the estimate from rows written before the rule", async () => {
+    const row = {
+      tenant_id: tenantId,
+      flow: "converse",
+      model: "mock",
+      latency_ms: 1,
+      month_bucket: currentMonthBucket(),
+      cache_read_tokens: 0,
+      cache_creation_tokens: 0,
+    };
+    await testDb.db.insert(llmUsage).values([
+      {
+        ...row,
+        result: "error",
+        prompt_tokens: 15_191,
+        completion_tokens: 0,
+        total_tokens: 15_191,
+      },
+      { ...row, result: "error", prompt_tokens: 500, completion_tokens: 20, total_tokens: 520 },
+      { ...row, result: "success", prompt_tokens: 300, completion_tokens: 0, total_tokens: 300 },
+    ]);
+    const migration = EMBEDDED_MIGRATIONS.find((m) => m.tag === "0069_unbilled_refused_llm_calls");
+    if (!migration) throw new Error("migration 0069 is not embedded");
+    for (const statement of migration.statements) await testDb.db.execute(sql.raw(statement));
+    expect(await monthlyUsage(tenantId, testDb.db)).toBe(820);
   });
 });

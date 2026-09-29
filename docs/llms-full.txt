@@ -4431,6 +4431,14 @@ questions over time-bucketed history. Operational routes aggregate at read time 
 | `GET /v1/stats/mcp` | `usage_events` | JSON-RPC classes, tasks, SSE completion/disconnect, session churn/capacity |
 | `GET /v1/stats/conversations` | `usage_events` | cross-surface HTTP/Chat/MCP turns, async task lifecycle, input pauses, completion/disconnect, outcomes |
 
+Token figures from `llm_usage` are billed tokens, and so is every spend reading
+built on them: cost, a conversation's tokens and cost, an execution's cost, and the
+monthly token budget. A call that failed without producing output was not processed by
+the provider. That covers a quota, rate-limit, or auth refusal, a context-too-large
+rejection, and a call refused by the workspace's own cap. Such a call stays in the
+ledger as an error with zero tokens. It counts toward error rates, never toward spend.
+A call that failed after producing output keeps its tokens.
+
 Connector status classes use the upstream transport status when one exists.
 `network_error` means that a connector call failed before receiving such a
 status; a successful call without an HTTP-like status is classified as

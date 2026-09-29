@@ -121,6 +121,29 @@ describe("POST /v1/conversations provider-limit handling", () => {
       kind: "quota_exhausted",
       retry_at: "2026-05-01T00:00:00.000Z",
     });
+
+    // The provider refused the call before reading it: the failure stays on
+    // the ledger as an error, and the conversation's tokens and cost stay at
+    // nothing — the estimate of a prompt nobody processed is not spend.
+    const refused = await srv.db
+      .select()
+      .from(llmUsage)
+      .where(eq(llmUsage.conversation_id, conversationId ?? ""));
+    expect(refused.length).toBeGreaterThanOrEqual(1);
+    for (const usageRow of refused) {
+      expect(usageRow.result).toBe("error");
+      expect(usageRow.prompt_tokens).toBe(0);
+      expect(usageRow.total_tokens).toBe(0);
+    }
+    const detail = await fetch(`${srv.baseUrl}/v1/conversations/${conversationId}`, {
+      headers: { Authorization: `Bearer ${srv.apiKey}` },
+    });
+    expect(detail.status).toBe(200);
+    const { usage } = (await detail.json()) as {
+      usage: { tokens: number; cost: { amount: number } | null };
+    };
+    expect(usage.tokens).toBe(0);
+    expect(usage.cost?.amount ?? 0).toBe(0);
   });
 
   test("a turn resumed by an answer that hits the quota is typed and kept too", async () => {
