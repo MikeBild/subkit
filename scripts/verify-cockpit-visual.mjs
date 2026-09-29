@@ -161,9 +161,12 @@ const routes = [
   "people?section=groups",
   "people?section=grants",
   "access",
+  // Zugangsdaten, at each of its tabs: the bare address opens the apps.
   "api-access",
-  // The old Kontoverbindungen address, with a callback result in its query:
-  // it must land on the grants section of Zugangsdaten and say the sentence.
+  "api-access?section=keys",
+  "api-access?section=grants",
+  // The old address of Zugriff in deinem Namen, with a callback result in its
+  // query: it must land on the grants tab of Zugangsdaten and say the sentence.
   "connections?failed=denied&name=Postfach",
   "settings",
   // The sign-in providers live in their own section; the list alone opens on
@@ -750,6 +753,101 @@ function settingsWith(overrides) {
     };
   });
 }
+
+/**
+ * The grants on Zugriff in deinem Namen: one row per state the page words
+ * differently. A fixture that only ever shows healthy grants proves nothing
+ * about the ones that need a way back — and the grants tab counts them.
+ */
+const CONNECTIONS = [
+  {
+    id: "connection-valid",
+    name: "Reporting-Portal",
+    base_url: "https://reporting.example.com",
+    issuer: "https://login.example.com",
+    service_name: "Reporting",
+    service_description: "Monatszahlen und Auswertungen",
+    scopes: ["reports.read"],
+    granted_scopes: ["reports.read"],
+    state: "valid",
+    auto_renew: true,
+    expires_at: "2026-12-01T09:00:00.000Z",
+    last_used_at: conversation.updated_at,
+    last_refreshed_at: conversation.updated_at,
+    refresh_failed_at: null,
+    last_error: null,
+    state_reason: null,
+    used_by: [
+      {
+        connector_id: uuid,
+        slug: "reporting-api",
+        display_name: "Reporting API",
+        workflow_count: 4,
+      },
+    ],
+    created_at: "2026-06-02T09:00:00.000Z",
+  },
+  {
+    id: "connection-expiring",
+    name: "Abrechnung",
+    base_url: "https://billing.example.com",
+    issuer: "https://login.example.com",
+    service_name: "Abrechnung",
+    service_description: null,
+    scopes: ["invoices.read", "invoices.write"],
+    granted_scopes: ["invoices.read"],
+    state: "expiring",
+    auto_renew: true,
+    expires_at: "2026-09-05T09:00:00.000Z",
+    last_used_at: null,
+    last_refreshed_at: null,
+    refresh_failed_at: null,
+    last_error: null,
+    state_reason: null,
+    used_by: [],
+    created_at: "2026-07-14T09:00:00.000Z",
+  },
+  {
+    id: "connection-expired",
+    name: "Postfach",
+    base_url: "https://mail.example.com",
+    issuer: "https://login.example.com",
+    service_name: null,
+    service_description: null,
+    scopes: ["mail.send"],
+    granted_scopes: null,
+    state: "expired",
+    auto_renew: false,
+    expires_at: "2026-08-20T09:00:00.000Z",
+    last_used_at: "2026-08-19T09:00:00.000Z",
+    last_refreshed_at: null,
+    refresh_failed_at: "2026-08-20T09:05:00.000Z",
+    last_error: "token endpoint refused: invalid_grant",
+    state_reason: "refresh_refused",
+    used_by: [],
+    created_at: "2026-05-05T09:00:00.000Z",
+  },
+  {
+    id: "connection-unreadable",
+    name: "Lager",
+    base_url: "https://inventory.example.com",
+    issuer: "https://login.example.com",
+    service_name: "Lager",
+    service_description: null,
+    scopes: ["stock.read"],
+    granted_scopes: null,
+    state: "unreadable",
+    auto_renew: false,
+    expires_at: null,
+    last_used_at: null,
+    last_refreshed_at: null,
+    refresh_failed_at: null,
+    last_error: null,
+    state_reason: "secret_unreadable",
+    used_by: [],
+    created_at: "2026-04-01T09:00:00.000Z",
+  },
+];
 
 const API_KEY_BASE = {
   scopes: ["workflow:read", "workflow:run"],
@@ -1404,95 +1502,7 @@ async function mockApi(route) {
     // One row per state the page words differently. A fixture that only ever
     // shows healthy grants proves nothing about the two that need a way back.
     return json(route, {
-      items: [
-        {
-          id: "connection-valid",
-          name: "Reporting-Portal",
-          base_url: "https://reporting.example.com",
-          issuer: "https://login.example.com",
-          service_name: "Reporting",
-          service_description: "Monatszahlen und Auswertungen",
-          scopes: ["reports.read"],
-          granted_scopes: ["reports.read"],
-          state: "valid",
-          auto_renew: true,
-          expires_at: "2026-12-01T09:00:00.000Z",
-          last_used_at: conversation.updated_at,
-          last_refreshed_at: conversation.updated_at,
-          refresh_failed_at: null,
-          last_error: null,
-          state_reason: null,
-          used_by: [
-            {
-              connector_id: uuid,
-              slug: "reporting-api",
-              display_name: "Reporting API",
-              workflow_count: 4,
-            },
-          ],
-          created_at: "2026-06-02T09:00:00.000Z",
-        },
-        {
-          id: "connection-expiring",
-          name: "Abrechnung",
-          base_url: "https://billing.example.com",
-          issuer: "https://login.example.com",
-          service_name: "Abrechnung",
-          service_description: null,
-          scopes: ["invoices.read", "invoices.write"],
-          granted_scopes: ["invoices.read"],
-          state: "expiring",
-          auto_renew: true,
-          expires_at: "2026-09-05T09:00:00.000Z",
-          last_used_at: null,
-          last_refreshed_at: null,
-          refresh_failed_at: null,
-          last_error: null,
-          state_reason: null,
-          used_by: [],
-          created_at: "2026-07-14T09:00:00.000Z",
-        },
-        {
-          id: "connection-expired",
-          name: "Postfach",
-          base_url: "https://mail.example.com",
-          issuer: "https://login.example.com",
-          service_name: null,
-          service_description: null,
-          scopes: ["mail.send"],
-          granted_scopes: null,
-          state: "expired",
-          auto_renew: false,
-          expires_at: "2026-08-20T09:00:00.000Z",
-          last_used_at: "2026-08-19T09:00:00.000Z",
-          last_refreshed_at: null,
-          refresh_failed_at: "2026-08-20T09:05:00.000Z",
-          last_error: "token endpoint refused: invalid_grant",
-          state_reason: "refresh_refused",
-          used_by: [],
-          created_at: "2026-05-05T09:00:00.000Z",
-        },
-        {
-          id: "connection-unreadable",
-          name: "Lager",
-          base_url: "https://inventory.example.com",
-          issuer: "https://login.example.com",
-          service_name: "Lager",
-          service_description: null,
-          scopes: ["stock.read"],
-          granted_scopes: null,
-          state: "unreadable",
-          auto_renew: false,
-          expires_at: null,
-          last_used_at: null,
-          last_refreshed_at: null,
-          refresh_failed_at: null,
-          last_error: null,
-          state_reason: "secret_unreadable",
-          used_by: [],
-          created_at: "2026-04-01T09:00:00.000Z",
-        },
-      ],
+      items: CONNECTIONS,
     });
   }
   if (path === "/v1/executions") {
@@ -2593,6 +2603,8 @@ function markerFor(route) {
   if (path === "access") return '[data-testid="roles-section"]';
   if (path === "people" && query.startsWith("section="))
     return `[data-testid="${query.slice("section=".length)}-section"]`;
+  if (path === "api-access" && query.startsWith("section="))
+    return `[data-testid="api-access-section-${query.slice("section=".length)}"]`;
   if (path === "settings" && query.startsWith("section="))
     return `[data-testid="settings-section-${query.slice("section=".length)}"]`;
   if (["people", "api-access", "settings"].includes(path)) return `[data-testid="admin-${path}"]`;
@@ -3679,7 +3691,18 @@ for (const locale of variants) {
           shoot(page, `${locale.artifact}-${viewport.name}-installation-${state}`, {
             fullPage: false,
           }),
-        { settingsSections: SETTINGS_SECTION_COUNT, viewport },
+        {
+          settingsSections: SETTINGS_SECTION_COUNT,
+          viewport,
+          // What each row must and must not say: its scope decides "Gilt für",
+          // and the engine's English never shows.
+          settingRows: ENGINE_SETTINGS.map((item) => ({
+            path: item.path,
+            scope: item.meta.scope,
+            source: item.meta.source,
+            description: item.meta.description ?? null,
+          })),
+        },
       );
     await verifyApiAccess(page, stand, locale.name, {
       realClients: REAL_OAUTH_CLIENTS,
@@ -3688,6 +3711,9 @@ for (const locale of variants) {
       disabledClients: OAUTH_CLIENTS.filter((item) => item.disabled_at).length,
       activeKeys: API_KEYS.filter((item) => !item.revoked_at).length,
       revokedKeys: API_KEYS.filter((item) => item.revoked_at).length,
+      grantsToRenew: CONNECTIONS.filter((item) =>
+        ["expiring", "expired", "unreadable"].includes(item.state),
+      ).length,
     });
     await verifyScheduleHolds(page, stand, uuid, locale.name, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-schedule-held-${state}`, {

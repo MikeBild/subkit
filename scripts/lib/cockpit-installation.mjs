@@ -79,10 +79,12 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
   // Visited through the stand, so the frame below is of a page that named itself.
   await stand.visit(page, "settings?leaf=tokens.monthly_budget");
   await page.getByTestId("settings-list").waitFor({ state: "visible" });
+  // The row names its setting by address, not by text: the key is no longer
+  // written on the row (it was, inside a closed "Technische Angaben").
   await page.waitForFunction(() => {
     const active = document.activeElement;
     const field = active?.closest('[data-testid^="setting-item-"]');
-    return Boolean(field?.textContent?.includes("tokens.monthly_budget"));
+    return field?.getAttribute("data-setting-path") === "tokens.monthly_budget";
   });
   // Opening the leaf once moved the whole page sideways: the settings column
   // was as wide as a tab strip holding every section side by side, the page's
@@ -125,9 +127,64 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
     throw new Error("/settings?leaf=: the linked setting's row is not marked");
   if (!(await page.getByTestId("settings-pending-restart").isVisible()))
     throw new Error("/settings: a pending restart does not say which settings wait for it");
+  await verifySettingRows(
+    page,
+    settings.settingRows,
+    "tokens",
+    "/settings?leaf=tokens.monthly_budget",
+  );
   await capture("settings-budget-leaf");
+  // The budget's section is all tenant-scoped; the server's is all global —
+  // the rows that must NOT say "Gilt für".
+  await stand.visit(page, "settings?section=server");
+  await page.getByTestId("settings-section-server").waitFor({ state: "visible" });
+  await verifySettingRows(page, settings.settingRows, "server", "/settings?section=server");
 
   await verifySettingsSections(page, stand, settings, capture);
+}
+
+// A setting's row: no "Technische Angaben" disclosure — counted in the DOM,
+// since a closed <details> keeps its content in the markup and out of
+// innerText — no engine English anywhere in the page's text, "Gilt für" exactly
+// on the rows that can differ per workspace, a copy icon for the key (the
+// fixture reader may change settings), and one answer below the list on how a
+// change is stored.
+async function verifySettingRows(page, rows, section, where) {
+  const shape = await page.evaluate(() => {
+    const main = document.querySelector('[data-testid="admin-settings"]');
+    const items = [...(main?.querySelectorAll('[data-testid^="setting-item-"]') ?? [])];
+    return {
+      disclosures: items.reduce(
+        (sum, item) =>
+          sum + item.querySelectorAll('details, [data-testid^="setting-technical-"]').length,
+        0,
+      ),
+      text: main?.textContent ?? "",
+      rows: items.map((item) => ({
+        path: item.getAttribute("data-setting-path"),
+        appliesTo: Boolean(item.querySelector('[data-testid^="setting-applies-to-"]')),
+        copy: Boolean(item.querySelector('[data-testid^="setting-copy-key-"]')),
+      })),
+      storage: main?.querySelectorAll('[data-testid="settings-storage"]').length ?? 0,
+    };
+  });
+  if (shape.disclosures > 0)
+    throw new Error(`${where}: ${shape.disclosures} rows still carry a technical disclosure`);
+  if (shape.storage !== 1)
+    throw new Error(`${where}: "Wie wird gespeichert?" stands ${shape.storage} times`);
+  const shown = shape.rows.filter((row) => row.path?.startsWith(`${section}.`));
+  if (shown.length === 0) throw new Error(`${where}: no row of the ${section} section is shown`);
+  for (const row of shown) {
+    const expected = rows.find((candidate) => candidate.path === row.path);
+    if (!expected) throw new Error(`${where}: a row names ${row.path}, not in the fixture`);
+    if (row.appliesTo !== (expected.scope === "tenant" || expected.source === "tenant"))
+      throw new Error(
+        `${where}: ${row.path} (${expected.scope}) ${row.appliesTo ? "says" : "does not say"} "Gilt für"`,
+      );
+    if (!row.copy) throw new Error(`${where}: ${row.path} has no way to copy its key`);
+    if (expected.description && shape.text.includes(expected.description))
+      throw new Error(`${where}: ${row.path} shows the engine's English description`);
+  }
 }
 
 // The settings sections were a tab strip of twenty, twice as wide as the page

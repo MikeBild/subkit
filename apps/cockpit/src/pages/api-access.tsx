@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronRight, MoreHorizontal, Plug, Plus, RefreshCw } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import {
@@ -9,6 +10,7 @@ import {
   apiAccessHref,
   apiAccessSectionFromUrl,
   connectorHref,
+  docsHref,
 } from "@/app/links";
 import { useSession } from "@/app/session";
 import { ConfirmAction } from "@/components/cockpit/confirm-action";
@@ -44,7 +46,16 @@ import {
 } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
@@ -53,19 +64,22 @@ import { SecretDialog } from "@/pages/admin";
 import {
   type ApiKeyItem,
   type ConnectedClientItem,
-  deepLinkReady,
   defaultKeyScopes,
+  grantsNeedingRenewal,
   groupApiKeys,
   groupConnectedClients,
   keyState,
   keyStateSaysUse,
   keyStateText,
+  keysNeedingAction,
+  openApiAccessSection,
   ROTATE_OVERLAP_MINUTES,
   readableSections,
   scopeCatalogue,
   scopeLabel,
   scopeRisk,
   scopeRiskKey,
+  sectionBadgeText,
 } from "@/pages/api-access-model";
 import {
   type ConnectionItem,
@@ -86,21 +100,36 @@ const KEYS_QUERY = ["admin", "api-keys"] as const;
 const CLIENTS_QUERY = ["admin", "oauth-clients"] as const;
 const CONNECTIONS_QUERY = ["admin", "connections"] as const;
 
-// RFC 8693 token exchange at the engine's own token endpoint — one line a
-// script can paste. The key never leaves the file it is read from.
-const TOKEN_EXCHANGE_CURL = [
-  "curl -sS -X POST $SUBKIT_URL/v1/oauth/token \\",
-  '  --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \\',
-  '  --data-urlencode "subject_token=$(cat /etc/subkit/api-key)" \\',
-  '  --data-urlencode "subject_token_type=urn:subkit:params:oauth:token-type:api-key"',
-].join("\n");
+/**
+ * The guide a reader follows to add an app — Claude, ChatGPT, Codex. Adding
+ * starts in the app itself, so the empty section links the way there.
+ */
+const CLIENTS_GUIDE = "authors/coding-agents.md";
+/** How a script swaps a key for a short-lived token — for developers, not on the page itself. */
+const TOKEN_EXCHANGE_GUIDE = "developers/token-exchange.md";
+
+const SECTION_TITLE_KEYS = {
+  clients: "apiAccess.section.clients",
+  keys: "apiAccess.section.keys",
+  grants: "apiAccess.section.grants",
+} as const;
+
+const TAB_COLUMNS = ["grid-cols-1", "grid-cols-2", "grid-cols-3"] as const;
 
 /**
  * Zugangsdaten — the one page for everything that holds or grants rights
- * (§11 Rechte-Inventur): the keys this installation hands out, the
- * applications connected to it, and the accounts it is connected to. Each
- * section is behind its own read permission; a section the reader cannot read
- * is absent rather than a failed load.
+ * (§11 Rechte-Inventur): the apps with access to SubKit, the keys for
+ * scripts, and the systems SubKit may use on someone's behalf. Each is a tab
+ * with its own address (`?section=clients|keys|grants`) — the pattern of
+ * Personen & Rechte: tabs on a wide screen, a select on a phone. Each section
+ * is behind its own read permission; a section the reader cannot read is
+ * absent rather than a failed load.
+ *
+ * The three sections stood one below the other with an index of anchors
+ * above them, and the page opened with the words "Kontoverbindungen",
+ * "API-Schlüssel" and "Verbundene Anwendungen" — three names a reader could
+ * not tell apart without knowing the machinery. Each section now says when it
+ * is needed, with an example.
  */
 export function ApiAccessPage() {
   const { t } = useI18n();
@@ -110,6 +139,9 @@ export function ApiAccessPage() {
   const canClients = can("mcp_oauth_client:read");
   const canGrants = can("connection:read");
 
+  // All three lists load with the page, whichever tab is open: a tab says
+  // how many of its rows need someone, and it can only say that once its
+  // list has arrived.
   const keys = useQuery({
     queryKey: KEYS_QUERY,
     queryFn: () => apiRequest<{ items: ApiKeyItem[] }>("/v1/identity/api-keys"),
@@ -126,161 +158,162 @@ export function ApiAccessPage() {
     enabled: canGrants,
   });
 
-  const sections = readableSections({ grants: canGrants, keys: canKeys, clients: canClients });
-  const views = {
-    grants: queryView(connections, (data) => data.items.length === 0),
-    keys: queryView(keys, (data) => data.items.length === 0),
-    clients: queryView(clients, (data) => data.items.length === 0),
+  const readable = useMemo(
+    () => readableSections({ grants: canGrants, keys: canKeys, clients: canClients }),
+    [canGrants, canKeys, canClients],
+  );
+  // The section IS the address, as on Personen & Rechte: read from the
+  // router's location on every render and changed only by navigating. The
+  // OAuth callback lands on `section=grants`, the old `/connections` address
+  // redirects there, and a tab switch replaces the history entry.
+  const searchStr = useRouterState({ select: (state) => state.location.searchStr });
+  const section = openApiAccessSection(apiAccessSectionFromUrl(searchStr), readable);
+  const navigate = useNavigate();
+  const choose = (next: string) => {
+    const picked = readable.find((candidate) => candidate === next);
+    if (!picked || picked === section) return;
+    void navigate({ to: apiAccessHref(picked), replace: true });
   };
-  const ready = deepLinkReady(sections.map((section) => views[section]));
 
-  // An address that names a section opens the page there — the OAuth callback
-  // lands on `section=grants`, the section index links to each one. Only
-  // once every list has arrived: the scroll used to run on mount, while the
-  // lists were skeletons, and the content that loaded above the heading then
-  // pushed it out of view. Once — a refetch must not pull the page back.
-  const scrolled = useRef(false);
-  useEffect(() => {
-    if (scrolled.current || !ready) return;
-    scrolled.current = true;
-    const section = apiAccessSectionFromUrl(window.location.search);
-    if (section) revealSection(section);
-  }, [ready]);
+  const nowMs = Date.now();
+  const badges: Record<ApiAccessSection, string | null> = {
+    clients: null,
+    keys: sectionBadgeText(
+      "keys",
+      keys.data ? keysNeedingAction(keys.data.items, nowMs) : undefined,
+      t,
+    ),
+    grants: sectionBadgeText(
+      "grants",
+      connections.data ? grantsNeedingRenewal(connections.data.items) : undefined,
+      t,
+    ),
+  };
 
   return (
     <PageFrame
       testId="admin-api-access"
       title={t("resource.apiAccess.title")}
+      description={t("apiAccess.intro")}
       scroll="page"
       surface="installation"
     >
-      <div className="flex flex-col gap-8">
-        {sections.length > 1 ? (
-          <SectionIndex
-            sections={sections}
-            counts={{
-              grants: connections.data?.items.length,
-              keys: keys.data ? groupApiKeys(keys.data.items).active.length : undefined,
-              clients: clients.data
-                ? groupConnectedClients(clients.data.items).granted.length
-                : undefined,
-            }}
-          />
-        ) : null}
-        {sections.map((section) =>
-          section === "grants" ? (
-            <GrantsSection key={section} query={connections} />
-          ) : section === "keys" ? (
-            <KeysSection key={section} query={keys} />
-          ) : (
-            <ClientsSection key={section} query={clients} />
-          ),
-        )}
-      </div>
+      {section === null ? (
+        <Alert data-testid="resource-permission-alert">
+          <AlertTitle>{t("resource.permission.title")}</AlertTitle>
+          <AlertDescription>{t("resource.permission.description")}</AlertDescription>
+        </Alert>
+      ) : (
+        <Tabs value={section} onValueChange={choose} data-testid="api-access-tabs">
+          {readable.length > 1 ? (
+            <>
+              <Select value={section} onValueChange={choose}>
+                <SelectTrigger
+                  className="w-full sm:hidden"
+                  aria-label={t("apiAccess.sectionPicker")}
+                  data-testid="api-access-mobile-section"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {readable.map((value) => (
+                      <SelectItem
+                        key={value}
+                        value={value}
+                        data-testid={`api-access-mobile-${value}`}
+                      >
+                        {t(SECTION_TITLE_KEYS[value])}
+                        {badges[value] ? ` · ${badges[value]}` : null}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <TabsList
+                variant="line"
+                className={cn(
+                  "hidden h-auto w-full sm:grid",
+                  TAB_COLUMNS[readable.length - 1] ?? "grid-cols-3",
+                )}
+                data-testid="api-access-tab-list"
+              >
+                {readable.map((value) => (
+                  <TabsTrigger key={value} value={value} data-testid={`api-access-tab-${value}`}>
+                    <span data-tab-label="">{t(SECTION_TITLE_KEYS[value])}</span>
+                    {/* Only a count someone can act on, in its own words. */}
+                    {badges[value] ? (
+                      <Badge variant="outline" data-testid={`api-access-tab-badge-${value}`}>
+                        {badges[value]}
+                      </Badge>
+                    ) : null}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </>
+          ) : null}
+          <TabsContent value={section} className="pt-4">
+            {section === "grants" ? (
+              <GrantsSection query={connections} />
+            ) : section === "keys" ? (
+              <KeysSection query={keys} />
+            ) : (
+              <ClientsSection query={clients} />
+            )}
+          </TabsContent>
+        </Tabs>
+      )}
     </PageFrame>
   );
 }
 
-function sectionHeadingId(section: ApiAccessSection): string {
-  return `api-access-${section}-title`;
-}
-
-/** Bring a section's heading to the top of the scroll region and put focus on it. */
-function revealSection(section: ApiAccessSection) {
-  const heading = document.getElementById(sectionHeadingId(section));
-  heading?.scrollIntoView({ block: "start", inline: "nearest" });
-  heading?.focus({ preventScroll: true });
-}
-
-const SECTION_TITLE_KEYS = {
-  grants: "apiAccess.section.grants",
-  keys: "apiAccess.section.keys",
-  clients: "apiAccess.section.clients",
-} as const;
-
 /**
- * Three anchors with what each section holds — the account connections, the
- * live keys, the applications someone has approved — so the section a reader
- * came for is one click away however long the one above it is. The count is
- * what the click shows, not the rows collapsed below it.
+ * A section's head: what it is for with an example, the one way to add, and —
+ * once its list has arrived — how many it holds. The total stands here, never
+ * on the tab: a tab carries only what needs someone.
  */
-function SectionIndex({
-  sections,
-  counts,
-}: {
-  sections: readonly ApiAccessSection[];
-  counts: Record<ApiAccessSection, number | undefined>;
-}) {
-  const { t } = useI18n();
-  return (
-    <nav aria-label={t("apiAccess.index.label")} data-testid="api-access-index">
-      <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-        {sections.map((section) => (
-          <li key={section}>
-            <a
-              href={absolute(apiAccessHref(section))}
-              className="font-medium underline-offset-4 hover:underline"
-              data-testid={`api-access-index-${section}`}
-              onClick={(event) => {
-                event.preventDefault();
-                window.history.replaceState(
-                  window.history.state,
-                  "",
-                  absolute(apiAccessHref(section)),
-                );
-                revealSection(section);
-              }}
-            >
-              {t(SECTION_TITLE_KEYS[section])}
-              {counts[section] === undefined ? null : (
-                <>
-                  {" "}
-                  <span className="tabular-nums text-muted-foreground">{counts[section]}</span>
-                </>
-              )}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  );
-}
-
 function Section({
   section,
-  title,
   description,
+  total,
   action,
   children,
 }: {
   section: ApiAccessSection;
-  title: string;
   description: string;
+  total?: string | null;
   action?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section
-      className="flex scroll-mt-4 flex-col gap-3"
-      aria-labelledby={sectionHeadingId(section)}
-      data-testid={`api-access-section-${section}`}
-    >
+    <section className="flex flex-col gap-3" data-testid={`api-access-section-${section}`}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h2
-            id={sectionHeadingId(section)}
-            tabIndex={-1}
-            className="text-base font-semibold outline-none"
-          >
-            {title}
-          </h2>
           <p className="text-sm text-muted-foreground">{description}</p>
+          {total ? (
+            <p
+              className="mt-1 text-xs text-muted-foreground tabular-nums"
+              data-testid={`api-access-total-${section}`}
+            >
+              {total}
+            </p>
+          ) : null}
         </div>
         {action}
       </div>
       {children}
     </section>
   );
+}
+
+/** A count in words, singular where it is one. */
+function countText(
+  t: ReturnType<typeof useI18n>["t"],
+  count: number,
+  one: Parameters<ReturnType<typeof useI18n>["t"]>[0],
+  many: Parameters<ReturnType<typeof useI18n>["t"]>[0],
+): string {
+  return count === 1 ? t(one) : t(many, { count: String(count) });
 }
 
 /**
@@ -516,8 +549,12 @@ function KeysSection({ query }: { query: ListQuery<ApiKeyItem> }) {
   return (
     <Section
       section="keys"
-      title={t("apiAccess.section.keys")}
       description={t("apiAccess.section.keysDescription")}
+      total={
+        query.data && groups.active.length > 0
+          ? countText(t, groups.active.length, "apiAccess.total.keysOne", "apiAccess.total.keys")
+          : null
+      }
       action={createButton}
     >
       {view === "loading" ? (
@@ -559,14 +596,17 @@ function KeysSection({ query }: { query: ListQuery<ApiKeyItem> }) {
           ) : null}
         </div>
       )}
-      <Card size="sm" data-testid="api-keys-token-exchange">
-        <CardContent className="flex flex-col gap-2 p-4">
-          <p className="text-sm text-muted-foreground">{t("apiKeys.exchangeHint")}</p>
-          <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
-            <code>{TOKEN_EXCHANGE_CURL}</code>
-          </pre>
-        </CardContent>
-      </Card>
+      {/* How a script swaps its key for a short-lived token is a developer's
+          question: one link to the guide, not a command on this page. */}
+      <p className="text-xs text-muted-foreground" data-testid="api-access-developer-footer">
+        <a
+          href={docsHref(TOKEN_EXCHANGE_GUIDE)}
+          className="underline-offset-4 hover:underline"
+          data-testid="api-access-token-exchange-link"
+        >
+          {t("apiAccess.developerFooter")}
+        </a>
+      </p>
       <CreateKeyDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
@@ -812,8 +852,17 @@ function ClientsSection({ query }: { query: ListQuery<ConnectedClientItem> }) {
   return (
     <Section
       section="clients"
-      title={t("apiAccess.section.clients")}
       description={t("apiAccess.section.clientsDescription")}
+      total={
+        query.data && groups.granted.length > 0
+          ? countText(
+              t,
+              groups.granted.length,
+              "apiAccess.total.clientsOne",
+              "apiAccess.total.clients",
+            )
+          : null
+      }
     >
       {view === "loading" ? (
         <LoadingRows testId="connected-clients-loading" />
@@ -824,9 +873,17 @@ function ClientsSection({ query }: { query: ListQuery<ConnectedClientItem> }) {
           testId="connected-clients-load-failed"
         />
       ) : view === "empty" ? (
+        // Adding an app starts in the app; the way there is the guide.
         <EmptySection
           title={t("connectedClients.emptyTitle")}
           description={t("connectedClients.emptyDescription")}
+          action={
+            <Button asChild variant="outline" size="sm">
+              <a href={docsHref(CLIENTS_GUIDE)} data-testid="connected-clients-guide">
+                {t("apiAccess.clientsGuide")}
+              </a>
+            </Button>
+          }
           testId="connected-clients-empty"
         />
       ) : (
@@ -953,8 +1010,9 @@ function GrantsSection({ query }: { query: ListQuery<ConnectionItem> }) {
   });
 
   const connectButton = canWrite ? (
+    // The section's own primary: a tab shows one section, so its way to add
+    // is the one filled action on screen, as "Schlüssel erstellen" is on keys.
     <Button
-      variant="outline"
       className="w-full sm:w-auto"
       onClick={() => setConnectOpen(true)}
       data-testid="connection-create"
@@ -965,11 +1023,16 @@ function GrantsSection({ query }: { query: ListQuery<ConnectionItem> }) {
   ) : undefined;
 
   const view = queryView(query, (data) => data.items.length === 0);
+  const count = query.data?.items.length ?? 0;
   return (
     <Section
       section="grants"
-      title={t("apiAccess.section.grants")}
       description={t("apiAccess.section.grantsDescription")}
+      total={
+        count > 0
+          ? countText(t, count, "apiAccess.total.grantsOne", "apiAccess.total.grants")
+          : null
+      }
       action={connectButton}
     >
       {outcome?.kind === "failed" && (
@@ -1040,6 +1103,55 @@ function failureSentence(error: unknown, t: ReturnType<typeof useI18n>["t"]): st
   return t(connectionFailureKey(code));
 }
 
+/**
+ * The rights SubKit holds on the other system: how many, and the other
+ * system's own strings behind "Details anzeigen". No risk word — the words
+ * "liest", "schreibt", "verwaltet" come from SubKit's own permission catalogue
+ * (`scopeRisk`), which does not know a foreign scope and would call every one
+ * of them "schreibt". A claim this build cannot make is not made.
+ */
+function ConnectionRights({ scopes, index }: { scopes: readonly string[]; index: number }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  if (scopes.length === 0) return null;
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="mt-2"
+      data-testid={`connection-rights-${index}`}
+    >
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-muted-foreground" data-testid={`connection-rights-count-${index}`}>
+          {scopes.length === 1
+            ? t("connections.rightsOne")
+            : t("connections.rights", { count: String(scopes.length) })}
+        </span>
+        <CollapsibleTrigger asChild>
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs"
+            data-testid={`connection-rights-toggle-${index}`}
+          >
+            {t(open ? "connections.hideRights" : "connections.showRights")}
+          </Button>
+        </CollapsibleTrigger>
+      </div>
+      <CollapsibleContent>
+        {/* The other system's own strings, shown as what they are — machine values. */}
+        <div className="mt-2 flex flex-wrap gap-1" data-testid={`connection-scopes-${index}`}>
+          {scopes.map((scope) => (
+            <Badge key={scope} variant="secondary">
+              <LabelText label={{ text: scope, machine: true }} />
+            </Badge>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function ConnectionRow({
   item,
   index,
@@ -1082,15 +1194,7 @@ function ConnectionRow({
           {item.service_description && (
             <p className="mt-1 text-sm text-muted-foreground">{item.service_description}</p>
           )}
-          {/* The other system's own rights strings: this build cannot name
-              them, so they are shown as what they are — machine values. */}
-          <div className="mt-2 flex flex-wrap gap-1" data-testid={`connection-scopes-${index}`}>
-            {(item.granted_scopes ?? item.scopes).map((scope) => (
-              <Badge key={scope} variant="secondary">
-                <LabelText label={{ text: scope, machine: true }} />
-              </Badge>
-            ))}
-          </div>
+          <ConnectionRights scopes={item.granted_scopes ?? item.scopes} index={index} />
           <p className="mt-2 text-xs text-muted-foreground">
             {item.last_used_at
               ? t("connections.lastUsed", { when: formatRelativeTime(locale, item.last_used_at) })

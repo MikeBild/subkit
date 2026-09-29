@@ -1,6 +1,6 @@
 // The settings page's parts, rendered: a grouped section list and no tab
-// strip, a status line only when something waits, and rows whose technical
-// details stay folded away.
+// strip, a status line only when something waits, rows without a technical
+// disclosure, and one answer below the list on how a change is stored.
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -21,8 +21,14 @@ import {
   SettingsSaveBar,
   SettingsSectionHeading,
   SettingsSectionNav,
+  SettingsStorageNote,
 } from "@/pages/settings";
-import { SETTING_GROUPS, type SettingItem, settingNavigation } from "@/pages/settings-model";
+import {
+  SETTING_GROUPS,
+  type SettingItem,
+  settingAppliesToShown,
+  settingNavigation,
+} from "@/pages/settings-model";
 
 function render(node: ReactNode, locale: Locale = "de"): string {
   const value = {
@@ -157,19 +163,44 @@ describe("a setting's row", () => {
     expect(html).toContain(de("settings.restart"));
   });
 
-  test("keeps the key, source, scope and the engine's wording in collapsed technical details", () => {
-    const details = html.slice(html.indexOf("<details"), html.indexOf("</details>"));
-    expect(html).toContain('<details class="mt-1 text-xs" data-testid="setting-technical-3">');
-    expect(details).not.toMatch(/<details[^>]*\sopen/);
-    expect(details).toContain(de("settings.technical"));
-    expect(details).toContain("tokens.monthly_budget");
-    expect(details).toContain(de("settings.technical.scope"));
-    expect(details).toContain("Wortlaut der Engine");
-    expect(details).toContain('data-testid="setting-copy-key-3"');
-    // Outside the details: no key, no engine wording.
-    const row = html.replace(details, "");
-    expect(row).not.toContain("tokens.monthly_budget");
-    expect(row).not.toContain("Wortlaut der Engine");
+  test("has no technical disclosure, and neither the key nor the engine's English as text", () => {
+    // The collapsed "Technische Angaben" on every row is gone: in the DOM,
+    // not merely closed — closed <details> content is still in the markup.
+    expect(html).not.toContain("<details");
+    expect(html).not.toContain("setting-technical-");
+    expect(html).not.toContain("Hard cap on tokens");
+    expect(html).not.toContain("Wortlaut der Engine");
+    // The key is an address the row carries, not text a reader sees.
+    expect(html).toContain('data-setting-path="tokens.monthly_budget"');
+    expect(html.replace(/data-setting-path="[^"]*"/, "")).not.toContain("tokens.monthly_budget");
+  });
+
+  test("offers the key to copy only to those who may change settings", () => {
+    expect(html).not.toContain('data-testid="setting-copy-key-3"');
+    const writer = render(
+      <SettingRow item={item} index={3} highlighted={false} canCopyKey>
+        <input data-testid="setting-input-3" />
+      </SettingRow>,
+    );
+    expect(writer).toContain('data-testid="setting-copy-key-3"');
+    expect(writer).toContain(`aria-label="${de("settings.copyKey")}"`);
+  });
+
+  test("says what it applies to only where a workspace can differ", () => {
+    // Tenant-scoped leaf: the line stands.
+    expect(html).toContain('data-testid="setting-applies-to-3"');
+    expect(html).toContain("Gilt für: Arbeitsbereich");
+    const global = render(
+      <SettingRow
+        item={{ ...item, meta: { ...item.meta, scope: "global" } }}
+        index={3}
+        highlighted={false}
+      >
+        <input data-testid="setting-input-3" />
+      </SettingRow>,
+    );
+    expect(global).not.toContain('data-testid="setting-applies-to-3"');
+    expect(global).not.toContain("Gilt für");
   });
 
   test("names the source on the row only when it is not the plain installation value", () => {
@@ -185,6 +216,30 @@ describe("a setting's row", () => {
     );
     expect(tenant).toContain('data-testid="setting-source-3"');
     expect(tenant).toContain('data-highlighted="true"');
+  });
+});
+
+describe("what a row says it applies to", () => {
+  test("only a tenant-scoped leaf or a workspace's own value", () => {
+    expect(settingAppliesToShown({ scope: "global", source: "global" })).toBe(false);
+    expect(settingAppliesToShown({ scope: "global", source: "default" })).toBe(false);
+    expect(settingAppliesToShown({ scope: "global", source: "env" })).toBe(false);
+    expect(settingAppliesToShown({ scope: "tenant", source: "default" })).toBe(true);
+    expect(settingAppliesToShown({ scope: "global", source: "tenant" })).toBe(true);
+  });
+});
+
+describe("how a change is stored", () => {
+  test("is answered once, below the list, in the plan's words", () => {
+    const html = render(<SettingsStorageNote />);
+    expect(html).toContain('data-testid="settings-storage"');
+    expect(html).toContain("Wie wird gespeichert?");
+    expect(html).toContain(
+      "Jede Änderung wird als neue, unveränderliche Version in der Datenbank gespeichert",
+    );
+    expect(html).toContain("bis dahin läuft die vorherige Version weiter");
+    const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
+    expect(source.match(/<SettingsStorageNote \/>/g)?.length).toBe(1);
   });
 });
 
