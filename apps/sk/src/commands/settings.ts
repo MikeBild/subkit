@@ -14,7 +14,7 @@
 // Every subcommand accepts `--tenant <id>` to operate on a tenant
 // overlay (only `scope: "tenant"` leaves may be written).
 
-import { reportCommandError } from "@cli-core/errors.ts";
+import { isEngineError, reportCommandError } from "@cli-core/errors.ts";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
@@ -107,7 +107,9 @@ const getCommand = defineCommand({
       if (out.meta.sensitive)
         process.stdout.write(`  ${pc.yellow("sensitive — value is masked")}\n`);
       if (out.meta.requiresRestart)
-        process.stdout.write(`  ${pc.red("requiresRestart — set with --force in production")}\n`);
+        process.stdout.write(
+          `  ${pc.yellow("takes effect after a restart — `sk system restart --wait`")}\n`,
+        );
       if (out.meta.description)
         process.stdout.write(`  description:     ${out.meta.description}\n`);
     } catch (err) {
@@ -115,6 +117,15 @@ const getCommand = defineCommand({
     }
   },
 });
+
+/**
+ * A save the engine answered with 409 `restart_required` IS saved — the value
+ * waits for the next process start. Returns the engine's message then, null for
+ * every real failure. It used to print "Error:" and exit 1 for a success.
+ */
+export function savedAwaitingRestart(err: unknown): string | null {
+  return isEngineError(err) && err.code === "restart_required" ? err.message : null;
+}
 
 const setCommand = defineCommand({
   meta: {
@@ -148,9 +159,20 @@ const setCommand = defineCommand({
       process.stdout.write(`  value:           ${JSON.stringify(out.value)}\n`);
       if (out.requiresRestart)
         process.stdout.write(
-          `  ${pc.red("requiresRestart — restart the engine for this to take effect")}\n`,
+          `  ${pc.yellow("takes effect after a restart — `sk system restart --wait`")}\n`,
         );
     } catch (err) {
+      // Saved, waiting for a restart: that is the setting's normal path, not
+      // a failure. The engine answers 409 restart_required with the saved
+      // revision in its message.
+      const waiting = savedAwaitingRestart(err);
+      if (waiting) {
+        if (args.json) return printJson({ saved: true, restart_required: true, message: waiting });
+        process.stdout.write(`${pc.green("✔")} ${pc.cyan(args.path as string)} saved\n`);
+        process.stdout.write(`  ${pc.yellow(waiting)}\n`);
+        process.stdout.write(`  Apply it now: ${pc.cyan("sk system restart --wait")}\n`);
+        return;
+      }
       reportCommandError(err, { json: Boolean(args.json) });
     }
   },
