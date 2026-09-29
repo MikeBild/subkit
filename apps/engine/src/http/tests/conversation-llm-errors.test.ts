@@ -123,6 +123,59 @@ describe("POST /v1/conversations provider-limit handling", () => {
     });
   });
 
+  test("a turn resumed by an answer that hits the quota is typed and kept too", async () => {
+    const [conversation] = await srv.db
+      .insert(conversations)
+      .values({ tenant_id: srv.tenantId, owner_id: srv.userId, status: "awaiting_input" })
+      .returning();
+    if (!conversation) throw new Error("failed to seed conversation");
+    await srv.db.insert(conversationMessages).values({
+      tenant_id: srv.tenantId,
+      conversation_id: conversation.id,
+      role: "user",
+      content: { text: "set up the storage connector" },
+    });
+    const [elicitation] = await srv.db
+      .insert(conversationElicitations)
+      .values({
+        tenant_id: srv.tenantId,
+        conversation_id: conversation.id,
+        tool_call_id: null,
+        tool_name: "ask_user_text",
+        summary: "Which region?",
+        input: { question: "Which region?" },
+        status: "pending",
+      })
+      .returning();
+    if (!elicitation) throw new Error("failed to seed elicitation");
+    resetMockProvider();
+    getMockProvider().setFailure("conv-quota-primary", "quota_exhausted");
+
+    const res = await fetch(
+      `${srv.baseUrl}/v1/conversations/${conversation.id}/elicitations/${elicitation.id}/respond`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${srv.apiKey}`,
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify({ output: { value: "eu-central" } }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const errorData = (await res.text()).match(/event: error\ndata: (.+)/)?.[1];
+    expect(JSON.parse(errorData ?? "{}")).toMatchObject({
+      code: "llm_provider_limited",
+      details: { kind: "quota_exhausted" },
+    });
+    const [row] = await srv.db
+      .select({ last_turn_error: conversations.last_turn_error })
+      .from(conversations)
+      .where(eq(conversations.id, conversation.id));
+    expect(row?.last_turn_error).toMatchObject({ code: "llm_provider_limited" });
+  });
+
   test("an answer the mock provider wrote is labelled as the mock's, not as the route's model", async () => {
     resetMockProvider();
     const res = await fetch(`${srv.baseUrl}/v1/conversations`, {
