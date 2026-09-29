@@ -241,6 +241,11 @@ describe("the decision trail is named", () => {
     "mcp_oauth.client_retired",
     "mcp_oauth.client_reactivated",
     "mcp_oauth.client_disabled",
+    // A restart someone asked for from the settings page, and how it ended —
+    // the toast after the restart links straight to these rows.
+    "engine.restart.requested",
+    "engine.restart.completed",
+    "engine.restart.failed",
   ];
 
   test("every verb a person answers for has a name", () => {

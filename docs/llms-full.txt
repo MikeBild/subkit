@@ -3903,6 +3903,33 @@ Two things to know:
 - App-level: every workflow change is an immutable version — roll a workflow
   back independently of the binary.
 
+## Restart from the settings (exit code 75)
+
+"Restart now" in Cockpit and `sk system restart` end the engine after the same graceful drain
+as `SIGTERM` (up to 2 minutes for running steps), with **exit code 75**. The supervisor has to
+start it again, which is why the request is refused until you declare it:
+
+```bash
+sk settings set server.restart_supervised true
+```
+
+- **systemd:** `Restart=on-failure` restarts on 75. Do **not** add `SuccessExitStatus=75` — it
+  turns the restart into a clean stop and the engine stays down. Keep `TimeoutStopSec` above
+  the 2-minute drain, and allow for boot waiting up to ~35 s for a stale replica lease after an
+  unclean end (`TimeoutStartSec`, health gates).
+- **Start limit:** systemd stops restarting after `StartLimitBurst` starts within
+  `StartLimitIntervalSec` (defaults: 5 in 10 s). A requested restart counts as one start; the
+  engine refuses a second request within a minute of the first, so the restart button cannot
+  walk the unit into its limit.
+- **Docker / Compose:** `restart: unless-stopped` (or `on-failure`) restarts on 75; with
+  `restart: "no"` leave `server.restart_supervised` off.
+- **One instance only.** With more than one live replica the request answers `409
+  multiple_replicas`; restart replicas one after another from the supervisor.
+
+Follow it with `sk system restart --wait`, or `GET /v1/system/restart-status` until `boot_id`
+changes and `active_revision` equals `saved_revision`. The audit trail holds
+`engine.restart.requested` and `engine.restart.completed` / `engine.restart.failed`.
+
 ## Memory / OOM
 
 The unit caps memory (`MemoryHigh=6G`, `MemoryMax=7G`) and steers the OOM killer
@@ -7986,6 +8013,7 @@ every API call.
 | `sk stats` | `stats:read` | Tenant-scoped runtime statistics (needs stats:read) | `chat`, `connectors`, `conversations`, `events`, `executions`, `http`, `llm`, `mcp`, `operations` |
 | `sk status` | — | Print the active profile + engine reachability | — |
 | `sk subscriptions` | `subscription:read` | Manage event subscriptions | `create`, `delete`, `deliveries`, `get`, `list`, `patch`, `replay` |
+| `sk system` | `system:restart` | Engine process operations (restart) | `restart` |
 | `sk system-accounts` | `identity:read` | Manage system accounts | `create`, `delete`, `list` |
 | `sk tenants` | — | List tenants you belong to or switch the active one | — |
 | `sk update` | — | Update sk CLI to the latest version | — |
@@ -9614,6 +9642,21 @@ Replay a subscription delivery
 
 - `<sub-id>` (positional, required) — Subscription id
 - `<delivery-id>` (positional, required) — Delivery id
+
+
+### `sk system`
+
+Engine process operations (restart)
+
+#### `sk system restart`
+
+Restart the engine so a saved restart-sensitive setting takes effect (needs a supervisor)
+
+- `--wait` — Wait (up to 240 s) until the restarted engine runs the saved settings
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key
+- `--profile` (string) — Profile name
+- `--json` — JSON output
 
 
 ### `sk system-accounts`
@@ -13159,7 +13202,45 @@ and last heartbeat. Cockpit shows the same information.
 Changes to restart-required leaves are saved but not hot-applied. Their status is
 `restart_required`; `saved_revision` and `active_revision` remain different and
 `pending_restart_fields` names the exact leaves. After a coordinated restart—and only after old
-replica leases expire—the new process promotes that revision during boot.
+replica leases expire—the new process promotes that revision during boot. A later save on top
+of a waiting revision keeps those leaves waiting: `pending_restart_fields` always lists every
+restart-required leaf that differs from what the running process loaded.
+
+A process that ended without its drain leaves a lease that stays healthy for up to 30 seconds.
+Boot then waits, with backoff, for up to about 35 seconds for that lease to expire instead of
+failing at once; only a lease that stays fresh (a replica that is really alive) still stops the
+boot. Allow for that in health gates and in the supervisor's start timeout.
+
+### Restart now
+
+With exactly one engine instance and a supervisor that starts it again, SubKit can restart
+itself:
+
+1. Declare the supervisor once: `sk settings set server.restart_supervised true` (Cockpit:
+   "Supervisor present"). SubKit does not detect it; a container or a systemd unit says nothing
+   about its restart policy. The restart reads this flag from the saved revision, so switching
+   it on while another change already waits for a restart enables that very restart (the
+   `sk settings set` answer then says the value becomes active with it).
+2. Restart from Cockpit ("Restart now" next to "Waiting for a restart") or with
+   `sk system restart --wait`. Both need the admin-only permission `system:restart`.
+
+```http
+POST /v1/system/restart            → 202 { request_id, audit_id, boot_id, expected_revision }
+GET  /v1/system/restart-status     → { boot_id, started_at, saved_revision, active_revision,
+                                       activation_status, restart_supervised,
+                                       pending_restart_fields }
+```
+
+The engine drains exactly as on `SIGTERM`—running steps get up to 2 minutes and continue after
+the start—and exits with code 75. It answers `409` with a reason instead when a restart would
+not help or not come back: `not_supervised`, `nothing_pending`, `multiple_replicas`, or
+`restart_in_progress` (an unanswered request, or one less than a minute old). A restart is done
+when `restart-status` reports a new `boot_id` and `active_revision == saved_revision`. The audit
+trail records `engine.restart.requested` and, written by the next process,
+`engine.restart.completed` or `engine.restart.failed` under the same `resource_id`. Without a
+supervisor, restart the process where it runs (`systemctl restart subkit-engine`,
+`docker compose restart engine`). There is deliberately no MCP tool for it: a restart would cut
+the connection the call arrived on.
 
 ## Immutable secret versions
 
@@ -14161,6 +14242,7 @@ HTTP server
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `server.port` | number | `3000` | global | no | yes | HTTP port to bind (1..65535) |
 | `server.public_base_url` | string | `""` | global | no | no | External-facing URL the engine resolves at. Used by /install, chat link replies, and OAuth2 redirect-URI synthesis. Required for any OAuth2 connector. |
+| `server.restart_supervised` | boolean | `false` | global | no | no | A supervisor (systemd with Restart=on-failure, Docker with a restart policy) starts the engine again after it ends. Enables POST /v1/system/restart (exit code 75). |
 
 ## database
 Database connection

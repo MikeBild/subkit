@@ -66,6 +66,7 @@ every API call.
 | `sk stats` | `stats:read` | Tenant-scoped runtime statistics (needs stats:read) | `chat`, `connectors`, `conversations`, `events`, `executions`, `http`, `llm`, `mcp`, `operations` |
 | `sk status` | — | Print the active profile + engine reachability | — |
 | `sk subscriptions` | `subscription:read` | Manage event subscriptions | `create`, `delete`, `deliveries`, `get`, `list`, `patch`, `replay` |
+| `sk system` | `system:restart` | Engine process operations (restart) | `restart` |
 | `sk system-accounts` | `identity:read` | Manage system accounts | `create`, `delete`, `list` |
 | `sk tenants` | — | List tenants you belong to or switch the active one | — |
 | `sk update` | — | Update sk CLI to the latest version | — |
@@ -1694,6 +1695,21 @@ Replay a subscription delivery
 
 - `<sub-id>` (positional, required) — Subscription id
 - `<delivery-id>` (positional, required) — Delivery id
+
+
+### `sk system`
+
+Engine process operations (restart)
+
+#### `sk system restart`
+
+Restart the engine so a saved restart-sensitive setting takes effect (needs a supervisor)
+
+- `--wait` — Wait (up to 240 s) until the restarted engine runs the saved settings
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key
+- `--profile` (string) — Profile name
+- `--json` — JSON output
 
 
 ### `sk system-accounts`

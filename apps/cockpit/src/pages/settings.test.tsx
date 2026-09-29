@@ -23,6 +23,7 @@ import {
   SettingsSectionNav,
 } from "@/pages/settings";
 import { SETTING_GROUPS, type SettingItem, settingNavigation } from "@/pages/settings-model";
+import { SettingsRestartOffer } from "@/pages/settings-restart";
 
 function render(node: ReactNode, locale: Locale = "de"): string {
   const value = {
@@ -113,6 +114,30 @@ describe("the status line", () => {
     expect(html).toContain('href="/cockpit/settings?leaf=auth.providers"');
     expect(html).toContain(de("settings.leaf.auth.providers" as Parameters<typeof de>[0]));
     expect(html).not.toContain(de("settings.attention.notActivated"));
+  });
+
+  test("offers the restart by what the reader may do and whether a supervisor exists", () => {
+    const line = (offer: "restart" | "manual" | "ask_admin") =>
+      render(
+        <SettingsAttentionLine
+          attention={{ restart: ["server.port"], notActivated: false }}
+          onOpenLeaf={() => {}}
+          restartOffer={<SettingsRestartOffer offer={offer} onRestart={() => {}} />}
+        />,
+      );
+    const button = line("restart");
+    expect(button).toContain('data-testid="settings-restart-now"');
+    expect(button).toContain(de("settings.restartNow.button"));
+    expect(button).not.toContain(de("settings.restartNow.askAdmin"));
+
+    const manual = line("manual");
+    expect(manual).not.toContain('data-testid="settings-restart-now"');
+    expect(manual).toContain('data-testid="settings-restart-manual"');
+    expect(manual).toContain("systemctl restart subkit-engine");
+
+    const ask = line("ask_admin");
+    expect(ask).not.toContain('data-testid="settings-restart-now"');
+    expect(ask).toContain(de("settings.restartNow.askAdmin"));
   });
 
   test("links a change that did not activate into the audit trail", () => {

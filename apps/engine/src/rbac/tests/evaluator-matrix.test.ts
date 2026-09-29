@@ -81,6 +81,9 @@ function memberAllows(name: string): boolean {
   if (name.startsWith("self_healing:")) return false;
   if (name === "mcp:admin") return false;
   if (name.startsWith("mcp_oauth_client:")) return false;
+  // system:restart ends the engine for every tenant — admin-only.
+  // Mirrors memberPermissionFilter in seed.ts.
+  if (name === "system:restart") return false;
   // chat_workspace:write / chat_identity:write install/remove tenant-wide
   // Slack/Teams/Google bindings (with encrypted bot credentials) and
   // bind external chat users to subkit principals — admin-only ops.

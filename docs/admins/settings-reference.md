@@ -26,6 +26,7 @@ HTTP server
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `server.port` | number | `3000` | global | no | yes | HTTP port to bind (1..65535) |
 | `server.public_base_url` | string | `""` | global | no | no | External-facing URL the engine resolves at. Used by /install, chat link replies, and OAuth2 redirect-URI synthesis. Required for any OAuth2 connector. |
+| `server.restart_supervised` | boolean | `false` | global | no | no | A supervisor (systemd with Restart=on-failure, Docker with a restart policy) starts the engine again after it ends. Enables POST /v1/system/restart (exit code 75). |
 
 ## database
 Database connection
