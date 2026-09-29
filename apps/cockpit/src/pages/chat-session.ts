@@ -63,28 +63,73 @@ export function shouldRestoreComposer(
   return userMessageCount(messagesAfter) <= optimistic.baseline;
 }
 
-/** How far the engine's clock may trail the browser's when naming a new conversation. */
-const CREATED_CLOCK_SKEW_MS = 60_000;
-
 /**
  * The conversation a failed FIRST send opened, if it can be named without a
  * guess. The create stream names it in its first frame, before the turn runs;
  * a send that broke before that frame arrived is looked up in a fresh list:
- * exactly one conversation that was not there before and was created since the
- * send. None, or more than one, names nothing.
+ * exactly one conversation that was not there before AND was created at or
+ * after the send. None, or more than one, names nothing.
+ *
+ * `knownIds` is what existed when the send left, read in full — null when
+ * that could not be read. Without it the list diff is a guess: every
+ * conversation is "not known", and a waiting one opened moments earlier
+ * would be taken for this send's. The page would move into it and keep the
+ * text out of the composer because that conversation holds a request.
  */
 export function conversationOpenedByFailedSend(input: {
   startedId: string | null;
-  knownIds: ReadonlySet<string>;
+  knownIds: ReadonlySet<string> | null;
   sentAt: string;
   listed: readonly { id: string; created_at: string }[];
 }): string | null {
   if (input.startedId) return input.startedId;
-  const since = Date.parse(input.sentAt) - CREATED_CLOCK_SKEW_MS;
-  const fresh = input.listed.filter(
-    (c) => !input.knownIds.has(c.id) && Date.parse(c.created_at) >= since,
-  );
+  const known = input.knownIds;
+  if (!known) return null;
+  const since = Date.parse(input.sentAt);
+  const fresh = input.listed.filter((c) => !known.has(c.id) && Date.parse(c.created_at) >= since);
   return fresh.length === 1 ? (fresh[0]?.id ?? null) : null;
+}
+
+/** A failed turn's cause the page can name in the reader's language. */
+export type TurnFailureCause = {
+  kind:
+    | "provider_quota_exhausted"
+    | "provider_rate_limited"
+    | "provider_overloaded"
+    | "provider_unreachable"
+    | "provider_context_too_large"
+    | "tenant_budget_exhausted";
+  retryAt: string | null;
+};
+
+function causeKind(code: string, kind: unknown): TurnFailureCause["kind"] | null {
+  switch (code) {
+    case "llm_provider_limited":
+      return kind === "quota_exhausted" ? "provider_quota_exhausted" : "provider_rate_limited";
+    case "llm_provider_unavailable":
+      return kind === "overloaded" ? "provider_overloaded" : "provider_unreachable";
+    case "llm_context_too_large":
+      return "provider_context_too_large";
+    case "llm_quota_exhausted":
+      return "tenant_budget_exhausted";
+    default:
+      return null;
+  }
+}
+
+/**
+ * The cause the engine typed on a failed turn — the error envelope's code
+ * with the provider's `kind` and `retry_at`, from the stream's error frame
+ * (`details`) or the conversation's stored `last_turn_error`. Untyped
+ * failures name none; the page then shows the engine's sentence alone.
+ */
+export function turnFailureCause(
+  failure: { code?: string | null; kind?: unknown; retry_at?: unknown } | null | undefined,
+): TurnFailureCause | null {
+  const kind = failure?.code ? causeKind(failure.code, failure.kind) : null;
+  if (!kind) return null;
+  const retryAt = typeof failure?.retry_at === "string" ? failure.retry_at : null;
+  return { kind, retryAt };
 }
 
 /**

@@ -1968,6 +1968,15 @@ const EN = {
   "chat.replyHint": "Your answer to the question …",
   "chat.pendingQuestionRequired": "Answer the open question using its controls to continue.",
   "chat.failedDescription": "The request could not be completed. Your input has been kept.",
+  "chat.cause.provider_quota_exhausted": "The AI provider's usage limit has been reached.",
+  "chat.cause.provider_quota_exhaustedUntil":
+    "The AI provider's usage limit has been reached until {time}.",
+  "chat.cause.provider_rate_limited":
+    "The AI provider is limiting requests right now. Try again in a moment.",
+  "chat.cause.provider_overloaded": "The AI provider is overloaded right now.",
+  "chat.cause.provider_unreachable": "The AI provider could not be reached.",
+  "chat.cause.provider_context_too_large": "The conversation is too long for the model.",
+  "chat.cause.tenant_budget_exhausted": "This installation's monthly AI budget is used up.",
   "chat.empty.title": "What should SubKit accomplish?",
   "chat.empty.description":
     "Describe the outcome. The agent can inspect, verify, preview and request approval here.",
@@ -4861,6 +4870,16 @@ const DE: Record<TranslationKey, string> = {
     "Beantworte die offene Rückfrage über ihre Auswahl, um fortzufahren.",
   "chat.failedDescription":
     "Die Anfrage konnte nicht abgeschlossen werden. Deine Eingabe bleibt erhalten.",
+  "chat.cause.provider_quota_exhausted": "Das Nutzungslimit beim KI-Anbieter ist erreicht.",
+  "chat.cause.provider_quota_exhaustedUntil":
+    "Das Nutzungslimit beim KI-Anbieter ist bis {time} erreicht.",
+  "chat.cause.provider_rate_limited":
+    "Der KI-Anbieter drosselt gerade Anfragen. Versuch es gleich noch einmal.",
+  "chat.cause.provider_overloaded": "Der KI-Anbieter ist gerade überlastet.",
+  "chat.cause.provider_unreachable": "Der KI-Anbieter war nicht erreichbar.",
+  "chat.cause.provider_context_too_large": "Die Unterhaltung ist zu lang für das Modell.",
+  "chat.cause.tenant_budget_exhausted":
+    "Das monatliche KI-Budget dieser Installation ist aufgebraucht.",
   "chat.empty.title": "Was soll SubKit erreichen?",
   "chat.empty.description":
     "Beschreib das Ergebnis. Der Agent kann hier prüfen, verifizieren, testen und Freigaben anfordern.",
