@@ -13,7 +13,7 @@ import type { ConversationSurface } from "../../conversations/agent/types.ts";
 import type { ConversationTool } from "../../conversations/tools/index.ts";
 import type { AuthoringStage } from "../../conversations/types.ts";
 import { logger } from "../../logging/logger.ts";
-import { bareModelId } from "../pricing.ts";
+import { vendorModelId } from "../pricing.ts";
 import type { LlmProviderKind } from "../types.ts";
 import { resolveThinking } from "./thinking-policy.ts";
 
@@ -158,7 +158,7 @@ interface UpgradeLadder {
   top: Record<string, string>;
 }
 
-// `bareModelId` strips date suffixes, so each ladder entry is keyed
+// `vendorModelId` strips date suffixes, so each ladder entry is keyed
 // on the canonical base id. `claude-haiku-4-5-20251001` and
 // `gpt-4o-2024-11-20` collapse to their base equivalents before lookup.
 // `claude-opus-4-8` is the top of the Anthropic ladder. The `oneUp`
@@ -258,7 +258,7 @@ export function routeUp(provider: LlmProviderKind, modelId: string): string {
     warnOnceNoUpgrade(provider, modelId, "no_ladder_for_provider");
     return modelId;
   }
-  const bare = bareModelId(modelId);
+  const bare = vendorModelId(modelId);
   const upgraded = ladder.oneUp[bare];
   if (upgraded === undefined) {
     warnOnceNoUpgrade(provider, modelId, "no_upgrade_in_ladder");
@@ -271,12 +271,12 @@ export function routeUp(provider: LlmProviderKind, modelId: string): string {
 export function routeTop(provider: LlmProviderKind, modelId: string): string {
   const ladder = LADDERS[provider];
   if (!ladder) return modelId;
-  const bare = bareModelId(modelId);
+  const bare = vendorModelId(modelId);
   return ladder.top[bare] ?? modelId;
 }
 
 function warnOnceNoUpgrade(provider: LlmProviderKind, modelId: string, reason: string): void {
-  const key = `${provider}::${bareModelId(modelId)}::${reason}`;
+  const key = `${provider}::${vendorModelId(modelId)}::${reason}`;
   if (NO_UPGRADE_WARNED.has(key)) return;
   NO_UPGRADE_WARNED.add(key);
   logger.warn({
@@ -298,7 +298,7 @@ export function supportsExtendedThinking(provider: LlmProviderKind, modelId: str
     provider !== "gateway"
   )
     return false;
-  const bare = bareModelId(modelId);
+  const bare = vendorModelId(modelId);
   // Sonnet 4.5+, Opus 4.6+ support extended thinking. Haiku does not.
   return /^claude-(sonnet-4-5|sonnet-4-6|opus-4-6|opus-4-7|opus-4-8)/.test(bare);
 }
