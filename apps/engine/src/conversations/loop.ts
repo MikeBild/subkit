@@ -48,7 +48,6 @@ import {
   type StepRouterSignals,
   supportsExtendedThinking,
 } from "../llm/core/step-router.ts";
-import { loadSnapshotCoverage } from "../llm/core/tenant-summary.ts";
 import { resolveThinking } from "../llm/core/thinking-policy.ts";
 import { type CriticArtifact, type CriticVerdict, runCritic } from "../llm/critic/index.ts";
 import { LlmContextTooLarge, LlmQuotaExhausted } from "../llm/errors.ts";
@@ -85,10 +84,13 @@ import {
   detectUserIntent,
   inferStateDrivenFollowUpTool,
   matchesEnumerationIntent,
+  resolvePreferredTool,
+  turnToolChoice,
 } from "./intent-detector.ts";
 import { RUN_VERB_RE } from "./intent-patterns.ts";
 import { abstentionDecision } from "./loop/abstention-gate.ts";
 import { resolveConversationAttemptRoutes } from "./loop/attempt-route.ts";
+import { loadEnumerationCoverage } from "./loop/enumeration-coverage.ts";
 import {
   DEFAULT_BUDGET,
   MAX_REPAIRS_PER_TURN,
@@ -365,7 +367,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const detectedIntent = detectUserIntent(
     ingestedUserMessage,
     matchesEnumerationIntent(ingestedUserMessage)
-      ? await loadSnapshotCoverage(p.tenant_id, p.db)
+      ? await loadEnumerationCoverage(p.tenant_id, ingestedUserMessage, p.db)
       : undefined,
   );
   let workflowIdForTurn = p.workflow_id;
@@ -1151,12 +1153,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     permission_mode: p.permission_mode ?? null,
     summary: draft.summary,
   });
-  const preferredTool =
-    detectedIntent.forceTool && tools[detectedIntent.forceTool]
-      ? detectedIntent.forceTool
-      : stateDrivenTool && tools[stateDrivenTool]
-        ? stateDrivenTool
-        : null;
+  const preferredTool = resolvePreferredTool(
+    detectedIntent,
+    stateDrivenTool,
+    (name) => tools[name] !== undefined,
+  );
   const forceNoTools = detectedIntent.forceNoTools === true;
   if (preferredTool) {
     logger.debug({
@@ -1372,11 +1373,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       // AI_InvalidPromptError. No-op for turns that carry no system message.
       allowSystemInMessages: true,
       tools: turnTools,
-      toolChoice: preferredTool
-        ? { type: "tool" as const, toolName: preferredTool }
-        : forceNoTools
-          ? "none"
-          : "auto",
+      toolChoice: turnToolChoice(preferredTool, forceNoTools),
       // Provider-agnostic reasoning control (AI SDK 7). Replaces the
       // Anthropic-only `providerOptions.anthropic.thinking` block: the SDK
       // maps this enum to each provider's native reasoning mechanism
