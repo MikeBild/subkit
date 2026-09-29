@@ -86,6 +86,7 @@ const ROLE_TIER: Record<string, number> = {
  *  rely on, poisoning the shared worker's module cache. */
 const PERM_TIER: Record<string, number> = {
   "audit:read": 4,
+  "system:restart": 4,
   "rbac:read": 4,
   "api_key:read": 4,
   "portal_token:read": 4,

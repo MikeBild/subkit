@@ -52,6 +52,7 @@ const PERMISSION_RESOURCE_KEYS: Readonly<Record<string, TranslationKey>> = {
   settings: "resource.settings.title",
   skill: "resource.skills.title",
   stats: "resource.usage.title",
+  system: "permission.resource.engine",
   workflow: "resource.workflows.title",
 };
 
@@ -76,6 +77,7 @@ const PERMISSION_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   read: "permission.action.read",
   replay: "permission.action.replay",
   restore: "permission.action.restore",
+  restart: "permission.action.restart",
   resume: "permission.action.resume",
   revoke: "permission.action.revoke",
   rotate: "permission.action.rotate",

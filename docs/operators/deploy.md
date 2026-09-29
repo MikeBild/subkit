@@ -173,6 +173,33 @@ Two things to know:
 - App-level: every workflow change is an immutable version — roll a workflow
   back independently of the binary.
 
+## Restart from the settings (exit code 75)
+
+"Restart now" in Cockpit and `sk system restart` end the engine after the same graceful drain
+as `SIGTERM` (up to 2 minutes for running steps), with **exit code 75**. The supervisor has to
+start it again, which is why the request is refused until you declare it:
+
+```bash
+sk settings set server.restart_supervised true
+```
+
+- **systemd:** `Restart=on-failure` restarts on 75. Do **not** add `SuccessExitStatus=75` — it
+  turns the restart into a clean stop and the engine stays down. Keep `TimeoutStopSec` above
+  the 2-minute drain, and allow for boot waiting up to ~35 s for a stale replica lease after an
+  unclean end (`TimeoutStartSec`, health gates).
+- **Start limit:** systemd stops restarting after `StartLimitBurst` starts within
+  `StartLimitIntervalSec` (defaults: 5 in 10 s). A requested restart counts as one start; the
+  engine refuses a second request within a minute of the first, so the restart button cannot
+  walk the unit into its limit.
+- **Docker / Compose:** `restart: unless-stopped` (or `on-failure`) restarts on 75; with
+  `restart: "no"` leave `server.restart_supervised` off.
+- **One instance only.** With more than one live replica the request answers `409
+  multiple_replicas`; restart replicas one after another from the supervisor.
+
+Follow it with `sk system restart --wait`, or `GET /v1/system/restart-status` until `boot_id`
+changes and `active_revision` equals `saved_revision`. The audit trail holds
+`engine.restart.requested` and `engine.restart.completed` / `engine.restart.failed`.
+
 ## Memory / OOM
 
 The unit caps memory (`MemoryHigh=6G`, `MemoryMax=7G`) and steers the OOM killer

@@ -1846,6 +1846,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/system/restart-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which engine process runs, and whether a saved setting still waits for a restart */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Restart status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EngineRestartStatus"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/system/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart the engine so a saved restart-sensitive setting takes effect
+         * @description Accepted only when server.restart_supervised is on, a restart-required revision waits, and exactly one engine instance is live. The engine then drains like on SIGTERM and exits with code 75; the supervisor starts it again. Follow GET /v1/system/restart-status until boot_id changes and active_revision equals saved_revision.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Restart accepted; the engine drains and ends shortly after this response */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EngineRestartAccepted"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Refused: not_supervised, nothing_pending, multiple_replicas or restart_in_progress */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/settings/{path}": {
         parameters: {
             query?: never;
@@ -17232,6 +17352,37 @@ export interface components {
         };
         SecretValue: {
             value: string;
+        };
+        EngineRestartStatus: {
+            /**
+             * Format: uuid
+             * @description Random per engine process; changes with every start
+             */
+            boot_id: string;
+            /** Format: date-time */
+            started_at: string;
+            saved_revision: number;
+            active_revision: number;
+            /** @enum {string} */
+            activation_status: "saved" | "preparing" | "active" | "failed" | "restart_required";
+            /** @description server.restart_supervised of the saved revision: a supervisor restarts the engine */
+            restart_supervised: boolean;
+            pending_restart_fields: string[];
+        };
+        EngineRestartAccepted: {
+            /** Format: uuid */
+            request_id: string;
+            /**
+             * Format: uuid
+             * @description The engine.restart.requested audit entry
+             */
+            audit_id: string;
+            /**
+             * Format: uuid
+             * @description The process that accepted the request and now ends
+             */
+            boot_id: string;
+            expected_revision: number;
         };
         SettingsListResponse: {
             saved_revision: number | null;

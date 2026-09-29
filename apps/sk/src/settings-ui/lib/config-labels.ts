@@ -31,6 +31,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   // ── HTTP server ────────────────────────────────────────────────
   "server.port": "HTTP port",
   "server.public_base_url": "Public base URL",
+  "server.restart_supervised": "Supervisor present",
 
   // ── Database ───────────────────────────────────────────────────
   "database.url": "Postgres connection string",

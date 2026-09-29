@@ -49,11 +49,43 @@ export const runtimeConfigRevisions = pgTable(
   (t) => [index("runtime_config_revisions_digest_idx").on(t.digest)],
 );
 
+/**
+ * A restart someone asked for through `POST /v1/system/restart`. The asking
+ * process writes it before it drains; the process that boots next reads it
+ * and records whether the waiting revision became active. Kept after the
+ * outcome so a second request inside the minimum interval is refused.
+ */
+export interface EngineRestartRequest {
+  request_id: string;
+  audit_id: string;
+  tenant_id: string;
+  actor_type: "user" | "system_account";
+  actor_id: string;
+  from_boot_id: string;
+  expected_revision: number;
+  requested_at: string;
+  outcome?: "completed" | "failed";
+  closed_at?: string;
+  to_boot_id?: string;
+}
+
 /** Singleton pointer and activation request. */
 export const runtimeConfigState = pgTable("runtime_config_state", {
   key: text("key").primaryKey(),
   active_revision: bigint("active_revision", { mode: "number" }),
   desired_revision: bigint("desired_revision", { mode: "number" }),
+  updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * The last requested engine restart (one row, key "engine"). Its own table,
+ * not a column of runtime_config_state: the preflight and host commands read
+ * that table against the PREVIOUS release's schema, where a new column would
+ * crash every query naming it.
+ */
+export const engineRestartRequests = pgTable("engine_restart_requests", {
+  key: text("key").primaryKey(),
+  request: jsonb("request").$type<EngineRestartRequest>().notNull(),
   updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

@@ -11,8 +11,8 @@ import { runMigrationsFromUrl } from "../db/migrate.ts";
 import { auditLog } from "../db/schema/audit.ts";
 import { executionFixtures, executionSteps, executions, files } from "../db/schema/index.ts";
 import { type ObjectStore, S3ObjectStore } from "../storage/object-store.ts";
+import { configDigest } from "./document.ts";
 import {
-  configDigest,
   getRuntimeConfigState,
   initializeRuntimeConfig,
   RuntimeConfigNotFoundError,

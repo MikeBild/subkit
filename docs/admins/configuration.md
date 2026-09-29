@@ -165,7 +165,45 @@ and last heartbeat. Cockpit shows the same information.
 Changes to restart-required leaves are saved but not hot-applied. Their status is
 `restart_required`; `saved_revision` and `active_revision` remain different and
 `pending_restart_fields` names the exact leaves. After a coordinated restart—and only after old
-replica leases expire—the new process promotes that revision during boot.
+replica leases expire—the new process promotes that revision during boot. A later save on top
+of a waiting revision keeps those leaves waiting: `pending_restart_fields` always lists every
+restart-required leaf that differs from what the running process loaded.
+
+A process that ended without its drain leaves a lease that stays healthy for up to 30 seconds.
+Boot then waits, with backoff, for up to about 35 seconds for that lease to expire instead of
+failing at once; only a lease that stays fresh (a replica that is really alive) still stops the
+boot. Allow for that in health gates and in the supervisor's start timeout.
+
+### Restart now
+
+With exactly one engine instance and a supervisor that starts it again, SubKit can restart
+itself:
+
+1. Declare the supervisor once: `sk settings set server.restart_supervised true` (Cockpit:
+   "Supervisor present"). SubKit does not detect it; a container or a systemd unit says nothing
+   about its restart policy. The restart reads this flag from the saved revision, so switching
+   it on while another change already waits for a restart enables that very restart (the
+   `sk settings set` answer then says the value becomes active with it).
+2. Restart from Cockpit ("Restart now" next to "Waiting for a restart") or with
+   `sk system restart --wait`. Both need the admin-only permission `system:restart`.
+
+```http
+POST /v1/system/restart            → 202 { request_id, audit_id, boot_id, expected_revision }
+GET  /v1/system/restart-status     → { boot_id, started_at, saved_revision, active_revision,
+                                       activation_status, restart_supervised,
+                                       pending_restart_fields }
+```
+
+The engine drains exactly as on `SIGTERM`—running steps get up to 2 minutes and continue after
+the start—and exits with code 75. It answers `409` with a reason instead when a restart would
+not help or not come back: `not_supervised`, `nothing_pending`, `multiple_replicas`, or
+`restart_in_progress` (an unanswered request, or one less than a minute old). A restart is done
+when `restart-status` reports a new `boot_id` and `active_revision == saved_revision`. The audit
+trail records `engine.restart.requested` and, written by the next process,
+`engine.restart.completed` or `engine.restart.failed` under the same `resource_id`. Without a
+supervisor, restart the process where it runs (`systemctl restart subkit-engine`,
+`docker compose restart engine`). There is deliberately no MCP tool for it: a restart would cut
+the connection the call arrived on.
 
 ## Immutable secret versions
 

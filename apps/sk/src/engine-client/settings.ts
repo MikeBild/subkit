@@ -42,7 +42,35 @@ export interface SettingPutResult {
   requiresRestart: boolean;
 }
 
+/** `GET /v1/system/restart-status` — which process runs and what still waits. */
+export interface EngineRestartStatus {
+  boot_id: string;
+  started_at: string;
+  saved_revision: number;
+  active_revision: number;
+  activation_status: string;
+  restart_supervised: boolean;
+  pending_restart_fields: string[];
+}
+
+/** `POST /v1/system/restart` → 202. */
+export interface EngineRestartAccepted {
+  request_id: string;
+  audit_id: string;
+  boot_id: string;
+  expected_revision: number;
+}
+
 export const settingsMethods = {
+  // --------------------------- Restart ------------------------------------
+  requestEngineRestart(this: EngineClient): Promise<EngineRestartAccepted> {
+    return this.request("POST", "/v1/system/restart");
+  },
+
+  getEngineRestartStatus(this: EngineClient): Promise<EngineRestartStatus> {
+    return this.request("GET", "/v1/system/restart-status");
+  },
+
   // --------------------------- Settings -----------------------------------
   listSettings(this: EngineClient, opts: { tenant?: string } = {}): Promise<SettingsListResponse> {
     const qs = opts.tenant ? `?tenant=${encodeURIComponent(opts.tenant)}` : "";
