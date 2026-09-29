@@ -4,12 +4,19 @@
 // via getMockProvider().calls.length.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
+import { EMBEDDED_MIGRATIONS } from "../db/migrations/embedded.ts";
 import { auditLog } from "../db/schema/audit.ts";
 import { tenants } from "../db/schema/identity.ts";
-import { conversations, executions, workflows, workflowVersions } from "../db/schema/index.ts";
+import {
+  conversationMessages,
+  conversations,
+  executions,
+  workflows,
+  workflowVersions,
+} from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { EngineClient } from "../engine-client/index.ts";
 import {
@@ -19,6 +26,7 @@ import {
 } from "../llm/core/tenant-summary.ts";
 import { getMockProvider, resetMockProvider } from "../llm/mock-provider.ts";
 import { TEST_HUMAN_ANSWER } from "../test-helpers/answer-actor.ts";
+import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
 import { loadCategoryIndex } from "../workflows/catalog-view.ts";
 import {
@@ -29,6 +37,7 @@ import {
 } from "./fast-path.ts";
 import { renderRunOutput } from "./fast-path-render.ts";
 import { loadEnumerationCoverage } from "./loop/enumeration-coverage.ts";
+import { listConversations } from "./service/lifecycle.ts";
 import { listWorkflowsTool } from "./tools/generated/workflows.ts";
 import type { ToolContext } from "./tools/index.ts";
 import type { TurnEvent } from "./types.ts";
@@ -153,6 +162,71 @@ describe("tryFastPath — list intents (English)", () => {
     const result = await tryFastPath(makeParams("show my workflows"));
     expect(result).not.toBeNull();
     expect(result?.fast_path_tool).toBe("list_workflows");
+  });
+
+  test("a fast-path answer leaves the conversation answered, not in progress", async () => {
+    await tryFastPath(makeParams("list my workflows"));
+    const rows = await listConversations({ tenant_id: tenantId }, tdb.db);
+    const row = rows.find((r) => r.id === conversationId);
+    expect(row?.last_message_role).toBe("assistant");
+    expect(row?.outcome).toBe("answered");
+  });
+
+  test("the migration moves an existing fast-path tool row before its answer, and only that", async () => {
+    const loopConversationId = await makeConversation();
+    const base = getTestNow() - 60_000;
+    const at = (s: number) => new Date(base + s * 1000);
+    await tdb.db.insert(conversationMessages).values([
+      {
+        tenant_id: tenantId,
+        conversation_id: conversationId,
+        role: "user",
+        content: { text: "list my workflows" },
+        created_at: at(0),
+      },
+      {
+        tenant_id: tenantId,
+        conversation_id: conversationId,
+        role: "assistant",
+        content: { text: "none", fast_path: true },
+        created_at: at(1),
+      },
+      {
+        tenant_id: tenantId,
+        conversation_id: conversationId,
+        role: "tool",
+        content: { tool: "list_workflows", output: {} },
+        created_at: at(2),
+      },
+      // A loop turn cut off after its tool ran is really unfinished: left alone.
+      {
+        tenant_id: tenantId,
+        conversation_id: loopConversationId,
+        role: "user",
+        content: { text: "go" },
+        created_at: at(0),
+      },
+      {
+        tenant_id: tenantId,
+        conversation_id: loopConversationId,
+        role: "assistant",
+        content: {},
+        created_at: at(1),
+      },
+      {
+        tenant_id: tenantId,
+        conversation_id: loopConversationId,
+        role: "tool",
+        content: { tool: "run_workflow", output: {} },
+        created_at: at(2),
+      },
+    ]);
+    const migration = EMBEDDED_MIGRATIONS.find((m) => m.tag === "0070_fast_path_answer_last");
+    if (!migration) throw new Error("migration 0070 is not embedded");
+    for (const statement of migration.statements) await tdb.db.execute(sql.raw(statement));
+    const rows = await listConversations({ tenant_id: tenantId }, tdb.db);
+    expect(rows.find((r) => r.id === conversationId)?.outcome).toBe("answered");
+    expect(rows.find((r) => r.id === loopConversationId)?.outcome).toBe("in_progress");
   });
 });
 

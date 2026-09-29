@@ -336,6 +336,10 @@ async function persistFastPathTurn(
    *  to a client. The confirm gate parks its approval id here. */
   confirmation_data?: Record<string, unknown>,
 ): Promise<{ events: TurnEvent[]; assistant_message_id: string; tool_call_id: string }> {
+  // The tool row goes before the answer, as in the loop: a turn is finished
+  // when its last row is the answer. Written after it, every fast-path
+  // conversation read as still running for as long as anyone looked.
+  await appendMessage(p.db, p.tenant_id, p.conversation_id, "tool", { tool, output });
   const assistantMessageId = await appendMessage(
     p.db,
     p.tenant_id,
@@ -353,7 +357,6 @@ async function persistFastPathTurn(
     ...(confirmation_data ? { confirmation_data } : {}),
   });
   await updateToolCallOutput(p.db, toolCallId, output, outcome);
-  await appendMessage(p.db, p.tenant_id, p.conversation_id, "tool", { tool, output });
   const events: TurnEvent[] = [
     {
       type: "tool_call_start",
