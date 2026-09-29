@@ -20,8 +20,23 @@ export const MENTION_TRIGGER = "@";
 const LABEL_RE = /^[\p{L}\p{N} _./-]{1,200}$/u;
 
 /** Characters that continue a token word; a candidate followed by one of
- *  these is part of a longer word (`@sync` inside `@sync-orders`). */
-const TOKEN_CONTINUATION = /[\p{L}\p{N}_.-]/u;
+ *  these is part of a longer word (`@sync` inside `@sync-orders`). A slash
+ *  continues one too: labels may contain it, and `@kategorie/notion` must not
+ *  chip a workflow slugged `kategorie`. */
+const TOKEN_CONTINUATION = /[\p{L}\p{N}_./-]/u;
+
+/**
+ * A category is written into the prose as `@kategorie/<name>` — plain text, no
+ * structured reference: the engine recognises the phrase and lists the block
+ * without a model in between. One literal in every language, so a sentence
+ * typed in English reaches the same rule.
+ */
+export const CATEGORY_MENTION_PREFIX = "kategorie/";
+
+/** The token for a catalog category, e.g. `@kategorie/notion`. */
+export function categoryMentionToken(category: string): string {
+  return `${MENTION_TRIGGER}${CATEGORY_MENTION_PREFIX}${category}`;
+}
 
 export interface MentionQuery {
   /** Index of the trigger character in the text. */
@@ -59,7 +74,17 @@ export function insertMention(
   caret: number,
   reference: ConversationReference,
 ): { text: string; caret: number } {
-  const token = `${mentionTokenText(reference)} `;
+  return insertMentionText(text, start, caret, mentionTokenText(reference));
+}
+
+/** The same replacement for a token that carries no reference (a category). */
+export function insertMentionText(
+  text: string,
+  start: number,
+  caret: number,
+  tokenText: string,
+): { text: string; caret: number } {
+  const token = `${tokenText} `;
   const next = text.slice(0, start) + token + text.slice(caret);
   return { text: next, caret: start + token.length };
 }
@@ -196,14 +221,45 @@ export function isMentionableLabel(label: string): boolean {
   return LABEL_RE.test(label) && !/\s/.test(label);
 }
 
+/** What the picker offers: an object that becomes a reference, or a category. */
+export type MentionCandidateType = ConversationReferenceType | "category";
+
 /** Candidate entries the picker shows, before one becomes a reference. */
 export interface MentionCandidate {
-  type: ConversationReferenceType;
+  type: MentionCandidateType;
   id: string;
   /** The token text — a slug, so it survives as one word in the prose. */
   label: string;
   /** What the person reads next to the token: the display name. */
   title: string;
+  /** A category's size, as the catalog counts it. */
+  count?: number;
+}
+
+/**
+ * The catalog's categories as picker entries, matched on the category name
+ * and on the `kategorie/` prefix, so `@kat` and `@not` both find `notion`.
+ */
+export function categoryCandidates(
+  categories: readonly { category: string; count: number }[],
+  query: string,
+): MentionCandidate[] {
+  const needle = query.trim().toLowerCase();
+  return categories
+    .filter((entry) => isMentionableLabel(entry.category))
+    .map((entry) => ({
+      type: "category" as const,
+      id: entry.category,
+      label: `${CATEGORY_MENTION_PREFIX}${entry.category}`,
+      title: entry.category,
+      count: entry.count,
+    }))
+    .filter(
+      (candidate) =>
+        !needle ||
+        candidate.label.toLowerCase().includes(needle) ||
+        candidate.title.toLowerCase().includes(needle),
+    );
 }
 
 /** Prefix matches first, then substring matches, both on label and title. */
@@ -226,6 +282,15 @@ export function rankCandidates(
   });
 }
 
-export function candidateToReference(candidate: MentionCandidate): ConversationReference {
+/** A category never becomes a reference; only catalog objects do. */
+export function candidateToReference(
+  candidate: MentionCandidate & { type: ConversationReferenceType },
+): ConversationReference {
   return { type: candidate.type, id: candidate.id, label: candidate.label };
+}
+
+export function isReferenceCandidate(
+  candidate: MentionCandidate,
+): candidate is MentionCandidate & { type: ConversationReferenceType } {
+  return candidate.type !== "category";
 }

@@ -94,8 +94,12 @@ export function resumeTarget(target: ResumeTargetLike | null | undefined, t: Tra
 export function resumeSummaryLine(
   resume: ResumeSummaryLike | null | undefined,
   t: Translate,
-): string {
-  if (!resume) return t("chat.summary");
+): string | null {
+  // A conversation that has not started has no state to summarise. It used
+  // to get a tagline ("Mit SubKit über gesteuerte Aktionen arbeiten.") under
+  // its title — a sentence about the product on every new conversation, read
+  // once and then skipped forever.
+  if (!resume) return null;
   // "Wartet auf dich" is said once, by the header badge; the card in the
   // transcript is where the reader acts. This line said it a second time —
   // "Deine Antwort wird benötigt", "eine Freigabe offen gelassen" — so it

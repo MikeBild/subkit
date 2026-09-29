@@ -1,13 +1,18 @@
 import { describe, expect, test } from "bun:test";
+import { translate } from "./i18n";
 import {
   type ConversationReference,
   candidateToReference,
+  categoryCandidates,
+  categoryMentionToken,
   dedupeReferences,
   findMentionQuery,
   findTokenAt,
   insertMention,
+  insertMentionText,
   isInsideMentionToken,
   isMentionableLabel,
+  isReferenceCandidate,
   mentionTokenText,
   rankCandidates,
   reconcileReferences,
@@ -195,5 +200,66 @@ describe("labels and candidates", () => {
     expect(
       candidateToReference({ type: "connector", id: "3", label: "stripe", title: "Stripe" }),
     ).toEqual({ type: "connector", id: "3", label: "stripe" });
+  });
+});
+
+describe("categories", () => {
+  const catalog = [
+    { category: "notion", count: 8 },
+    { category: "company", count: 5 },
+    { category: "mission-control", count: 7 },
+  ];
+
+  test("the picker offers each category as its `@kategorie/` token with its size", () => {
+    expect(categoryCandidates(catalog, "")).toEqual([
+      { type: "category", id: "notion", label: "kategorie/notion", title: "notion", count: 8 },
+      { type: "category", id: "company", label: "kategorie/company", title: "company", count: 5 },
+      {
+        type: "category",
+        id: "mission-control",
+        label: "kategorie/mission-control",
+        title: "mission-control",
+        count: 7,
+      },
+    ]);
+  });
+
+  test("matches the category name and the prefix alike", () => {
+    expect(categoryCandidates(catalog, "not").map((c) => c.id)).toEqual(["notion"]);
+    expect(categoryCandidates(catalog, "kateg").map((c) => c.id)).toHaveLength(3);
+    expect(categoryCandidates(catalog, "stripe")).toEqual([]);
+  });
+
+  test("a category is a phrase, never a reference", () => {
+    const [notion] = categoryCandidates(catalog, "notion");
+    if (!notion) throw new Error("notion missing");
+    expect(isReferenceCandidate(notion)).toBe(false);
+    expect(isReferenceCandidate({ type: "workflow", id: "w", label: "w", title: "W" })).toBe(true);
+  });
+
+  test("selecting one writes the token into the text", () => {
+    const out = insertMentionText("Zeig @not", 5, 9, categoryMentionToken("notion"));
+    expect(out.text).toBe("Zeig @kategorie/notion ");
+    expect(out.caret).toBe(out.text.length);
+  });
+
+  test("a workflow slugged like the prefix is not chipped inside a category token", () => {
+    // `@kategorie` is a prefix of `@kategorie/notion`; the slash continues
+    // the word, so the workflow's token does not match there.
+    const text = `Zeig mir die Workflows in ${categoryMentionToken("notion")}`;
+    expect(scanMentionTokens(text, [wf("kategorie")])).toEqual([]);
+    expect(reconcileReferences(text, [wf("kategorie")])).toEqual([]);
+    // …and the same workflow mentioned on its own still is one.
+    expect(scanMentionTokens("run @kategorie now", [wf("kategorie")])).toHaveLength(1);
+  });
+
+  test("the chip prompt is the token in both languages", () => {
+    for (const locale of ["de", "en"] as const)
+      expect(
+        translate(locale, "chat.starter.categoryPrompt", { token: categoryMentionToken("notion") }),
+      ).toContain("@kategorie/notion");
+    expect(
+      translate("de", "chat.starter.categoryPrompt", { token: categoryMentionToken("notion") }),
+    ).toBe("Zeig mir die Workflows in @kategorie/notion");
   });
 });

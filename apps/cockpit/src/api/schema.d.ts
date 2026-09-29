@@ -20756,6 +20756,7 @@ export interface components {
                 next_action: string;
                 one_sentence: string;
             } | null;
+            usage: components["schemas"]["ConversationUsage"];
         };
         ConversationCreatedResource: {
             /** @enum {string} */
@@ -20785,6 +20786,18 @@ export interface components {
             approved_at: string | null;
             /** @enum {string|null} */
             outcome: "ok" | "error" | "denied" | "pending" | null;
+        };
+        ConversationUsage: {
+            tokens: number;
+            by_model: {
+                model: string;
+                tokens: number;
+            }[];
+            cost: {
+                amount: number;
+                currency: string;
+                unpriced_models: string[];
+            } | null;
         };
         PatchConversationBody: {
             model?: string | null;
