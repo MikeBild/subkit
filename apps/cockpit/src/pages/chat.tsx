@@ -87,7 +87,7 @@ import {
   MessageScrollerViewport,
   useMessageScroller,
 } from "@/components/ui/message-scroller";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
@@ -474,70 +474,74 @@ function ChatComposer({
     onQueryChange: setQuery,
   });
   return (
-    <div className="relative">
-      <MentionPicker
-        open={mentions.open}
-        groups={mentions.groups}
-        highlighted={mentions.highlighted}
-        loading={isLoading}
-        onHighlight={mentions.setHighlighted}
-        onSelect={mentions.select}
-      />
-      <PromptInput
-        data-testid="chat-composer"
-        inputGroupClassName="h-auto min-h-12 items-stretch rounded-xl has-[[data-slot=input-group-control]:focus-visible]:ring-2 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/30"
-        onSubmit={async ({ text }) => {
-          const trimmed = text.trim();
-          if (!trimmed) return;
-          // The request leaves the field the moment it is sent: it stands in
-          // the transcript now, and a second copy in the field reads as unsent.
-          const sent = reconcileReferences(trimmed, references);
-          controller.textInput.clear();
-          setReferences([]);
-          // Handed back: the page has put the text back into the field. The
-          // prompt input clears the field after a submit that resolves, so this
-          // one must not resolve.
-          if (!(await onSend(trimmed, sent))) throw new Error("request handed back");
-        }}
-      >
-        <PromptInputBody>
-          <PromptInputTextarea
-            ref={textareaRef}
-            name="message"
-            className="min-h-[46px] px-4 py-[11px] leading-6"
-            placeholder={placeholder}
-            aria-describedby={describedBy}
-            disabled={disabled}
-            onKeyDown={(event) => {
-              mentions.onKeyDown(event);
-            }}
-            onChange={(event) =>
-              mentions.onChange(event.currentTarget.value, event.currentTarget.selectionStart)
-            }
-            onClick={(event) => mentions.onCaretMove(event.currentTarget.selectionStart)}
-            onKeyUp={(event) => {
-              if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End")
-                mentions.onCaretMove(event.currentTarget.selectionStart);
-            }}
-            onBlur={mentions.close}
-            data-testid="chat-composer-input"
+    <Popover open={mentions.open} onOpenChange={(open) => !open && mentions.close()}>
+      <PopoverAnchor asChild>
+        <div className="relative">
+          <MentionPicker
+            open={mentions.open}
+            groups={mentions.groups}
+            highlighted={mentions.highlighted}
+            loading={isLoading}
+            onHighlight={mentions.setHighlighted}
+            onSelect={mentions.select}
           />
-        </PromptInputBody>
-        {/* The send control sits beside the field, not on a row of its own:
+          <PromptInput
+            data-testid="chat-composer"
+            inputGroupClassName="h-auto min-h-12 items-stretch rounded-xl has-[[data-slot=input-group-control]:focus-visible]:ring-2 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/30"
+            onSubmit={async ({ text }) => {
+              const trimmed = text.trim();
+              if (!trimmed) return;
+              // The request leaves the field the moment it is sent: it stands in
+              // the transcript now, and a second copy in the field reads as unsent.
+              const sent = reconcileReferences(trimmed, references);
+              controller.textInput.clear();
+              setReferences([]);
+              // Handed back: the page has put the text back into the field. The
+              // prompt input clears the field after a submit that resolves, so this
+              // one must not resolve.
+              if (!(await onSend(trimmed, sent))) throw new Error("request handed back");
+            }}
+          >
+            <PromptInputBody>
+              <PromptInputTextarea
+                ref={textareaRef}
+                name="message"
+                className="min-h-[46px] px-4 py-[11px] leading-6"
+                placeholder={placeholder}
+                aria-describedby={describedBy}
+                disabled={disabled}
+                onKeyDown={(event) => {
+                  mentions.onKeyDown(event);
+                }}
+                onChange={(event) =>
+                  mentions.onChange(event.currentTarget.value, event.currentTarget.selectionStart)
+                }
+                onClick={(event) => mentions.onCaretMove(event.currentTarget.selectionStart)}
+                onKeyUp={(event) => {
+                  if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End")
+                    mentions.onCaretMove(event.currentTarget.selectionStart);
+                }}
+                onBlur={mentions.close}
+                data-testid="chat-composer-input"
+              />
+            </PromptInputBody>
+            {/* The send control sits beside the field, not on a row of its own:
             once the approval-mode caption was gone that row held one button
             and a band of empty space taller than the field itself. */}
-        <InputGroupAddon align="inline-end" className="self-end p-[7px] has-[>button]:mr-0">
-          <PromptInputSubmit
-            status={status}
-            onStop={onStop}
-            disabled={disabled}
-            aria-label={t("chat.submit")}
-            tooltip={t("chat.submit")}
-            data-testid="chat-composer-submit"
-          />
-        </InputGroupAddon>
-      </PromptInput>
-    </div>
+            <InputGroupAddon align="inline-end" className="self-end p-[7px] has-[>button]:mr-0">
+              <PromptInputSubmit
+                status={status}
+                onStop={onStop}
+                disabled={disabled}
+                aria-label={t("chat.submit")}
+                tooltip={t("chat.submit")}
+                data-testid="chat-composer-submit"
+              />
+            </InputGroupAddon>
+          </PromptInput>
+        </div>
+      </PopoverAnchor>
+    </Popover>
   );
 }
 
