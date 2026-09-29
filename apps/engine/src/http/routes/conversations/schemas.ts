@@ -159,6 +159,27 @@ export const ConversationToolCallSchema = z
   })
   .openapi("ConversationToolCall");
 
+/**
+ * What this conversation has consumed so far, from the LLM ledger. `tokens`
+ * is the ledger's own weighting — the number the monthly budget counts.
+ * `cost` is `null` when none of its calls had a rate; `unpriced_models`
+ * names the models a non-null amount does not cover, so a partial amount is
+ * read as a floor rather than a total.
+ */
+export const ConversationUsageSchema = z
+  .object({
+    tokens: z.number().int().nonnegative(),
+    by_model: z.array(z.object({ model: z.string(), tokens: z.number().int().nonnegative() })),
+    cost: z
+      .object({
+        amount: z.number().nonnegative(),
+        currency: z.string(),
+        unpriced_models: z.array(z.string()),
+      })
+      .nullable(),
+  })
+  .openapi("ConversationUsage");
+
 export const ConversationDetailSchema = z
   .object({
     conversation: ConversationSchema,
@@ -210,6 +231,7 @@ export const ConversationDetailSchema = z
       })
       .nullable()
       .optional(),
+    usage: ConversationUsageSchema,
   })
   .openapi("ConversationDetail");
 

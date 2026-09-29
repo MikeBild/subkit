@@ -98,13 +98,27 @@ function SelectLabel({ className, ...props }: React.ComponentProps<typeof Select
 function SelectItem({
   className,
   children,
+  suffix,
+  description,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Item>) {
+}: React.ComponentProps<typeof SelectPrimitive.Item> & {
+  /**
+   * Text beside the label that is not part of it: it stays out of `ItemText`,
+   * so the trigger shows the bare label and the option's accessible name is
+   * the label alone.
+   */
+  suffix?: React.ReactNode;
+  /** One line under the label, outside `ItemText` for the same reason. */
+  description?: React.ReactNode;
+}) {
+  const label = <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>;
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "relative flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-muted focus:text-foreground not-data-[variant=destructive]:focus:**:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+        "relative flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-muted focus:text-foreground not-data-[variant=destructive]:focus:**:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        !description && "*:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+        description && "flex-col items-start gap-0.5 py-1.5",
         className,
       )}
       {...props}
@@ -114,7 +128,28 @@ function SelectItem({
           <CheckIcon className="pointer-events-none" />
         </SelectPrimitive.ItemIndicator>
       </span>
-      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      {suffix || description ? (
+        <>
+          <span className="flex items-baseline gap-1">
+            {label}
+            {suffix ? (
+              <span className="text-muted-foreground" data-slot="select-item-suffix">
+                {suffix}
+              </span>
+            ) : null}
+          </span>
+          {description ? (
+            <span
+              className="text-xs text-muted-foreground whitespace-normal"
+              data-slot="select-item-description"
+            >
+              {description}
+            </span>
+          ) : null}
+        </>
+      ) : (
+        label
+      )}
     </SelectPrimitive.Item>
   );
 }

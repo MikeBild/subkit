@@ -69,3 +69,4 @@ export {
   importConnectorFromSpecInputSchema,
 } from "./tools/import-connector-from-spec.ts";
 export * from "./types.ts";
+export { type ConversationUsage, readConversationUsage } from "./usage.ts";

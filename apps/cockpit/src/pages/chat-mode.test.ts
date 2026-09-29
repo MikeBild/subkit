@@ -11,8 +11,10 @@ import {
   DEFAULT_AUTHORING_MODE,
   GATE_MATRIX,
   type GateRow,
+  modeDescriptionKey,
   modeGates,
   modeLabelKey,
+  modeSuffixKey,
 } from "./chat-mode";
 
 describe("authoring modes", () => {
@@ -27,7 +29,24 @@ describe("authoring modes", () => {
       `normalizePermissionMode(p.permission_mode) ?? "${DEFAULT_AUTHORING_MODE}"`,
     );
     expect(AUTHORING_MODES.filter((mode) => mode === DEFAULT_AUTHORING_MODE)).toHaveLength(1);
-    expect(translate("de", modeLabelKey(DEFAULT_AUTHORING_MODE))).toContain("Systemstandard");
+    // The marker stands beside the default's name in the open list, and only
+    // there: the pill shows the short name alone.
+    const suffix = modeSuffixKey(DEFAULT_AUTHORING_MODE);
+    expect(suffix && translate("de", suffix)).toContain("Systemstandard");
+    for (const mode of AUTHORING_MODES)
+      if (mode !== DEFAULT_AUTHORING_MODE) expect(modeSuffixKey(mode)).toBeNull();
+    expect(translate("de", modeLabelKey(DEFAULT_AUTHORING_MODE))).not.toContain("Systemstandard");
+  });
+
+  test("the pill reads a short name, and every option explains itself", () => {
+    expect(AUTHORING_MODES.map((mode) => translate("de", modeLabelKey(mode)))).toEqual([
+      "Autonom",
+      "Fragt vorher",
+      "Nur planen",
+    ]);
+    const lines = AUTHORING_MODES.map((mode) => translate("de", modeDescriptionKey(mode)));
+    expect(new Set(lines).size).toBe(AUTHORING_MODES.length);
+    for (const line of lines) expect(line.length).toBeGreaterThan(0);
   });
 
   test("no two modes read the same", () => {

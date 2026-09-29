@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { List, MessageSquarePlus, PanelRight } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Info, List, MessageSquarePlus, PanelRight } from "lucide-react";
+import { type MutableRefObject, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ApiError,
   apiRequest,
   type Conversation,
+  type ConversationDetail,
   type ConversationReference,
   cancelConversation,
   getConversation,
@@ -26,9 +28,11 @@ import {
   connectorHref,
   conversationHref,
   runHref,
+  usageHref,
   workflowHref,
 } from "@/app/links";
 import { useSession } from "@/app/session";
+import { CHAT_COLUMN, useChatHeaderSlot } from "@/app/shell-header";
 import { useHeldSchedules } from "@/app/use-decisions";
 import { BackgroundTools } from "@/components/ai-elements/background-tools";
 import {
@@ -83,6 +87,7 @@ import {
   MessageScrollerViewport,
   useMessageScroller,
 } from "@/components/ui/message-scroller";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
@@ -103,13 +108,13 @@ import { formatDateTime, formatRelativeTime, type TranslationKey } from "@/lib/i
 import { useI18n } from "@/lib/i18n-context";
 import { nameIdentifiers, type ResolvedIdentifier } from "@/lib/identifiers";
 import type { DiffLine } from "@/lib/line-diff";
-import { reconcileReferences } from "@/lib/mentions";
+import { categoryMentionToken, reconcileReferences } from "@/lib/mentions";
 import { resolveWorkflowNameBySlug } from "@/lib/name-index";
 import { conversationExcerpt, hideTechnicalIdentifiers, humanFacingText } from "@/lib/presentation";
 import { patchCandidateId, toolPartVerdict } from "@/lib/tool-parts";
 import { isStaleCall, toolLabel, toolOutcomeKey } from "@/lib/tool-presentation";
 import { cn } from "@/lib/utils";
-import { useMentionCandidates } from "@/queries/mention-sources";
+import { useMentionCandidates, useWorkflowCategories } from "@/queries/mention-sources";
 import { type ChatApproval, chatApproval } from "./chat-approval";
 import { ChatApprovalCard } from "./chat-approval-card";
 import { ChatAutomationReview } from "./chat-automation-review";
@@ -122,16 +127,38 @@ import { ChatFormCard } from "./chat-form-card";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 import { conversationFailureKind, retryConversationRead } from "./chat-load-failure";
 import { CHAT_MARKDOWN_COMPONENTS } from "./chat-message-link";
-import { AUTHORING_MODES, DEFAULT_AUTHORING_MODE, modeGates, modeLabelKey } from "./chat-mode";
+import {
+  AUTHORING_MODES,
+  DEFAULT_AUTHORING_MODE,
+  modeDescriptionKey,
+  modeGates,
+  modeLabelKey,
+  modeSuffixKey,
+} from "./chat-mode";
 import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
 import { type ChatReauth, chatReauth } from "./chat-reauth";
 import { ChatReauthCard } from "./chat-reauth-card";
 import { collectReferencedResources, referencesFromPart } from "./chat-references";
 import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "./chat-resume";
 import { activeConversationId, type ConversationSelection } from "./chat-selection";
+import {
+  budgetPill,
+  type ChatNavigation,
+  chatHeaderTitle,
+  costPill,
+  nextSessionKey,
+  type OptimisticMessage,
+  optimisticUiMessage,
+  optimisticVisible,
+  shouldRestoreComposer,
+  tokenPill,
+  userMessageCount,
+} from "./chat-session";
 import { dedupeBackground, groupMessageParts } from "./chat-transcript";
+import { budgetPressure, budgetSummary } from "./usage-model";
 
 type Translate = ReturnType<typeof useI18n>["t"];
+type ConversationUsage = ConversationDetail["usage"];
 
 function localizedTarget(value: string | null | undefined, t: Translate): string {
   if (!value || value.toLowerCase() === "none") return t("chat.context.noTarget");
@@ -196,7 +223,7 @@ export function originLine(
  * any. The width is the workbench width `PageFrame` gives its wide surfaces,
  * because a transcript carries tool cards, diffs and payloads, not prose alone.
  */
-const COLUMN = "mx-auto w-full max-w-[1280px]";
+const COLUMN = CHAT_COLUMN;
 
 /** Where a catalogue object lives in the Cockpit. */
 function catalogHref(kind: string, id: string): string {
@@ -301,13 +328,7 @@ function StarterCards({
 }) {
   const { t } = useI18n();
   const session = useSession();
-  const catalog = useQuery({
-    queryKey: ["chat", "starter-catalog"],
-    enabled: session.permissions.includes("workflow:read"),
-    queryFn: () =>
-      apiRequest<{ categories: { category: string; count: number }[] }>("/v1/workflows?limit=1"),
-  });
-  const categories = catalog.data?.categories ?? [];
+  const { categories } = useWorkflowCategories(session.permissions.includes("workflow:read"));
 
   return (
     <div className="mt-6 grid gap-3" data-testid="chat-starters">
@@ -336,8 +357,14 @@ function StarterCards({
                 size="sm"
                 disabled={disabled}
                 data-testid={`chat-starter-category-${index}`}
+                // The chip says what the `@` picker says: the same token, which
+                // the engine answers from the catalog without a model turn.
                 onClick={() =>
-                  onPick(t("chat.starter.categoryPrompt", { category: entry.category }))
+                  onPick(
+                    t("chat.starter.categoryPrompt", {
+                      token: categoryMentionToken(entry.category),
+                    }),
+                  )
                 }
               >
                 {entry.category}
@@ -391,6 +418,8 @@ function backgroundLabel(t: Translate, toolName: string, running: boolean): stri
   return actionLabel(t, toolName);
 }
 
+type RestoreComposer = (text: string, references: ConversationReference[]) => void;
+
 /**
  * The composer with `@`-mentions. Lives inside `PromptInputProvider` so it
  * can read and write the shared text state; the references travel beside
@@ -404,21 +433,35 @@ function ChatComposer({
   describedBy,
   onSend,
   onStop,
+  restoreRef,
 }: {
   disabled: boolean;
   status: React.ComponentProps<typeof PromptInputSubmit>["status"];
   placeholder: string;
   /** The id of a hint that says where the answer goes, when one is shown. */
   describedBy?: string;
-  onSend: (message: string, references: ConversationReference[]) => Promise<unknown>;
+  /** Resolves true when the request was sent, false when it was handed back. */
+  onSend: (message: string, references: ConversationReference[]) => Promise<boolean>;
   /** Sending and stopping are one affordance: the button swaps its glyph. */
   onStop: () => void;
+  /** Where the page hands a request back that the engine did not keep. */
+  restoreRef: MutableRefObject<RestoreComposer | null>;
 }) {
   const { t } = useI18n();
   const session = useSession();
   const controller = usePromptInputController();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [references, setReferences] = useState<ConversationReference[]>([]);
+  const setInput = controller.textInput.setInput;
+  useEffect(() => {
+    restoreRef.current = (text, restored) => {
+      setInput(text);
+      setReferences(restored);
+    };
+    return () => {
+      restoreRef.current = null;
+    };
+  }, [restoreRef, setInput]);
   const [query, setQuery] = useState<string | null>(null);
   const { candidates, isLoading } = useMentionCandidates(query, session.permissions);
   const mentions = useMentionInput({
@@ -446,8 +489,15 @@ function ChatComposer({
         onSubmit={async ({ text }) => {
           const trimmed = text.trim();
           if (!trimmed) return;
-          await onSend(trimmed, reconcileReferences(trimmed, references));
+          // The request leaves the field the moment it is sent: it stands in
+          // the transcript now, and a second copy in the field reads as unsent.
+          const sent = reconcileReferences(trimmed, references);
+          controller.textInput.clear();
           setReferences([]);
+          // Handed back: the page has put the text back into the field. The
+          // prompt input clears the field after a submit that resolves, so this
+          // one must not resolve.
+          if (!(await onSend(trimmed, sent))) throw new Error("request handed back");
         }}
       >
         <PromptInputBody>
@@ -520,6 +570,165 @@ function ModeGateMatrix({ mode }: { mode: AuthoringMode }) {
       </p>
       {gates.guidance ? <p data-testid="chat-mode-guidance">{t(gates.guidance)}</p> : null}
     </div>
+  );
+}
+
+/**
+ * The mode as a pill in the header.
+ *
+ * The whole gate matrix used to stand under the picker on every conversation,
+ * three lines of rules read once and then skipped. The pill names the mode in
+ * a word; the open list says in one line per option what it changes; the
+ * matrix (§14) is one click away behind "Was heißt das?" — at the picker,
+ * where the convention wants it, but not in the reader's way. A running
+ * conversation shows the same pill, read-only: its mode is fixed.
+ */
+function ModePill({
+  mode,
+  label,
+  editable,
+  disabled,
+  onChange,
+}: {
+  /** The mode whose matrix the popover states; null for one it cannot state. */
+  mode: AuthoringMode | null;
+  label: string;
+  editable: boolean;
+  disabled: boolean;
+  onChange: (mode: AuthoringMode) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="flex items-center gap-0.5" data-testid="chat-permission">
+      {editable && mode ? (
+        <Select
+          value={mode}
+          disabled={disabled}
+          onValueChange={(value) => {
+            const next = AUTHORING_MODES.find((candidate) => candidate === value);
+            if (next) onChange(next);
+          }}
+        >
+          <SelectTrigger
+            size="sm"
+            aria-label={t("chat.mode.label")}
+            className="h-6 rounded-full px-2.5 text-xs"
+            data-testid="chat-permission-select"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent position="popper" align="start" className="w-72">
+            {AUTHORING_MODES.map((option) => {
+              const suffix = modeSuffixKey(option);
+              return (
+                <SelectItem
+                  key={option}
+                  value={option}
+                  data-testid={`chat-permission-${option}`}
+                  suffix={suffix ? t(suffix) : undefined}
+                  description={t(modeDescriptionKey(option))}
+                >
+                  {t(modeLabelKey(option))}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      ) : (
+        <span
+          className="inline-flex h-6 items-center rounded-full border px-2.5 text-xs"
+          data-testid="chat-permission-mode"
+        >
+          <span className="sr-only">{t("chat.mode.label")}: </span>
+          {label}
+        </span>
+      )}
+      {mode ? (
+        <Popover>
+          <PopoverTrigger asChild>
+            <IconButton
+              label={t("chat.mode.explain")}
+              size="icon-xs"
+              data-testid="chat-mode-explain"
+            >
+              <Info />
+            </IconButton>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-80" data-testid="chat-mode-explain-content">
+            <p className="mb-2 text-sm font-medium">{t("chat.mode.explain")}</p>
+            <ModeGateMatrix mode={mode} />
+          </PopoverContent>
+        </Popover>
+      ) : null}
+    </div>
+  );
+}
+
+/** Numbers and money in the header's pills, in the reader's locale. */
+function UsagePills({
+  usage,
+  budget,
+}: {
+  usage: ConversationUsage | null | undefined;
+  budget: "tightening" | "critical" | null;
+}) {
+  const { t, locale } = useI18n();
+  const tokens = tokenPill(usage);
+  const cost = costPill(usage);
+  const pill =
+    "inline-flex h-6 items-center rounded-full border px-2.5 text-xs text-muted-foreground tabular-nums whitespace-nowrap";
+  return (
+    <>
+      {tokens !== null && (
+        <span
+          className={pill}
+          data-testid="chat-usage-tokens"
+          title={t("chat.usage.tokensTitle", {
+            models: (usage?.by_model ?? [])
+              .map((row) => `${row.model} ${new Intl.NumberFormat(locale).format(row.tokens)}`)
+              .join(" · "),
+          })}
+        >
+          {t("chat.usage.tokens", { tokens: new Intl.NumberFormat(locale).format(tokens) })}
+        </span>
+      )}
+      {cost && (
+        <span
+          className={pill}
+          data-testid="chat-usage-cost"
+          data-floor={cost.floor || undefined}
+          title={
+            cost.floor
+              ? t("chat.usage.costFloorTitle", {
+                  models: (usage?.cost?.unpriced_models ?? []).join(", "),
+                })
+              : t("chat.usage.costTitle")
+          }
+        >
+          {cost.floor ? `${t("overview.operations.atLeast")} ` : ""}
+          {new Intl.NumberFormat(locale, {
+            style: "currency",
+            currency: cost.currency,
+            maximumFractionDigits: cost.amount < 1 ? 4 : 2,
+          }).format(cost.amount)}
+        </span>
+      )}
+      {budget && (
+        // A warning with its way to the cause: Nutzung carries the month.
+        <Badge
+          asChild
+          variant={budget === "critical" ? "destructive" : "outline"}
+          className={cn(
+            "h-6 rounded-full px-2.5",
+            budget === "tightening" && "border-warning/40 bg-warning/10 text-warning",
+          )}
+        >
+          <a href={absolute(usageHref())} data-testid="chat-budget" data-budget={budget}>
+            {t(budget === "critical" ? "chat.budget.critical" : "chat.budget.tightening")}
+          </a>
+        </Badge>
+      )}
+    </>
   );
 }
 
@@ -858,10 +1067,32 @@ export function ChatPage() {
   const [renameTitle, setRenameTitle] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
+  // The transcript and the composer are mounted under this key. It moves only
+  // when the reader moves — a new conversation, a pick from the list, back or
+  // forward — never when the first send turns `/chat/new` into `/chat/<id>`.
+  const [sessionKey, setSessionKey] = useState(0);
+  // Whether the conversation on screen was begun here, in this session: its
+  // title stays "Neue Unterhaltung" until the engine names it.
+  const [startedHere, setStartedHere] = useState(() => selection.kind === "new");
+  const [optimistic, setOptimistic] = useState<OptimisticMessage | null>(null);
+  // The mode a new conversation was sent in, shown until its detail arrives.
+  const [sentMode, setSentMode] = useState<AuthoringMode | null>(null);
+  const restoreComposer = useRef<RestoreComposer | null>(null);
+  const navigate = (navigation: ChatNavigation, beginsHere: boolean) => {
+    setSessionKey((key) => nextSessionKey(key, navigation));
+    setStartedHere(beginsHere);
+    setOptimistic(null);
+    setSentMode(null);
+  };
   useEffect(() => {
     const onPopState = () => {
       const prompt = chatSeedFromUrl(window.location.search).prompt;
-      setSelection(selectionFromPath(prompt));
+      const next = selectionFromPath(prompt);
+      setSelection(next);
+      setSessionKey((key) => nextSessionKey(key, "popstate"));
+      setStartedHere(next.kind === "new");
+      setOptimistic(null);
+      setSentMode(null);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -940,6 +1171,8 @@ export function ChatPage() {
     onSuccess: async (result) => {
       setSelection({ kind: "existing", id: result.conversation.id });
       setChatPath(result.conversation.id, true);
+      // The same conversation continuing under its new address: nothing remounts.
+      setSessionKey((key) => nextSessionKey(key, "firstSendSaved"));
       setStreamedText("");
       setStreamedDiffs([]);
       setLiveCalls([]);
@@ -971,6 +1204,37 @@ export function ChatPage() {
    * puts the cursor in the composer: a send in this session left its text
    * there; the reader sends it again, knowingly, if it is missing.
    */
+  /**
+   * Every request goes through here: the composer, a starter chip, a card's
+   * follow-up. The request stands in the transcript at once, in the place and
+   * style the saved one will take, and stays until the saved one is there. A
+   * send that failed without the engine keeping the request hands its text
+   * back to the composer.
+   */
+  const submitTurn = async (
+    message: string,
+    references: ConversationReference[] = [],
+  ): Promise<boolean> => {
+    const pending: OptimisticMessage = {
+      session: sessionKey,
+      text: message,
+      references,
+      baseline: activeId ? userMessageCount(messages) : 0,
+      sentAt: new Date().toISOString(),
+    };
+    setOptimistic(pending);
+    if (!activeId) setSentMode(newPermissionMode);
+    try {
+      await send.mutateAsync({ message, references });
+      return true;
+    } catch {
+      const after = activeId ? ((await detail.refetch()).data?.messages ?? []) : [];
+      if (!shouldRestoreComposer(pending, after)) return true;
+      setOptimistic(null);
+      restoreComposer.current?.(message, references);
+      return false;
+    }
+  };
   const retryTurn = async () => {
     send.reset();
     await Promise.all([
@@ -1165,6 +1429,7 @@ export function ChatPage() {
   );
   const startNew = () => {
     setSelection({ kind: "new" });
+    navigate("startNew", true);
     setNewPermissionMode(DEFAULT_AUTHORING_MODE);
     setChatPath(null);
     setListOpen(false);
@@ -1187,14 +1452,130 @@ export function ChatPage() {
       : resume?.pending_approval?.tool_name === "ask_user_text" && !send.isPending
         ? { text: t("chat.replyHint"), visible: false }
         : null;
-  // The matrix for the mode in force: the one being picked, or the one the
-  // conversation was started in. A legacy or armed exception has no matrix
-  // this page can state, so it shows none rather than a guess.
-  const matrixMode: AuthoringMode | null = !activeId
+  // The mode in force: the one being picked, the one the conversation was
+  // started in — or, while a conversation begun here loads its detail, the
+  // one it was just sent in, so the pill does not pass through "loading". A
+  // legacy or armed exception has no matrix this page can state, so it shows
+  // its name and no matrix rather than a guess.
+  const storedConcrete: AuthoringMode | null =
+    storedMode === "auto" || storedMode === "ask" || storedMode === "plan" ? storedMode : null;
+  const pillMode: AuthoringMode | null = !activeId
     ? newPermissionMode
-    : storedMode === "auto" || storedMode === "ask" || storedMode === "plan"
-      ? storedMode
-      : null;
+    : (storedConcrete ?? (storedMode === "loading" ? sentMode : null));
+  const pillLabel = pillMode
+    ? t(modeLabelKey(pillMode))
+    : storedMode === "loading"
+      ? null
+      : t(`chat.mode.${storedMode}`);
+  const headerTitle = chatHeaderTitle({
+    title: current?.title,
+    listTitle: activeRow?.title,
+    failed: conversationFailed,
+    activeId,
+    startedHere,
+    loaded: Boolean(detail.data),
+  });
+  const summaryLine = conversationFailed ? null : resumeSummaryLine(resume, t);
+  const showOptimistic = optimisticVisible(optimistic, sessionKey, messages);
+  const canReadStats = session.permissions.includes("stats:read");
+  const monthStatus = useQuery({
+    queryKey: ["usage-status"],
+    enabled: canReadStats,
+    queryFn: () => apiRequest<unknown>("/v1/status"),
+  });
+  const budget = budgetPill(budgetPressure(budgetSummary(monthStatus.data)));
+  const headerSlot = useChatHeaderSlot();
+  // The chat's header lives in the shell's top bar, beside the sidebar toggle:
+  // title and state on the left, the mode and what this conversation consumed
+  // in the middle, the three ways out on the right. On a phone the pills take
+  // a second row instead of scrolling sideways.
+  const chatHeader = (
+    <div
+      className="flex min-h-8 min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5"
+      data-testid="chat-header"
+    >
+      <div className="min-w-0 flex-1">
+        <h1
+          className="truncate text-sm font-semibold"
+          data-testid="chat-title"
+          data-title-kind={headerTitle.kind}
+          aria-busy={headerTitle.kind === "loading" || undefined}
+        >
+          {headerTitle.kind === "title"
+            ? headerTitle.text
+            : headerTitle.kind === "loading"
+              ? " "
+              : t(
+                  headerTitle.kind === "unavailable"
+                    ? "chat.unavailable"
+                    : headerTitle.kind === "untitled"
+                      ? "chat.untitled"
+                      : "chat.new",
+                )}
+        </h1>
+        {/* §5: the state line of a conversation that has one. A new
+            conversation has no state yet, and says nothing rather than a
+            sentence about the product. */}
+        {summaryLine ? (
+          <p className="truncate text-xs text-muted-foreground" data-testid="chat-summary">
+            {summaryLine}
+          </p>
+        ) : null}
+      </div>
+      <div
+        className="order-last flex w-full flex-wrap items-center gap-1.5 sm:order-none sm:w-auto"
+        data-testid="chat-pills"
+      >
+        {conversationFailed || !pillLabel ? null : (
+          <ModePill
+            mode={pillMode}
+            label={pillLabel}
+            editable={!activeId}
+            disabled={send.isPending}
+            onChange={setNewPermissionMode}
+          />
+        )}
+        <UsagePills usage={activeId ? detail.data?.usage : null} budget={budget} />
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        {/* A badge earns its place by changing what the reader does next.
+            "Waiting for you" and "In progress" do; "Answered" and "Idle"
+            are the resting state and were on almost every conversation. */}
+        {current && badge && (
+          // "Wartet auf dich" is amber (§2) — the same tone the list
+          // gives it. It was red here and amber there: one state, two
+          // alarms of different weight.
+          <Badge
+            variant="outline"
+            className={cn(badge.waiting && "border-warning/40 bg-warning/10 text-warning")}
+            data-testid="chat-status"
+            data-waiting={badge.waiting || undefined}
+          >
+            {badge.label}
+          </Badge>
+        )}
+        <IconButton
+          label={t("chat.conversations.open")}
+          data-testid="conversation-list-trigger"
+          onClick={() => setListOpen(true)}
+        >
+          <List />
+        </IconButton>
+        {/* "New" is a reset to the empty state, not a form: the composer
+            and the starter cards are the way in. */}
+        <IconButton label={t("chat.new")} data-testid="conversation-new" onClick={startNew}>
+          <MessageSquarePlus />
+        </IconButton>
+        <IconButton
+          label={t("chat.toggleContext")}
+          data-testid="chat-context-toggle"
+          onClick={() => setContextOpen((open) => !open)}
+        >
+          <PanelRight />
+        </IconButton>
+      </div>
+    </div>
+  );
   const list = (
     <ConversationList
       failed={
@@ -1209,6 +1590,7 @@ export function ChatPage() {
       onHide={(conversation, hidden) => hide.mutate({ id: conversation.id, hidden })}
       onSelect={(id) => {
         setSelection({ kind: "existing", id });
+        navigate("select", false);
         setChatPath(id);
         setListOpen(false);
       }}
@@ -1241,110 +1623,7 @@ export function ChatPage() {
           demand at every width, and the conversation keeps the whole page.
           A reader who is reading one conversation is not choosing another. */}
       <section className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="chat-main">
-        <header
-          className="scrollbar-thin shrink-0 overflow-y-auto border-b px-4 py-3 sm:px-6 [scrollbar-gutter:stable_both-edges]"
-          data-testid="chat-header"
-        >
-          <div className={cn("flex items-center justify-between gap-3", COLUMN)}>
-            {/* The title starts where the messages start. Controls sit on the
-                other end of the same line, so the page has one left edge. */}
-            <div className="min-w-0">
-              <h1 className="truncate text-sm font-semibold" data-testid="chat-title">
-                {current?.title ||
-                  (conversationFailed
-                    ? t("chat.unavailable")
-                    : activeId && detail.data
-                      ? t("chat.untitled")
-                      : t("chat.new"))}
-              </h1>
-              <p className="truncate text-xs text-muted-foreground" data-testid="chat-summary">
-                {resumeSummaryLine(resume, t)}
-              </p>
-              {/* Where it came from, whose it is, when it last moved — beside
-                  the summary, not instead of it (§5 keeps the summary line). */}
-              {current && origin && (
-                <p className="truncate text-xs text-muted-foreground" data-testid="chat-origin">
-                  {origin}
-                </p>
-              )}
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              {/* A badge earns its place by changing what the reader does next.
-                "Waiting for you" and "In progress" do; "Answered" and "Idle"
-                are the resting state and were on almost every conversation. */}
-              {current && badge && (
-                // "Wartet auf dich" is amber (§2) — the same tone the list
-                // gives it. It was red here and amber there: one state, two
-                // alarms of different weight.
-                <Badge
-                  variant="outline"
-                  className={cn(badge.waiting && "border-warning/40 bg-warning/10 text-warning")}
-                  data-testid="chat-status"
-                  data-waiting={badge.waiting || undefined}
-                >
-                  {badge.label}
-                </Badge>
-              )}
-              <IconButton
-                label={t("chat.conversations.open")}
-                data-testid="conversation-list-trigger"
-                onClick={() => setListOpen(true)}
-              >
-                <List />
-              </IconButton>
-              {/* "New" is a reset to the empty state, not a form: the composer
-                and the starter cards are the way in. */}
-              <IconButton label={t("chat.new")} data-testid="conversation-new" onClick={startNew}>
-                <MessageSquarePlus />
-              </IconButton>
-              <IconButton
-                label={t("chat.toggleContext")}
-                data-testid="chat-context-toggle"
-                onClick={() => setContextOpen((open) => !open)}
-              >
-                <PanelRight />
-              </IconButton>
-            </div>
-          </div>
-          {conversationFailed ? null : (
-            <div className={cn("mt-2 grid gap-1", COLUMN)} data-testid="chat-permission">
-              {activeId ? (
-                <p className="text-xs text-muted-foreground">
-                  {t("chat.mode.label")}:{" "}
-                  {t(
-                    storedMode === "auto" || storedMode === "ask" || storedMode === "plan"
-                      ? modeLabelKey(storedMode)
-                      : `chat.mode.${storedMode}`,
-                  )}
-                </p>
-              ) : (
-                <Select
-                  value={newPermissionMode}
-                  disabled={send.isPending}
-                  onValueChange={(value) => {
-                    const mode = AUTHORING_MODES.find((candidate) => candidate === value);
-                    if (mode) setNewPermissionMode(mode);
-                  }}
-                >
-                  <SelectTrigger
-                    aria-label={t("chat.mode.label")}
-                    data-testid="chat-permission-select"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {AUTHORING_MODES.map((mode) => (
-                      <SelectItem key={mode} value={mode} data-testid={`chat-permission-${mode}`}>
-                        {t(modeLabelKey(mode))}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              {matrixMode ? <ModeGateMatrix mode={matrixMode} /> : null}
-            </div>
-          )}
-        </header>
+        {headerSlot ? createPortal(chatHeader, headerSlot) : null}
 
         {/* The turn that just died, and the one that died before a reload. The
             engine's own sentence is shown verbatim: "you have reached your
@@ -1386,7 +1665,7 @@ export function ChatPage() {
             <AlertDescription>{t("chat.decision.failed")}</AlertDescription>
           </Alert>
         )}
-        <MessageScrollerProvider key={activeId ?? "new"} autoScroll>
+        <MessageScrollerProvider key={sessionKey} autoScroll>
           <FollowSubmittedTurn submittedAt={Math.max(send.submittedAt, decide.submittedAt)} />
           <MessageScroller className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
             {/* `both-edges` is the operative part, the same as the shared page
@@ -1422,7 +1701,7 @@ export function ChatPage() {
                       {t("chat.new")}
                     </Button>
                   </LoadFailed>
-                ) : messages.length === 0 && !send.isPending ? (
+                ) : messages.length === 0 && !send.isPending && !showOptimistic ? (
                   // `place-items-center` on a box taller than the scroller splits
                   // the overflow between top and bottom, and the top half is
                   // clipped — which is where the icon sat. `m-auto` centres the
@@ -1437,7 +1716,7 @@ export function ChatPage() {
                         {t("chat.empty.description")}
                       </p>
                       <StarterCards
-                        onPick={(prompt) => send.mutate({ message: prompt })}
+                        onPick={(prompt) => void submitTurn(prompt)}
                         disabled={send.isPending}
                       />
                     </div>
@@ -1469,32 +1748,26 @@ export function ChatPage() {
                         nameFor={nameFor}
                         workflowNameFor={workflowNameFor}
                         onAutomationAdjust={(workflowId) =>
-                          send.mutate({
-                            message: t("authority.adjustPrompt"),
-                            references: [
-                              {
-                                type: "workflow",
-                                id: workflowId,
-                                label: t("chat.singleRun.thisWorkflow"),
-                              },
-                            ],
-                          })
+                          void submitTurn(t("authority.adjustPrompt"), [
+                            {
+                              type: "workflow",
+                              id: workflowId,
+                              label: t("chat.singleRun.thisWorkflow"),
+                            },
+                          ])
                         }
                         onReauth={(action) => {
                           if (pendingDecision || pendingChoice || pendingForm) {
                             setContextOpen(true);
                             return;
                           }
-                          send.mutate({
-                            message: t("chat.reauth.prompt"),
-                            references: [
-                              {
-                                type: "connector",
-                                id: action.connectorId,
-                                label: action.label || t("chat.reauth.title"),
-                              },
-                            ],
-                          });
+                          void submitTurn(t("chat.reauth.prompt"), [
+                            {
+                              type: "connector",
+                              id: action.connectorId,
+                              label: action.label || t("chat.reauth.title"),
+                            },
+                          ]);
                         }}
                         onDecision={(toolCallId, approved) =>
                           decide.mutate({ toolCallId, approved })
@@ -1503,17 +1776,33 @@ export function ChatPage() {
                     </MessageScrollerItem>
                   ))
                 )}
-                {send.isPending && send.variables?.message && (
-                  <MessageScrollerItem>
-                    <Message align="end">
-                      <MessageContent>
-                        <Bubble>
-                          <BubbleContent>{send.variables.message}</BubbleContent>
-                        </Bubble>
-                      </MessageContent>
-                    </Message>
+                {/* The request just sent, where and as the saved one will stand:
+                    left, under "Du", in the question tone. It used to be a dark
+                    bubble on the right that vanished when the turn ended and
+                    came back on the left after a gap. It stays until the saved
+                    request is in the transcript, so there is no gap. */}
+                {showOptimistic && optimistic ? (
+                  <MessageScrollerItem key="optimistic" data-testid="chat-pending-message">
+                    <ChatMessage
+                      message={optimisticUiMessage(optimistic)}
+                      messageIndex={messages.length}
+                      pendingApprovalId={null}
+                      approval={null}
+                      choice={null}
+                      form={null}
+                      onForm={() => {}}
+                      onChoice={() => {}}
+                      approvalBusy
+                      approvalError={false}
+                      onApproval={() => {}}
+                      onDecision={() => {}}
+                      onReauth={() => {}}
+                      onAutomationAdjust={() => {}}
+                      nameFor={nameFor}
+                      workflowNameFor={workflowNameFor}
+                    />
                   </MessageScrollerItem>
-                )}
+                ) : null}
                 {liveCalls.length > 0 && (
                   <MessageScrollerItem>
                     {/* `liveTick` is the render trigger: the interval bumps it so
@@ -1594,7 +1883,7 @@ export function ChatPage() {
                           <p>{t("chat.preparation.effect")}</p>
                           <Button
                             size="sm"
-                            onClick={() => send.mutate({ message: t("chat.preparation.prompt") })}
+                            onClick={() => void submitTurn(t("chat.preparation.prompt"))}
                             data-testid="chat-continue-preparation"
                           >
                             {t("chat.preparation.continue")}
@@ -1619,9 +1908,9 @@ export function ChatPage() {
                             environment={heldTarget.execution_mode}
                             testId="chat-review-schedule"
                             onPrepareSingleRun={() =>
-                              send.mutate({ message: t("chat.activation.singlePrompt") })
+                              void submitTurn(t("chat.activation.singlePrompt"))
                             }
-                            onAdjust={() => send.mutate({ message: t("authority.adjustPrompt") })}
+                            onAdjust={() => void submitTurn(t("authority.adjustPrompt"))}
                           />
                         </AlertDescription>
                       </Alert>
@@ -1709,7 +1998,7 @@ export function ChatPage() {
               </p>
             ) : null}
             <PromptInputProvider
-              key={activeId ?? "new"}
+              key={sessionKey}
               initialInput={selection.kind === "new" ? initialPrompt : ""}
             >
               <ChatComposer
@@ -1727,7 +2016,8 @@ export function ChatPage() {
                 }
                 describedBy={composerHint ? "chat-composer-hint" : undefined}
                 onStop={() => cancel.mutate()}
-                onSend={(message, references) => send.mutateAsync({ message, references })}
+                onSend={submitTurn}
+                restoreRef={restoreComposer}
               />
             </PromptInputProvider>
           </div>
@@ -1784,6 +2074,15 @@ export function ChatPage() {
               </div>
             )}
             <dl className="grid gap-4 p-4 text-sm">
+              {/* Where it came from, whose it is, when it last moved. It stood
+                  in the header as a third line; the header now carries the
+                  title and what the reader acts on, and this is context. */}
+              {current && origin ? (
+                <div data-testid="chat-origin">
+                  <dt className="text-xs text-muted-foreground">{t("chat.context.origin")}</dt>
+                  <dd className="mt-1">{origin}</dd>
+                </div>
+              ) : null}
               <div data-testid="chat-context-stage">
                 <dt className="text-xs text-muted-foreground">{t("chat.context.stage")}</dt>
                 <dd className="mt-1 font-medium">
@@ -1817,11 +2116,11 @@ export function ChatPage() {
                       testId="chat-context-review-schedule"
                       onPrepareSingleRun={() => {
                         setContextOpen(false);
-                        send.mutate({ message: t("chat.activation.singlePrompt") });
+                        void submitTurn(t("chat.activation.singlePrompt"));
                       }}
                       onAdjust={() => {
                         setContextOpen(false);
-                        send.mutate({ message: t("authority.adjustPrompt") });
+                        void submitTurn(t("authority.adjustPrompt"));
                       }}
                     />
                   </dd>

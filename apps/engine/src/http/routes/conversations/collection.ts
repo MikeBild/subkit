@@ -275,6 +275,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const detail = await svc.getConversation(principal.tenant_id, id, db);
     if (!detail) throw new NotFoundError("conversation");
     const messages = buildMessagesV2(detail.messages, detail.tool_calls);
+    const usage = await svc.readConversationUsage(db, principal.tenant_id, id);
     return c.json(
       {
         conversation: detail.conversation,
@@ -284,6 +285,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
         tool_calls: detail.tool_calls,
         draft: detail.draft,
         ...(detail.resume_summary ? { resume_summary: detail.resume_summary } : {}),
+        usage,
       },
       200,
     );
