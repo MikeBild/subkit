@@ -38,6 +38,7 @@ import {
   resolveElicitationAndReactivate,
 } from "../../elicitations.ts";
 import { applyElicitationOutcome } from "../../persistence/apply-outcome.ts";
+import { RESUME_FORM_MAX_FIELDS, resumeFormFields } from "../../resume-form.ts";
 import { alreadyResolved, resolveAndError } from "../elicitation-resolve.ts";
 import { INVALID_ELICIT_RESPONSE } from "../error-codes.ts";
 import type { ToolContext, ToolResult } from "../index.ts";
@@ -52,6 +53,23 @@ import { detectSecretElicitation, type SecretElicitationHit } from "./secret-det
 import { validateElicitationAnswer } from "./validate-answer.ts";
 
 type AskUserToolName = NonNullable<ToolResult["pause"]>["tool_name"];
+
+/** `null` when the reader's form card can show every field of this form. */
+export function unrenderableFormResult(input: unknown): ToolResult | null {
+  const fields =
+    input && typeof input === "object" && !Array.isArray(input)
+      ? (input as { fields?: unknown }).fields
+      : undefined;
+  if (resumeFormFields(fields)) return null;
+  const message = `This form cannot be shown to the user, so nobody could answer it. Ask again with 1–${RESUME_FORM_MAX_FIELDS} fields, each with a unique name, a label and one of the field types ask_user_form documents.`;
+  return {
+    ok: false,
+    error_code: "form_not_renderable",
+    message,
+    next_best_actions: ["ask_user_form"],
+    data: { error_code: "form_not_renderable", message },
+  };
+}
 
 /**
  * Pattern-only secret scrub over an `ask_user_*` payload — the single
@@ -183,6 +201,12 @@ export async function pauseForUserInput(
   // question/summary it asks with — scrub the whole payload before any
   // path (bridge, DB pause, elicitation row) can persist or render it.
   p = scrubAskUserPayload(p);
+  // A form the reader cannot render is a dead end: the conversation would
+  // wait on input nobody can give. Refuse it before anything is persisted.
+  if (p.tool_name === "ask_user_form") {
+    const unrenderable = unrenderableFormResult(p.input);
+    if (unrenderable) return unrenderable;
+  }
   // This argument is supplied only by the engine's OAuth starter, never by a
   // model tool schema. State and PKCE are protocol data, not prose to redact.
   if (engineAuthorization && p.input && typeof p.input === "object" && !Array.isArray(p.input)) {

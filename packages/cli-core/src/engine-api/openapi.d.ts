@@ -20740,8 +20740,9 @@ export interface components {
                             name: string;
                             label: string;
                             /** @enum {string} */
-                            type: "text" | "number" | "boolean" | "select" | "json" | "multi";
+                            type: "text" | "number" | "boolean" | "select" | "password" | "json" | "multi";
                             required?: boolean;
+                            sensitive?: boolean;
                             placeholder?: string;
                             options?: string[] | {
                                 value: string;
