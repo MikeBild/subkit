@@ -5,8 +5,8 @@ import {
   type ApiKeyItem,
   type ConnectedClientItem,
   calendarDaysUntil,
-  deepLinkReady,
   defaultKeyScopes,
+  grantsNeedingRenewal,
   groupApiKeys,
   groupConnectedClients,
   KEY_EXPIRING_DAYS,
@@ -14,10 +14,13 @@ import {
   keyState,
   keyStateSaysUse,
   keyStateText,
+  keysNeedingAction,
+  openApiAccessSection,
   readableSections,
   scopeCatalogue,
   scopeLabel,
   scopeRisk,
+  sectionBadgeText,
   UNUSED_KEY_DAYS,
 } from "./api-access-model";
 
@@ -281,27 +284,55 @@ describe("API keys: live first, revoked collapsed", () => {
   });
 });
 
-describe("the order of the sections and when a deep link may scroll", () => {
-  test("Kontoverbindungen comes first, the applications last", () => {
-    // The OAuth callback and the old /connections address land on grants;
-    // it used to sit below ~500 application rows.
-    expect([...API_ACCESS_ORDER]).toEqual(["grants", "keys", "clients"]);
+describe("the tabs: their order, the one that opens, and what they count", () => {
+  test("apps first, then keys for scripts, then access on your behalf", () => {
+    // Grants stood first only while the sections were stacked, to escape the
+    // wall of application rows; as tabs, the order follows what readers come
+    // for, and the OAuth callback names its tab.
+    expect([...API_ACCESS_ORDER]).toEqual(["clients", "keys", "grants"]);
   });
 
   test("a section the reader may not read is absent, the order stays", () => {
     expect(readableSections({ grants: true, keys: false, clients: true })).toEqual([
-      "grants",
       "clients",
+      "grants",
     ]);
     expect(readableSections({ grants: false, keys: false, clients: false })).toEqual([]);
   });
 
-  test("a deep link waits until no readable list is loading", () => {
-    // Scrolling on mount landed on a heading the arriving lists then pushed
-    // out of view.
-    expect(deepLinkReady(["loading", "ready", "ready"])).toBe(false);
-    expect(deepLinkReady(["ready", "loading"])).toBe(false);
-    expect(deepLinkReady(["ready", "empty", "error"])).toBe(true);
-    expect(deepLinkReady([])).toBe(true);
+  test("the address picks the tab when the reader may read it, else the first one", () => {
+    const all = readableSections({ grants: true, keys: true, clients: true });
+    expect(openApiAccessSection(null, all)).toBe("clients");
+    expect(openApiAccessSection("grants", all)).toBe("grants");
+    const noClients = readableSections({ grants: true, keys: true, clients: false });
+    expect(openApiAccessSection("clients", noClients)).toBe("keys");
+    expect(openApiAccessSection("keys", [])).toBeNull();
+  });
+
+  test("a keys tab counts what needs a decision: expired and lapsing, not idle", () => {
+    const items = [
+      key({ expires_at: daysAgo(1) }), // expired
+      key({ expires_at: new Date(NOW + 3 * 86_400_000).toISOString() }), // lapsing
+      key({ last_used_at: daysAgo(200), created_at: daysAgo(300) }), // idle
+      key({}), // fine
+      key({ revoked_at: daysAgo(2), expires_at: daysAgo(1) }), // revoked holds nothing
+    ];
+    expect(keysNeedingAction(items, NOW)).toBe(2);
+    expect(sectionBadgeText("keys", 2, t)).toBe("2 laufen ab");
+    expect(sectionBadgeText("keys", 1, t)).toBe("1 läuft ab");
+  });
+
+  test("a grants tab counts what asks for Erneuern", () => {
+    const states = ["valid", "expiring", "expired", "unreadable"] as const;
+    expect(grantsNeedingRenewal(states.map((state) => ({ state })))).toBe(3);
+    expect(sectionBadgeText("grants", 3, t)).toBe("3 erneuern");
+    expect(sectionBadgeText("grants", 1, t)).toBe("1 erneuern");
+  });
+
+  test("a tab never says zero, a total, or anything for the apps", () => {
+    expect(sectionBadgeText("keys", 0, t)).toBeNull();
+    expect(sectionBadgeText("grants", undefined, t)).toBeNull();
+    // Apps have no count a reader acts on; their total stands in the section.
+    expect(sectionBadgeText("clients", 12, t)).toBeNull();
   });
 });

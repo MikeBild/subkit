@@ -38,11 +38,12 @@ describe("the engine's wording", () => {
     expect(html).toContain('<span lang="en">Monthly token budget for the tenant</span>');
   });
 
-  test("the settings page renders a description only through it", () => {
-    // A bare `{item.meta.description}` child is the English sentence posing as
-    // the Cockpit's own.
+  test("the settings page does not render the engine's description at all", () => {
+    // A bare `{item.meta.description}` child was the English sentence posing
+    // as the Cockpit's own; then it stood marked, inside every row's
+    // "Technische Angaben". Each row has its own help sentence in the
+    // reader's language, so the English repeat is gone from the page.
     const source = readFileSync(resolve(import.meta.dir, "../pages/settings.tsx"), "utf8");
-    expect(source).not.toMatch(/^\s*\{item\.meta\.description\}\s*$/m);
-    expect(source).toContain("<EngineWording");
+    expect(source).not.toContain("meta.description");
   });
 });

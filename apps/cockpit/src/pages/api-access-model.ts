@@ -1,9 +1,9 @@
 import type { components } from "@/api/schema";
 import type { ApiAccessSection } from "@/app/links";
-import type { QueryView } from "@/components/failure-state";
 import type { TranslationKey } from "@/lib/i18n";
 import type { CatalogLabel } from "@/lib/machine-label";
 import { permissionLabel } from "@/pages/admin-model";
+import { type ConnectionItem, connectionNeedsRenewal } from "@/pages/connections-model";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
@@ -25,17 +25,17 @@ export const UNUSED_KEY_DAYS = 90;
 // ── Page order ──────────────────────────────────────────────────────────────
 
 /**
- * The sections in the order a reader acts on them: Kontoverbindungen — the section the
- * OAuth callback and the old `/connections` address land on, and the only one
- * whose rows lapse on their own and ask for a renewal; then the keys this
- * installation hands out; then the applications connected to it, which a
- * person mostly reads and seldom acts on. Kontoverbindungen used to come last,
- * below a wall of dead application registrations, where nobody reached it.
+ * The tabs in the order of what a reader comes for: the apps that may use
+ * SubKit (Claude, ChatGPT — what most people added first), the keys their own
+ * scripts use, and the systems SubKit may use on their behalf. Each section is
+ * its own tab with its own address, so none sits below another's wall of rows
+ * any more — the reason Zugriff in deinem Namen once had to stand first. The
+ * OAuth callback names its section and lands there whatever the order.
  */
 export const API_ACCESS_ORDER = [
-  "grants",
-  "keys",
   "clients",
+  "keys",
+  "grants",
 ] as const satisfies readonly ApiAccessSection[];
 
 /** The sections this reader may read, in page order. */
@@ -44,13 +44,63 @@ export function readableSections(can: Record<ApiAccessSection, boolean>): ApiAcc
 }
 
 /**
- * Whether a deep link may scroll to its section yet. Every list above and
- * around the target grows when it arrives; scrolling while one is still a
- * skeleton lands on a heading that the next render pushes out of view. So:
- * only once no readable list is still loading — an error is settled too.
+ * The tab the page opens at: the one the address names when the reader may
+ * read it, else the first one they may. Null only for a reader who may read
+ * none of them.
  */
-export function deepLinkReady(views: readonly QueryView[]): boolean {
-  return views.every((view) => view !== "loading");
+export function openApiAccessSection(
+  requested: ApiAccessSection | null,
+  readable: readonly ApiAccessSection[],
+): ApiAccessSection | null {
+  if (requested && readable.includes(requested)) return requested;
+  return readable[0] ?? null;
+}
+
+// ── Tab badges ──────────────────────────────────────────────────────────────
+
+/**
+ * How many keys ask for a decision: expired, or lapsing within
+ * `KEY_EXPIRING_DAYS` — the same predicate the row's chip uses. An idle key is
+ * a state, not a task, and does not count.
+ */
+export function keysNeedingAction(
+  keys: readonly Pick<ApiKeyItem, "revoked_at" | "expires_at" | "last_used_at" | "created_at">[],
+  nowMs: number,
+): number {
+  return keys.filter((key) => {
+    const kind = keyState(key, nowMs)?.kind;
+    return kind === "expired" || kind === "expiring";
+  }).length;
+}
+
+/**
+ * How many grants ask for "Erneuern": lost ones (the row's red), and the ones
+ * that end on a date because they cannot renew themselves.
+ */
+export function grantsNeedingRenewal(items: readonly Pick<ConnectionItem, "state">[]): number {
+  return items.filter((item) => connectionNeedsRenewal(item) || item.state === "expiring").length;
+}
+
+/**
+ * The word on a tab: only a count a reader can act on ("2 laufen ab",
+ * "1 erneuern"), never a total and never a zero. Totals stand inside the
+ * section; a tab that says "0" or "234" is a number nobody asked for.
+ */
+export function sectionBadgeText(
+  section: ApiAccessSection,
+  count: number | undefined,
+  t: Translate,
+): string | null {
+  if (!count) return null;
+  if (section === "keys")
+    return count === 1
+      ? t("apiAccess.badge.keysOne")
+      : t("apiAccess.badge.keys", { count: String(count) });
+  if (section === "grants")
+    return count === 1
+      ? t("apiAccess.badge.grantsOne")
+      : t("apiAccess.badge.grants", { count: String(count) });
+  return null;
 }
 
 // ── Scopes ──────────────────────────────────────────────────────────────────

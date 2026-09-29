@@ -259,10 +259,21 @@ There is no decisions page and no system page. Each fact they showed has one hom
 
 ### Installation pages
 
-**Zugangsdaten** (`/api-access`) is the one page for API keys, connected applications and account
-connections, each section addressable as `?section=keys|clients|grants`. It carries no attention list
-of its own — that would be a second task list. Keys and connections show their state as chips; renewing
-stays a row action.
+**Zugangsdaten** (`/api-access`) is the one page for everything that holds or grants rights. One
+sentence says what it is for ("Wer darf auf SubKit zugreifen — und worauf greift SubKit in deinem
+Namen zu."), and its three sections are named for when one needs them, each with an example:
+**Apps mit Zugriff auf SubKit** (Claude, ChatGPT — added from the app itself; the empty state links
+the guide), **Schlüssel für Skripte** (a script, a cron job, CI; "Schlüssel erstellen") and **Zugriff
+in deinem Namen** (SubKit uses another system on the reader's behalf; "Verbinden"). They are tabs in
+the pattern of Personen & Rechte — a tab strip on a wide screen, a select on a phone — each at its
+own address, `?section=clients|keys|grants`; the bare address opens the apps, the OAuth callback and
+the old `/connections` address land on `grants`. A tab carries a count only when someone acts on it
+("2 laufen ab", "1 erneuern"); the totals stand as a line inside the section. The rights SubKit holds
+on another system read "N Rechte" with the raw values behind "Details anzeigen", and carry no risk
+word — the words "liest", "schreibt", "verwaltet" come from SubKit's own catalogue, which cannot judge
+a foreign scope. No command line stands on the page: how a script swaps a key for a short-lived token
+is one link to the developer guide. It carries no attention list of its own — that would be a second
+task list. Keys and connections show their state as chips; renewing stays a row action.
 
 **Personen & Rechte** (`/people`) is the one page for people, roles, groups and grants, each section
 addressable as `?section=people|roles|groups|grants`. The entry shows for `identity:read` or
@@ -278,9 +289,14 @@ sections. A line above the sections appears only when something waits — a sett
 for a restart, a last change that did not activate — and nothing when all is well. A row is the
 setting's name, its help sentence where the catalogue has one (`settings.help.<path>`;
 `settings-leaf-coverage.test.ts` requires it for every `llm`, `tokens`, `auth` and `notifications`
-setting, every restart and every enum), the control, "Wirkt nach Neustart" where that holds and the
-source only when it is not the installation's own value or the default; key, source, scope and the
-engine's English wording are in the collapsed "Technische Angaben". The control follows the engine's
+setting, every restart and every enum), the control, "Wirkt nach Neustart" where that holds, the
+source only when it is not the installation's own value or the default, and "Gilt für" only where the
+setting is tenant-scoped or a workspace's own value overrides it. There is no per-row "Technische
+Angaben": for readers with `settings:write` an icon beside the name copies the key, its tooltip
+showing `sk settings set <key>`, and the engine's English description is not shown. Below the list,
+one closed "Wie wird gespeichert?" says that every change is a new, immutable version kept in the
+audit, that most values apply at once on every instance, and that a value marked "Wirkt nach
+Neustart" applies only after a restart. The control follows the engine's
 `kind`: an enum is a select of its `enum_values`, a boolean a switch, a number a numeric field with its
 unit where the name says one. While the value differs from the engine's `default` the row says
 "Geändert · Standard: X · Zurücksetzen", and Zurücksetzen only drafts the default. A secret never shows:
