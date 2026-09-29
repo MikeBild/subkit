@@ -94,7 +94,21 @@ export function modeGates(mode: AuthoringMode): ModeGates {
   };
 }
 
-/** The picker's label for a mode — the default one says it is the default. */
+/**
+ * A mode's short name: the pill in the header shows this and nothing else.
+ * It is the option's accessible name too, so it never carries the default
+ * marker or the explanation — those sit beside it in the open list.
+ */
 export function modeLabelKey(mode: AuthoringMode): TranslationKey {
-  return mode === DEFAULT_AUTHORING_MODE ? "chat.mode.default" : `chat.mode.${mode}`;
+  return `chat.mode.${mode}`;
+}
+
+/** What the open list says after the name: the default one says it is the default. */
+export function modeSuffixKey(mode: AuthoringMode): TranslationKey | null {
+  return mode === DEFAULT_AUTHORING_MODE ? "chat.mode.systemDefault" : null;
+}
+
+/** One line per option in the open list: what picking it changes. */
+export function modeDescriptionKey(mode: AuthoringMode): TranslationKey {
+  return `chat.mode.description.${mode}`;
 }

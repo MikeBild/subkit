@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { SidebarToggle, usePageFrameTrigger } from "@/app/shell-header";
 import { FAMILY_UI_VERSION } from "@/components/family-ui";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +48,7 @@ export function PageFrame({
   surface?: "overview" | "decisions" | "collection" | "detail" | "form" | "installation" | "audit";
   children: ReactNode;
 }) {
+  const ownsTrigger = usePageFrameTrigger();
   // A reading column must be centred in the SAME box as its own heading, and
   // the padding must sit OUTSIDE that box in both places. Putting `p-8` on the
   // same element as `max-w-[780px]` makes the box include its own padding, so
@@ -96,7 +98,16 @@ export function PageFrame({
           className={cn("flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between", column)}
         >
           <div className="min-w-0">
-            <h1 className="text-2xl font-semibold leading-8 tracking-[-0.02em]">{title}</h1>
+            {/* The sidebar toggle stands beside the title on a wide screen,
+                where a top bar holding only that toggle was an empty band. The
+                header row starts with it, and the body starts under it: the
+                row's leading edge is the line the content aligns to. */}
+            <div className="flex items-center gap-2" data-testid="page-title-row">
+              {ownsTrigger ? <SidebarToggle className="shrink-0" /> : null}
+              <h1 className="min-w-0 text-2xl font-semibold leading-8 tracking-[-0.02em]">
+                {title}
+              </h1>
+            </div>
             {description && (
               <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>
             )}

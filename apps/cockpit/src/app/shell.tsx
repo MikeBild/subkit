@@ -52,15 +52,23 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarRail,
-  SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import type { TranslationKey } from "@/lib/i18n";
 import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { type Theme, useTheme } from "@/lib/theme";
+import { cn } from "@/lib/utils";
 import { navigationItem, visibleNavigation } from "./navigation";
 import { RecordCrumbProvider, recordListPath, useRecordCrumbLabel } from "./record-crumb";
 import { useSession } from "./session";
+import {
+  CHAT_COLUMN,
+  ShellHeaderProvider,
+  SidebarToggle,
+  triggerOwner,
+  useShellHeaderState,
+} from "./shell-header";
 import { useAttention } from "./use-attention";
 
 const THEMES: {
@@ -230,24 +238,72 @@ function ShellFrame() {
       </Sidebar>
 
       <SidebarInset className="min-h-0 min-w-0 overflow-hidden" data-testid="cockpit-content">
-        <header
-          className="flex h-12 shrink-0 items-center gap-3 border-b px-4"
-          data-testid="cockpit-header"
-        >
-          <SidebarTrigger
-            className="-ml-1"
-            label={t("nav.toggle")}
-            aria-label={t("nav.toggle")}
-            data-testid="sidebar-trigger"
-          />
-          <RecordBreadcrumb />
-        </header>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="page-content">
-          <Outlet />
-        </div>
+        <ShellContent />
       </SidebarInset>
       <Toaster richColors position="bottom-right" />
     </SidebarProvider>
+  );
+}
+
+/**
+ * The top bar and the page below it.
+ *
+ * The bar is drawn only where it carries something (see `shell-header.tsx`):
+ * on a phone, over a record with its breadcrumb, and as the chat's own header.
+ * On a wide list page the page frame holds the toggle beside its heading, and
+ * a bar holding nothing but that toggle would be a band of empty space.
+ */
+function ShellContent() {
+  const { isMobile } = useSidebar();
+  const header = useShellHeaderState();
+  // Subscribed for its re-render, not its value: the run log opens a run with
+  // `pushState`, which the router does not see, and names it here. The crumb
+  // and the owner then read the same address in the same render, so they agree
+  // on whether this is a record's page.
+  useRecordCrumbLabel();
+  const breadcrumb = recordListPath(window.location.pathname) !== null;
+  const chat = header.chatHeaders > 0;
+  const owner = triggerOwner({
+    mobile: isMobile,
+    breadcrumb,
+    chatHeader: chat,
+    pageFrames: header.pageFrames,
+  });
+  return (
+    <ShellHeaderProvider
+      owner={owner}
+      slot={header.slot}
+      claimPageFrame={header.claimPageFrame}
+      claimChatHeader={header.claimChatHeader}
+    >
+      {owner === "bar" &&
+        (chat ? (
+          // The chat's header: the same column as its transcript and composer,
+          // padding outside it and the gutter reserved on both edges, so the
+          // toggle, the title and the messages begin on one line.
+          <header
+            className="scrollbar-thin shrink-0 overflow-hidden border-b px-4 py-2 sm:px-6 [scrollbar-gutter:stable_both-edges]"
+            data-testid="cockpit-header"
+            data-cockpit-header="chat"
+          >
+            <div className={cn("flex min-h-8 items-start gap-2", CHAT_COLUMN)}>
+              <SidebarToggle className="-ml-1 shrink-0" />
+              <div ref={header.setSlot} className="min-w-0 flex-1" />
+            </div>
+          </header>
+        ) : (
+          <header
+            className="flex h-12 shrink-0 items-center gap-3 border-b px-4"
+            data-testid="cockpit-header"
+          >
+            <SidebarToggle className="-ml-1" />
+            <RecordBreadcrumb />
+          </header>
+        ))}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="page-content">
+        <Outlet />
+      </div>
+    </ShellHeaderProvider>
   );
 }
 

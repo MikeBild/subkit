@@ -1202,6 +1202,8 @@ async function mockApi(route) {
       ],
       messages,
       tool_calls: [],
+      // Started in the default mode: the header's pill states it, read-only.
+      draft: { session: { permission_mode: "auto" } },
       resume_summary: {
         active_target: {
           kind: "none",
@@ -1217,6 +1219,16 @@ async function mockApi(route) {
         pending_approval: null,
         next_action: "Continue the conversation.",
         one_sentence: "You have an in-progress conversation. Continue the conversation.",
+      },
+      // Two models, one without a rate: the header reads the tokens and a
+      // cost that says it is a floor, never a partial sum passed off as total.
+      usage: {
+        tokens: 48_210,
+        by_model: [
+          { model: "provider/model-v1", tokens: 40_000 },
+          { model: "provider/unpriced-v0", tokens: 8_210 },
+        ],
+        cost: { amount: 0.1834, currency: "USD", unpriced_models: ["provider/unpriced-v0"] },
       },
     });
   }
@@ -3110,8 +3122,11 @@ async function assertChat(page, label) {
       composer: rect("chat-composer"),
       composerSubmit: rect("chat-composer-submit"),
       main: rect("chat-main"),
+      // The chat's header is the shell's top bar now, filled through a slot:
+      // its row holds the sidebar toggle and the header, in the same column
+      // as the transcript and the composer.
       headerColumn: document
-        .querySelector('[data-testid="chat-header"] > div')
+        .querySelector('[data-testid="cockpit-header"][data-cockpit-header="chat"] > div')
         ?.getBoundingClientRect()
         .toJSON(),
       transcriptColumn: document
@@ -3119,7 +3134,7 @@ async function assertChat(page, label) {
         ?.getBoundingClientRect()
         .toJSON(),
       scrollbars: {
-        header: scrollbar('[data-testid="chat-header"]'),
+        header: scrollbar('[data-testid="cockpit-header"]'),
         transcript: scrollbar('[data-slot="message-scroller-viewport"]'),
         composer: scrollbar('[data-testid="chat-composer-area"]'),
       },
@@ -3261,9 +3276,17 @@ async function closeConversationList(page) {
  * a 32px offset is a measurement, so measure it.
  */
 async function assertHeadingAlignment(page, label) {
-  const offset = await page.evaluate(() => {
-    const heading = document.querySelector("main h1");
+  const measured = await page.evaluate(() => {
+    // The page's own heading, not the chat title the shell's top bar carries:
+    // that one lives in the bar, above the page, and `assertChat` measures it
+    // against its transcript. Scoped to the page body on purpose.
+    const heading = document.querySelector('[data-testid="page-content"] h1');
     if (!heading) return null;
+    // On a wide screen the sidebar toggle stands in the title row, before the
+    // heading. The row's leading edge — the toggle's, where it is — is the
+    // line the body aligns to; the heading must follow the toggle directly.
+    const trigger = heading.parentElement?.querySelector('[data-testid="sidebar-trigger"]');
+    const lead = trigger instanceof HTMLElement ? trigger : heading;
     // The first thing the body renders, whatever it is: a card, a table, a
     // paragraph. Its left edge is what a reader compares the title against.
     //
@@ -3273,19 +3296,36 @@ async function assertHeadingAlignment(page, label) {
     // the first match was the page description in the header, so neither this
     // nor a real misalignment of every list could show; removing descriptions
     // that restated their titles made the check measure the body at last.
+    const scope = '[data-testid="page-content"]';
     const body = document.querySelector(
-      'main [data-testid$="-context"], main article, main [data-slot="card"], main [data-slot="table-container"], main section, main p',
+      [
+        '[data-testid$="-context"]',
+        "article",
+        '[data-slot="card"]',
+        '[data-slot="table-container"]',
+        "section",
+        "p",
+      ]
+        .map((selector) => `${scope} ${selector}`)
+        .join(", "),
     );
-    if (!body) return null;
-    const a = heading.getBoundingClientRect();
+    const h = heading.getBoundingClientRect();
+    const gap =
+      trigger instanceof HTMLElement
+        ? Math.round(h.left - trigger.getBoundingClientRect().right)
+        : null;
+    if (!body) return { offset: null, gap };
+    const a = lead.getBoundingClientRect();
     const b = body.getBoundingClientRect();
-    if (b.width === 0 || b.top < a.bottom) return null;
-    return Math.round(b.left - a.left);
+    if (b.width === 0 || b.top < h.bottom) return { offset: null, gap };
+    return { offset: Math.round(b.left - a.left), gap };
   });
   // Null means the page has no heading or nothing below it to compare against.
-  if (offset === null) return;
-  if (Math.abs(offset) > 2) {
-    throw new Error(`${label} indents its content ${offset}px against its own heading`);
+  if (measured === null) return;
+  if (measured.gap !== null && (measured.gap < 0 || measured.gap > 16))
+    throw new Error(`${label} sets its heading ${measured.gap}px away from the sidebar toggle`);
+  if (measured.offset !== null && Math.abs(measured.offset) > 2) {
+    throw new Error(`${label} indents its content ${measured.offset}px against its own title row`);
   }
 }
 
@@ -3698,7 +3738,10 @@ for (const locale of variants) {
         headingLeft.set(
           route,
           await page.evaluate(() =>
-            Math.round(document.querySelector("main h1")?.getBoundingClientRect().left ?? -1),
+            Math.round(
+              document.querySelector('[data-testid="page-content"] h1')?.getBoundingClientRect()
+                .left ?? -1,
+            ),
           ),
         );
       await shoot(page, `${locale.artifact}-${viewport.name}-${artifactRoute}`, {
@@ -3868,34 +3911,66 @@ for (const locale of variants) {
       // panel has to be out of the way before the click.
       await page.locator('[data-testid="conversation-new"]').click();
       await page.locator('[data-testid="chat-empty"]').waitFor({ state: "visible" });
+      // A new conversation has no state line: the product tagline that stood
+      // under its title is gone, and the title does not change while it loads.
+      if ((await page.getByTestId("chat-summary").count()) !== 0)
+        throw new Error(`${locale.artifact}: a new conversation carries a line under its title`);
+      const newTitle = locale.name === "de" ? "Neue Unterhaltung" : "New conversation";
+      if ((await page.getByTestId("chat-title").innerText()).trim() !== newTitle)
+        throw new Error(`${locale.artifact}: a new conversation is not titled "${newTitle}"`);
       const modePicker = page.locator('[data-testid="chat-permission-select"]');
+      const autoName = locale.name === "de" ? "Autonom" : "Autonomous";
+      const askName = locale.name === "de" ? "Fragt vorher" : "Asks first";
       const defaultMode = locale.name === "de" ? "Systemstandard" : "system default";
-      if (!(await modePicker.textContent())?.includes(defaultMode))
-        throw new Error(`${locale.artifact}: new chat does not inherit the system mode`);
-      // §14: the mode in force shows which gates remain, and no two entries
-      // are one matrix under two names — "system default" is `auto`, once.
-      const gatesFor = async () => page.getByTestId("chat-mode-gates").innerText();
+      // The pill carries the short name and nothing else; the default marker
+      // and each option's explanation live in the open list.
+      const pillText = async () => ((await modePicker.textContent()) ?? "").trim();
+      if ((await pillText()) !== autoName)
+        throw new Error(
+          `${locale.artifact}: the mode pill reads ${JSON.stringify(await pillText())}, not "${autoName}"`,
+        );
+      // No permanent matrix: the gates are one click away, not under the pill.
+      if (
+        await page
+          .getByTestId("chat-mode-gates")
+          .isVisible()
+          .catch(() => false)
+      )
+        throw new Error(`${locale.artifact}: the gate matrix stands permanently in the header`);
+      // §14: the mode in force shows which gates remain — in the "Was heißt
+      // das?" popover at the picker — and no two entries are one matrix under
+      // two names: "system default" is `auto`, once.
+      const gatesFor = async () => {
+        await page.getByTestId("chat-mode-explain").click();
+        const gates = page.getByTestId("chat-mode-gates");
+        await gates.waitFor({ state: "visible" });
+        const text = await gates.innerText();
+        await page.keyboard.press("Escape");
+        await gates.waitFor({ state: "hidden" });
+        return text;
+      };
       const autoGates = await gatesFor();
       await modePicker.click();
       const optionCount = await page.getByRole("option").count();
       if (optionCount !== 3)
         throw new Error(`${locale.artifact}: the mode picker offers ${optionCount} modes, not 3`);
-      await page
-        .getByRole("option", {
-          name: locale.name === "de" ? "Vor Änderungen fragen" : "Ask before changes",
-          exact: true,
-        })
-        .click();
-      if (
-        !(await modePicker.textContent())?.includes(
-          locale.name === "de" ? "Vor Änderungen fragen" : "Ask before changes",
-        )
-      )
+      // The default is marked where it is chosen: in the open list, beside
+      // its name — deliberately not in the pill and not in the option's name.
+      const defaultOption = page.getByRole("option", { name: autoName, exact: true });
+      if (!(await defaultOption.innerText()).includes(defaultMode))
+        throw new Error(`${locale.artifact}: the open list does not mark the system default`);
+      const described = await page
+        .locator('[role="option"] [data-slot="select-item-description"]')
+        .count();
+      if (described !== 3)
+        throw new Error(`${locale.artifact}: ${described} of 3 modes explain themselves`);
+      await page.getByRole("option", { name: askName, exact: true }).click();
+      if ((await pillText()) !== askName)
         throw new Error(`${locale.artifact}: explicit conservative mode is not selectable`);
       if ((await gatesFor()) === autoGates)
         throw new Error(`${locale.artifact}: "ask" reads the same gates as the default mode`);
       await page.locator('[data-testid="conversation-new"]').click();
-      if (!(await modePicker.textContent())?.includes(defaultMode))
+      if ((await pillText()) !== autoName)
         throw new Error(`${locale.artifact}: new chat retains an unintended override`);
       await page.waitForTimeout(300);
       await shoot(page, `${locale.artifact}-desktop-chat-new`, {
@@ -3903,6 +3978,33 @@ for (const locale of variants) {
       });
       await openConversationList(page);
       await page.locator('[data-testid="conversation-item-0"]').click();
+      // A running conversation: the same pill, read-only, with its matrix one
+      // click away; the conversation's own consumption beside it; the month's
+      // allowance only because the fixture is at 95 % — with its way to Nutzung.
+      await page.getByTestId("chat-usage-tokens").waitFor({ state: "visible" });
+      if ((await page.getByTestId("chat-permission-select").count()) !== 0)
+        throw new Error(`${locale.artifact}: a running conversation offers to change its mode`);
+      if (!(await page.getByTestId("chat-permission-mode").innerText()).includes(autoName))
+        throw new Error(
+          `${locale.artifact}: the running conversation's mode pill is not "${autoName}"`,
+        );
+      if ((await gatesFor()).length === 0)
+        throw new Error(`${locale.artifact}: the running conversation's matrix is empty`);
+      const tokensPill = (await page.getByTestId("chat-usage-tokens").innerText()).trim();
+      if (tokensPill !== (locale.name === "de" ? "48.210 Chat-Tokens" : "48,210 chat tokens"))
+        throw new Error(`${locale.artifact}: the tokens pill reads ${JSON.stringify(tokensPill)}`);
+      const costText = (await page.getByTestId("chat-usage-cost").innerText()).trim();
+      if (!costText.startsWith(locale.name === "de" ? "mind." : "at least"))
+        throw new Error(
+          `${locale.artifact}: a partly priced cost reads ${JSON.stringify(costText)}`,
+        );
+      const budgetLink = page.getByTestId("chat-budget");
+      if ((await budgetLink.getAttribute("data-budget")) !== "critical")
+        throw new Error(`${locale.artifact}: the month at 95 % shows no critical allowance pill`);
+      if (!(await budgetLink.getAttribute("href"))?.endsWith("/usage"))
+        throw new Error(`${locale.artifact}: the allowance pill does not lead to Nutzung`);
+      if ((await page.getByTestId("chat-origin").count()) !== 0)
+        throw new Error(`${locale.artifact}: the origin line still stands in the header`);
       const tool = page.locator('[data-testid="chat-message-3-tool-0"]');
       await tool.scrollIntoViewIfNeeded();
       await page.locator('[data-testid="chat-message-3-tool-0-toggle"]').click();
@@ -3934,6 +4036,27 @@ for (const locale of variants) {
         fullPage: false,
       });
       await page.keyboard.press("Escape");
+      // The catalog's categories lead the picker, with their sizes, and one
+      // becomes the plain `@kategorie/<name>` token — no chip, no reference.
+      const composerField = page.locator('[data-testid="chat-composer-input"]');
+      await composerField.fill("");
+      await composerField.pressSequentially("Zeig @rep");
+      await page.locator('[data-testid="chat-mention-item-0"]').waitFor({ state: "visible" });
+      const firstPick = (await page.getByTestId("chat-mention-item-0").innerText()).replace(
+        /\s+/g,
+        " ",
+      );
+      if (!/kategorie\/reporting · 21 workflows/i.test(firstPick))
+        throw new Error(
+          `${locale.artifact}: the picker's first entry is ${JSON.stringify(firstPick)}, not the reporting category`,
+        );
+      // Picked the way the composer picks: the first row is highlighted, Enter takes it.
+      await page.keyboard.press("Enter");
+      if ((await composerField.inputValue()) !== "Zeig @kategorie/reporting ")
+        throw new Error(
+          `${locale.artifact}: picking a category wrote ${JSON.stringify(await composerField.inputValue())}`,
+        );
+      await composerField.fill("");
       // A sent message with one resolved chip and one struck-through warning
       // chip: the transcript side of the same feature.
       const chips = page.locator('[data-testid="chat-message-2-text-0-mentions"]');
