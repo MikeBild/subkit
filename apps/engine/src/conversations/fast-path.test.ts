@@ -12,10 +12,15 @@ import { tenants } from "../db/schema/identity.ts";
 import { conversations, executions, workflows, workflowVersions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { EngineClient } from "../engine-client/index.ts";
+import {
+  loadSnapshotCoverage,
+  loadTenantSummary,
+  renderTenantSummaryBlock,
+} from "../llm/core/tenant-summary.ts";
 import { getMockProvider, resetMockProvider } from "../llm/mock-provider.ts";
 import { TEST_HUMAN_ANSWER } from "../test-helpers/answer-actor.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
-import { type FastPathParams, tryFastPath } from "./fast-path.ts";
+import { type FastPathParams, matchCategoryListIntent, tryFastPath } from "./fast-path.ts";
 import { renderRunOutput } from "./fast-path-render.ts";
 import { listWorkflowsTool } from "./tools/generated/workflows.ts";
 import type { ToolContext } from "./tools/index.ts";
@@ -637,3 +642,171 @@ async function seedMinimalWorkflow(slug: string): Promise<{ id: string }> {
 
   return { id: wf.id };
 }
+
+// ---------------------------------------------------------------------------
+// One catalog block. The cockpit chip "notion 8" sends "Zeig mir die
+// notion-Workflows und was sie tun"; the model answered from a 40-row
+// slug-ordered snapshot and denied the notion workflows past the cap. The
+// fast path answers from the category index the chip count comes from.
+// ---------------------------------------------------------------------------
+
+describe("matchCategoryListIntent", () => {
+  test.each([
+    ["Zeig mir die notion-Workflows und was sie tun", "notion"],
+    ["zeige mir alle notion workflows", "notion"],
+    ["Zeig mir die Workflows in @kategorie/notion", "notion"],
+    ["Workflows in @kategorie/notion", "notion"],
+    ["die workflows in notion?", "notion"],
+    ["show me the notion workflows", "notion"],
+    ["show the notion workflows and what they do", "notion"],
+    ["workflows in @category/notion", "notion"],
+    ["list workflows in the category radar", "radar"],
+    ["Zeig mir die mission-control-Workflows", "mission-control"],
+  ])("%s → %s", (text, category) => {
+    expect(matchCategoryListIntent(text)).toBe(category);
+  });
+
+  test.each([
+    "was machen die notion workflows mit meinen Daten?",
+    "run notion-sync",
+    "show me the notion workflows that failed yesterday",
+  ])("%s → no category intent", (text) => {
+    expect(matchCategoryListIntent(text)).toBeNull();
+  });
+});
+
+async function workflowIdBySlug(slug: string): Promise<string> {
+  const [row] = await tdb.db
+    .select({ id: workflows.id })
+    .from(workflows)
+    .where(and(eq(workflows.tenant_id, tenantId), eq(workflows.slug, slug)));
+  if (!row) throw new Error(`no workflow ${slug}`);
+  return row.id;
+}
+
+async function seedCategoryCatalog(): Promise<{ notion: string[] }> {
+  // 41 `aa-*` slugs sort before every `notion-*` slug, so the 40-row
+  // snapshot never shows one — the exact shape of the reported bug.
+  for (let i = 0; i < 41; i++) await seedMinimalWorkflow(`aa-filler-${String(i).padStart(2, "0")}`);
+  const notion = ["notion-archive", "notion-digest", "notion-search", "notion-sync"];
+  for (const slug of notion) await seedMinimalWorkflow(slug);
+  // Column description wins; a definition-only description is the fallback.
+  await tdb.db
+    .update(workflows)
+    .set({ description: "Copies new Notion pages\ninto the archive." })
+    .where(eq(workflows.id, await workflowIdBySlug("notion-archive")));
+  await tdb.db
+    .update(workflowVersions)
+    .set({
+      dag: {
+        name: "notion-digest",
+        slug: "notion-digest",
+        description: "Mails a weekly digest of edited pages.",
+        steps: [{ id: "s1", kind: "request", method: "GET", url: remote.baseUrl }],
+      },
+    })
+    .where(eq(workflowVersions.workflow_id, await workflowIdBySlug("notion-digest")));
+  // A deleted member counts nowhere — not on the chip, not in the answer.
+  const gone = await seedMinimalWorkflow("notion-retired");
+  await tdb.db
+    .update(workflows)
+    .set({ deleted_at: new Date(0) })
+    .where(eq(workflows.id, gone.id));
+  return { notion };
+}
+
+describe("tryFastPath — one catalog block", () => {
+  test("the chip phrasing lists every member with what it does, without the LLM", async () => {
+    const { notion } = await seedCategoryCatalog();
+    const result = await tryFastPath(makeParams("Zeig mir die notion-Workflows und was sie tun"));
+    expect(result).not.toBeNull();
+    expect(result?.fast_path_tool).toBe("list_workflows");
+    const text = result?.assistant_text ?? "";
+    expect(text.startsWith("4 workflows in **notion**:")).toBe(true);
+    for (const slug of notion) expect(text).toContain(`- ${slug} (active)`);
+    expect(text).not.toContain("notion-retired");
+    expect(text).not.toContain("aa-filler");
+    expect(text).toContain(
+      "- notion-archive (active) — notion-archive: Copies new Notion pages into the archive.",
+    );
+    expect(text).toContain(
+      "- notion-digest (active) — notion-digest: Mails a weekly digest of edited pages.",
+    );
+    const output = findToolResultOutput(result?.events);
+    expect(output.category).toBe("notion");
+    expect(output.total).toBe(4);
+    expect(getMockProvider().calls.length).toBe(0);
+  });
+
+  test("the count equals the category size list_workflows reports, on every phrasing", async () => {
+    await seedCategoryCatalog();
+    const engineClient = new EngineClient({ tenant_id: tenantId, actor_id: null, db: tdb.db });
+    const ctx = { engineClient, db: tdb.db, tenant_id: tenantId } as unknown as ToolContext;
+    const listed = await listWorkflowsTool.execute(ctx, { category: "notion" });
+    const listedSlugs = (listed.data as { items: Array<{ slug: string }> }).items
+      .map((i) => i.slug)
+      .sort();
+    expect(listedSlugs).toHaveLength(4);
+    for (const phrase of [
+      "Zeig mir die Workflows in @kategorie/notion",
+      "show me the notion workflows",
+      "workflows in @category/notion",
+    ]) {
+      const result = await tryFastPath(makeParams(phrase));
+      const items = findToolResultOutput(result?.events).items as Array<{ slug: string }>;
+      expect(items.map((i) => i.slug).sort()).toEqual(listedSlugs);
+    }
+  });
+
+  test("the LLM path's snapshot names the block past the row cap and admits it is partial", async () => {
+    await seedCategoryCatalog();
+    const summary = await loadTenantSummary(tenantId, tdb.db);
+    expect(summary.workflows.some((w) => w.slug.startsWith("notion-"))).toBe(false);
+    const text = renderTenantSummaryBlock(summary) ?? "";
+    expect(text).toContain("notion (4)");
+    expect(text).toContain("PARTIAL LIVE LIST");
+    expect(text).not.toContain("DO NOT call list_workflows");
+    expect(await loadSnapshotCoverage(tenantId, tdb.db)).toEqual({
+      workflows_complete: false,
+      connectors_complete: true,
+    });
+  });
+
+  test("an unknown category falls through to the LLM", async () => {
+    await seedCategoryCatalog();
+    expect(await tryFastPath(makeParams("Zeig mir die jira-Workflows"))).toBeNull();
+    expect(await tryFastPath(makeParams("workflows in @kategorie/jira"))).toBeNull();
+  });
+
+  test("the plain list phrasing still lists the whole catalog", async () => {
+    await seedCategoryCatalog();
+    const result = await tryFastPath(makeParams("zeige alle workflows"));
+    expect(result?.assistant_text?.startsWith("45 workflows:")).toBe(true);
+    expect(findToolResultOutput(result?.events).category).toBeUndefined();
+  });
+
+  test("a principal without workflow:read is denied and audited", async () => {
+    await seedCategoryCatalog();
+    const restricted = makePrincipal({
+      provider: "portal_token",
+      roles: ["portal_token_user"],
+      allowed_workflows: ["00000000-0000-0000-0000-000000000099"],
+    });
+    const result = await tryFastPath({
+      ...makeParams("Zeig mir die notion-Workflows"),
+      principal: restricted,
+    });
+    expect(result?.assistant_text).toBe("Permission denied: workflow:read.");
+    const audit = await tdb.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, AuditAction.POLICY_DENIED), eq(auditLog.tenant_id, tenantId)));
+    expect(
+      audit.some(
+        (row) =>
+          (row.metadata as Record<string, unknown>)?.permission === "workflow:read" &&
+          (row.metadata as Record<string, unknown>)?.tool === "list_workflows",
+      ),
+    ).toBe(true);
+  });
+});

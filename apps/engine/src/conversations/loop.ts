@@ -48,6 +48,7 @@ import {
   type StepRouterSignals,
   supportsExtendedThinking,
 } from "../llm/core/step-router.ts";
+import { loadSnapshotCoverage } from "../llm/core/tenant-summary.ts";
 import { resolveThinking } from "../llm/core/thinking-policy.ts";
 import { type CriticArtifact, type CriticVerdict, runCritic } from "../llm/critic/index.ts";
 import { LlmContextTooLarge, LlmQuotaExhausted } from "../llm/errors.ts";
@@ -83,6 +84,7 @@ import {
   detectMultiArtifactIntent,
   detectUserIntent,
   inferStateDrivenFollowUpTool,
+  matchesEnumerationIntent,
 } from "./intent-detector.ts";
 import { RUN_VERB_RE } from "./intent-patterns.ts";
 import { abstentionDecision } from "./loop/abstention-gate.ts";
@@ -358,7 +360,14 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     );
   }
 
-  const detectedIntent = detectUserIntent(ingestedUserMessage);
+  // Whether the TENANT SNAPSHOT is complete decides if an enumeration may be
+  // answered with tools withheld; only counted when the question is one.
+  const detectedIntent = detectUserIntent(
+    ingestedUserMessage,
+    matchesEnumerationIntent(ingestedUserMessage)
+      ? await loadSnapshotCoverage(p.tenant_id, p.db)
+      : undefined,
+  );
   let workflowIdForTurn = p.workflow_id;
 
   // Draft state for the turn — tools mutate via ctx.setDraft, which
