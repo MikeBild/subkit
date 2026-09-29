@@ -73,23 +73,17 @@ function modelsSubKitChooses(): string[] {
 
 /**
  * Models SubKit knows by name but ships no price for — the ladders' older
- * tiers and other vendors' models. Listed exactly: a new known model without
+ * tiers the vendors no longer list a price for. Listed exactly: a new known model without
  * a price, or a price added without removing the name here, both fail.
  */
 const KNOWN_BUT_UNPRICED = [
-  "claude-3-5-haiku",
+  // Retired and no longer on the vendors' price lists — no primary source to
+  // quote, so no price rather than a remembered one.
   "claude-3-5-sonnet",
   "claude-3-opus",
-  "claude-opus-4-6",
   "gemini-1.5-flash",
   "gemini-1.5-pro",
   "gemini-2.0-flash",
-  "gemini-2.5-flash",
-  "gemini-2.5-pro",
-  "gpt-4-turbo",
-  "gpt-4.1",
-  "gpt-4o",
-  "gpt-4o-mini",
   "o1-mini",
   "o1-preview",
 ];

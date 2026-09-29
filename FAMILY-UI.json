@@ -455,8 +455,8 @@
     "from": "2.3",
     "to": "3.0",
     "siblingsMustImplement": [
-      "Replace the overview tiles and the decisions page with one start page at /cockpit named Übersicht (Overview): a header with a 24h/7d/30d window switch (24h default), an operations bar of exactly four figures (runs, success rate, healthy connectors as of now, repairs applied), each linking to the filtered list of the same window and never a bare 0, then the attention list: one entry per subject, classes stopped > failing > decide, one sentence, one primary action, at most one secondary link.",
-      "Keep the operations bar in the calm state; the usage page shows consumption and runtime, never these four figures a second time.",
+      "Replace the overview tiles and the decisions page with one start page at /cockpit named Übersicht (Overview): a header with a 24h/7d/30d window switch (24h default), an operations bar of exactly six figures (runs, success rate, healthy connectors as of now, repairs applied, cost in the window, budget for the calendar month), each linking to the filtered list or page of the same window and never a bare 0, then the attention list: one entry per subject, classes stopped > failing > decide, one sentence, one primary action, at most one secondary link.",
+      "Keep the operations bar in the calm state; the usage page shows consumption, cost, budget and runtime, never the run, success, connector and repair figures a second time.",
       "Serve GET /v1/attention (attention.v1) with per-entry permission checks and per-source status answered|failed|not_permitted; MCP get_attention returns the same list; digest and MCP connect summary render from it.",
       "Show 'all clear' plus one status line only when every source the reader may read answered; otherwise name what did not answer.",
       "Move deciding into a review sheet addressed by ?review=<id>; the entry leaves on decision and a toast links the audit trail.",
