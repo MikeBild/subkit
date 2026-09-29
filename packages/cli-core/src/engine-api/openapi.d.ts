@@ -17028,6 +17028,7 @@ export interface components {
                 total: number;
                 succeeded: number;
                 failed: number;
+                finished: number;
                 success_rate_percent: number | null;
                 href: string;
                 failed_href: string | null;

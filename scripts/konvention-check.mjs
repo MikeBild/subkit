@@ -3068,7 +3068,7 @@ async function checkRightsPage(page) {
     }
     if (/Anbindung/i.test(shown.inner))
       breach("§5", `${where}?section=${section}`, 'the word "Anbindung" is on the page');
-    for (const retired of ["Kontoverbindungen", "Verbundene Anwendungen"])
+    for (const retired of ["Kontoverbindung", "Verbundene Anwendungen"])
       if (shown.inner.includes(retired))
         breach("§5", `${where}?section=${section}`, `the retired name "${retired}" is on the page`);
     if (section === "keys") await checkRightsKeys(page, where);
