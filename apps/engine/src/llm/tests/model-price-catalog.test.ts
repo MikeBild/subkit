@@ -278,6 +278,25 @@ describe("effective prices", () => {
     expect(result.unpriced_models).toEqual([]);
     expect(result.amount).toBeCloseTo(8, 6); // 5 + 3
   });
+
+  test("a snapshot the vendor prices apart keeps its own price, not its base model's", () => {
+    // gpt-4o-2024-05-13 is 5 per million input; gpt-4o, which its bare id
+    // falls back to, is 2.50.
+    const result = priceCalls(
+      [
+        {
+          model: "gpt-4o-2024-05-13",
+          prompt_tokens: 1_000_000,
+          completion_tokens: 0,
+          cache_read_tokens: 0,
+          cache_creation_tokens: 0,
+        },
+      ],
+      effectiveModelPrices({ currency: "USD", prices: [] }),
+      "USD",
+    );
+    expect(result.amount).toBeCloseTo(5, 6);
+  });
 });
 
 describe("the catalog never reaches the stored configuration", () => {
