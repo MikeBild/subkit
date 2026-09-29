@@ -15885,6 +15885,9 @@
               "next_action",
               "one_sentence"
             ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ConversationUsage"
           }
         },
         "required": [
@@ -15892,7 +15895,8 @@
           "owner",
           "created_resources",
           "messages",
-          "tool_calls"
+          "tool_calls",
+          "usage"
         ]
       },
       "ConversationCreatedResource": {
@@ -16025,6 +16029,65 @@
           "confirmation_state",
           "approved_at",
           "outcome"
+        ]
+      },
+      "ConversationUsage": {
+        "type": "object",
+        "properties": {
+          "tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "by_model": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "model": {
+                  "type": "string"
+                },
+                "tokens": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "model",
+                "tokens"
+              ]
+            }
+          },
+          "cost": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "amount": {
+                "type": "number",
+                "minimum": 0
+              },
+              "currency": {
+                "type": "string"
+              },
+              "unpriced_models": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "amount",
+              "currency",
+              "unpriced_models"
+            ]
+          }
+        },
+        "required": [
+          "tokens",
+          "by_model",
+          "cost"
         ]
       },
       "PatchConversationBody": {

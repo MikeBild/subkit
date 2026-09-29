@@ -9,7 +9,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { apiRequest } from "@/api/client";
-import { isMentionableLabel, type MentionCandidate, rankCandidates } from "@/lib/mentions";
+import {
+  categoryCandidates,
+  isMentionableLabel,
+  type MentionCandidate,
+  rankCandidates,
+} from "@/lib/mentions";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 
 const PAGE = 50;
@@ -32,6 +37,29 @@ interface ConnectorItem {
   display_name: string;
 }
 
+export interface WorkflowCategory {
+  category: string;
+  count: number;
+}
+
+/**
+ * The catalog's categories with their sizes, as `/v1/workflows` derives them
+ * over the whole catalog. One query for the empty chat's chips and the
+ * picker's category group, so the two can never show different counts.
+ */
+export function useWorkflowCategories(enabled: boolean): {
+  categories: WorkflowCategory[];
+  isLoading: boolean;
+} {
+  const query = useQuery({
+    queryKey: ["chat", "starter-catalog"],
+    enabled,
+    staleTime: 30_000,
+    queryFn: () => apiRequest<{ categories?: WorkflowCategory[] }>("/v1/workflows?limit=1"),
+  });
+  return { categories: query.data?.categories ?? [], isLoading: enabled && query.isLoading };
+}
+
 function encode(q: string): string {
   return q ? `&q=${encodeURIComponent(q)}` : "";
 }
@@ -44,6 +72,7 @@ export function useMentionCandidates(
   const q = useDebouncedValue((query ?? "").trim(), 200);
   const canWorkflows = permissions.includes("workflow:read");
   const canConnectors = permissions.includes("connector:read");
+  const categories = useWorkflowCategories(active && canWorkflows);
 
   const workflows = useQuery({
     queryKey: MENTION_SOURCE_KEYS.workflows(q),
@@ -75,13 +104,17 @@ export function useMentionCandidates(
           title: c.display_name,
         })),
     ];
-    // The server ranked by its own relevance; the local pass only orders
-    // prefix hits first so what the person typed sits at the top.
-    return rankCandidates(all, query ?? "");
-  }, [workflows.data, connectors.data, query]);
+    // Categories lead: "show me the notion block" is the broadest way in.
+    // The server ranked the objects by its own relevance; the local pass only
+    // orders prefix hits first so what the person typed sits at the top.
+    return [
+      ...categoryCandidates(categories.categories, query ?? ""),
+      ...rankCandidates(all, query ?? ""),
+    ];
+  }, [workflows.data, connectors.data, categories.categories, query]);
 
   return {
     candidates,
-    isLoading: active && (workflows.isLoading || connectors.isLoading),
+    isLoading: active && (workflows.isLoading || connectors.isLoading || categories.isLoading),
   };
 }
