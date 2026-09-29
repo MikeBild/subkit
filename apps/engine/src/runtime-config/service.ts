@@ -529,7 +529,10 @@ export async function getRuntimeConfigState(db: Executor): Promise<RuntimeConfig
     saved_revision: saved.revision,
     active_revision: active.revision,
     activation_status: saved.status,
-    pending_restart_fields: saved.pending_restart_fields,
+    // A revision keeps the fields that needed a restart when it was saved; once
+    // it IS the active one, nothing waits any more. Reporting them after the
+    // restart kept "Wartet auf Neustart" on screen for a value already in effect.
+    pending_restart_fields: saved.revision === active.revision ? [] : saved.pending_restart_fields,
   };
 }
 
