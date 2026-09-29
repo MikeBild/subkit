@@ -140,7 +140,11 @@ import { type ChatReauth, chatReauth } from "./chat-reauth";
 import { ChatReauthCard } from "./chat-reauth-card";
 import { collectReferencedResources, referencesFromPart } from "./chat-references";
 import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "./chat-resume";
-import { activeConversationId, type ConversationSelection } from "./chat-selection";
+import {
+  activeConversationId,
+  type ConversationSelection,
+  pinSelectionForSend,
+} from "./chat-selection";
 import {
   budgetPill,
   type ChatNavigation,
@@ -153,6 +157,7 @@ import {
   optimisticVisible,
   recoverFailedSend,
   tokenPill,
+  turnFailureCause,
   userMessageCount,
 } from "./chat-session";
 import { dedupeBackground, groupMessageParts } from "./chat-transcript";
@@ -1141,9 +1146,12 @@ export function ChatPage() {
     mutationFn: async ({
       message,
       references,
+      conversationId,
     }: {
       message: string;
       references?: ConversationReference[];
+      /** The target fixed when the request was sent; null creates a conversation. */
+      conversationId: string | null;
     }) => {
       setStreamedText("");
       setStreamedDiffs([]);
@@ -1152,9 +1160,9 @@ export function ChatPage() {
       const { workflowId, connectorId } = chatSeedFromUrl(window.location.search);
       startedConversationId.current = null;
       return sendConversationTurn(
-        activeId
+        conversationId
           ? {
-              conversationId: activeId,
+              conversationId,
               message,
               references,
               pendingElicitation: detail.data?.resume_summary?.pending_approval,
@@ -1204,10 +1212,39 @@ export function ChatPage() {
   // reload — a dead turn that still looks like a thinking one costs the reader
   // the diagnosis, which is the whole content of a provider quota message.
   const turnFailure =
-    (detail.data as { last_turn_error?: { code: string; message: string } | null } | undefined)
-      ?.last_turn_error ?? null;
+    (
+      detail.data as
+        | {
+            last_turn_error?: {
+              code: string;
+              message: string;
+              kind?: string;
+              retry_at?: string;
+            } | null;
+          }
+        | undefined
+    )?.last_turn_error ?? null;
   const turnFailureMessage =
     (send.error instanceof ApiError ? send.error.message : null) ?? turnFailure?.message ?? null;
+  // The cause in the reader's language, when the engine typed it: "the
+  // provider's usage limit is reached until …" is what to act on; the
+  // provider's own sentence stays below it, verbatim.
+  const failureCause = send.error
+    ? send.error instanceof ApiError
+      ? turnFailureCause({
+          code: send.error.code,
+          kind: send.error.details?.kind,
+          retry_at: send.error.details?.retry_at,
+        })
+      : null
+    : turnFailureCause(turnFailure);
+  const failureCauseText = failureCause
+    ? failureCause.kind === "provider_quota_exhausted" && failureCause.retryAt
+      ? t("chat.cause.provider_quota_exhaustedUntil", {
+          time: formatDateTime(locale, failureCause.retryAt),
+        })
+      : t(`chat.cause.${failureCause.kind}`)
+    : null;
   /**
    * After a failed turn: look again, then decide — never resend by itself.
    *
@@ -1230,60 +1267,83 @@ export function ChatPage() {
     message: string,
     references: ConversationReference[] = [],
   ): Promise<boolean> => {
+    // The target is fixed now. An automatic page follows the list, and a list
+    // that arrives while this request is in flight must not retarget it.
+    const pinned = pinSelectionForSend(selection, conversations.data?.items[0]?.id);
+    if (selection.kind === "automatic") setSelection(pinned);
+    const targetId = pinned.kind === "existing" ? pinned.id : null;
     const pending: OptimisticMessage = {
       session: sessionKey,
       text: message,
       references,
-      baseline: activeId ? userMessageCount(messages) : 0,
+      baseline: targetId ? userMessageCount(messages) : 0,
       sentAt: new Date().toISOString(),
     };
     setOptimistic(pending);
-    if (!activeId) setSentMode(newPermissionMode);
-    const knownIds = new Set((conversations.data?.items ?? []).map((c) => c.id));
+    if (!targetId) setSentMode(newPermissionMode);
+    // What existed before a creation, read in full — not whatever the list on
+    // screen holds, which is empty until it loads and filtered while a search
+    // is typed. Null when it cannot be read: the recovery then names only the
+    // conversation the create stream itself announced.
+    const knownIds = targetId
+      ? null
+      : await queryClient
+          .ensureQueryData({
+            queryKey: ["conversations", "", "visible"],
+            queryFn: () => listConversations(""),
+          })
+          .then((list) => new Set(list.items.map((c) => c.id)))
+          .catch(() => null);
     try {
-      await send.mutateAsync({ message, references });
+      await send.mutateAsync({ message, references, conversationId: targetId });
       return true;
     } catch {
       // A failed first send may still have opened the conversation and stored
       // the request. Find it, move there, and hand the text back only if the
       // request is not in it — otherwise a second send would store it twice.
-      let openedId: string | null = null;
-      if (!activeId) {
-        const [listed] = await Promise.all([
-          listConversations("").catch(() => null),
-          queryClient.invalidateQueries({ queryKey: ["conversations"] }),
-        ]);
-        openedId = conversationOpenedByFailedSend({
-          startedId: startedConversationId.current,
-          knownIds,
-          sentAt: pending.sentAt,
-          listed: listed?.items ?? [],
+      // Whatever goes wrong while looking, the text goes back: a request that
+      // is neither in the composer nor in a transcript is lost.
+      try {
+        let openedId: string | null = null;
+        if (!targetId) {
+          const [listed] = await Promise.all([
+            listConversations("").catch(() => null),
+            queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+          ]);
+          openedId = conversationOpenedByFailedSend({
+            startedId: startedConversationId.current,
+            knownIds,
+            sentAt: pending.sentAt,
+            listed: listed?.items ?? [],
+          });
+        }
+        const after = targetId
+          ? ((await detail.refetch()).data?.messages ?? null)
+          : openedId
+            ? ((
+                await queryClient
+                  .fetchQuery({
+                    queryKey: ["conversation", openedId],
+                    queryFn: () => getConversation(openedId ?? ""),
+                  })
+                  .catch(() => null)
+              )?.messages ?? null)
+            : null;
+        const recovery = recoverFailedSend({
+          activeId: targetId,
+          openedId,
+          optimistic: pending,
+          messagesAfter: after,
         });
+        if (recovery.switchTo) {
+          setSelection({ kind: "existing", id: recovery.switchTo });
+          setChatPath(recovery.switchTo, true);
+          setSessionKey((key) => nextSessionKey(key, "firstSendSaved"));
+        }
+        if (!recovery.restoreComposer) return true;
+      } catch {
+        // Fall through: hand the text back.
       }
-      const after = activeId
-        ? ((await detail.refetch()).data?.messages ?? null)
-        : openedId
-          ? ((
-              await queryClient
-                .fetchQuery({
-                  queryKey: ["conversation", openedId],
-                  queryFn: () => getConversation(openedId ?? ""),
-                })
-                .catch(() => null)
-            )?.messages ?? null)
-          : null;
-      const recovery = recoverFailedSend({
-        activeId,
-        openedId,
-        optimistic: pending,
-        messagesAfter: after,
-      });
-      if (recovery.switchTo) {
-        setSelection({ kind: "existing", id: recovery.switchTo });
-        setChatPath(recovery.switchTo, true);
-        setSessionKey((key) => nextSessionKey(key, "firstSendSaved"));
-      }
-      if (!recovery.restoreComposer) return true;
       setOptimistic(null);
       restoreComposer.current?.(message, references);
       return false;
@@ -1693,6 +1753,11 @@ export function ChatPage() {
               ) : (
                 <>
                   <p>{t("chat.failedDescription")}</p>
+                  {failureCauseText && (
+                    <p className="mt-1 font-medium" data-testid="chat-error-cause">
+                      {failureCauseText}
+                    </p>
+                  )}
                   {turnFailureMessage && (
                     <p className="mt-1 break-words font-mono text-xs">{turnFailureMessage}</p>
                   )}
