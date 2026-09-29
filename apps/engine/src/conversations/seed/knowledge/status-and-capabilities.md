@@ -138,7 +138,7 @@ The Übersicht's operations figures over one window (needs `stats:read`). Input:
 
 Response (`schema_version: "operating-figures.v1"`): `window` (`from`, `to`); `runs` (`total` started in the window, `succeeded`, `failed`, `success_rate_percent`); `connectors` (`enabled`, `not_ok`, `healthy_percent` — a state of now, not of the window); `repairs` (`decided` and `applied` in the window, `applied_percent`). Each figure carries the cockpit list it counts (`href`); a `null` percent means nothing to count, never 0.
 
-How to read: pass `window.from` / `window.to` to `list_executions` as `started_from` / `started_to` (or `GET /v1/executions?started_from=…&started_to=…`) to list exactly the runs counted. These are not the operational overview's ratios, which count runs finished in the last 24 hours and repairs by their stored status.
+How to read: pass `window.from` / `window.to` to `list_executions` as `started_from` / `started_to` (or `GET /v1/executions?started_from=…&started_to=…`) to list exactly the runs counted. The operational overview's `executions.success_ratio` and `repairs.applied_ratio` (and their Prometheus gauges) are these figures over the last 24 hours, as a fraction instead of a whole percent.
 
 ## list_connections (MCP) · GET /v1/connections
 

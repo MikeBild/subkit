@@ -103,92 +103,66 @@ export function windowSpend(envelope: unknown): WindowSpend {
   return { calls, cost: windowCost(envelope) };
 }
 
-export interface RunTotals {
-  executions: number | null;
-  successRatePercent: number | null;
-  /** Runs of the window that ended `failed` — what the success rate's link lists. */
-  failedRuns: number | null;
+/**
+ * The runs, success rate, connector health and repair rate over one window,
+ * as the engine counts them — one read, the one `GET /v1/stats/operating-figures`
+ * answers for the MCP tool `get_operating_figures` and the operational
+ * overview too. The bar does not count on its own: a second copy of a
+ * definition is how two surfaces come to quote two rates for one question.
+ */
+export function operatingFiguresEndpoint(bounds: WindowBounds): string {
+  return `/v1/stats/operating-figures?from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}`;
 }
 
-const SUCCESS_STATUSES = ["completed", "succeeded", "success"] as const;
+/** What the four engine-counted figures are made of. */
+export interface OperatingCounts {
+  runs: {
+    /** Runs that started in the window. */
+    total: number;
+    /** Runs of the window that ended `failed` — what the success rate's link lists. */
+    failed: number;
+    /** The engine's whole percent; null when no run started. */
+    successRatePercent: number | null;
+  };
+  connectors: { enabled: number; notOk: number; healthyPercent: number | null };
+  repairs: { decided: number; appliedPercent: number | null };
+}
 
-/** The window's run count and success rate. Each is `null` when the engine did not send it. */
-export function runTotals(envelope: unknown): RunTotals {
-  const totals = isRecord(envelope) && isRecord(envelope.totals) ? envelope.totals : {};
-  const executionsEnvelope = isRecord(totals.executions) ? totals.executions : {};
-  const count = numberOrNull(executionsEnvelope.count);
-  const byStatus = isRecord(executionsEnvelope.by_status) ? executionsEnvelope.by_status : null;
-  const succeeded = byStatus
-    ? SUCCESS_STATUSES.reduce(
-        (total, key) => total + (typeof byStatus[key] === "number" ? byStatus[key] : 0),
-        0,
-      )
-    : null;
+function countOf(value: unknown): number | null {
+  const n = numberOrNull(value);
+  return n !== null && n >= 0 ? n : null;
+}
+
+/** The counts from the `operating-figures.v1` envelope, or null when it is not one. */
+export function operatingCounts(envelope: unknown): OperatingCounts | null {
+  if (!isRecord(envelope)) return null;
+  const { runs, connectors, repairs } = envelope;
+  if (!isRecord(runs) || !isRecord(connectors) || !isRecord(repairs)) return null;
+  const total = countOf(runs.total);
+  const failed = countOf(runs.failed);
+  const enabled = countOf(connectors.enabled);
+  const notOk = countOf(connectors.not_ok);
+  const decided = countOf(repairs.decided);
+  if (total === null || failed === null || enabled === null || notOk === null || decided === null)
+    return null;
   return {
-    executions: count,
-    successRatePercent:
-      count !== null && count > 0 && succeeded !== null
-        ? Math.round((succeeded / count) * 100)
-        : null,
-    failedRuns: byStatus ? (numberOrNull(byStatus.failed) ?? 0) : null,
+    runs: { total, failed, successRatePercent: numberOrNull(runs.success_rate_percent) },
+    connectors: { enabled, notOk, healthyPercent: numberOrNull(connectors.healthy_percent) },
+    repairs: { decided, appliedPercent: numberOrNull(repairs.applied_percent) },
   };
 }
 
 /**
  * The audit verbs a decided repair leaves: approved by a person, applied on
- * its own, or rejected. The repair rate is computed over exactly these, and
- * its link opens exactly these — the number and the list it leads to are the
- * same rows (operator/operational-overview.ts, DECIDED_REPAIRS_PATH).
+ * its own, or rejected. The engine's repair rate is counted over exactly these
+ * (operator/operating-figures.ts, DECIDED_REPAIR_ACTIONS), and the link opens
+ * exactly these — the number and the list it leads to are the same rows.
  */
 export const DECIDED_REPAIR_ACTIONS = [
   "patch_candidate.approved",
   "patch_candidate.auto_applied",
   "patch_candidate.rejected",
 ] as const;
-const APPLIED_REPAIR_ACTIONS = new Set<string>([
-  "patch_candidate.approved",
-  "patch_candidate.auto_applied",
-]);
-
-/** The repair decisions over one window, counted per verb by the engine. */
-export function repairStatsEndpoint(bounds: WindowBounds): string {
-  return `/v1/stats/events?class=self_healing&group_by=action&${windowQuery(bounds)}`;
-}
-
-export interface RepairTotals {
-  decided: number;
-  applied: number;
-}
-
-/** The decided and the applied repairs of the window, from the per-verb groups. */
-export function repairTotals(envelope: unknown): RepairTotals | null {
-  if (!isRecord(envelope) || !Array.isArray(envelope.groups)) return null;
-  let decided = 0;
-  let applied = 0;
-  for (const group of envelope.groups) {
-    if (!isRecord(group) || !isRecord(group.key) || !isRecord(group.totals)) continue;
-    const action = group.key.action;
-    if (typeof action !== "string") continue;
-    if (!(DECIDED_REPAIR_ACTIONS as readonly string[]).includes(action)) continue;
-    const calls = isRecord(group.totals.calls) ? numberOrNull(group.totals.calls.total) : null;
-    decided += calls ?? 0;
-    if (APPLIED_REPAIR_ACTIONS.has(action)) applied += calls ?? 0;
-  }
-  return { decided, applied };
-}
-
-/**
- * The connector counts the health figure is made of. Both are the engine's
- * own totals: the enabled connectors, and the ones among them that count
- * against health (`GET /v1/connectors?health=not_ok`) — the list the figure
- * links to, so the number and the list cannot disagree.
- */
-export const CONNECTORS_ENABLED_ENDPOINT = "/v1/connectors?enabled=true&limit=1";
-export const CONNECTORS_NOT_OK_ENDPOINT = "/v1/connectors?health=not_ok&limit=1";
-
-export function listTotal(envelope: unknown): number | null {
-  return isRecord(envelope) ? numberOrNull(envelope.total) : null;
-}
 
 /** The six figures, in reading order. The bar always holds all six. */
 export const OPERATING_FIGURE_IDS = [
@@ -297,10 +271,14 @@ export type OperatingFigure =
  */
 export function operatingFigures(input: {
   bounds: WindowBounds;
-  totals: Read<RunTotals>;
-  /** Null where the reader may not read connectors at all. */
-  connectors: Read<{ enabled: number | null; notOk: number | null }> | null;
-  repairs: Read<RepairTotals | null>;
+  /** The engine's counts for runs, connectors and repairs; null when the answer was not one. */
+  counts: Read<OperatingCounts | null>;
+  /**
+   * Whether the reader may read connectors. The engine answers the connector
+   * totals under `stats:read`; the bar keeps saying "not permitted" to a
+   * reader who could not open a single connector the figure counts.
+   */
+  connectorsPermitted: boolean;
   spend: Read<WindowSpend>;
   budget: Read<BudgetSummary>;
   canOpen: {
@@ -312,20 +290,22 @@ export function operatingFigures(input: {
     budgetSetting: boolean;
   };
 }): OperatingFigure[] {
-  const { bounds, totals, connectors, repairs, spend, budget, canOpen } = input;
+  const { bounds, counts, connectorsPermitted, spend, budget, canOpen } = input;
   const window = { startedFrom: bounds.from, startedTo: bounds.to };
+  // An answer that is not the figures is no more readable than a failed read.
+  const read = counts.state === "answered" ? counts.value : null;
 
   let runs: OperatingFigure;
   let successRate: OperatingFigure;
-  if (totals.state === "failed") {
+  if (read === null) {
     runs = { id: "runs", state: "unreadable", basis: "window" };
     successRate = { id: "successRate", state: "unreadable", basis: "window" };
-  } else if (totals.value.executions !== null && totals.value.executions > 0) {
-    const { executions, failedRuns, successRatePercent } = totals.value;
+  } else if (read.runs.total > 0) {
+    const { total, failed, successRatePercent } = read.runs;
     runs = {
       id: "runs",
       state: "value",
-      value: executions,
+      value: total,
       href: canOpen.runs ? runsHref(window) : null,
       basis: "window",
     };
@@ -336,10 +316,7 @@ export function operatingFigures(input: {
             id: "successRate",
             state: "value",
             value: successRatePercent,
-            href:
-              canOpen.runs && failedRuns !== null && failedRuns > 0
-                ? runsHref({ ...window, status: "failed" })
-                : null,
+            href: canOpen.runs && failed > 0 ? runsHref({ ...window, status: "failed" }) : null,
             basis: "window",
           };
   } else {
@@ -348,22 +325,19 @@ export function operatingFigures(input: {
   }
 
   let connectorHealth: OperatingFigure;
-  if (connectors === null) {
+  if (!connectorsPermitted) {
     connectorHealth = { id: "connectorHealth", state: "not_permitted", basis: "now" };
-  } else if (connectors.state === "failed") {
+  } else if (read === null) {
     connectorHealth = { id: "connectorHealth", state: "unreadable", basis: "now" };
-  } else if (
-    connectors.value.enabled !== null &&
-    connectors.value.enabled > 0 &&
-    connectors.value.notOk !== null
-  ) {
-    const { enabled, notOk } = connectors.value;
-    const healthy = Math.max(enabled - notOk, 0);
+  } else if (read.connectors.enabled > 0 && read.connectors.healthyPercent !== null) {
     connectorHealth = {
       id: "connectorHealth",
       state: "value",
-      value: Math.round((healthy / enabled) * 100),
-      href: canOpen.connectors && notOk > 0 ? connectorsHref({ health: "not_ok" }) : null,
+      value: read.connectors.healthyPercent,
+      href:
+        canOpen.connectors && read.connectors.notOk > 0
+          ? connectorsHref({ health: "not_ok" })
+          : null,
       basis: "now",
     };
   } else {
@@ -371,13 +345,13 @@ export function operatingFigures(input: {
   }
 
   let repairRate: OperatingFigure;
-  if (repairs.state === "failed") {
+  if (read === null) {
     repairRate = { id: "repairRate", state: "unreadable", basis: "window" };
-  } else if (repairs.value && repairs.value.decided > 0) {
+  } else if (read.repairs.decided > 0 && read.repairs.appliedPercent !== null) {
     repairRate = {
       id: "repairRate",
       state: "value",
-      value: Math.round((repairs.value.applied / repairs.value.decided) * 100),
+      value: read.repairs.appliedPercent,
       href: canOpen.audit
         ? auditHref({
             scope: "all",

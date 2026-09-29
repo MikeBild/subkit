@@ -28,6 +28,7 @@ export interface CatalogModelPrice extends ModelPrice {
 
 const ANTHROPIC_PRICING = "https://platform.claude.com/docs/en/about-claude/pricing";
 const OPENAI_PRICING = "https://developers.openai.com/api/docs/pricing";
+const GEMINI_PRICING = "https://ai.google.dev/gemini-api/docs/pricing";
 
 const anthropic = (
   model: string,
@@ -44,12 +45,48 @@ const anthropic = (
   source: ANTHROPIC_PRICING,
 });
 
+/**
+ * OpenAI and Google charge no surcharge for writing the cache: a prompt that
+ * lands in the cache is billed as ordinary input, so the cache-write rate is
+ * the input rate.
+ */
+const openai = (
+  model: string,
+  input: number,
+  output: number,
+  cacheRead: number,
+): CatalogModelPrice => ({
+  model,
+  input_per_mtok: input,
+  output_per_mtok: output,
+  cache_read_per_mtok: cacheRead,
+  cache_write_per_mtok: input,
+  source: OPENAI_PRICING,
+});
+
+const gemini = (
+  model: string,
+  input: number,
+  output: number,
+  cacheRead: number,
+): CatalogModelPrice => ({
+  model,
+  input_per_mtok: input,
+  output_per_mtok: output,
+  cache_read_per_mtok: cacheRead,
+  cache_write_per_mtok: input,
+  source: GEMINI_PRICING,
+});
+
 export const MODEL_PRICE_CATALOG: readonly CatalogModelPrice[] = Object.freeze([
+  // Retired on the Claude API, still listed with its price.
+  anthropic("claude-3-5-haiku", 0.8, 4, 0.08, 1),
   anthropic("claude-haiku-4-5", 1, 5, 0.1, 1.25),
   anthropic("claude-haiku-4-5-20251001", 1, 5, 0.1, 1.25),
   anthropic("claude-sonnet-4-5", 3, 15, 0.3, 3.75),
   anthropic("claude-sonnet-4-6", 3, 15, 0.3, 3.75),
   anthropic("claude-sonnet-5", 2, 10, 0.2, 2.5),
+  anthropic("claude-opus-4-6", 5, 25, 0.5, 6.25),
   anthropic("claude-opus-4-7", 5, 25, 0.5, 6.25),
   anthropic("claude-opus-4-8", 5, 25, 0.5, 6.25),
   anthropic("claude-opus-5-5", 4, 20, 0.2, 5),
@@ -63,14 +100,21 @@ export const MODEL_PRICE_CATALOG: readonly CatalogModelPrice[] = Object.freeze([
     cache_write_per_mtok: 5,
     source: "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
   },
-  {
-    model: "gpt-4.1-mini",
-    input_per_mtok: 0.4,
-    output_per_mtok: 1.6,
-    cache_read_per_mtok: 0.1,
-    cache_write_per_mtok: 0.4,
-    source: OPENAI_PRICING,
-  },
+  openai("gpt-4o", 2.5, 10, 1.25),
+  openai("gpt-4o-mini", 0.15, 0.6, 0.075),
+  openai("gpt-4.1", 2, 8, 0.5),
+  openai("gpt-4.1-mini", 0.4, 1.6, 0.1),
+  // The alias of the snapshot `gpt-4-turbo-2024-04-09`, which the price list
+  // names. It lists no cached-input rate — no discount, not a free read — so a
+  // cached token is charged as input.
+  openai("gpt-4-turbo", 10, 30, 10),
+  // The rate for prompts up to 200k tokens; longer prompts are billed higher
+  // (input 2.50, output 15, cache read 0.25), so a window with long prompts is
+  // priced below its bill — the same base-rate simplification the catalog
+  // makes for every tiered model.
+  gemini("gemini-2.5-pro", 1.25, 10, 0.125),
+  // Text, image and video input; audio input is billed higher.
+  gemini("gemini-2.5-flash", 0.3, 2.5, 0.03),
 ]);
 
 /**

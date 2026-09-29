@@ -64,12 +64,26 @@ function figureText(html: string, id: string): string {
     .trim();
 }
 
+/** The engine's counts, as `GET /v1/stats/operating-figures` answers them. */
+const counts = (
+  over: {
+    runs?: { total: number; failed: number; successRatePercent: number | null };
+    connectors?: { enabled: number; notOk: number; healthyPercent: number | null };
+    repairs?: { decided: number; appliedPercent: number | null };
+  } = {},
+) =>
+  answered({
+    runs: { total: 40, failed: 2, successRatePercent: 95 },
+    connectors: { enabled: 8, notOk: 2, healthyPercent: 75 },
+    repairs: { decided: 4, appliedPercent: 75 },
+    ...over,
+  });
+
 const figuresOf = (overrides: Partial<Parameters<typeof operatingFigures>[0]> = {}) =>
   operatingFigures({
     bounds: DAY,
-    totals: answered({ executions: 40, failedRuns: 2, successRatePercent: 95 }),
-    connectors: answered({ enabled: 8, notOk: 2 }),
-    repairs: answered({ decided: 4, applied: 3 }),
+    counts: counts(),
+    connectorsPermitted: true,
     spend,
     budget,
     canOpen: all,
@@ -154,9 +168,11 @@ describe("the operations bar", () => {
   test("a figure with nothing to count says so — no 0, no link", () => {
     const html = render(
       figuresOf({
-        totals: answered({ executions: 0, failedRuns: 0, successRatePercent: null }),
-        connectors: answered({ enabled: 0, notOk: 0 }),
-        repairs: answered({ decided: 0, applied: 0 }),
+        counts: counts({
+          runs: { total: 0, failed: 0, successRatePercent: null },
+          connectors: { enabled: 0, notOk: 0, healthyPercent: null },
+          repairs: { decided: 0, appliedPercent: null },
+        }),
         spend: answered({ calls: 0, cost: null }),
         budget: month(0, null),
         canOpen: { ...all, budgetSetting: false },
@@ -171,21 +187,22 @@ describe("the operations bar", () => {
   });
 
   test("a failed read is said per figure, with a way to read again", () => {
+    // Runs, success rate, connector health and repair rate are one read: when
+    // it fails, all four say so, each with its retry.
     const html = render(
       figuresOf({
-        totals: { state: "failed" },
-        connectors: answered({ enabled: 3, notOk: 0 }),
-        repairs: answered({ decided: 1, applied: 1 }),
+        counts: { state: "failed" },
         spend: { state: "failed" },
         budget: { state: "failed" },
       }),
     );
-    expect(html).toContain('data-testid="operations-figure-runs-retry"');
-    expect(html).toContain('data-testid="operations-figure-successRate-retry"');
-    expect(html).toContain('data-testid="operations-figure-cost-retry"');
-    expect(html).toContain('data-testid="operations-figure-budget-retry"');
-    expect(html).not.toContain('data-testid="operations-figure-repairRate-retry"');
+    for (const id of ["runs", "successRate", "connectorHealth", "repairRate", "cost", "budget"])
+      expect(html).toContain(`data-testid="operations-figure-${id}-retry"`);
     expect(html).toContain("Nicht lesbar");
+    // A read that answered keeps its figures when another one failed.
+    const partial = render(figuresOf({ spend: { state: "failed" } }));
+    expect(partial).toContain('data-testid="operations-figure-cost-retry"');
+    expect(partial).not.toContain('data-testid="operations-figure-repairRate-retry"');
   });
 });
 
@@ -197,8 +214,8 @@ describe("Nutzung", () => {
       "OperationsBar",
       "usage-figure",
       "usage-summary",
-      "repairStatsEndpoint",
-      "CONNECTORS_NOT_OK_ENDPOINT",
+      "operatingFiguresEndpoint",
+      "operatingCounts",
     ])
       expect(source, `usage.tsx mirrors ${mirror}`).not.toContain(mirror);
   });

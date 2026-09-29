@@ -1860,6 +1860,41 @@ async function mockApi(route) {
       },
     });
   }
+  // The operations bar's runs, success rate, connector health and repair rate:
+  // the engine's one count. Answered from what the other fixtures hold — the
+  // executions totals below (40 runs, 4 failed), the 42 connector rows (32
+  // enabled, 21 of them not ok), two applied of three decided repairs.
+  if (path === "/v1/stats/operating-figures") {
+    const from = url.searchParams.get("from");
+    const to = url.searchParams.get("to");
+    if (!from || !to)
+      return json(route, { code: "validation", message: "request validation failed" }, 400);
+    const window = { started_from: from, started_to: to };
+    return json(route, {
+      schema_version: "operating-figures.v1",
+      window: { from, to },
+      runs: {
+        total: 40,
+        succeeded: 36,
+        failed: 4,
+        success_rate_percent: 90,
+        href: `/cockpit/runs?${new URLSearchParams(window)}`,
+        failed_href: `/cockpit/runs?${new URLSearchParams({ status: "failed", ...window })}`,
+      },
+      connectors: {
+        enabled: 32,
+        not_ok: 21,
+        healthy_percent: 34,
+        href: "/cockpit/connectors?health=not_ok",
+      },
+      repairs: {
+        decided: 3,
+        applied: 2,
+        applied_percent: 67,
+        href: `/cockpit/audit?${new URLSearchParams({ scope: "all", ts_from: from, ts_to: to })}`,
+      },
+    });
+  }
   // The repair decisions of a window, per verb — what the usage page's
   // repair rate is computed from. Two applied of three decided.
   if (path === "/v1/stats/events") {

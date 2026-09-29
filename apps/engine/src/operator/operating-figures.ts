@@ -1,19 +1,17 @@
 // The Übersicht's operations figures, over one window, asked once.
 //
-// The cockpit's operations bar shows four figures: runs in the window, their
+// Four of the cockpit's six operations figures: runs in the window, their
 // success rate, the connectors healthy now, and the share of repairs decided
-// in the window that were applied. It computes them from three reads —
-// `GET /v1/stats/executions`, `GET /v1/stats/events?class=self_healing` and
-// the totals of `GET /v1/connectors` (`enabled=true`, `health=not_ok`). An
-// MCP client or a script had no way to get the same four numbers: the
-// operational overview's ratios are a different figure (finished in the last
-// 24 hours, repairs by their stored status over all time), and quoting them
-// beside the bar would give one question two answers.
+// in the window that were applied (cost and budget are read from the LLM
+// stats and the status route). They are read over the aggregates and the list
+// service behind `GET /v1/stats/executions`, `GET /v1/stats/events` and
+// `GET /v1/connectors`, with the same definitions, and each figure names the
+// list it counts so a reader can open exactly those rows.
 //
-// This reads the four over the aggregates and the list service those three
-// routes call, with the same definitions, and each figure names the list it
-// counts so a reader can open exactly those rows. `GET /v1/stats/operating-figures`
-// and the MCP tool `get_operating_figures` both answer from here.
+// One definition, every surface: `GET /v1/stats/operating-figures`, the MCP
+// tool `get_operating_figures`, the cockpit's operations bar, and the
+// operational overview's success and repair ratios (and so the Prometheus
+// gauges projected from it, over the last 24 hours) all answer from here.
 //
 // Read-only: no audit row, no tracker advanced.
 

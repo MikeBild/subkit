@@ -186,6 +186,22 @@ Context and predictive-maintenance metrics:
 
 These feed the leading-indicator `risk[]` block of `GET /v1/operator/health-digest`.
 
+The `subkit_operational_*` gauges project the operational overview
+(`GET /v1/operational-overview`, MCP `get_operational_overview`) at scrape time. Two
+of them are the Overview's operations figures over the last 24 hours, read from the
+same code as `GET /v1/stats/operating-figures`:
+
+| Metric | What it counts |
+|---|---|
+| `subkit_operational_execution_success_ratio` | Succeeded runs ÷ all runs **started** in the last 24 hours. A run still in flight counts toward the whole, so a burst of long runs lowers it until they finish. |
+| `subkit_operational_repairs_applied_ratio` | Repairs approved or applied automatically ÷ all repairs **decided** (approved, applied automatically, rejected) in the last 24 hours. |
+
+Earlier versions counted runs *finished* in the last 24 hours and repairs by
+their stored status over all time; expect a step in both series on upgrade. A
+gauge with nothing to count (no run started, no repair decided) reads `NaN`, not
+`0` and not its previous value; alert on `> 0` / `< x` comparisons, which are false
+for `NaN`.
+
 > **Why the retry rate is windowed.** The `transient_retry` risk signal reads
 > `db_transient_retry_rate_per_min` — a windowed rate the 60s memory sampler computes
 > (retries since the previous tick ÷ elapsed minutes) against
