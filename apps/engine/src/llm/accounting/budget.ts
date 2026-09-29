@@ -2,7 +2,9 @@
 //
 // Reads sum over `llm_usage.month_bucket = YYYYMM`. The ledger is
 // append-only; every call writes one row regardless of outcome so
-// operators can audit every LLM interaction against the budget.
+// operators can audit every LLM interaction. A call the provider never
+// processed (failed with no output) is written with zero billed tokens —
+// see `billedTokenUsage` — so it shows as an error without counting as spend.
 
 import { and, eq, sql } from "drizzle-orm";
 import { getConfig, isConfigLoaded } from "../../config/loader.ts";
@@ -10,7 +12,7 @@ import { type Executor, getDb } from "../../db/client.ts";
 import { llmUsage, userLlmSettings } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { LlmQuotaExhausted } from "../errors.ts";
-import { weightedTotalTokens } from "../pricing.ts";
+import { billedTokenUsage, weightedTotalTokens } from "../pricing.ts";
 import type { LlmCallLogEntry } from "../types.ts";
 
 export function currentMonthBucket(d: Date = new Date()): number {
@@ -268,26 +270,33 @@ export async function checkAndDecrement(
 /**
  * Persist a usage row. Always called after a provider call completes —
  * success, quota exhaustion, and provider error all land here.
+ *
+ * The token columns hold what the call is BILLED for (`billedTokenUsage`),
+ * not what the caller passed: a failure without output carries only the
+ * tokenizer's prompt estimate, and writing that estimate would book a call
+ * the provider refused as spend on every cost and budget reader. There is no
+ * reservation to release — `checkAndDecrement` is read-only, so this row is
+ * the only thing the budget ever counts.
  */
 export async function recordUsage(entry: LlmCallLogEntry, exec?: Executor): Promise<void> {
   const db = exec ?? getDb();
   const bucket = currentMonthBucket();
-  const cache_read_tokens = entry.cache_read_tokens ?? 0;
-  const cache_creation_tokens = entry.cache_creation_tokens ?? 0;
-  const total_tokens = weightedTotalTokens({
+  const billed = billedTokenUsage({
+    result: entry.result,
     prompt_tokens: entry.prompt_tokens,
     completion_tokens: entry.completion_tokens,
-    cache_read_tokens,
-    cache_creation_tokens,
+    cache_read_tokens: entry.cache_read_tokens ?? 0,
+    cache_creation_tokens: entry.cache_creation_tokens ?? 0,
   });
+  const total_tokens = weightedTotalTokens(billed);
   await db.insert(llmUsage).values({
     tenant_id: entry.tenant_id,
     flow: entry.flow,
     model: entry.model,
-    prompt_tokens: entry.prompt_tokens,
-    completion_tokens: entry.completion_tokens,
-    cache_read_tokens,
-    cache_creation_tokens,
+    prompt_tokens: billed.prompt_tokens,
+    completion_tokens: billed.completion_tokens,
+    cache_read_tokens: billed.cache_read_tokens,
+    cache_creation_tokens: billed.cache_creation_tokens,
     total_tokens,
     latency_ms: entry.latency_ms,
     result: entry.result,
