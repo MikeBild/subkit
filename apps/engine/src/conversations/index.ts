@@ -68,5 +68,11 @@ export {
   importConnectorDraftFromSpec,
   importConnectorFromSpecInputSchema,
 } from "./tools/import-connector-from-spec.ts";
+export {
+  describeTurnFailure,
+  type TurnFailure,
+  type TurnFailureCode,
+  turnFailureFramePayload,
+} from "./turn-failure.ts";
 export * from "./types.ts";
 export { type ConversationUsage, readConversationUsage } from "./usage.ts";

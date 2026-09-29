@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
   conversationElicitations,
+  conversationMessages,
   conversations,
   llmUsage,
   tenantLlmSettings,
@@ -75,6 +76,69 @@ describe("POST /v1/conversations provider-limit handling", () => {
     expect(
       usageRows.some((row) => row.model === "conv-quota-fallback" && row.result === "success"),
     ).toBe(false);
+  });
+
+  test("a streamed first turn that hits the quota is typed and kept on the conversation", async () => {
+    // The stream said `{ code: "internal" }` and stored nothing: a client
+    // could not tell a provider quota from a crash, and the created
+    // conversation read as still thinking once the stream was gone.
+    resetMockProvider();
+    getMockProvider().setFailure("conv-quota-primary", "quota_exhausted");
+
+    const res = await fetch(`${srv.baseUrl}/v1/conversations`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${srv.apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({ initial_message: "hello over the stream" }),
+    });
+    expect(res.status).toBe(200);
+    const frames = (await res.text())
+      .split(/\n\n/)
+      .map((frame) => ({
+        event: frame.match(/^event:\s*(.+)$/m)?.[1]?.trim(),
+        data: frame.match(/^data:\s*(.+)$/m)?.[1],
+      }))
+      .filter((frame) => frame.event && frame.data);
+    const started = frames.find((frame) => frame.event === "conversation_started");
+    const error = frames.find((frame) => frame.event === "error");
+    const conversationId = (JSON.parse(started?.data ?? "{}") as { conversation?: { id: string } })
+      .conversation?.id;
+    expect(conversationId).toBeString();
+    expect(JSON.parse(error?.data ?? "{}")).toMatchObject({
+      code: "llm_provider_limited",
+      details: { kind: "quota_exhausted", retry_at: "2026-05-01T00:00:00.000Z" },
+    });
+
+    const [row] = await srv.db
+      .select({ last_turn_error: conversations.last_turn_error })
+      .from(conversations)
+      .where(eq(conversations.id, conversationId ?? ""));
+    expect(row?.last_turn_error).toMatchObject({
+      code: "llm_provider_limited",
+      kind: "quota_exhausted",
+      retry_at: "2026-05-01T00:00:00.000Z",
+    });
+  });
+
+  test("an answer the mock provider wrote is labelled as the mock's, not as the route's model", async () => {
+    resetMockProvider();
+    const res = await fetch(`${srv.baseUrl}/v1/conversations`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${srv.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ initial_message: "say hello" }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { conversation: { id: string } };
+    const rows = await srv.db
+      .select({ role: conversationMessages.role, model: conversationMessages.model })
+      .from(conversationMessages)
+      .where(eq(conversationMessages.conversation_id, body.conversation.id));
+    const answers = rows.filter((row) => row.role === "assistant");
+    expect(answers.length).toBeGreaterThan(0);
+    for (const answer of answers) expect(answer.model).toBe("mock:conv-quota-primary");
   });
 
   test("returns 409 when a conversation already has pending user input", async () => {

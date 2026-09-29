@@ -474,7 +474,7 @@ export async function recordConversationTurnFailure(
   exec: Db,
   tenant_id: string,
   conversation_id: string,
-  failure: { code: string; message: string; at: string },
+  failure: { code: string; message: string; at: string; kind?: string; retry_at?: string },
 ): Promise<void> {
   await exec
     .update(conversations)

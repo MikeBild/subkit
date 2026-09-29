@@ -14,6 +14,7 @@ import {
   llmUsage,
   workflows,
 } from "../../db/schema/index.ts";
+import { answeringModelLabel } from "../loop/model-resolver.ts";
 import {
   type ConversationTestCtx,
   createConversationTestCtx,
@@ -95,7 +96,12 @@ describe("conversations/audit-trail", () => {
     expect(rolesPause.filter((r) => r === "tool").length).toBe(toolCallsAfterPause.length);
     const assistantMessages = messagesPause.filter((message) => message.role === "assistant");
     expect(assistantMessages.length).toBeGreaterThan(0);
-    const billedModels = new Set(usagePause.map((usage) => usage.model));
+    // The answer names the model that was billed for it — as the mock's, since
+    // this suite runs on the mock provider and a reader must not take a canned
+    // reply for a real model's.
+    const billedModels = new Set(
+      usagePause.map((usage) => answeringModelLabel("mock", usage.model)),
+    );
     expect(
       assistantMessages.every(
         (message) => message.model !== null && billedModels.has(message.model),

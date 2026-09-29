@@ -212,12 +212,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
               );
               return;
             }
-            const err = error as Error;
-            const failure = {
-              code: "internal",
-              message: err?.message ?? "internal_error",
-              at: new Date().toISOString(),
-            };
+            const failure = svc.describeTurnFailure(error);
             // Durable, so a reload does not turn a dead turn back into a
             // thinking one. A provider that answers "you have reached your
             // usage limits" is telling the person exactly what to do; losing
@@ -225,7 +220,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
             await svc
               .recordConversationTurnFailure(c.get("db"), principal.tenant_id, id, failure)
               .catch(() => {});
-            await stream.writeSSE(errorFrame({ code: failure.code, message: failure.message }));
+            await stream.writeSSE(errorFrame(svc.turnFailureFramePayload(failure)));
           } finally {
             unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
