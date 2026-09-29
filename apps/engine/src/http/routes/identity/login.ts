@@ -183,13 +183,14 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
       new Request(c.req.url, { headers: { authorization: `Bearer ${parsed.data.api_key}` } }),
     );
     if (principal?.kind !== "user") {
+      const locale = resolveAuthLocale(c.req.header("accept-language"));
       return authHtmlResponse(
         renderApiKeyLogin(
           "/v1/identity/login/start",
           selected.id,
           parsed.data.login_state,
-          "The API key is invalid, expired, or is not owned by a user.",
-          resolveAuthLocale(c.req.header("accept-language")),
+          apiKeyLoginRefusal(locale),
+          locale,
         ),
         401,
       );
@@ -225,4 +226,14 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
       headers: { "set-cookie": clearBrowserSessionCookie(), "cache-control": "no-store" },
     });
   });
+}
+
+/**
+ * Why an API key did not sign in, in the page's language. The German login
+ * page showed this one sentence in English.
+ */
+export function apiKeyLoginRefusal(locale: "de" | "en"): string {
+  return locale === "de"
+    ? "Dieser API-Schlüssel ist ungültig, abgelaufen oder gehört keiner Person. Mit dem Schlüssel eines Systemkontos meldet man sich nicht im Cockpit an."
+    : "This API key is invalid, expired, or not owned by a person. A system account's key does not sign in to the Cockpit.";
 }

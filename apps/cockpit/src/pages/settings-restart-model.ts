@@ -46,6 +46,21 @@ export function restartOffer(
   return supervised === true ? "restart" : "manual";
 }
 
+/**
+ * The offer as it stands once THIS save lands: a save that switches the
+ * supervisor on (or off) in the same batch changes what "restart now" can do.
+ * `ask_admin` never changes — the permission is not a setting.
+ */
+export function restartOfferAfterSave(
+  offer: RestartOffer,
+  supervisedDraft: string | undefined,
+): RestartOffer {
+  if (offer === "ask_admin" || supervisedDraft === undefined) return offer;
+  if (supervisedDraft === "true") return "restart";
+  if (supervisedDraft === "false") return "manual";
+  return offer;
+}
+
 /** The line the save-time restart dialog ends with, per offer. */
 export function restartSaveNote(offer: RestartOffer): TranslationKey {
   switch (offer) {

@@ -823,7 +823,9 @@ function ClientsSection({ query }: { query: ListQuery<ConnectedClientItem> }) {
               </Badge>
             ) : (
               <Badge variant="secondary">
-                {t("connectedClients.live", { count: String(item.live_connections) })}
+                {item.live_connections === 1
+                  ? t("connectedClients.live.one")
+                  : t("connectedClients.live", { count: String(item.live_connections) })}
               </Badge>
             )}
             <Badge variant="outline">
