@@ -50,6 +50,10 @@ export const conversations = pgTable(
       code: string;
       message: string;
       at: string;
+      /** The provider error's classified kind, when a provider failed. */
+      kind?: string;
+      /** When the provider says access returns — only on a dated limit. */
+      retry_at?: string;
     } | null>(),
     // sk-cli rollout (migration 0018): owner_id identifies the user
     // that created the conversation (used by `/resume` + `sk -c`);

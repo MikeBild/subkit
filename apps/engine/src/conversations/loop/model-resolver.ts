@@ -43,6 +43,19 @@ export const MAX_REPAIRS_PER_TURN = 2;
  */
 export type LoopProviderKind = LlmProviderKind | "mock";
 
+/**
+ * What an assistant message names as the model that wrote it.
+ *
+ * The mock provider answers under whatever model id the route carries, so a
+ * canned "Acknowledged: … (mock)" reply was labelled `claude-haiku-4-5` — a
+ * reader could not tell a real answer from a stand-in. A real provider's
+ * answer names the model that ran the step; the mock's is prefixed `mock:`,
+ * the same sentinel form model initialisation uses.
+ */
+export function answeringModelLabel(provider: LoopProviderKind, modelId: string): string {
+  return provider === "mock" ? `mock:${modelId}` : modelId;
+}
+
 export async function resolveLanguageModel(
   provider: LoopProviderKind,
   modelId: string,

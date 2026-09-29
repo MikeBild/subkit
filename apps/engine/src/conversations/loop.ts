@@ -92,6 +92,7 @@ import { abstentionDecision } from "./loop/abstention-gate.ts";
 import { resolveConversationAttemptRoutes } from "./loop/attempt-route.ts";
 import { loadEnumerationCoverage } from "./loop/enumeration-coverage.ts";
 import {
+  answeringModelLabel,
   DEFAULT_BUDGET,
   MAX_REPAIRS_PER_TURN,
   resolveLanguageModel,
@@ -1799,11 +1800,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                 p.conversation_id,
                 "assistant",
                 assistantContent,
-                { model: activeStepModel },
+                { model: answeringModelLabel(attemptProvider, activeStepModel) },
               ));
             if (signals.assistantMessageId) {
               await updateMessageContent(p.db, assistantMessageId, assistantContent, {
-                model: activeStepModel,
+                model: answeringModelLabel(attemptProvider, activeStepModel),
               });
             }
             // Back-fill parent_message_id on every child row created during

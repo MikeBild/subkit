@@ -29,7 +29,10 @@ export interface OutcomeInput {
   /** ISO time of the newest message, or null for an empty conversation. */
   last_activity_at: string | null;
   /** Why the last turn stopped, when it stopped because something broke. */
-  last_turn_error?: { code: string; message: string; at: string } | null | undefined;
+  last_turn_error?:
+    | { code: string; message: string; at: string; kind?: string; retry_at?: string }
+    | null
+    | undefined;
   now: number;
 }
 
