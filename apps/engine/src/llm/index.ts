@@ -40,7 +40,10 @@ export {
 } from "./model-price-catalog.ts";
 export {
   type CostResult,
+  type LongContextPrice,
+  longContextThresholds,
   type ModelPrice,
+  PRICE_SOURCES,
   type PricedTokens,
   type PriceSource,
   priceCalls,
