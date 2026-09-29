@@ -9,6 +9,7 @@ import type { SQL } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { llmUsage, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { recordUsage } from "../llm/accounting/index.ts";
 import { type CostResult, priceCalls, type SourcedModelPrice } from "../llm/index.ts";
 import { readPricedTokens } from "../stats/llm-cost.ts";
 import { conversationUsageFrom, readConversationUsage } from "./usage.ts";
@@ -128,13 +129,30 @@ describe.skipIf(skip)("readConversationUsage", () => {
       row(tenantA, other, "a", 9_000_000),
       row(tenantB, conversation, "a", 7_000_000),
     ]);
+    // A call the provider refused before processing it, written the way the
+    // turn loop writes it: with the tokenizer's estimate of the prompt it never
+    // read. It stays in the ledger as an error and adds nothing to the header.
+    await recordUsage(
+      {
+        tenant_id: tenantA,
+        conversation_id: conversation,
+        flow: "converse",
+        model: "a",
+        prompt_tokens: 2_000_000,
+        completion_tokens: 0,
+        latency_ms: 0,
+        result: "error",
+        error: "You have reached your specified API usage limits",
+      },
+      ctx.db,
+    );
   }, 60_000);
 
   afterAll(async () => {
     if (ctx?.cleanup) await ctx.cleanup();
   }, 30_000);
 
-  test("sums and prices this tenant's rows for this conversation, per model", async () => {
+  test("sums and prices this tenant's rows for this conversation, per model — a refused call adds nothing", async () => {
     const usage = await readConversationUsage(ctx.db, tenantA, conversation, priceRows);
     expect(usage.tokens).toBe(1_500_025);
     expect(usage.by_model).toEqual([
