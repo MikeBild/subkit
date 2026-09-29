@@ -15,7 +15,8 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { executions, externalCallMetering, llmUsage } from "../../../db/schema/index.ts";
-import { priceForTenant } from "../../../stats/llm-cost.ts";
+import { PRICE_SOURCES } from "../../../llm/index.ts";
+import { readLlmCost } from "../../../stats/llm-cost.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -50,10 +51,11 @@ const ExecutionCost = z
           currency: z.string(),
           unpriced_models: z.array(z.string()),
           unpriced_calls: z.number().int(),
-          // Which rate priced each model: SubKit's built-in catalog, or the
-          // operator's own `tokens.prices` entry, which wins per model.
+          // Which rate priced each model: SubKit's built-in catalog, the
+          // catalog reached through a Bedrock/Vertex id (the platform may
+          // charge more), or the operator's `tokens.prices` entry, which wins.
           price_sources: z.array(
-            z.object({ model: z.string(), price_source: z.enum(["catalog", "override"]) }),
+            z.object({ model: z.string(), price_source: z.enum(PRICE_SOURCES) }),
           ),
           rates_basis: z.literal("current"),
         })
@@ -120,30 +122,12 @@ export function registerCostRoute(app: OpenAPIHono<AppEnv>): void {
     // A second grouping, by model, because a price needs one and `flow` does
     // not carry it: a single purpose can span several models at very different
     // rates. Pricing the flow rollup would multiply tokens by whichever model
-    // happened to be named first.
-    const modelRows = await db
-      .select({
-        model: llmUsage.model,
-        calls: sql<number>`count(*)::int`,
-        prompt_tokens: sql<number>`coalesce(sum(${llmUsage.prompt_tokens}), 0)::int`,
-        completion_tokens: sql<number>`coalesce(sum(${llmUsage.completion_tokens}), 0)::int`,
-        cache_read_tokens: sql<number>`coalesce(sum(${llmUsage.cache_read_tokens}), 0)::int`,
-        cache_creation_tokens: sql<number>`coalesce(sum(${llmUsage.cache_creation_tokens}), 0)::int`,
-      })
-      .from(llmUsage)
-      .where(and(eq(llmUsage.tenant_id, principal.tenant_id), eq(llmUsage.execution_id, id)))
-      .groupBy(llmUsage.model);
-
-    const cost = priceForTenant(
+    // happened to be named first. The reader also splits each model's calls at
+    // its long-context threshold, which only a per-call comparison can do.
+    const cost = await readLlmCost(
+      db,
       principal.tenant_id,
-      modelRows.map((r) => ({
-        model: r.model ?? "",
-        calls: Number(r.calls),
-        prompt_tokens: Number(r.prompt_tokens),
-        completion_tokens: Number(r.completion_tokens),
-        cache_read_tokens: Number(r.cache_read_tokens),
-        cache_creation_tokens: Number(r.cache_creation_tokens),
-      })),
+      sql`llm_usage.tenant_id = ${principal.tenant_id} and llm_usage.execution_id = ${id}`,
     );
 
     const by_flow = llmRows.map((r) => ({
