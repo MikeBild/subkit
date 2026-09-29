@@ -1283,17 +1283,21 @@ export function ChatPage() {
     if (!targetId) setSentMode(newPermissionMode);
     // What existed before a creation, read in full — not whatever the list on
     // screen holds, which is empty until it loads and filtered while a search
-    // is typed. Null when it cannot be read: the recovery then names only the
-    // conversation the create stream itself announced.
+    // is typed. Null when it cannot be read in time: the recovery then names
+    // only the conversation the create stream itself announced, and a slow
+    // list never holds the request back for longer than the bound.
     const knownIds = targetId
       ? null
-      : await queryClient
-          .ensureQueryData({
-            queryKey: ["conversations", "", "visible"],
-            queryFn: () => listConversations(""),
-          })
-          .then((list) => new Set(list.items.map((c) => c.id)))
-          .catch(() => null);
+      : await Promise.race([
+          queryClient
+            .ensureQueryData({
+              queryKey: ["conversations", "", "visible"],
+              queryFn: () => listConversations(""),
+            })
+            .then((list) => new Set(list.items.map((c) => c.id)))
+            .catch(() => null),
+          new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 3_000)),
+        ]);
     try {
       await send.mutateAsync({ message, references, conversationId: targetId });
       return true;
