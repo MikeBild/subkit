@@ -200,6 +200,11 @@ export function validateFormFieldValue(
         JSON.parse(value);
         return null;
       } catch (err) {
+        // The parser's reason quotes the offending token ("Unexpected
+        // identifier \"<token>\""), and this message travels in field_errors,
+        // SSE error frames and chat text. A sensitive field's token is the
+        // secret, so its message names only the fact.
+        if (field.sensitive === true) return { message: "invalid JSON" };
         const reason = err instanceof Error ? err.message : "parse error";
         return { message: `invalid JSON: ${reason}` };
       }

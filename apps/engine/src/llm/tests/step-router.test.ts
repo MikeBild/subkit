@@ -616,6 +616,18 @@ describe("intent-directed execution hands control back after the first step", ()
   });
 });
 
+describe("a trimmed-snapshot enumeration forces list_workflows only for the first step", () => {
+  test("step 0 keeps the stream-level force", () => {
+    const decision = prepareStep(baseParams({ stepNumber: 0, forcedTool: "list_workflows" }));
+    expect(decision?.toolChoice).toBeUndefined();
+  });
+
+  test("step 1 releases it so the model can answer from the list", () => {
+    const decision = prepareStep(baseParams({ stepNumber: 1, forcedTool: "list_workflows" }));
+    expect(decision?.toolChoice).toBe("auto");
+  });
+});
+
 describe("saved workflow inspection keeps preparation reachable", () => {
   const stages = [
     "workflow_targeted",

@@ -145,12 +145,13 @@ import {
   budgetPill,
   type ChatNavigation,
   chatHeaderTitle,
+  conversationOpenedByFailedSend,
   costPill,
   nextSessionKey,
   type OptimisticMessage,
   optimisticUiMessage,
   optimisticVisible,
-  shouldRestoreComposer,
+  recoverFailedSend,
   tokenPill,
   userMessageCount,
 } from "./chat-session";
@@ -1082,6 +1083,8 @@ export function ChatPage() {
   // The mode a new conversation was sent in, shown until its detail arrives.
   const [sentMode, setSentMode] = useState<AuthoringMode | null>(null);
   const restoreComposer = useRef<RestoreComposer | null>(null);
+  // The conversation the running create stream opened, named by its first frame.
+  const startedConversationId = useRef<string | null>(null);
   const navigate = (navigation: ChatNavigation, beginsHere: boolean) => {
     setSessionKey((key) => nextSessionKey(key, navigation));
     setStartedHere(beginsHere);
@@ -1147,6 +1150,7 @@ export function ChatPage() {
       setLiveCalls([]);
 
       const { workflowId, connectorId } = chatSeedFromUrl(window.location.search);
+      startedConversationId.current = null;
       return sendConversationTurn(
         activeId
           ? {
@@ -1164,7 +1168,14 @@ export function ChatPage() {
                 ...(connectorId ? { connector_id: connectorId } : {}),
               },
             },
-        onTurnEvent,
+        (event) => {
+          if (event.type === "conversation_started") {
+            const id = (event.conversation as { id?: unknown } | undefined)?.id;
+            if (typeof id === "string") startedConversationId.current = id;
+            return;
+          }
+          onTurnEvent(event);
+        },
       );
     },
     onError: async () => {
@@ -1228,12 +1239,51 @@ export function ChatPage() {
     };
     setOptimistic(pending);
     if (!activeId) setSentMode(newPermissionMode);
+    const knownIds = new Set((conversations.data?.items ?? []).map((c) => c.id));
     try {
       await send.mutateAsync({ message, references });
       return true;
     } catch {
-      const after = activeId ? ((await detail.refetch()).data?.messages ?? []) : [];
-      if (!shouldRestoreComposer(pending, after)) return true;
+      // A failed first send may still have opened the conversation and stored
+      // the request. Find it, move there, and hand the text back only if the
+      // request is not in it — otherwise a second send would store it twice.
+      let openedId: string | null = null;
+      if (!activeId) {
+        const [listed] = await Promise.all([
+          listConversations("").catch(() => null),
+          queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+        ]);
+        openedId = conversationOpenedByFailedSend({
+          startedId: startedConversationId.current,
+          knownIds,
+          sentAt: pending.sentAt,
+          listed: listed?.items ?? [],
+        });
+      }
+      const after = activeId
+        ? ((await detail.refetch()).data?.messages ?? null)
+        : openedId
+          ? ((
+              await queryClient
+                .fetchQuery({
+                  queryKey: ["conversation", openedId],
+                  queryFn: () => getConversation(openedId ?? ""),
+                })
+                .catch(() => null)
+            )?.messages ?? null)
+          : null;
+      const recovery = recoverFailedSend({
+        activeId,
+        openedId,
+        optimistic: pending,
+        messagesAfter: after,
+      });
+      if (recovery.switchTo) {
+        setSelection({ kind: "existing", id: recovery.switchTo });
+        setChatPath(recovery.switchTo, true);
+        setSessionKey((key) => nextSessionKey(key, "firstSendSaved"));
+      }
+      if (!recovery.restoreComposer) return true;
       setOptimistic(null);
       restoreComposer.current?.(message, references);
       return false;
