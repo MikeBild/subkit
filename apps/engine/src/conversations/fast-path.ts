@@ -46,6 +46,7 @@ import {
 } from "../tools/approval.ts";
 import { policyDecide } from "../tools/policy.ts";
 import type { ToolSurface } from "../tools/types.ts";
+import { loadCategoryIndex } from "../workflows/catalog-view.ts";
 import { resolveWorkflowInputContract } from "../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../workflows/lookup.ts";
 import { gateWorkflowRunRbac } from "../workflows/rbac.ts";
@@ -144,7 +145,7 @@ const LIST_RES = {
   ],
 } as const;
 
-function matchListIntent(text: string): keyof typeof LIST_RES | null {
+export function matchListIntent(text: string): keyof typeof LIST_RES | null {
   for (const kind of Object.keys(LIST_RES) as Array<keyof typeof LIST_RES>) {
     if (LIST_RES[kind].some((re) => re.test(text))) return kind;
   }
@@ -650,15 +651,20 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
     return answerCatalogRead(p, tool, {}, await rendererFor(listKind)(p));
   }
 
-  // One catalog block ("zeig mir die notion-Workflows"). Same `workflow:read`
-  // gate as the full list; a word that is not a live category falls through.
+  // One catalog block ("zeig mir die notion-Workflows"). A word that is not a
+  // live category ("failed", "my", "aktiven") falls through BEFORE the gate:
+  // it is not a catalog read, so it earns no permission denial and no audit
+  // row. A live one takes the same `workflow:read` gate as the full list.
   const categoryCandidate = matchCategoryListIntent(text);
   if (categoryCandidate) {
-    const input = { category: categoryCandidate };
-    const denied = await denyCatalogRead(p, "workflow:read", "list_workflows", input);
-    if (denied) return denied;
-    const payload = await renderWorkflowCategoryList(p, categoryCandidate);
-    if (payload) return answerCatalogRead(p, "list_workflows", input, payload);
+    const index = await loadCategoryIndex(p.tenant_id, p.db);
+    if ([...index.values()].includes(categoryCandidate)) {
+      const input = { category: categoryCandidate };
+      const denied = await denyCatalogRead(p, "workflow:read", "list_workflows", input);
+      if (denied) return denied;
+      const payload = await renderWorkflowCategoryList(p, categoryCandidate, index);
+      if (payload) return answerCatalogRead(p, "list_workflows", input, payload);
+    }
   }
 
   // Multi-catalog enumeration ("connectors and workflows and knowledge
