@@ -110,7 +110,7 @@ services:
       ]
 
   engine:
-    image: ${SUBKIT_IMAGE:-mikebild/subkit:${SUBKIT_IMAGE_TAG:-8.11.1}}
+    image: ${SUBKIT_IMAGE:-mikebild/subkit:${SUBKIT_IMAGE_TAG:-8.12.0}}
     # "Restart now" in the settings (POST /v1/system/restart) drains the engine
     # and ends it with exit code 75; this policy starts it again. Declare that
     # once with `sk settings set server.restart_supervised true` — without a
