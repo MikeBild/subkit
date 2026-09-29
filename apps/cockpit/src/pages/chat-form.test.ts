@@ -1,6 +1,13 @@
 import { expect, test } from "bun:test";
 import type { ConversationDetail } from "@/api/client";
-import { type ChatForm, chatForm, formFieldLabel, formValues } from "./chat-form";
+import {
+  type ChatForm,
+  chatForm,
+  formFieldLabel,
+  formInputKind,
+  formValues,
+  initialFieldValue,
+} from "./chat-form";
 
 const form: ChatForm = {
   id: "question",
@@ -70,4 +77,61 @@ test("a field without a label is its name, marked as one — never invented pros
     text: "Website",
     machine: false,
   });
+});
+
+// The engine's credential form: `ask_user_form` with a masked `token` field.
+const credentialForm: ChatForm = {
+  id: "credential",
+  toolCallId: "ask",
+  question: "Enter the Metabase API key",
+  expiresAt: "2030-01-01T00:00:00Z",
+  intentKind: "save_connector_draft",
+  fields: [
+    { name: "token", label: "API key", type: "password", sensitive: true, required: true },
+    { name: "host", label: "Host", type: "text", default: "metabase.example.test" },
+  ],
+};
+
+test("a credential form is answerable: its secret field is masked, required and sent as text", () => {
+  const detail = {
+    tool_calls: [{ id: "ask", tool: "ask_user_form", input: {} }],
+    resume_summary: {
+      pending_approval: {
+        id: "credential",
+        tool_call_id: "ask",
+        tool_name: "ask_user_form",
+        expires_at: credentialForm.expiresAt,
+        prompt: {
+          question: credentialForm.question,
+          fields: credentialForm.fields,
+          intent_kind: "save_connector_draft",
+        },
+      },
+    },
+  } as unknown as ConversationDetail;
+  expect(chatForm(detail)).toEqual(credentialForm);
+  expect(formValues(credentialForm, { token: "", host: "h" })).toBeNull();
+  expect(formValues(credentialForm, { token: "s3cr3t", host: "h" })).toEqual({
+    token: "s3cr3t",
+    host: "h",
+  });
+});
+
+test("every field type has a control; secrets are masked and never pre-filled", () => {
+  expect(formInputKind({ type: "password" })).toBe("secret");
+  expect(formInputKind({ type: "text", sensitive: true })).toBe("secret");
+  expect(formInputKind({ type: "json", sensitive: true })).toBe("secret");
+  expect(formInputKind({ type: "text" })).toBe("text");
+  expect(formInputKind({ type: "number" })).toBe("number");
+  expect(formInputKind({ type: "json" })).toBe("textarea");
+  expect(formInputKind({ type: "boolean" })).toBe("checkbox");
+  expect(formInputKind({ type: "select" })).toBe("select");
+  expect(formInputKind({ type: "multi" })).toBe("multi");
+  expect(
+    initialFieldValue({ name: "t", label: "T", type: "password", default: "leaked-default" }),
+  ).toBe("");
+  expect(
+    initialFieldValue({ name: "t", label: "T", type: "text", sensitive: true, default: "leak" }),
+  ).toBe("");
+  expect(initialFieldValue({ name: "n", label: "N", type: "number", default: 3 })).toBe("3");
 });

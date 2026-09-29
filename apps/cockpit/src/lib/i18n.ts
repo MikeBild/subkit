@@ -120,6 +120,8 @@ const EN = {
     "Complete the missing report settings. This does not authorize automatic runs.",
   "chat.form.cancel": "Cancel question",
   "chat.form.submit": "Use these details",
+  "chat.form.secretHint": "Never stored or shown in the chat.",
+  "chat.form.secretHintConnector": "Stored encrypted with the connector, never shown in the chat.",
   "chat.choice.title": "Your answer is needed",
   "chat.choice.select": "Choose an option",
   "chat.choice.submit": "Send selection",
@@ -2954,6 +2956,9 @@ const DE: Record<TranslationKey, string> = {
     "Ergänze die fehlenden Berichtseinstellungen. Dadurch werden keine automatischen Läufe freigegeben.",
   "chat.form.cancel": "Rückfrage abbrechen",
   "chat.form.submit": "Angaben übernehmen",
+  "chat.form.secretHint": "Wird nie im Chat gespeichert oder angezeigt.",
+  "chat.form.secretHintConnector":
+    "Wird verschlüsselt beim Konnektor gespeichert, nie im Chat angezeigt.",
   "chat.choice.title": "Deine Antwort wird benötigt",
   "chat.choice.select": "Option auswählen",
   "chat.choice.submit": "Auswahl senden",
