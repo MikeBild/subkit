@@ -19,6 +19,7 @@ import { AuditAction } from "../audit/index.ts";
 import { auditLog, executions, tenants, workflows, workflowVersions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { getMetrics } from "../observability/metrics.ts";
+import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { readOperatingFigures, resolveOperatingBounds } from "./operating-figures.ts";
 import {
@@ -32,7 +33,7 @@ let testDb: TestDb;
 let tenant_id: string;
 let quiet_tenant_id: string;
 
-const hoursAgo = (hours: number): Date => new Date(Date.now() - hours * 3_600_000);
+const hoursAgo = (hours: number): Date => new Date(getTestNow() - hours * 3_600_000);
 
 beforeAll(async () => {
   testDb = await createTestDb("overview_ratios_parity");
@@ -113,7 +114,7 @@ function sectionMetric(overview: OperationalOverview, id: string) {
 test("the success and repair ratios are the operating figures' counts", async () => {
   invalidateOperationalOverview(tenant_id);
   const overview = await getOperationalOverview(testDb.db, tenant_id);
-  const bounds = resolveOperatingBounds({ window: "24h" }, new Date());
+  const bounds = resolveOperatingBounds({ window: "24h" }, new Date(getTestNow()));
   if (!bounds.ok) throw new Error(bounds.reason);
   const figures = await readOperatingFigures(testDb.db, tenant_id, bounds);
 
