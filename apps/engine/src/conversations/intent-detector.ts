@@ -33,7 +33,8 @@ export interface DetectedIntent {
    * the TENANT SNAPSHOT block already has the answer; forcing
    * no-tools is the only reliable way to stop Sonnet-class models
    * from reflexively calling `list_workflows` even when the data is
-   * already in the prompt.
+   * already in the prompt. Set only when the snapshot lists EVERY row of
+   * the kinds asked about; a trimmed snapshot forces the list tool instead.
    */
   forceNoTools?: boolean;
   /**
@@ -111,6 +112,45 @@ const ENUMERATION_PATTERNS = [
   /\b(workflows?|connectors?|integrations?)\b.*\b(habe ich|do i have|listen?|available|vorhanden|insgesamt)/i,
 ];
 
+const WORKFLOW_NOUN_RE = /\bworkflows?\b/i;
+const CONNECTOR_NOUN_RE = /\b(?:connectors?|integrations?)\b/i;
+
+/**
+ * Which kinds the TENANT SNAPSHOT lists completely this turn — the loop reads
+ * it from `loadSnapshotCoverage` (`llm/core/tenant-summary.ts`). Mirrors
+ * `SnapshotCoverage` structurally so the detector stays free of DB imports.
+ */
+export interface EnumerationCoverage {
+  workflows_complete: boolean;
+  connectors_complete: boolean;
+}
+
+/** True when the text is an enumeration question the snapshot could answer. */
+export function matchesEnumerationIntent(text: string | null | undefined): boolean {
+  const trimmed = text?.trim();
+  return !!trimmed && ENUMERATION_PATTERNS.some((p) => p.test(trimmed));
+}
+
+/**
+ * Enumeration steering. `toolChoice: "none"` stays for a snapshot that lists
+ * every row of each kind asked about — that pin is what stopped the
+ * reflexive list_* loop and its 1M-token empty turns. A TRIMMED kind is only
+ * a page: withholding tools there forced an answer from the first 40 rows,
+ * and the model denied workflows past the cap. So a trimmed kind forces its
+ * list tool for the first step instead (the router releases it afterwards).
+ */
+function enumerationIntent(text: string, coverage: EnumerationCoverage): DetectedIntent {
+  const asksWorkflows = WORKFLOW_NOUN_RE.test(text);
+  const asksConnectors = CONNECTOR_NOUN_RE.test(text);
+  if (asksWorkflows && !coverage.workflows_complete) {
+    return { forceTool: "list_workflows", reason: "enumeration_snapshot_trimmed" };
+  }
+  if (asksConnectors && !coverage.connectors_complete) {
+    return { forceTool: "list_connectors", reason: "enumeration_snapshot_trimmed" };
+  }
+  return { forceNoTools: true, reason: "enumeration_answer_from_snapshot" };
+}
+
 const COMMIT_DRAFT_PATTERNS = [
   /\b(speichere|save|commit|persist|bewahre)\b.*\b(workflow|draft|änderungen?)/i,
 ];
@@ -135,9 +175,15 @@ export function detectMultiArtifactIntent(text: string | null | undefined): bool
   return MULTI_ARTIFACT_PATTERNS.some((p) => p.test(trimmed));
 }
 
+const FULL_COVERAGE: EnumerationCoverage = { workflows_complete: true, connectors_complete: true };
+
 /** Parse the most recent user text for a strong tool intent. Returns
- *  a bare reason when no forceTool match was found. */
-export function detectUserIntent(latestUserText: string | null | undefined): DetectedIntent {
+ *  a bare reason when no forceTool match was found. `coverage` only matters
+ *  for enumeration questions; the converse loop always passes the live one. */
+export function detectUserIntent(
+  latestUserText: string | null | undefined,
+  coverage: EnumerationCoverage = FULL_COVERAGE,
+): DetectedIntent {
   if (!latestUserText) return { reason: "no_user_text" };
   const text = latestUserText.trim();
   if (!text) return { reason: "empty_user_text" };
@@ -175,11 +221,7 @@ export function detectUserIntent(latestUserText: string | null | undefined): Det
   if (authoringSignal) {
     return { startNewWorkflow: true, reason: "explicit_new_workflow_intent" };
   }
-  for (const pattern of ENUMERATION_PATTERNS) {
-    if (pattern.test(text)) {
-      return { forceNoTools: true, reason: "enumeration_answer_from_snapshot" };
-    }
-  }
+  if (matchesEnumerationIntent(text)) return enumerationIntent(text, coverage);
   for (const pattern of COMMIT_DRAFT_PATTERNS) {
     if (pattern.test(text)) {
       return { forceTool: "save_workflow_draft", reason: "explicit_commit_intent" };
