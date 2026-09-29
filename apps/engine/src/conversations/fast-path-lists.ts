@@ -117,10 +117,38 @@ function oneLine(text: string): string {
  * so the caller hands the turn to the model instead of answering
  * "0 workflows" for a word that merely sat where a category would.
  */
+export type ReplyLanguage = "de" | "en";
+
+const LIFECYCLE_DE: Record<string, string> = {
+  draft: "Entwurf",
+  active: "aktiv",
+  archived: "archiviert",
+};
+
+/**
+ * A category-list row. The name follows the slug only when it says something
+ * the slug does not — a workflow named after its slug would read twice.
+ */
+export function categoryListLine(
+  row: { slug: string; name: string; lifecycle: string; description: string | null },
+  language: ReplyLanguage,
+): string {
+  const lifecycle =
+    language === "de" ? (LIFECYCLE_DE[row.lifecycle] ?? row.lifecycle) : row.lifecycle;
+  const parts: string[] = [];
+  if (row.name && row.name !== row.slug) parts.push(row.name);
+  if (row.description && row.description !== row.name && row.description !== row.slug) {
+    parts.push(row.description);
+  }
+  const what = parts.length > 0 ? ` — ${parts.join(": ")}` : "";
+  return `- ${row.slug} (${lifecycle})${what}`;
+}
+
 export async function renderWorkflowCategoryList(
   p: FastPathParams,
   category: string,
   categoryIndex?: ReadonlyMap<string, string>,
+  language: ReplyLanguage = "en",
 ): Promise<RenderPayload | null> {
   const index = categoryIndex ?? (await loadCategoryIndex(p.tenant_id, p.db));
   const members = [...index.entries()].filter(([, c]) => c === category).map(([slug]) => slug);
@@ -156,13 +184,18 @@ export async function renderWorkflowCategoryList(
     const described = r.description?.trim() || definition_description?.trim() || "";
     return { ...r, category, description: described ? oneLine(described) : null };
   });
-  const lines = items.map((r) => {
-    const what = r.description && r.description !== r.name ? `: ${r.description}` : "";
-    return `- ${r.slug} (${r.lifecycle}) — ${r.name}${what}`;
-  });
+  const lines = items.map((r) => categoryListLine(r, language));
+  const noun =
+    language === "de"
+      ? items.length === 1
+        ? "Workflow"
+        : "Workflows"
+      : items.length === 1
+        ? "workflow"
+        : "workflows";
   return {
     ok: true,
-    reply: `${items.length} workflow${items.length === 1 ? "" : "s"} in **${category}**:\n${lines.join("\n")}`,
+    reply: `${items.length} ${noun} in **${category}**:\n${lines.join("\n")}`,
     data: {
       category,
       items,
