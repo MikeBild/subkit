@@ -7,6 +7,11 @@
 // one reader "prices not configured" about a model another reader sees priced.
 // The rates come from here: the built-in catalog, overridden per model by the
 // tenant's `tokens.prices`.
+//
+// Every surface prices through `readLlmCost` with its own `llm_usage`
+// predicate. There is deliberately no "price these per-model sums" entry
+// point: a sum over several calls cannot tell a long-context call from two
+// short ones, so pricing must start from the rows.
 
 import { type SQL, sql } from "drizzle-orm";
 import { getConfig } from "../config/loader.ts";
@@ -40,12 +45,6 @@ function tenantRates(tenantId: string): { prices: SourcedModelPrice[]; currency:
     prices: effectiveModelPrices(tokens ?? {}),
     currency: tokens?.currency ?? MODEL_PRICE_CATALOG_CURRENCY,
   };
-}
-
-/** Price a set of per-model token sums at the tenant's rates in force now. */
-export function priceForTenant(tenantId: string, calls: readonly PricedTokens[]): CostResult {
-  const { prices, currency } = tenantRates(tenantId);
-  return priceCalls(calls, prices, currency);
 }
 
 /**
