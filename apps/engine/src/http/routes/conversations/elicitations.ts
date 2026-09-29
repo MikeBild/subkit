@@ -124,6 +124,8 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
       if (wantsSSE(c.req.header("accept"))) {
         const response = streamSSE(c, async (stream) => {
           try {
+            // A new turn starts: whatever killed the previous one is history.
+            await svc.clearConversationTurnFailure(db, principal.tenant_id, id).catch(() => {});
             const outcome = await svc.respondElicitation(
               {
                 ...baseParams,
@@ -159,13 +161,13 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               );
               return;
             }
-            const err = error as Error;
-            await stream.writeSSE(
-              errorFrame({
-                code: "internal",
-                message: err?.message ?? "internal_error",
-              }),
-            );
+            // The resumed turn failed like any other: typed, and kept on the
+            // conversation so a reload still says why.
+            const failure = svc.describeTurnFailure(error);
+            await svc
+              .recordConversationTurnFailure(db, principal.tenant_id, id, failure)
+              .catch(() => {});
+            await stream.writeSSE(errorFrame(svc.turnFailureFramePayload(failure)));
           } finally {
             unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
@@ -246,6 +248,8 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
       if (wantsSSE(c.req.header("accept"))) {
         const response = streamSSE(c, async (stream) => {
           try {
+            // A new turn starts: whatever killed the previous one is history.
+            await svc.clearConversationTurnFailure(db, principal.tenant_id, id).catch(() => {});
             const outcome = await svc.respondElicitation(
               {
                 ...baseParams,
@@ -281,13 +285,13 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               );
               return;
             }
-            const err = error as Error;
-            await stream.writeSSE(
-              errorFrame({
-                code: "internal",
-                message: err?.message ?? "internal_error",
-              }),
-            );
+            // The resumed turn failed like any other: typed, and kept on the
+            // conversation so a reload still says why.
+            const failure = svc.describeTurnFailure(error);
+            await svc
+              .recordConversationTurnFailure(db, principal.tenant_id, id, failure)
+              .catch(() => {});
+            await stream.writeSSE(errorFrame(svc.turnFailureFramePayload(failure)));
           } finally {
             unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
