@@ -25,6 +25,7 @@ describe("isAdminFromPermissions", () => {
     expect(isAdminFromPermissions(["credential:delete"])).toBe(true); // prefix match
     expect(isAdminFromPermissions(["discovery:approve"])).toBe(true);
     expect(isAdminFromPermissions(["connector:promote"])).toBe(true);
+    expect(isAdminFromPermissions(["system:restart"])).toBe(true);
   });
 
   test("credential:read stays a member-scoped permission and does NOT light up the Admin tab", () => {

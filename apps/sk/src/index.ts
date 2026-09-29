@@ -52,6 +52,7 @@ import { skillCandidatesCommand } from "./commands/skill-candidates.ts";
 import { skillsCommand } from "./commands/skills.ts";
 import { statsCommand } from "./commands/stats.ts";
 import { subscriptionsCommand } from "./commands/subscriptions.ts";
+import { systemCommand } from "./commands/system.ts";
 import { systemAccountsCommand } from "./commands/system-accounts.ts";
 import { updateCommand } from "./commands/update.ts";
 import { usersCommand } from "./commands/users.ts";
@@ -506,6 +507,7 @@ const mainCommand = defineCommand({
     "portal-tokens": portalTokensCommand,
     users: usersCommand,
     invites: invitesCommand,
+    system: systemCommand,
     "system-accounts": systemAccountsCommand,
   },
   async run({ args }) {
@@ -708,6 +710,7 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   "portal-tokens": { command: portalTokensCommand, requires: "portal_token:read" },
   users: { command: usersCommand, requires: "identity:read" },
   invites: { command: invitesCommand, requires: "identity:read" },
+  system: { command: systemCommand, requires: "system:restart" },
   "system-accounts": { command: systemAccountsCommand, requires: "identity:read" },
 };
 

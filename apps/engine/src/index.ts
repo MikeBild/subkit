@@ -149,6 +149,8 @@ async function runServer(): Promise<void> {
   await bootPhase("runtime_config", () => initializeRuntimeConfig(db, cfg));
   const runtimeConfigCoordinator = new RuntimeConfigCoordinator(db, OPENAPI_INFO.version);
   await bootPhase("runtime_config_coordinator", () => runtimeConfigCoordinator.start());
+  const restart = await import("./runtime-config/restart.ts");
+  await bootPhase("restart_outcome", () => restart.answerRestartRequestAtBoot(db));
   recordBootConsumer("runtime-config");
 
   // Non-fundamental consumers start only after the canonical snapshot lands.
@@ -545,7 +547,10 @@ async function runServer(): Promise<void> {
   // conversation turns; any process supervisor's stop timeout must remain above it.
   const SHUTDOWN_DRAIN_TIMEOUT_MS = 120_000;
   let shutting = false;
-  const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+  const shutdown = async (
+    signal: NodeJS.Signals | "restart",
+    exitCode = restart.shutdownExitCode("signal"),
+  ): Promise<void> => {
     if (shutting) return;
     shutting = true;
     // Flip readiness to draining BEFORE closing the HTTP server so the load
@@ -564,7 +569,7 @@ async function runServer(): Promise<void> {
         action: "shutdown.hard_kill",
         msg: "graceful shutdown timed out, exiting forcibly",
       });
-      process.exit(1);
+      process.exit(restart.shutdownExitCode("timeout"));
     }, SHUTDOWN_DRAIN_TIMEOUT_MS + 20_000);
     (hardKill as unknown as { unref?: () => void }).unref?.();
     try {
@@ -624,10 +629,14 @@ async function runServer(): Promise<void> {
       });
     }
     clearTimeout(hardKill);
-    process.exit(0);
+    process.exit(exitCode);
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
+  // POST /v1/system/restart: the same drain, then exit 75 for the supervisor.
+  restart.registerRestartTrigger(
+    () => void shutdown("restart", restart.shutdownExitCode("restart")),
+  );
 
   // Touch the listener so the unused-var linter is happy.
   void listener;
