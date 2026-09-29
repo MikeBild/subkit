@@ -220,8 +220,10 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       // never see the SSE wire). Mirrors the hand-rolled `/stream`
       // replay route below that bypasses openapi for the same reason.
       return streamSSE(c, async (stream) => {
+        let createdId: string | null = null;
         try {
           const created = await svc.createConversation(createParams, db);
+          createdId = created.conversation.id;
           // Emit the `conversation_started` frame as soon as the row
           // exists so the client learns the conversation_id before the
           // turn finishes.
@@ -243,13 +245,17 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
           });
           await stream.writeSSE(outcomeFrame(outcome));
         } catch (error) {
-          const err = error as Error;
-          await stream.writeSSE(
-            errorFrame({
-              code: "internal",
-              message: err?.message ?? "internal_error",
-            }),
-          );
+          const failure = svc.describeTurnFailure(error);
+          // The first turn fails like any later one: the conversation exists
+          // and holds the request, so it keeps why the turn died. Without
+          // this a reload — or a client that lost the stream — showed a
+          // conversation that looked as if it were still thinking.
+          if (createdId) {
+            await svc
+              .recordConversationTurnFailure(db, principal.tenant_id, createdId, failure)
+              .catch(() => {});
+          }
+          await stream.writeSSE(errorFrame(svc.turnFailureFramePayload(failure)));
         }
       }) as Response & RouteConfigToTypedResponse<typeof createRouteSpec>;
     }
