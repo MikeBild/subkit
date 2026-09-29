@@ -8,6 +8,7 @@ import {
   isStillRestarting,
   type RestartStatus,
   restartOffer,
+  restartOfferAfterSave,
   restartRefusalKey,
   restartSaveNote,
   restartSignsEveryoneOut,
@@ -89,5 +90,15 @@ describe("following the restart", () => {
   test("a pending session secret signs everyone out, and the dialog must say so", () => {
     expect(restartSignsEveryoneOut(["auth.session.secret"])).toBe(true);
     expect(restartSignsEveryoneOut(["server.port"])).toBe(false);
+  });
+});
+
+describe("the offer once this save lands", () => {
+  test("switching the supervisor on in the same save makes the restart possible", () => {
+    expect(restartOfferAfterSave("manual", "true")).toBe("restart");
+    expect(restartOfferAfterSave("restart", "false")).toBe("manual");
+    expect(restartOfferAfterSave("manual", undefined)).toBe("manual");
+    // The permission is not a setting.
+    expect(restartOfferAfterSave("ask_admin", "true")).toBe("ask_admin");
   });
 });

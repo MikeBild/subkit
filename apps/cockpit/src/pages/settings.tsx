@@ -86,7 +86,7 @@ import {
   SettingsRestartOffer,
   useRestartOffer,
 } from "@/pages/settings-restart";
-import { restartSaveNote } from "@/pages/settings-restart-model";
+import { restartOfferAfterSave, restartSaveNote } from "@/pages/settings-restart-model";
 
 type AuthProviderSetting =
   | {
@@ -936,6 +936,7 @@ export function SettingsPage() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [restartOpen, setRestartOpen] = useState(false);
   const restartNow = useRestartOffer();
+  const saveOffer = restartOfferAfterSave(restartNow.offer, drafts["server.restart_supervised"]);
   const [restartNowOpen, setRestartNowOpen] = useState(false);
   // Somebody saved a newer revision since the page was read: the save bar says
   // so and asks for a reload; the drafts stay.
@@ -1386,7 +1387,7 @@ export function SettingsPage() {
                     </li>
                   ))}
                 </ul>
-                <p>{t(restartSaveNote(restartNow.offer))}</p>
+                <p>{t(restartSaveNote(saveOffer))}</p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1394,7 +1395,7 @@ export function SettingsPage() {
             <AlertDialogCancel data-testid="settings-restart-cancel">
               {t("common.cancel")}
             </AlertDialogCancel>
-            {restartNow.offer === "restart" ? (
+            {saveOffer === "restart" ? (
               <AlertDialogAction
                 variant="outline"
                 onClick={() => save.mutate(undefined, { onSuccess: () => setRestartNowOpen(true) })}

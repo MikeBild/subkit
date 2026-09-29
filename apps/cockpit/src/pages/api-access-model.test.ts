@@ -336,3 +336,10 @@ describe("the tabs: their order, the one that opens, and what they count", () =>
     expect(sectionBadgeText("clients", 12, t)).toBeNull();
   });
 });
+
+test("one valid approval reads singular, more read plural — no (n)", () => {
+  const { translate } = require("@/lib/i18n") as typeof import("@/lib/i18n");
+  expect(translate("de", "connectedClients.live.one")).toBe("1 gültige Freigabe");
+  expect(translate("de", "connectedClients.live", { count: "3" })).toBe("3 gültige Freigaben");
+  expect(translate("de", "connectedClients.live", { count: "3" })).not.toContain("(n)");
+});

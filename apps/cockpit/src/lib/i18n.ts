@@ -816,7 +816,7 @@ const EN = {
   "people.deactivate": "Deactivate",
   "people.deactivateDescription": "Deactivate {email} and revoke their active access?",
   "people.deactivateConnections":
-    "This also ends {count} approval(s) for connected applications — every application {email} approved stops working at once.",
+    "This also ends the approvals for apps with access to SubKit ({count}) — every app {email} approved stops working at once.",
   "people.created": "Person added",
   "people.roleUpdated": "Role updated",
   "people.deactivated": "Person deactivated",
@@ -871,7 +871,8 @@ const EN = {
     "An app connects by opening this installation's MCP address; you approve its access there.",
   "connectedClients.approvedBy": "Approved by {people}",
   "connectedClients.noLiveApproval": "No live approval — nothing can use this registration.",
-  "connectedClients.live": "{count} valid approval(s)",
+  "connectedClients.live.one": "1 valid approval",
+  "connectedClients.live": "{count} valid approvals",
   "connectedClients.revoked": "Revoked",
   "connectedClients.retired": "Retired",
   "connectedClients.noneGranted": "Nobody holds a valid approval for an application right now.",
@@ -3660,7 +3661,7 @@ const DE: Record<TranslationKey, string> = {
   "people.deactivate": "Deaktivieren",
   "people.deactivateDescription": "{email} deaktivieren und aktive Zugriffe widerrufen?",
   "people.deactivateConnections":
-    "Damit enden auch {count} Freigabe(n) für verbundene Anwendungen — jede von {email} freigegebene Anwendung funktioniert sofort nicht mehr.",
+    "Damit enden auch die Freigaben für Apps mit Zugriff auf SubKit ({count}) — jede von {email} freigegebene App funktioniert sofort nicht mehr.",
   "people.created": "Person angelegt",
   "people.roleUpdated": "Rolle aktualisiert",
   "people.deactivated": "Person deaktiviert",
@@ -3716,7 +3717,8 @@ const DE: Record<TranslationKey, string> = {
   "connectedClients.approvedBy": "Freigegeben von {people}",
   "connectedClients.noLiveApproval":
     "Keine gültige Freigabe — diese Registrierung kann niemand nutzen.",
-  "connectedClients.live": "{count} gültige Freigabe(n)",
+  "connectedClients.live.one": "1 gültige Freigabe",
+  "connectedClients.live": "{count} gültige Freigaben",
   "connectedClients.revoked": "Widerrufen",
   "connectedClients.retired": "Stillgelegt",
   "connectedClients.noneGranted": "Gerade hält niemand eine gültige Freigabe für eine Anwendung.",
