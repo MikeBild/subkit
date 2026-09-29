@@ -1967,6 +1967,8 @@ const EN = {
   "chat.failed": "Action failed",
   "chat.replyHint": "Your answer to the question …",
   "chat.pendingQuestionRequired": "Answer the open question using its controls to continue.",
+  "chat.failedKept": "Your message is kept.",
+  "chat.failedDetail": "Provider message",
   "chat.failedDescription": "The request could not be completed. Your input has been kept.",
   "chat.cause.provider_quota_exhausted": "The AI provider's usage limit has been reached.",
   "chat.cause.provider_quota_exhaustedUntil":
@@ -4868,6 +4870,8 @@ const DE: Record<TranslationKey, string> = {
   "chat.replyHint": "Deine Antwort auf die Rückfrage …",
   "chat.pendingQuestionRequired":
     "Beantworte die offene Rückfrage über ihre Auswahl, um fortzufahren.",
+  "chat.failedKept": "Deine Nachricht bleibt erhalten.",
+  "chat.failedDetail": "Meldung des Anbieters",
   "chat.failedDescription":
     "Die Anfrage konnte nicht abgeschlossen werden. Deine Eingabe bleibt erhalten.",
   "chat.cause.provider_quota_exhausted": "Das Nutzungslimit beim KI-Anbieter ist erreicht.",

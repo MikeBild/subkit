@@ -1749,23 +1749,27 @@ export function ChatPage() {
             constant string does not. */}
         {(send.error || turnFailure) && (
           <Alert variant="destructive" className="m-4 mb-0" data-testid="chat-error">
-            <AlertTitle>{t("chat.failed")}</AlertTitle>
-            <AlertDescription>
-              {send.error instanceof ApiError &&
-              send.error.code === "pending_elicitation_blocked" ? (
-                t("chat.pendingQuestionRequired")
-              ) : (
-                <>
-                  <p>{t("chat.failedDescription")}</p>
-                  {failureCauseText && (
-                    <p className="mt-1 font-medium" data-testid="chat-error-cause">
-                      {failureCauseText}
-                    </p>
-                  )}
+            {send.error instanceof ApiError && send.error.code === "pending_elicitation_blocked" ? (
+              <>
+                <AlertTitle>{t("chat.failed")}</AlertTitle>
+                <AlertDescription>{t("chat.pendingQuestionRequired")}</AlertDescription>
+              </>
+            ) : (
+              <>
+                {/* A known cause is the headline; the provider's own words stay
+                    one click away instead of a block of red monospace. */}
+                <AlertTitle data-testid={failureCauseText ? "chat-error-cause" : undefined}>
+                  {failureCauseText ?? t("chat.failed")}
+                </AlertTitle>
+                <AlertDescription>
+                  <p>{t(failureCauseText ? "chat.failedKept" : "chat.failedDescription")}</p>
+                  {!failureCauseText && <p className="mt-1">{t("chat.retryManual")}</p>}
                   {turnFailureMessage && (
-                    <p className="mt-1 break-words font-mono text-xs">{turnFailureMessage}</p>
+                    <details className="mt-1 text-xs" data-testid="chat-error-detail">
+                      <summary className="cursor-pointer">{t("chat.failedDetail")}</summary>
+                      <p className="mt-1 break-words font-mono">{turnFailureMessage}</p>
+                    </details>
                   )}
-                  <p className="mt-1">{t("chat.retryManual")}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <Button
                       variant="outline"
@@ -1777,9 +1781,9 @@ export function ChatPage() {
                       {t("chat.retryCheck")}
                     </Button>
                   </div>
-                </>
-              )}
-            </AlertDescription>
+                </AlertDescription>
+              </>
+            )}
           </Alert>
         )}
 
