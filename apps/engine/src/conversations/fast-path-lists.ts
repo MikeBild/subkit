@@ -120,8 +120,9 @@ function oneLine(text: string): string {
 export async function renderWorkflowCategoryList(
   p: FastPathParams,
   category: string,
+  categoryIndex?: ReadonlyMap<string, string>,
 ): Promise<RenderPayload | null> {
-  const index = await loadCategoryIndex(p.tenant_id, p.db);
+  const index = categoryIndex ?? (await loadCategoryIndex(p.tenant_id, p.db));
   const members = [...index.entries()].filter(([, c]) => c === category).map(([slug]) => slug);
   if (members.length === 0) return null;
   const rows = await p.db
