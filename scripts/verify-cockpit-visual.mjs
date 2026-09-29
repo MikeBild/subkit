@@ -1887,6 +1887,7 @@ async function mockApi(route) {
         total: 40,
         succeeded: 36,
         failed: 4,
+        finished: 40,
         success_rate_percent: 90,
         href: `/cockpit/runs?${new URLSearchParams(window)}`,
         failed_href: `/cockpit/runs?${new URLSearchParams({ status: "failed", ...window })}`,

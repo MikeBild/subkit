@@ -121,7 +121,7 @@ export interface OperatingCounts {
     total: number;
     /** Runs of the window that ended `failed` — what the success rate's link lists. */
     failed: number;
-    /** The engine's whole percent; null when no run started. */
+    /** The engine's whole percent over the runs that ended; null when none has ended. */
     successRatePercent: number | null;
   };
   connectors: { enabled: number; notOk: number; healthyPercent: number | null };
