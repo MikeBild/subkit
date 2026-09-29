@@ -11,6 +11,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { PROMPT_CACHE_TTL } from "../core/cache-blocks.ts";
+import { routeTop, routeUp } from "../core/step-router.ts";
 import {
   ANTHROPIC_ONE_HOUR_CACHE_WRITE_MULTIPLIER,
   effectiveModelPrices,
@@ -259,5 +260,15 @@ describe("cloud platform model ids", () => {
     const result = priceCalls([row("anthropic.claude-haiku-4-5-20251001-v1:0")], rates, "USD");
     expect(result.amount).toBeCloseTo(0.5, 6);
     expect(result.price_sources[0]?.price_source).toBe("override");
+  });
+});
+
+describe("platform reduction stays a pricing concern", () => {
+  test("routing never hands a Bedrock provider a direct-API model id", () => {
+    // The Bedrock ladder is keyed by Anthropic's own ids. Reducing a Bedrock
+    // id to that key would route the call to an id Bedrock does not serve.
+    const id = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
+    expect(routeUp("bedrock", id)).toBe(id);
+    expect(routeTop("bedrock", id)).toBe(id);
   });
 });
