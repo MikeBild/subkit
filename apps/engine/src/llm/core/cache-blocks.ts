@@ -19,6 +19,15 @@
 import { countTokens } from "../accounting/index.ts";
 import type { EnhancedPrompt, LlmFlow } from "../types.ts";
 
+/**
+ * The TTL of every prompt-cache breakpoint the engine sets. 1h is the practical
+ * sweet spot for long-running authoring sessions, and it is what the price
+ * catalog assumes: Anthropic cache writes are priced at the one-hour rate
+ * (2x input). A test pins every breakpoint in the engine to this value.
+ */
+export const PROMPT_CACHE_TTL = "1h" as const;
+export type PromptCacheTtl = typeof PROMPT_CACHE_TTL;
+
 export interface CacheBlocks {
   /** Stable head — send with cache-hint. */
   stable: string;
@@ -85,8 +94,13 @@ export function splitPromptIntoBlocks(prompt: EnhancedPrompt, flow: LlmFlow): Ca
 export interface CacheHintOptions {
   /** Apply the hint? Callers gate this on `ModelRoute.enable_prompt_cache`. */
   enabled: boolean;
-  /** 1h is the practical sweet spot for long-running authoring sessions. */
-  ttl?: "5m" | "1h";
+  /**
+   * Only the one-hour TTL: the price catalog charges Anthropic cache writes at
+   * the one-hour rate, so a shorter TTL would be billed below what the
+   * catalog claims. Changing it means changing `PROMPT_CACHE_TTL` and the
+   * catalog together.
+   */
+  ttl?: PromptCacheTtl;
 }
 
 /**
@@ -105,14 +119,14 @@ export function toSystemMessages(
   role: "system";
   content: string;
   providerOptions?: {
-    anthropic: { cacheControl: { type: "ephemeral"; ttl: "5m" | "1h" } };
+    anthropic: { cacheControl: { type: "ephemeral"; ttl: PromptCacheTtl } };
   };
 }> {
   const out: Array<{
     role: "system";
     content: string;
     providerOptions?: {
-      anthropic: { cacheControl: { type: "ephemeral"; ttl: "5m" | "1h" } };
+      anthropic: { cacheControl: { type: "ephemeral"; ttl: PromptCacheTtl } };
     };
   }> = [];
   if (blocks.stable.length > 0) {
@@ -120,12 +134,12 @@ export function toSystemMessages(
       role: "system";
       content: string;
       providerOptions?: {
-        anthropic: { cacheControl: { type: "ephemeral"; ttl: "5m" | "1h" } };
+        anthropic: { cacheControl: { type: "ephemeral"; ttl: PromptCacheTtl } };
       };
     } = { role: "system", content: blocks.stable };
     if (opts.enabled) {
       head.providerOptions = {
-        anthropic: { cacheControl: { type: "ephemeral", ttl: opts.ttl ?? "1h" } },
+        anthropic: { cacheControl: { type: "ephemeral", ttl: opts.ttl ?? PROMPT_CACHE_TTL } },
       };
     }
     out.push(head);

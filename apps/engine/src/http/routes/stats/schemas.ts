@@ -7,6 +7,7 @@
 //   - window:     top-level `totals`   — the whole-window summary.
 
 import { z } from "@hono/zod-openapi";
+import { PRICE_SOURCES } from "../../../llm/index.ts";
 import { BUCKET_UNITS } from "./bucket-window.ts";
 
 // A query param may arrive as a single string or a repeated array. This
@@ -239,10 +240,11 @@ export const LlmStatsResponse = z
         currency: z.string(),
         unpriced_models: z.array(z.string()),
         unpriced_calls: z.number().int(),
-        // Which rate priced each model: SubKit's built-in catalog, or the
-        // operator's own `tokens.prices` entry, which wins per model.
+        // Which rate priced each model: SubKit's built-in catalog, the
+        // catalog reached through a Bedrock/Vertex id (the platform may
+        // charge more), or the operator's `tokens.prices` entry, which wins.
         price_sources: z.array(
-          z.object({ model: z.string(), price_source: z.enum(["catalog", "override"]) }),
+          z.object({ model: z.string(), price_source: z.enum(PRICE_SOURCES) }),
         ),
         rates_basis: z.literal("current"),
       })

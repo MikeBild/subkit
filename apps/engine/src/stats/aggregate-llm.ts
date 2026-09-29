@@ -124,7 +124,9 @@ function readLatency(row: Record<string, unknown>): LatencyAgg {
   };
 }
 
-function buildWhere(p: LlmStatsParams): SQL {
+export function buildWhere(
+  p: Pick<LlmStatsParams, "tenantId" | "from" | "to" | "model" | "flow" | "userId">,
+): SQL {
   // Every column is qualified because `workflow` grouping joins `executions`,
   // which carries its own `tenant_id` and `created_at`. An unqualified name
   // becomes ambiguous the moment that join appears, and Postgres reports it as
