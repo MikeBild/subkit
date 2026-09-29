@@ -884,6 +884,9 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
         // byte equality. Six were English whatever happened, so the fixture
         // stands in one of the six.
         resume_summary: RESUME_SUMMARY,
+        // Started in a mode the page can state, so §14's matrix has a mode.
+        draft: { session: { permission_mode: "ask" } },
+        usage: { tokens: 0, by_model: [], cost: null },
       });
 
     // The detail surfaces the sweep now reaches, answered from the same rows
@@ -3309,6 +3312,58 @@ async function checkConnectorSignIn(page) {
   if (/Anbindung/i.test(state.text)) breach("§5", where, 'the word "Anbindung" is on the page');
 }
 
+/**
+ * §14 — the mode names its gates at the picker. The matrix no longer stands
+ * permanently under the pill; it is behind "Was heißt das?" beside it, and
+ * that popover must hold the whole matrix: what asks first, what does not, and
+ * what no mode decides. A pill that only named the mode would be the reading
+ * trap §14 forbids.
+ */
+async function checkModeGates(page) {
+  const where = "/chat · Modus";
+  const pill = page.locator('[data-testid="chat-permission"]');
+  try {
+    await pill.waitFor({ state: "visible", timeout: 15_000 });
+  } catch {
+    breach("§14", where, "no mode at the conversation");
+    return;
+  }
+  if (await page.getByTestId("chat-mode-gates").isVisible())
+    breach("§14", where, "the gate matrix stands permanently under the mode");
+  await page.getByTestId("chat-mode-explain").click();
+  const gates = page.getByTestId("chat-mode-gates");
+  try {
+    await gates.waitFor({ state: "visible", timeout: 5_000 });
+  } catch {
+    breach("§14", where, '"Was heißt das?" opens no gate matrix');
+    return;
+  }
+  for (const row of ["chat-mode-gates-asks", "chat-mode-gates-outside"])
+    if ((await page.getByTestId(row).count()) !== 1)
+      breach("§14", where, `the matrix has no ${row.replace("chat-mode-gates-", "")} row`);
+  await page.keyboard.press("Escape");
+}
+
+/**
+ * §6 — one sidebar toggle, and no top bar that holds nothing else. On a wide
+ * list page the toggle stands in the page header beside the title; the title
+ * row's leading edge is the line the body starts on.
+ */
+async function checkSidebarToggle(page, where) {
+  const shape = await page.evaluate(() => {
+    const triggers = [...document.querySelectorAll('[data-testid="sidebar-trigger"]')];
+    const header = document.querySelector('[data-family-slot="page-header"]');
+    return {
+      count: triggers.length,
+      inPageHeader: Boolean(header && triggers[0] && header.contains(triggers[0])),
+      bar: Boolean(document.querySelector('[data-testid="cockpit-header"]')),
+    };
+  });
+  if (shape.count !== 1) breach("§6", where, `${shape.count} sidebar toggles on one screen`);
+  if (shape.bar) breach("§6", where, "an empty top bar stands above the page header");
+  if (!shape.inPageHeader) breach("§6", where, "the sidebar toggle is not beside the page title");
+}
+
 async function checkResumeLine(page) {
   const line = await page.evaluate(() => {
     const element = document.querySelector('[data-testid="chat-summary"]');
@@ -4003,12 +4058,14 @@ try {
 
   const chat = await openPage(context, "chat");
   await checkResumeLine(chat);
+  await checkModeGates(chat);
   await chat.close();
 
   const rights = await openPage(context, "api-access");
   await checkRightsPage(rights);
   await rights.close();
   const workflowList = await openPage(context, "workflows");
+  await checkSidebarToggle(workflowList, "/workflows");
   await checkWorkflowListHealth(workflowList);
   await workflowList.close();
   await checkConnectionsRedirect(context);
