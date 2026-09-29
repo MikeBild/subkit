@@ -6,7 +6,9 @@
 //   the canonical source of truth for the P8 flows.
 // - `llm_usage` records every SDK call — success or failure — so budget
 //   accounting, fallback telemetry, and operator debugging all land in a
-//   single append-only ledger.
+//   single append-only ledger. Token columns hold BILLED tokens: a failure
+//   without output was not processed and is written with zeros
+//   (`billedTokenUsage` in `llm/pricing.ts`).
 
 import { sql } from "drizzle-orm";
 import {

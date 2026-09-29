@@ -86,6 +86,7 @@ import sql0065LushMadrox from "./0065_lush_madrox.sql" with { type: "text" };
 import sql0066SafePatch from "./0066_safe_patch.sql" with { type: "text" };
 import sql0067RetiredOauthClients from "./0067_retired_oauth_clients.sql" with { type: "text" };
 import sql0068EngineRestartRequests from "./0068_engine_restart_requests.sql" with { type: "text" };
+import sql0069UnbilledRefusedLlmCalls from "./0069_unbilled_refused_llm_calls.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -179,6 +180,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0066_safe_patch": sql0066SafePatch,
   "0067_retired_oauth_clients": sql0067RetiredOauthClients,
   "0068_engine_restart_requests": sql0068EngineRestartRequests,
+  "0069_unbilled_refused_llm_calls": sql0069UnbilledRefusedLlmCalls,
 };
 
 const journal = journalMeta as unknown as Journal;
