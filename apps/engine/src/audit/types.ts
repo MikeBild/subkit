@@ -634,6 +634,13 @@ export const AuditAction = {
   ENGINE_UPDATE_COMPLETED: "engine.update.completed",
   ENGINE_UPDATE_FAILED: "engine.update.failed",
   ENGINE_UPDATE_ROLLED_BACK: "engine.update.rolled_back",
+  // `POST /v1/system/restart`: the request is written by the process that
+  // drains; completed/failed by the process that boots next, once it knows
+  // whether the waiting revision became active. All three share
+  // resource_id = the request id.
+  ENGINE_RESTART_REQUESTED: "engine.restart.requested",
+  ENGINE_RESTART_COMPLETED: "engine.restart.completed",
+  ENGINE_RESTART_FAILED: "engine.restart.failed",
 
   // ---------------------------------------------------------------------
   // External MCP servers. An external MCP server is a connector whose

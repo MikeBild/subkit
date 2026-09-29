@@ -502,8 +502,10 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
             db,
           );
           if (restartRequired && !body.force) {
+            // A hot leaf saved on top of a revision that still waits for its
+            // restart waits with it; name what the restart is waiting for.
             throw new RestartRequiredError(
-              `${leaf.path.join(".")} was saved as revision ${saved.saved_revision} and requires a process restart before activation.`,
+              `${leaf.path.join(".")} was saved as revision ${saved.saved_revision} and becomes active with the next process restart (waiting for it: ${saved.pending_restart_fields.join(", ")}).`,
             );
           }
           if (!restartRequired) {

@@ -372,6 +372,9 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "secret.version_prepared": "audit.action.secretPrepared",
   "secret.version_approved": "audit.action.secretApproved",
   "secret.version_rejected": "audit.action.secretRejected",
+  "engine.restart.requested": "audit.action.engineRestartRequested",
+  "engine.restart.completed": "audit.action.engineRestartCompleted",
+  "engine.restart.failed": "audit.action.engineRestartFailed",
   // Read off the running installation rather than off the enum: 182 distinct
   // verbs have actually been written there, and the map above named 67 of
   // them — 96.31 % of rows, because the long tail is housekeeping. These ten

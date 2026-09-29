@@ -2386,6 +2386,86 @@
           "value"
         ]
       },
+      "EngineRestartStatus": {
+        "type": "object",
+        "properties": {
+          "boot_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Random per engine process; changes with every start"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "saved_revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "active_revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "activation_status": {
+            "type": "string",
+            "enum": [
+              "saved",
+              "preparing",
+              "active",
+              "failed",
+              "restart_required"
+            ]
+          },
+          "restart_supervised": {
+            "type": "boolean",
+            "description": "server.restart_supervised of the saved revision: a supervisor restarts the engine"
+          },
+          "pending_restart_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "boot_id",
+          "started_at",
+          "saved_revision",
+          "active_revision",
+          "activation_status",
+          "restart_supervised",
+          "pending_restart_fields"
+        ]
+      },
+      "EngineRestartAccepted": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "audit_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The engine.restart.requested audit entry"
+          },
+          "boot_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The process that accepted the request and now ends"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "request_id",
+          "audit_id",
+          "boot_id",
+          "expected_revision"
+        ]
+      },
       "SettingsListResponse": {
         "type": "object",
         "properties": {
@@ -25968,6 +26048,97 @@
           },
           "422": {
             "description": "Invalid secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/system/restart-status": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Which engine process runs, and whether a saved setting still waits for a restart",
+        "responses": {
+          "200": {
+            "description": "Restart status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngineRestartStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/system/restart": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Restart the engine so a saved restart-sensitive setting takes effect",
+        "description": "Accepted only when server.restart_supervised is on, a restart-required revision waits, and exactly one engine instance is live. The engine then drains like on SIGTERM and exits with code 75; the supervisor starts it again. Follow GET /v1/system/restart-status until boot_id changes and active_revision equals saved_revision.",
+        "responses": {
+          "202": {
+            "description": "Restart accepted; the engine drains and ends shortly after this response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngineRestartAccepted"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refused: not_supervised, nothing_pending, multiple_replicas or restart_in_progress",
             "content": {
               "application/json": {
                 "schema": {

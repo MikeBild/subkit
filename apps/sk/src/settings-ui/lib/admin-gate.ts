@@ -26,6 +26,7 @@ const ADMIN_ONLY_PERMISSIONS: ReadonlySet<string> = new Set([
   "api_key:revoke",
   "discovery:approve",
   "connector:promote",
+  "system:restart",
 ]);
 
 /**
