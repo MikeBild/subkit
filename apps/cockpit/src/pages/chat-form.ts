@@ -9,6 +9,8 @@ export interface ChatForm {
   question: string;
   fields: ChatFormField[];
   expiresAt: string;
+  /** What the harness does with the answer, e.g. `save_connector_draft`. */
+  intentKind?: string;
 }
 export function chatForm(detail: ConversationDetail | undefined): ChatForm | null {
   const pending = detail?.resume_summary?.pending_approval;
@@ -25,7 +27,58 @@ export function chatForm(detail: ConversationDetail | undefined): ChatForm | nul
     question: pending.prompt.question,
     fields: pending.prompt.fields,
     expiresAt: pending.expires_at,
+    ...(pending.prompt.intent_kind ? { intentKind: pending.prompt.intent_kind } : {}),
   };
+}
+
+/** A field whose answer is a secret: masked on entry, never pre-filled or echoed. */
+export function isSecretField(field: Pick<ChatFormField, "type" | "sensitive">): boolean {
+  return field.type === "password" || field.sensitive === true;
+}
+
+export type FormInputKind =
+  | "checkbox"
+  | "select"
+  | "multi"
+  | "textarea"
+  | "number"
+  | "secret"
+  | "text";
+
+/**
+ * The control a field renders as. Exhaustive over the engine's field types:
+ * when the engine learns a new one, this stops compiling until the card can
+ * show it — a form the reader cannot answer is a dead end.
+ */
+export function formInputKind(field: Pick<ChatFormField, "type" | "sensitive">): FormInputKind {
+  switch (field.type) {
+    case "boolean":
+      return "checkbox";
+    case "select":
+      return "select";
+    case "multi":
+      return "multi";
+    case "password":
+      return "secret";
+    // A sensitive typed value is masked too; its type still validates it.
+    case "json":
+      return field.sensitive ? "secret" : "textarea";
+    case "number":
+      return field.sensitive ? "secret" : "number";
+    case "text":
+      return field.sensitive ? "secret" : "text";
+    default: {
+      const unhandled: never = field.type;
+      return unhandled;
+    }
+  }
+}
+
+/** The value a field starts with. Secrets always start empty. */
+export function initialFieldValue(field: ChatFormField): string | boolean | string[] {
+  if (field.default === undefined || isSecretField(field))
+    return field.type === "boolean" ? false : "";
+  return typeof field.default === "number" ? String(field.default) : field.default;
 }
 
 /**

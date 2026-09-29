@@ -15785,11 +15785,15 @@
                                 "number",
                                 "boolean",
                                 "select",
+                                "password",
                                 "json",
                                 "multi"
                               ]
                             },
                             "required": {
+                              "type": "boolean"
+                            },
+                            "sensitive": {
                               "type": "boolean"
                             },
                             "placeholder": {

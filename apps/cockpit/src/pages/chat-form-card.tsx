@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -21,7 +21,13 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
-import { type ChatForm, formFieldLabel, formValues } from "./chat-form";
+import {
+  type ChatForm,
+  formFieldLabel,
+  formInputKind,
+  formValues,
+  initialFieldValue,
+} from "./chat-form";
 
 export function ChatFormCard({
   form,
@@ -57,18 +63,7 @@ export function ChatFormCard({
     if (initialized.current === form.id) return;
     initialized.current = form.id;
     setValues(
-      Object.fromEntries(
-        form.fields.map((field) => [
-          field.name,
-          field.default === undefined
-            ? field.type === "boolean"
-              ? false
-              : ""
-            : typeof field.default === "number"
-              ? String(field.default)
-              : field.default,
-        ]),
-      ),
+      Object.fromEntries(form.fields.map((field) => [field.name, initialFieldValue(field)])),
     );
   }, [form]);
   useEffect(() => {
@@ -79,6 +74,11 @@ export function ChatFormCard({
   const output = formValues(form, values);
   const set = (name: string, value: string | boolean | string[]) =>
     setValues((current) => ({ ...current, [name]: value }));
+  const secretHint = t(
+    form.intentKind === "save_connector_draft"
+      ? "chat.form.secretHintConnector"
+      : "chat.form.secretHint",
+  );
   return (
     <Card tone="question" size="sm" data-testid={testId}>
       <CardHeader>
@@ -86,98 +86,118 @@ export function ChatFormCard({
         <CardDescription>{question}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {form.fields.map((field, fieldIndex) => (
-          <Field key={field.name}>
-            <FieldLabel htmlFor={`${testId}-${field.name}`}>
-              <LabelText label={formFieldLabel(field, fieldLabels)} />
-              {field.required ? " *" : ""}
-            </FieldLabel>
-            {field.type === "boolean" ? (
-              <Checkbox
-                data-testid={`${testId}-field-${fieldIndex}`}
-                id={`${testId}-${field.name}`}
-                disabled={busy || expired}
-                checked={values[field.name] === true}
-                onCheckedChange={(checked) => set(field.name, checked === true)}
-              />
-            ) : field.type === "select" ? (
-              <Select
-                disabled={busy || expired}
-                value={String(values[field.name] ?? "")}
-                onValueChange={(value) => set(field.name, value)}
-              >
-                <SelectTrigger
+        {form.fields.map((field, fieldIndex) => {
+          const kind = formInputKind(field);
+          return (
+            <Field key={field.name}>
+              <FieldLabel htmlFor={`${testId}-${field.name}`}>
+                <LabelText label={formFieldLabel(field, fieldLabels)} />
+                {field.required ? " *" : ""}
+              </FieldLabel>
+              {kind === "checkbox" ? (
+                <Checkbox
                   data-testid={`${testId}-field-${fieldIndex}`}
                   id={`${testId}-${field.name}`}
+                  disabled={busy || expired}
+                  checked={values[field.name] === true}
+                  onCheckedChange={(checked) => set(field.name, checked === true)}
+                />
+              ) : kind === "select" ? (
+                <Select
+                  disabled={busy || expired}
+                  value={String(values[field.name] ?? "")}
+                  onValueChange={(value) => set(field.name, value)}
                 >
-                  <SelectValue placeholder={t("chat.choice.select")} />
-                </SelectTrigger>
-                <SelectContent>
+                  <SelectTrigger
+                    data-testid={`${testId}-field-${fieldIndex}`}
+                    id={`${testId}-${field.name}`}
+                  >
+                    <SelectValue placeholder={t("chat.choice.select")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {field.options?.map((option, optionIndex) =>
+                      typeof option === "object" ? (
+                        <SelectItem
+                          data-testid={`${testId}-field-${fieldIndex}-option-${optionIndex}`}
+                          key={option.value}
+                          value={option.value}
+                        >
+                          {option.label}
+                        </SelectItem>
+                      ) : null,
+                    )}
+                  </SelectContent>
+                </Select>
+              ) : kind === "multi" ? (
+                <div className="flex flex-col gap-2">
                   {field.options?.map((option, optionIndex) =>
-                    typeof option === "object" ? (
-                      <SelectItem
-                        data-testid={`${testId}-field-${fieldIndex}-option-${optionIndex}`}
-                        key={option.value}
-                        value={option.value}
-                      >
-                        {option.label}
-                      </SelectItem>
+                    typeof option === "string" ? (
+                      <label key={option} htmlFor={`${testId}-${field.name}-${option}`}>
+                        <Checkbox
+                          data-testid={`${testId}-field-${fieldIndex}-option-${optionIndex}`}
+                          id={`${testId}-${field.name}-${option}`}
+                          disabled={busy || expired}
+                          checked={
+                            Array.isArray(values[field.name]) &&
+                            (values[field.name] as string[]).includes(option)
+                          }
+                          onCheckedChange={(checked) => {
+                            const previous = Array.isArray(values[field.name])
+                              ? (values[field.name] as string[])
+                              : [];
+                            set(
+                              field.name,
+                              checked === true
+                                ? [...previous, option]
+                                : previous.filter((v) => v !== option),
+                            );
+                          }}
+                        />{" "}
+                        {option}
+                      </label>
                     ) : null,
                   )}
-                </SelectContent>
-              </Select>
-            ) : field.type === "multi" ? (
-              <div className="flex flex-col gap-2">
-                {field.options?.map((option, optionIndex) =>
-                  typeof option === "string" ? (
-                    <label key={option} htmlFor={`${testId}-${field.name}-${option}`}>
-                      <Checkbox
-                        data-testid={`${testId}-field-${fieldIndex}-option-${optionIndex}`}
-                        id={`${testId}-${field.name}-${option}`}
-                        disabled={busy || expired}
-                        checked={
-                          Array.isArray(values[field.name]) &&
-                          (values[field.name] as string[]).includes(option)
-                        }
-                        onCheckedChange={(checked) => {
-                          const previous = Array.isArray(values[field.name])
-                            ? (values[field.name] as string[])
-                            : [];
-                          set(
-                            field.name,
-                            checked === true
-                              ? [...previous, option]
-                              : previous.filter((v) => v !== option),
-                          );
-                        }}
-                      />{" "}
-                      {option}
-                    </label>
-                  ) : null,
-                )}
-              </div>
-            ) : field.type === "json" ? (
-              <Textarea
-                data-testid={`${testId}-field-${fieldIndex}`}
-                id={`${testId}-${field.name}`}
-                disabled={busy || expired}
-                value={String(values[field.name] ?? "")}
-                placeholder={field.placeholder}
-                onChange={(e) => set(field.name, e.target.value)}
-              />
-            ) : (
-              <Input
-                data-testid={`${testId}-field-${fieldIndex}`}
-                id={`${testId}-${field.name}`}
-                type={field.type === "number" ? "number" : "text"}
-                disabled={busy || expired}
-                value={String(values[field.name] ?? "")}
-                placeholder={field.placeholder}
-                onChange={(e) => set(field.name, e.target.value)}
-              />
-            )}
-          </Field>
-        ))}
+                </div>
+              ) : kind === "textarea" ? (
+                <Textarea
+                  data-testid={`${testId}-field-${fieldIndex}`}
+                  id={`${testId}-${field.name}`}
+                  disabled={busy || expired}
+                  value={String(values[field.name] ?? "")}
+                  placeholder={field.placeholder}
+                  onChange={(e) => set(field.name, e.target.value)}
+                />
+              ) : kind === "secret" ? (
+                <Input
+                  data-testid={`${testId}-field-${fieldIndex}`}
+                  id={`${testId}-${field.name}`}
+                  type="password"
+                  autoComplete="new-password"
+                  spellCheck={false}
+                  disabled={busy || expired}
+                  value={String(values[field.name] ?? "")}
+                  placeholder={field.placeholder}
+                  onChange={(e) => set(field.name, e.target.value)}
+                />
+              ) : (
+                <Input
+                  data-testid={`${testId}-field-${fieldIndex}`}
+                  id={`${testId}-${field.name}`}
+                  type={kind === "number" ? "number" : "text"}
+                  disabled={busy || expired}
+                  value={String(values[field.name] ?? "")}
+                  placeholder={field.placeholder}
+                  onChange={(e) => set(field.name, e.target.value)}
+                />
+              )}
+              {kind === "secret" && (
+                <FieldDescription data-testid={`${testId}-field-${fieldIndex}-hint`}>
+                  {secretHint}
+                </FieldDescription>
+              )}
+            </Field>
+          );
+        })}
         {expired && <p>{t("chat.decision.expired")}</p>}
         {error && <p role="alert">{t("chat.decision.failed")}</p>}
       </CardContent>

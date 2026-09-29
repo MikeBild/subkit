@@ -143,6 +143,29 @@ describe("POST /v1/conversations/{id}/messages — request_credential_form event
     // Same pending placeholder the paused LLM tool writes.
     expect((toolCallRow?.output as { status?: string })?.status).toBe("awaiting_input");
 
+    // ── The reader's view: the masked field is answerable in the cockpit ──
+    const detailRes = await fetch(`${http.baseUrl}/v1/conversations/${convId}`, {
+      headers: { authorization: `Bearer ${http.apiKey}` },
+    });
+    expect(detailRes.status).toBe(200);
+    const detail = (await detailRes.json()) as {
+      tool_calls: Array<{ id: string }>;
+      resume_summary?: {
+        pending_approval?: {
+          id: string;
+          tool_call_id?: string;
+          prompt?: { fields?: Array<Record<string, unknown>> };
+        };
+      };
+    };
+    const pendingView = detail.resume_summary?.pending_approval;
+    expect(pendingView?.id).toBe(elicitationId);
+    expect(detail.tool_calls.some((call) => call.id === pendingView?.tool_call_id)).toBe(true);
+    expect(pendingView?.prompt?.fields).toEqual([
+      expect.objectContaining({ name: "credential", type: "password", sensitive: true }),
+    ]);
+    expect(pendingView?.prompt?.fields?.[0]).not.toHaveProperty("default");
+
     // ── Resume: respond to the elicitation with the (fake) secret ──────
     const respondRes = await postJson(
       `/v1/conversations/${convId}/elicitations/${elicitationId}/respond`,

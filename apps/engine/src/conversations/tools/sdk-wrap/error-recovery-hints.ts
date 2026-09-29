@@ -149,6 +149,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "no runnable workflow yet. If you are AUTHORING a new workflow (the user said build/create/make a workflow), call author_workflow (the one-shot grounded builder) — do NOT call run_workflow again. If a draft already exists, call dry_run_workflow (auto-commits on a clean preview) or save_workflow_draft. Never retry run_workflow with the same args.",
   credential_form_mismatch:
     "the credential form's field names don't match the canonical slots for this auth_type — re-issue ask_user_form using the canonical names (bearer→token; basic→username,password; header→header_name,header_value; query→param,value; aws_sigv4→access_key_id,secret_access_key; oauth2→client_id,client_secret); see the `missing` list in the result envelope",
+  form_not_renderable:
+    "the user's form card cannot show this form, so nobody could answer it — re-issue ask_user_form with 1–100 fields, each with a unique name, a label and a documented field type",
   probe_unchanged:
     "this exact probe already failed and nothing changed since — do NOT re-probe with the same draft. Change the base_url / credential / config via update_connector_draft, or verify the endpoint via fetch_connector_docs / search_docs first",
   connector_not_found:
