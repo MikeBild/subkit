@@ -27,6 +27,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { PopoverContent } from "@/components/ui/popover";
 import { useI18n } from "@/lib/i18n-context";
 import {
   type ConversationReference,
@@ -291,9 +292,19 @@ export function MentionPicker({
   const { t } = useI18n();
   if (!open) return null;
   let index = 0;
+  // Portalled above the composer. Drawn inside the composer area it was cut
+  // off by that area's own scroll box: the menu was in the DOM, correct, and
+  // invisible — typing "@" seemed to do nothing.
   return (
-    <div
-      className="absolute inset-x-0 bottom-full z-20 mb-2 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-md"
+    <PopoverContent
+      side="top"
+      align="start"
+      sideOffset={8}
+      // The caret stays in the textarea; the menu never takes focus.
+      onOpenAutoFocus={(event) => event.preventDefault()}
+      onCloseAutoFocus={(event) => event.preventDefault()}
+      style={{ width: "var(--radix-popper-anchor-width)" }}
+      className="overflow-hidden rounded-lg border p-0 ring-0"
       data-testid="chat-mention-popover"
     >
       <Command shouldFilter={false} value={highlighted ?? ""} onValueChange={onHighlight}>
@@ -349,7 +360,7 @@ export function MentionPicker({
           {t("chat.mention.hint")}
         </div>
       </Command>
-    </div>
+    </PopoverContent>
   );
 }
 

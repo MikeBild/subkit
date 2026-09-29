@@ -4032,6 +4032,18 @@ for (const locale of variants) {
       await page.locator('[data-testid="chat-composer-input"]').fill("Prüfe @mon");
       await page.locator('[data-testid="chat-mention-popover"]').waitFor({ state: "visible" });
       await page.locator('[data-testid="chat-mention-item-0"]').waitFor({ state: "visible" });
+      // "Visible" to Playwright means a box, not that a reader sees it: the
+      // picker once sat inside the composer's scroll box, clipped to nothing,
+      // and passed. What is drawn at its first row must be the row itself.
+      const pickerHit = await page.evaluate(() => {
+        const row = document.querySelector('[data-testid="chat-mention-item-0"]');
+        if (!row) return false;
+        const r = row.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return Boolean(hit && row.contains(hit));
+      });
+      if (!pickerHit)
+        throw new Error(`${locale.artifact}: the @-picker is in the page but covered or clipped`);
       await shoot(page, `${locale.artifact}-desktop-chat-mention`, {
         fullPage: false,
       });
