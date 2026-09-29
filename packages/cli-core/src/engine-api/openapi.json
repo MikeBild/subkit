@@ -1541,6 +1541,9 @@
               "failed": {
                 "type": "integer"
               },
+              "finished": {
+                "type": "integer"
+              },
               "success_rate_percent": {
                 "type": [
                   "integer",
@@ -1561,6 +1564,7 @@
               "total",
               "succeeded",
               "failed",
+              "finished",
               "success_rate_percent",
               "href",
               "failed_href"

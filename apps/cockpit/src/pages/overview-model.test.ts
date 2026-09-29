@@ -192,7 +192,7 @@ describe("the sentence", () => {
         NOW,
       ),
     );
-    expect(text).toBe("Die Kontoverbindung (ohne Namen) ist abgelaufen — seit 3 Tagen.");
+    expect(text).toBe("Die Verbindung (ohne Namen) ist abgelaufen — seit 3 Tagen.");
   });
 
   test("the engine's residual wording is not part of the list sentence", () => {

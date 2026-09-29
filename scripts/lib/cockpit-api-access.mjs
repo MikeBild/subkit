@@ -22,7 +22,7 @@ const TAB_NAMES = {
   en: ["Apps with access to SubKit", "Keys for scripts", "Access on your behalf"],
 };
 const RETIRED_NAMES = {
-  de: ["Kontoverbindungen", "Verbundene Anwendungen"],
+  de: ["Kontoverbindung", "Verbundene Anwendungen"],
   en: ["Account connections", "Connected applications"],
 };
 const GRANTS_BADGE = { de: (n) => `${n} erneuern`, en: (n) => `${n} to renew` };

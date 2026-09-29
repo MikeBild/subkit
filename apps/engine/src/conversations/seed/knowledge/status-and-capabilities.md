@@ -136,7 +136,7 @@ How to read: `monthly_total_tokens` is the rollup; `cost.amount` is money for th
 
 The Übersicht's operations figures over one window (needs `stats:read`). Input: `window` (`24h` default, `7d`, `30d`) or `from` / `to`. Both surfaces answer from one reader.
 
-Response (`schema_version: "operating-figures.v1"`): `window` (`from`, `to`); `runs` (`total` started in the window, `succeeded`, `failed`, `success_rate_percent`); `connectors` (`enabled`, `not_ok`, `healthy_percent` — a state of now, not of the window); `repairs` (`decided` and `applied` in the window, `applied_percent`). Each figure carries the cockpit list it counts (`href`); a `null` percent means nothing to count, never 0.
+Response (`schema_version: "operating-figures.v1"`): `window` (`from`, `to`); `runs` (`total` started in the window, `succeeded`, `failed`, `finished` — the ones that ended, `success_rate_percent` over the finished runs; a run still queued or running counts in neither); `connectors` (`enabled`, `not_ok`, `healthy_percent` — a state of now, not of the window); `repairs` (`decided` and `applied` in the window, `applied_percent`). Each figure carries the cockpit list it counts (`href`); a `null` percent means nothing to count, never 0.
 
 How to read: pass `window.from` / `window.to` to `list_executions` as `started_from` / `started_to` (or `GET /v1/executions?started_from=…&started_to=…`) to list exactly the runs counted. The operational overview's `executions.success_ratio` and `repairs.applied_ratio` (and their Prometheus gauges) are these figures over the last 24 hours, as a fraction instead of a whole percent.
 
