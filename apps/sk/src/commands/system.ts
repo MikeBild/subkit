@@ -29,6 +29,7 @@ export const REFUSAL_GUIDANCE: Record<string, string> = {
   multiple_replicas: `More than one engine instance is live; a restart from here would take down only one. ${MANUAL_RESTART}`,
   restart_in_progress:
     "A restart was requested a moment ago and is still running (or ended less than a minute ago). Check again with `sk settings list` in a minute.",
+  not_ready: "The engine is still starting and cannot restart yet. Try again in a moment.",
 };
 
 export type RestartWaitOutcome =

@@ -180,6 +180,24 @@ describe("POST /v1/system/restart and GET /v1/system/restart-status", () => {
     }
   });
 
+  test("refuses while no process restart is registered, and writes nothing", async () => {
+    // Before the entrypoint registered its restart, an accepted request would
+    // sit open with this boot's id and refuse every later one.
+    const early = await restart();
+    expect(early.status).toBe(409);
+    expect(early.body.code).toBe("not_ready");
+    const requested = await server.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, server.tenantId),
+          eq(auditLog.action, AuditAction.ENGINE_RESTART_REQUESTED),
+        ),
+      );
+    expect(requested).toHaveLength(0);
+  });
+
   test("accepts once, answers 202 before the process restart runs, and audits the request", async () => {
     let triggered = 0;
     const unregister = registerRestartTrigger(() => {

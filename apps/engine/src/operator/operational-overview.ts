@@ -345,7 +345,8 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
   // The numerator is the complement of `GET /v1/connectors?health=not_ok`:
   // one predicate, so the list a red tile opens holds exactly what it counted.
   const healthyConnectors = connectors - numberOf(row.connectors_not_ok);
-  const successRatio = figures.runs.total > 0 ? figures.runs.succeeded / figures.runs.total : null;
+  const successRatio =
+    figures.runs.finished > 0 ? figures.runs.succeeded / figures.runs.finished : null;
   const connectorRatio = connectors > 0 ? healthyConnectors / connectors : null;
   const repairAppliedRatio =
     figures.repairs.decided > 0 ? figures.repairs.applied / figures.repairs.decided : null;
@@ -557,7 +558,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
           id: "executions.success_ratio",
           label: "Execution success",
           definition:
-            "Successful runs divided by all runs started in the last 24 hours, as GET /v1/stats/operating-figures counts them; a run still in flight counts toward the whole, not the successes.",
+            "Successful runs divided by the runs started in the last 24 hours that have ended, as GET /v1/stats/operating-figures counts them; a run still queued or running counts neither way.",
           relevance: "Shows recent workflow reliability.",
           kind: "ratio",
           value: successRatio,

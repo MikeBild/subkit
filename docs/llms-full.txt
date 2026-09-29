@@ -4379,14 +4379,15 @@ same code as `GET /v1/stats/operating-figures`:
 
 | Metric | What it counts |
 |---|---|
-| `subkit_operational_execution_success_ratio` | Succeeded runs ÷ all runs **started** in the last 24 hours. A run still in flight counts toward the whole, so a burst of long runs lowers it until they finish. |
+| `subkit_operational_execution_success_ratio` | Succeeded runs ÷ runs **started** in the last 24 hours that have **ended**. A run still queued or running counts neither way, so long runs in flight do not lower it. |
 | `subkit_operational_repairs_applied_ratio` | Repairs approved or applied automatically ÷ all repairs **decided** (approved, applied automatically, rejected) in the last 24 hours. |
 
 Earlier versions counted runs *finished* in the last 24 hours and repairs by
-their stored status over all time; expect a step in both series on upgrade. A
-gauge with nothing to count (no run started, no repair decided) reads `NaN`, not
-`0` and not its previous value; alert on `> 0` / `< x` comparisons, which are false
-for `NaN`.
+their stored status over all time; expect a step in both series on upgrade.
+Every `subkit_operational_*` gauge without a value reads `NaN` — not `0` and not
+its previous value: a ratio with nothing to count (no run ended, no repair
+decided), and any figure whose source could not be read on that refresh. Alert on
+`> 0` / `< x` comparisons, which are false for `NaN`.
 
 > **Why the retry rate is windowed.** The `transient_retry` risk signal reads
 > `db_transient_retry_rate_per_min` — a windowed rate the 60s memory sampler computes

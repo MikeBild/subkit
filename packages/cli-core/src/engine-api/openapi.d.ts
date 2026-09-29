@@ -1949,7 +1949,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Refused: not_supervised, nothing_pending, multiple_replicas or restart_in_progress */
+                /** @description Refused: not_supervised, nothing_pending, multiple_replicas, restart_in_progress or not_ready */
                 409: {
                     headers: {
                         [name: string]: unknown;

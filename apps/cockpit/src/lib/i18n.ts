@@ -2434,6 +2434,8 @@ const EN = {
   "settings.restartNow.refused.nothingPending": "Nothing waits for a restart any more.",
   "settings.restartNow.refused.multipleReplicas":
     "More than one SubKit instance is running; from here only one would restart. Whoever operates the installation restarts them one after another.",
+  "settings.restartNow.refused.notReady": "SubKit is still starting; try again in a moment.",
+  "settings.restartNow.signInAgain": "SubKit is back. Sign in again to see the result.",
   "settings.restartNow.refused.inProgress":
     "A restart is already running or ended less than a minute ago.",
   "settings.auth.removeTitle": "Remove {provider}?",
@@ -5317,6 +5319,10 @@ const DE: Record<TranslationKey, string> = {
   "settings.restartNow.refused.nothingPending": "Nichts wartet mehr auf einen Neustart.",
   "settings.restartNow.refused.multipleReplicas":
     "Mehr als eine SubKit-Instanz läuft; von hier würde nur eine neu starten. Wer die Installation betreibt, startet sie nacheinander neu.",
+  "settings.restartNow.refused.notReady":
+    "SubKit startet gerade noch; versuch es gleich noch einmal.",
+  "settings.restartNow.signInAgain":
+    "SubKit ist wieder da. Melde dich neu an, um das Ergebnis zu sehen.",
   "settings.restartNow.refused.inProgress": "Ein Neustart läuft schon oder ist keine Minute her.",
   "settings.auth.removeTitle": "{provider} entfernen?",
   "settings.auth.removeConsequence":
