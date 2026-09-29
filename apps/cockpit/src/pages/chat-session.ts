@@ -63,6 +63,57 @@ export function shouldRestoreComposer(
   return userMessageCount(messagesAfter) <= optimistic.baseline;
 }
 
+/** How far the engine's clock may trail the browser's when naming a new conversation. */
+const CREATED_CLOCK_SKEW_MS = 60_000;
+
+/**
+ * The conversation a failed FIRST send opened, if it can be named without a
+ * guess. The create stream names it in its first frame, before the turn runs;
+ * a send that broke before that frame arrived is looked up in a fresh list:
+ * exactly one conversation that was not there before and was created since the
+ * send. None, or more than one, names nothing.
+ */
+export function conversationOpenedByFailedSend(input: {
+  startedId: string | null;
+  knownIds: ReadonlySet<string>;
+  sentAt: string;
+  listed: readonly { id: string; created_at: string }[];
+}): string | null {
+  if (input.startedId) return input.startedId;
+  const since = Date.parse(input.sentAt) - CREATED_CLOCK_SKEW_MS;
+  const fresh = input.listed.filter(
+    (c) => !input.knownIds.has(c.id) && Date.parse(c.created_at) >= since,
+  );
+  return fresh.length === 1 ? (fresh[0]?.id ?? null) : null;
+}
+
+/**
+ * What a failed send leaves on screen.
+ *
+ * A failed first send may already have created the conversation and stored
+ * the request: the reader moves to that conversation, so a second send lands
+ * there and not in a second one, and the text goes back to the composer only
+ * if the request was not stored. `messagesAfter` is that conversation's
+ * transcript after the failure (the current one's, for a later send); null
+ * when it could not be read.
+ */
+export function recoverFailedSend(input: {
+  activeId: string | null;
+  openedId: string | null;
+  optimistic: Pick<OptimisticMessage, "baseline">;
+  messagesAfter: readonly Pick<UiMessage, "role">[] | null;
+}): { switchTo: string | null; restoreComposer: boolean } {
+  const after = input.messagesAfter ?? [];
+  if (input.activeId) {
+    return { switchTo: null, restoreComposer: shouldRestoreComposer(input.optimistic, after) };
+  }
+  if (!input.openedId) return { switchTo: null, restoreComposer: true };
+  return {
+    switchTo: input.openedId,
+    restoreComposer: shouldRestoreComposer({ baseline: 0 }, after),
+  };
+}
+
 /** The stand-in, in the shape a saved request has, so its chips render the same. */
 export function optimisticUiMessage(optimistic: OptimisticMessage): UiMessage {
   return {

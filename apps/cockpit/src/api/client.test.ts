@@ -42,6 +42,23 @@ describe("sendConversationTurn", () => {
     });
   });
 
+  test("hands the created conversation to the caller before a failing turn ends", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          'event: conversation_started\ndata: {"conversation":{"id":"conversation-9"}}\n\nevent: error\ndata: {"code":"internal","message":"boom"}\n\n',
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+    ) as unknown as typeof fetch;
+    const events: Array<{ type: string; [key: string]: unknown }> = [];
+    await expect(
+      sendConversationTurn({ message: "hi" }, (event) => events.push(event)),
+    ).rejects.toThrow("boom");
+    expect(events).toEqual([
+      { type: "conversation_started", conversation: { id: "conversation-9" } },
+    ]);
+  });
+
   test("preserves an explicit conservative mode for a new conversation", async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       outcomeResponse(),
