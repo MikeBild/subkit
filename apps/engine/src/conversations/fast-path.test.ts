@@ -20,6 +20,7 @@ import {
 import { getMockProvider, resetMockProvider } from "../llm/mock-provider.ts";
 import { TEST_HUMAN_ANSWER } from "../test-helpers/answer-actor.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
+import { loadCategoryIndex } from "../workflows/catalog-view.ts";
 import { type FastPathParams, matchCategoryListIntent, tryFastPath } from "./fast-path.ts";
 import { renderRunOutput } from "./fast-path-render.ts";
 import { listWorkflowsTool } from "./tools/generated/workflows.ts";
@@ -755,6 +756,31 @@ describe("tryFastPath — one catalog block", () => {
       const result = await tryFastPath(makeParams(phrase));
       const items = findToolResultOutput(result?.events).items as Array<{ slug: string }>;
       expect(items.map((i) => i.slug).sort()).toEqual(listedSlugs);
+    }
+  });
+
+  test("every category the chip row shows answers with exactly its members", async () => {
+    await seedCategoryCatalog();
+    // A third block, so the check is not about one example.
+    for (const slug of ["radar-collect", "radar-normalize", "radar-publish"])
+      await seedMinimalWorkflow(slug);
+    // The chip row's source: GET /v1/workflows derives its blocks from this index.
+    const index = await loadCategoryIndex(tenantId, tdb.db);
+    const members = new Map<string, string[]>();
+    for (const [slug, category] of index)
+      members.set(category, [...(members.get(category) ?? []), slug]);
+    const categories = [...members.keys()];
+    expect(categories.length).toBeGreaterThanOrEqual(3);
+    for (const category of categories) {
+      // The exact text the chip sends.
+      const result = await tryFastPath(
+        makeParams(`Zeig mir die Workflows in @kategorie/${category}`),
+      );
+      expect(result, `no answer for ${category}`).not.toBeNull();
+      const output = findToolResultOutput(result?.events);
+      const items = (output.items as Array<{ slug: string }>).map((i) => i.slug).sort();
+      expect(items, category).toEqual((members.get(category) ?? []).sort());
+      expect(output.total, category).toBe(members.get(category)?.length);
     }
   });
 
