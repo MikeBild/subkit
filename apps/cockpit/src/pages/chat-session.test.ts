@@ -3,11 +3,13 @@ import { referencesFromPart } from "./chat-references";
 import {
   budgetPill,
   chatHeaderTitle,
+  conversationOpenedByFailedSend,
   costPill,
   nextSessionKey,
   type OptimisticMessage,
   optimisticUiMessage,
   optimisticVisible,
+  recoverFailedSend,
   shouldRestoreComposer,
   tokenPill,
 } from "./chat-session";
@@ -67,6 +69,90 @@ describe("the request just sent", () => {
     const message = optimisticUiMessage(pending({ references: [reference] }));
     expect(message.role).toBe("user");
     expect(referencesFromPart(message.parts[0]).references).toEqual([reference]);
+  });
+});
+
+describe("a failed first send", () => {
+  const sentAt = "2026-09-29T10:00:00.000Z";
+  const known = new Set(["old-1"]);
+
+  test("names the conversation the create stream announced", () => {
+    expect(
+      conversationOpenedByFailedSend({ startedId: "c-new", knownIds: known, sentAt, listed: [] }),
+    ).toBe("c-new");
+  });
+
+  test("without that frame, finds exactly one conversation created since the send", () => {
+    const listed = [
+      { id: "old-1", created_at: "2026-09-01T00:00:00.000Z" },
+      { id: "c-new", created_at: "2026-09-29T10:00:01.000Z" },
+      { id: "filtered-before", created_at: "2026-09-20T00:00:00.000Z" },
+    ];
+    expect(
+      conversationOpenedByFailedSend({ startedId: null, knownIds: known, sentAt, listed }),
+    ).toBe("c-new");
+  });
+
+  test("never guesses between two new conversations", () => {
+    const listed = [
+      { id: "c-a", created_at: "2026-09-29T10:00:01.000Z" },
+      { id: "c-b", created_at: "2026-09-29T10:00:02.000Z" },
+    ];
+    expect(
+      conversationOpenedByFailedSend({ startedId: null, knownIds: known, sentAt, listed }),
+    ).toBeNull();
+  });
+
+  test("moves to the opened conversation and keeps the text out when the request was stored", () => {
+    expect(
+      recoverFailedSend({
+        activeId: null,
+        openedId: "c-new",
+        optimistic: pending({ baseline: 0 }),
+        messagesAfter: [user],
+      }),
+    ).toEqual({ switchTo: "c-new", restoreComposer: false });
+  });
+
+  test("moves there and hands the text back when the request was not stored", () => {
+    expect(
+      recoverFailedSend({
+        activeId: null,
+        openedId: "c-new",
+        optimistic: pending({ baseline: 0 }),
+        messagesAfter: [],
+      }),
+    ).toEqual({ switchTo: "c-new", restoreComposer: true });
+  });
+
+  test("with no conversation opened, the text goes back and nothing moves", () => {
+    expect(
+      recoverFailedSend({
+        activeId: null,
+        openedId: null,
+        optimistic: pending({ baseline: 0 }),
+        messagesAfter: null,
+      }),
+    ).toEqual({ switchTo: null, restoreComposer: true });
+  });
+
+  test("a later send stays where it is and restores only a request the engine did not keep", () => {
+    expect(
+      recoverFailedSend({
+        activeId: "c1",
+        openedId: null,
+        optimistic: pending(),
+        messagesAfter: [user, assistant, user],
+      }),
+    ).toEqual({ switchTo: null, restoreComposer: false });
+    expect(
+      recoverFailedSend({
+        activeId: "c1",
+        openedId: null,
+        optimistic: pending(),
+        messagesAfter: [user, assistant],
+      }),
+    ).toEqual({ switchTo: null, restoreComposer: true });
   });
 });
 
