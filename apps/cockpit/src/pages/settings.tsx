@@ -46,7 +46,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useI18n } from "@/lib/i18n-context";
-import { EngineWording, LabelText } from "@/lib/machine-label";
+import { LabelText } from "@/lib/machine-label";
 import { cn } from "@/lib/utils";
 import {
   isUnset,
@@ -55,6 +55,7 @@ import {
   type SettingsAttention,
   type SettingsFilter,
   type SettingsResponse,
+  settingAppliesToShown,
   settingDiffersFromDefault,
   settingDraftError,
   settingFieldValue,
@@ -455,50 +456,54 @@ export function SettingsSectionNav({
 }
 
 /**
- * What an operator needs only to look something up or report it: the key
- * (with a copy button), where the value comes from, what it applies to and
- * the engine's own English description. Collapsed; the row itself reads in
- * the reader's language.
+ * The setting's key, for the one reader who needs it: somebody about to type
+ * `sk settings set <key>`. An icon beside the name, for those who may change
+ * settings — the tooltip shows the command it belongs in.
+ *
+ * Every row used to carry a collapsed "Technische Angaben" with the key, the
+ * source, the scope and the engine's English description. The source already
+ * stands on the row where it says something, the scope where it can differ,
+ * and the English sentence repeated the row's own help in another language.
  */
-export function SettingTechnical({ item, index }: { item: SettingItem; index: number }) {
+export function SettingCopyKey({ item, index }: { item: SettingItem; index: number }) {
   const { t } = useI18n();
   return (
-    <details className="mt-1 text-xs" data-testid={`setting-technical-${index}`}>
+    <IconButton
+      label={t("settings.copyKey")}
+      tooltip={
+        <code className="font-mono">{t("settings.copyKeyTooltip", { key: item.path })}</code>
+      }
+      size="icon-xs"
+      className="shrink-0"
+      data-testid={`setting-copy-key-${index}`}
+      onClick={() => {
+        void navigator.clipboard
+          ?.writeText(item.path)
+          .then(() => toast.success(t("settings.keyCopied")));
+      }}
+    >
+      <Copy />
+    </IconButton>
+  );
+}
+
+/**
+ * How a saved setting is kept and when it takes effect — asked once, answered
+ * once, below the list instead of beside every row.
+ */
+export function SettingsStorageNote() {
+  const { t } = useI18n();
+  return (
+    <details className="text-xs text-muted-foreground" data-testid="settings-storage">
       <summary
-        className="w-fit cursor-pointer text-muted-foreground hover:text-foreground"
-        data-testid={`setting-technical-toggle-${index}`}
+        className="w-fit cursor-pointer hover:text-foreground"
+        data-testid="settings-storage-toggle"
       >
-        {t("settings.technical")}
+        {t("settings.storage.title")}
       </summary>
-      <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
-        <dt className="text-muted-foreground">{t("settings.technical.key")}</dt>
-        <dd className="flex min-w-0 items-center gap-1">
-          <code className="min-w-0 break-all font-mono">{item.path}</code>
-          <IconButton
-            label={t("settings.technical.copyKey")}
-            size="icon-xs"
-            data-testid={`setting-copy-key-${index}`}
-            onClick={() => {
-              void navigator.clipboard
-                ?.writeText(item.path)
-                .then(() => toast.success(t("settings.technical.copied")));
-            }}
-          >
-            <Copy />
-          </IconButton>
-        </dd>
-        <dt className="text-muted-foreground">{t("settings.technical.source")}</dt>
-        <dd>
-          <LabelText label={settingMetaLabel(item.meta.source, t)} />
-        </dd>
-        <dt className="text-muted-foreground">{t("settings.technical.scope")}</dt>
-        <dd>
-          <LabelText label={settingMetaLabel(item.meta.scope, t)} />
-        </dd>
-      </dl>
-      {item.meta.description ? (
-        <EngineWording text={item.meta.description} testId={`setting-description-${index}`} />
-      ) : null}
+      <p className="mt-2 max-w-3xl" data-testid="settings-storage-body">
+        {t("settings.storage.body")}
+      </p>
     </details>
   );
 }
@@ -801,8 +806,9 @@ export function SettingsSectionHeading({
 
 /**
  * One setting: its name, what to know before changing it, the control on the
- * right. The key, the source and the engine's wording are in the collapsed
- * technical details, not on the row.
+ * right. Where the value comes from stands on the row only when it is not the
+ * installation's own, what it applies to only when it can differ per
+ * workspace, and the key behind a copy icon for those who may change it.
  */
 export function SettingRow({
   item,
@@ -810,6 +816,7 @@ export function SettingRow({
   highlighted,
   draft,
   disabled = false,
+  canCopyKey = false,
   onReset,
   children,
 }: {
@@ -818,6 +825,8 @@ export function SettingRow({
   highlighted: boolean;
   draft?: string;
   disabled?: boolean;
+  /** Only with `settings:write`: the key is for `sk settings set`, which needs it. */
+  canCopyKey?: boolean;
   onReset?: (draft: string) => void;
   children: ReactNode;
 }) {
@@ -828,6 +837,8 @@ export function SettingRow({
     : settingLabel(item.path, t);
   const help = settingHelpKey(item.path);
   const invalid = settingDraftError(item, draft);
+  const notableSource = settingSourceIsNotable(item.meta.source);
+  const appliesTo = settingAppliesToShown(item.meta);
   return (
     <div
       className={cn(
@@ -836,16 +847,20 @@ export function SettingRow({
         highlighted && "bg-muted ring-1 ring-ring/40",
       )}
       data-highlighted={highlighted || undefined}
+      data-setting-path={item.path}
       data-testid={`setting-item-${index}`}
     >
       <div className="min-w-0">
-        {wide ? (
-          <p className="text-sm font-medium break-words">{label.text}</p>
-        ) : (
-          <label className="text-sm font-medium break-words" htmlFor={`setting-${index}`}>
-            <LabelText label={label} />
-          </label>
-        )}
+        <div className="flex min-w-0 items-start gap-1">
+          {wide ? (
+            <p className="min-w-0 text-sm font-medium break-words">{label.text}</p>
+          ) : (
+            <label className="min-w-0 text-sm font-medium break-words" htmlFor={`setting-${index}`}>
+              <LabelText label={label} />
+            </label>
+          )}
+          {canCopyKey ? <SettingCopyKey item={item} index={index} /> : null}
+        </div>
         {help ? (
           <p className="mt-0.5 text-xs text-muted-foreground" data-testid={`setting-help-${index}`}>
             {t(help)}
@@ -858,19 +873,23 @@ export function SettingRow({
           disabled={disabled}
           onReset={onReset}
         />
-        {item.meta.requiresRestart || settingSourceIsNotable(item.meta.source) ? (
+        {item.meta.requiresRestart || notableSource || appliesTo ? (
           <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             {item.meta.requiresRestart ? (
               <span data-testid={`setting-restart-${index}`}>{t("settings.restart")}</span>
             ) : null}
-            {settingSourceIsNotable(item.meta.source) ? (
+            {notableSource ? (
               <Badge variant="secondary" data-testid={`setting-source-${index}`}>
                 <LabelText label={settingMetaLabel(item.meta.source, t)} />
               </Badge>
             ) : null}
+            {appliesTo ? (
+              <span data-testid={`setting-applies-to-${index}`}>
+                {t("settings.appliesTo", { scope: settingMetaLabel(item.meta.scope, t).text })}
+              </span>
+            ) : null}
           </p>
         ) : null}
-        <SettingTechnical item={item} index={index} />
       </div>
       <div className="min-w-0">
         {children}
@@ -1092,6 +1111,7 @@ export function SettingsPage() {
       highlighted: highlighted === item.path,
       draft: drafts[item.path],
       disabled,
+      canCopyKey: canWrite,
       onReset: draft,
     };
     if (item.path === "auth.providers")
@@ -1310,6 +1330,7 @@ export function SettingsPage() {
               )}
             </div>
           </div>
+          <SettingsStorageNote />
         </div>
       )}
       {canWrite && (changedItems.length > 0 || conflict) && (

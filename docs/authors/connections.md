@@ -1,20 +1,33 @@
-# Kontoverbindungen und Freigaben
+# Zugriff in deinem Namen und Freigaben
 
-> Wie du SubKit mit einem anderen System verbindest, ohne einen Schlüssel einzutippen — und wie eine vorbereitete Änderung an dieser Installation auf deine Freigabe wartet.
+> Wie du SubKit ein anderes System in deinem Namen nutzen lässt, ohne einen Schlüssel einzutippen — und wie eine vorbereitete Änderung an dieser Installation auf deine Freigabe wartet.
 
-Beides findest du im Cockpit unter **Installation**: die Kontoverbindungen im Abschnitt
-**Kontoverbindungen** der Seite **Zugangsdaten**, die vorbereiteten Änderungen oben auf
+Beides findest du im Cockpit unter **Installation**: den Zugriff in deinem Namen im Bereich
+**Zugriff in deinem Namen** der Seite **Zugangsdaten**, die vorbereiteten Änderungen oben auf
 **Einstellungen**.
 
-**Zugangsdaten** ist die eine Seite für alles, was an dieser Installation Rechte hält oder
-vergibt: **Kontoverbindungen** (Systeme, die SubKit in deinem Namen aufrufen darf),
-**API-Schlüssel** (womit Skripte und Programme SubKit aufrufen) und **Verbundene
-Anwendungen** (Programme, denen jemand Zugriff auf diese Installation freigegeben hat) — in
-dieser Reihenfolge, mit einem Verzeichnis der drei Abschnitte ganz oben. Jede Zeile
-zeigt ihren Zustand; **Erneuern** steht in der Zeile. Was dich braucht — etwa eine
-abgelaufene Kontoverbindung oder eine vorbereitete Änderung, die auf Freigabe wartet —
-steht nicht hier, sondern auf der Startseite **Übersicht**, in der einen Liste dessen, was
-jetzt zu tun ist.
+**Zugangsdaten** beantwortet eine Frage: Wer darf auf SubKit zugreifen — und worauf greift
+SubKit in deinem Namen zu? Die Seite hat drei Bereiche, als Reiter (auf dem Telefon als
+Auswahl), jeder mit eigener Adresse:
+
+| Bereich | Wann brauchst du ihn? | Beispiel |
+|---|---|---|
+| **Apps mit Zugriff auf SubKit** | Claude, ChatGPT oder ein anderes Programm, dem du SubKit freigegeben hast. Hinzufügen startest du in der App selbst; hier siehst du, wer darf, und entziehst den Zugriff. | Claude Code nutzt SubKit — siehe [Use sk from a coding agent](coding-agents.md). |
+| **Schlüssel für Skripte** | Ein eigenes Skript, ein Cronjob oder CI ruft SubKit auf. **Schlüssel erstellen** legt einen an. | Ein nächtlicher Export. |
+| **Zugriff in deinem Namen** | SubKit darf ein anderes System in deinem Namen nutzen. Du meldest dich dort einmal an, kein Schlüssel nötig. **Verbinden** startet es. | Ein Workflow liest aus WikiKit. |
+
+Jede Zeile in **Zugriff in deinem Namen** ist eine *Kontoverbindung*: ein System, bei dem
+du SubKit einmal freigegeben hast. Jede Zeile zeigt ihren Zustand; **Erneuern** steht in
+der Zeile. Ein Reiter trägt nur eine Zahl, wenn dort etwas zu tun ist („2 laufen ab",
+„1 erneuern"); wie viele es insgesamt sind, steht im Bereich selbst. Was dich braucht —
+etwa eine abgelaufene Kontoverbindung oder eine vorbereitete Änderung, die auf Freigabe
+wartet — steht nicht hier, sondern auf der Startseite **Übersicht**, in der einen Liste
+dessen, was jetzt zu tun ist.
+
+Wie ein Skript seinen Schlüssel gegen ein kurzlebiges Token tauscht, steht nicht auf der
+Seite, sondern in der Anleitung für Entwickler:
+[Machine tokens](../developers/token-exchange.md). Die Seite verlinkt sie unten im Bereich
+**Schlüssel für Skripte**.
 
 Offen stehen nur die Schlüssel, die noch Rechte halten, und die Anwendungen, für die jemand
 eine gültige Freigabe hält. Widerrufene Schlüssel und Anwendungen ohne gültige Freigabe sind
@@ -56,10 +69,13 @@ verschlüsselt wie jedes andere Secret, und kein Schlüssel wurde je eingetippt.
 
 ## Was die Liste zeigt
 
-Jede Zeile nennt den Namen, die Adresse, die gewährten Rechte, wann die Kontoverbindung
-zuletzt verwendet wurde, welche Konnektoren sie nutzen (mit der Zahl ihrer Workflows) und ein
-Zustandswort. Kann sich der Zugriff nicht selbst erneuern, sagt die Zeile auch, warum:
-das andere System hat kein Erneuerungs-Token ausgestellt.
+Jede Zeile nennt den Namen, die Adresse, wie viele Rechte gewährt sind („2 Rechte"), wann
+die Kontoverbindung zuletzt verwendet wurde, welche Konnektoren sie nutzen (mit der Zahl
+ihrer Workflows) und ein Zustandswort. **Details anzeigen** zeigt die Rechte so, wie das
+andere System sie nennt. Ein Risikowort („liest", „schreibt") steht dort bewusst nicht:
+SubKit kennt die Rechte eines fremden Systems nicht und würde raten. Kann sich der Zugriff
+nicht selbst erneuern, sagt die Zeile auch, warum: das andere System hat kein
+Erneuerungs-Token ausgestellt.
 
 | Wort | Bedeutung | Was zu tun ist |
 |---|---|---|
@@ -70,8 +86,8 @@ das andere System hat kein Erneuerungs-Token ausgestellt.
 
 **Erneuern** wiederholt den Weg von oben für dieselbe Kontoverbindung: gleicher Name,
 gleiche Rechte, neue Freigabe. Eine abgelaufene oder unlesbare Kontoverbindung steht nur
-dann auf **Heute**, wenn ein Konnektor sie nutzt; eine, die niemand nutzt („Von keinem
-Konnektor genutzt"), bricht nichts und bleibt hier in der Liste. **Trennen** (im ⋯-Menü, mit Rückfrage) widerruft den
+dann auf der **Übersicht**, wenn ein Konnektor sie nutzt; eine, die niemand nutzt („Von keinem
+Konnektor genutzt"), bricht nichts und bleibt hier in der Liste. **Trennen** (in der Zeile, mit Rückfrage) widerruft den
 gespeicherten Zugriff und vergisst die Kontoverbindung. Ein Konnektor, der sie benutzt hat, steht danach ohne
 Zugangsdaten da und sagt das auf seiner Seite.
 
@@ -92,7 +108,7 @@ Schlüsselfeld.
 **Stattdessen einen Schlüssel eingeben** gibt es weiterhin, aber nur für den Fall, für den
 es gemeint ist: einen externen Anbieter, der den Zugriff nicht selbst freigeben kann — ein
 Modell-Schlüssel etwa. Das Feld sagt das dazu. Ein System, das Freigaben kennt, verbindest
-du über **Zugangsdaten → Kontoverbindungen**.
+du über **Zugangsdaten → Zugriff in deinem Namen**.
 
 ---
 
