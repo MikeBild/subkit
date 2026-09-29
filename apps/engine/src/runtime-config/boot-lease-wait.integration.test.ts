@@ -8,6 +8,7 @@ import { runtimeConfigReplicas, runtimeConfigState } from "../db/schema/index.ts
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import {
   activateRuntimeRevision,
+  getRuntimeConfigState,
   initializeRuntimeConfig,
   RuntimeConfigConflictError,
   saveRuntimeConfigPatch,
@@ -81,6 +82,11 @@ describe("boot with a restart-required revision and a fresh foreign lease", () =
     expect(sleeps[1]).toBeGreaterThan(sleeps[0] ?? 0);
     expect(state.active_revision).toBe(state.saved_revision);
     expect(getConfig().server.port).toBe(3201);
+    // Once the waiting revision is the active one, nothing waits for a restart
+    // any more — the settings page must not keep saying so.
+    const after = await getRuntimeConfigState(tdb.db);
+    expect(after.active_revision).toBe(after.saved_revision);
+    expect(after.pending_restart_fields).toEqual([]);
   });
 
   test("a lease that stays fresh is a live replica: boot still refuses after the wait", async () => {
