@@ -21,8 +21,14 @@ import { getMockProvider, resetMockProvider } from "../llm/mock-provider.ts";
 import { TEST_HUMAN_ANSWER } from "../test-helpers/answer-actor.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
 import { loadCategoryIndex } from "../workflows/catalog-view.ts";
-import { type FastPathParams, matchCategoryListIntent, tryFastPath } from "./fast-path.ts";
+import {
+  type FastPathParams,
+  matchCategoryListIntent,
+  matchListIntent,
+  tryFastPath,
+} from "./fast-path.ts";
 import { renderRunOutput } from "./fast-path-render.ts";
+import { loadEnumerationCoverage } from "./loop/enumeration-coverage.ts";
 import { listWorkflowsTool } from "./tools/generated/workflows.ts";
 import type { ToolContext } from "./tools/index.ts";
 import type { TurnEvent } from "./types.ts";
@@ -809,6 +815,56 @@ describe("tryFastPath — one catalog block", () => {
     const result = await tryFastPath(makeParams("zeige alle workflows"));
     expect(result?.assistant_text?.startsWith("45 workflows:")).toBe(true);
     expect(findToolResultOutput(result?.events).category).toBeUndefined();
+  });
+
+  test("a word that is no category falls through without a denial or an audit row", async () => {
+    await seedCategoryCatalog();
+    const restricted = makePrincipal({
+      provider: "portal_token",
+      roles: ["portal_token_user"],
+      allowed_workflows: ["00000000-0000-0000-0000-000000000099"],
+    });
+    const deniedListReads = async () =>
+      (
+        await tdb.db
+          .select()
+          .from(auditLog)
+          .where(
+            and(eq(auditLog.action, AuditAction.POLICY_DENIED), eq(auditLog.tenant_id, tenantId)),
+          )
+      ).filter((row) => (row.metadata as Record<string, unknown>)?.tool === "list_workflows")
+        .length;
+    const before = await deniedListReads();
+    for (const [text, word] of [
+      ["show me the failed workflows", "failed"],
+      ["zeig mir die aktiven workflows", "aktiven"],
+    ] as const) {
+      // Preconditions: only the category matcher sees this text.
+      expect(matchListIntent(text), text).toBeNull();
+      expect(matchCategoryListIntent(text), text).toBe(word);
+      expect(await tryFastPath({ ...makeParams(text), principal: restricted }), text).toBeNull();
+    }
+    expect(await deniedListReads()).toBe(before);
+  });
+
+  test("the enumeration steering sees a named workflow and a trimmed catalog", async () => {
+    await seedCategoryCatalog();
+    expect(
+      await loadEnumerationCoverage(tenantId, "wie viele Schritte hat notion-sync?", tdb.db),
+    ).toEqual({
+      workflows_complete: false,
+      connectors_complete: true,
+      names_existing_workflow: true,
+    });
+    expect(
+      (await loadEnumerationCoverage(tenantId, "Zeig mir die notion-Workflows", tdb.db))
+        .names_existing_workflow,
+    ).toBe(false);
+    // A deleted workflow is not named.
+    expect(
+      (await loadEnumerationCoverage(tenantId, "workflow notion-retired", tdb.db))
+        .names_existing_workflow,
+    ).toBe(false);
   });
 
   test("a principal without workflow:read is denied and audited", async () => {
