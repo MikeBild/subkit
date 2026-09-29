@@ -133,6 +133,19 @@ Inspect history with:
 - `GET /v1/settings/revisions`
 - `GET /v1/settings/revisions/{revision}`
 
+### How a change is stored (Cockpit: „Wie wird gespeichert?")
+
+The Cockpit's settings page answers this once, below the list, in the same words:
+
+> Every change is stored in the database as a new, immutable version; earlier versions stay
+> traceable in the audit. Most values take effect immediately on every instance. Values marked
+> „Wirkt nach Neustart" (takes effect after a restart) apply only after a restart — until then the
+> previous version keeps running.
+
+A settings row shows a setting's key only to readers who may change settings: the copy icon beside
+its name copies the key for `sk settings set <key>`. The row says „Gilt für" (applies to) only for a
+tenant-scoped setting or where a tenant's own value overrides the installation's.
+
 ## Hot activation and restart-required changes
 
 Activate a saved hot-capable revision with:

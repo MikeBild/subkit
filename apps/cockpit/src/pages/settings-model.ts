@@ -51,11 +51,24 @@ export function settingMetaLabel(value: string, t: Translate): CatalogLabel {
  * Whether a row names where its value came from. Almost every setting is the
  * installation's own value or the engine's default; a chip saying so on 145
  * rows said nothing. The chip stands only where the value comes from
- * somewhere else — the environment, this workspace, an override — and the
- * plain source stays in the row's technical details.
+ * somewhere else — the environment, this workspace, an override — and says
+ * nothing where it is the plain installation value.
  */
 export function settingSourceIsNotable(source: string): boolean {
   return !["global", "default"].includes(source.toLowerCase());
+}
+
+/**
+ * Whether a row says what the value applies to ("Gilt für: Arbeitsbereich").
+ * Almost every setting applies to the whole installation, and a line saying
+ * so on every row said nothing. It stands only where a setting can differ per
+ * workspace — the leaf is tenant-scoped — or where a workspace's own value
+ * overrides the installation's right now.
+ */
+export function settingAppliesToShown(
+  meta: Pick<SettingItem["meta"], "scope" | "source">,
+): boolean {
+  return meta.scope.toLowerCase() === "tenant" || meta.source.toLowerCase() === "tenant";
 }
 
 /**

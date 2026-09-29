@@ -206,14 +206,26 @@ export function chatSeedFromUrl(search: string): {
 
 /**
  * The three sections of Zugangsdaten — the one page for everything that holds
- * or grants rights: keys this installation hands out, applications connected
- * to it, and accounts it is connected to.
+ * or grants rights: the apps with access to SubKit (`clients`), the keys for
+ * scripts (`keys`), and the systems SubKit may use on someone's behalf
+ * (`grants`). The address words stay what they were: links, bookmarks and the
+ * OAuth callback carry them.
  */
-export const API_ACCESS_SECTIONS = ["keys", "clients", "grants"] as const;
+export const API_ACCESS_SECTIONS = ["clients", "keys", "grants"] as const;
 export type ApiAccessSection = (typeof API_ACCESS_SECTIONS)[number];
 
 export function apiAccessHref(section?: ApiAccessSection | null): string {
   return withQuery("/api-access", { section });
+}
+
+/**
+ * A page of the documentation as the engine serves it — `GET /llms/<path>`,
+ * public, from the same `docs/` tree the repository holds. A raw browser
+ * address outside the cockpit: an `<a href>` takes it as it is, never through
+ * `absolute()`. `path` is below `docs/`, e.g. `developers/token-exchange.md`.
+ */
+export function docsHref(path: string): string {
+  return `/llms/${path.replace(/^docs\//, "")}`;
 }
 
 /** The section an address opens Zugangsdaten at, or none. Anything else is dropped. */
@@ -231,8 +243,8 @@ export function apiAccessSectionFromUrl(search: string): ApiAccessSection | null
  * its consequence on the other.
  *
  * `grants` here are Freigaben — rights on one workflow or connector. The
- * `grants` section of Zugangsdaten is a different thing (account connections)
- * and keeps its own word.
+ * `grants` section of Zugangsdaten is a different thing (access on your
+ * behalf) and keeps its own word.
  */
 export const PEOPLE_SECTIONS = ["people", "roles", "groups", "grants"] as const;
 export type PeopleSection = (typeof PEOPLE_SECTIONS)[number];

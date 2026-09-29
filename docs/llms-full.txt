@@ -1534,7 +1534,9 @@ Collected so every reader has the same expansion at hand.
 
 **User** — a human principal within a Tenant. A User has a role (admin, member, or end-user) that governs which resources they can see and which actions they are permitted to take. Users authenticate through an Auth Provider (OIDC or API Key) and their identity is linked to their chat-platform accounts when chat integrations are enabled.
 
-**API Key** — a bearer token scoped to a Tenant and a set of permissions. Used for programmatic access, service-to-service integration, and CLI authentication. API Keys carry explicit scopes and can be constrained to specific workflows or connectors. They support overlap-window rotation so access is never interrupted during a key change.
+**API Key** — a bearer token scoped to a Tenant and a set of permissions. Used for programmatic access, service-to-service integration, and CLI authentication. API Keys carry explicit scopes and can be constrained to specific workflows or connectors. They support overlap-window rotation so access is never interrupted during a key change. In the Cockpit they live under **Credentials → Keys for scripts** (**Zugangsdaten → Schlüssel für Skripte**): your own script, a cron job or CI calls sk — a nightly export, for example.
+
+**Credentials page (Zugangsdaten)** — the one Cockpit page that answers "who may access sk, and what does sk access on your behalf?", in three tabs. **Apps with access to SubKit** (**Apps mit Zugriff auf SubKit**): Claude, ChatGPT or another program somebody granted access to this installation over OAuth; adding one starts in the app itself, the page shows who may and withdraws the access. **Keys for scripts** (**Schlüssel für Skripte**): the API Keys above. **Access on your behalf** (**Zugriff in deinem Namen**): systems sk may use on a person's behalf — a workflow reading from another product, say — connected once by signing in there, with no key typed; each row there is an account connection (**Kontoverbindung**). The MCP tools, CLI commands and API routes keep their names (`list_api_keys`, `/v1/identity/api-keys`, `/v1/oauth/clients`, `/v1/connections`).
 
 **Portal Token** — a short-lived, scoped credential issued to an end user for single-purpose access. Portal Tokens allow external users to interact with specific workflows without becoming full Tenant members. They are a tighter variant of an API Key, with a shorter default lifetime and a narrower permission surface.
 
@@ -6324,23 +6326,36 @@ sk skills sync
 
 <!-- Source: docs/authors/connections.md -->
 
-# Kontoverbindungen und Freigaben
+# Zugriff in deinem Namen und Freigaben
 
-> Wie du SubKit mit einem anderen System verbindest, ohne einen Schlüssel einzutippen — und wie eine vorbereitete Änderung an dieser Installation auf deine Freigabe wartet.
+> Wie du SubKit ein anderes System in deinem Namen nutzen lässt, ohne einen Schlüssel einzutippen — und wie eine vorbereitete Änderung an dieser Installation auf deine Freigabe wartet.
 
-Beides findest du im Cockpit unter **Installation**: die Kontoverbindungen im Abschnitt
-**Kontoverbindungen** der Seite **Zugangsdaten**, die vorbereiteten Änderungen oben auf
+Beides findest du im Cockpit unter **Installation**: den Zugriff in deinem Namen im Bereich
+**Zugriff in deinem Namen** der Seite **Zugangsdaten**, die vorbereiteten Änderungen oben auf
 **Einstellungen**.
 
-**Zugangsdaten** ist die eine Seite für alles, was an dieser Installation Rechte hält oder
-vergibt: **Kontoverbindungen** (Systeme, die SubKit in deinem Namen aufrufen darf),
-**API-Schlüssel** (womit Skripte und Programme SubKit aufrufen) und **Verbundene
-Anwendungen** (Programme, denen jemand Zugriff auf diese Installation freigegeben hat) — in
-dieser Reihenfolge, mit einem Verzeichnis der drei Abschnitte ganz oben. Jede Zeile
-zeigt ihren Zustand; **Erneuern** steht in der Zeile. Was dich braucht — etwa eine
-abgelaufene Kontoverbindung oder eine vorbereitete Änderung, die auf Freigabe wartet —
-steht nicht hier, sondern auf der Startseite **Übersicht**, in der einen Liste dessen, was
-jetzt zu tun ist.
+**Zugangsdaten** beantwortet eine Frage: Wer darf auf SubKit zugreifen — und worauf greift
+SubKit in deinem Namen zu? Die Seite hat drei Bereiche, als Reiter (auf dem Telefon als
+Auswahl), jeder mit eigener Adresse:
+
+| Bereich | Wann brauchst du ihn? | Beispiel |
+|---|---|---|
+| **Apps mit Zugriff auf SubKit** | Claude, ChatGPT oder ein anderes Programm, dem du SubKit freigegeben hast. Hinzufügen startest du in der App selbst; hier siehst du, wer darf, und entziehst den Zugriff. | Claude Code nutzt SubKit — siehe [Use sk from a coding agent](coding-agents.md). |
+| **Schlüssel für Skripte** | Ein eigenes Skript, ein Cronjob oder CI ruft SubKit auf. **Schlüssel erstellen** legt einen an. | Ein nächtlicher Export. |
+| **Zugriff in deinem Namen** | SubKit darf ein anderes System in deinem Namen nutzen. Du meldest dich dort einmal an, kein Schlüssel nötig. **Verbinden** startet es. | Ein Workflow liest aus WikiKit. |
+
+Jede Zeile in **Zugriff in deinem Namen** ist eine *Kontoverbindung*: ein System, bei dem
+du SubKit einmal freigegeben hast. Jede Zeile zeigt ihren Zustand; **Erneuern** steht in
+der Zeile. Ein Reiter trägt nur eine Zahl, wenn dort etwas zu tun ist („2 laufen ab",
+„1 erneuern"); wie viele es insgesamt sind, steht im Bereich selbst. Was dich braucht —
+etwa eine abgelaufene Kontoverbindung oder eine vorbereitete Änderung, die auf Freigabe
+wartet — steht nicht hier, sondern auf der Startseite **Übersicht**, in der einen Liste
+dessen, was jetzt zu tun ist.
+
+Wie ein Skript seinen Schlüssel gegen ein kurzlebiges Token tauscht, steht nicht auf der
+Seite, sondern in der Anleitung für Entwickler:
+[Machine tokens](../developers/token-exchange.md). Die Seite verlinkt sie unten im Bereich
+**Schlüssel für Skripte**.
 
 Offen stehen nur die Schlüssel, die noch Rechte halten, und die Anwendungen, für die jemand
 eine gültige Freigabe hält. Widerrufene Schlüssel und Anwendungen ohne gültige Freigabe sind
@@ -6382,10 +6397,13 @@ verschlüsselt wie jedes andere Secret, und kein Schlüssel wurde je eingetippt.
 
 ## Was die Liste zeigt
 
-Jede Zeile nennt den Namen, die Adresse, die gewährten Rechte, wann die Kontoverbindung
-zuletzt verwendet wurde, welche Konnektoren sie nutzen (mit der Zahl ihrer Workflows) und ein
-Zustandswort. Kann sich der Zugriff nicht selbst erneuern, sagt die Zeile auch, warum:
-das andere System hat kein Erneuerungs-Token ausgestellt.
+Jede Zeile nennt den Namen, die Adresse, wie viele Rechte gewährt sind („2 Rechte"), wann
+die Kontoverbindung zuletzt verwendet wurde, welche Konnektoren sie nutzen (mit der Zahl
+ihrer Workflows) und ein Zustandswort. **Details anzeigen** zeigt die Rechte so, wie das
+andere System sie nennt. Ein Risikowort („liest", „schreibt") steht dort bewusst nicht:
+SubKit kennt die Rechte eines fremden Systems nicht und würde raten. Kann sich der Zugriff
+nicht selbst erneuern, sagt die Zeile auch, warum: das andere System hat kein
+Erneuerungs-Token ausgestellt.
 
 | Wort | Bedeutung | Was zu tun ist |
 |---|---|---|
@@ -6396,8 +6414,8 @@ das andere System hat kein Erneuerungs-Token ausgestellt.
 
 **Erneuern** wiederholt den Weg von oben für dieselbe Kontoverbindung: gleicher Name,
 gleiche Rechte, neue Freigabe. Eine abgelaufene oder unlesbare Kontoverbindung steht nur
-dann auf **Heute**, wenn ein Konnektor sie nutzt; eine, die niemand nutzt („Von keinem
-Konnektor genutzt"), bricht nichts und bleibt hier in der Liste. **Trennen** (im ⋯-Menü, mit Rückfrage) widerruft den
+dann auf der **Übersicht**, wenn ein Konnektor sie nutzt; eine, die niemand nutzt („Von keinem
+Konnektor genutzt"), bricht nichts und bleibt hier in der Liste. **Trennen** (in der Zeile, mit Rückfrage) widerruft den
 gespeicherten Zugriff und vergisst die Kontoverbindung. Ein Konnektor, der sie benutzt hat, steht danach ohne
 Zugangsdaten da und sagt das auf seiner Seite.
 
@@ -6418,7 +6436,7 @@ Schlüsselfeld.
 **Stattdessen einen Schlüssel eingeben** gibt es weiterhin, aber nur für den Fall, für den
 es gemeint ist: einen externen Anbieter, der den Zugriff nicht selbst freigeben kann — ein
 Modell-Schlüssel etwa. Das Feld sagt das dazu. Ein System, das Freigaben kennt, verbindest
-du über **Zugangsdaten → Kontoverbindungen**.
+du über **Zugangsdaten → Zugriff in deinem Namen**.
 
 ---
 
@@ -13155,6 +13173,19 @@ Inspect history with:
 
 - `GET /v1/settings/revisions`
 - `GET /v1/settings/revisions/{revision}`
+
+### How a change is stored (Cockpit: „Wie wird gespeichert?")
+
+The Cockpit's settings page answers this once, below the list, in the same words:
+
+> Every change is stored in the database as a new, immutable version; earlier versions stay
+> traceable in the audit. Most values take effect immediately on every instance. Values marked
+> „Wirkt nach Neustart" (takes effect after a restart) apply only after a restart — until then the
+> previous version keeps running.
+
+A settings row shows a setting's key only to readers who may change settings: the copy icon beside
+its name copies the key for `sk settings set <key>`. The row says „Gilt für" (applies to) only for a
+tenant-scoped setting or where a tenant's own value overrides the installation's.
 
 ## Hot activation and restart-required changes
 

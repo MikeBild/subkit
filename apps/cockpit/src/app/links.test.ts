@@ -6,7 +6,10 @@
 // page reads what the address says.
 
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { openPeopleSection, readablePeopleSections } from "@/pages/admin-model";
+import { openApiAccessSection, readableSections } from "@/pages/api-access-model";
 import { auditFilterFromUrl } from "@/pages/audit-model";
 import { connectorHealthFilterFromUrl } from "@/pages/connectors-model";
 import { usageWindowFromUrl } from "@/pages/operations-figures";
@@ -24,6 +27,7 @@ import {
   connectorHref,
   connectorsHref,
   conversationHref,
+  docsHref,
   PEOPLE_SECTIONS,
   peopleHref,
   peopleSectionFromUrl,
@@ -242,6 +246,30 @@ describe("the remaining addresses", () => {
     }
     expect(apiAccessSectionFromUrl("?section=connections")).toBeNull();
     expect(apiAccessSectionFromUrl("")).toBeNull();
+  });
+
+  test("the tab the address names opens, and one the reader may not read falls back", () => {
+    const all = readableSections({ clients: true, keys: true, grants: true });
+    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=grants"), all)).toBe("grants");
+    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=keys"), all)).toBe("keys");
+    expect(openApiAccessSection(apiAccessSectionFromUrl(""), all)).toBe("clients");
+    const keysOnly = readableSections({ clients: false, keys: true, grants: false });
+    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=grants"), keysOnly)).toBe("keys");
+  });
+
+  test("a docs link is the engine's public page of a document the docs index serves", () => {
+    expect(docsHref("developers/token-exchange.md")).toBe("/llms/developers/token-exchange.md");
+    expect(docsHref("docs/authors/coding-agents.md")).toBe("/llms/authors/coding-agents.md");
+    // Every document the cockpit links is in the served index — a page
+    // dropped from it would answer "Not found".
+    const manifest = JSON.parse(
+      readFileSync(join(import.meta.dir, "../../../../docs/llms-manifest.json"), "utf8"),
+    ) as { pages?: { path: string }[]; sections?: { pages: { path: string }[] }[] };
+    const served = JSON.stringify(manifest);
+    for (const path of ["developers/token-exchange.md", "authors/coding-agents.md"])
+      expect(served).toContain(`"docs/${path}"`);
+    // A raw address outside the router's base, never under /cockpit.
+    expect(docsHref("developers/token-exchange.md").startsWith("/cockpit")).toBe(false);
   });
 });
 
