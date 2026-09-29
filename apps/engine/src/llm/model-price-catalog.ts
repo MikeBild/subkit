@@ -15,9 +15,17 @@
 // prices at all — only its own — since adding dollars to euros produces a
 // number that is neither.
 //
-// Cache write is the five-minute cache write price.
+// Cache write is the price of the cache SubKit actually writes. For Anthropic
+// that is the one-hour cache write (2x input), because every cache breakpoint
+// the engine sets asks for the one-hour TTL (`PROMPT_CACHE_TTL`); a test pins
+// the two together, so shortening the TTL without repricing fails. An
+// operator's `cache_write_per_mtok` means the same thing: the rate for the TTL
+// SubKit writes, not the vendor's five-minute rate.
+//
+// A vendor that bills long prompts higher lists that tier as `long_context`;
+// cost queries split calls at its threshold, one call at a time.
 
-import { bareModelId, type ModelPrice, type SourcedModelPrice } from "./pricing.ts";
+import { type ModelPrice, type SourcedModelPrice, vendorModelId } from "./pricing.ts";
 
 export const MODEL_PRICE_CATALOG_CURRENCY = "USD";
 
@@ -30,18 +38,20 @@ const ANTHROPIC_PRICING = "https://platform.claude.com/docs/en/about-claude/pric
 const OPENAI_PRICING = "https://developers.openai.com/api/docs/pricing";
 const GEMINI_PRICING = "https://ai.google.dev/gemini-api/docs/pricing";
 
+/** Anthropic's one-hour cache write, as a multiple of the input rate. */
+export const ANTHROPIC_ONE_HOUR_CACHE_WRITE_MULTIPLIER = 2;
+
 const anthropic = (
   model: string,
   input: number,
   output: number,
   cacheRead: number,
-  cacheWrite: number,
 ): CatalogModelPrice => ({
   model,
   input_per_mtok: input,
   output_per_mtok: output,
   cache_read_per_mtok: cacheRead,
-  cache_write_per_mtok: cacheWrite,
+  cache_write_per_mtok: input * ANTHROPIC_ONE_HOUR_CACHE_WRITE_MULTIPLIER,
   source: ANTHROPIC_PRICING,
 });
 
@@ -80,24 +90,32 @@ const gemini = (
 
 export const MODEL_PRICE_CATALOG: readonly CatalogModelPrice[] = Object.freeze([
   // Retired on the Claude API, still listed with its price.
-  anthropic("claude-3-5-haiku", 0.8, 4, 0.08, 1),
-  anthropic("claude-haiku-4-5", 1, 5, 0.1, 1.25),
-  anthropic("claude-haiku-4-5-20251001", 1, 5, 0.1, 1.25),
-  anthropic("claude-sonnet-4-5", 3, 15, 0.3, 3.75),
-  anthropic("claude-sonnet-4-6", 3, 15, 0.3, 3.75),
-  anthropic("claude-sonnet-5", 2, 10, 0.2, 2.5),
-  anthropic("claude-opus-4-6", 5, 25, 0.5, 6.25),
-  anthropic("claude-opus-4-7", 5, 25, 0.5, 6.25),
-  anthropic("claude-opus-4-8", 5, 25, 0.5, 6.25),
-  anthropic("claude-opus-5-5", 4, 20, 0.2, 5),
-  anthropic("claude-fable-5", 10, 50, 1, 12.5),
-  anthropic("claude-fable-5-1", 10, 50, 0.25, 12.5),
+  anthropic("claude-3-5-haiku", 0.8, 4, 0.08),
+  anthropic("claude-haiku-4-5", 1, 5, 0.1),
+  anthropic("claude-haiku-4-5-20251001", 1, 5, 0.1),
+  anthropic("claude-sonnet-4-5", 3, 15, 0.3),
+  anthropic("claude-sonnet-4-6", 3, 15, 0.3),
+  anthropic("claude-sonnet-5", 2, 10, 0.2),
+  anthropic("claude-opus-4-6", 5, 25, 0.5),
+  anthropic("claude-opus-4-7", 5, 25, 0.5),
+  anthropic("claude-opus-4-8", 5, 25, 0.5),
+  anthropic("claude-opus-5-5", 4, 20, 0.2),
+  anthropic("claude-fable-5", 10, 50, 1),
+  anthropic("claude-fable-5-1", 10, 50, 0.25),
+  // Prompts over 272k tokens are billed at the long-context rates in full.
   {
     model: "gpt-5.6-sol",
     input_per_mtok: 4,
     output_per_mtok: 20,
     cache_read_per_mtok: 0.4,
     cache_write_per_mtok: 5,
+    long_context: {
+      threshold_prompt_tokens: 272_000,
+      input_per_mtok: 8,
+      output_per_mtok: 30,
+      cache_read_per_mtok: 0.8,
+      cache_write_per_mtok: 10,
+    },
     source: "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
   },
   openai("gpt-4o", 2.5, 10, 1.25),
@@ -111,11 +129,17 @@ export const MODEL_PRICE_CATALOG: readonly CatalogModelPrice[] = Object.freeze([
   // names. It lists no cached-input rate — no discount, not a free read — so a
   // cached token is charged as input.
   openai("gpt-4-turbo", 10, 30, 10),
-  // The rate for prompts up to 200k tokens; longer prompts are billed higher
-  // (input 2.50, output 15, cache read 0.25), so a window with long prompts is
-  // priced below its bill — the same base-rate simplification the catalog
-  // makes for every tiered model.
-  gemini("gemini-2.5-pro", 1.25, 10, 0.125),
+  // Prompts over 200k tokens are billed at the long-context rates in full.
+  {
+    ...gemini("gemini-2.5-pro", 1.25, 10, 0.125),
+    long_context: {
+      threshold_prompt_tokens: 200_000,
+      input_per_mtok: 2.5,
+      output_per_mtok: 15,
+      cache_read_per_mtok: 0.25,
+      cache_write_per_mtok: 2.5,
+    },
+  },
   // Text, image and video input; audio input is billed higher.
   gemini("gemini-2.5-flash", 0.3, 2.5, 0.03),
 ]);
@@ -141,11 +165,16 @@ export function effectiveModelPrices(tokens: {
   }
   for (const price of tokens.prices ?? []) {
     // An override speaks for the model, not for one spelling of it: catalog
-    // aliases with the same bare id (a dated snapshot) give way too, or a call
-    // recorded under the alias would still be charged the catalog price.
-    const bare = bareModelId(price.model);
+    // aliases with the same vendor id (a dated snapshot) give way too, or a
+    // call recorded under the alias would still be charged the catalog price.
+    // Compared by vendor id, not by the platform-reducing bare id: an override
+    // for a Bedrock id is the platform's price and must not unprice the
+    // direct API's calls to the same model.
+    const vendor = vendorModelId(price.model);
     for (const [model, existing] of byModel) {
-      if (existing.price_source === "catalog" && bareModelId(model) === bare) byModel.delete(model);
+      if (existing.price_source === "catalog" && vendorModelId(model) === vendor) {
+        byModel.delete(model);
+      }
     }
     byModel.set(price.model, {
       model: price.model,
@@ -153,6 +182,8 @@ export function effectiveModelPrices(tokens: {
       output_per_mtok: price.output_per_mtok,
       cache_read_per_mtok: price.cache_read_per_mtok ?? 0,
       cache_write_per_mtok: price.cache_write_per_mtok ?? 0,
+      // Flat: an operator's rate carries no long-context tier, so every call
+      // of the model is charged it, however long its prompt.
       price_source: "override",
     });
   }

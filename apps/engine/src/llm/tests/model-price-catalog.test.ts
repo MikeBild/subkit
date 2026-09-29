@@ -91,15 +91,31 @@ const KNOWN_BUT_UNPRICED = [
 describe("the catalog itself", () => {
   test("every entry is a valid tokens.prices entry, non-negative, with a traceable source", () => {
     for (const entry of MODEL_PRICE_CATALOG) {
-      const { source, ...price } = entry;
+      // The long-context tier is the catalog's own: an operator entry is one
+      // flat rate, so the tier is checked beside the schema, not through it.
+      const { source, long_context, ...price } = entry;
       expect(ModelPriceSchema.parse(price)).toEqual(price);
       for (const rate of [
         price.input_per_mtok,
         price.output_per_mtok,
         price.cache_read_per_mtok,
         price.cache_write_per_mtok,
+        ...(long_context
+          ? [
+              long_context.input_per_mtok,
+              long_context.output_per_mtok,
+              long_context.cache_read_per_mtok,
+              long_context.cache_write_per_mtok,
+            ]
+          : []),
       ]) {
         expect(Number.isFinite(rate) && rate >= 0).toBe(true);
+      }
+      if (long_context) {
+        expect(Number.isInteger(long_context.threshold_prompt_tokens)).toBe(true);
+        expect(long_context.threshold_prompt_tokens).toBeGreaterThan(0);
+        // A tier that is cheaper than the base is a typo, not a discount.
+        expect(long_context.input_per_mtok).toBeGreaterThan(price.input_per_mtok);
       }
       expect(source).toMatch(/^https:\/\//);
     }
@@ -240,7 +256,7 @@ describe("effective prices", () => {
 
   test("a row with cache reads and writes is costed from the catalog", () => {
     // 1M prompt = 400k uncached + 500k cache read + 100k cache write.
-    // Sonnet 4.6: 0.4·3 + 0.5·0.30 + 0.1·3.75 + 0.2·15 = 1.2 + 0.15 + 0.375 + 3.0
+    // Sonnet 4.6: 0.4·3 + 0.5·0.30 + 0.1·6 + 0.2·15 = 1.2 + 0.15 + 0.6 + 3.0 (1h cache write)
     const result = priceCalls(
       [
         {
@@ -254,7 +270,7 @@ describe("effective prices", () => {
       effectiveModelPrices({ currency: "USD", prices: [] }),
       "USD",
     );
-    expect(result.amount).toBeCloseTo(4.725, 6);
+    expect(result.amount).toBeCloseTo(4.95, 6);
     expect(result.unpriced_calls).toBe(0);
     expect(result.price_sources).toEqual([{ model: "claude-sonnet-4-6", price_source: "catalog" }]);
   });
