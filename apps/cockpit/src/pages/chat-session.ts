@@ -204,7 +204,11 @@ export function tokenPill(usage: { tokens: number } | null | undefined): number 
   return usage && usage.tokens > 0 ? usage.tokens : null;
 }
 
-/** Money only where a rate covered a call; a floor where some did not. */
+/**
+ * Money only where a rate covered a call; a floor where some did not. No pill
+ * for nothing spent: a conversation whose only call the provider refused read
+ * "0,00 $", the bare zero the convention forbids.
+ */
 export function costPill(
   usage:
     | { cost: { amount: number; currency: string; unpriced_models: string[] } | null }
@@ -213,7 +217,9 @@ export function costPill(
 ): { amount: number; currency: string; floor: boolean } | null {
   const cost = usage?.cost;
   if (!cost) return null;
-  return { amount: cost.amount, currency: cost.currency, floor: cost.unpriced_models.length > 0 };
+  const floor = cost.unpriced_models.length > 0;
+  if (cost.amount <= 0 && !floor) return null;
+  return { amount: cost.amount, currency: cost.currency, floor };
 }
 
 /** The month's allowance, only when it asks for attention. */
