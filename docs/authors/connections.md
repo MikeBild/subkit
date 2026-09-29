@@ -16,11 +16,11 @@ Auswahl), jeder mit eigener Adresse:
 | **Schlüssel für Skripte** | Ein eigenes Skript, ein Cronjob oder CI ruft SubKit auf. **Schlüssel erstellen** legt einen an. | Ein nächtlicher Export. |
 | **Zugriff in deinem Namen** | SubKit darf ein anderes System in deinem Namen nutzen. Du meldest dich dort einmal an, kein Schlüssel nötig. **Verbinden** startet es. | Ein Workflow liest aus WikiKit. |
 
-Jede Zeile in **Zugriff in deinem Namen** ist eine *Kontoverbindung*: ein System, bei dem
+Jede Zeile in **Zugriff in deinem Namen** ist eine *Verbindung*: ein System, bei dem
 du SubKit einmal freigegeben hast. Jede Zeile zeigt ihren Zustand; **Erneuern** steht in
 der Zeile. Ein Reiter trägt nur eine Zahl, wenn dort etwas zu tun ist („2 laufen ab",
 „1 erneuern"); wie viele es insgesamt sind, steht im Bereich selbst. Was dich braucht —
-etwa eine abgelaufene Kontoverbindung oder eine vorbereitete Änderung, die auf Freigabe
+etwa eine abgelaufene Verbindung oder eine vorbereitete Änderung, die auf Freigabe
 wartet — steht nicht hier, sondern auf der Startseite **Übersicht**, in der einen Liste
 dessen, was jetzt zu tun ist.
 
@@ -49,14 +49,14 @@ füttern. Der Weg hat drei Schritte, und der letzte passiert auf der anderen Sei
    einen veröffentlicht, und welche Rechte es kennt. Steht dort, dass das System den
    Zugriff nicht auf diesem Weg freigibt, sagt die Seite das in einem Satz — dann gehört
    der Schlüssel auf die Konnektor-Seite (siehe unten).
-2. **Name und Rechte.** Die Kontoverbindung bekommt einen kurzen Namen (vorgeschlagen aus dem
+2. **Name und Rechte.** Die Verbindung bekommt einen kurzen Namen (vorgeschlagen aus dem
    Namen des Systems) und du wählst die Rechte, die SubKit dort haben soll. Nur was du
    hier wählst, wird auf der anderen Seite erbeten. `offline_access` steht nicht zur
    Wahl: Es ist kein Recht, sondern die Bitte um ein Erneuerungs-Token. Nennt das System
    diesen Wert, erbittet SubKit ihn selbst — beim Verbinden und bei jedem **Erneuern**.
 3. **Freigabe.** **Weiter zur Freigabe** schickt dich zum anderen System. Dort siehst du,
    wer anfragt (SubKit, mit seiner Adresse) und wofür, und klickst auf **Freigeben** —
-   oder auf **Ablehnen**. Danach bist du wieder im Cockpit, und die Kontoverbindung steht in
+   oder auf **Ablehnen**. Danach bist du wieder im Cockpit, und die Verbindung steht in
    der Liste.
 
 Was dabei im Hintergrund passiert, musst du nicht wissen; für die Neugierigen: SubKit
@@ -70,7 +70,7 @@ verschlüsselt wie jedes andere Secret, und kein Schlüssel wurde je eingetippt.
 ## Was die Liste zeigt
 
 Jede Zeile nennt den Namen, die Adresse, wie viele Rechte gewährt sind („2 Rechte"), wann
-die Kontoverbindung zuletzt verwendet wurde, welche Konnektoren sie nutzen (mit der Zahl
+die Verbindung zuletzt verwendet wurde, welche Konnektoren sie nutzen (mit der Zahl
 ihrer Workflows) und ein Zustandswort. **Details anzeigen** zeigt die Rechte so, wie das
 andere System sie nennt. Ein Risikowort („liest", „schreibt") steht dort bewusst nicht:
 SubKit kennt die Rechte eines fremden Systems nicht und würde raten. Kann sich der Zugriff
@@ -84,23 +84,23 @@ Erneuerungs-Token ausgestellt.
 | **abgelaufen** | Die andere Seite hat die Erneuerung abgelehnt, oder der Zugriff ist zu Ende und kann sich nicht selbst erneuern. Die Zeile nennt, welcher der beiden Gründe gilt. | **Erneuern** — wiederholt die Freigabe. |
 | **unlesbar** | Der gespeicherte Zugriff lässt sich mit dem Schlüssel dieser Installation nicht lesen. | **Erneuern**. |
 
-**Erneuern** wiederholt den Weg von oben für dieselbe Kontoverbindung: gleicher Name,
-gleiche Rechte, neue Freigabe. Eine abgelaufene oder unlesbare Kontoverbindung steht nur
+**Erneuern** wiederholt den Weg von oben für dieselbe Verbindung: gleicher Name,
+gleiche Rechte, neue Freigabe. Eine abgelaufene oder unlesbare Verbindung steht nur
 dann auf der **Übersicht**, wenn ein Konnektor sie nutzt; eine, die niemand nutzt („Von keinem
 Konnektor genutzt"), bricht nichts und bleibt hier in der Liste. **Trennen** (in der Zeile, mit Rückfrage) widerruft den
-gespeicherten Zugriff und vergisst die Kontoverbindung. Ein Konnektor, der sie benutzt hat, steht danach ohne
+gespeicherten Zugriff und vergisst die Verbindung. Ein Konnektor, der sie benutzt hat, steht danach ohne
 Zugangsdaten da und sagt das auf seiner Seite.
 
-## Eine Kontoverbindung in einem Konnektor verwenden
+## Eine Verbindung in einem Konnektor verwenden
 
 Auf der Seite eines Konnektors gibt es die Karte **Anmeldung**. Dort wählst du unter
-**Verbindung wählen** eine Kontoverbindung und klickst auf **Übernehmen**. Der Konnektor
-sendet von da an den Zugriff der Kontoverbindung — und weil sich der Zugriff selbst
+**Verbindung wählen** eine Verbindung und klickst auf **Übernehmen**. Der Konnektor
+sendet von da an den Zugriff der Verbindung — und weil sich der Zugriff selbst
 erneuert, ist damit auch dieses Thema erledigt.
 
-Die Karte zeigt, wie es um die Anmeldung steht, und verlinkt auf die Kontoverbindung. Ist
-die Anmeldung verloren — die Kontoverbindung abgelaufen, oder der Anbieter hat den Zugang
-abgelehnt —, bietet sie **Neu anmelden** an: bei einer Kontoverbindung führt das zu ihr
+Die Karte zeigt, wie es um die Anmeldung steht, und verlinkt auf die Verbindung. Ist
+die Anmeldung verloren — die Verbindung abgelaufen, oder der Anbieter hat den Zugang
+abgelehnt —, bietet sie **Neu anmelden** an: bei einer Verbindung führt das zu ihr
 (dort erneuert, gilt sie für jeden Konnektor, der sie nutzt), bei einem eigenen
 OAuth-Zugang startet es die Anmeldung beim Anbieter, bei einem Schlüssel öffnet es das
 Schlüsselfeld.

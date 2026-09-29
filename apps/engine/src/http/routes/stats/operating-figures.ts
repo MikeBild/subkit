@@ -46,6 +46,7 @@ export const OperatingFiguresResponse = z
       total: z.number().int(),
       succeeded: z.number().int(),
       failed: z.number().int(),
+      finished: z.number().int(),
       success_rate_percent: z.number().int().nullable(),
       href: z.string(),
       failed_href: z.string().nullable(),

@@ -54,7 +54,8 @@ beforeAll(async () => {
   const tenant_id = suite.http.tenantId;
 
   // Runs: four started in the window (two succeeded, one failed, one still
-  // running — counted, and not a success), one before it.
+  // running — counted in the total, but neither success nor failure: the rate
+  // is over the three that ended), one before it.
   const run = (status: "succeeded" | "failed" | "running", started: string) => ({
     tenant_id,
     status,
@@ -172,7 +173,13 @@ afterAll(async () => {
 
 interface Figures {
   window: { from: string; to: string };
-  runs: { total: number; succeeded: number; failed: number; success_rate_percent: number | null };
+  runs: {
+    total: number;
+    succeeded: number;
+    failed: number;
+    finished: number;
+    success_rate_percent: number | null;
+  };
   connectors: { enabled: number; not_ok: number; healthy_percent: number | null };
   repairs: { decided: number; applied: number; applied_percent: number | null };
 }
@@ -187,7 +194,8 @@ describe("operations figures of the Übersicht", () => {
       total: 4,
       succeeded: 2,
       failed: 1,
-      success_rate_percent: 50,
+      finished: 3,
+      success_rate_percent: 67,
     });
     expect(http.repairs).toMatchObject({ decided: 3, applied: 2, applied_percent: 67 });
     expect(http.connectors.not_ok).toBeGreaterThanOrEqual(1);
@@ -206,7 +214,9 @@ describe("operations figures of the Übersicht", () => {
 
     // The cockpit's arithmetic (apps/cockpit/src/pages/operations-figures.ts).
     const count = execs.totals.executions.count;
-    const succeeded = execs.totals.executions.by_status.succeeded ?? 0;
+    const byStatus = execs.totals.executions.by_status as Record<string, number | undefined>;
+    const succeeded = byStatus.succeeded ?? 0;
+    const finished = count - (byStatus.queued ?? 0) - (byStatus.running ?? 0);
     const decided = [
       AuditAction.PATCH_CANDIDATE_APPROVED,
       AuditAction.PATCH_CANDIDATE_AUTO_APPLIED,
@@ -220,7 +230,9 @@ describe("operations figures of the Übersicht", () => {
 
     const figures = await mcp<Figures>("get_operating_figures", { from: FROM, to: TO });
     expect(figures.runs.total).toBe(count);
-    expect(figures.runs.success_rate_percent).toBe(Math.round((succeeded / count) * 100));
+    expect(figures.runs.success_rate_percent).toBe(Math.round((succeeded / finished) * 100));
+    // The running run does not count against the rate: 2 of 3 ended, not 2 of 4.
+    expect(figures.runs.success_rate_percent).toBe(67);
     expect(figures.repairs.decided).toBe(byAction(decided));
     expect(figures.repairs.applied).toBe(byAction(applied));
     expect(figures.connectors.enabled).toBe(enabled.total);

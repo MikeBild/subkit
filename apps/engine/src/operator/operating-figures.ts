@@ -52,7 +52,14 @@ export interface OperatingFigures {
     total: number;
     succeeded: number;
     failed: number;
-    /** Whole percent of `total` that succeeded; null when no run started. */
+    /** Runs of the window that have ended (not queued, not running). */
+    finished: number;
+    /**
+     * Whole percent of the FINISHED runs that succeeded; null when none has
+     * ended. A run still in flight is neither a success nor a failure — counted
+     * against the total it lowered the rate and the health score every time
+     * work was merely under way.
+     */
     success_rate_percent: number | null;
     /** The runs counted, and the failed ones among them (null when there are none). */
     href: string;
@@ -140,6 +147,7 @@ export async function readOperatingFigures(
   const byStatus = executions.totals.executions.by_status;
   const succeeded = byStatus.succeeded ?? 0;
   const failed = byStatus.failed ?? 0;
+  const finished = Math.max(total - (byStatus.queued ?? 0) - (byStatus.running ?? 0), 0);
 
   let decided = 0;
   let applied = 0;
@@ -159,7 +167,8 @@ export async function readOperatingFigures(
       total,
       succeeded,
       failed,
-      success_rate_percent: percent(succeeded, total),
+      finished,
+      success_rate_percent: percent(succeeded, finished),
       href: cockpitHref("/runs", runWindow),
       failed_href: failed > 0 ? cockpitHref("/runs", { status: "failed", ...runWindow }) : null,
     },
