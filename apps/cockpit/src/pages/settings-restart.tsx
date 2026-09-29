@@ -154,6 +154,18 @@ export function SettingsRestartDialog({
       }
       setError(t("settings.restartNow.notConfirmed"));
       throw new Error("restart not confirmed");
+    } catch (failure) {
+      // A poll that fails for another reason than "still away" must say so —
+      // a 401 after a restart that changed the session secret included.
+      if (failure instanceof ApiError)
+        setError(
+          t(
+            failure.status === 401
+              ? "settings.restartNow.signInAgain"
+              : "settings.restartNow.notConfirmed",
+          ),
+        );
+      throw failure;
     } finally {
       setRestarting(false);
     }

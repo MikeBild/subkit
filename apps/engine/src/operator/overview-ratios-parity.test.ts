@@ -75,8 +75,8 @@ beforeAll(async () => {
     // Started and finished inside the window: both definitions count it.
     run("succeeded", 2, 1),
     run("failed", 3, 2.5),
-    // Still running: started in the window, not finished — the figures count
-    // it toward the whole, the old SQL did not see it.
+    // Still running: started in the window, not finished — counted in the
+    // total, but neither a success nor a failure for the rate.
     run("running", 0.5, null),
     // Started yesterday, finished today: the old SQL counted it, the figures
     // (started in the window) do not.
@@ -115,12 +115,13 @@ test("the success and repair ratios are the operating figures' counts", async ()
   if (!bounds.ok) throw new Error(bounds.reason);
   const figures = await readOperatingFigures(testDb.db, tenant_id, bounds);
 
-  expect(figures.runs).toMatchObject({ total: 3, succeeded: 1, failed: 1 });
+  expect(figures.runs).toMatchObject({ total: 3, succeeded: 1, failed: 1, finished: 2 });
   expect(figures.repairs).toMatchObject({ decided: 2, applied: 1 });
 
   const success = sectionMetric(overview, "executions.success_ratio");
-  expect(success?.value).toBeCloseTo(figures.runs.succeeded / figures.runs.total, 10);
-  expect(success?.value).toBeCloseTo(1 / 3, 10);
+  expect(success?.value).toBeCloseTo(figures.runs.succeeded / figures.runs.finished, 10);
+  // The running run counts neither way: one of the two that ended succeeded.
+  expect(success?.value).toBeCloseTo(1 / 2, 10);
   // The health score weighs the same number, not a second copy of it.
   const component = overview.core.health.components.find(
     (c) => c.id === "executions.success_ratio",

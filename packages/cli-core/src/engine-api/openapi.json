@@ -26138,7 +26138,7 @@
             }
           },
           "409": {
-            "description": "Refused: not_supervised, nothing_pending, multiple_replicas or restart_in_progress",
+            "description": "Refused: not_supervised, nothing_pending, multiple_replicas, restart_in_progress or not_ready",
             "content": {
               "application/json": {
                 "schema": {

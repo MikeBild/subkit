@@ -86,6 +86,8 @@ export function restartRefusalKey(code: string | null): TranslationKey {
       return "settings.restartNow.refused.multipleReplicas";
     case "restart_in_progress":
       return "settings.restartNow.refused.inProgress";
+    case "not_ready":
+      return "settings.restartNow.refused.notReady";
     default:
       return "common.actionFailed";
   }

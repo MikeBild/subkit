@@ -68,7 +68,7 @@ const restartRoute = createRoute({
     403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
     409: {
       description:
-        "Refused: not_supervised, nothing_pending, multiple_replicas or restart_in_progress",
+        "Refused: not_supervised, nothing_pending, multiple_replicas, restart_in_progress or not_ready",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },

@@ -1086,6 +1086,7 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
           total: 22,
           succeeded: 20,
           failed: 2,
+          finished: 22,
           success_rate_percent: 91,
           href: `/cockpit/runs?${new URLSearchParams(window)}`,
           failed_href: `/cockpit/runs?${new URLSearchParams({ status: "failed", ...window })}`,

@@ -67,6 +67,13 @@ export function registerRestartTrigger(trigger: () => void): () => void {
   };
 }
 
+/** Whether this process can perform a restart right now (its entrypoint has
+ * registered one). Checked before a request is written: a request accepted
+ * while nothing could carry it out would sit open and refuse every later one. */
+export function restartArmed(): boolean {
+  return restartTrigger !== null;
+}
+
 /** Start the registered restart shortly after the current response is sent.
  * Returns false when no process restart is registered. */
 export function scheduleProcessRestart(delayMs = 250): boolean {
@@ -80,7 +87,8 @@ export type RestartRefusal =
   | "not_supervised"
   | "nothing_pending"
   | "multiple_replicas"
-  | "restart_in_progress";
+  | "restart_in_progress"
+  | "not_ready";
 
 const REFUSAL_MESSAGES: Record<RestartRefusal, string> = {
   not_supervised:
@@ -89,6 +97,7 @@ const REFUSAL_MESSAGES: Record<RestartRefusal, string> = {
   multiple_replicas:
     "more than one engine instance is live; restart them one after another from the process supervisor",
   restart_in_progress: "a restart was requested a moment ago; wait for it to finish",
+  not_ready: "this engine is still starting and cannot restart yet; try again in a moment",
 };
 
 export class EngineRestartRefusedError extends Error {
@@ -218,6 +227,7 @@ export async function requestEngineRestart(
         throw new EngineRestartRefusedError("restart_in_progress");
       }
     }
+    if (!restartArmed()) throw new EngineRestartRefusedError("not_ready");
     const requestId = randomUUID();
     const audited = await auditAwait(
       {
