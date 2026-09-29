@@ -9,7 +9,7 @@
 // The entity icons are the navigation's own (`Workflow`, `Cable`), so a
 // workflow reads as the same thing in the rail, the picker and the transcript.
 
-import { Cable, CircleAlert, Workflow } from "lucide-react";
+import { Cable, CircleAlert, Layers, Workflow } from "lucide-react";
 import {
   type KeyboardEvent,
   type RefObject,
@@ -30,31 +30,41 @@ import {
 import { useI18n } from "@/lib/i18n-context";
 import {
   type ConversationReference,
-  type ConversationReferenceType,
   candidateToReference,
   findMentionQuery,
   findTokenAt,
   insertMention,
+  insertMentionText,
   isInsideMentionToken,
+  isReferenceCandidate,
   MENTION_TRIGGER,
   type MentionCandidate,
+  type MentionCandidateType,
   type MentionQuery,
   splitByMentions,
 } from "@/lib/mentions";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { cn } from "@/lib/utils";
 
-const TYPE_ORDER: ConversationReferenceType[] = ["workflow", "connector"];
+// Categories first: a block of the catalog is the broadest thing to point at.
+const TYPE_ORDER: MentionCandidateType[] = ["category", "workflow", "connector"];
 
-const TYPE_ICON: Record<ConversationReferenceType, typeof Workflow> = {
+const TYPE_ICON: Record<MentionCandidateType, typeof Workflow> = {
+  category: Layers,
   workflow: Workflow,
   connector: Cable,
 };
 
+const GROUP_HEADING = {
+  category: "chat.mention.categories",
+  workflow: "chat.mention.workflows",
+  connector: "chat.mention.connectors",
+} as const;
+
 const candidateKey = (c: Pick<MentionCandidate, "type" | "id">) => `${c.type}:${c.id}`;
 
 export interface MentionGroup {
-  type: ConversationReferenceType;
+  type: MentionCandidateType;
   items: MentionCandidate[];
 }
 
@@ -152,6 +162,20 @@ export function useMentionInput({
     (candidate: MentionCandidate) => {
       if (!mention) return;
       const caret = textareaRef.current?.selectionStart ?? value.length;
+      // A category is a phrase, not a reference: it goes into the text as
+      // `@kategorie/<name>` and nothing travels beside it.
+      if (!isReferenceCandidate(candidate)) {
+        const result = insertMentionText(
+          value,
+          mention.start,
+          caret,
+          `${MENTION_TRIGGER}${candidate.label}`,
+        );
+        pendingCaret.current = result.caret;
+        setValue(result.text);
+        close();
+        return;
+      }
       const reference = candidateToReference(candidate);
       const result = insertMention(value, mention.start, caret, reference);
       pendingCaret.current = result.caret;
@@ -282,12 +306,7 @@ export function MentionPicker({
           {groups.map((group) => {
             const Icon = TYPE_ICON[group.type];
             return (
-              <CommandGroup
-                key={group.type}
-                heading={t(
-                  group.type === "workflow" ? "chat.mention.workflows" : "chat.mention.connectors",
-                )}
-              >
+              <CommandGroup key={group.type} heading={t(GROUP_HEADING[group.type])}>
                 {group.items.map((item) => {
                   const testId = `chat-mention-item-${index++}`;
                   return (
@@ -300,11 +319,25 @@ export function MentionPicker({
                       data-testid={testId}
                     >
                       <Icon className="size-4 text-muted-foreground" />
-                      <span className="truncate font-medium">{item.title}</span>
-                      <span className="truncate text-muted-foreground text-xs">
-                        {MENTION_TRIGGER}
-                        {item.label}
-                      </span>
+                      {item.type === "category" ? (
+                        <>
+                          <span className="truncate font-medium">{item.label}</span>
+                          <span className="truncate text-muted-foreground text-xs">
+                            ·{" "}
+                            {item.count === 1
+                              ? t("chat.mention.categoryCountOne")
+                              : t("chat.mention.categoryCount", { count: String(item.count ?? 0) })}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="truncate font-medium">{item.title}</span>
+                          <span className="truncate text-muted-foreground text-xs">
+                            {MENTION_TRIGGER}
+                            {item.label}
+                          </span>
+                        </>
+                      )}
                     </CommandItem>
                   );
                 })}

@@ -95,7 +95,12 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
     const main = document.querySelector('[data-testid="admin-settings"]');
     const region = main?.querySelector('[data-family-slot="scroll-region"]');
     const content = main?.querySelector('[data-family-slot="content"]');
-    const heading = main?.querySelector("h1");
+    // The title row's leading edge: on a wide screen the sidebar toggle
+    // stands before the heading, and the content aligns to the row, not to
+    // the heading's text.
+    const h1 = main?.querySelector("h1");
+    const heading =
+      h1?.parentElement?.querySelector('[data-testid="sidebar-trigger"]') ?? h1 ?? null;
     const link = main?.querySelector('[data-testid="settings-section-link-tokens"]');
     const row = document.activeElement?.closest('[data-testid^="setting-item-"]');
     if (!region || !content || !heading || !link || !row) return { missing: true };

@@ -35,7 +35,7 @@ describe("cockpit chat resume", () => {
       expect(line, `${entry.stage} still reads as engine prose`).not.toMatch(
         /^You (were|have|saved)\b/,
       );
-      expect(line.length, `${entry.stage} has no line at all`).toBeGreaterThan(0);
+      expect(line?.length ?? 0, `${entry.stage} has no line at all`).toBeGreaterThan(0);
     }
   });
 
@@ -117,6 +117,11 @@ describe("cockpit chat resume", () => {
       expect(line, tool_name).not.toMatch(/wartet|Antwort|Rückfrage|offen gelassen/i);
       expect(line).toContain("Reporting API");
     }
+  });
+
+  test("a conversation that has not started carries no line under its title", () => {
+    expect(resumeSummaryLine(null, de)).toBeNull();
+    expect(resumeSummaryLine(undefined, en)).toBeNull();
   });
 
   test("keeps the English catalog usable for an English reader", () => {

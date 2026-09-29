@@ -352,6 +352,29 @@ cannot shift that line. Chat had drifted away from this and carried three differ
 header at the page margin, the transcript centred inside its own padding, the composer centred
 without any.
 
+The header is the shell's top bar, filled through a slot rather than a second band below it: the
+sidebar toggle, the title and — for a conversation that has a state — its one-line resume, then
+compact pills, then the list, new-conversation and context controls with the status badge. A new
+conversation reads "Neue Unterhaltung" and carries no line under it; the title does not pass through
+"Unbenannt" while a conversation loads. The pills are the mode, the conversation's own tokens, its
+cost where a rate covered a call (a floor, "mind.", where one did not), and the month's allowance
+only while it is tightening or critical, linked to Nutzung. On a phone the pills take a second row.
+Where the conversation came from moved into the context panel.
+
+The mode is a pill with a short name. The open list marks the system default and explains each
+option in one line; the full gate matrix (§14) sits behind "Was heißt das?" beside the pill instead
+of under it on every conversation. A running conversation shows the same pill read-only.
+
+Elsewhere the top bar stands only where it carries something: on a phone, where the navigation
+opens from it, and over a record with its breadcrumb. On a wide list page the sidebar toggle stands
+in the page header beside the title, and the body aligns to the start of that row. There is exactly
+one toggle in the document at a time.
+
+A request that was just sent stands in the transcript at once, where and as the saved one will —
+left, under "Du" — and stays until the saved one is there. A send the engine did not keep hands its
+text back to the composer. The transcript and composer remount only when the reader moves to
+another conversation, never when the first send gives a new conversation its address.
+
 The history is a panel rather than a rail. A reader who is reading one conversation is not choosing
 another, so the list opens from the header, lies over the conversation, and closes when one is
 picked — at every width, so there is one layout rather than two.
