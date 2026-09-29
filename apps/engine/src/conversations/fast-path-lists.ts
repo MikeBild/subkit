@@ -14,11 +14,18 @@
 // (`tryFastPath` checks the same `*:read` permissions the HTTP routes
 // enforce).
 
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { categoryOfConnector } from "../connectors/categorize.ts";
 import { totalOverWindow } from "../db/list-result.ts";
-import { connectors, knowledgeSources, workflows, workflowsSchedules } from "../db/schema/index.ts";
+import {
+  connectors,
+  knowledgeSources,
+  workflows,
+  workflowsSchedules,
+  workflowVersions,
+} from "../db/schema/index.ts";
 import { listExecutions } from "../execution/list.ts";
+import { loadCategoryIndex } from "../workflows/catalog-view.ts";
 import { deriveCategories, groupByCategory, UNCATEGORIZED } from "../workflows/categorize.ts";
 import type { FastPathParams } from "./fast-path.ts";
 
@@ -86,6 +93,82 @@ export async function renderWorkflowsList(p: FastPathParams): Promise<RenderPayl
       offset: 0,
       has_more: items.length < total,
       categories: blocks.map((b) => ({ category: b.category, count: b.items.length })),
+    },
+  };
+}
+
+/** Longest description rendered on one line of a category listing. */
+const DESCRIPTION_LINE_MAX = 200;
+
+function oneLine(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > DESCRIPTION_LINE_MAX
+    ? `${flat.slice(0, DESCRIPTION_LINE_MAX - 1).trimEnd()}…`
+    : flat;
+}
+
+/**
+ * Every workflow of ONE derived catalog block, each with what it does.
+ *
+ * Membership comes from `loadCategoryIndex` — the same whole-catalog corpus
+ * the HTTP/MCP/cockpit category counts derive from — so the number of rows
+ * here equals the number on the category chip by construction, not through a
+ * second rule that could drift. Returns `null` when the block does not exist,
+ * so the caller hands the turn to the model instead of answering
+ * "0 workflows" for a word that merely sat where a category would.
+ */
+export async function renderWorkflowCategoryList(
+  p: FastPathParams,
+  category: string,
+): Promise<RenderPayload | null> {
+  const index = await loadCategoryIndex(p.tenant_id, p.db);
+  const members = [...index.entries()].filter(([, c]) => c === category).map(([slug]) => slug);
+  if (members.length === 0) return null;
+  const rows = await p.db
+    .select({
+      id: workflows.id,
+      slug: workflows.slug,
+      name: workflows.name,
+      lifecycle: workflows.lifecycle,
+      description: workflows.description,
+      // Same precedence as the `wf_<slug>` tool description (catalog.ts):
+      // the editable column, then the active definition's description.
+      definition_description: sql<string | null>`${workflowVersions.dag}->>'description'`,
+    })
+    .from(workflows)
+    .leftJoin(
+      workflowVersions,
+      and(
+        eq(workflowVersions.tenant_id, p.tenant_id),
+        eq(workflowVersions.id, workflows.current_version_id),
+      ),
+    )
+    .where(
+      and(
+        eq(workflows.tenant_id, p.tenant_id),
+        isNull(workflows.deleted_at),
+        inArray(workflows.slug, members),
+      ),
+    )
+    .orderBy(asc(workflows.slug));
+  const items = rows.map(({ definition_description, ...r }) => {
+    const described = r.description?.trim() || definition_description?.trim() || "";
+    return { ...r, category, description: described ? oneLine(described) : null };
+  });
+  const lines = items.map((r) => {
+    const what = r.description && r.description !== r.name ? `: ${r.description}` : "";
+    return `- ${r.slug} (${r.lifecycle}) — ${r.name}${what}`;
+  });
+  return {
+    ok: true,
+    reply: `${items.length} workflow${items.length === 1 ? "" : "s"} in **${category}**:\n${lines.join("\n")}`,
+    data: {
+      category,
+      items,
+      total: items.length,
+      returned: items.length,
+      offset: 0,
+      has_more: false,
     },
   };
 }

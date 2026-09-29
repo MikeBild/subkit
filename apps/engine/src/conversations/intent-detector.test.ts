@@ -14,6 +14,7 @@ import {
   detectMultiArtifactIntent,
   detectUserIntent,
   inferStateDrivenFollowUpTool,
+  matchesEnumerationIntent,
 } from "./intent-detector.ts";
 import type { AuthoringSummary } from "./types.ts";
 
@@ -131,6 +132,50 @@ describe("detectUserIntent", () => {
   test("recognizes 'wieviele connectors habe ich' as enumeration → force no-tools", () => {
     const res = detectUserIntent("wieviele connectors habe ich");
     expect(res.forceNoTools).toBe(true);
+  });
+
+  describe("enumeration steering follows snapshot completeness", () => {
+    const complete = { workflows_complete: true, connectors_complete: true };
+    const workflowsTrimmed = { workflows_complete: false, connectors_complete: true };
+    const connectorsTrimmed = { workflows_complete: true, connectors_complete: false };
+
+    test("a complete snapshot withholds tools", () => {
+      expect(detectUserIntent("Zeig mir die notion-Workflows und was sie tun", complete)).toEqual({
+        forceNoTools: true,
+        reason: "enumeration_answer_from_snapshot",
+      });
+    });
+
+    test("trimmed workflows keep tools and force list_workflows for the first step", () => {
+      const res = detectUserIntent(
+        "Zeig mir die notion-Workflows und was sie tun",
+        workflowsTrimmed,
+      );
+      expect(res.forceNoTools).toBeUndefined();
+      expect(res.forceTool).toBe("list_workflows");
+      expect(res.reason).toBe("enumeration_snapshot_trimmed");
+    });
+
+    test("trimmed connectors force list_connectors; complete workflows still answer from it", () => {
+      expect(detectUserIntent("welche connectors habe ich", connectorsTrimmed).forceTool).toBe(
+        "list_connectors",
+      );
+      expect(detectUserIntent("welche workflows habe ich", connectorsTrimmed).forceNoTools).toBe(
+        true,
+      );
+    });
+
+    test("a mixed question is only answered from the snapshot when every kind is complete", () => {
+      const res = detectUserIntent("welche workflows und connectors habe ich", connectorsTrimmed);
+      expect(res.forceNoTools).toBeUndefined();
+      expect(res.forceTool).toBe("list_connectors");
+    });
+
+    test("matchesEnumerationIntent gates the coverage lookup", () => {
+      expect(matchesEnumerationIntent("welche workflows habe ich")).toBe(true);
+      expect(matchesEnumerationIntent("wieviele executions gibt es?")).toBe(false);
+      expect(matchesEnumerationIntent(null)).toBe(false);
+    });
   });
 
   test("'wieviele executions' is NOT enumeration — executions are not in the snapshot", () => {

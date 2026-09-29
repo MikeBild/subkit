@@ -5,6 +5,9 @@
 // Whitelist v1:
 //   - `list workflows | connectors | executions | schedules |
 //      knowledge sources` (en + de) → render from tenant rows
+//   - one catalog block (`zeig mir die <kat>-Workflows`, `workflows in
+//     @kategorie/<kat>`, en + de) → every member with what it does,
+//     only when `<kat>` is a live derived category
 //   - `run <slug>` / `starte <slug>` / `führe <slug> aus` /
 //     `execute <slug>` → resolve slug → confirmation gate → execute
 //   - `inspect execution <uuid>` → fetch row + steps
@@ -54,6 +57,7 @@ import {
   renderExecutionsList,
   renderKnowledgeSourcesList,
   renderSchedulesList,
+  renderWorkflowCategoryList,
   renderWorkflowsList,
 } from "./fast-path-lists.ts";
 import { renderRunOutput } from "./fast-path-render.ts";
@@ -195,6 +199,34 @@ function rendererFor(kind: keyof typeof LIST_RES): (p: FastPathParams) => Promis
     case "knowledge_sources":
       return renderKnowledgeSourcesList;
   }
+}
+
+// One catalog block: "zeig mir die notion-Workflows (und was sie tun)",
+// "Workflows in @kategorie/notion", "show me the notion workflows",
+// "workflows in @category/notion". Anchored like every fast-path matcher; the
+// captured word is only a CANDIDATE — `renderWorkflowCategoryList` checks it
+// against the live category index and a miss falls through to the model.
+const CATEGORY_TOKEN = String.raw`(?:@(?:kategorie|category)\/)?([a-z0-9][a-z0-9_-]*?)`;
+const WHAT_THEY_DO = String.raw`(?:\s*,?\s+(?:und\s+was\s+sie\s+tun|and\s+what\s+they\s+do))?`;
+const END = String.raw`\s*[?.!]?$`;
+const CATEGORY_LIST_RES = [
+  new RegExp(
+    String.raw`^(?:zeige?|show|list)\s+(?:mir\s+|me\s+)?(?:die\s+|alle\s+|the\s+|all\s+)?${CATEGORY_TOKEN}[-\s]workflows?${WHAT_THEY_DO}${END}`,
+    "i",
+  ),
+  new RegExp(
+    String.raw`^(?:(?:zeige?|show|list)\s+(?:mir\s+|me\s+)?)?(?:die\s+|alle\s+|the\s+|all\s+)?workflows?\s+(?:in|aus)\s+(?:der\s+kategorie\s+|the\s+category\s+|category\s+)?${CATEGORY_TOKEN}${WHAT_THEY_DO}${END}`,
+    "i",
+  ),
+];
+
+/** The candidate category word of a single-block listing, lower-cased. */
+export function matchCategoryListIntent(text: string): string | null {
+  for (const re of CATEGORY_LIST_RES) {
+    const m = text.match(re);
+    if (m?.[1]) return m[1].toLowerCase();
+  }
+  return null;
 }
 
 /** Canonical conversation-tool slug for a catalog kind (observability). */
@@ -530,6 +562,73 @@ async function executeRunWorkflow(
  * engine on this surface: the affirmation is prose, and the handle is read back
  * off the tool-call row's `confirmation_data`.
  */
+/**
+ * Mirror the HTTP route's `*:read` gate for a catalog read. A principal who
+ * lacks it gets a deterministic deny (audited, no fall-through to the LLM), so
+ * chat never enumerates what the HTTP layer would refuse. Null = allowed.
+ */
+async function denyCatalogRead(
+  p: FastPathParams,
+  permission: string,
+  tool: string,
+  input: Record<string, unknown>,
+): Promise<FastPathHit | null> {
+  const decision = await can(p.db, { tenant_id: p.tenant_id, principal: p.principal, permission });
+  if (decision.allow) return null;
+  const reason = decision.reason ?? "permission_denied";
+  await auditPolicyDenied(p, permission, tool, reason);
+  const reply = `Permission denied: ${permission}.`;
+  const persisted = await persistFastPathTurn(
+    p,
+    tool,
+    input,
+    { ok: false, denied: true, permission, reason, skipped_llm: true },
+    reply,
+    "denied",
+  );
+  recordConversationToolCall({ category: "tenant_read", tool, outcome: "denied", duration_ms: 0 });
+  return {
+    status: "active",
+    events: persisted.events,
+    fast_path_tool: tool,
+    assistant_text: reply,
+  };
+}
+
+/** Persist + report a rendered catalog read as the turn's answer. */
+async function answerCatalogRead(
+  p: FastPathParams,
+  tool: string,
+  input: Record<string, unknown>,
+  payload: RenderPayload,
+): Promise<FastPathHit> {
+  const outcome = payload.ok ? "ok" : "error";
+  const persisted = await persistFastPathTurn(
+    p,
+    tool,
+    input,
+    { ok: payload.ok, ...payload.data, skipped_llm: true },
+    payload.reply,
+    outcome,
+  );
+  recordConversationToolCall({ category: "tenant_read", tool, outcome, duration_ms: 0 });
+  logger.info({
+    module: "conversation",
+    action: "conversation.fast_path",
+    msg: "fast-path handled list intent",
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    tool,
+    ...input,
+  });
+  return {
+    status: "active",
+    events: persisted.events,
+    fast_path_tool: tool,
+    assistant_text: payload.reply,
+  };
+}
+
 export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null> {
   const text = p.user_message.trim();
   if (text.length === 0) return null;
@@ -546,73 +645,20 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
     // the corresponding permission cannot enumerate via chat what the
     // HTTP layer would deny. The deny is deterministic (no fall-through
     // to the LLM) so the contract is closed at the fast-path boundary.
-    {
-      const decision = await can(p.db, {
-        tenant_id: p.tenant_id,
-        principal: p.principal,
-        permission: READ_PERMISSION_BY_LIST[listKind],
-      });
-      if (!decision.allow) {
-        const reason = decision.reason ?? "permission_denied";
-        await auditPolicyDenied(p, READ_PERMISSION_BY_LIST[listKind], tool, reason);
-        const reply = `Permission denied: ${READ_PERMISSION_BY_LIST[listKind]}.`;
-        const persisted = await persistFastPathTurn(
-          p,
-          tool,
-          {},
-          {
-            ok: false,
-            denied: true,
-            permission: READ_PERMISSION_BY_LIST[listKind],
-            reason,
-            skipped_llm: true,
-          },
-          reply,
-          "denied",
-        );
-        recordConversationToolCall({
-          category: "tenant_read",
-          tool,
-          outcome: "denied",
-          duration_ms: 0,
-        });
-        return {
-          status: "active",
-          events: persisted.events,
-          fast_path_tool: tool,
-          assistant_text: reply,
-        };
-      }
-    }
-    const payload = await rendererFor(listKind)(p);
-    const persisted = await persistFastPathTurn(
-      p,
-      tool,
-      {},
-      { ok: payload.ok, ...payload.data, skipped_llm: true },
-      payload.reply,
-      payload.ok ? "ok" : "error",
-    );
-    recordConversationToolCall({
-      category: "tenant_read",
-      tool,
-      outcome: payload.ok ? "ok" : "error",
-      duration_ms: 0,
-    });
-    logger.info({
-      module: "conversation",
-      action: "conversation.fast_path",
-      msg: "fast-path handled list intent",
-      tenant_id: p.tenant_id,
-      conversation_id: p.conversation_id,
-      tool,
-    });
-    return {
-      status: "active",
-      events: persisted.events,
-      fast_path_tool: tool,
-      assistant_text: payload.reply,
-    };
+    const denied = await denyCatalogRead(p, READ_PERMISSION_BY_LIST[listKind], tool, {});
+    if (denied) return denied;
+    return answerCatalogRead(p, tool, {}, await rendererFor(listKind)(p));
+  }
+
+  // One catalog block ("zeig mir die notion-Workflows"). Same `workflow:read`
+  // gate as the full list; a word that is not a live category falls through.
+  const categoryCandidate = matchCategoryListIntent(text);
+  if (categoryCandidate) {
+    const input = { category: categoryCandidate };
+    const denied = await denyCatalogRead(p, "workflow:read", "list_workflows", input);
+    if (denied) return denied;
+    const payload = await renderWorkflowCategoryList(p, categoryCandidate);
+    if (payload) return answerCatalogRead(p, "list_workflows", input, payload);
   }
 
   // Multi-catalog enumeration ("connectors and workflows and knowledge
