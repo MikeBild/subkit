@@ -489,6 +489,9 @@ const EN = {
   "audit.action.toolPolicyConfirmationRequired": "Confirmation demanded before the step",
   "audit.action.credentialUpdated": "Credential changed",
   "audit.action.settingsRevisionSaved": "Configuration revision saved",
+  "audit.action.engineRestartRequested": "Restart requested",
+  "audit.action.engineRestartCompleted": "Restart completed",
+  "audit.action.engineRestartFailed": "Restart did not activate the setting",
   "audit.action.settingsRevisionActivated": "Configuration revision activated",
   "audit.action.scheduleTriggerFired": "Schedule fired",
   "audit.action.llmInvocation": "Model called",
@@ -933,6 +936,7 @@ const EN = {
   "permission.action.promote": "Promote",
   "permission.action.read": "View",
   "permission.action.revoke": "Revoke",
+  "permission.action.restart": "Restart",
   "permission.action.rotate": "Rotate",
   "permission.action.run": "Run",
   "permission.action.signal": "Send signal",
@@ -942,6 +946,7 @@ const EN = {
   "permission.resource.chatWorkspace": "Chat workspaces",
   "permission.resource.credentials": "Credentials",
   "permission.resource.discovery": "Discovery",
+  "permission.resource.engine": "Engine",
   "permission.resource.inboundHooks": "Inbound hooks",
   "permission.resource.mcp": "MCP",
   "permission.resource.mcpClients": "MCP clients",
@@ -2403,8 +2408,34 @@ const EN = {
   "settings.storage.title": "How is it stored?",
   "settings.storage.body":
     "Every change is stored in the database as a new, immutable version; earlier versions stay traceable in the audit. Most values take effect immediately on every instance. Values marked “Takes effect after a restart” apply only after a restart — until then the previous version keeps running.",
-  "settings.restartWho":
-    "The engine does not restart itself. Whoever operates this installation restarts it; until then the old value stays in effect.",
+  "settings.restartWho.restart":
+    "After saving, restart SubKit with “Restart now” above; until then the old value stays in effect.",
+  "settings.restartWho.askAdmin":
+    "After saving, an admin restarts SubKit; until then the old value stays in effect.",
+  "settings.restartWho.manual":
+    "SubKit does not restart itself here. Whoever operates this installation restarts it; until then the old value stays in effect.",
+  "settings.saveThenRestart": "Save, then restart",
+  "settings.restartNow.button": "Restart now",
+  "settings.restartNow.askAdmin": "Ask an admin to restart SubKit.",
+  "settings.restartNow.manual":
+    "SubKit does not restart itself here. Whoever operates the installation: `systemctl restart subkit-engine` or `docker compose restart engine` — or switch on “Supervisor present” in the settings.",
+  "settings.restartNow.title": "Restart SubKit now?",
+  "settings.restartNow.consequence":
+    "SubKit is briefly unreachable. Running steps get up to 2 minutes, then SubKit continues them after the start.",
+  "settings.restartNow.signsOut":
+    "The session secret changes with it: everyone signs in again afterwards.",
+  "settings.restartNow.progress": "Restarting…",
+  "settings.restartNow.done": "SubKit restarted; the saved settings are in effect.",
+  "settings.restartNow.auditLink": "Audit entry",
+  "settings.restartNow.notActivated":
+    "SubKit restarted, but the saved settings are not in effect. The audit entry says why.",
+  "settings.restartNow.notConfirmed":
+    "Restart not confirmed. Whoever operates the installation: `systemctl restart subkit-engine` or `docker compose restart engine`.",
+  "settings.restartNow.refused.nothingPending": "Nothing waits for a restart any more.",
+  "settings.restartNow.refused.multipleReplicas":
+    "More than one SubKit instance is running; from here only one would restart. Whoever operates the installation restarts them one after another.",
+  "settings.restartNow.refused.inProgress":
+    "A restart is already running or ended less than a minute ago.",
   "settings.auth.removeTitle": "Remove {provider}?",
   "settings.auth.removeConsequence":
     "Nobody can sign in through this provider any more once the change is saved.",
@@ -2473,6 +2504,7 @@ const EN = {
   "settings.leaf.log.format": "Log format",
   "settings.leaf.server.port": "HTTP port",
   "settings.leaf.server.public_base_url": "Public base URL",
+  "settings.leaf.server.restart_supervised": "Supervisor present",
   "settings.leaf.database.url": "Database connection",
   "settings.leaf.llm.provider": "Primary provider",
   "settings.leaf.llm.model": "Primary model",
@@ -2789,6 +2821,8 @@ const EN = {
     "The port the engine listens on. A change takes effect only after a restart, and anything pointing at the old port must follow.",
   "settings.help.server.public_base_url":
     "The address people and connected apps reach this installation at. Links in mails, sign-in callbacks and approvals are built from it.",
+  "settings.help.server.restart_supervised":
+    "A supervisor (systemd with Restart=on-failure, Docker with a restart policy) starts the engine again after it ends. Only then can SubKit restart itself from here.",
   "settings.help.tokens.currency":
     "Currency of the prices below. The built-in price list is in USD and applies only while this is USD.",
   "settings.help.tokens.monthly_budget":
@@ -3292,6 +3326,9 @@ const DE: Record<TranslationKey, string> = {
   "audit.action.toolPolicyConfirmationRequired": "Bestätigung vor dem Schritt verlangt",
   "audit.action.credentialUpdated": "Zugangsdaten geändert",
   "audit.action.settingsRevisionSaved": "Konfigurationsstand gespeichert",
+  "audit.action.engineRestartRequested": "Neustart angefordert",
+  "audit.action.engineRestartCompleted": "Neustart abgeschlossen",
+  "audit.action.engineRestartFailed": "Neustart hat die Einstellung nicht aktiviert",
   "audit.action.settingsRevisionActivated": "Konfigurationsstand aktiviert",
   "audit.action.scheduleTriggerFired": "Zeitplan ausgelöst",
   "audit.action.llmInvocation": "Modell aufgerufen",
@@ -3745,6 +3782,7 @@ const DE: Record<TranslationKey, string> = {
   "permission.action.promote": "Übernehmen",
   "permission.action.read": "Anzeigen",
   "permission.action.revoke": "Widerrufen",
+  "permission.action.restart": "Neu starten",
   "permission.action.rotate": "Rotieren",
   "permission.action.run": "Ausführen",
   "permission.action.signal": "Signal senden",
@@ -3754,6 +3792,7 @@ const DE: Record<TranslationKey, string> = {
   "permission.resource.chatWorkspace": "Chat-Arbeitsbereiche",
   "permission.resource.credentials": "Zugangsdaten",
   "permission.resource.discovery": "Erkundung",
+  "permission.resource.engine": "Engine",
   "permission.resource.inboundHooks": "Eingehende Hooks",
   "permission.resource.mcp": "MCP",
   "permission.resource.mcpClients": "MCP-Clients",
@@ -5252,8 +5291,33 @@ const DE: Record<TranslationKey, string> = {
   "settings.storage.title": "Wie wird gespeichert?",
   "settings.storage.body":
     "Jede Änderung wird als neue, unveränderliche Version in der Datenbank gespeichert; frühere Versionen bleiben im Audit nachvollziehbar. Die meisten Werte gelten sofort auf allen Instanzen. Werte mit ‚Wirkt nach Neustart‘ gelten erst nach einem Neustart — bis dahin läuft die vorherige Version weiter.",
-  "settings.restartWho":
-    "Die Engine startet nicht von selbst neu. Wer diese Installation betreibt, startet sie neu; bis dahin gilt der alte Wert.",
+  "settings.restartWho.restart":
+    "Nach dem Speichern startest du SubKit oben mit „Jetzt neu starten“ neu; bis dahin gilt der alte Wert.",
+  "settings.restartWho.askAdmin":
+    "Nach dem Speichern startet ein Admin SubKit neu; bis dahin gilt der alte Wert.",
+  "settings.restartWho.manual":
+    "SubKit startet sich hier nicht selbst neu. Wer diese Installation betreibt, startet sie neu; bis dahin gilt der alte Wert.",
+  "settings.saveThenRestart": "Speichern, dann neu starten",
+  "settings.restartNow.button": "Jetzt neu starten",
+  "settings.restartNow.askAdmin": "Bitte einen Admin, SubKit neu zu starten.",
+  "settings.restartNow.manual":
+    "SubKit startet sich hier nicht selbst neu. Wer die Installation betreibt: `systemctl restart subkit-engine` oder `docker compose restart engine` — oder „Aufseher vorhanden“ in den Einstellungen einschalten.",
+  "settings.restartNow.title": "SubKit jetzt neu starten?",
+  "settings.restartNow.consequence":
+    "SubKit ist kurz nicht erreichbar. Laufende Schritte bekommen bis zu 2 Minuten, danach setzt SubKit sie nach dem Start fort.",
+  "settings.restartNow.signsOut":
+    "Das Sitzungsgeheimnis ändert sich mit: Danach melden sich alle neu an.",
+  "settings.restartNow.progress": "Wird neu gestartet…",
+  "settings.restartNow.done": "SubKit wurde neu gestartet; die gespeicherten Einstellungen gelten.",
+  "settings.restartNow.auditLink": "Protokolleintrag",
+  "settings.restartNow.notActivated":
+    "SubKit wurde neu gestartet, aber die gespeicherten Einstellungen gelten nicht. Der Protokolleintrag nennt den Grund.",
+  "settings.restartNow.notConfirmed":
+    "Neustart nicht bestätigt. Wer die Installation betreibt: `systemctl restart subkit-engine` oder `docker compose restart engine`.",
+  "settings.restartNow.refused.nothingPending": "Nichts wartet mehr auf einen Neustart.",
+  "settings.restartNow.refused.multipleReplicas":
+    "Mehr als eine SubKit-Instanz läuft; von hier würde nur eine neu starten. Wer die Installation betreibt, startet sie nacheinander neu.",
+  "settings.restartNow.refused.inProgress": "Ein Neustart läuft schon oder ist keine Minute her.",
   "settings.auth.removeTitle": "{provider} entfernen?",
   "settings.auth.removeConsequence":
     "Über diesen Provider kann sich niemand mehr anmelden, sobald die Änderung gespeichert ist.",
@@ -5323,6 +5387,7 @@ const DE: Record<TranslationKey, string> = {
   "settings.leaf.log.format": "Protokollformat",
   "settings.leaf.server.port": "HTTP-Port",
   "settings.leaf.server.public_base_url": "Öffentliche Basisadresse",
+  "settings.leaf.server.restart_supervised": "Aufseher vorhanden",
   "settings.leaf.database.url": "Datenbankverbindung",
   "settings.leaf.llm.provider": "Primärer Anbieter",
   "settings.leaf.llm.model": "Primäres Modell",
@@ -5649,6 +5714,8 @@ const DE: Record<TranslationKey, string> = {
     "Der Port, auf dem die Engine lauscht. Wirkt erst nach einem Neustart; alles, was auf den alten Port zeigt, muss mitziehen.",
   "settings.help.server.public_base_url":
     "Die Adresse, unter der Menschen und verbundene Apps diese Installation erreichen. Links in Mails, Anmelde-Rückrufe und Freigaben werden daraus gebaut.",
+  "settings.help.server.restart_supervised":
+    "Ein Aufseher (systemd mit Restart=on-failure, Docker mit restart-Policy) startet die Engine nach einem Ende neu. Nur dann kann SubKit sich von hier aus selbst neu starten.",
   "settings.help.tokens.currency":
     "Währung der Preise darunter. Die eingebaute Preisliste ist in USD und gilt nur, solange hier USD steht.",
   "settings.help.tokens.monthly_budget":

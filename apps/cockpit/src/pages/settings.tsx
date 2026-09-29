@@ -80,6 +80,13 @@ import {
   settingUnit,
   settingValueText,
 } from "@/pages/settings-model";
+import {
+  RESTART_STATUS_QUERY_KEY,
+  SettingsRestartDialog,
+  SettingsRestartOffer,
+  useRestartOffer,
+} from "@/pages/settings-restart";
+import { restartSaveNote } from "@/pages/settings-restart-model";
 
 type AuthProviderSetting =
   | {
@@ -338,9 +345,13 @@ function AuthProvidersEditor({
 export function SettingsAttentionLine({
   attention,
   onOpenLeaf,
+  restartOffer = null,
 }: {
   attention: SettingsAttention | null;
   onOpenLeaf: (path: string) => void;
+  /** What stands after the waiting settings: the restart button, the manual
+   * way, or the request to ask an admin. */
+  restartOffer?: ReactNode;
 }) {
   const { t } = useI18n();
   if (!attention) return null;
@@ -370,6 +381,7 @@ export function SettingsAttentionLine({
               </a>
             </span>
           ))}
+          {restartOffer}
         </p>
       ) : null}
       {attention.notActivated ? (
@@ -923,6 +935,8 @@ export function SettingsPage() {
   // on its own.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [restartOpen, setRestartOpen] = useState(false);
+  const restartNow = useRestartOffer();
+  const [restartNowOpen, setRestartNowOpen] = useState(false);
   // Somebody saved a newer revision since the page was read: the save bar says
   // so and asks for a reload; the drafts stay.
   const [conflict, setConflict] = useState(false);
@@ -1060,6 +1074,7 @@ export function SettingsPage() {
       setConflict(false);
       setRestartOpen(false);
       await client.invalidateQueries({ queryKey: ["admin", "settings"] });
+      await client.invalidateQueries({ queryKey: RESTART_STATUS_QUERY_KEY });
       toast.success(t("settings.saved"));
     },
     onError: (error) => {
@@ -1235,7 +1250,16 @@ export function SettingsPage() {
       ) : (
         <div className="@container/settings grid gap-5 pb-20" data-testid="settings-list">
           <SettingsReadOnlyNotice canWrite={canWrite} />
-          <SettingsAttentionLine attention={attention} onOpenLeaf={openLeaf} />
+          <SettingsAttentionLine
+            attention={attention}
+            onOpenLeaf={openLeaf}
+            restartOffer={
+              <SettingsRestartOffer
+                offer={restartNow.offer}
+                onRestart={() => setRestartNowOpen(true)}
+              />
+            }
+          />
           {leafMissing && leaf ? (
             <p className="text-sm text-muted-foreground" data-testid="settings-leaf-missing">
               {t("settings.leafMissing", { path: leaf })}
@@ -1362,7 +1386,7 @@ export function SettingsPage() {
                     </li>
                   ))}
                 </ul>
-                <p>{t("settings.restartWho")}</p>
+                <p>{t(restartSaveNote(restartNow.offer))}</p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1370,12 +1394,28 @@ export function SettingsPage() {
             <AlertDialogCancel data-testid="settings-restart-cancel">
               {t("common.cancel")}
             </AlertDialogCancel>
+            {restartNow.offer === "restart" ? (
+              <AlertDialogAction
+                variant="outline"
+                onClick={() => save.mutate(undefined, { onSuccess: () => setRestartNowOpen(true) })}
+                data-testid="settings-restart-save-then-restart"
+              >
+                {t("settings.saveThenRestart")}
+              </AlertDialogAction>
+            ) : null}
             <AlertDialogAction onClick={() => save.mutate()} data-testid="settings-restart-confirm">
               {t("settings.saveAndRestart")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {restartNow.offer === "restart" ? (
+        <SettingsRestartDialog
+          open={restartNowOpen}
+          onOpenChange={setRestartNowOpen}
+          pendingFields={attention?.restart ?? restartNow.status?.pending_restart_fields ?? []}
+        />
+      ) : null}
     </PageFrame>
   );
 }
