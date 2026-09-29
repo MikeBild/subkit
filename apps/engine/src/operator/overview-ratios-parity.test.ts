@@ -19,6 +19,7 @@ import { AuditAction } from "../audit/index.ts";
 import { auditLog, executions, tenants, workflows, workflowVersions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { getMetrics } from "../observability/metrics.ts";
+import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { readOperatingFigures, resolveOperatingBounds } from "./operating-figures.ts";
 import {
   getOperationalOverview,
@@ -83,8 +84,9 @@ beforeAll(async () => {
     run("succeeded", 30, 1),
   ]);
 
+  const nextId = createDeterministicUuidFactory(7);
   const decision = (action: string, at: Date) => ({
-    id: crypto.randomUUID(),
+    id: nextId(),
     tenant_id,
     actor_type: "user",
     action,
