@@ -46,7 +46,8 @@ import { classifyMcpToolSideEffect } from "@shared/index.ts";
 import { jsonSchema, type Tool, tool } from "ai";
 import { recordMcpExternalToolPaletteAssemblyFailed } from "../../../audit/recorders/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
-import { buildMcpToolName } from "../../../connectors/drivers/mcp.ts";
+import { buildMcpToolName, mcpEgressInput } from "../../../connectors/drivers/mcp.ts";
+import { withEgressAudit } from "../../../connectors/egress.ts";
 import { readMcpToolsWithoutConfirmation } from "../../../connectors/mcp-tool-trust.ts";
 import type { Db } from "../../../db/client.ts";
 import { logger } from "../../../logging/logger.ts";
@@ -297,6 +298,7 @@ export async function buildExternalMcpTools(
         connector_slug: server.slug,
         connector_id: server.connector_id,
         connector_name: server.display_name,
+        connector_url: server.url,
         spec: guide ? { ...spec, description: `${guide}\n\n${spec.description}` } : spec,
       });
       guide = null;
@@ -311,6 +313,8 @@ interface BuildOneParams extends BuildExternalMcpToolsParams {
   connector_id: string;
   /** The name a person reads in the approval — never the prefixed tool id. */
   connector_name: string;
+  /** The remote endpoint the call's egress record names. */
+  connector_url: string;
   spec: PaletteOperationSpec;
 }
 
@@ -370,6 +374,7 @@ async function executeExternalMcpTool(
     connector_slug,
     connector_id,
     connector_name,
+    connector_url,
     spec,
     principal,
     rawArgs,
@@ -864,38 +869,57 @@ async function executeExternalMcpTool(
   }
 
   ctx.onLog?.("info", `invoking external MCP tool ${name}`);
-  const invoked = await invokeRemoteTool({
-    db,
-    tenant_id: ctx.tenant_id,
-    // Attribute the `mcp_external_tool.invoked` audit row to the chat
-    // principal that drove this turn — never a blurred system actor.
-    actor_id: principal.id,
-    connector_id,
-    connector_slug,
-    // Which operation this entry issues is the spec's decision, resolved
-    // above from the arguments the human approved.
-    call: resolved.call,
-    requestSource: "chat",
-    // Names the rule on the audit row when the call skipped the pause.
-    ...(gateRule ? { gate_rule: gateRule } : {}),
-    // Stopping the turn stops the outbound request. The pool cancels this
-    // ONE request; the tenant's pooled session is not torn down.
-    ...(p.abortSignal ? { signal: p.abortSignal } : {}),
-    // Remote progress becomes a `tool_log` event, so a long remote call
-    // renders as it runs instead of as a silence. It buys the remote no
-    // extra time: the bounded timeout is unaffected by progress.
-    ...(ctx.onLog
-      ? {
-          onProgress: (prog: { progress: number; total?: number; message?: string }) => {
-            const of = prog.total !== undefined ? `/${prog.total}` : "";
-            ctx.onLog?.("info", `${name}: ${prog.message ?? "progress"} (${prog.progress}${of})`);
-          },
-        }
-      : {}),
-    // `recordMcpExternalToolInvoked` is emitted INSIDE `invokeRemoteTool`
-    // with outcome / duration_ms / byte_count — the pool owns that audit
-    // so the byte count is the raw remote size, not the truncated view.
-  });
+  // The call is egress like a workflow step's: the same `withEgressAudit`
+  // record, built by the same `mcpEgressInput`, so "what left the tenant"
+  // reads alike for both surfaces. Connector stats and the runtime read
+  // count the pool's row, never this one, so a call still counts once.
+  const invoked = await withEgressAudit(
+    mcpEgressInput({
+      executor: db,
+      tenant_id: ctx.tenant_id,
+      actor_id: principal.id,
+      actor_type: principal.kind === "system_account" ? "system_account" : "user",
+      connector: { id: connector_id, slug: connector_slug, url: connector_url },
+      call: resolved.call,
+      source: "tool",
+    }),
+    () =>
+      invokeRemoteTool({
+        db,
+        tenant_id: ctx.tenant_id,
+        // Attribute the `mcp_external_tool.invoked` audit row to the chat
+        // principal that drove this turn — never a blurred system actor.
+        actor_id: principal.id,
+        connector_id,
+        connector_slug,
+        // Which operation this entry issues is the spec's decision, resolved
+        // above from the arguments the human approved.
+        call: resolved.call,
+        requestSource: "chat",
+        // Names the rule on the audit row when the call skipped the pause.
+        ...(gateRule ? { gate_rule: gateRule } : {}),
+        // Stopping the turn stops the outbound request. The pool cancels this
+        // ONE request; the tenant's pooled session is not torn down.
+        ...(p.abortSignal ? { signal: p.abortSignal } : {}),
+        // Remote progress becomes a `tool_log` event, so a long remote call
+        // renders as it runs instead of as a silence. It buys the remote no
+        // extra time: the bounded timeout is unaffected by progress.
+        ...(ctx.onLog
+          ? {
+              onProgress: (prog: { progress: number; total?: number; message?: string }) => {
+                const of = prog.total !== undefined ? `/${prog.total}` : "";
+                ctx.onLog?.(
+                  "info",
+                  `${name}: ${prog.message ?? "progress"} (${prog.progress}${of})`,
+                );
+              },
+            }
+          : {}),
+        // `recordMcpExternalToolInvoked` is emitted INSIDE `invokeRemoteTool`
+        // with outcome / duration_ms / byte_count — the pool owns that audit
+        // so the byte count is the raw remote size, not the truncated view.
+      }),
+  );
 
   // Persist the FULL remote content verbatim into the tool-call row. The
   // pool injects no wall-clock / random, so a replay rehydrates the exact
