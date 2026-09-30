@@ -5,6 +5,8 @@
 //   - AC1: A valid Standard-Webhooks signature enqueues an execution.
 //   - AC2: A stale timestamp is denied.
 //   - AC3: A duplicate webhook-id is deduped.
+//   - AC4: A sender with its own HMAC scheme is bound with the hmac
+//     verifier; an invalid scheme is refused when the binding is created.
 // Spec refs: docs/developers/input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -176,5 +178,58 @@ describe("journey: inbound webhook triggers execution", () => {
     expect(second.status).toBe(200);
     const secondBody = (await second.json()) as { deduped?: boolean };
     expect(secondBody.deduped).toBe(true);
+  });
+
+  test("AC4: an hmac binding refuses an invalid scheme and accepts a signed POST", async () => {
+    const refused = await journeyFetch(ctx, "/v1/webhooks/inbound", {
+      method: "POST",
+      body: JSON.stringify({
+        slug: "hmac-events-bad",
+        workflow_id: workflowId,
+        verifier: "hmac",
+        secret: SECRET,
+        native_verifier_config: { hmac: { signature_header: "x-sig", signed_payload: "{id}" } },
+      }),
+    });
+    expect(refused.status).toBe(400);
+
+    const bound = await journeyFetch(ctx, "/v1/webhooks/inbound", {
+      method: "POST",
+      body: JSON.stringify({
+        slug: "hmac-events",
+        workflow_id: workflowId,
+        verifier: "hmac",
+        secret: SECRET,
+        native_verifier_config: {
+          hmac: {
+            signature_header: "X-Example-Signature",
+            signature_prefix: "v1=",
+            signed_payload: "v1:{timestamp}:{body}",
+            timestamp_header: "X-Example-Timestamp",
+            id_header: "X-Example-Message-Id",
+          },
+        },
+      }),
+    });
+    expect(bound.status).toBe(201);
+
+    const body = JSON.stringify({ eventType: "thing.happened" });
+    // allow-wall-clock: the HTTP ingress verifies the live signature window.
+    const ts = Math.floor(Date.now() / 1000);
+    const digest = createHmac("sha256", SECRET).update(`v1:${ts}:${body}`).digest("hex");
+    const res = await fetch(`${ctx.baseUrl}/v1/hooks/hmac-events`, {
+      method: "POST",
+      body,
+      headers: {
+        "content-type": "application/json",
+        "X-Example-Signature": `v1=${digest}`,
+        "X-Example-Timestamp": String(ts),
+        "X-Example-Message-Id": "hmac-journey-1",
+      },
+    });
+    expect(res.status).toBe(200);
+    const out = (await res.json()) as { accepted: boolean; webhook_id: string };
+    expect(out.accepted).toBe(true);
+    expect(out.webhook_id).toBe("hmac-journey-1");
   });
 });
