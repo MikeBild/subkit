@@ -128,7 +128,18 @@ export function buildConnectorCapabilitySignal(input: ConnectorCapabilityInput):
   // Everything but the tool list is fixed; the tool list takes what is left
   // of the size cap, so a large catalog can never push the data paths or the
   // paging hints out of the body.
+  // Ambient connector skills render as a one-line index entry (title + the
+  // body's first line); the rest arrives only on load_skill. The first line
+  // therefore carries the one fact that prevents "no data": where to start.
+  const startPath =
+    [...dataPaths].filter((p) => !p.includes("{")).sort((a, b) => a.length - b.length)[0] ??
+    dataPaths[0];
+  const lead = startPath
+    ? `Start at \`${startPath}\`, follow the ids it returns${pagingHints.length > 0 ? "; lists are paged" : ""}. Load before saying data is missing.`
+    : "Which tools read and which write, and what the server says about itself — load this before the first call.";
+
   const head = [
+    lead,
     `MCP connector '${connector.display_name}' (slug ${connector.slug})${host ? ` at ${host}` : ""}.`,
     ...(input.purpose?.trim() ? [`Purpose: ${clip(input.purpose, 300)}`] : []),
     `Sign-in: ${connector.auth_type === "none" ? "none" : `${connector.auth_type} — the credential is stored with the connector; never ask for it in chat`}.`,
@@ -173,7 +184,7 @@ export function buildConnectorCapabilitySignal(input: ConnectorCapabilityInput):
 
   const body = [...head, ...toolLines, ...tail].join("\n").slice(0, MAX_BODY_CHARS);
 
-  const title = scrubString(`Using the '${connector.slug}' MCP connector`);
+  const title = scrubString(`Navigating the '${connector.slug}' MCP server`);
   const fingerprint = createHash("sha256")
     .update(`connector_capability:${connector.id}:${body}`)
     .digest("hex")
