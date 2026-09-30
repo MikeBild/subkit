@@ -12684,11 +12684,25 @@ bounded at 64 characters and matches `^[a-zA-Z0-9_-]{1,64}$`; no dots.
 
 **Entries are not all remote tools.** Each entry is a `PaletteOperationSpec` —
 a name, a schema, and the one remote operation it issues. A remote tool supplies
-one each. Where the negotiated capabilities declare resources or prompts, four
-engine-minted adapters are added per server: `list_resources`, `read_resource`,
-`list_prompts`, `get_prompt`. Adapters appear **only** where the capability was
+one each. Where the negotiated capabilities declare resources or prompts,
+engine-minted adapters are added per server: `list_resources`,
+`list_resource_templates`, `read_resource` for resources, `list_prompts`,
+`get_prompt` for prompts. Adapters appear **only** where the capability was
 declared, so the model is never offered an entry whose every call is a protocol
 error.
+
+**The server's own tools win a name.** When a server ships a tool under an
+adapter's name — a `read_resource` TOOL is common, and is often the only way to
+data that is not an MCP resource — the palette keeps the server's tool and leaves
+the adapter out. Two entries cannot share `mcp_<connector_slug>__read_resource`;
+before this rule the adapter silently replaced the tool, and the model lost the
+server's own description of which URIs it reads.
+
+**The server's instructions reach the model once.** The `instructions` a server
+returns at `initialize` are prepended, quoted and attributed to the server ("in
+its own words, not verified by SubKit"), to that server's first palette entry,
+clipped to 2,000 characters. They are description text only: no gate reads
+them, and the approval a person sees never carries them.
 
 **They are ordinary palette entries.** Same registry, same `policyDecide()`
 gate, same durable approval handle, same `tool.dispatch.invoke` audit, same
