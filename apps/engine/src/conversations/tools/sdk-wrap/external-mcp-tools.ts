@@ -39,7 +39,8 @@
 // WHAT THE SERVER SAYS vs WHAT THE ENGINE DOES. A remote's `annotations`
 // reach the model in the entry's description and the audit trail, and they
 // reach NO gate: every `tools/call` confirms, whatever the server claims
-// about itself. `classifyMcpToolSideEffect` carries that rule.
+// about itself, unless an operator listed that tool on the connector as
+// running without a question. `classifyMcpToolSideEffect` carries that rule.
 
 import { classifyMcpToolSideEffect } from "@shared/index.ts";
 import { jsonSchema, type Tool, tool } from "ai";
@@ -266,9 +267,9 @@ function buildOneExternalMcpTool(
     // AI SDK 7: coerce tool output to JSON-safe for the model (see json-safe-output.ts).
     toModelOutput: jsonSafeModelOutput,
     description: spec.description,
-    // The entry's argument schema plus the confirm markers — this tool always
-    // pauses, so the model needs a declared slot to carry the `confirm_id`
-    // back. The markers are stripped again before the args leave the perimeter.
+    // The entry's argument schema plus the confirm markers — this tool pauses
+    // unless its connector trusts it, so the model needs a declared slot to
+    // carry the `confirm_id` back. The markers are stripped again before the args leave the perimeter.
     inputSchema: jsonSchema(
       withConfirmMarkerProperties(spec.inputSchema) as Parameters<typeof jsonSchema>[0],
     ),
