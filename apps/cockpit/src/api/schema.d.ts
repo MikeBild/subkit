@@ -4689,7 +4689,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read verified readiness of this workflow's schedules */
+        /** Read verified readiness of this workflow's schedules and inbound hooks */
         get: {
             parameters: {
                 query?: never;
@@ -4719,6 +4719,23 @@ export interface paths {
                                 /** @enum {string} */
                                 environment: "dev" | "prod";
                                 next_run_at: string | null;
+                            }[];
+                            inbound_hooks: {
+                                inbound_hook_id: string;
+                                workflow_id: string;
+                                slug: string;
+                                /** @enum {string} */
+                                state: "paused" | "activation_required" | "input_required" | "repair_required" | "approval_required" | "authorized" | "verification_unavailable";
+                                ready: boolean;
+                                /** @enum {string} */
+                                environment: "prod";
+                                admission_hold: {
+                                    /** @enum {string} */
+                                    reason_code: "execution_authority_required" | "execution_authority_unavailable";
+                                    observed_at: string;
+                                } | null;
+                                last_refused_at: string | null;
+                                last_refused_reason: string | null;
                             }[];
                         };
                     };
@@ -20750,6 +20767,11 @@ export interface components {
                             }[];
                             default?: string | number | boolean | string[];
                         }[];
+                        external_tool?: {
+                            connector: string;
+                            tool: string;
+                            hint?: string;
+                        };
                     };
                     expires_at: string;
                 } | null;
@@ -21647,7 +21669,7 @@ export interface components {
                     }[];
                     causes: {
                         /** @enum {string} */
-                        kind: "failing_group" | "held_schedule" | "connector";
+                        kind: "failing_group" | "held_schedule" | "held_inbound_hook" | "connector";
                         id: string;
                         /** @description The engine's own English sentence. Kept for the contract; a UI composes its words from `subject` and `reason`. */
                         label: string;
