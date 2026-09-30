@@ -160,6 +160,12 @@ export function createMockLanguageModel(modelId = "mock-converse"): MockLanguage
       }
 
       singleton.toolChoices.push(options.toolChoice);
+      singleton.toolPalettes.push(
+        (options.tools ?? []).map((t) => ({
+          name: t.name,
+          description: t.type === "function" ? (t.description ?? "") : "",
+        })),
+      );
       const lastUser = findLastUserText(options.prompt);
       singleton.calls.push({
         model: modelId,

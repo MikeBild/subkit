@@ -14,23 +14,28 @@ import type { McpOperation } from "@shared/index.ts";
  * Every operation the pool can issue.
  *
  * A SUPERSET of `McpOperation`, which is the three a workflow step can
- * address. The two list operations are discovery: they name no target, so
+ * address. The three list operations are discovery: they name no target, so
  * a step has nothing to bind them to, and they exist for the chat
  * palette's read-only adapters. Keeping the step's vocabulary at three is
  * what stops a workflow author from writing a step whose result is a page
  * of someone else's catalogue.
  */
-export type RemoteOperation = McpOperation | "list_resources" | "list_prompts";
+export type RemoteOperation =
+  | McpOperation
+  | "list_resources"
+  | "list_resource_templates"
+  | "list_prompts";
 
 /** A single operation against a remote, with its target already resolved.
  *  Discriminated on `operation`: `performRemoteCall`'s switch below has no
- *  default arm, so a sixth member cannot be added without the compiler
+ *  default arm, so a further member cannot be added without the compiler
  *  demanding the code that issues it. */
 export type RemoteCall =
   | { operation: "call_tool"; tool: string; arguments: Record<string, unknown> }
   | { operation: "read_resource"; uri: string }
   | { operation: "get_prompt"; prompt: string; arguments: Record<string, unknown> }
   | { operation: "list_resources"; cursor?: string }
+  | { operation: "list_resource_templates"; cursor?: string }
   | { operation: "list_prompts"; cursor?: string };
 
 /** Per-call controls the pool threads down to the SDK.
@@ -69,7 +74,7 @@ export interface RemoteCallOptions {
  *  in the pool so this module depends on nothing that owns a socket; the
  *  pool's own `McpClientLike` extends it.
  *
- *  The two list methods are OPTIONAL because the pool only reaches them
+ *  The list methods are OPTIONAL because the pool only reaches them
  *  for a server whose negotiated capabilities declared `resources` /
  *  `prompts`, and the in-process fakes that drive the tool path have no
  *  reason to implement what they never declare. */
@@ -98,6 +103,14 @@ export interface RemoteCallClient {
     params?: { cursor?: string },
     options?: SdkRequestOptions,
   ): Promise<{ [key: string]: unknown; resources?: unknown; nextCursor?: string | undefined }>;
+  listResourceTemplates?(
+    params?: { cursor?: string },
+    options?: SdkRequestOptions,
+  ): Promise<{
+    [key: string]: unknown;
+    resourceTemplates?: unknown;
+    nextCursor?: string | undefined;
+  }>;
   listPrompts?(
     params?: { cursor?: string },
     options?: SdkRequestOptions,
@@ -143,6 +156,7 @@ export const MCP_WIRE_METHOD: Record<RemoteOperation, string> = {
   read_resource: "resources/read",
   get_prompt: "prompts/get",
   list_resources: "resources/list",
+  list_resource_templates: "resources/templates/list",
   list_prompts: "prompts/list",
 };
 
@@ -161,6 +175,7 @@ export const MCP_REQUIRED_CAPABILITY: Record<RemoteOperation, "tools" | "resourc
   read_resource: "resources",
   get_prompt: "prompts",
   list_resources: "resources",
+  list_resource_templates: "resources",
   list_prompts: "prompts",
 };
 
@@ -178,7 +193,11 @@ export const MCP_REQUIRED_CAPABILITY: Record<RemoteOperation, "tools" | "resourc
 export function remoteCallTarget(call: RemoteCall): string {
   if (call.operation === "call_tool") return call.tool;
   if (call.operation === "get_prompt") return call.prompt;
-  if (call.operation === "list_resources" || call.operation === "list_prompts") {
+  if (
+    call.operation === "list_resources" ||
+    call.operation === "list_resource_templates" ||
+    call.operation === "list_prompts"
+  ) {
     return MCP_WIRE_METHOD[call.operation];
   }
   const q = call.uri.indexOf("?");
@@ -260,6 +279,20 @@ export async function performRemoteCall(
       );
       return {
         content: { resources: res.resources ?? [], next_cursor: res.nextCursor ?? null },
+        remote_error: false,
+      };
+    }
+    case "list_resource_templates": {
+      if (!client.listResourceTemplates) throw new Error("client cannot list resource templates");
+      const res = await client.listResourceTemplates(
+        call.cursor !== undefined ? { cursor: call.cursor } : {},
+        options,
+      );
+      return {
+        content: {
+          resource_templates: res.resourceTemplates ?? [],
+          next_cursor: res.nextCursor ?? null,
+        },
         remote_error: false,
       };
     }
