@@ -623,6 +623,7 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
  */
 export type ToolModeRule =
   | "inline_credential"
+  | "connector_trust"
   | "never_gate"
   | "permission_mode"
   | "conversation_override"
@@ -638,6 +639,9 @@ export interface ToolModeDecision {
 /**
  * Full mode-resolution stack:
  *   1. inline-credential safeguard
+ *   1b. operator trust (`connector_trust`) — an external MCP tool an operator
+ *       marked "Ohne Rückfrage" on its connector runs without the pause,
+ *       except under permission_mode "plan", which holds every write
  *   2. never-gate pin (`neverGate`, unless an explicit override exists)
  *   3. client permission_mode ("auto" / "ask" / "plan" / "yolo") — outer gate
  *   4. per-conversation override (`conversations.tool_policies` jsonb)
@@ -677,6 +681,10 @@ export function decideToolMode(args: {
   input: unknown;
   overrides: ToolPolicies;
   permission_mode?: PermissionMode | null;
+  /** The operator marked this exact remote tool "run without asking" on its
+   *  connector (`config.mcp.tools_without_confirmation`). Set only by the
+   *  external MCP palette, from the connector row — never from the call. */
+  connector_trust?: boolean;
 }): ToolModeDecision {
   const { tool, category, input, overrides, permission_mode } = args;
 
@@ -693,6 +701,13 @@ export function decideToolMode(args: {
   // exactly which credential field is being staged.
   if (def?.credentialFields && hasInlineCredential(input, def.credentialFields)) {
     return { mode: "confirm_before_execution", rule: "inline_credential" };
+  }
+
+  // Operator trust — after the inline-credential safeguard, so a declared
+  // secret still confirms, and yielding to "plan", which holds every write
+  // until the user leaves plan mode.
+  if (args.connector_trust === true && permission_mode !== "plan") {
+    return { mode: "no_confirm", rule: "connector_trust" };
   }
 
   // Never-gate tools — the pin has to survive the permission_mode

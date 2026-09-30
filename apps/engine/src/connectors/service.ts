@@ -19,6 +19,7 @@ import {
 } from "./config-schemas.ts";
 import { closePoolForConnector } from "./drivers/postgres.ts";
 import { connectorCountsAgainstHealth } from "./health-ratio.ts";
+import { carryMcpTrustList } from "./mcp-tool-trust.ts";
 import { enrichConnectorFromTemplate } from "./template-enrichment.ts";
 import { buildTemplateBindingFields, resolveConnectorTemplate } from "./template-resolver.ts";
 import type {
@@ -207,6 +208,13 @@ export async function createConnector(
       )
       .limit(1);
     const existing = existingRows[0];
+    // The per-tool trust list has one writer (connectors/mcp-tool-trust.ts):
+    // an upsert keeps the stored list, a fresh insert may not name one.
+    const config = carryMcpTrustList(
+      effective.driver,
+      existing?.driver === effective.driver ? existing.config : null,
+      effective.config,
+    );
     if (existing) {
       const updated = await tx
         .update(connectors)
@@ -216,7 +224,7 @@ export async function createConnector(
           auth_type,
           base_url: effective.base_url ?? existing.base_url,
           dsn: effective.dsn ?? existing.dsn,
-          config: effective.config ?? existing.config,
+          config: config ?? existing.config,
           operator_quirks: effective.operator_quirks ?? existing.operator_quirks,
           ...(resolved.binding ?? {}),
           updated_at: new Date(),
@@ -260,7 +268,7 @@ export async function createConnector(
         auth_type,
         base_url: effective.base_url ?? null,
         dsn: effective.dsn ?? null,
-        config: effective.config ?? {},
+        config: config ?? {},
         operator_quirks: effective.operator_quirks ?? {},
         ...(resolved.binding ?? {
           template_slug: null,
@@ -628,6 +636,15 @@ export async function updateConnector(
       (set.auth_type ?? prior.auth_type) as ConnectorView["auth_type"],
       (set.config ?? prior.config ?? {}) as Record<string, unknown>,
     );
+    // The per-tool trust list has one writer (connectors/mcp-tool-trust.ts):
+    // a config edit keeps the stored list and may not name a different one.
+    if (set.config !== undefined) {
+      set.config = carryMcpTrustList(
+        prior.driver,
+        prior.config,
+        set.config as Record<string, unknown>,
+      );
+    }
     const [row] = await tx.update(connectors).set(set).where(eq(connectors.id, id)).returning();
     if (!row) return null;
     await auditAwait(
