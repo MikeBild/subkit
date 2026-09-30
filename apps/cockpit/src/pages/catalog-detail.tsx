@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Pencil, RefreshCw, ShieldCheck } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Pencil, RefreshCw, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest, apiText, listConversationsAbout } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, chatNewHref, conversationHref } from "@/app/links";
+import { absolute, conversationHref } from "@/app/links";
 import { useRecordCrumb } from "@/app/record-crumb";
 import { AgentPanel } from "@/components/cockpit/agent-panel";
 import {
@@ -18,6 +18,7 @@ import {
   ConnectorTechnicalFacts,
   ConnectorWorkflows,
 } from "@/components/cockpit/connector-detail";
+import { DetailAction } from "@/components/cockpit/detail-action";
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { bytes, MISSING } from "@/components/cockpit/table-columns";
@@ -585,17 +586,6 @@ export function CatalogDetailPage({
     enabled: canRead && Boolean(id),
   });
   const record = query.data;
-  const chatHref = useMemo(
-    () =>
-      absolute(
-        chatNewHref({
-          prompt: `${t("detail.continueInChat")}: ${recordTitle(record)}`,
-          workflowId: resource === "workflows" ? id : null,
-          connectorId: resource === "connectors" ? id : null,
-        }),
-      ),
-    [record, t, resource, id],
-  );
   // The breadcrumb names the record once it has one; an id never stands in.
   useRecordCrumb(record ? recordTitle(record) : null);
   // A probe result is a paragraph that names latency or the missing scopes,
@@ -717,6 +707,9 @@ export function CatalogDetailPage({
               workflowId={id}
               workflowName={recordTitle(record)}
               version={record.current_version === undefined ? null : String(record.current_version)}
+              versionId={
+                typeof record.current_version_id === "string" ? record.current_version_id : null
+              }
             />
           )}
           {resource === "workflows" && permissions.includes("conversation:write") && (
@@ -736,12 +729,16 @@ export function CatalogDetailPage({
               {t("detail.test")}
             </Button>
           )}
-          <Button asChild variant="outline">
-            <a href={chatHref} data-testid="detail-chat-action">
-              <Bot data-icon="inline-start" />
-              {t("detail.continueInChat")}
-            </a>
-          </Button>
+          <DetailAction
+            resource={resource}
+            id={id}
+            name={recordTitle(record)}
+            versionId={
+              typeof record.current_version_id === "string" ? record.current_version_id : null
+            }
+            connectorAuth={connectorAuth}
+            permissions={permissions}
+          />
         </div>
       </header>
       <GovernanceBar
