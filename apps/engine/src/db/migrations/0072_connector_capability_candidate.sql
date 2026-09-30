@@ -1,0 +1,1 @@
+ALTER TYPE "subkit"."skill_candidate_pattern" ADD VALUE 'connector_capability';

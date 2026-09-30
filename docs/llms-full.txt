@@ -1906,6 +1906,13 @@ confidence scores and links to the supporting executions. Self-healing drift
 detection keeps workflows healthy as connected systems change, proposing the
 smallest safe fix as a Patch Candidate.
 
+A connector authored from a description, rather than a template, gets a
+`connector_capability` Skill Candidate when its first green probe saves it: a
+deterministic write-up of the server's tools, their read/write claims, the data
+paths and paging the tool descriptions name, and the server's quoted
+instructions. Approved, it loads as a connector Skill wherever that connector is
+in play.
+
 External coding-agent sessions (Claude Code, Codex) feed the same queue: a
 SessionEnd hook posts the transcript to `POST /v1/agent/sessions` for
 distillation, and the agent can save an explicitly taught rule mid-session via
@@ -6631,6 +6638,27 @@ sk skill-candidates approve <id>
 ```
 
 sk learns from what works, but humans decide what becomes canonical guidance.
+
+### A connector you describe comes with a skill proposal
+
+A connector created from a template gets the template's skill. A connector you
+describe in a conversation instead — say, your reporting server's MCP endpoint —
+gets a **connector Skill Candidate** the moment its probe comes back green and
+it is saved. The candidate is written from what the probe learned, without a
+model call:
+
+- the server's address (host only) and its sign-in kind — never a secret value;
+- every tool, with the server's own claim that it reads or writes;
+- the data paths the tool descriptions name (for example
+  `metabase://databases`, `metabase://database/{id}/tables`) and what they say
+  about paging and list caps;
+- the server's own instructions, quoted and marked as unverified;
+- what the probe itself saw (the handshake and how many tools it listed).
+
+It lands in the same review queue as every other candidate. Once you approve
+it, every conversation that uses the connector carries it, so the model walks
+the server's paths instead of concluding that data is missing. Probing the same
+server again refreshes the one candidate; a changed tool catalog replaces it.
 
 ## The sk-Stdlib the AI proposes
 
