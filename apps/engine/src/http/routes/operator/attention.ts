@@ -20,7 +20,7 @@ const route = createRoute({
   tags: ["operator"],
   summary: "What needs the caller's attention now",
   description:
-    "One list of everything a person has to act on — own waiting conversations, held schedules, failing scheduled workflows with their open fixes, connectors and connections needing sign-in, prepared secret versions, skill proposals, a critical budget or risk signal — filtered per item by the caller's permissions.",
+    "One list of everything a person has to act on — own waiting conversations, held schedules and webhooks, failing scheduled workflows with their open fixes, connectors and connections needing sign-in, prepared secret versions, skill proposals, a critical budget or risk signal — filtered per item by the caller's permissions.",
   security: [{ bearerAuth: [] }],
   responses: {
     200: {

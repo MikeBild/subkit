@@ -153,7 +153,19 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
       throw new Error("The hook card speaks of a schedule");
     const action = card.getByTestId("inbound-hook-admission-review");
     const reason = card.getByTestId("inbound-hook-admission-reason");
-    const [actionBox, reasonBox] = [await action.boundingBox(), await reason.boundingBox()];
+    await action.waitFor();
+    await reason.waitFor();
+    // Both boxes in one frame: the sheet slides in, and two separate reads
+    // measure two different positions of the same card.
+    const [actionBox, reasonBox] = await card.evaluate((element) =>
+      [
+        '[data-testid="inbound-hook-admission-review"]',
+        '[data-testid="inbound-hook-admission-reason"]',
+      ].map((selector) => {
+        const box = element.querySelector(selector)?.getBoundingClientRect();
+        return box ? { x: box.x, y: box.y, height: box.height } : null;
+      }),
+    );
     if (!actionBox || !reasonBox)
       throw new Error("The hook card's action or reason is not laid out");
     // Under the words it acts on, and aligned with them — not beside them.
@@ -162,7 +174,9 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
         `The hook card's action sits beside its text (action top ${actionBox.y}, text bottom ${reasonBox.y + reasonBox.height})`,
       );
     if (Math.abs(actionBox.x - reasonBox.x) > 2)
-      throw new Error("The hook card's action is not aligned with its text");
+      throw new Error(
+        `The hook card's action is not aligned with its text (action left ${actionBox.x}, text left ${reasonBox.x})`,
+      );
     await capture("hook-card");
     const address = page.url();
     await action.click();
