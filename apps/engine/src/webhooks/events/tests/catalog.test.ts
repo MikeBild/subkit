@@ -19,6 +19,7 @@ describe("events catalog", () => {
     expect(EVENT_TYPES).toEqual([
       "execution.succeeded",
       "execution.failed",
+      "execution.refused",
       "workflow.updated",
       "connector.oauth.refreshed",
       "connector.oauth.callback_succeeded",
@@ -172,6 +173,27 @@ describe("event classification", () => {
       actionable: true,
       resource_type: "connector",
       resource_id: "33333333-3333-4333-8333-333333333333",
+    });
+  });
+
+  test("execution.refused validates the payload finalize writes and is not actionable", () => {
+    const emitted = {
+      execution_id: "11111111-1111-4111-8111-111111111111",
+      status: "failed",
+      workflow_id: "22222222-2222-4222-8222-222222222222",
+      request_source: "api",
+      failure: {
+        step_id: "send",
+        error_code: "prepared_credential_unavailable",
+        error_message: 'Connector "gmail" in dev must be reconnected before this workflow can run.',
+        connector: { connector_id: "33333333-3333-4333-8333-333333333333", reason: "needs_reauth" },
+      },
+    };
+    expect(validateEventPayload("execution.refused", emitted).ok).toBe(true);
+    expect(classifyEvent("execution.refused", emitted)).toEqual({
+      actionable: false,
+      resource_type: "execution",
+      resource_id: "11111111-1111-4111-8111-111111111111",
     });
   });
 
