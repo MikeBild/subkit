@@ -201,7 +201,7 @@ that rather than handing over a link the token endpoint will reject.
 
 **The remote's own tools are not in this catalog.** They are minted into the
 CHAT palette as `mcp_<connector_slug>__<remote_tool>` — plus read-only
-`list_resources` / `read_resource` / `list_prompts` / `get_prompt` adapters
+`list_resources` / `list_resource_templates` / `read_resource` / `list_prompts` / `get_prompt` adapters
 where the server declared those capabilities — and a workflow reaches them
 through a `request` step carrying an `mcp` block. Over MCP you can see such a
 connector and prove it handshakes; you cannot call its remote tools from here.

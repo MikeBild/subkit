@@ -8,23 +8,36 @@
 //          `tools/call` on that tool — never `resources/read`. An
 //          engine-minted adapter must not take a name the server already
 //          uses.
-//   - AC2: the server's resource templates are reachable: a
-//          `list_resource_templates` entry is offered and, once a person
-//          approves it, returns the server's templates.
+//   - AC2: resource templates are reachable: a `list_resource_templates`
+//          entry is offered and, once a person approves it, issues
+//          `resources/templates/list` and returns the server's answer.
 //   - AC3: the server's `instructions` reach the model, attributed to the
 //          server as its own words.
 // Spec refs: docs/developers/tool-palette.md
 //
-// The remote is a REAL SDK `McpServer` on an in-memory transport, swapped
-// in through the pool's transport seam; the engine's real SDK `Client`
-// negotiates with it. The model is the mock provider, which records the
-// palette it was offered — the only place "reaches the model" can be
-// checked, since every layer between assembly and the provider call has
-// had its say by then.
+// THE REMOTE REPLAYS A RECORDING. The server below is a real SDK
+// `McpServer` on an in-memory transport, swapped in through the pool's
+// transport seam, and the engine's real SDK `Client` negotiates with it.
+// Its answers are the ones recorded from the reporting server the defect
+// was observed against:
+//   - `resources/list` names ONE document; its data is not a resource, and
+//     `resources/read` on a data URI answers "not found";
+//   - its TOOL `read_resource` takes `{ uris }` and is the only way to the
+//     data — `metabase://databases` lists eight databases,
+//     `metabase://database/8/tables` pages 327 tables 25 at a time.
+// Not recorded, and set here to pin the pass-through: the server's
+// `instructions`. The recording has no resource templates, so AC2 pins the
+// path, not a template the real server may not have.
+//
+// The model is the mock provider, used only to issue the calls; it records
+// the palette it was offered, which is what the assertions read — every
+// layer between assembly and the provider call has had its say by then.
+// The conversational proof (the model answering with the databases) is a
+// live check against the real server, not this file.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { setMcpToolConfirmation } from "../../connectors/mcp-tool-trust.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
@@ -36,15 +49,26 @@ import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 const SERVER_INSTRUCTIONS =
-  "Start with the metabase://databases resource to see every database, then read metabase://database/{id}/tables for one database.";
-const TEMPLATE = "metabase://database/{id}/tables";
+  "Use the read_resource tool with metabase://databases to see every database, then metabase://database/{id}/tables for one database.";
+
+const RECORDED_DATABASES = [
+  "CM-Prod (id 8)",
+  "Depot Prod Eu (id 2)",
+  "Depot Prod Eu Rep (id 3)",
+  "emobility-df (id 5)",
+  "emobility-sc (id 6)",
+  "presto-coordinator.reporting-system (id 7)",
+  "Sample Database (id 1)",
+  "SC-Prod (id 4)",
+].join("\n");
 
 let ctx: JourneyCtx;
-let remoteToolCalls: string[] = [];
+let remoteToolCalls: string[][] = [];
 let resourceReads: string[] = [];
 
-/** A fresh server per handshake: an `McpServer` connects exactly once. */
-function reportingServer(): McpServer {
+/** The recorded reporting server. A fresh instance per handshake: an
+ *  `McpServer` connects exactly once. */
+function recordedReportingServer(): McpServer {
   const server = new McpServer(
     { name: "reporting", version: "1.0.0" },
     { instructions: SERVER_INSTRUCTIONS },
@@ -53,30 +77,24 @@ function reportingServer(): McpServer {
     "read_resource",
     {
       description:
-        "Read a reporting resource. Use metabase://databases to list every database and metabase://database/{id}/tables to list the tables of one.",
-      inputSchema: { uri: z.string() },
+        "Read reporting resources by URI. metabase://databases lists every database; metabase://database/{id}/tables lists the tables of one.",
+      inputSchema: { uris: z.array(z.string()) },
     },
-    async ({ uri }) => {
-      remoteToolCalls.push(uri);
-      return { content: [{ type: "text", text: `databases: CM-Prod (id 1), Analytics (id 2)` }] };
+    async ({ uris }) => {
+      remoteToolCalls.push(uris);
+      const text = uris.includes("metabase://databases")
+        ? RECORDED_DATABASES
+        : "327 tables, 25 per page. Append ?page=2 for the next page.";
+      return { content: [{ type: "text", text }] };
     },
   );
   server.registerResource(
-    "guide",
-    "metabase://docs/guide",
+    "Construct Query Reference",
+    "metabase://docs/construct-query.md",
     { mimeType: "text/markdown" },
     async (uri) => {
       resourceReads.push(uri.href);
-      return { contents: [{ uri: uri.href, text: "# Guide" }] };
-    },
-  );
-  server.registerResource(
-    "database-tables",
-    new ResourceTemplate(TEMPLATE, { list: undefined }),
-    { mimeType: "application/json" },
-    async (uri) => {
-      resourceReads.push(uri.href);
-      return { contents: [{ uri: uri.href, text: "[]" }] };
+      return { contents: [{ uri: uri.href, text: "# Construct Query Reference" }] };
     },
   );
   return server;
@@ -120,7 +138,7 @@ beforeAll(async () => {
   __setMcpPoolFactoriesForTests({
     makeTransport: () => {
       const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-      void reportingServer().connect(serverSide);
+      void recordedReportingServer().connect(serverSide);
       return clientSide;
     },
   });
@@ -156,7 +174,7 @@ describe("journey 57: a connected MCP server's resources reach the model", () =>
       resourceReads = [];
       const conversationId = await newConversation();
       getMockProvider().setConversePlan(conversationId, [
-        { tool: "mcp_metabase__read_resource", args: { uri: "metabase://databases" } },
+        { tool: "mcp_metabase__read_resource", args: { uris: ["metabase://databases"] } },
       ]);
       const turn = await say(conversationId, "Welche Datenbanken gibt es?");
 
@@ -168,14 +186,15 @@ describe("journey 57: a connected MCP server's resources reach the model", () =>
       );
       expect(result?.output?.remote_tool).toBe("read_resource");
       expect(result?.output?.status).toBe("succeeded");
-      expect(remoteToolCalls).toEqual(["metabase://databases"]);
+      expect(remoteToolCalls).toEqual([["metabase://databases"]]);
+      expect(JSON.stringify(result?.output?.content)).toContain("CM-Prod (id 8)");
       expect(resourceReads).toEqual([]);
     },
     JOURNEY_HOOK_TIMEOUT,
   );
 
   test(
-    "AC2: resource templates are listed, and an approved call returns them",
+    "AC2: resource templates are listed, and an approved call asks the server for them",
     async () => {
       const conversationId = await newConversation();
       getMockProvider().setConversePlan(conversationId, [
@@ -213,10 +232,10 @@ describe("journey 57: a connected MCP server's resources reach the model", () =>
           e.tool === "mcp_metabase__list_resource_templates" &&
           e.output?.status === "succeeded",
       );
-      const content = result?.output?.content as
-        | { resource_templates?: Array<{ uriTemplate?: string }> }
-        | undefined;
-      expect(content?.resource_templates?.map((t) => t.uriTemplate)).toEqual([TEMPLATE]);
+      expect(result?.output?.remote_tool).toBe("resources/templates/list");
+      // The server's answer, verbatim: the recording has no templates.
+      expect(result?.output?.content).toEqual({ resource_templates: [], next_cursor: null });
+      expect(resourceReads).toEqual([]);
     },
     JOURNEY_HOOK_TIMEOUT,
   );
