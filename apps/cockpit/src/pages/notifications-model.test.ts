@@ -108,6 +108,15 @@ describe("rules", () => {
     ]);
   });
 
+  test("a run refused before it started is named as such", () => {
+    expect(eventPatternLabels("execution.refused", de)).toEqual([
+      { text: "Vor dem Start abgelehnte Läufe", machine: false },
+    ]);
+    expect(eventPatternLabels("execution.refused", (key) => translate("en", key))).toEqual([
+      { text: "Runs refused before start", machine: false },
+    ]);
+  });
+
   test("every event the engine catalogues has a name in both languages", () => {
     expect(ENGINE_EVENT_TYPES.length).toBeGreaterThan(10);
     for (const locale of ["de", "en"] as const) {
