@@ -22,6 +22,7 @@ function outcome(partial: Partial<ExecutionOutcome> = {}): ExecutionOutcome {
     failed_step: { step_key: "publish-report", kind: "request" },
     cause_class: "auth_failed",
     error_code: "http_401",
+    connector: null,
     steps: { total: 3, succeeded: 2, failed: 1, held: 0, skipped: 0 },
     output_contract: "none",
     ...partial,
@@ -129,6 +130,8 @@ describe("causeClassLabel", () => {
       "aborted",
       "connector_missing",
       "budget_exhausted",
+      "connector_unavailable",
+      "refused_before_start",
       "driver_error",
       "preview_unsupported",
       "unknown",
@@ -139,6 +142,15 @@ describe("causeClassLabel", () => {
         expect(label.machine).toBe(false);
         expect(label.text).not.toMatch(/^unbekannt$|^unknown$/i);
       }
+  });
+
+  test("a refused run is not an error in the external system", () => {
+    expect(causeClassLabel("connector_unavailable", de).text).toBe(
+      "Konnektor muss neu verbunden werden",
+    );
+    expect(causeClassLabel("refused_before_start", de).text).toBe("Vor dem Start abgelehnt");
+    expect(causeClassLabel("connector_unavailable", en).text).toBe("Connector must be reconnected");
+    expect(causeClassLabel("refused_before_start", en).text).toBe("Refused before the start");
   });
 });
 

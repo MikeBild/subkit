@@ -24,6 +24,14 @@ export const PREVIEW_CLASSIFICATIONS = [
   // reader sent looking for a bug in a workflow that simply ran out of
   // allowance searches for something that is not there.
   "budget_exhausted",
+  // A connector the run needs cannot serve it in the run's environment (lost
+  // sign-in, no credential, switched off, absent): the engine refused before
+  // the first step. The remedy is on the connector, never in the workflow or
+  // the external system.
+  "connector_unavailable",
+  // Closed before it ever ran — a preparation refused and stranded, later
+  // failed by the engine. Nothing reached a step, so nothing failed in one.
+  "refused_before_start",
   "driver_error",
   "preview_unsupported",
   "unknown",
@@ -145,6 +153,11 @@ export function classifyFailure(result: StepResult): PreviewClassification {
   const code = result.error?.code ?? "";
   const message = (result.error?.message ?? "").toLowerCase();
   if (code === "connector_not_found") return "connector_missing";
+  // Exact codes before the message matchers: a refusal names its connector,
+  // and a slug such as "auth0" or "oauth-crm" would otherwise read as a
+  // rejected sign-in.
+  if (code === "prepared_credential_unavailable") return "connector_unavailable";
+  if (code === "orphaned_preparation") return "refused_before_start";
   // Before the generic matchers: "llm_quota_exhausted" carries the word
   // "exceeded" in its message and would otherwise be read as a timeout,
   // sending a reader to look at durations while the cause is money.
@@ -221,6 +234,10 @@ export function humanizeClassification(
       return `The ${kind} step was refused because the token allowance is used up — raise the monthly cap or the run's own limit, or wait for the month to roll over.`;
     case "connector_missing":
       return `The connector referenced by this step is not available.`;
+    case "connector_unavailable":
+      return `The run was refused before it started: ${message}`;
+    case "refused_before_start":
+      return `The run was refused before it started and never ran.`;
     case "preview_unsupported":
       return `This step kind cannot be run in isolation yet.`;
     case "driver_error":
