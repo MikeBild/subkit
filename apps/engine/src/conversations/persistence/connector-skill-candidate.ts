@@ -45,6 +45,8 @@ export interface ConnectorCapabilityInput {
  *  are documentation links, and a query string can carry a token). */
 const DATA_PATH_RE = /\b([a-z][a-z0-9+.-]*):\/\/[^\s,;"'`<>()[\]]+/gi;
 const WEB_SCHEMES = new Set(["http", "https", "ws", "wss", "ftp"]);
+/** `user:password@` in an address is a credential, never a data path. */
+const USERINFO_RE = /^([a-z][a-z0-9+.-]*:\/\/)[^/@\s]*@/i;
 const PAGING_RE =
   /\b(page|pages|paging|paginat\w*|cursor|continuation_token|next_page|offset|caps? at|per page)\b/i;
 
@@ -84,7 +86,7 @@ export function extractDataPaths(tools: readonly RemoteToolDescriptor[]): string
     for (const match of tool.description.matchAll(DATA_PATH_RE)) {
       const scheme = (match[1] ?? "").toLowerCase();
       if (WEB_SCHEMES.has(scheme)) continue;
-      const path = match[0].replace(/[.:!?]+$/, "");
+      const path = match[0].replace(/[.:!?]+$/, "").replace(USERINFO_RE, "$1");
       if (path.length > scheme.length + 3) found.add(path);
     }
   }

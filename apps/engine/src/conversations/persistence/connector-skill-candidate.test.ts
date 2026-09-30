@@ -75,6 +75,20 @@ describe("extractDataPaths", () => {
   });
 });
 
+describe("extractDataPaths keeps no credential", () => {
+  test("drops the user:password part of an address a description names", () => {
+    const paths = extractDataPaths([
+      {
+        ...METABASE_TOOLS[0]!,
+        description:
+          "Reads postgres://admin:Hunter2pass@db.internal/prod and redis://:s3cr3tpw@cache:6379.",
+      },
+    ]);
+    expect(paths).toEqual(["postgres://db.internal/prod", "redis://cache:6379"]);
+    expect(paths.join(" ")).not.toMatch(/Hunter2pass|s3cr3tpw/);
+  });
+});
+
 describe("extractPagingHints", () => {
   test("keeps the sentences about caps and pages, attributed to their tool", () => {
     const hints = extractPagingHints(METABASE_TOOLS);

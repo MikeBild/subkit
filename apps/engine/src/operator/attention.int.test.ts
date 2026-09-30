@@ -10,6 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { _resetConfigForTests, loadConfig } from "../config/loader.ts";
 import { listConnections, secretNames } from "../credentials/connections/index.ts";
@@ -28,6 +29,7 @@ import {
   skillCandidates,
   tenants,
   users,
+  webhooksInbound,
   workflowsSchedules,
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
@@ -472,6 +474,38 @@ describe("per reader", () => {
     const attention = await buildAttention(testDb.db, stranger);
     expect(attention.items).toEqual([]);
     expect(attention.sources.failures).toBe("not_permitted");
+  });
+});
+
+describe("a held webhook", () => {
+  test("names its hook only to a reader who may read hooks", async () => {
+    const [hook] = await testDb.db
+      .insert(webhooksInbound)
+      .values({
+        tenant_id,
+        slug: "findings-intake",
+        workflow_id: wf.auth,
+        verifier: "standard_webhooks",
+        secret_ciphertext: Buffer.from("c"),
+        secret_iv: Buffer.from("i"),
+        secret_auth_tag: Buffer.from("t"),
+        admission_hold: {
+          reason_code: "execution_authority_required",
+          observed_at: new Date(getTestNow() - HOUR).toISOString(),
+        },
+      })
+      .returning();
+    try {
+      const asAdmin = await buildAttention(testDb.db, adminPrincipal(tenant_id));
+      const adminItem = asAdmin.items.find((i) => i.id === `workflow:${wf.auth}`);
+      expect(adminItem?.trigger).toEqual({ kind: "inbound_hook", name: "findings-intake" });
+      // The grantee reads this workflow but holds no inbound_hook:read.
+      const asGrantee = await buildAttention(testDb.db, grantee);
+      const granteeItem = asGrantee.items.find((i) => i.id === `workflow:${wf.auth}`);
+      expect(granteeItem?.trigger).toEqual({ kind: "inbound_hook", name: null });
+    } finally {
+      await testDb.db.delete(webhooksInbound).where(eq(webhooksInbound.id, hook!.id));
+    }
   });
 });
 

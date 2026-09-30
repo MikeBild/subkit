@@ -316,6 +316,16 @@ export async function buildAttention(
     }
     items.push(candidate.item);
   }
+  // A hook's name is inbound-hook data: without inbound_hook:read the item
+  // still says a webhook waits, but not which one.
+  if (items.some((item) => item.trigger?.kind === "inbound_hook" && item.trigger.name)) {
+    const hooks = await gateFor({ permission: "inbound_hook:read" });
+    if (!hooks.any) {
+      for (const item of items) {
+        if (item.trigger?.kind === "inbound_hook") item.trigger = { ...item.trigger, name: null };
+      }
+    }
+  }
   items.sort(compareAttentionItems);
 
   return {
