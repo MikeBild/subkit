@@ -82,6 +82,11 @@ export const McpConnectorConfigSchema = z
          *  Bounded because this timeout is what stops a hung remote from
          *  holding the conversation's tool mutex for the whole turn. */
         remote_tool_call_timeout_ms: z.number().int().min(1_000).max(300_000).optional(),
+        /** Remote tool names an operator lets run without the confirm pause.
+         *  Written ONLY by `setMcpToolConfirmation` (connectors/mcp-tool-trust.ts):
+         *  every other config writer carries the stored list over or refuses a
+         *  different one, so an authoring conversation cannot grant itself trust. */
+        tools_without_confirmation: z.array(z.string().min(1).max(256)).max(512).optional(),
       })
       .strict(),
   })

@@ -517,6 +517,9 @@ export interface InvokeRemoteToolInput {
   /** Remote progress notifications, forwarded verbatim. Reporting
    *  progress does not extend the deadline — see `RemoteCallOptions`. */
   onProgress?: (p: { progress: number; total?: number; message?: string }) => void;
+  /** The rule that let this call skip the confirm pause, recorded on the
+   *  `mcp_external_tool.invoked` row. Absent for a confirmed call. */
+  gate_rule?: "connector_trust";
 }
 
 export interface InvokeRemoteToolResult {
@@ -730,6 +733,7 @@ export async function invokeRemoteTool(
     // which is the whole point of not letting the claim decide.
     ...(advertised !== null ? { advertised_side_effect: advertised } : {}),
     structured: hasStructured,
+    ...(args.gate_rule ? { gate_rule: args.gate_rule } : {}),
     duration_ms: Date.now() - started,
     byte_count: rawBytes,
     request_source: requestSource,

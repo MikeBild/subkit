@@ -1,5 +1,5 @@
 // Read-time aggregation over `audit_log`, shared by GET /v1/stats/connectors
-// (action = 'connector.invoked') and GET /v1/stats/events (a class →
+// (one row per connector call — see that route) and GET /v1/stats/events (a class →
 // action set). NO new persistence — `date_trunc()` + `percentile_cont`
 // at read time. Three rollups in one round-trip.
 //
@@ -53,6 +53,9 @@ export interface AuditStatsParams {
   tz: string;
   /** The set of `audit_log.action` values this query aggregates. */
   actions: string[];
+  /** Rows of this action written for this driver are left out — the one
+   *  call is counted from another action's row instead. */
+  excludeActionDriver?: { action: string; driver: string } | undefined;
   /** Optional narrowing filters (all read from metadata except outcome). */
   connectorId?: string | undefined;
   connectorSlug?: string | undefined;
@@ -112,6 +115,19 @@ const LATENCY = sql`coalesce(
   nullif(metadata->>'duration_ms', '')::float8
 )`;
 const HAS_LATENCY = sql`(metadata ? 'latency_ms' or metadata ? 'duration_ms')`;
+
+// The connector a row is about. Egress rows (`connector.invoked`) carry it in
+// metadata; the MCP pool's `mcp_external_tool.invoked` row names it only as
+// `resource_id`. Group key AND filter read the same expression — a filter on
+// the metadata key alone made every MCP call invisible to a per-connector read
+// that the grouped read counted.
+const CONNECTOR_ID = sql`coalesce(metadata->>'connector_id', resource_id::text)`;
+// The driver a row is about. The MCP pool row names no driver; its action does.
+const DRIVER = sql`coalesce(
+  metadata->>'driver',
+  case when action = 'mcp_external_tool.invoked' then 'mcp' end
+)`;
+const METHOD = sql`coalesce(metadata->>'method', metadata->>'operation')`;
 const STATUS_CODE = sql`coalesce(
   nullif(metadata->>'status_code', '')::int,
   nullif(metadata->>'status', '')::int
@@ -151,13 +167,13 @@ const STATUS_CLASS_CASE = sql`
 function dimColumn(dim: AuditGroupDim): SQL {
   switch (dim) {
     case "connector_id":
-      return sql`coalesce(metadata->>'connector_id', resource_id::text)`;
+      return CONNECTOR_ID;
     case "connector_slug":
       return sql`(metadata->>'connector_slug')`;
     case "driver":
-      return sql`(metadata->>'driver')`;
+      return DRIVER;
     case "method":
-      return sql`coalesce(metadata->>'method', metadata->>'operation')`;
+      return METHOD;
     case "outcome":
       return sql`result`;
     case "status_class":
@@ -221,10 +237,15 @@ function buildWhere(p: AuditStatsParams): SQL {
     sql`ts >= ${p.from}`,
     sql`ts < ${p.to}`,
   ];
-  if (p.connectorId) conds.push(sql`(metadata->>'connector_id') = ${p.connectorId}`);
+  if (p.excludeActionDriver) {
+    conds.push(
+      sql`not (action = ${p.excludeActionDriver.action} and coalesce(metadata->>'driver', '') = ${p.excludeActionDriver.driver})`,
+    );
+  }
+  if (p.connectorId) conds.push(sql`${CONNECTOR_ID} = ${p.connectorId}`);
   if (p.connectorSlug) conds.push(sql`(metadata->>'connector_slug') = ${p.connectorSlug}`);
-  if (p.driver && p.driver.length > 0) conds.push(sql`(metadata->>'driver') in ${p.driver}`);
-  if (p.method && p.method.length > 0) conds.push(sql`(metadata->>'method') in ${p.method}`);
+  if (p.driver && p.driver.length > 0) conds.push(sql`${DRIVER} in ${p.driver}`);
+  if (p.method && p.method.length > 0) conds.push(sql`${METHOD} in ${p.method}`);
   if (p.outcome && p.outcome.length > 0) conds.push(sql`result in ${p.outcome}`);
   if (p.statusClass && p.statusClass.length > 0) {
     conds.push(sql`(${STATUS_CLASS_CASE}) in ${p.statusClass}`);

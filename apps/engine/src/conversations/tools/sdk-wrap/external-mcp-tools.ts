@@ -46,6 +46,7 @@ import { jsonSchema, type Tool, tool } from "ai";
 import { recordMcpExternalToolPaletteAssemblyFailed } from "../../../audit/recorders/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { buildMcpToolName } from "../../../connectors/drivers/mcp.ts";
+import { readMcpToolsWithoutConfirmation } from "../../../connectors/mcp-tool-trust.ts";
 import type { Db } from "../../../db/client.ts";
 import { logger } from "../../../logging/logger.ts";
 import {
@@ -523,13 +524,32 @@ async function executeExternalMcpTool(
   // `category: tenant_write` means a read never short-circuits it.
   // `not_available_on_surface` is unreachable here — the gate only withholds
   // `draft_write` on MCP.
-  if (!claim) {
-    const gate = policyDecide({
-      tool: name,
-      category: "tenant_write",
-      surface: "chat",
-      args: effectiveInput,
-    });
+  //
+  // Operator trust: a remote TOOL (never a resource or prompt adapter whose
+  // name happens to match) that an operator marked "Ohne Rückfrage" on this
+  // connector, read from the connector row at call time — never from the
+  // model's arguments or the server's annotations. Only "plan" is threaded
+  // from the turn: it holds even a trusted call. A trusted `proceed` is the
+  // one proceed accepted below; any other still meets the refusal.
+  const trustedByOperator =
+    !claim &&
+    resolved.call.operation === "call_tool" &&
+    (await readMcpToolsWithoutConfirmation(db, ctx.tenant_id, connector_id)).includes(
+      resolved.call.tool,
+    );
+  const gate = claim
+    ? null
+    : policyDecide({
+        tool: name,
+        category: "tenant_write",
+        surface: "chat",
+        args: effectiveInput,
+        ...(ctx.permission_mode === "plan" ? { permission_mode: "plan" as const } : {}),
+        ...(trustedByOperator ? { connector_trust: true } : {}),
+      });
+  const gateRule =
+    gate?.kind === "proceed" && trustedByOperator ? ("connector_trust" as const) : undefined;
+  if (gate && !gateRule) {
     if (gate.kind === "needs_confirm") {
       // Same-turn single-pending-elicitation guard, mirroring the canonical
       // policy gate in `sdk-wrap/invoke.ts`. Parallel tool use is disabled at
@@ -800,6 +820,8 @@ async function executeExternalMcpTool(
     // above from the arguments the human approved.
     call: resolved.call,
     requestSource: "chat",
+    // Names the rule on the audit row when the call skipped the pause.
+    ...(gateRule ? { gate_rule: gateRule } : {}),
     // Stopping the turn stops the outbound request. The pool cancels this
     // ONE request; the tenant's pooled session is not torn down.
     ...(p.abortSignal ? { signal: p.abortSignal } : {}),

@@ -160,6 +160,10 @@ export interface RecordMcpExternalToolInvokedParams extends RecorderBase {
    *  it into `error` would have an operator hunting a fault that was a
    *  user pressing stop. */
   outcome: "success" | "error" | "cancelled";
+  /** Set when the call ran WITHOUT the confirm pause because an operator
+   *  marked this remote tool "Ohne Rückfrage" on the connector. The trail
+   *  names the rule that let it through; absent on every confirmed call. */
+  gate_rule?: "connector_trust";
   /** What the remote's OWN annotations claimed about this tool, when it
    *  claimed anything. Present so a trail records the claim next to the
    *  treatment: the engine gates every `tools/call` as a write, and this
@@ -186,7 +190,11 @@ export async function recordMcpExternalToolInvoked(
       action: AuditAction.MCP_EXTERNAL_TOOL_INVOKED,
       resource_type: "mcp_external_tool",
       resource_id: p.connector_id,
-      result: p.outcome === "success" ? "success" : "error",
+      // A call the caller stopped is `denied`, not `error`: the remote did not
+      // fail, a person withheld the call. Counting it as an error put the
+      // user's stop into the connector's failure rate and sent the operator
+      // looking for a fault in the remote.
+      result: p.outcome === "success" ? "success" : p.outcome === "cancelled" ? "denied" : "error",
       metadata: {
         request_source: p.request_source,
         connector_slug: p.connector_slug,
@@ -197,6 +205,7 @@ export async function recordMcpExternalToolInvoked(
           ? { advertised_side_effect: p.advertised_side_effect }
           : {}),
         ...(p.structured !== undefined ? { structured: p.structured } : {}),
+        ...(p.gate_rule !== undefined ? { gate_rule: p.gate_rule } : {}),
         duration_ms: p.duration_ms,
         // Low-cardinality bucket — never the raw byte count, mirroring
         // the files subsystem's `size_bytes_bucket` discipline.

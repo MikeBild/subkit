@@ -16,6 +16,9 @@
 //   POST   /v1/connectors/:id/enable               — operator on switch
 //   POST   /v1/connectors/:id/disable              — operator off switch
 //   POST   /v1/connectors/:id/test                 — driver health probe
+//   GET    /v1/connectors/:id/runtime              — newest calls + mcp session
+//   GET    /v1/connectors/:id/credential           — how it signs in, never the material
+//   PUT    /v1/connectors/:id/mcp/tool-confirmation — mcp driver: per-tool "no ask"
 //   POST   /v1/connectors/:id/mcp/inspect          — mcp driver: handshake + manifest
 //   POST   /v1/connectors/:id/mcp/authorize        — mcp driver: begin OAuth 2.1
 //   GET    /v1/connectors/mcp/oauth/callback       — mcp driver: complete OAuth 2.1
@@ -41,6 +44,7 @@ import { registerCredentialsSetupRoutes } from "./credentials-setup.ts";
 import { registerConnectorMcpRoutes } from "./mcp.ts";
 import { registerOAuthRoutes } from "./oauth.ts";
 import { registerPromotionRoutes } from "./promotion.ts";
+import { registerConnectorRuntimeRoutes } from "./runtime.ts";
 import { registerTestRoutes } from "./test.ts";
 
 /** Fixed segments under `/v1/connectors` that are routes, not connector ids.
@@ -105,6 +109,22 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
     const id = c.req.param("id");
     return requirePermission("connector:oauth", () => ({ type: "connector", id }))(c, next);
   });
+  // `/v1/connectors/:id` above matches that exact path only, so every
+  // sub-resource names its own gate. The runtime and the credential summary
+  // are reads of the connector; the per-tool confirmation is a configuration
+  // write and takes the same grant as PATCH.
+  app.use("/v1/connectors/:id/runtime", async (c, next) => {
+    const id = c.req.param("id");
+    return requirePermission("connector:read", () => ({ type: "connector", id }))(c, next);
+  });
+  app.use("/v1/connectors/:id/credential", async (c, next) => {
+    const id = c.req.param("id");
+    return requirePermission("connector:read", () => ({ type: "connector", id }))(c, next);
+  });
+  app.use("/v1/connectors/:id/mcp/tool-confirmation", async (c, next) => {
+    const id = c.req.param("id");
+    return requirePermission("connector:write", () => ({ type: "connector", id }))(c, next);
+  });
   app.use("/v1/connectors/:id/test", async (c, next) => {
     const id = c.req.param("id");
     return requirePermission("connector:test", () => ({ type: "connector", id }))(c, next);
@@ -160,4 +180,5 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
   registerCredentialsRoutes(app);
   registerCredentialsSetupRoutes(app);
   registerConnectorMcpRoutes(app);
+  registerConnectorRuntimeRoutes(app);
 }

@@ -704,16 +704,22 @@ export async function describeCredentialForConnector(
   mode: string;
   environment: "dev" | "prod";
   connection: ConnectionSummary | null;
+  /** The header names a `header` credential sends — names only, never values. */
+  header_names: string[];
   updated_at: string;
 } | null> {
   if (!UUID_RE.test(connector_id)) return null;
   const db = exec ?? getDb();
   const rows = await db
     .select({
+      id: credentials.id,
       mode: credentials.mode,
       environment: credentials.environment,
       updated_at: credentials.updated_at,
       connection_id: credentials.connection_id,
+      ciphertext: credentials.ciphertext,
+      iv: credentials.iv,
+      auth_tag: credentials.auth_tag,
     })
     .from(credentials)
     .where(
@@ -736,8 +742,24 @@ export async function describeCredentialForConnector(
     mode: row.connection_id ? "connection" : row.mode,
     environment: row.environment,
     connection,
+    header_names: row.connection_id ? [] : headerNamesOf(tenant_id, row),
     updated_at: row.updated_at.toISOString(),
   };
+}
+
+/**
+ * The names of the headers a `header` credential sends, so a page can say
+ * "Schlüssel im Header X-API-KEY" without the key. The value is decrypted to
+ * read its shape and dropped here; only the keys leave this function.
+ */
+function headerNamesOf(
+  tenant_id: string,
+  row: { id: string; mode: string; ciphertext: Uint8Array; iv: Uint8Array; auth_tag: Uint8Array },
+): string[] {
+  if (row.mode !== "header") return [];
+  const plain = decryptSecret(row, aadFor(tenant_id, row.id));
+  const value = deserializePlain("header", plain);
+  return value.mode === "header" ? Object.keys(value.headers).sort() : [];
 }
 
 /** Load the `oauth2_client` credential for a connector — i.e. the

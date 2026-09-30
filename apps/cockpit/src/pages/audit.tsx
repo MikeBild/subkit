@@ -45,6 +45,7 @@ import {
   auditReasonLabel,
   auditResourceHref,
   auditResourceLabel,
+  auditResultFromUrl,
   auditResultLabel,
   auditScopeParams,
   canReadDirectory,
@@ -161,7 +162,11 @@ export function AuditPage() {
   const session = useSession();
   const allowed = session.permissions.includes("audit:read");
   const title = t("resource.audit.title");
-  const [result, setResult] = useState("all");
+  // A failure count arrives with `?result=error`: it opens the failures it
+  // counted, and the outcome filter shows that narrowing as its own choice.
+  const [result, setResult] = useState<string>(
+    () => auditResultFromUrl(window.location.search) ?? "all",
+  );
   // The one link on the decisions page arrives here with the scope it means
   // (§8.5). Read from the location the way the chat reads its opening prompt —
   // this router validates no search schema, so the URL is the contract.

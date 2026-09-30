@@ -91,6 +91,8 @@ const ENGINE_ROUTE_FILES = [
   // became an ordinary connector; this entry is what keeps the docs' route
   // list checkable against the file that now mounts them.
   "apps/engine/src/http/routes/connectors/mcp.ts",
+  // A connector's runtime read and the per-tool "run without asking" write.
+  "apps/engine/src/http/routes/connectors/runtime.ts",
   "apps/engine/src/http/routes/connector-discovery.ts",
   "apps/engine/src/http/routes/connector-templates/import-spec.ts",
   "apps/engine/src/http/routes/identity/providers.ts",
