@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Copy, Plus, Trash2 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import {
@@ -90,7 +90,7 @@ import {
 } from "@/pages/admin-model";
 import {
   deliveryState,
-  eventPatternLabel,
+  eventPatternLabels,
   platformLabel,
   ruleNameLabel,
   ruleTarget,
@@ -1888,9 +1888,14 @@ export function NotificationsPage() {
                           {word(SEVERITY_LABEL, rule.severity, rule.severity)}
                         </Badge>
                       </div>
-                      <p className="mt-1 text-sm text-muted-foreground break-words">
-                        <LabelText label={eventPatternLabel(rule.event_pattern, t)} /> ·{" "}
-                        <LabelText label={workflowPatternLabel(rule.workflow_pattern, t)} />
+                      <p className="mt-1 text-sm text-muted-foreground wrap-anywhere">
+                        {eventPatternLabels(rule.event_pattern, t).map((label, part) => (
+                          <Fragment key={`${part}-${label.text}`}>
+                            {part > 0 ? ", " : null}
+                            <LabelText label={label} />
+                          </Fragment>
+                        ))}{" "}
+                        · <LabelText label={workflowPatternLabel(rule.workflow_pattern, t)} />
                       </p>
                       <p
                         className="mt-1 text-sm text-muted-foreground break-words"
