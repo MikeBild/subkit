@@ -780,7 +780,13 @@ export function CatalogDetailPage({
           )}
         </div>
       )}
-      <div data-family-slot="detail-main" className="flex min-h-0 flex-1 flex-col gap-5 p-6">
+      {/* A connector's page is a stack of sections taller than the screen: each
+          keeps its own height and the page scrolls, instead of the column
+          squeezing the last card to a sliver. */}
+      <div
+        data-family-slot="detail-main"
+        className={`flex min-h-0 flex-1 flex-col gap-5 p-6${resource === "connectors" ? " [&>*]:shrink-0" : ""}`}
+      >
         {resource === "workflows" ? (
           <WorkflowCause
             workflowId={id}
