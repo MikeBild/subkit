@@ -93,6 +93,12 @@ describe("buildConnectorCapabilitySignal", () => {
       connector_id: "11111111-1111-4111-8111-111111111111",
     });
     expect(signal.endpoint_key).toBeUndefined();
+    // The first line is what the ambient skill index shows (cut at 120).
+    const firstLine = signal.body.split("\n")[0] ?? "";
+    expect(firstLine).toStartWith("Start at `metabase://databases`, follow the ids it returns");
+    expect(firstLine).toContain("lists are paged");
+    expect(firstLine.length).toBeLessThanOrEqual(120);
+    expect(signal.title).toBe("Navigating the 'metabase-reporting-mcp' MCP server");
     expect(signal.body).toContain("at metabase.example.test");
     expect(signal.body).toContain("`metabase://databases`");
     expect(signal.body).toContain("`metabase://database/{id}/tables`");

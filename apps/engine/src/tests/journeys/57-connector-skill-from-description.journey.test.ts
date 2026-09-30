@@ -9,11 +9,12 @@
 //          bound to the new connector. Its body names the data paths and the
 //          paging hints the server's own tool descriptions carry.
 //   - AC3: The candidate is a decision: reviewable, and counted where
-//          pending skill candidates are surfaced (`/v1/attention`).
-//   - AC4: Approving it through the approval route loads the promoted skill
+//          pending skill candidates are surfaced (`/v1/attention`). Until
+//          approved it reaches no prompt.
+//   - AC4: Re-probing while it is still proposed refreshes that candidate.
+//   - AC5: Approving it through the approval route loads the promoted skill
 //          into the context of a conversation that uses the connector.
-//   - AC5: Probing the unchanged server again does not add a second
-//          candidate.
+//   - AC6: Probing the unchanged server after approval adds no candidate.
 // Spec refs: docs/concepts/knowledge-and-skills.md, docs/concepts/connectors.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -141,32 +142,21 @@ async function listConnectorCandidates(connectorId: string): Promise<CandidateIt
   return ((await res.json()) as { items: CandidateItem[] }).items;
 }
 
-async function authorAndProbe(): Promise<{ connectorId: string | null; events: unknown[] }> {
-  const createRes = await journeyFetch(ctx, "/v1/conversations", {
-    method: "POST",
-    body: JSON.stringify({}),
-  });
-  expect(createRes.status).toBe(201);
-  const conversationId = ((await createRes.json()) as { conversation: { id: string } }).conversation
-    .id;
-  getMockProvider().setConversePlan(conversationId, [
-    {
-      tool: "start_connector_from_description",
-      args: {
-        name: "metabase-reporting-mcp",
-        description: "Metabase reporting over MCP: databases, tables and saved questions.",
-        driver: "mcp",
-        environment: "prod",
-        base_url: "https://metabase.journey.invalid/api/mcp",
-        auth_type: "none",
-      },
-    },
-    { tool: "validate_connector_draft", args: {} },
-    { tool: "probe_connector_draft", args: {} },
-  ]);
+interface ProbeOutcome {
+  conversationId: string;
+  connectorId: string | null;
+  events: unknown[];
+}
+
+async function sendTurn(
+  conversationId: string,
+  plan: Array<{ tool: string; args: Record<string, unknown> }>,
+  message: string,
+): Promise<ProbeOutcome> {
+  getMockProvider().setConversePlan(conversationId, plan);
   const res = await journeyFetch(ctx, `/v1/conversations/${conversationId}/messages`, {
     method: "POST",
-    body: JSON.stringify({ message: "Connect our Metabase MCP server for reporting" }),
+    body: JSON.stringify({ message }),
   });
   expect([200, 202]).toContain(res.status);
   const body = (await res.json()) as {
@@ -177,13 +167,54 @@ async function authorAndProbe(): Promise<{ connectorId: string | null; events: u
   );
   const output = (probe?.output ?? {}) as { auto_saved?: boolean; connector?: { id?: string } };
   return {
+    conversationId,
     connectorId: output.auto_saved === true ? (output.connector?.id ?? null) : null,
     events: body.events,
   };
 }
 
+/** The same authoring conversation probes its saved draft once more. */
+function reprobe(conversationId: string): Promise<ProbeOutcome> {
+  return sendTurn(
+    conversationId,
+    [{ tool: "probe_connector_draft", args: {} }],
+    "Check the Metabase connection again",
+  );
+}
+
+async function authorAndProbe(): Promise<ProbeOutcome> {
+  const createRes = await journeyFetch(ctx, "/v1/conversations", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  expect(createRes.status).toBe(201);
+  const conversationId = ((await createRes.json()) as { conversation: { id: string } }).conversation
+    .id;
+  return sendTurn(
+    conversationId,
+    [
+      {
+        tool: "start_connector_from_description",
+        args: {
+          name: "metabase-reporting-mcp",
+          description: "Metabase reporting over MCP: databases, tables and saved questions.",
+          driver: "mcp",
+          environment: "prod",
+          base_url: "https://metabase.journey.invalid/api/mcp",
+          auth_type: "none",
+        },
+      },
+      { tool: "validate_connector_draft", args: {} },
+      { tool: "probe_connector_draft", args: {} },
+    ],
+    "Connect our Metabase MCP server for reporting",
+  );
+}
+
+let conversationId: string;
+let connectorId: string;
+
 describe("journey: connector authored from a description proposes its skill", () => {
-  let connectorId: string;
   let candidate: CandidateItem;
   let skillId: string;
 
@@ -193,6 +224,7 @@ describe("journey: connector authored from a description proposes its skill", ()
       throw new Error(`probe did not auto-save: ${JSON.stringify(out.events).slice(0, 2000)}`);
     }
     connectorId = out.connectorId;
+    conversationId = out.conversationId;
     expect(handshakes).toBeGreaterThan(0);
   });
 
@@ -212,15 +244,29 @@ describe("journey: connector authored from a description proposes its skill", ()
     expect(candidate.body).toContain("metabase.journey.invalid");
   });
 
-  test("AC3: the candidate is a pending decision surfaced in attention", async () => {
+  test("AC3: the candidate is a pending decision surfaced in attention, not yet in any prompt", async () => {
     expect(candidate.reviewable).toBe(true);
     const res = await journeyFetch(ctx, "/v1/attention");
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).toContain("skill_candidates");
+
+    // Unapproved, it quotes third-party instructions: no prompt carries it.
+    const prompt = await assembleConverse();
+    expect(prompt.included_candidate_ids).not.toContain(candidate.id);
+    expect(prompt.system).not.toContain("metabase://databases");
   });
 
-  test("AC4: approving loads the skill into a conversation using the connector", async () => {
+  test("AC4: re-probing while it is still proposed refreshes the one candidate", async () => {
+    const out = await reprobe(conversationId);
+    expect(out.connectorId).toBe(connectorId);
+    const items = await listConnectorCandidates(connectorId);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ id: candidate.id, status: "proposed" });
+    candidate = items[0]!;
+  });
+
+  test("AC5: approving loads the skill into a conversation using the connector", async () => {
     const res = await journeyFetch(ctx, `/v1/skill-candidates/${candidate.id}/approve`, {
       method: "POST",
       body: JSON.stringify({
@@ -231,24 +277,31 @@ describe("journey: connector authored from a description proposes its skill", ()
     expect(res.status).toBe(200);
     skillId = ((await res.json()) as { skill_id: string }).skill_id;
 
-    const prompt = await assembleEnhancedPrompt(
-      {
-        tenant_id: ctx.tenantId,
-        flow: "converse",
-        connector_id: connectorId,
-        user_turns: [{ role: "user", content: "Which databases are there?" }],
-        max_tokens: 200_000,
-      },
-      ctx.db,
-    );
+    const prompt = await assembleConverse();
     expect(prompt.included_skill_ids).toContain(skillId);
+    // Ambient connector skills render as an index line: it must name where
+    // to start, so the model loads the skill before calling data missing.
+    expect(prompt.system).toContain("`metabase://databases`");
   });
 
-  test("AC5: probing the unchanged server again adds no candidate", async () => {
-    const out = await authorAndProbe();
-    const id = out.connectorId ?? connectorId;
-    const items = await listConnectorCandidates(id);
+  test("AC6: probing the unchanged server after approval adds no candidate", async () => {
+    const out = await reprobe(conversationId);
+    expect(out.connectorId).toBe(connectorId);
+    const items = await listConnectorCandidates(connectorId);
     expect(items.filter((c) => c.status === "proposed")).toHaveLength(0);
     expect(items).toHaveLength(1);
   });
 });
+
+function assembleConverse() {
+  return assembleEnhancedPrompt(
+    {
+      tenant_id: ctx.tenantId,
+      flow: "converse",
+      connector_id: connectorId,
+      user_turns: [{ role: "user", content: "Which databases are there?" }],
+      max_tokens: 200_000,
+    },
+    ctx.db,
+  );
+}
