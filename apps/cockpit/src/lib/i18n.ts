@@ -539,6 +539,8 @@ const EN = {
   "connectorDetail.tools.note":
     "SubKit asks before every call, except for tools marked “Run without asking”.",
   "connectorDetail.tools.withoutAsking": "Run without asking",
+  "connectorDetail.tools.more": "More",
+  "connectorDetail.tools.less": "Less",
   "connectorDetail.tools.claimsRead": "reports: reads",
   "connectorDetail.tools.claimsWrite": "reports: writes",
   "connectorDetail.tools.none": "The server offers no tools",
@@ -3498,6 +3500,8 @@ const DE: Record<TranslationKey, string> = {
   "connectorDetail.tools.note":
     "SubKit fragt vor jedem Aufruf nach, außer bei Werkzeugen mit „Ohne Rückfrage“.",
   "connectorDetail.tools.withoutAsking": "Ohne Rückfrage",
+  "connectorDetail.tools.more": "Mehr",
+  "connectorDetail.tools.less": "Weniger",
   "connectorDetail.tools.claimsRead": "meldet: liest",
   "connectorDetail.tools.claimsWrite": "meldet: schreibt",
   "connectorDetail.tools.none": "Der Server bietet keine Werkzeuge an",
@@ -3506,7 +3510,7 @@ const DE: Record<TranslationKey, string> = {
   "connectorDetail.tools.saveFailed": "Die Einstellung konnte nicht gespeichert werden.",
   "connectorDetail.usage.title": "Verwendung",
   "connectorDetail.usage.allWorkflows": "Alle Workflows",
-  "connectorDetail.usage.noWorkflows": "Kein Workflow nutzt diesen Connector.",
+  "connectorDetail.usage.noWorkflows": "Kein Workflow nutzt diesen Konnektor.",
   "connectorDetail.usage.workflowsFailed": "Die Workflows konnten nicht geladen werden",
   "connectorDetail.technical.title": "Technische Angaben",
   "connectorDetail.technical.id": "Kennung",

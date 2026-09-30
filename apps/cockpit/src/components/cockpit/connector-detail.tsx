@@ -16,6 +16,7 @@ import { causeClassLabel } from "@/lib/cause-class";
 import { formatRelativeTime, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { catalogLabel, LabelText } from "@/lib/machine-label";
+import { cn } from "@/lib/utils";
 import {
   asRuntime,
   authLabel,
@@ -91,7 +92,7 @@ export function ConnectorConnectionFacts({
   return (
     <section className="grid gap-2" data-testid="connector-connection-facts">
       <h2 className="text-sm font-semibold">{t("connectorDetail.connection.title")}</h2>
-      <dl className="grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2">
+      <dl className="grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2 sm:[&>:last-child:nth-child(odd)]:col-span-2">
         <Fact label={t("connectorDetail.connection.address")} testId="connector-fact-address">
           {address ? (
             <span className="flex min-w-0 items-start gap-1">
@@ -499,9 +500,7 @@ export function ConnectorMcpTools({
                       </Badge>
                     ) : null}
                   </span>
-                  {row.description ? (
-                    <p className="text-sm text-muted-foreground">{row.description}</p>
-                  ) : null}
+                  {row.description ? <ToolDescription text={row.description} /> : null}
                 </div>
                 <label htmlFor={switchId} className="flex shrink-0 items-center gap-2 text-sm">
                   <Switch
@@ -541,13 +540,16 @@ export function ConnectorWorkflows({ slug }: { slug: string }) {
     <section className="grid gap-2" data-testid="connector-workflows">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold">{t("connectorDetail.usage.title")}</h2>
-        <a
-          href={absolute(workflowsHref({ connector: slug }))}
-          className="text-sm underline underline-offset-4"
-          data-testid="connector-all-workflows"
-        >
-          {t("connectorDetail.usage.allWorkflows")}
-        </a>
+        {/* A link to an empty list promises something that is not there. */}
+        {view === "ready" ? (
+          <a
+            href={absolute(workflowsHref({ connector: slug }))}
+            className="text-sm underline underline-offset-4"
+            data-testid="connector-all-workflows"
+          >
+            {t("connectorDetail.usage.allWorkflows")}
+          </a>
+        ) : null}
       </div>
       {view === "loading" ? (
         <Skeleton className="h-12 w-full" />
@@ -604,7 +606,7 @@ export function ConnectorTechnicalFacts({ record, id }: { record: RecordValue; i
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <dl className="mt-2 grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2">
+        <dl className="mt-2 grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2 sm:[&>:last-child:nth-child(odd)]:col-span-2">
           <Fact label={t("resource.field.slug")} testId="connector-technical-slug">
             {slug ? <span className="break-all font-mono text-xs">{slug}</span> : MISSING}
           </Fact>
@@ -627,5 +629,35 @@ export function ConnectorTechnicalFacts({ record, id }: { record: RecordValue; i
         </dl>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+/** A server's tool text can run to a page of its own; two lines, the rest on request. */
+function ToolDescription({ text }: { text: string }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const long = text.length > 160 || text.includes("\n");
+  return (
+    <div className="grid justify-items-start gap-0.5">
+      <p
+        className={cn(
+          "whitespace-pre-line break-words text-sm text-muted-foreground",
+          !open && "line-clamp-2",
+        )}
+      >
+        {text}
+      </p>
+      {long ? (
+        <button
+          type="button"
+          className="text-xs underline underline-offset-4"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+          data-testid="connector-mcp-tool-description-toggle"
+        >
+          {t(open ? "connectorDetail.tools.less" : "connectorDetail.tools.more")}
+        </button>
+      ) : null}
+    </div>
   );
 }
