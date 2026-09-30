@@ -55,7 +55,7 @@ import { runOutputGuard, runOutputGuardStream } from "../llm/output-guard/index.
 import { createStreamScrubber } from "../llm/output-guard/stream-scrub.ts";
 import {
   classifyProviderError,
-  isFallbackEligible,
+  shouldFallBack,
   toLlmProviderError,
 } from "../llm/provider-errors.ts";
 import { engineUrlFromConfig } from "../llm/runtime-context.ts";
@@ -2001,13 +2001,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         },
         p.db,
       );
-      const sameProviderQuota =
-        providerErr?.kind === "quota_exhausted" && route.fallback_provider === route.provider;
       if (
         !providerErr ||
-        !isFallbackEligible(primaryErr) ||
         route.fallback === seedModel ||
-        sameProviderQuota
+        !shouldFallBack(primaryErr, route.provider, route.fallback_provider)
       ) {
         throw providerErr ?? primaryErr;
       }
