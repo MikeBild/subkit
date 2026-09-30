@@ -17,10 +17,12 @@ import { verifyChatReauth } from "./lib/cockpit-chat-reauth.mjs";
 import { verifyChatReplies } from "./lib/cockpit-chat-replies.mjs";
 import { verifyConnectorDetail } from "./lib/cockpit-connector-detail.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
+import { verifyDetailAction } from "./lib/cockpit-detail-action.mjs";
 import { verifyHookHolds } from "./lib/cockpit-hook-holds.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
 import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
+import { verifyRunDialog } from "./lib/cockpit-run-dialog.mjs";
 import { verifyScheduleHolds } from "./lib/cockpit-schedule-holds.mjs";
 import { assertNoVisibleUuids } from "./lib/cockpit-visible-uuids.mjs";
 import { verifyWorkflowAuthorities } from "./lib/cockpit-workflow-authorities.mjs";
@@ -3980,6 +3982,12 @@ for (const locale of variants) {
     );
     await verifyConnectorDetail(page, stand, locale.name, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: true }),
+    );
+    await verifyRunDialog(page, stand, locale.name, (state) =>
+      shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+    );
+    await verifyDetailAction(page, stand, locale.name, (state) =>
+      shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
     );
     await verifyWorkflowPreview(page, stand, uuid, locale.name);
     await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>

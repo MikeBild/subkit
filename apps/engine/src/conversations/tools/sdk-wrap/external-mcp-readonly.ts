@@ -4,8 +4,9 @@
 // A remote MCP server offers three things: tools, resources and prompts.
 // Only the first reached the chat palette, so a server whose whole value
 // is a document catalogue was invisible to the model even while connected.
-// These adapters close that, as four synthetic entries per server —
-// `list_resources`, `read_resource`, `list_prompts`, `get_prompt`.
+// These adapters close that, as synthetic entries per server —
+// `list_resources`, `list_resource_templates`, `read_resource`,
+// `list_prompts`, `get_prompt`.
 //
 // THEY ARE READS BY THE ENGINE'S OWN KNOWLEDGE, NOT BY THE SERVER'S.
 // Each adapter is pinned to one wire method that the specification defines
@@ -28,6 +29,13 @@
 // would have to be keyed on adapter identity and defended against a
 // server that names a TOOL `read_resource` — and it is not one this change
 // makes.
+//
+// THE SERVER'S OWN TOOLS WIN A NAME. A server may ship a TOOL called
+// `read_resource` — and some do, as the way to reach data that is not an
+// MCP resource at all. The palette keeps that tool and drops the adapter of
+// the same name (`paletteSpecsFor`): the server supplies that path itself,
+// and an adapter under its name would hide the only door the server
+// documented.
 
 import type { NegotiatedServerCapabilities } from "../../../mcp/client/pool.ts";
 import type { RemoteCall } from "../../../mcp/client/remote-call.ts";
@@ -78,9 +86,25 @@ export function readOnlyPaletteSpecs(
       },
     });
     specs.push({
+      suffix: "list_resource_templates",
+      target: "resources/templates/list",
+      description: `List the resource URI templates the external MCP server ${namespace} offers, such as a parameterised path with {placeholders}. Read-only: it retrieves a catalogue and changes nothing. Returns { resource_templates, next_cursor }; pass next_cursor back as cursor for the following page.`,
+      inputSchema: CURSOR_SCHEMA,
+      toCall: (args) => {
+        const cursor = optionalCursor(args);
+        return {
+          ok: true,
+          call: {
+            operation: "list_resource_templates",
+            ...(cursor !== undefined ? { cursor } : {}),
+          },
+        };
+      },
+    });
+    specs.push({
       suffix: "read_resource",
       target: "resources/read",
-      description: `Read one resource from the external MCP server ${namespace} by URI. Read-only: it retrieves contents and changes nothing. Get URIs from ${namespace}'s list_resources.`,
+      description: `Read one resource from the external MCP server ${namespace} by URI. Read-only: it retrieves contents and changes nothing. Get URIs from ${namespace}'s list_resources, or fill in a template from its list_resource_templates. A URI that neither lists is not a resource of this server.`,
       inputSchema: {
         type: "object",
         properties: {

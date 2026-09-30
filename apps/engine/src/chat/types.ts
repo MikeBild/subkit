@@ -20,6 +20,17 @@ export type InboundChatPlatform = "slack" | "teams" | "google_chat";
 export type ChatPlatform = InboundChatPlatform | "sk_cli";
 
 /**
+ * What an outbound-only sink reports after `send`. A sink that deliberately
+ * does not persist an event says so rather than answering like a delivery,
+ * so the dispatcher records neither a `sent` row nor a sent-message audit
+ * for something nobody received.
+ */
+export type OutboundSendResult = { platform_message_id: string } | { skipped: OutboundSkipReason };
+
+/** Why an outbound-only sink passed on an event. */
+export type OutboundSkipReason = "not_actionable";
+
+/**
  * Platform-tagged raw envelope. A request that has successfully
  * passed `adapter.verify()` turns into a `VerifiedEvent`. The `raw`
  * field is the already-parsed JSON body (or form payload for Slack

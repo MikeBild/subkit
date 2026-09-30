@@ -140,6 +140,9 @@ export async function countSkillCandidates(
  */
 export const LIST_PROPOSED_FOR_AUTHORING_CAP = 8;
 
+/** Candidate kinds that never render into a prompt while still proposed. */
+const UNREVIEWED_PROMPT_EXCLUDED_KINDS: ReadonlySet<string> = new Set(["connector_capability"]);
+
 /**
  * Return up to LIST_PROPOSED_FOR_AUTHORING_CAP proposed candidates for an authoring turn, merged from
  * (global ∪ optional-connector ∪ optional-workflow) and ordered by
@@ -193,7 +196,12 @@ export async function listProposedForAuthoring(
   // The three queries are AND-exact-match on disjoint `scope` values
   // (global / connector / workflow), so a single row cannot appear in
   // more than one result set — no dedup needed.
-  const merged: SkillCandidateView[] = [...globalRows, ...connectorRows, ...workflowRows];
+  // A connector_capability candidate quotes the remote server's own
+  // instructions — third-party text that reaches a prompt only once a
+  // person approved it into a Skill, never as an unreviewed hint.
+  const merged: SkillCandidateView[] = [...globalRows, ...connectorRows, ...workflowRows].filter(
+    (c) => !UNREVIEWED_PROMPT_EXCLUDED_KINDS.has(c.pattern_kind),
+  );
 
   const scopeSpecificity = (scope: SkillCandidateView["scope"]): number =>
     scope === "workflow" ? 3 : scope === "connector" ? 2 : 1;

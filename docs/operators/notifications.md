@@ -101,6 +101,21 @@ A `notification_rules` row carries:
 | `target_workspace_id` + `target_channel_id` | Point at the channel row to deliver through. |
 | `active` | Soft-disable without deleting. |
 
+`event_pattern` also takes a comma-separated list (`execution.failed,patch.proposed`).
+Every tenant starts with one rule, `sk CLI inbox (default)`, targeting the reserved
+`_cli` / `_inbox` channel. It routes only events a person may have to act on: failed
+runs, connector authentication failures, removed connector endpoints, and proposed
+repairs. Step events (`execution.step.*`) and routine successes are not routed, so a
+running workflow writes no delivery row per step. A rule of your own that routes such
+events into the inbox records them as `skipped` with reason `not_actionable`: no inbox
+row and no `chat.message.sent` audit entry.
+
+Create a rule from the CLI:
+
+```sh
+sk notifications rules create --event 'execution.failed' --workspace-id T0123 --channel-id C0456
+```
+
 ## Rate limiting
 
 Per-channel leaky bucket in

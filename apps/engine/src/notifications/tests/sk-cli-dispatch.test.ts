@@ -15,6 +15,9 @@
 //   4. The circuit-breaker `open` state for the sk_cli channel is not
 //      consumed (breaker state unchanged after delivery).
 //
+//   5. An event the inbox passes on (not actionable) is recorded as
+//      `skipped` / `not_actionable`, with no `sent` row and no audit entry.
+//
 // Approach: seed an sk_cli channel row with circuit_state = "open" and
 // circuit_open_until in the future, then dispatch — the outcome must be
 // `sent`, not `breaker_open`, and an inbox row must exist.
@@ -213,8 +216,8 @@ describe("notifications: sk_cli channel dispatch", () => {
       { db: ctx.db, resolveAdapter: () => adapter as unknown as NotificationAdapter },
       {
         tenant_id: ctx.tenant_id,
-        type: "workflow.updated",
-        severity: "info",
+        type: "execution.failed",
+        severity: "error",
         request_source: "api",
       },
     );
@@ -225,6 +228,66 @@ describe("notifications: sk_cli channel dispatch", () => {
       .where(eq(notificationDeliveries.tenant_id, ctx.tenant_id));
     expect(delivery.length).toBe(1);
     expect(delivery[0]?.status).toBe("sent");
-    expect(delivery[0]?.event_type).toBe("workflow.updated");
+    expect(delivery[0]?.event_type).toBe("execution.failed");
+  });
+
+  test("a non-actionable event on a catch-all rule is skipped: no sent row, no audit", async () => {
+    await wipe();
+
+    await ctx.db.insert(notificationChannels).values({
+      tenant_id: ctx.tenant_id,
+      workspace_id: "_cli",
+      channel_id: "_inbox",
+      platform: "sk_cli",
+      circuit_state: "closed",
+      rate_limit_per_minute: 60,
+      active: true,
+    });
+    await ctx.db.insert(notificationRules).values({
+      tenant_id: ctx.tenant_id,
+      name: "sk-cli-catch-all",
+      event_pattern: "*",
+      severity: "info",
+      target_workspace_id: "_cli",
+      target_channel_id: "_inbox",
+    });
+
+    const adapter = new SkCliAdapter(ctx.db);
+    const result = await dispatchEvent(
+      { db: ctx.db, resolveAdapter: () => adapter as unknown as NotificationAdapter },
+      {
+        tenant_id: ctx.tenant_id,
+        type: "execution.step.finished",
+        severity: "info",
+        request_source: "api",
+      },
+    );
+
+    expect(result.matched).toBe(1);
+    expect(result.delivered).toBe(0);
+    expect(result.outcomes.map((o) => [o.status, o.reason])).toEqual([
+      ["skipped", "not_actionable"],
+    ]);
+
+    const delivery = await ctx.db
+      .select()
+      .from(notificationDeliveries)
+      .where(eq(notificationDeliveries.tenant_id, ctx.tenant_id));
+    expect(delivery.map((d) => [d.status, d.reason, d.event_type])).toEqual([
+      ["skipped", "not_actionable", "execution.step.finished"],
+    ]);
+
+    const inbox = await ctx.db
+      .select()
+      .from(cliNotificationInbox)
+      .where(eq(cliNotificationInbox.tenant_id, ctx.tenant_id));
+    expect(inbox.length).toBe(0);
+
+    await _drainAuditWritesForTests(ctx.db);
+    const auditRows = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.tenant_id, ctx.tenant_id));
+    expect(auditRows.filter((r) => r.action === "chat.message.sent")).toEqual([]);
   });
 });
