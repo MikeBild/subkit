@@ -21,6 +21,7 @@ import {
   contentPublicationLabels,
   GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
+  JsonValueSchema,
   prepareReportAuthority,
   previewWorkflowAuthority,
   reportBoundariesFromManifest,
@@ -28,7 +29,6 @@ import {
   suggestAuthorityBounds,
   WorkflowEffectManifestSchema,
 } from "../../workflows/index.ts";
-import { JsonValueSchema } from "../../workflows/types.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

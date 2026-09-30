@@ -7826,6 +7826,16 @@ readiness is `GET /v1/workflows/{id}/automation-status`. Neither endpoint grants
 permission. The existing browser-session/CSRF authority endpoint remains the sole
 human confirmation path. Revocation, expiry and exhaustion block future dispatch.
 
+The held run receives the input a real start would give it: the reviewer's
+`input` when supplied, otherwise the single schedule's input. A workflow started
+by an inbound webhook has no stored input — refused deliveries are not kept — so
+preparing it in `prod` without `input` answers
+`{ "prepared": false, "reason": "input_required", "trigger": { "kind": "inbound_hook", "slug": … } }`
+and starts nothing. The reviewer then supplies one delivery envelope
+(`{ id, timestamp, type, headers, body }`); an input that does not match the
+version's `input_schema` is refused with `400 input_schema_violation` before any
+run exists.
+
 Regression coverage includes held preparation, human grant, schedule resolution,
 changing report contents, recipient deviation, tenant/environment isolation,
 revocation/expiry/exhaustion and chat confirmation/counter/reload behavior. Runtime
