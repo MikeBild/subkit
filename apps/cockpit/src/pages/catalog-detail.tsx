@@ -733,9 +733,6 @@ export function CatalogDetailPage({
             resource={resource}
             id={id}
             name={recordTitle(record)}
-            versionId={
-              typeof record.current_version_id === "string" ? record.current_version_id : null
-            }
             connectorAuth={connectorAuth}
             permissions={permissions}
           />
