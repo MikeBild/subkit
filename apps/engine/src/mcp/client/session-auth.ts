@@ -115,6 +115,7 @@ export function resolveStaticAuthHeaders(
           `expected bearer credential for server, got mode '${value.mode}'`,
         );
       }
+      assertHeaderSafe(value.token, "bearer token");
       return { Authorization: `Bearer ${value.token}` };
     }
     case "basic": {
@@ -127,6 +128,8 @@ export function resolveStaticAuthHeaders(
       // RFC 7617 — the userid:password pair, base64. Used by remote MCP
       // servers that accept non-interactive personal API tokens (e.g.
       // Atlassian Rovo: base64(email:api_token)).
+      assertHeaderSafe(value.username, "basic username");
+      assertHeaderSafe(value.password, "basic password");
       const pair = Buffer.from(`${value.username}:${value.password}`, "utf8").toString("base64");
       return { Authorization: `Basic ${pair}` };
     }
@@ -154,9 +157,25 @@ export function resolveStaticAuthHeaders(
             `header '${name}' cannot carry a credential to an MCP server`,
           );
         }
+        assertHeaderSafe(value.headers[name] ?? "", `value of header '${name}'`);
       }
       return { ...value.headers };
     }
+  }
+}
+
+/**
+ * A pasted key with a trailing newline is the common case. Handed to the
+ * transport, the runtime rejects it with an error that quotes the raw value —
+ * the secret then reaches the pool's log and the model. Refuse it here, naming
+ * only which part of the credential is wrong.
+ */
+function assertHeaderSafe(value: string, part: string): void {
+  if (/[\r\n\0]/.test(value)) {
+    throw new McpPreflightError(
+      "credential_invalid",
+      `the ${part} contains a line break or NUL character; re-enter the credential without it`,
+    );
   }
 }
 

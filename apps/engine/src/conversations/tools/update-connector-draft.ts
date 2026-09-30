@@ -1,7 +1,8 @@
 import { z } from "@hono/zod-openapi";
 import { recordConnectorDraftCredentialRejected } from "../../audit/recorders/index.ts";
+import { mcpAuthKindForType } from "../../connectors/config-schemas.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
-import { DriverEnum } from "../../connectors/types.ts";
+import { type AuthType, DriverEnum } from "../../connectors/types.ts";
 import { log } from "../../logging/logger.ts";
 import { SECRET_PATTERNS, SENSITIVE_KEY_PATTERN } from "../../logging/scrub-secrets.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
@@ -329,7 +330,14 @@ export const updateConnectorDraftTool: ConversationTool = {
     const next: ConnectorDraftDocument = {
       ...current,
       ...patch,
-      config: args.config ?? current.config ?? {},
+      config:
+        args.config ??
+        withMcpAuthKindFollowing(args.auth_type, {
+          driver: args.driver ?? current.driver,
+          config: current.config,
+        }) ??
+        current.config ??
+        {},
       docs: args.docs ?? current.docs ?? [],
       latest_probe: current.latest_probe ?? null,
       saved_connector_id: current.saved_connector_id ?? null,
@@ -345,11 +353,11 @@ export const updateConnectorDraftTool: ConversationTool = {
     // placeholder host, a field still missing) stay on the draft as before.
     const isAuthIssue = (issue: { path: string }) =>
       issue.path === "auth_type" || /^(config\.)?mcp\.auth(\.|$)/.test(issue.path);
-    const knownErrors = new Set(
-      (current.validation?.errors ?? []).map((issue) => `${issue.path}\u0000${issue.message}`),
-    );
+    // By path alone: a finding the draft already carried is not new because
+    // its wording changed since it was recorded.
+    const knownPaths = new Set((current.validation?.errors ?? []).map((issue) => issue.path));
     const introduced = validation.errors.filter(
-      (issue) => isAuthIssue(issue) && !knownErrors.has(`${issue.path}\u0000${issue.message}`),
+      (issue) => isAuthIssue(issue) && !knownPaths.has(issue.path),
     );
     if (introduced.length > 0) {
       return {
@@ -397,3 +405,26 @@ export const updateConnectorDraftTool: ConversationTool = {
     };
   },
 };
+
+/**
+ * An MCP draft signs in with `config.mcp.auth.kind`, and `auth_type` names the
+ * same thing. A switch of `auth_type` alone used to leave the old kind behind,
+ * and the edit was refused for a mismatch the caller had not asked for. When
+ * `config` is not part of the edit, the kind follows the new `auth_type`; a
+ * caller who sends `config` states the kind itself and is validated as sent.
+ */
+function withMcpAuthKindFollowing(
+  auth_type: AuthType | undefined,
+  current: { driver: string | undefined; config: Record<string, unknown> | undefined },
+): Record<string, unknown> | undefined {
+  if (auth_type === undefined || current.driver !== "mcp") return undefined;
+  const kind = mcpAuthKindForType(auth_type);
+  const config = current.config ?? {};
+  const mcp = config.mcp;
+  if (!kind || !mcp || typeof mcp !== "object" || Array.isArray(mcp)) return undefined;
+  const auth = (mcp as { auth?: unknown }).auth;
+  const currentKind =
+    auth && typeof auth === "object" ? (auth as { kind?: unknown }).kind : undefined;
+  if (typeof currentKind !== "string" || currentKind === kind) return undefined;
+  return { ...config, mcp: { ...mcp, auth: { kind } } };
+}

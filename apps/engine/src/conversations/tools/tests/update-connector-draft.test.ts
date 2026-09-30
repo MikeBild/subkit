@@ -413,6 +413,61 @@ describe("update_connector_draft — clean updates pass", () => {
     _resetDraftCredentialCacheForTests();
   });
 
+  it("lets auth_type alone switch an mcp draft: the sign-in kind follows it", async () => {
+    const { setDraftCredential, getDraftCredential, _resetDraftCredentialCacheForTests } =
+      await import("../../persistence/draft-credential-cache.ts");
+    _resetDraftCredentialCacheForTests();
+    const { base, getDraft } = await makeCtx();
+    await updateConnectorDraftTool.execute(base, {
+      name: "Reporting MCP",
+      driver: "mcp",
+      environment: "prod",
+      base_url: "https://reporting.acme-analytics.io/api/mcp",
+      auth_type: "bearer",
+      config: { mcp: { transport: "http", auth: { kind: "bearer" } } },
+    });
+    setDraftCredential(base.conversation_id, { mode: "bearer", token: "entered-by-operator" });
+    const result = await updateConnectorDraftTool.execute(base, { auth_type: "header" });
+    expect(result.ok).toBe(true);
+    expect(getDraft().connector?.config).toEqual({
+      mcp: { transport: "http", auth: { kind: "header" } },
+    });
+    expect(getDraft().connector?.validation?.errors ?? []).toEqual([]);
+    expect(getDraftCredential(base.conversation_id)).toBeNull();
+    _resetDraftCredentialCacheForTests();
+  });
+
+  it("does not count an auth finding the draft already carried as new when its wording changed", async () => {
+    const { base, getDraft } = await makeCtx();
+    await updateConnectorDraftTool.execute(base, {
+      name: "Reporting MCP",
+      driver: "mcp",
+      environment: "prod",
+      base_url: "https://reporting.acme-analytics.io/api/mcp",
+      auth_type: "bearer",
+      config: { mcp: { transport: "http", auth: { kind: "bearer" } } },
+    });
+    // A draft recorded with a mismatched kind, under an older wording of
+    // the finding.
+    const draft = getDraft();
+    const connector = draft.connector;
+    if (!connector?.validation) throw new Error("missing connector draft");
+    await base.setDraft({
+      ...draft,
+      connector: {
+        ...connector,
+        config: { mcp: { transport: "http", auth: { kind: "basic" } } },
+        validation: {
+          ...connector.validation,
+          errors: [{ path: "config.mcp.auth.kind", message: "an older wording of this finding" }],
+        },
+      },
+    });
+    const result = await updateConnectorDraftTool.execute(base, { name: "Reporting MCP v2" });
+    expect(result.ok).toBe(true);
+    expect(getDraft().connector?.name).toBe("Reporting MCP v2");
+  });
+
   it("allows auth_type changes that are not a downgrade-to-none", async () => {
     const { _resetDraftCredentialCacheForTests } = await import(
       "../../persistence/draft-credential-cache.ts"

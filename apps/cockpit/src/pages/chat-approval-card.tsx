@@ -81,9 +81,11 @@ export function ChatApprovalCard({
           </Button>
         )}
         {approval.savesInactiveWorkflow && <p>{t("chat.decision.saveEffect")}</p>}
-        {approval.externalTool?.hint && (
-          <p className="text-sm text-muted-foreground" data-testid={`${testId}-hint`}>
-            {readable(approval.externalTool.hint)}
+        {approval.externalTool?.server_claim && (
+          <p className="text-sm text-muted-foreground" data-testid={`${testId}-server-claim`}>
+            {t("chat.decision.serverClaim", {
+              claim: readable(approval.externalTool.server_claim),
+            })}
           </p>
         )}
         {(approval.description || approval.singleRun) && (

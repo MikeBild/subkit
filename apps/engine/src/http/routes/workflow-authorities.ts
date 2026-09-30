@@ -7,6 +7,7 @@ import {
   workflows,
   workflowsSchedules,
 } from "../../db/schema/index.ts";
+import { can } from "../../rbac/index.ts";
 import {
   inboundHookAutomationView,
   nextScheduleFire,
@@ -191,7 +192,8 @@ const automationStatus = createRoute({
               }),
             ),
             /** The other thing that starts runs without a person. Same states
-             *  as a schedule; a hook's deliveries always run in production. */
+             *  as a schedule; a hook's deliveries always run in production.
+             *  Empty unless the caller holds `inbound_hook:read`. */
             inbound_hooks: z.array(
               z.object({
                 inbound_hook_id: z.string(),
@@ -201,7 +203,8 @@ const automationStatus = createRoute({
                 ready: z.boolean(),
                 environment: z.literal("prod"),
                 /** Set while the authority gate refuses its deliveries; cleared
-                 *  by an admitted delivery or a grant. */
+                 *  by an admitted delivery or a grant. Null on a deactivated
+                 *  hook, which receives nothing. */
                 admission_hold: z
                   .object({
                     reason_code: z.enum([
@@ -212,7 +215,9 @@ const automationStatus = createRoute({
                   })
                   .nullable(),
                 /** The newest refused delivery, from the audit trail, whatever
-                 *  refused it (signature, authority, lifecycle). */
+                 *  refused it (signature, authority, lifecycle), within the last
+                 *  30 days. The reason is audit-log content: null unless the
+                 *  caller holds `audit:read`. */
                 last_refused_at: z.string().nullable(),
                 last_refused_reason: z.string().nullable(),
               }),
@@ -486,12 +491,23 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
     const clock = await c.get("db").execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
     const now = clock.rows[0]?.now;
     if (!now) throw new Error("database clock unavailable");
-    const tenant = requireAuth(c).tenant_id;
+    const principal = requireAuth(c);
+    const tenant = principal.tenant_id;
     const workflow = c.req.valid("param").id;
+    const db = c.get("db");
+    // The route is gated for schedules. Hooks carry their own read permission,
+    // and a refusal's reason is audit-log content: a caller sees each only
+    // with the permission that already covers it elsewhere.
+    const probe = async (permission: "inbound_hook:read" | "audit:read") =>
+      (await can(db, { tenant_id: tenant, principal, permission, quiet: true })).allow;
     return c.json(
       {
-        schedules: await workflowAutomationView(tenant, workflow, c.get("db"), new Date(now)),
-        inbound_hooks: await inboundHookAutomationView(tenant, workflow, c.get("db")),
+        schedules: await workflowAutomationView(tenant, workflow, db, new Date(now)),
+        inbound_hooks: (await probe("inbound_hook:read"))
+          ? await inboundHookAutomationView(tenant, workflow, db, new Date(now), {
+              refusal_reasons: await probe("audit:read"),
+            })
+          : [],
       },
       200,
     );

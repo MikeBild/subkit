@@ -2033,6 +2033,7 @@ const EN = {
   "chat.decision.processing": "Processing decision…",
   "chat.decision.save": "Save inactive version",
   "chat.decision.externalTool": "{connector}: run the tool “{tool}”?",
+  "chat.decision.serverClaim": "The server describes this as: {claim}",
 
   "chat.context.help": "About the working context",
   "chat.context.description": "Evidence, checkpoints and pending decisions for this conversation.",
@@ -4950,6 +4951,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.decision.processing": "Entscheidung wird verarbeitet…",
   "chat.decision.save": "Inaktive Version speichern",
   "chat.decision.externalTool": "{connector}: Werkzeug „{tool}“ ausführen?",
+  "chat.decision.serverClaim": "Laut Server: {claim}",
 
   "chat.context.help": "Informationen zum Arbeitskontext",
   "chat.context.description":
