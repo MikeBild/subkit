@@ -9,7 +9,7 @@ import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
-import { auditLog, skills } from "../db/schema/index.ts";
+import { auditLog, skillCandidates, skills } from "../db/schema/index.ts";
 import { ConflictError, HttpError, NotFoundError } from "../http/errors.ts";
 import { log } from "../logging/logger.ts";
 import {
@@ -326,6 +326,10 @@ export async function updateSkill(
     if (patch.tags !== undefined) set.tags = patch.tags;
     const [row] = await tx.update(skills).set(set).where(eq(skills.id, id)).returning();
     if (!row) return null;
+    const retired =
+      prior.lifecycle !== "active" && row.lifecycle === "active"
+        ? await retireReplacedConnectorSkills(tx, tenant_id, id, actor_id)
+        : [];
     await auditAwait(
       {
         tenant_id,
@@ -339,7 +343,7 @@ export async function updateSkill(
         // trail doubles as restorable version history — see restoreSkill.
         before: rowToSkill(prior),
         after: rowToSkill(row),
-        metadata: {},
+        metadata: retired.length > 0 ? { retired_skill_ids: retired } : {},
       },
       tx,
     );
@@ -364,6 +368,59 @@ export async function updateSkill(
   });
 }
 
+/**
+ * A connector-capability skill describes ONE state of an MCP server's tool
+ * catalog. When the catalog changes, a new candidate is proposed; once its
+ * skill becomes active, the skills promoted from the SAME connector's earlier
+ * connector-capability candidates are stale descriptions of the same server
+ * and are archived — otherwise the model reads two contradicting catalogs.
+ *
+ * Lineage is the candidate row (`promoted_skill_id`), never the connector
+ * alone: a hand-written or template-seeded skill for the connector is not a
+ * catalog description and stays. Archived, not deleted: the retirement is
+ * audited and restorable like any other archive. Runs inside the caller's
+ * transaction, so the new skill and the retirement commit together.
+ */
+export async function retireReplacedConnectorSkills(
+  tx: Executor,
+  tenant_id: string,
+  skill_id: string,
+  actor_id: string | null,
+): Promise<string[]> {
+  const [lineage] = await tx
+    .select({ connector_id: skillCandidates.connector_id })
+    .from(skillCandidates)
+    .where(
+      and(
+        eq(skillCandidates.tenant_id, tenant_id),
+        eq(skillCandidates.promoted_skill_id, skill_id),
+        eq(skillCandidates.pattern_kind, "connector_capability"),
+      ),
+    )
+    .limit(1);
+  if (!lineage?.connector_id) return [];
+  const replaced = await tx
+    .select({ id: skills.id })
+    .from(skillCandidates)
+    .innerJoin(skills, eq(skills.id, skillCandidates.promoted_skill_id))
+    .where(
+      and(
+        eq(skillCandidates.tenant_id, tenant_id),
+        eq(skillCandidates.pattern_kind, "connector_capability"),
+        eq(skillCandidates.connector_id, lineage.connector_id),
+        eq(skillCandidates.status, "approved"),
+        sql`${skillCandidates.promoted_skill_id} <> ${skill_id}`,
+        eq(skills.tenant_id, tenant_id),
+        eq(skills.lifecycle, "active"),
+      ),
+    );
+  const retired: string[] = [];
+  for (const r of replaced) {
+    if (await archiveSkill(tenant_id, r.id, actor_id, tx)) retired.push(r.id);
+  }
+  return retired;
+}
+
 export async function activateSkill(
   tenant_id: string,
   id: string,
@@ -386,6 +443,7 @@ export async function activateSkill(
       .where(eq(skills.id, id))
       .returning();
     if (!row) return null;
+    const retired = await retireReplacedConnectorSkills(tx, tenant_id, id, actor_id);
     await auditAwait(
       {
         tenant_id,
@@ -395,7 +453,10 @@ export async function activateSkill(
         resource_type: "skill",
         resource_id: id,
         result: "success",
-        metadata: { from: prior.lifecycle },
+        metadata: {
+          from: prior.lifecycle,
+          ...(retired.length > 0 ? { retired_skill_ids: retired } : {}),
+        },
       },
       tx,
     );
