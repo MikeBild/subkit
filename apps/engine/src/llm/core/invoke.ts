@@ -47,10 +47,10 @@ import {
 } from "../accounting/index.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../errors.ts";
 import { getMockProvider, type MockResult } from "../mock-provider.ts";
-import { classifyProviderError, isFallbackEligible } from "../provider-errors.ts";
+import { classifyProviderError, shouldFallBack } from "../provider-errors.ts";
 import type { LlmFlow, LlmProviderKind, ModelRoute, UserTurn } from "../types.ts";
 import { AiSdkModel } from "./ai-sdk-model.ts";
-import type { SubkitLlmMessage } from "./base-types.ts";
+import type { SubkitLlmAnsweredBy, SubkitLlmMessage } from "./base-types.ts";
 import { toSystemMessages } from "./cache-blocks.ts";
 import { type AssembledContext, assembleContext } from "./context-assembler.ts";
 import { maybeWrapForDevtools } from "./devtools-wrap.ts";
@@ -463,10 +463,13 @@ async function invokeInner<T = unknown>(
 
   // 3) Dispatch.
   const start = Date.now();
-  if (route.provider === "mock") {
-    return await dispatchMock<T>(params, route, assembled, start, db);
-  }
-  return await dispatchReal<T>(params, route, assembled, start, db);
+  const result =
+    route.provider === "mock"
+      ? await dispatchMock<T>(params, route, assembled, start, db)
+      : await dispatchReal<T>(params, route, assembled, start, db);
+  // The completion line names the model that answered, not the one asked.
+  invokeFields.model = result.model_used;
+  return result;
 }
 
 async function dispatchMock<T>(
@@ -515,11 +518,7 @@ async function dispatchMock<T>(
       },
       db,
     );
-    if (
-      err.kind === "rate_limit" ||
-      err.kind === "overloaded" ||
-      err.kind === "context_length_exceeded"
-    ) {
+    if (shouldFallBack(err, route.provider, route.fallback_provider)) {
       fell_back = true;
       logger.warn({
         module: "llm",
@@ -542,6 +541,7 @@ async function dispatchMock<T>(
   }
   const latency = Date.now() - start;
   const modelUsed = fell_back ? route.fallback : route.primary;
+  const providerUsed = fell_back ? route.fallback_provider : route.provider;
   await recordUsage(
     {
       tenant_id: params.tenant_id,
@@ -563,7 +563,7 @@ async function dispatchMock<T>(
     completion_tokens: res.completion_tokens,
   });
   recordLlmCallDuration({
-    provider: route.provider,
+    provider: providerUsed,
     model: modelUsed,
     flow: params.flow,
     duration_ms: latency,
@@ -591,7 +591,7 @@ async function dispatchMock<T>(
       result: "success",
       metadata: {
         model: modelUsed,
-        provider: route.provider,
+        provider: providerUsed,
         flow: params.flow,
         prompt_tokens: res.prompt_tokens,
         completion_tokens: res.completion_tokens,
@@ -666,7 +666,9 @@ async function dispatchReal<T>(
     cache_read_tokens: 0,
     cache_creation_tokens: 0,
   };
-  let fell_back = false;
+  // The model call retries a refused primary on the fallback itself, so which
+  // model answered is read off the answer — never assumed to be the primary.
+  let answeredBy: SubkitLlmAnsweredBy = { model_used: route.primary, fell_back: false };
 
   try {
     if (params.schema) {
@@ -685,6 +687,7 @@ async function dispatchReal<T>(
         ...(params.signal ? { signal: params.signal } : {}),
       });
       usage = r.usage;
+      answeredBy = r;
       if (r.success) {
         object = r.response as T;
         text = JSON.stringify(object);
@@ -698,6 +701,7 @@ async function dispatchReal<T>(
         ...(params.signal ? { signal: params.signal } : {}),
       });
       usage = r.usage;
+      answeredBy = r;
       text = r.response;
       // Attempt best-effort JSON extraction for non-converse flows.
       if (params.flow !== "converse") {
@@ -706,20 +710,8 @@ async function dispatchReal<T>(
       }
     }
   } catch (err) {
-    if (isFallbackEligible(err) && !fell_back) {
-      fell_back = true;
-      logger.warn({
-        module: "llm",
-        action: "fallback.triggered",
-        flow: params.flow,
-        primary: route.primary,
-        fallback: route.fallback,
-        kind: classifyProviderError(err),
-      });
-      // AiSdkModel already tries its own fallback when configured; if we
-      // reach here it means the error wasn't caught or fallback wasn't
-      // set. Re-throw with the structured kind.
-    }
+    // The model call already made the fallback decision and, when it applied,
+    // the fallback attempt; an error reaching here is final.
     const mapped = mapProviderError(err);
     const latency = Date.now() - start;
     await recordUsage(
@@ -740,7 +732,28 @@ async function dispatchReal<T>(
   }
 
   const latency = Date.now() - start;
-  const modelUsed = route.primary;
+  const modelUsed = answeredBy.model_used;
+  const fell_back = answeredBy.fell_back;
+  const providerUsed = fell_back ? route.fallback_provider : route.provider;
+
+  if (fell_back) {
+    // The refusal stays on the ledger as an error without output, which
+    // `billedTokenUsage` books at zero — the same row the chat turn writes.
+    await recordUsage(
+      {
+        tenant_id: params.tenant_id,
+        flow: params.flow,
+        model: route.primary,
+        prompt_tokens: assembled.prompt.token_counts.total,
+        completion_tokens: 0,
+        latency_ms: 0,
+        result: "error",
+        error: answeredBy.primary_error ?? "primary refused; answered by the fallback",
+        ...actorFields(params.principal),
+      },
+      db,
+    );
+  }
 
   await account(
     {
@@ -763,7 +776,7 @@ async function dispatchReal<T>(
     completion_tokens: usage.output_tokens,
   });
   recordLlmCallDuration({
-    provider: route.provider,
+    provider: providerUsed,
     model: modelUsed,
     flow: params.flow,
     duration_ms: latency,
@@ -787,7 +800,7 @@ async function dispatchReal<T>(
       result: "success",
       metadata: {
         model: modelUsed,
-        provider: route.provider,
+        provider: providerUsed,
         flow: params.flow,
         prompt_tokens: usage.input_tokens,
         completion_tokens: usage.output_tokens,
