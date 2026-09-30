@@ -54,6 +54,7 @@ export interface McpAuthConfig {
     | "none"
     | "bearer"
     | "basic"
+    | "header"
     | "oauth2"
     | "oauth2_client_credentials"
     | "oauth2_private_key_jwt";
@@ -79,6 +80,7 @@ export const McpAuthConfigSchema = z
       "none",
       "bearer",
       "basic",
+      "header",
       "oauth2",
       "oauth2_client_credentials",
       "oauth2_private_key_jwt",

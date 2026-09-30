@@ -1541,6 +1541,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             tenantDefaultModelId: modelId,
             provider: attemptProvider,
             toolsByName,
+            paletteToolNames: Object.keys(tools),
             signals: stepRouterSignals,
             turnThinkingEnabled: thinkingThisTurn,
             // Keep the requested first tool visible, then release the forced

@@ -130,7 +130,8 @@ describe("mcp", () => {
     expect(mcpAuthKindForType("oauth2")).toBe("oauth2");
     expect(mcpAuthKindForType("oauth2_client")).toBe("oauth2_client_credentials");
     expect(mcpAuthKindForType("oauth2_private_key")).toBe("oauth2_private_key_jwt");
-    expect(mcpAuthKindForType("header")).toBeNull();
+    expect(mcpAuthKindForType("header")).toBe("header");
+    expect(mcpAuthKindForType("query")).toBeNull();
   });
 
   test("rejects disagreement between top-level auth_type and config.mcp.auth.kind", () => {
@@ -231,8 +232,20 @@ describe("auth kinds are scoped to the driver that can honour them", () => {
     }
   });
 
+  test("a header name in the MCP auth block is refused with where it belongs", () => {
+    const issues = validateConnectorConfig("mcp", {
+      mcp: { transport: "http", auth: { kind: "header", header_name: "X-API-KEY" } },
+    });
+    expect(issues).toEqual([
+      expect.objectContaining({
+        path: "mcp.auth",
+        message: expect.stringContaining("header_name (pre-filled, not sensitive)"),
+      }),
+    ]);
+  });
+
   test("MCP refuses auth modes its transport cannot represent", () => {
-    for (const auth_type of ["header", "query", "aws_sigv4"] as const) {
+    for (const auth_type of ["query", "aws_sigv4"] as const) {
       const issues = validateConnectorAuthType("mcp", auth_type);
       expect(issues).toEqual([expect.objectContaining({ path: "auth_type" })]);
     }

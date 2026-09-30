@@ -679,3 +679,29 @@ test("diagnosis keeps same-chat workflow repair available without exposing unrel
     )?.activeTools,
   ).not.toContain("edit_workflow_patch");
 });
+
+describe("palette-only tools (saved workflows, connected MCP servers)", () => {
+  const paletteToolNames = [
+    ...Object.keys(TOOLS),
+    "wf_weekly-report",
+    "mcp_metabase-reporting-mcp__search",
+  ];
+
+  it("keeps them in a full-palette stage with no workflow bound", () => {
+    for (const stage of ["idle", "connector_persisted", "repairing"] as const) {
+      const active = prepareStep(baseParams({ paletteToolNames, signals: { stage } }))?.activeTools;
+      expect(active).toEqual(
+        expect.arrayContaining(["wf_weekly-report", "mcp_metabase-reporting-mcp__search"]),
+      );
+      expect(active).not.toContain("run_workflow");
+    }
+  });
+
+  it("leaves them out while a draft is being refined", () => {
+    const active = prepareStep(
+      baseParams({ paletteToolNames, signals: { stage: "connector_validated" } }),
+    )?.activeTools;
+    expect(active).not.toContain("mcp_metabase-reporting-mcp__search");
+    expect(active).not.toContain("wf_weekly-report");
+  });
+});

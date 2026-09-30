@@ -8,7 +8,7 @@
 // keeps what only it can own — which client, whose tenant, the handshake,
 // the eviction, the backoff.
 //
-// THE SPLIT BETWEEN THE TWO PATHS IS THE POINT. `bearer` / `basic` / `none`
+// THE SPLIT BETWEEN THE TWO PATHS IS THE POINT. `bearer` / `basic` / `header` / `none`
 // are resolved once into a header mounted on the transport. The three
 // oauth2 kinds are NOT: their whole token lifecycle — replay, pre-expiry
 // refresh, persistence — belongs to the SDK's `authProvider`, and
@@ -130,8 +130,49 @@ export function resolveStaticAuthHeaders(
       const pair = Buffer.from(`${value.username}:${value.password}`, "utf8").toString("base64");
       return { Authorization: `Basic ${pair}` };
     }
+    case "header": {
+      if (value.mode !== "header") {
+        throw new McpPreflightError(
+          "credential_invalid",
+          `expected header credential for server, got mode '${value.mode}'`,
+        );
+      }
+      // The header names travel with the credential, as for an http
+      // connector (e.g. `X-API-KEY`). A name the transport sets itself
+      // would silently break the handshake, so it is refused here.
+      const names = Object.keys(value.headers);
+      if (names.length === 0) {
+        throw new McpPreflightError(
+          "credential_invalid",
+          "header credential for server carries no header",
+        );
+      }
+      for (const name of names) {
+        if (!HTTP_TOKEN_RE.test(name) || TRANSPORT_OWNED_HEADERS.has(name.toLowerCase())) {
+          throw new McpPreflightError(
+            "credential_invalid",
+            `header '${name}' cannot carry a credential to an MCP server`,
+          );
+        }
+      }
+      return { ...value.headers };
+    }
   }
 }
+
+/** RFC 9110 `token` — the only shape a header field name may take. */
+const HTTP_TOKEN_RE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+/** Headers the streamable-HTTP transport writes on every request. */
+const TRANSPORT_OWNED_HEADERS = new Set([
+  "accept",
+  "content-type",
+  "content-length",
+  "host",
+  "mcp-session-id",
+  "mcp-protocol-version",
+  "last-event-id",
+]);
 
 /**
  * Canonical OAuth callback URL handed to the (non-interactive) handshake
