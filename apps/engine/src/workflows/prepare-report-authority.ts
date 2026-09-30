@@ -1,11 +1,14 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
-import { executions } from "../db/schema/index.ts";
+import { executions, webhooksInbound } from "../db/schema/index.ts";
+import { validateAgainstJsonSchema } from "../execution/engine/envelope.ts";
 import { runExecution } from "../execution/engine.ts";
+import { resolveDefinition } from "../execution/resolve-definition.ts";
 import { createExecution } from "../execution/state.ts";
 import { listSchedules } from "../scheduler/repo.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
+import { normalizeWorkflowRunInput } from "./run-input.ts";
 
 /**
  * Run this workflow once with every write held, so the review has something to
@@ -22,6 +25,12 @@ import { previewWorkflowAuthority } from "./execution-authorities.ts";
  * the derivation that depended on it reported "these steps have never run".
  * The result now says which of the two happened.
  *
+ * The held run needs the input a real start would give it. A schedule carries
+ * its own; a webhook's input is a delivery, and a refused delivery is not kept.
+ * For a hook-started workflow the reviewer supplies a sample delivery, and
+ * until they do the answer is `input_required` — a run over `{}` observes a
+ * workflow that never runs that way, and its evidence describes nothing.
+ *
  * This cannot activate a version, send a message or create an execution grant.
  */
 export async function prepareReportAuthority(
@@ -30,24 +39,28 @@ export async function prepareReportAuthority(
     workflow_id: string;
     workflow_version_id: string;
     execution_environment: "dev" | "prod";
+    /** A sample of what really starts this workflow, supplied by the reviewer. */
+    input?: unknown;
   },
   db: Db,
   principal: ResolvedPrincipal,
 ) {
-  const preview = await previewWorkflowAuthority(input, db);
+  const preview = await previewWorkflowAuthority(
+    {
+      tenant_id: input.tenant_id,
+      workflow_id: input.workflow_id,
+      workflow_version_id: input.workflow_version_id,
+      execution_environment: input.execution_environment,
+    },
+    db,
+  );
   if (preview.eligible_for_repeated_runs) return { prepared: false, reason: "already_bindable" };
   // A held run helps whenever something is unbound: the report profile asks for
   // it by name, and every other refused step needs exactly the same evidence.
   if (!preview.preparation_required && (preview.manifest?.issues?.length ?? 0) === 0)
     return { prepared: false, reason: "nothing_to_prepare" };
-  const schedules = (await listSchedules(db, input.tenant_id, input.workflow_id)).rows.filter(
-    (row) => row.execution_mode === input.execution_environment && !row.paused,
-  );
-  // Multiple distinct inputs need separate previews. Never silently pick one.
-  if (schedules.length > 1)
-    throw Object.assign(new Error("Review one schedule at a time"), {
-      code: "authority_preparation_ambiguous",
-    });
+  const start = await preparationInput(input, db);
+  if ("trigger" in start) return start;
   // One preparation at a time for one version in one environment.
   //
   // The dialog showed a bare "loading" for as long as this takes, and a run
@@ -88,7 +101,7 @@ export async function prepareReportAuthority(
       execution_mode: input.execution_environment,
       source_kind: "saved",
       source_ref: null,
-      input: schedules[0]?.input ?? {},
+      input: start.input,
       request_source: "ui",
       hold_writes: true,
     });
@@ -105,7 +118,7 @@ export async function prepareReportAuthority(
       workflow_id: input.workflow_id,
       version_id: input.workflow_version_id,
     },
-    input: schedules[0]?.input ?? {},
+    input: start.input,
     options: {
       existing_execution_id: executionId,
       hold_writes: true,
@@ -120,4 +133,70 @@ export async function prepareReportAuthority(
       code: "authority_preparation_failed",
     });
   return { prepared: true as const };
+}
+
+/**
+ * The one input both the execution row and the run receive: the reviewer's
+ * sample, else the single schedule's, else — only when no hook starts this
+ * workflow with a delivery — an empty one.
+ */
+async function preparationInput(
+  input: Parameters<typeof prepareReportAuthority>[0],
+  db: Db,
+): Promise<
+  | { input: unknown }
+  | {
+      prepared: false;
+      reason: "input_required";
+      trigger: { kind: "inbound_hook"; slug: string };
+    }
+> {
+  if (input.input !== undefined) {
+    const supplied = normalizeWorkflowRunInput(input.input);
+    // Refused here, not by the run: the run would already own an execution row.
+    const { def } = await resolveDefinition(db, input.tenant_id, {
+      kind: "saved",
+      workflow_id: input.workflow_id,
+      version_id: input.workflow_version_id,
+    });
+    if (def.input_schema) {
+      const check = validateAgainstJsonSchema(supplied, def.input_schema, "$input");
+      if (!check.valid)
+        throw Object.assign(new Error(check.errors.join("; ")), {
+          code: "input_schema_violation",
+        });
+    }
+    return { input: supplied };
+  }
+  const schedules = (await listSchedules(db, input.tenant_id, input.workflow_id)).rows.filter(
+    (row) => row.execution_mode === input.execution_environment && !row.paused,
+  );
+  // Multiple distinct inputs need separate previews. Never silently pick one.
+  if (schedules.length > 1)
+    throw Object.assign(new Error("Review one schedule at a time"), {
+      code: "authority_preparation_ambiguous",
+    });
+  if (schedules[0]) return { input: schedules[0].input ?? {} };
+  // Hooks deliver to production only; a dev preparation has no delivery to wait for.
+  if (input.execution_environment === "prod") {
+    const [hook] = await db
+      .select({ slug: webhooksInbound.slug })
+      .from(webhooksInbound)
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, input.tenant_id),
+          eq(webhooksInbound.workflow_id, input.workflow_id),
+          eq(webhooksInbound.active, true),
+        ),
+      )
+      .orderBy(webhooksInbound.slug)
+      .limit(1);
+    if (hook)
+      return {
+        prepared: false,
+        reason: "input_required",
+        trigger: { kind: "inbound_hook", slug: hook.slug },
+      };
+  }
+  return { input: {} };
 }

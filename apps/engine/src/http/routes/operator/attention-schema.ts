@@ -38,6 +38,13 @@ const AttentionItem = z
       })
       .nullable(),
     reason: z.enum(ATTENTION_REASONS),
+    trigger: z
+      .object({
+        kind: z.enum(["schedule", "inbound_hook"]),
+        name: z.string().nullable().describe("The webhook's slug; null for a schedule."),
+      })
+      .nullable()
+      .describe("What a held workflow's refused starts come from. Null unless held."),
     // Inline, not the named `FailureCauseClass`: a nullable $ref is emitted as
     // `allOf` and the generated client loses the null.
     cause_class: z.enum(PREVIEW_CLASSIFICATIONS).nullable(),

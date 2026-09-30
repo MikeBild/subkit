@@ -4646,6 +4646,67 @@
           "server_time"
         ]
       },
+      "WorkflowJsonValue": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          },
+          {
+            "$ref": "#/components/schemas/FileRef"
+          },
+          {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/WorkflowJsonValue"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/WorkflowJsonValue"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "description": "A sample of what really starts this workflow — for a webhook, one delivery envelope {id, timestamp, type, headers, body}. Validated against the version's input schema; the held run receives exactly this."
+      },
+      "FileRef": {
+        "type": "object",
+        "properties": {
+          "$file": {
+            "$ref": "#/components/schemas/FileId"
+          }
+        },
+        "required": [
+          "$file"
+        ]
+      },
+      "FileId": {
+        "type": "string",
+        "pattern": "^fid_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      },
       "WorkflowExecutionAuthorityList": {
         "type": "object",
         "properties": {
@@ -6545,66 +6606,6 @@
           "kind",
           "id"
         ]
-      },
-      "WorkflowJsonValue": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "number"
-          },
-          {
-            "type": "boolean"
-          },
-          {
-            "type": "null"
-          },
-          {
-            "$ref": "#/components/schemas/FileRef"
-          },
-          {
-            "type": "array",
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/WorkflowJsonValue"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          {
-            "type": "object",
-            "additionalProperties": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/WorkflowJsonValue"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          }
-        ]
-      },
-      "FileRef": {
-        "type": "object",
-        "properties": {
-          "$file": {
-            "$ref": "#/components/schemas/FileId"
-          }
-        },
-        "required": [
-          "$file"
-        ]
-      },
-      "FileId": {
-        "type": "string",
-        "pattern": "^fid_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
       },
       "Pagination": {
         "anyOf": [
@@ -19144,6 +19145,33 @@
               "risk_critical"
             ]
           },
+          "trigger": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "schedule",
+                  "inbound_hook"
+                ]
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The webhook's slug; null for a schedule."
+              }
+            },
+            "required": [
+              "kind",
+              "name"
+            ],
+            "description": "What a held workflow's refused starts come from. Null unless held."
+          },
           "cause_class": {
             "type": [
               "string",
@@ -19211,6 +19239,7 @@
           "kind",
           "subject",
           "reason",
+          "trigger",
           "cause_class",
           "counts",
           "since",
@@ -29763,6 +29792,9 @@
                       "dev",
                       "prod"
                     ]
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/WorkflowJsonValue"
                   }
                 },
                 "required": [
@@ -29786,6 +29818,24 @@
                     },
                     "reason": {
                       "type": "string"
+                    },
+                    "trigger": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "inbound_hook"
+                          ]
+                        },
+                        "slug": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "slug"
+                      ]
                     }
                   },
                   "required": [
