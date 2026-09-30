@@ -13,10 +13,10 @@
 // We test the _entry shape_ produced by account() rather than the DB
 // row so this stays a fast unit test (no testcontainers required).
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, test } from "bun:test";
 import { _resetConfigForTests } from "../../config/loader.ts";
 import type { SubkitLlmTelemetryMetadata, SubkitLlmUsage } from "../core/base-types.ts";
-import { type AccountParams, account } from "./accountant.ts";
+import { type AccountParams, account, usageAttribution } from "./accountant.ts";
 
 // account() calls recordUsage(), which calls getDb(). In a unit
 // context there is no live DB pool — we capture the call by replacing
@@ -225,5 +225,15 @@ describe("account() — WS-1 execution_id / conversation_id attribution", () => 
     expect(result.drift_pct).toBeCloseTo(0.25, 5);
     expect(result.recorded_input_tokens).toBe(100);
     expect(result.recorded_output_tokens).toBe(50);
+  });
+});
+
+describe("usageAttribution", () => {
+  test("links a usage row to its run and conversation, and drops ids it could not store", () => {
+    const execution_id = "5b2a7c1e-3f4d-4e8a-9b1c-2d3e4f5a6b7c";
+    expect(usageAttribution({ execution_id, conversation_id: "not-a-uuid", flow: "x" })).toEqual({
+      execution_id,
+    });
+    expect(usageAttribution(undefined)).toEqual({});
   });
 });

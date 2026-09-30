@@ -44,6 +44,7 @@ import {
   contextCapFor,
   recordUsage,
   resolveMonthlyBudget,
+  usageAttribution,
 } from "../accounting/index.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../errors.ts";
 import { getMockProvider, type MockResult } from "../mock-provider.ts";
@@ -725,6 +726,7 @@ async function dispatchReal<T>(
         result: "error",
         error: mapped.message,
         ...actorFields(params.principal),
+        ...usageAttribution(telemetryMeta),
       },
       db,
     );
@@ -750,6 +752,7 @@ async function dispatchReal<T>(
         result: "error",
         error: answeredBy.primary_error ?? "primary refused; answered by the fallback",
         ...actorFields(params.principal),
+        ...usageAttribution(telemetryMeta),
       },
       db,
     );

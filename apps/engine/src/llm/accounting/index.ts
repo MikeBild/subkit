@@ -18,6 +18,7 @@ export {
   type AccountParams,
   type AccountResult,
   account,
+  usageAttribution,
 } from "./accountant.ts";
 export { type ActorFields, actorFields } from "./actor.ts";
 export {

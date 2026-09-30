@@ -155,6 +155,12 @@ export interface RunExecutionParams {
   source: RunExecutionSource;
   input: unknown;
   options?: RunOptions;
+  /** The caller answers this request itself with the refusal (a synchronous
+   *  HTTP run). Only then is a connector refusal announced as
+   *  `execution.refused`: nobody else has to be told. A queued run whose
+   *  caller already got its 202 keeps `execution.failed`, so it reaches the
+   *  inbox. */
+  refusal_answered_to_caller?: boolean;
 }
 
 /**
@@ -181,7 +187,8 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       // Only the connector refusal is announced as refused: every other early
       // throw (input schema, depth, definition) is a failure someone may have
       // to act on, and keeps its `execution.failed`.
-      const refused = code === "prepared_credential_unavailable";
+      const connectorRefusal = code === "prepared_credential_unavailable";
+      const refused = connectorRefusal && p.refusal_answered_to_caller === true;
       // A finalize that cannot be written (database gone) must not replace the
       // refusal the caller is about to report; the queue worker retries its own.
       await finalizeExecution(
@@ -194,7 +201,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           step_id: typeof named.step_id === "string" ? named.step_id : null,
           error_code: typeof code === "string" ? code : "execution_error",
           error_message: error instanceof Error ? error.message : String(error),
-          ...(refused && typeof named.reason === "string"
+          ...(connectorRefusal && typeof named.reason === "string"
             ? {
                 connector: {
                   connector_id: typeof named.connector_id === "string" ? named.connector_id : null,
