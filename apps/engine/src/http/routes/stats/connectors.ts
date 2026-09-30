@@ -1,6 +1,13 @@
 // GET /v1/stats/connectors — tenant-scoped, time-bucketed connector-call
-// stats over `audit_log` (action = 'connector.invoked'). Gated by
-// `stats:read`.
+// stats over `audit_log`. Gated by `stats:read`.
+//
+// ONE ROW PER CALL. An http / graphql / s3 / postgres call is the egress row
+// `connector.invoked`. An mcp call is the pool's `mcp_external_tool.invoked`
+// row: the pool writes one for every remote call, the chat palette's as well
+// as a workflow step's, while only the workflow path ALSO passes the egress
+// wrapper. Counting both actions for mcp would count a workflow's call twice;
+// counting only the egress row left every chat call at zero. So the mcp
+// egress row is left out and the pool row counts.
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
@@ -78,7 +85,8 @@ export function registerStatsConnectorsRoute(app: OpenAPIHono<AppEnv>): void {
       from: win.from,
       to: win.to,
       tz: win.tz,
-      actions: [AuditAction.CONNECTOR_INVOKED],
+      actions: [AuditAction.CONNECTOR_INVOKED, AuditAction.MCP_EXTERNAL_TOOL_INVOKED],
+      excludeActionDriver: { action: AuditAction.CONNECTOR_INVOKED, driver: "mcp" },
       connectorId: q.connector_id,
       connectorSlug: q.connector_slug,
       driver: q.driver,
