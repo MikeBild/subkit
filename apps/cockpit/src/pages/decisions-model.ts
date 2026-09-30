@@ -13,6 +13,7 @@ export type DecisionOrigin =
   | "failurePattern"
   | "successPattern"
   | "authoringPattern"
+  | "connectorPattern"
   | "sessionPattern"
   | "chainedPattern"
   | "recurringPattern"
@@ -214,6 +215,7 @@ const SKILL_ORIGIN: Record<string, DecisionOrigin> = {
   failure_pattern: "failurePattern",
   success_pattern: "successPattern",
   authoring_capability: "authoringPattern",
+  connector_capability: "connectorPattern",
   session_learning: "sessionPattern",
   chained_workflow_pattern: "chainedPattern",
 };

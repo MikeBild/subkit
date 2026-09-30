@@ -505,6 +505,13 @@
       "when": 1790751250487,
       "tag": "0071_webhook_admission_hold",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1790769521513,
+      "tag": "0072_connector_capability_candidate",
+      "breakpoints": true
     }
   ]
 }
