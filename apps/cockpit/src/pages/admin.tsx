@@ -1888,7 +1888,7 @@ export function NotificationsPage() {
                           {word(SEVERITY_LABEL, rule.severity, rule.severity)}
                         </Badge>
                       </div>
-                      <p className="mt-1 text-sm text-muted-foreground break-words [overflow-wrap:anywhere]">
+                      <p className="mt-1 text-sm text-muted-foreground wrap-anywhere">
                         {eventPatternLabels(rule.event_pattern, t).map((label, part) => (
                           <Fragment key={`${part}-${label.text}`}>
                             {part > 0 ? ", " : null}
