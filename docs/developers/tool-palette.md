@@ -464,6 +464,19 @@ and they are reads by the engine's own construction: each is pinned to one
 retrieval method and none can reach `tools/call`. Only a tenant-side author can
 reclassify a call, with `side_effects: "read"` on a workflow step.
 
+**An operator may trust one tool at a time.** A person holding
+`connector:write` can mark an individual remote tool "Ohne Rückfrage" with
+`PUT /v1/connectors/{id}/mcp/tool-confirmation` (`{ tool, confirm }`), which
+stores the name at `config.mcp.tools_without_confirmation` and writes one
+`connector.updated` audit row naming the actor, the tool, and the old and new
+setting. That route is the list's only writer: a connector edit keeps the
+stored list and refuses a different one, create refuses any list, and a
+promotion copy starts with none. The gate reads the list from the connector row
+at call time and lets a listed `tools/call` run without the pause under the rule
+`connector_trust`, recorded as `gate_rule` on its `mcp_external_tool.invoked`
+row. Permission mode `plan` still pauses it, the inline-credential safeguard
+still wins, and a resource or prompt adapter is never covered.
+
 **Results are persisted whole, truncated for the model.** The full remote
 payload goes into the tool-call row; the model sees a truncated view, and
 `get_raw_result` retrieves the rest.

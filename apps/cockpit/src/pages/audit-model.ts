@@ -570,6 +570,21 @@ export function auditActionsFromUrl(search: string): string[] {
   return [...new Set(tokens)].slice(0, MAX_LINKED_ACTIONS);
 }
 
+const AUDIT_RESULTS = ["success", "denied", "error"] as const;
+export type AuditResultFilter = (typeof AUDIT_RESULTS)[number];
+
+/**
+ * The outcome a link narrowed to (`?result=error`) — a failure count opens the
+ * failures it counted, not every entry of its window. Null for none, and for
+ * a value the engine would reject.
+ */
+export function auditResultFromUrl(search: string): AuditResultFilter | null {
+  const raw = new URLSearchParams(search).get("result");
+  return (AUDIT_RESULTS as readonly string[]).includes(raw ?? "")
+    ? (raw as AuditResultFilter)
+    : null;
+}
+
 export function auditFilterFromUrl(search: string): AuditLinkFilter {
   const params = new URLSearchParams(search);
   const resourceType = identifierParam(params, "resource_type");
