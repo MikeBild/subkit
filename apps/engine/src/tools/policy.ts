@@ -166,6 +166,8 @@ export interface PolicyDecideInput {
   readonly meta?: Record<string, unknown>;
   readonly permission_mode?: PermissionMode | null;
   readonly overrides?: ToolPolicies;
+  /** See `decideToolMode`: an operator-trusted external MCP tool. */
+  readonly connector_trust?: boolean;
 }
 
 export function policyDecide(input: PolicyDecideInput): PolicyDecision {
@@ -195,6 +197,7 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
     input: input.args,
     overrides: input.overrides ?? {},
     permission_mode: input.permission_mode ?? null,
+    ...(input.connector_trust ? { connector_trust: true } : {}),
   });
 
   if (decision.mode !== "confirm_before_execution") return { kind: "proceed" };
