@@ -24,6 +24,7 @@ import { admitWebhookExecution } from "./admission.ts";
 import { type InboundHoldReason, recordInboundAdmission } from "./admission-state.ts";
 import { markSeenIfNew, wasSeen } from "./dedup.ts";
 import { verifyGitHub } from "./verifiers/github.ts";
+import { verifyHmac } from "./verifiers/hmac.ts";
 import { verifyStandard } from "./verifiers/standard-webhooks.ts";
 import { verifyStripe } from "./verifiers/stripe.ts";
 import type { VerifierFn, VerifierResult } from "./verifiers/types.ts";
@@ -36,12 +37,13 @@ function toBuf(u: Uint8Array): Buffer {
   return Buffer.from(u);
 }
 
-export type InboundVerifierName = "standard" | "github" | "stripe";
+export type InboundVerifierName = "standard" | "github" | "stripe" | "hmac";
 
 const VERIFIERS: Record<InboundVerifierName, VerifierFn> = {
   standard: verifyStandard,
   github: verifyGitHub,
   stripe: verifyStripe,
+  hmac: verifyHmac,
 };
 
 /** Accepted values for the stored `verifier` column. Used to build an
@@ -601,7 +603,7 @@ export async function handleInbound(
   //    rather than a decrypt.
   const verifier = VERIFIERS[row.verifier as InboundVerifierName];
   if (!verifier) {
-    // A stored `verifier` outside {standard, github, stripe} is almost
+    // A stored `verifier` outside {standard, github, stripe, hmac} is almost
     // always a hand-written / legacy row that put the trigger-level
     // token (`none`/`skip`) into the column. Spell out the fix instead
     // of returning a bare "unknown_verifier": `verify: "none"` is not a

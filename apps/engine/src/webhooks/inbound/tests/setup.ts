@@ -28,8 +28,9 @@ export interface InboundTestCtx {
   cleanup: () => Promise<void>;
   createBinding: (params: {
     slug: string;
-    verifier: "standard" | "github" | "stripe";
+    verifier: "standard" | "github" | "stripe" | "hmac";
     secret: string;
+    native_verifier_config?: Record<string, unknown>;
   }) => Promise<InboundRow>;
 }
 
@@ -97,6 +98,9 @@ export async function createInboundCtx(label: string): Promise<InboundTestCtx> {
           workflow_id: wf.id,
           verifier: params.verifier,
           secret: params.secret,
+          ...(params.native_verifier_config
+            ? { native_verifier_config: params.native_verifier_config }
+            : {}),
         },
         testDb.db,
       );

@@ -22040,7 +22040,7 @@ export interface components {
             slug: string;
             workflow_id: string;
             /** @enum {string} */
-            verifier: "standard" | "github" | "stripe" | "custom";
+            verifier: "standard" | "github" | "stripe" | "hmac" | "custom";
             active: boolean;
             /** @enum {string} */
             origin: "crud" | "trigger";
@@ -22052,7 +22052,7 @@ export interface components {
             /** Format: uuid */
             workflow_id: string;
             /** @enum {string} */
-            verifier: "standard" | "github" | "stripe" | "custom";
+            verifier: "standard" | "github" | "stripe" | "hmac" | "custom";
             secret: string;
             native_verifier_config?: {
                 [key: string]: unknown;
