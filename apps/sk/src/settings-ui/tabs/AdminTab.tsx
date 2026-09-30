@@ -193,29 +193,29 @@ export const AdminTab: React.FC<Props> = ({ client, onInnerEscape }) => {
               title: "Create notification channel",
               fields: [
                 {
-                  key: "kind",
-                  label: "Kind",
+                  key: "platform",
+                  label: "Platform",
                   required: true,
-                  placeholder: "slack | teams | email | webhook",
+                  placeholder: "slack | teams | google_chat",
                 },
                 {
-                  key: "name",
-                  label: "Name",
+                  key: "workspace_id",
+                  label: "Workspace id",
                   required: true,
-                  placeholder: "ops-alerts",
+                  placeholder: "T0123456",
                 },
                 {
-                  key: "target",
-                  label: "Target",
+                  key: "channel_id",
+                  label: "Channel id",
                   required: true,
-                  placeholder: "channel/url/email",
+                  placeholder: "C0123456",
                 },
               ],
               submit: async (vals) => {
                 await client.createNotificationChannel({
-                  kind: vals.kind,
-                  name: vals.name,
-                  target: vals.target,
+                  platform: vals.platform,
+                  workspace_id: vals.workspace_id,
+                  channel_id: vals.channel_id,
                 });
               },
             }}

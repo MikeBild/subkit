@@ -54,22 +54,55 @@ const EVENT_AREA_KEYS: Readonly<Record<string, TranslationKey>> = {
   workflow: "notifications.eventArea.workflow",
   connector: "notifications.eventArea.connector",
   schedule: "notifications.eventArea.schedule",
+  patch: "notifications.eventArea.repair",
   patch_candidate: "notifications.eventArea.repair",
   self_healing: "notifications.eventArea.repair",
 };
 
+/** The engine's event catalogue (`webhooks/events/catalog.ts`), each by name. */
+const EVENT_KEYS: Readonly<Record<string, TranslationKey>> = {
+  "execution.succeeded": "notifications.event.execution.succeeded",
+  "execution.failed": "notifications.event.execution.failed",
+  "execution.refused": "notifications.event.execution.refused",
+  "workflow.updated": "notifications.event.workflow.updated",
+  "connector.oauth.refreshed": "notifications.event.connector.oauth.refreshed",
+  "connector.oauth.callback_succeeded": "notifications.event.connector.oauth.callback_succeeded",
+  "connector.oauth.callback_failed": "notifications.event.connector.oauth.callback_failed",
+  "connector.auth_failed": "notifications.event.connector.auth_failed",
+  "connector.health_changed": "notifications.event.connector.health_changed",
+  "patch.proposed": "notifications.event.patch.proposed",
+  "patch.applied": "notifications.event.patch.applied",
+  "apikey.rotated": "notifications.event.apikey.rotated",
+  "conversation.committed": "notifications.event.conversation.committed",
+};
+
+function eventPartLabel(part: string, t: Translate): CatalogLabel {
+  const eventKey = EVENT_KEYS[part];
+  if (eventKey) return { text: t(eventKey), machine: false };
+  const area = /^([a-z_]+)\.\*$/.exec(part)?.[1];
+  const areaKey = area ? EVENT_AREA_KEYS[area] : undefined;
+  if (areaKey)
+    return { text: t("notifications.events.area", { area: t(areaKey) }), machine: false };
+  return { text: part, machine: true };
+}
+
 /**
- * Which events a rule forwards. `*` is every event, `execution.*` every event
- * about runs; any other pattern is the glob the engine matches, shown as such.
+ * Which events a rule forwards, one label per entry of its list.
+ *
+ * The engine reads a pattern as a comma-separated list (`matchGlob`), and the
+ * seeded inbox rule is one: the page printed it raw, five event types in one
+ * monospace run. Each entry is read on its own — a catalogued event by its
+ * name, `execution.*` as the events about runs, anything else as the glob the
+ * engine matches, marked as such. A list that holds `*` is every event.
  */
-export function eventPatternLabel(pattern: string, t: Translate): CatalogLabel {
-  const trimmed = pattern.trim();
-  if (trimmed === "" || trimmed === "*")
-    return { text: t("notifications.events.all"), machine: false };
-  const area = /^([a-z_]+)\.\*$/.exec(trimmed)?.[1];
-  const key = area ? EVENT_AREA_KEYS[area] : undefined;
-  if (key) return { text: t("notifications.events.area", { area: t(key) }), machine: false };
-  return { text: trimmed, machine: true };
+export function eventPatternLabels(pattern: string, t: Translate): CatalogLabel[] {
+  const parts = pattern
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  if (parts.length === 0 || parts.includes("*"))
+    return [{ text: t("notifications.events.all"), machine: false }];
+  return parts.map((part) => eventPartLabel(part, t));
 }
 
 /** Which workflows a rule listens to. An empty pattern matches every one, as `*` does. */

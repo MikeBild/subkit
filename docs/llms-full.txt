@@ -4028,6 +4028,19 @@ outbound messages. The notification subsystem reuses the same `send()`
 surface to deliver completion signals to the operator's chat
 workspace.
 
+A rule creates its channel row on its first delivery, as a Slack channel.
+To deliver through Teams or Google Chat, or to set a channel's default
+severity or rate limit up front, create the channel from the CLI with its
+platform and the same workspace + channel pair the rule targets:
+
+```sh
+sk notifications channels create --platform slack --workspace-id T0123 --channel-id C0456 \
+  --severity error --rate-limit 20
+```
+
+`--severity` (default `info`) and `--rate-limit` (deliveries per minute,
+default `60`) are optional.
+
 ### Webhook (`notifications/channels/webhook.ts`)
 
 For tenants that prefer a generic HTTP endpoint over a chat platform.
