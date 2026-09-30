@@ -19,7 +19,16 @@ export async function renderAutomationContext(
     !(await can(db, { tenant_id, principal, permission: "schedule:read" })).allow
   )
     return `${rule}\nCurrent scheduling permission cannot be verified for this caller.`;
-  const review = await inspectAutomationReview(db, tenant_id, workflow_id);
-  const statuses = review?.schedules ?? [];
+  // A webhook starts runs as a schedule does; without it a held hook-only
+  // workflow read as "no scheduling evidence" and the model said nothing needs
+  // repair. Hooks and refusal reasons each behind their own permission.
+  const allowed = async (permission: "inbound_hook:read" | "audit:read") =>
+    (await can(db, { tenant_id, principal, permission, quiet: true })).allow;
+  const review = await inspectAutomationReview(db, tenant_id, workflow_id, {
+    ...((await allowed("inbound_hook:read"))
+      ? { inbound_hooks: { refusal_reasons: await allowed("audit:read") } }
+      : {}),
+  });
+  const statuses = [...(review?.schedules ?? []), ...(review?.inbound_hooks ?? [])];
   return `${rule}\nCurrent scheduling evidence (read-only; live state is separate from review of the latest saved draft. Use review.issues to repair that draft, not issues of the older active version. Eligibility alone never means authority): ${JSON.stringify(statuses)}\nrepair_required: prepare a supported fixed boundary; do not declare repair complete from a green preview. approval_required: human review is still needed. activation_required: saved draft is not active. paused: automatic runs are disabled. authorized: permission exists now, subject to recheck when due.`;
 }

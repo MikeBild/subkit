@@ -92,11 +92,19 @@ export function AgentPanel({
       // The recorded turn, once it is over. If it cannot be read, the streamed
       // words are still an answer; with none of either the turn says so below.
       const detail = await getConversation(id).catch(() => null);
-      const reply = detail?.messages.filter((entry) => entry.role === "assistant").at(-1);
+      // This turn only: everything the assistant recorded after the last
+      // question. A turn that recorded nothing must not show the one before.
+      const messages = detail?.messages ?? null;
+      const fromEnd = [...(messages ?? [])].reverse().findIndex((entry) => entry.role === "user");
+      const asked = messages && fromEnd >= 0 ? messages.length - 1 - fromEnd : -1;
+      const reply = messages
+        ?.slice(asked + 1)
+        .filter((entry) => entry.role === "assistant")
+        .flatMap((entry) => entry.parts);
       return {
         question: message,
         conversationId: id,
-        ...recordedAnswer(reply?.parts ?? null, streamed),
+        ...recordedAnswer(reply ?? null, streamed),
       };
     },
     onSuccess: (turn) => {
