@@ -236,6 +236,7 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
 const TERMINAL_EXECUTION_EVENTS = new Set([
   "execution.succeeded",
   "execution.failed",
+  "execution.refused",
   "execution.aborted",
   "execution.timed_out",
 ]);

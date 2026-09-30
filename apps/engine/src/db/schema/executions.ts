@@ -110,6 +110,7 @@ export const executions = pgTable(
       step_id: string | null;
       error_code: string;
       error_message: string;
+      connector?: { connector_id: string | null; reason: string };
     } | null>(),
     // Verdict of the definition's `output_schema` check on the final output:
     // `passed` | `violated`, or `none` when there was no contract or it was not

@@ -58,9 +58,49 @@ describe("deriveExecutionOutcome", () => {
       failed_step: { step_key: "send", kind: "request" },
       cause_class: "auth_failed",
       error_code: "http_4xx",
+      connector: null,
       steps: { total: 3, succeeded: 1, failed: 1, held: 0, skipped: 1 },
       output_contract: "none",
     });
+  });
+
+  test("refused: a run refused for its connector names the connector and reads connector_unavailable", () => {
+    const outcome = deriveExecutionOutcome(
+      {
+        status: "failed",
+        failure: {
+          step_id: "send",
+          error_code: "prepared_credential_unavailable",
+          error_message:
+            'Connector "auth0-crm" in dev must be reconnected before this workflow can run.',
+          connector: { connector_id: "c-dev", reason: "needs_reauth" },
+        },
+        output_contract: "none",
+      },
+      [],
+      def,
+    );
+    // The slug contains "auth": the exact code wins over the message matcher.
+    expect(outcome.cause_class).toBe("connector_unavailable");
+    expect(outcome.connector).toEqual({ connector_id: "c-dev", reason: "needs_reauth" });
+  });
+
+  test("refused: a preparation closed before it ran reads refused_before_start", () => {
+    const outcome = deriveExecutionOutcome(
+      {
+        status: "failed",
+        failure: {
+          step_id: null,
+          error_code: "orphaned_preparation",
+          error_message: "The preparation was refused before it started and never ran.",
+        },
+        output_contract: "none",
+      },
+      [],
+      def,
+    );
+    expect(outcome.cause_class).toBe("refused_before_start");
+    expect(outcome.connector).toBeNull();
   });
 
   test("held: a succeeded status with a held write is held, and held is not succeeded", () => {

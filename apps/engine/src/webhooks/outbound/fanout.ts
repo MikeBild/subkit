@@ -98,6 +98,7 @@ export interface FanoutStats {
 
 const DEFAULT_SEVERITY: Record<string, NotificationSeverity> = {
   "execution.failed": "error",
+  "execution.refused": "warn",
   "execution.succeeded": "info",
   "execution.aborted": "warn",
   "workflow.updated": "info",

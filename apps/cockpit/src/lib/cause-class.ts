@@ -24,10 +24,17 @@ const CAUSE_CLASS_KEYS = {
   aborted: "cause.aborted",
   connector_missing: "cause.connector_missing",
   budget_exhausted: "cause.budget_exhausted",
+  connector_unavailable: "cause.connector_unavailable",
+  refused_before_start: "cause.refused_before_start",
   driver_error: "cause.driver_error",
   preview_unsupported: "cause.preview_unsupported",
   unknown: "cause.unknown",
 } as const satisfies Record<CauseClass, TranslationKey>;
+
+/** The cockpit's word for a cause class; undefined for one this build does not know. */
+export function causeClassKey(value: string): TranslationKey | undefined {
+  return (CAUSE_CLASS_KEYS as Record<string, TranslationKey>)[value];
+}
 
 /**
  * A cause class as the reader sees it. A value this build has no word for —
@@ -35,5 +42,5 @@ const CAUSE_CLASS_KEYS = {
  * (§15.2), never "Unbekannt" (§2).
  */
 export function causeClassLabel(value: string, t: Translate): CatalogLabel {
-  return catalogLabel(value, (CAUSE_CLASS_KEYS as Record<string, TranslationKey>)[value], t);
+  return catalogLabel(value, causeClassKey(value), t);
 }
