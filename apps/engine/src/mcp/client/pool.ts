@@ -371,6 +371,9 @@ export interface TenantMcpToolSet {
    *  freshly listed row, never the cached session, so a rename shows at
    *  once. */
   display_name: string;
+  /** The remote endpoint, from the freshly listed row — what a call's
+   *  egress record names as the place the payload went. */
+  url: string;
   tools: RemoteToolDescriptor[];
   /** What the server declared it serves. Carried out of the pool so the
    *  palette can mint a resources or prompts adapter ONLY for a server
@@ -393,6 +396,7 @@ function toolSetOf(pooled: PooledClient, row: McpConnectorRow): TenantMcpToolSet
     slug: pooled.slug,
     connector_id: pooled.connector_id,
     display_name: row.display_name,
+    url: row.url,
     tools: pooled.tools,
     capabilities: pooled.capabilities,
     instructions: pooled.instructions,
