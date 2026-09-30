@@ -3,9 +3,10 @@
 // an mcp connector — the negotiated session row. No new persistence.
 //
 // ONE ROW PER CALL, the same rule `GET /v1/stats/connectors` counts by: an
-// mcp call is the pool's `mcp_external_tool.invoked` row (a chat call writes
-// no egress row); every other driver's call is the egress row
-// `connector.invoked`. Both rows carry the connector id as `resource_id`.
+// mcp call is the pool's `mcp_external_tool.invoked` row (its egress row, which
+// a chat call and a workflow step both write, is not read); every other
+// driver's call is the egress row `connector.invoked`. Both rows carry the
+// connector id as `resource_id`.
 //
 // The failure is reported as a class, never as text. The audit `reason` of an
 // egress failure is the driver's error message, which can quote the remote;
