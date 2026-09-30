@@ -108,7 +108,7 @@ export async function readMcpToolsWithoutConfirmation(
     )
     .limit(1);
   const row = rows[0];
-  if (!row || row.driver !== "mcp") return [];
+  if (row?.driver !== "mcp") return [];
   return mcpTrustedTools(row.config);
 }
 
@@ -153,7 +153,7 @@ export async function setMcpToolConfirmation(
       )
       .for("update");
     const prior = rows[0];
-    if (!prior || prior.driver !== "mcp") return null;
+    if (prior?.driver !== "mcp") return null;
     const before = mcpTrustedTools(prior.config);
     const after = p.confirm
       ? before.filter((name) => name !== p.tool)

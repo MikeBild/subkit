@@ -757,13 +757,8 @@ function headerNamesOf(
   row: { id: string; mode: string; ciphertext: Uint8Array; iv: Uint8Array; auth_tag: Uint8Array },
 ): string[] {
   if (row.mode !== "header") return [];
-  const value = deserializePlain(
-    "header",
-    decryptSecret(
-      { ciphertext: row.ciphertext, iv: row.iv, auth_tag: row.auth_tag },
-      aadFor(tenant_id, row.id),
-    ),
-  );
+  const plain = decryptSecret(row, aadFor(tenant_id, row.id));
+  const value = deserializePlain("header", plain);
   return value.mode === "header" ? Object.keys(value.headers).sort() : [];
 }
 
