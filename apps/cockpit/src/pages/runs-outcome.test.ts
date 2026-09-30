@@ -145,11 +145,9 @@ describe("causeClassLabel", () => {
   });
 
   test("a refused run is not an error in the external system", () => {
-    expect(causeClassLabel("connector_unavailable", de).text).toBe(
-      "Konnektor muss neu verbunden werden",
-    );
+    expect(causeClassLabel("connector_unavailable", de).text).toBe("Konnektor nicht verfügbar");
     expect(causeClassLabel("refused_before_start", de).text).toBe("Vor dem Start abgelehnt");
-    expect(causeClassLabel("connector_unavailable", en).text).toBe("Connector must be reconnected");
+    expect(causeClassLabel("connector_unavailable", en).text).toBe("Connector unavailable");
     expect(causeClassLabel("refused_before_start", en).text).toBe("Refused before the start");
   });
 });

@@ -31,6 +31,19 @@ function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value);
 }
 
+/** The run and conversation a usage row belongs to, read from free-form
+ *  telemetry metadata. Every row a call writes — the answer, a refused
+ *  primary, a final error — links the same way. */
+export function usageAttribution(metadata: Record<string, unknown> | undefined): {
+  execution_id?: string;
+  conversation_id?: string;
+} {
+  const out: { execution_id?: string; conversation_id?: string } = {};
+  if (isUuid(metadata?.execution_id)) out.execution_id = metadata.execution_id;
+  if (isUuid(metadata?.conversation_id)) out.conversation_id = metadata.conversation_id;
+  return out;
+}
+
 export interface AccountParams {
   tenant_id: string;
   metadata: SubkitLlmTelemetryMetadata;
@@ -123,12 +136,7 @@ export async function account(p: AccountParams, exec?: Executor): Promise<Accoun
     //
     // Dropping an unusable id costs one attribution. Keeping it costs the
     // whole row.
-    if (isUuid(p.metadata.execution_id)) {
-      entry.execution_id = p.metadata.execution_id;
-    }
-    if (isUuid(p.metadata.conversation_id)) {
-      entry.conversation_id = p.metadata.conversation_id;
-    }
+    Object.assign(entry, usageAttribution(p.metadata));
     await recordUsage(entry, exec);
   } catch (err) {
     // Accounting is best-effort. A write failure must not mask the LLM
